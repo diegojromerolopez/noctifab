@@ -437,6 +437,73 @@ To prevent CPU/memory serialization overhead and database locks under high concu
         var _ domain.StateRepository = (*SQLiteRepository)(nil)
         ```
 
+##### Example of Optimistic Concurrency Control (OCC) save transaction logic in Go (SQLite repository):
+```go
+package storage
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"sync"
+	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
+)
+
+type SQLiteRepository struct {
+	db         *sql.DB
+	writeMutex sync.Mutex
+}
+
+func (r *SQLiteRepository) Save(ctx context.Context, state *domain.State) error {
+	r.writeMutex.Lock()
+	defer r.writeMutex.Unlock()
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 1. Fetch current version to check for conflict
+	var currentVersion int
+	err = tx.QueryRowContext(ctx, "SELECT version FROM state WHERE id = ?", state.ID).Scan(&currentVersion)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// Handle initial creation if not exists
+			currentVersion = 0
+		} else {
+			return err
+		}
+	}
+
+	// 2. Perform optimistic concurrency version check
+	if state.Version != currentVersion {
+		return errors.New("ErrVersionConflict: state modified by another process")
+	}
+
+	// 3. Increment version and save state updates
+	nextVersion := state.Version + 1
+	_, err = tx.ExecContext(ctx, 
+		"UPDATE state SET version = ?, updated_at = ? WHERE id = ?", 
+		nextVersion, time.Now(), state.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	// [Insert normalized task and action table saves inside the transaction here...]
+
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	state.Version = nextVersion
+	return nil
+}
+```
+
 Database transactions are short-lived. A connection handle is never held open during slow external network calls (such as LLM API completions) or tool execution runs.
 
 ##### Database Schema Migrations & Backward Compatibility
@@ -1123,6 +1190,10 @@ In Docker isolation mode, the orchestrator routes command executions and tools t
 *   **Docker Container Leakage Prevention:** The orchestrator assigns a unique session label (`noctifab-session=<session-id>`) to all containers, bridge networks, and volumes it spawns. On daemon startup (`noctifab start`), the pre-flight routine queries the Docker API for any legacy resources matching the `noctifab` labels and prunes them. Go `defer` functions are registered on startup to call `ContainerRemove` and prune active networks during unexpected daemon panics or SIGINT/SIGTERM exits.
 *   **Budget Reservation Engine:** Before initiating an LLM completion API call, the worker goroutine locks the budget and reserves an estimated token/cost usage in the database. Post-execution, the worker updates the transaction to reflect actual tokens consumed, preventing concurrent workers from running parallel requests that exceed daily token budgets or maximum USD constraints (`--max-budget-usd`). If budget limit checks fail, the daemon suspends operations cleanly.
 
+##### What Host Sandbox Isolation Is Not:
+*   **It is not an OS-level virtualization or kernel jail:** Host isolation mode does not use virtual machines, Docker containers, chroot namespaces, cgroups, or kernel jails. It relies strictly on path validation logic in the Go runtime.
+*   **It does not block system read access inside whitelisted processes:** While the `read_file` tool blocks reading `/etc/passwd`, a whitelisted binary executable (like `go`) executed via `run_tests` might read system files (e.g., standard library header files or configuration paths in `/etc/`) or query environment variables. The sandbox restricts the files the *agent* can directly view/edit, not the low-level resources whitelisted binaries require to function.
+
 ---
 
 ### 3.5. Multi-Agent Concurrency & Dependency Orchestrator
@@ -1477,6 +1548,10 @@ To prevent unstable builds or broken endpoints from being committed to the targe
     *   Pushing a standard revert commit back to the remote VCS provider, thereby respecting branch protection policies and avoiding force-pushes.
 3.  **State Synchronization:** The rollback event updates the state database, resetting the failed tasks back to `TaskPending` or `TaskFailed` (depending on remaining retries) and moving the faulty branch into a quarantined namespace (`noctifab-quarantine/`) for diagnostic inspection.
 
+##### What Auto-Rollback Is Not:
+*   **It is not a git force-push (`git push --force`):** The orchestrator never force-pushes or rewrites the git history of the target integration branch (e.g. `main` or `master`), which would trigger security policy rejections in standard environments. It constructs a clean git revert commit (`git revert -m 1 <commit-hash>`) and appends it to the branch.
+*   **It does not delete the failed code history:** The failed work remains preserved in the quarantine branch (`noctifab-quarantine/feature/auth-failed-a1b2`) for diagnostic investigation by developers.
+
 ##### Auto-Rollback Sequence Example:
 1. Feature integration branch `feature/auth` is merged into target branch `main` at commit `a1b2c3d4`.
 2. Post-merge integration tests fail under Holdout evaluation.
@@ -1602,6 +1677,10 @@ To prevent git merge conflicts and version stagnation in a multi-agent environme
     *   **Minor Bump (`+0.1.0`):** Triggered if any task has `ChangeType = ChangeTypeFeature` and no task has `ChangeTypeBreaking`.
     *   **Patch Bump (`+0.0.1`):** Triggered if all tasks have `ChangeType = ChangeTypeFix`.
 7.  **Version Update:** The orchestrator writes the final bumped version string back to the `VERSION` file at the root.
+
+##### What Centralized Version Bumping Is Not:
+*   **It is not executed by individual Generator agents:** Generator agents running in isolated Git worktrees do not have write access to the main `VERSION` file or `CHANGELOG.md` inside their task branches. Bumping is deferred and managed strictly by the orchestrator loop after all tasks have reached a successful validation state.
+*   **It is not a git-tag-based versioning replacement:** Bumping the `VERSION` file acts as the repository's single source of truth version state. The orchestrator may also generate corresponding Git tags (e.g. `v1.2.0`) matching the bumped version string during merge events, but the tag is derived *from* the `VERSION` file rather than replacing it.
 
 #### 3.8.3. CHANGELOG.md Management (Keep a Changelog Standard)
 Once all tasks are done, the orchestrator updates the `CHANGELOG.md` file located at the workspace root, adhering strictly to the **Keep a Changelog** standard. It prepends the unified release section at the top of the file under the `# Changelog` heading, compiling all gathered partial changelog items into categorized lists:
@@ -2130,6 +2209,10 @@ To support autonomous verification in the VCS pipeline, the repository must inco
 ## 7. Implementation Roadmap (Phases)
 
 To ensure high cohesion, low coupling, and compliance with the 500-line source code file limit, the development of `noctifab` must be partitioned into the following sequential implementation phases:
+
+> [!IMPORTANT]
+> **MVP Scope and Prioritization Note:**
+> To guarantee a functional MVP, the absolute mandatory core of this roadmap is the **loop-validation cycle** (Observe -> Decide -> Validate -> Execute -> Save) and its offline validation via the E2E Docker Compose network (Phase 6). Other supporting structures, such as fine-grained agent permission profiles, telemetry (OTel) context propagation, budget ceiling calculations, and external Jira ADF AST walkers are secondary and may be stubbed or simplified in the initial MVP release to ensure focus on the core cycle validation.
 
 ### 7.1. Phase 1: Domain & Core Storage Infrastructure
 *   **Objective:** Establish the primary domain models, state persistence, concurrency locking, and basic CLI entrypoints.
