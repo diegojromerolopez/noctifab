@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-`noctifab` is a Dark Factory Platform for GitHub, GitLab, and Bitbucket. A "Dark Factory" (in software engineering context) is an autonomous, long-running agentic harness that operates without human intervention to resolve issues, verify builds, run tests, and manage software project lifecycles.
+`noctifab` is a Dark Factory Platform for GitHub and GitLab. A "Dark Factory" (in software engineering context) is an autonomous, long-running agentic harness that operates without human intervention to resolve issues, verify builds, run tests, and manage software project lifecycles.
 
 `noctifab` is compiled as a single Go binary that functions as a Command Line Interface (CLI) tool. It runs as a single-node autonomous loop engine, replacing the manual developer execution bottleneck.
 
@@ -36,6 +36,9 @@ To ensure maintainability, scalability, and clarity for both human developers an
 *   **Developer Documentation Guidelines:** A `.readthedocs.yaml` configuration file must be present at the root, and a `docs/` folder must contain Markdown documentation detailing project usage, setup instructions, and guides on how developers can extend the orchestration framework.
 *   **Repository Standards and Documentation:** The repository must maintain a `VERSION` file at the root containing the current semver release, a `CHANGELOG.md` detailing change history conforming to the "Keep a Changelog" standard, and a comprehensive `README.md` at the root. The `README.md` must include project status badges, links to the Read the Docs page, a description of the project, basic CLI usage instructions, license information, and collaboration guidelines.
 *   **Industry Coding Standards:** When modifying or writing code, AI agents must strictly follow the most popular and established standards of the target language and platform (e.g. Go Code Review Comments for Go, standard libraries, and standard formatting conventions), unless explicitly instructed otherwise.
+*   **Encapsulation & Package Boundaries:** Struct types are exported to allow type assertions and interface compliance, but their internal fields remain unexported to enforce encapsulation. All access goes through constructors and public methods. Tests use the public API (black-box testing) wherever possible.
+*   **Context Propagation:** All functions performing I/O or calling external APIs accept `context.Context` as their first parameter. Context is never stored in structs — it is passed through the call chain from the orchestrator loop down to tool execution and LLM client calls. Timeouts, trace spans, and cancellation propagate strictly through context.
+*   **Database Selection & Performance:** PostgreSQL is the recommended database for production use to guarantee maximum transaction throughput, concurrency, and connection stability. SQLite is supported strictly as a zero-setup local development database; its inherent write-locking and performance limitations are acceptable and expected in single-developer/testing environments.
 
 ### 2.1. Directory Layout & Go Package Structure
 
@@ -43,34 +46,71 @@ The repository must follow a standardized layout aligning with Go best practices
 
 ```
 noctifab/
-├── .github/                   # [Required, To Be Implemented]
+├── .github/                   # CI configurations
 │   └── workflows/
 │       └── ci.yml             # CI Workflow for linting and unit tests
 ├── docs/                      # Markdown documentation for developers (usage, extension guides)
 ├── cmd/
 │   └── noctifab/
-│       └── main.go            # Entrypoint and CLI subcommand setup
+│       └── main.go            # Entrypoint and CLI subcommand setup (Cobra CLI)
 ├── pkg/
 │   ├── domain/                # Enterprise & domain entities (100% pure Go, no external imports)
 │   │   ├── state.go           # State structures & StateRepository interface
 │   │   ├── task.go            # Task entities and behaviors
-│   │   └── action.go          # Action execution logs
+│   │   ├── action.go          # Action execution logs
+│   │   └── error.go           # Domain error model and sentinel errors
 │   ├── usecase/               # Orchestration, main loop, rules validation
-│   │   ├── orchestrator.go    # Daemonized polling loop
+│   │   ├── orchestrator.go    # Daemonized polling loop & worker handoff
 │   │   ├── registry.go        # Tool Registry implementation
-│   │   └── validator.go       # Policy & safety rules checker
+│   │   ├── validator.go       # Policy & safety rules checker
+│   │   ├── scheduler.go       # Topological scheduling, worker goroutine pool & file locks
+│   │   ├── dag.go             # cycle checks, title-to-UUID resolving maps
+│   │   ├── holdout.go         # BDD scenario execution, 3x runner & majority voter
+│   │   ├── sandbox.go         # Host path jail, warm docker containers & CLI execution wrapper
+│   │   ├── release.go         # Semver bump algorithm & CHANGELOG.md compiler
+│   │   ├── command_channel.go # FIFO serial input mailbox & transaction loop
+│   │   └── rebase_queue.go    # Asynchronous, serialized git rebase/merge worker
 │   └── infrastructure/        # Frameworks, drivers, and external adapters
-│       ├── llm/               # LLM clients (openai, anthropic, gemini, ollama)
-│       ├── storage/           # State persistence (JSON file, SQL)
-│       ├── vcs/               # Git & APIs (GitHub, GitLab, Bitbucket adapters)
-│       └── jira/              # Jira API Client (authentication & issue fetching)
+│       ├── llm/               # LLM client & custom parser (lenient parsing & validation)
+│       ├── storage/           # State persistence
+│       │   ├── sqlite_repository.go   # WAL mode, busy timeout, connection limiting
+│       │   └── postgres_repository.go # Production PGX connection, SELECT FOR UPDATE row-locks
+│       ├── vcs/               # Git & APIs (GitHub, GitLab adapters)
+│       └── jira/              # Jira API Client (authentication & ADF parser)
+├── tests/                     # Test suites
+│   ├── e2e/                   # E2E integration test suite
+│   │   ├── mock_llm/          # Mock LLM provider service
+│   │   ├── mock_vcs/          # Mock VCS Git CGI server & API mock endpoints
+│   │   └── scenarios/         # Directory for JSON rules and scenario inputs
+│   └── holdout/               # Hidden directory containing BDD holdout tests (isolated from Gen Agent)
+├── .gitignore                 # Root level gitignore file to exclude build binaries, temp files, etc.
+├── .noctifab/                 # Local daemon runtime configuration directory
+│   ├── .gitignore             # Config gitignore file (ignores database and logs)
+│   ├── config.yaml            # Main YAML configuration file
+│   ├── config/
+│   │   └── noctifab.db        # SQLite database file
+│   └── profiles/              # Role authorization profiles (planner.yaml, generator.yaml, etc.)
 ├── .readthedocs.yaml          # Read the Docs configuration file
-├── lint.Dockerfile            # Static analysis container
-├── CHANGELOG.md               # [Required] Project changelog following Keep a Changelog
+├── CHANGELOG.md               # Project changelog following Keep a Changelog
 ├── LICENSE
-├── README.md                  # [Required] Project README with badges, docs links, CLI usage, and collaboration guide
-└── VERSION                    # [Required] Project version file (semver)
+├── Makefile                   # Project build pipeline automation rules
+├── README.md                  # Project README with badges, docs links, CLI usage, and collaboration guide
+├── VERSION                    # Project version file (semver)
+└── go.mod                     # Go module definitions
 ```
+
+### 2.2. Go Dependency Management & Module Path
+
+The codebase functions as a Go module with the canonical module path `github.com/diegojromerolopez/noctifab`. The system requires a minimum Go version of **Go 1.22** to utilize advanced library APIs (e.g. `slices.Sort`).
+
+The required third-party dependencies are:
+1.  `github.com/spf13/cobra` - The standard CLI framework for subcommand routing.
+2.  `github.com/mattn/go-sqlite3` - CGO SQLite driver for local state persistence.
+3.  `github.com/jackc/pgx/v5` - Pure Go PostgreSQL driver and toolkit.
+4.  `go.opentelemetry.io/otel` - OpenTelemetry instrumentation framework.
+5.  `github.com/google/uuid` - Standard UUID generation library.
+6.  `github.com/stretchr/testify` - Preferred library for assertion-rich unit tests.
+
 
 
 ---
@@ -126,14 +166,19 @@ package domain
 
 import "time"
 
+// ValidationType specifies the category of compliance check being run.
 type ValidationType string
 
 const (
-	ValidationCommand     ValidationType = "COMMAND"      // Run verify command (e.g. go test)
-	ValidationFileExists  ValidationType = "FILE_EXISTS"  // Check if file exists in workspace
-	ValidationFileContent ValidationType = "FILE_CONTENT" // Regex match on file contents
+	// ValidationCommand executes shell verification test suites (e.g. go test).
+	ValidationCommand     ValidationType = "COMMAND"
+	// ValidationFileExists checks for the existence of a target file.
+	ValidationFileExists  ValidationType = "FILE_EXISTS"
+	// ValidationFileContent executes regex checks over file contents.
+	ValidationFileContent ValidationType = "FILE_CONTENT"
 )
 
+// ValidationCriterion defines a quality checklist item used to evaluate task goals.
 type ValidationCriterion struct {
 	ID          string         `json:"id"`
 	Type        ValidationType `json:"type"`
@@ -143,6 +188,7 @@ type ValidationCriterion struct {
 	ErrorLog    string         `json:"error_log,omitempty"`
 }
 
+// Clarification holds questions raised by agents and replies from human operators.
 type Clarification struct {
 	Question string    `json:"question"`
 	Answer   string    `json:"answer,omitempty"`
@@ -150,29 +196,87 @@ type Clarification struct {
 	AskedAt  time.Time `json:"asked_at"`
 }
 
+// AgentRole defines the function an agent performs in the orchestration pipeline.
+type AgentRole string
+
+const (
+	// AgentRolePlanner decomposes specifications into task DAGs.
+	AgentRolePlanner   AgentRole = "PLANNER"
+	// AgentRoleGenerator writes code and executes tool actions.
+	AgentRoleGenerator AgentRole = "GENERATOR"
+	// AgentRoleEvaluator runs holdout tests and validates output.
+	AgentRoleEvaluator AgentRole = "EVALUATOR"
+)
+
+// AgentStatus tracks the lifecycle state of a worker agent.
+type AgentStatus string
+
+const (
+	// AgentIdle represents an agent available for task assignment.
+	AgentIdle      AgentStatus = "IDLE"
+	// AgentWorking represents an agent actively executing a task.
+	AgentWorking   AgentStatus = "WORKING"
+	// AgentCompleted represents an agent that has finished its task.
+	AgentCompleted AgentStatus = "COMPLETED"
+)
+
+// Agent represents a processing worker in the execution environment.
 type Agent struct {
-	ID     string   `json:"id"`
-	Name   string   `json:"name"`
-	Role   string   `json:"role"`
-	Status string   `json:"status"` // "IDLE", "WORKING", "COMPLETED"
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Role        AgentRole   `json:"role"`
+	Status      AgentStatus `json:"status"`
+	TaskID      string      `json:"task_id,omitempty"`
+	StartedAt   time.Time   `json:"started_at,omitempty"`
+	CompletedAt time.Time   `json:"completed_at,omitempty"`
+	TokensUsed  int64       `json:"tokens_used"`
+	LastError   string      `json:"last_error,omitempty"`
 }
 
+// FileInfo contains simple metadata about files inside the workspace.
 type FileInfo struct {
 	Path         string    `json:"path"`
 	Size         int64     `json:"size"`
 	LastModified time.Time `json:"last_modified"`
 }
 
+// BuildStatus tracks the overall health of the workspace build.
+type BuildStatus string
+
+const (
+	// BuildPassing indicates that compilation, formatting, and all test validations passed.
+	BuildPassing BuildStatus = "PASSING"
+	// BuildFailing indicates that one or more checks failed.
+	BuildFailing BuildStatus = "FAILING"
+	// BuildUnknown indicates that verification checks have not been run.
+	BuildUnknown BuildStatus = "UNKNOWN"
+)
+
+// StateMetadata holds structured session parameters and cost aggregations.
+type StateMetadata struct {
+	InputSource       string `json:"input_source"`                 // Source of the specification (e.g., "markdown", "jira", "github")
+	InputPath         string `json:"input_path"`                   // Original path or URL of the specification
+	IntegrationBranch string `json:"integration_branch"`           // Feature integration branch name (e.g., "feature/feature-auth")
+	FeatureName       string `json:"feature_name"`                 // Human-readable name of the feature being built
+	BaseBranch        string `json:"base_branch"`                  // Branch from which the integration branch was created (e.g., "main")
+	ProjectVersion    string `json:"project_version"`              // Current project version from VERSION file (e.g., "0.0.1")
+	TotalTokensUsed   int64  `json:"total_tokens_used"`            // Cumulative token count across all agents
+	TotalCostUSD      string `json:"total_cost_usd,omitempty"`     // Estimated LLM API cost in USD
+}
+
+// State represents the complete system database state record.
 type State struct {
-	Version            int                   `json:"version"`
+	ID                 string                `json:"id"`
+	ProjectPath        string                `json:"project_path"`
+	Version            int                   `json:"version"` // Optimistic Concurrency version tag
 	Clarifications     []Clarification       `json:"clarifications,omitempty"`
 	ValidationCriteria []ValidationCriterion `json:"validation_criteria,omitempty"`
 	Tasks              []Task                `json:"tasks"`
 	ActiveAgents       []Agent               `json:"active_agents"`
 	Files              []FileInfo            `json:"files"`
-	BuildStatus        string                `json:"build_status"`
+	BuildStatus        BuildStatus           `json:"build_status"`
 	LastActions        []Action              `json:"last_actions"`
-	Metadata           map[string]any        `json:"metadata"`
+	Metadata           StateMetadata         `json:"metadata"`
 }
 ```
 
@@ -182,26 +286,53 @@ package domain
 
 import "time"
 
+// TaskStatus classifies the topological execution state of a work plan item.
 type TaskStatus string
 
 const (
-	TaskPending    TaskStatus = "PENDING"
-	TaskInProgress TaskStatus = "IN_PROGRESS"
-	TaskSuccess    TaskStatus = "SUCCESS"
-	TaskFailed     TaskStatus = "FAILED"
+	// TaskPending represents a task awaiting execution or parent dependency resolution.
+	TaskPending         TaskStatus = "PENDING"
+	// TaskInProgress represents a task actively assigned to a generator agent goroutine.
+	TaskInProgress      TaskStatus = "IN_PROGRESS"
+	// TaskSuccess represents a task successfully validated, merged, and completed.
+	TaskSuccess         TaskStatus = "SUCCESS"
+	// TaskFailed represents a task failing build or tests beyond retry threshold.
+	TaskFailed          TaskStatus = "FAILED"
+	// TaskConflictBlocked represents a task temporarily halted due to Git conflicts.
+	TaskConflictBlocked TaskStatus = "CONFLICT_BLOCKED"
+	// TaskConflictFailed represents a task aborted due to continuous OCC conflicts.
+	TaskConflictFailed  TaskStatus = "CONFLICT_FAILED"
+	// TaskInterrupted represents a task suspended during graceful daemon shutdown.
+	TaskInterrupted     TaskStatus = "INTERRUPTED"
 )
 
+// ChangeType classifies the scope of a task's adjustments for semver release bumping.
+type ChangeType string
+
+const (
+	// ChangeTypeFeature triggers minor version upgrades (+0.1.0).
+	ChangeTypeFeature  ChangeType = "FEATURE"
+	// ChangeTypeFix triggers patch version upgrades (+0.0.1).
+	ChangeTypeFix      ChangeType = "FIX"
+	// ChangeTypeBreaking triggers major version upgrades (+1.0.0).
+	ChangeTypeBreaking ChangeType = "BREAKING"
+)
+
+// Task represents a specific item in the scheduling graph.
 type Task struct {
-	ID          string     `json:"id"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Status      TaskStatus `json:"status"`
-	AssignedTo  string     `json:"assigned_to"`  // Agent ID
-	DependsOn   []string   `json:"depends_on"`    // IDs of parent tasks
-	Retries     int        `json:"retries"`       // Number of times executed and failed
-	MaxRetries  int        `json:"max_retries"`   // Upper retry limit before task is marked TaskFailed
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID               string     `json:"id"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	Status           TaskStatus `json:"status"`
+	ChangeType       ChangeType `json:"change_type"`
+	AssignedTo       string     `json:"assigned_to"`
+	DependsOn        []string   `json:"depends_on"` // Can store parent task IDs or matching titles
+	TargetFiles      []string   `json:"target_files,omitempty"`
+	PartialChangelog []string   `json:"partial_changelog,omitempty"`
+	Retries          int        `json:"retries"`
+	MaxRetries       int        `json:"max_retries"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 ```
 
@@ -211,6 +342,7 @@ package domain
 
 import "time"
 
+// Action records execution history and outcomes of tools run by agents.
 type Action struct {
 	Timestamp time.Time      `json:"timestamp"`
 	Tool      string         `json:"tool"`
@@ -221,37 +353,270 @@ type Action struct {
 }
 ```
 
+**Error Model (`pkg/domain/error.go`):**
+```go
+package domain
+
+import "errors"
+
+// ErrorKind determines the severity and category of a domain execution error.
+type ErrorKind string
+
+const (
+	// ErrTransient represents temporary failures that can be retried.
+	ErrTransient    ErrorKind = "TRANSIENT"
+	// ErrPermanent represents fatal logic errors requiring configuration change.
+	ErrPermanent    ErrorKind = "PERMANENT"
+	// ErrSandboxBlock represents sandbox policy violations.
+	ErrSandboxBlock ErrorKind = "SANDBOX_VIOLATION"
+	// ErrValidation represents feature verification failures.
+	ErrValidation   ErrorKind = "VALIDATION_FAILURE"
+)
+
+// Sentinel errors for standard failure classification.
+var (
+	ErrTaskNotFound      = errors.New("task not found")
+	ErrVersionConflict   = errors.New("optimistic concurrency version conflict")
+	ErrSandboxViolation  = errors.New("sandbox boundary violation")
+	ErrBudgetExhausted   = errors.New("LLM token budget exhausted")
+	ErrMaxRetriesReached = errors.New("maximum retries exceeded")
+)
+
+// DomainError groups errors for structured tracking and propagation.
+type DomainError struct {
+	Kind    ErrorKind `json:"kind"`
+	Message string    `json:"message"`
+	Cause   error     `json:"-"`
+}
+
+// Error formats the DomainError as a readable string representation.
+func (e *DomainError) Error() string {
+	if e.Cause != nil {
+		return e.Message + ": " + e.Cause.Error()
+	}
+	return e.Message
+}
+
+// Unwrap exposes the underlying cause to enable errors.Is/As evaluations.
+func (e *DomainError) Unwrap() error {
+	return e.Cause
+}
+```
+
 #### State Storage Interface (`pkg/domain/state_repository.go`)
 ```go
 package domain
 
 import "context"
 
+// StateRepository defines the contract for loading and saving system state.
 type StateRepository interface {
 	Load(ctx context.Context) (*State, error)
 	Save(ctx context.Context, state *State) error
 }
 ```
 
-#### 3.1.1. Storage Provider Implementations
-The orchestrator supports database-backed state persistence configured via CLI flags:
+#### 3.1.1. Storage Provider Implementations & Schema Normalization
+To prevent CPU/memory serialization overhead and database locks under high concurrency, the domain `State` model is relationally normalized into separate database tables rather than stored as a monolithic JSON string. Both database providers reconstruct the domain model dynamically in the repository implementation using SQL joins and transactional saves.
 
-1.  **SQLite Database Provider (`pkg/infrastructure/storage/sqlite_repository.go`):**
-    *   **Behavior:** Persists state to a local SQLite database file, storing the system state as a serialized record in a table.
-    *   **Concurrent Access:** Uses SQLite Write-Ahead Logging (WAL) mode combined with short-lived database transactions, enabling concurrent reader connections and safe writer synchronization without blocking.
+##### Concurrency Control and Locking Policies
+1.  **PostgreSQL Provider (Recommended for Production, `pkg/infrastructure/storage/postgres_repository.go`):**
+    *   **Prioritization:** PostgreSQL is the recommended database for production environments to handle concurrent transactions at scale.
+    *   **Concurrency:** Employs explicit row-level locking (`SELECT FOR UPDATE` on the target `state` row during read-for-write checks) and standard PostgreSQL transactions (`isolation level repeatable read`). This guarantees that concurrent database state modifications from multiple worker processes or goroutines are serialized safely.
+    *   **Interface compliance check:**
+        ```go
+        var _ domain.StateRepository = (*PostgresRepository)(nil)
+        ```
 
-2.  **PostgreSQL Database Provider (`pkg/infrastructure/storage/postgres_repository.go`):**
-    *   **Behavior:** Connects to a remote or local PostgreSQL database instance, storing the state in a table using PostgreSQL `JSONB` for optimal performance.
-    *   **Concurrent Access:** Relies on PostgreSQL transaction isolation levels and row-level locking (e.g. `SELECT FOR UPDATE` during write-verification) to handle concurrent updates cleanly.
+2.  **SQLite Provider (Development Only, `pkg/infrastructure/storage/sqlite_repository.go`):**
+    *   **Prioritization:** Supported strictly as a zero-setup local developer database.
+    *   **Connection Limits & Busy Timeout:** To prevent SQLite write blockages and `database is locked` errors, the repository initializes SQLite connection DSN with Write-Ahead Logging (WAL) enabled and busy timeout set to 5 seconds (`_busy_timeout=5000` and `_journal_mode=WAL`).
+    *   **Serialized SQLite Write Mutex:** Because WAL mode allows concurrent readers but only a single active writer connection, the SQLite provider explicitly limits the write connection pool to `MaxOpenConns = 1` for writes, and wraps all write transaction blocks in a package-level package-global Mutex (`sync.Mutex`). This prevents in-process write contention.
+    *   **Interface compliance check:**
+        ```go
+        var _ domain.StateRepository = (*SQLiteRepository)(nil)
+        ```
 
-Database transactions are short-lived. A connection handle is never held open during slow external network calls (such as LLM API completions) or execution runs.
+Database transactions are short-lived. A connection handle is never held open during slow external network calls (such as LLM API completions) or tool execution runs.
+
+##### Database Schema Migrations & Backward Compatibility
+*   **Automatic Startup Migrations:** Embedded SQL migration files (e.g. `./sql/0001_init.sql`) are compiled into the binary via Go's `go:embed`. On daemon startup (`noctifab start`) or during maintenance (`noctifab maintenance`), the migrator executes migrations sequentially.
+*   **Transactional Execution:** Each migration script executes inside a single transaction. If any query fails, the transaction is rolled back, the daemon startup aborts immediately with process exit code `3`, and the SQL exception trace is printed to `stderr`.
+*   **Migration Tracking Table:** Migrations are tracked in a `schema_migrations` table containing the columns `version` and `applied_at`.
+*   **Serialized Schema Evolution:** Go struct JSON/relational mapping logic includes a metadata schema version tag. The loader adapter parses this tag. If a legacy schema version is detected, it passes the data through an intermediate mapper pipeline that maps old JSON structures or missing columns to current Go struct models before returning, ensuring backward compatibility.
+
+##### Schema DDL Specifications
+
+**SQLite Schema:**
+```sql
+CREATE TABLE IF NOT EXISTS state (
+    id TEXT PRIMARY KEY,
+    project_path TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    build_status TEXT NOT NULL,
+    input_source TEXT,
+    input_path TEXT,
+    integration_branch TEXT,
+    feature_name TEXT,
+    base_branch TEXT,
+    project_version TEXT,
+    total_tokens_used INTEGER NOT NULL DEFAULT 0,
+    total_cost_usd TEXT NOT NULL DEFAULT '0.00000'
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    state_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL,
+    change_type TEXT NOT NULL,
+    assigned_to TEXT NOT NULL DEFAULT '',
+    depends_on TEXT NOT NULL, -- JSON array of parent task IDs or titles
+    target_files TEXT, -- JSON array of paths
+    partial_changelog TEXT, -- JSON array of changelog entries
+    retries INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 3,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    FOREIGN KEY(state_id) REFERENCES state(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS clarifications (
+    id TEXT PRIMARY KEY,
+    state_id TEXT NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT DEFAULT '',
+    resolved INTEGER NOT NULL DEFAULT 0,
+    asked_at DATETIME NOT NULL,
+    FOREIGN KEY(state_id) REFERENCES state(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    state_id TEXT NOT NULL,
+    task_id TEXT,
+    timestamp DATETIME NOT NULL,
+    tool TEXT NOT NULL,
+    args TEXT NOT NULL, -- JSON formatted string
+    reasoning TEXT NOT NULL,
+    result TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    FOREIGN KEY(state_id) REFERENCES state(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS workspace_files (
+    path TEXT PRIMARY KEY,
+    state_id TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    last_modified DATETIME NOT NULL,
+    FOREIGN KEY(state_id) REFERENCES state(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS token_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    task_id TEXT,
+    agent_id TEXT,
+    prompt_tokens INTEGER NOT NULL,
+    completion_tokens INTEGER NOT NULL,
+    cost_usd REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**PostgreSQL Schema:**
+```sql
+CREATE TABLE IF NOT EXISTS state (
+    id VARCHAR(255) PRIMARY KEY,
+    project_path TEXT NOT NULL,
+    version INT NOT NULL,
+    build_status VARCHAR(50) NOT NULL,
+    input_source TEXT,
+    input_path TEXT,
+    integration_branch VARCHAR(255),
+    feature_name VARCHAR(255),
+    base_branch VARCHAR(255),
+    project_version VARCHAR(50),
+    total_tokens_used BIGINT NOT NULL DEFAULT 0,
+    total_cost_usd NUMERIC(10, 5) NOT NULL DEFAULT 0.0
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id VARCHAR(255) PRIMARY KEY,
+    state_id VARCHAR(255) NOT NULL REFERENCES state(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    change_type VARCHAR(50) NOT NULL,
+    assigned_to VARCHAR(255) NOT NULL DEFAULT '',
+    depends_on JSONB NOT NULL, -- JSON array of parent task IDs or titles
+    target_files JSONB, -- JSON array of paths
+    partial_changelog JSONB, -- JSON array of changelog entries
+    retries INT NOT NULL DEFAULT 0,
+    max_retries INT NOT NULL DEFAULT 3,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS clarifications (
+    id VARCHAR(255) PRIMARY KEY,
+    state_id VARCHAR(255) NOT NULL REFERENCES state(id) ON DELETE CASCADE,
+    question TEXT NOT NULL,
+    answer TEXT DEFAULT '',
+    resolved INT NOT NULL DEFAULT 0,
+    asked_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS actions (
+    id SERIAL PRIMARY KEY,
+    state_id VARCHAR(255) NOT NULL REFERENCES state(id) ON DELETE CASCADE,
+    task_id VARCHAR(255),
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    tool VARCHAR(100) NOT NULL,
+    args JSONB NOT NULL,
+    reasoning TEXT NOT NULL,
+    result TEXT NOT NULL,
+    success INT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workspace_files (
+    path TEXT PRIMARY KEY,
+    state_id VARCHAR(255) NOT NULL REFERENCES state(id) ON DELETE CASCADE,
+    size BIGINT NOT NULL,
+    last_modified TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS token_usage (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    task_id VARCHAR(255),
+    agent_id VARCHAR(255),
+    prompt_tokens BIGINT NOT NULL,
+    completion_tokens BIGINT NOT NULL,
+    cost_usd NUMERIC(10, 5) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INT PRIMARY KEY,
+    applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+```
 
 #### 3.1.2. Workspace File System Metadata Sync & Prompt Optimization
-To ensure that the orchestrator has an accurate representation of the sandbox filesystem, `state.Files` is updated dynamically:
+To ensure that the orchestrator has an accurate representation of the sandbox filesystem, the `workspace_files` table is updated dynamically:
 *   **Deterministic Scanning:** At the start of each execution loop cycle (Observe phase), the orchestrator automatically walks the local sandbox repository directory.
-*   **FileInfo Mapping:** It filters out VCS ignore directories (such as `.git/`), resolves the paths, reads their file sizes and modification timestamps, and constructs the list of `FileInfo` structs.
+*   **FileInfo Mapping & Exclusion Filters:** In addition to ignoring the `.git/` folder, the scan filters out standard build and dependency directories by default (specifically: `node_modules/`, `vendor/`, `bin/`, `dist/`, and `.noctifab/`). The list of ignored patterns is configurable under the `exclude_paths` section in `.noctifab/config.yaml` or via the matching command-line interface parameters.
+*   **Hard Scan Ceiling Guard:** To prevent database bloat and serialization delays in large codebases (e.g., those containing thousands of asset files), a hard ceiling is enforced at a maximum of **1,000 files**. If the walk detects more than 1,000 files, it truncates the list at 1,000, logs a warning message to `stderr`, and saves the truncated set, avoiding process crashes.
 *   **Prompt Optimization:** To prevent context token bloat, the complete list of filesystem files (`FileInfo`) is NOT injected in full into the LLM system prompt. Instead, the orchestrator only includes a high-level summary of the workspace filesystem (or modified files) in the prompt, and the agent uses dynamic filesystem query tools (`list_directory`, `find_files`, `grep_search`) to query the environment as needed.
 *   **Transaction Update:** The updated `FileInfo` slice is saved to the state database inside a short-lived transaction prior to LLM completion execution.
+
+#### 3.1.3. Secret Management Policy
+API keys (such as `NOCTIFAB_LLM_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`) and version control system access tokens (such as `NOCTIFAB_VCS_TOKEN`) represent sensitive credentials. Under no circumstances may the orchestrator persist these secrets in the state database, local state files, log messages, or serialized traces. All secrets must be loaded dynamically into transient memory at application startup from environment variables or command-line flags.
 
 ---
 
@@ -264,45 +629,78 @@ package usecase
 
 import (
 	"context"
+	"slices"
+	"sync"
 
-	"github.com/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
+// Tool represents a single action interface that can be executed by an agent.
 type Tool interface {
+	// Name returns the unique identifier string of the tool (e.g., "write_file").
 	Name() string
+	// Description returns the LLM-facing usage documentation of the tool.
 	Description() string
+	// Execute performs the tool action on the state and workspace with the given arguments.
 	Execute(ctx context.Context, state *domain.State, args map[string]any) (string, error)
 }
 
+// Registry manages the set of available tools for LLM agent routing.
 type Registry interface {
+	// Register inserts a tool implementation into the registry.
 	Register(t Tool)
+	// Get retrieves a registered tool implementation by its unique name.
 	Get(name string) (Tool, bool)
+	// List returns all registered tools, sorted deterministically by name.
 	List() []Tool
 }
 
+// ToolRegistry is the default concurrent-safe memory map implementation of Registry.
 type ToolRegistry struct {
+	mu    sync.RWMutex
 	tools map[string]Tool
 }
 
+// Compile-time interface compliance check.
+var _ Registry = (*ToolRegistry)(nil)
+
+// NewToolRegistry instantiates an empty ToolRegistry.
 func NewToolRegistry() *ToolRegistry {
 	return &ToolRegistry{
 		tools: make(map[string]Tool),
 	}
 }
 
+// Register adds a tool to the registry. Panics if double registration occurs.
 func (r *ToolRegistry) Register(t Tool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.tools[t.Name()] = t
 }
 
+// Get finds a tool by name in the concurrent-safe registry.
 func (r *ToolRegistry) Get(name string) (Tool, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	t, exists := r.tools[name]
 	return t, exists
 }
 
+// List returns all registered tools sorted alphabetically by name to ensure
+// deterministic LLM prompt compilation and test stability.
 func (r *ToolRegistry) List() []Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
 	list := make([]Tool, 0, len(r.tools))
-	for _, t := range r.tools {
-		list = append(list, t)
+	for _, name := range names {
+		list = append(list, r.tools[name])
 	}
 	return list
 }
@@ -311,60 +709,105 @@ func (r *ToolRegistry) List() []Tool {
 #### Standard Tools List
 
 ##### A. Bootstrap Tools
-1.  **`add_task`:** Arguments: `title` (string), `description` (string), `depends_on` ([]string), `max_retries` (int). Returns verification message.
-2.  **`complete_task`:** Arguments: `id` (string). Updates task status in state to `SUCCESS`.
+1.  **`add_task`:** Arguments: `title` (string), `description` (string), `depends_on` ([]string), `max_retries` (int). Returns the newly created task ID string (e.g., `task-a1b2c3`).
+2.  **`complete_task`:** Arguments: `id` (string). Updates task status in state to `SUCCESS`. Returns an error if the task ID is not found, or if the task is not in `IN_PROGRESS` status.
 3.  **`log_message`:** Arguments: `message` (string). Appends message string to the execution state trace.
 4.  **`noop`:** Arguments: none. No action, returns success.
 
 ##### B. Production Tools
 1.  **`read_file`:** Arguments: `path` (string). Returns file content.
 2.  **`write_file`:** Arguments: `path` (string), `content` (string). Creates or replaces file.
-3.  **`list_directory`:** Arguments: `path` (string). Returns listing of files and directories.
-4.  **`find_files`:** Arguments: `pattern` (string). Returns paths of files matching regex/glob patterns.
-5.  **`grep_search`:** Arguments: `query` (string), `path` (string). Returns line matches of a substring search.
-6.  **`run_tests`:** Arguments: `package` (string). Runs local go test suite and returns execution console output.
-7.  **`git_action`:** Arguments: `action` (string e.g. "clone", "checkout", "commit", "push", "pull_request"), `params` (map[string]any). Returns stdout.
-8.  **`docker_action`:** Arguments: `command` (string). Executes command in container sandbox.
+3.  **`edit_file`:** Arguments: `path` (string), `edits` (array of `ReplacementChunk` structures where each chunk specifies `start_line` (int), `end_line` (int), `target_content` (string), and `replacement_content` (string)). Performs safe targeted line-range edits. The `start_line` and `end_line` (1-indexed, inclusive) narrow the search scope. Within that range, the implementation locates and replaces the exact `target_content` substring. If `target_content` is not found in the specified line range, the tool returns a validation error.
+4.  **`list_directory`:** Arguments: `path` (string). Returns listing of files and directories.
+5.  **`find_files`:** Arguments: `pattern` (string). Returns paths of files matching regex/glob patterns.
+6.  **`grep_search`:** Arguments: `query` (string), `path` (string). Returns line matches of a substring search.
+7.  **`run_tests`:** Arguments: `package` (string), `command` (string, optional). Runs test suite for the package. If `command` is provided, it executes that custom command (e.g. `npm test`, `pytest`); otherwise, it defaults to the configured package test command (e.g. `go test -v ./...`). Returns console output.
+8.  **`git_checkout`:** Arguments: `branch` (string). Checks out the target branch.
+9.  **`git_commit`:** Arguments: `message` (string), `files` ([]string). Creates a commit for specified files.
+10. **`git_push`:** Arguments: `branch` (string). Pushes branch to remote default origin.
+11. **`git_create_pr`:** Arguments: `title` (string), `body` (string), `base` (string), `head` (string). Creates a pull request.
+12. **`docker_action`:** Arguments: `command` (string). Executes command in container sandbox.
+
+> **Tool Permission Policy:** By default, the Git operations (`git_checkout`, `git_commit`, `git_push`, `git_create_pr`) and container manipulation (`docker_action`) tools are strictly reserved for deterministic operations executed directly by the orchestrator core. They are not exposed to or executable by LLM agents. However, the orchestrator allows custom configurations where these tools can be enabled per-profile (see §3.5.5 and §3.9.3).
+
+##### C. Tool Execution Error Feedback Loop
+When `Tool.Execute()` returns an error, the orchestrator handles the failure safely to prevent daemon termination:
+1. It captures the error message and registers the failure by setting `Action.Result` to the formatted error description (e.g., `Error executing write_file: permission denied`).
+2. It flags the action as failed by setting `Action.Success = false`.
+3. It appends the logged `Action` struct directly to the `State.LastActions` history slice.
+4. It saves the modified `State` back to the state database.
+5. In the next loop cycle, the updated `State` (containing the failed action details and logs) is re-injected into the LLM prompt. The agent reads the failure results and uses them to self-correct the code or parameter input.
 
 ---
 
 ### 3.3. LLM Client
 The LLM Client translates the current `State` into a structured prompt, interacts with a configured language model provider, and parses the structured output.
 
-#### Client Interface (`pkg/infrastructure/llm/client.go`)
+#### LLM Client Port Interface & Resilient Client Wrapper (`pkg/domain/llm_client.go`)
 ```go
-package llm
+package domain
 
-import "context"
+import (
+	"context"
+)
 
-type LLMResponse struct {
-	Reasoning string         `json:"reasoning"`
-	Tool      string         `json:"tool"`
-	Args      map[string]any `json:"args"`
+// LLMAction represents a specific tool call request produced by the LLM.
+type LLMAction struct {
+	Tool string         `json:"tool"`
+	Args map[string]any `json:"args"`
 }
 
-type Client interface {
+// LLMResponse is the structured schema returned by the LLM client.
+type LLMResponse struct {
+	Reasoning string      `json:"reasoning"`
+	Actions   []LLMAction `json:"actions"`
+}
+
+// LLMClient defines the interface for communicating with an external AI provider.
+type LLMClient interface {
+	// Complete generates a completion for the given system/user prompt.
 	Complete(ctx context.Context, prompt string) (*LLMResponse, error)
 }
 ```
+Implementations of this interface reside under `pkg/infrastructure/llm/` and import `github.com/diegojromerolopez/noctifab/pkg/domain`.
+
+##### LLM Resilient Retry & Failover Strategy
+*   **Configurable HTTP Retries:** The client wraps all outbound HTTP API requests using a backoff retry logic. It retries up to `--http-max-retries` (default: 10) times using exponential backoff starting at `--http-retry-backoff` (default: 100ms) with a 2.0 multiplication factor and full jitter. This handles transient HTTP 429 (Rate Limit Exceeded) and HTTP 503 (Service Unavailable) errors.
+*   **Dynamic Provider Failover:** To handle total outages or persistent rate limits on the primary LLM provider, alternative backup provider API keys, urls, and model identifiers are configured in `.noctifab/config.yaml`.
+*   **Failover Cooldown Window:** If the primary provider client returns persistent HTTP 429 or 5xx failures after retries, the orchestrator marks the primary client as degraded and temporarily routes subsequent completions to the backup provider model for a configurable cooldown duration (e.g. 5 minutes) before attempting to resume primary client usage.
+
+##### Lenient JSON Parsing & Struct Normalizer (`pkg/infrastructure/llm/parser.go`)
+Lower-tier reasoning models (e.g. Gemini 3.5 Flash or GPT-3.5) often return JSON schemas with inconsistent field types that violate strict Go serialization. The parser under `pkg/infrastructure/llm/parser.go` implements a lenient unmarshalling and type normalization flow:
+1.  **Lenient Intermediate Types:** Unmarshals the extracted JSON string into intermediate map interfaces (`map[string]any`) and lenient structs.
+2.  **Type Coercion & Normalization:** Programmatically walks the parsed structure to clean types:
+    *   Coerces single-string dependency values (e.g., `"depends_on": "task-a"`) into string slices (`["task-a"]`).
+    *   Converts stringified booleans (e.g. `"resolved": "true"`) to boolean `true`.
+    *   Translates empty arrays or null fields to clean struct defaults.
+3.  **Domain Construction:** Returns a fully compliant and validated `LLMResponse` struct. If normalization fails, the parser returns a formatted syntax prompt warning back to the LLM.
 
 #### Prompt Design & Injection Templates
 
-##### A. System Prompt
+The templates are loaded dynamically from `.noctifab/templates/` or embedded inside the Go binary. They use standard Go `text/template` syntax and receive specific variables injected by the orchestrator prior to invocation.
+
+##### A. Base System Prompt Structure
 ```
-You are a software factory automation agent.
-You must respond ONLY in valid JSON. No free text before or after the JSON block.
+You are a software factory automation agent operating in a restricted workspace sandbox.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences outside the JSON.
 
 You may only use the following tools:
 {JSON LIST OF REGISTERED TOOLS & DESCRIPTIONS}
 
 Return format:
 {
-  "reasoning": "explanation of the decision",
-  "tool": "tool_name",
-  "args": {
-     "arg_name": "value"
-  }
+  "reasoning": "Detailed technical rationale explaining your next step",
+  "actions": [
+    {
+      "tool": "tool_name",
+      "args": {
+         "arg_name": "value"
+      }
+    }
+  ]
 }
 ```
 
@@ -375,6 +818,200 @@ Current state representation:
 
 What is the next best action?
 ```
+
+##### C. Role-Specific Templates
+
+###### 1. Planner Template (`planner.tmpl`)
+*   **Purpose:** Guides the Planner agent to decompose a specification into a DAG of small, testable tasks.
+*   **Variables Injected:**
+    *   `{{.State}}` - The current State struct serialized as JSON.
+    *   `{{.InputSpecification}}` - The raw markdown text, issue details, or Jira body.
+*   **Template Content:**
+    ```
+    {{template "base_system_prompt"}}
+    Role: Planner Agent.
+    Task: Decompose the following input specification into a series of tasks.
+    
+    Specification:
+    {{.InputSpecification}}
+    
+    Guidelines:
+    1. Define tasks using the 'add_task' tool.
+    2. Keep each task focused on a single responsibility.
+    3. Specify exact dependencies in the 'depends_on' field using parent task titles or IDs.
+    4. Define target files in the 'target_files' parameter for each task.
+    ```
+
+###### 2. Generator Template (`generator.tmpl`)
+*   **Purpose:** Guides the Generator agent to write correct code that meets specifications and passes tests.
+*   **Variables Injected:**
+    *   `{{.State}}` - The current State struct serialized as JSON.
+    *   `{{.Task}}` - The current Task struct being executed.
+    *   `{{.FileList}}` - Plain text list of files in the workspace.
+*   **Template Content:**
+    ```
+    {{template "base_system_prompt"}}
+    Role: Generator Agent.
+    Task ID: {{.Task.ID}}
+    Task Title: {{.Task.Title}}
+    Task Description: {{.Task.Description}}
+    Expected Target Files: {{.Task.TargetFiles}}
+    
+    Workspace Files list:
+    {{.FileList}}
+    
+    Guidelines:
+    1. Read relevant code files using 'read_file'.
+    2. Write or modify logic using 'write_file' or 'edit_file'.
+    3. Run test suites locally using 'run_tests' to verify compile status.
+    4. When all logic is complete and local tests pass, invoke 'noop' and explain that the task is ready for evaluator checks.
+    ```
+
+###### 3. Evaluator Template (`evaluator.tmpl`)
+*   **Purpose:** Guides the Evaluator agent to run holdout tests, verify requirements, and validate overall quality.
+*   **Variables Injected:**
+    *   `{{.State}}` - The current State struct serialized as JSON.
+    *   `{{.Task}}` - The completed Task being evaluated.
+    *   `{{.TestOutput}}` - The stdout/stderr output from the latest test run.
+*   **Template Content:**
+    ```
+    {{template "base_system_prompt"}}
+    Role: Evaluator Agent.
+    Task ID: {{.Task.ID}}
+    Task Title: {{.Task.Title}}
+    Task Description: {{.Task.Description}}
+    
+    Holdout Test Verification Log:
+    {{.TestOutput}}
+    
+    Guidelines:
+    1. Review the test verification logs.
+    2. If the logs show assertions passing, call 'noop' and indicate that the verification checks are success.
+    3. If they fail, provide constructive, detailed feedback summarizing the failure to the Generator.
+    ```
+
+
+### 3.3.1. Conversation History & Context Management
+To enable multi-turn reasoning and efficient error correction loops (e.g., debugging compile errors), the orchestrator maintains an ephemeral conversation history list within the active execution cycle. This history is not persisted across different orchestrator polling runs (preserving the "stateless daemon" architecture) but guides the agent during its immediate multi-step task execution.
+
+The orchestrator supports two modes of context management:
+1.  **Sliding Window Mode:** Retains only the last `N` messages exchanged in the loop, where `N` is configured via `--max-history-messages`.
+2.  **Compaction Mode:** When the message count reaches a configured threshold (defined by `--compaction-threshold`), the history is compacted by requesting the LLM to summarize/compact the interaction history so far, replacing the history list with a single condensed summary message.
+
+These modes are configured via the following CLI settings:
+*   `--conversation-mode`: The history tracking mode (`sliding-window` or `compaction`). Default: `sliding-window`.
+*   `--max-history-messages`: The size of the sliding window (number of messages). Default: `10`.
+*   `--compaction-threshold`: The threshold of messages that triggers compaction when in compaction mode. Default: `15`.
+*   `--max-history-tokens`: Token budget limit for conversation history. Default: `4096`.
+
+#### Pinned Context Blocks & Incremental Log Diffing
+*   **Pinned Context Blocks:** To prevent crucial guidelines and system instructions from being truncated during sliding window drops or compaction summary iterations, the prompt builder partitions the LLM request payload. Static blocks (Base System Prompt, Role Instructions, Task Specification, and Original Source Files) are designated as **pinned blocks** and are never truncated or summarized. Dynamic blocks (recent agent edits, action outcomes, and compilation error traces) populate a **scratchpad partition** that is subject to sliding-window truncation or compaction.
+*   **Incremental Log Diffing:** During iterative test-fix diagnostic loops, appending the entire stdout/stderr compiler/test logs to successive history turns quickly exhausts token limits. The orchestrator computes a text diff comparing the current compiler/test error logs with the errors returned in the immediate previous execution turn. Only the **incremental log diff** is appended to the next history prompt turn, drastically reducing context window bloat.
+
+#### Iterative Multi-Step Planning (Planning Token Boundaries)
+*   Decomposing a large, complex feature specification into a massive single-turn JSON task DAG often exceeds the model's maximum output token limit (e.g. 4096 tokens), resulting in JSON truncations and unmarshalling errors.
+*   To bypass this constraint, the Planner Agent implements an **Iterative Multi-Step Planning** pattern:
+    1.  **High-Level Milestone Stage:** The Planner Agent first decomposes the input specification strictly into high-level milestones or modules (e.g. "Module 1: Config", "Module 2: Storage").
+    2.  **Topological Module Processing:** The orchestrator schedules separate sub-planning execution tasks for each milestone.
+    3.  **Sub-task DAG Splitting:** A sub-planner agent decomposes each milestone module into detailed task DAGs (e.g. `add_task` tools specific to that module), keeping each LLM completion output small and well within output token boundaries.
+
+#### Configurable Model Pricing Schema
+*   To prevent budget tracking evasion caused by provider price updates or model replacements, LLM token pricing is not hardcoded inside the Go source code.
+*   Model pricing configuration parameters (`input_cost_per_million_tokens` and `output_cost_per_million_tokens`) are declared under the `llm` model settings block inside `.noctifab/config.yaml`.
+*   **Online Pricing Fallback:** If the YAML pricing parameters are omitted or set to `auto`, the client attempts to fetch current pricing indices from a trusted public model pricing endpoint during client initialization, falling back to built-in pricing index defaults if the endpoint is offline.
+
+### 3.3.2. Example LLM Request & Response Payloads
+To aid implementation, this section provides examples of structured JSON payloads exchanged between the coordinator and the agents.
+
+##### A. Generator Action Request (Tool: `edit_file`)
+An example of a Generator Agent requesting targeted file edits to resolve an issue:
+```json
+{
+  "reasoning": "Adding a transactional check to the Save method in the database repository to ensure we rollback on state serialization failure.",
+  "actions": [
+    {
+      "tool": "edit_file",
+      "args": {
+        "path": "pkg/infrastructure/storage/sqlite_repository.go",
+        "edits": [
+          {
+            "start_line": 42,
+            "end_line": 55,
+            "target_content": "func (r *SQLiteRepository) Save(ctx context.Context, state *domain.State) error {\n\treturn r.db.Save(state).Error\n}",
+            "replacement_content": "func (r *SQLiteRepository) Save(ctx context.Context, state *domain.State) error {\n\ttx := r.db.Begin()\n\tdefer func() {\n\t\tif r := recover(); r != nil {\n\t\t\ttx.Rollback()\n\t\t}\n\t}()\n\tif err := tx.Save(state).Error; err != nil {\n\t\ttx.Rollback()\n\t\treturn err\n\t}\n\treturn tx.Commit().Error\n}"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+##### B. Planner Action Request (Tool: `add_task`)
+An example of a Planner Agent decomposing a specification into two dependent tasks:
+```json
+{
+  "reasoning": "Decomposing the oauth2 integration spec into two dependent implementation tasks: one for the middleware handler and one for the configuration loading logic.",
+  "actions": [
+    {
+      "tool": "add_task",
+      "args": {
+        "title": "Implement oauth2 client configurations",
+        "description": "Create struct and loading methods under pkg/domain/config.go and parse YAML parameters.",
+        "depends_on": [],
+        "max_retries": 3
+      }
+    },
+    {
+      "tool": "add_task",
+      "args": {
+        "title": "Write oauth2 authorization middleware",
+        "description": "Implement request header token validation middleware under pkg/usecase/middleware.go.",
+        "depends_on": ["Implement oauth2 client configurations"],
+        "max_retries": 3
+      }
+    }
+  ]
+}
+```
+
+##### C. Evaluator Action Request (Tool: `run_tests`)
+An example of an Evaluator Agent requesting the execution of holdout tests to verify code compliance:
+```json
+{
+  "reasoning": "Running the user authentication holdout test suite to verify token middleware behavior.",
+  "actions": [
+    {
+      "tool": "run_tests",
+      "args": {
+        "package": "tests/holdout/auth",
+        "command": "go test -v ./tests/holdout/auth"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 3.3.3. LLM Budget Safeguarding & Local Billing Engine
+
+Since AI providers (Google Gemini, Anthropic Claude, OpenAI) do not expose real-time programmatic billing or balance check APIs during runtime completions, `noctifab` implements a deterministic local safeguarding mechanism to strictly enforce the daily budget limit (`--max-budget-usd`).
+
+#### Core Safeguarding Protocol:
+1. **Pre-Flight Cost Estimation**:
+   * Prior to launching any completions API request, the Orchestrator calculates the size of the outgoing prompt in tokens using a local tokenizer (e.g., standard `tiktoken` for OpenAI/Claude, or native character/byte approximations for Gemini).
+   * It estimates the expected request cost using:
+     $$\text{Estimated Request Cost} = (\text{Prompt Tokens} \times \text{Input Cost per Token}) + (\text{Max Output Tokens} \times \text{Output Cost per Token})$$
+   * The pricing rates are read from the `input_cost_per_million_tokens` and `output_cost_per_million_tokens` configuration parameters.
+2. **Database Reservation Lock**:
+   * The Orchestrator queries the state database for the current day's cumulative consumption (sum of all recorded completed costs).
+   * If $\text{Cumulative Daily Cost} + \text{Estimated Request Cost} > \text{max\_budget\_usd}$, the Orchestrator immediately blocks the execution, cancels the pending completions API request, pauses the task runner, and writes an alert message to stdout/logs prompting developer intervention. This guarantees that the budget is never overrun.
+3. **Post-Completion Reconciliation**:
+   * Upon receiving the HTTP response, the Orchestrator parses the exact usage headers (`prompt_tokens` and `completion_tokens`) returned by the AI provider.
+   * It calculates the exact cost:
+     $$\text{Exact Cost} = (\text{Prompt Tokens} \times \text{Input Cost per Token}) + (\text{Completion Tokens} \times \text{Output Cost per Token})$$
+   * It updates the database reservation record with the exact cost value, releasing any unused budget margin back to the session pool.
 
 ---
 
@@ -389,19 +1026,27 @@ package usecase
 import (
 	"context"
 
-	"github.com/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-type Validator interface {
-	// Guardrails check for individual agent actions
-	Validate(ctx context.Context, action domain.Action, state *domain.State) error
+// ValidationResult records the outcome of a security check or target validation check.
+type ValidationResult struct {
+	Allowed  bool     `json:"allowed"`
+	Warnings []string `json:"warnings,omitempty"`
+	Reason   string   `json:"reason,omitempty"` // If blocked
+}
 
-	// Verification check for overall feature goal completion
+// Validator defines security filters and holds the gate checking overall project goals.
+type Validator interface {
+	// Validate verifies that a specific agent action complies with sandbox policies.
+	Validate(ctx context.Context, action domain.Action, state *domain.State) (*ValidationResult, error)
+
+	// EvaluateGoals checks if all tasks and acceptance criteria in the state pass.
 	EvaluateGoals(ctx context.Context, state *domain.State) (bool, error)
 }
 ```
 
-#### Holdout Scenarios Architecture (Strict Quality Gates)
+#### Holdout Scenarios Architecture & Godog Testing Engine
 To prevent agents from gaming tests or writing overfitted implementations, `noctifab` implements the **Holdout Scenarios Pattern** (equivalent to ML train/test data split):
 
 ```
@@ -421,11 +1066,25 @@ To prevent agents from gaming tests or writing overfitted implementations, `noct
 └─────────────────────────────────┘     (Completely hidden from Gen Agent)
 ```
 
-1.  **Isolation:** Acceptance tests (Holdout Scenarios) are written in plain-English BDD format and stored in a secure folder (e.g. `tests/holdout/`). The code generation agent has **zero access** to read or inspect this directory.
-2.  **Test Runner & BDD Context Framework:** Holdout scenarios must always be executed using a structured BDD test runner rather than dynamic code translation. The scenarios must follow the context structure: `"when <scenario>", "it <action happens>"`.
-3.  **Deterministic Test Runs:** All holdout scenarios are executed deterministically using standard CLI execution commands (e.g., `go test`). The testing suite expects a 100% success rate without probabilistic assertions or flakiness.
-4.  **Failure Feedback Filter:** When a holdout scenario fails, the generator agent **never** receives the scenario details (the actual test code or BDD text). Instead, the Evaluator Agent returns a sanitized stderr/stdout execution log output of the failing integration test run (showing what assertion failed, e.g., `"Holdout failed: SQL Validation Endpoint returned 500"`), providing sufficient context for programmatic debugging without leaking test assets.
-5.  **Merge Gate:** 100% of all holdout scenarios must pass before the Validator approves a pull request for merge.
+1.  **Isolation & Path Standards:** Acceptance tests (Holdout Scenarios) are stored in the `tests/holdout/` directory. They are compiled and checked into the repository alongside production code. However, the Generator Agent sandbox explicitly **blacklists** path access to the `tests/holdout/` directory, preventing the agent from reading or inspecting test cases.
+2.  **Godog Test Engine & BDD Context Framework:** Holdout scenarios are executed using the BDD cucumber framework for Go, standardizing on the `github.com/cucumber/godog` test runner. Scenarios are defined in plain-English `.feature` files containing the contextual BDD syntax: `Given <context>`, `When <action happens>`, `Then <assertion holds>`.
+3.  **Test Run Isolation Hooks:** To prevent database state cross-contamination between test runs, the Evaluator executes database clean and migration tasks inside a Godog `BeforeScenario` lifecycle hook. The runner executes tests against distinct database transactions or isolated file sockets.
+4.  **Deterministic Test Runs & Majority Voting:** The test runner runs the scenario's test suite up to 3 times as independent processes:
+    *   **Majority Vote:** If at least 2 out of 3 runs succeed (exit code `0`), the scenario is approved and marked as `TaskSuccess`.
+    *   **Flaky Warning Quarantine:** If a scenario passes with exactly a 2 out of 3 vote (non-unanimous success), the orchestrator flags the task with a `Warning: Potentially Flaky Build` in the database state to alert the operator.
+    *   **Enforced Strict Mode:** The CLI provides a `--strict-validation` flag. When enabled, the Validator rejects non-unanimous runs and requires a unanimous 3 out of 3 success rate before code can be auto-merged.
+5.  **Failure Feedback Filter:** When a holdout scenario fails, the generator agent **never** receives the scenario details (the actual test code or BDD text). Instead, the Evaluator Agent returns a sanitized stderr/stdout execution log output of the failing integration test run, providing sufficient context for programmatic debugging without leaking test assets.
+
+##### Holdout Evaluation Failure Example:
+```
+Holdout Evaluation Failed (2/3 runs failed):
+--- FAIL: TestAuthTokenValidation (0.42s)
+    auth_test.go:42: expected response status 200, got 500
+    auth_test.go:43: response payload: "invalid authorization signature"
+FAIL
+```
+
+6.  **Merge Gate:** 100% of all holdout scenarios (as determined by majority vote) must pass before the Validator approves a pull request for merge.
 
 #### Static Policy Safeguards (Default Rules)
 In addition to dynamic validation, the Validator blocks actions violating:
@@ -433,12 +1092,36 @@ In addition to dynamic validation, the Validator blocks actions violating:
 2.  **Path Traversal Protection:** Reading/writing files outside the workspace root is blocked.
 3.  **Command Execution Whitelist:** Only running commands matching a strict whitelist is allowed.
 
-#### 3.4.3. Harness Sandbox Boundaries (FS Jail, Prefix Limiting & Folder Blacklisting)
-To guarantee safe operation and prevent irreversible actions (such as unauthorized commands or data deletion), the Go engine executes all tools inside a restricted agent harness sandbox:
-*   **File System Jail & Prefix Limiting:** The directory paths passed to any tool or whitelisted command (like `read_file` or `write_file`) must be resolved to their absolute canonical form, cleaned (using Go's `filepath.Clean`), and verified to be strictly prefixed by the configured workspace directory prefix (e.g., `$HOME/repos/my-repo` or dynamic `cwd` root). Any attempt to read, write, or target files outside this workspace prefix triggers a sandbox validation error and blocks execution. This host-level prefix boundary check provides lightweight security isolation, avoiding the overhead of heavy Docker container isolation.
-*   **Configuration Directory Blacklisting:** To prevent security jailbreaks, the File System Jail explicitly blacklists and blocks any operations (read, write, or command execution target) targeting the configuration folder (e.g., `.noctifab/` or `.noctifact/`), even though it resides within the workspace root. This ensures that sandboxed tests or code modifications cannot read, modify, or corrupt the local database file (`noctifab.db`) or access system keys.
-*   **Tool & Command Whitelisting:** The execution of external shell commands is restricted. The runner only executes a predefined list of safe utility binaries (e.g., `go`, `git`). Arbitrary command strings, docker execution commands, or unverified scripts are rejected before execution to keep host sandboxing secure.
-*   **Resource & Time Quotas:** To prevent runaway loops or denial of service, every executed command is wrapped in a Go `context.WithTimeout` (defaulting to 5 minutes max). Memory and process quotas are enforced, and API call counters track LLM credit consumption, halting the loop once daily budgets are exceeded.
+#### 3.4.3. Harness Sandbox Boundaries (Configurable Isolation Modes)
+To guarantee safe operation and prevent irreversible actions (such as unauthorized commands or data deletion), the execution engine executes all tools and commands inside a restricted, configurable agent harness sandbox. The isolation model is configured via the `--sandbox-mode` CLI flag or `NOCTIFAB_SANDBOX_MODE` environment variable.
+
+The sandbox supports two modes of isolation:
+
+##### 1. Host Mode (`--sandbox-mode host`, Default)
+In host isolation mode, the orchestrator runs tools natively on the host machine using standard Go OS operations, secured by lightweight path validation rules:
+*   **File System Jail & Prefix Limiting:** The directory paths passed to any tool (like `read_file` or `write_file`) must be resolved to their absolute canonical form, cleaned (using Go's `filepath.Clean`), and verified to be strictly prefixed by the configured workspace directory prefix. Any attempt to read, write, or target files outside this workspace prefix triggers a sandbox validation error and blocks execution.
+*   **Configuration Directory Blacklisting:** Operations targeting the configuration folder (e.g., `.noctifab/` or `.noctifact/`) are explicitly blacklisted and blocked, even though they reside within the workspace root.
+*   **Command Whitelisting:** Execution of external shell commands is restricted. The runner only executes a predefined list of safe utility binaries (e.g., `go`, `git`). Arbitrary command strings, docker execution commands, or unverified scripts are rejected before execution.
+*   **Disabled Tools:** The `docker_action` tool is disabled in host mode. Any attempt by the agent to execute it will return a sandbox validation error.
+
+##### Sandbox Path Block Violation Example:
+```json
+{
+  "tool": "read_file",
+  "args": { "path": "/etc/hosts" }
+}
+→ Blocked: "Sandbox violation: path '/etc/hosts' resolves outside the workspace boundary '/Users/diegoj/repos/noctifab'"
+```
+
+##### 2. Docker Mode (`--sandbox-mode docker`)
+In Docker isolation mode, the orchestrator routes command executions and tools to run inside an isolated Docker container:
+*   **Active `docker_action` Tool:** The `docker_action` tool is enabled and allows the agent to run commands inside a sandbox container, dynamically isolating the work environment.
+*   **Filesystem Mounting & macOS Named Volumes Caching:** The workspace directory is mounted as a read/write volume inside the container. To prevent virtual filesystem performance degradation under macOS Docker virtualization (e.g., slow compilation via VirtioFS/gRPC FUSE), compiler build caches (such as `GOCACHE` or `node_modules` cache) are mounted inside Docker **named volumes** instead of host bind mounts, keeping build I/O speeds native.
+*   **Dynamic Port Mapping & Internal Networks:** To prevent static port binding collisions when executing concurrent sandboxes, the runner maps container service ports dynamically to random free host interfaces, or executes test suites entirely within isolated internal bridge networks utilizing container-to-container DNS resolution.
+*   **Host POSIX ID Matching:** To avoid file permission lockouts on the host after container execution, the orchestrator introspects the host process User ID (UID) and Group ID (GID) using Go's `os.Getuid()` and `os.Getgid()` on Linux. It programmatically injects these matching credentials (`User: "uid:gid"`) into the Docker container configurations. On macOS, this injection is omitted to allow native virtualized synchronization.
+*   **Persistent Warm Containers & Exec Routing:** To eliminate container cold-start delays (1-3 seconds per run) during iterative code generation, the orchestrator maintains a **persistent warm sandbox container** for each active Generator worker thread. Command executions (`run_tests`) are routed to the warm container using the Docker Exec API (`docker exec`) rather than restarting new container instances.
+*   **Docker Container Leakage Prevention:** The orchestrator assigns a unique session label (`noctifab-session=<session-id>`) to all containers, bridge networks, and volumes it spawns. On daemon startup (`noctifab start`), the pre-flight routine queries the Docker API for any legacy resources matching the `noctifab` labels and prunes them. Go `defer` functions are registered on startup to call `ContainerRemove` and prune active networks during unexpected daemon panics or SIGINT/SIGTERM exits.
+*   **Budget Reservation Engine:** Before initiating an LLM completion API call, the worker goroutine locks the budget and reserves an estimated token/cost usage in the database. Post-execution, the worker updates the transaction to reflect actual tokens consumed, preventing concurrent workers from running parallel requests that exceed daily token budgets or maximum USD constraints (`--max-budget-usd`). If budget limit checks fail, the daemon suspends operations cleanly.
 
 ---
 
@@ -454,43 +1137,112 @@ import (
 	"context"
 	"time"
 
-	"github.com/noctifab/pkg/domain"
-	"github.com/noctifab/pkg/infrastructure/llm"
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-type Orchestrator struct {
-	repo          domain.StateRepository
-	registry      Registry
-	llmClient     llm.Client
-	validator     Validator
-	pollInterval  time.Duration
-	maxRetries    int // Maximum outer LLM response retries per cycle
+#### Orchestrator Loop Implementation (`pkg/usecase/orchestrator.go`)
+```go
+package usecase
+
+import (
+	"context"
+	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
+)
+
+// OrchestratorConfig holds configuration parameters for the orchestrator polling loop.
+type OrchestratorConfig struct {
+	PollInterval time.Duration // Interval between polling iterations
+	MaxRetries   int           // Maximum outer LLM response retries per task cycle
 }
 
+// Orchestrator coordinates the daemonized loop, agent scheduling, and execution state.
+type Orchestrator struct {
+	repo         domain.StateRepository
+	registry     Registry
+	llmClient    domain.LLMClient
+	validator    Validator
+	cfg          OrchestratorConfig
+}
+
+// NewOrchestrator initializes and returns an Orchestrator instance.
 func NewOrchestrator(
 	repo domain.StateRepository,
 	reg Registry,
-	client llm.Client,
+	client domain.LLMClient,
 	val Validator,
-	interval time.Duration,
+	cfg OrchestratorConfig,
 ) *Orchestrator {
 	return &Orchestrator{
-		repo:         repo,
-		registry:     reg,
-		llmClient:    client,
-		validator:    val,
-		pollInterval: interval,
-		maxRetries:   3,
+		repo:      repo,
+		registry:  reg,
+		llmClient: client,
+		validator: val,
+		cfg:       cfg,
 	}
 }
 ```
 
 #### 3.5.1. Planner-Generator-Evaluator Loop & Agentic Roles
-`noctifab` utilizes a structured loop that partitions agent cognitive tasks into three distinct roles, preventing "evaluation gaming" (where a generator reviews its own code):
-1.  **Planner Agent:** Receives high-level user specifications, resolves initial ambiguities via the Clarification Loop, constructs the task DAG (Directed Acyclic Graph), and populates the state database.
-2.  **Generator Agent:** Spawns task-specific sandboxed workers. These workers consume tasks from the DAG queue, check out isolated branches, modify code files, and run local unit tests until compilation passes.
-3.  **Evaluator Agent (Isolated):** Operates on the final task branch. It reads BDD scenarios from a secure, hidden directory (e.g. `tests/holdout/`) which coding agents cannot read. It executes automated integration/acceptance tests and evaluates overall goal completion.
+`noctifab` utilizes a structured loop that partitions agent cognitive tasks into three distinct roles, preventing "evaluation gaming" (where a generator reviews its own code).
+
+The following Role Configuration Matrix defines the operation, privileges, and boundaries of each role:
+
+| Role | System Prompt | Available Tools | Execution Context & Isolation | LLM Config Override |
+| :--- | :--- | :--- | :--- | :--- |
+| **Planner** | `planner.tmpl` | `add_task`, `log_message`, `noop` | Main orchestrator process context (runs inside workspace). | Configured to use a reasoning-focused model (e.g., Claude 3.5 Sonnet / GPT-4o) with higher temperature (0.5) for creative task planning and decomposition. |
+| **Generator** | `generator.tmpl` | `read_file`, `write_file`, `edit_file`, `list_directory`, `find_files`, `grep_search`, `run_tests`, `noop` | Spawns as a sandboxed goroutine worker operating in an isolated git worktree / branch sandbox directory. Path traversal is restricted to the specific task worktree. Configuration folder `.noctifab/` is blacklisted. | Primary code generation model with low temperature (0.0) for deterministic and precise coding. |
+| **Evaluator** | `evaluator.tmpl` | `run_tests`, `read_file` (restricted to hidden tests directory only), `noop` | Spawns as a separate sandboxed goroutine post-generation. Operating directory is locked to the holdout tests path (`.noctifab/holdout/`) and target branch. No write access to production source code files. | Evaluator model with zero temperature (0.0) for objective verification and evaluation of test outcomes. |
+
 The generator agent is only given high-level feedback (e.g., error logs and test failure summaries), never the source test cases themselves, to guarantee code generalization.
+
+##### A. Concurrency & Orchestrator-Worker Handoff Sequence
+The following sequence diagram illustrates the lifecycle of a task and the interactions between the orchestrator coordinator, SQLite/PostgreSQL state database, isolated worktrees, and concurrent Planner, Generator, and Evaluator agent goroutines:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant DB as SQLite/PostgreSQL Database
+    participant Coord as Orchestrator Coordinator
+    participant Worktree as Git Worktree Sandbox
+    participant Gen as Generator Agent (Goroutine)
+    participant Eval as Evaluator Agent (Goroutine)
+
+    Coord->>DB: Poll for ready tasks (DependsOn fully SUCCESS)
+    activate Coord
+    DB-->>Coord: Return task list
+    Coord->>DB: Transition task status to IN_PROGRESS (OCC Version check)
+    Coord->>Worktree: Create isolated workspace (git worktree add)
+    Coord->>Gen: Spawn Generator worker goroutine
+    activate Gen
+    Gen->>Worktree: Checkout task sandbox branch (noctifab/task-<id>-agent-<agent_id>)
+    
+    loop Development Cycle
+        Gen->>Worktree: Read/Write files & run local tests
+    end
+    
+    Gen-->>Coord: Complete task (code changes written)
+    deactivate Gen
+    
+    Coord->>Eval: Spawn Evaluator Agent goroutine
+    activate Eval
+    loop Holdout Test Evaluation (Up to 3 Runs)
+        Eval->>Worktree: Execute BDD holdout scenario test suite
+    end
+    Eval-->>Coord: Report BDD results (Majority Vote outcome)
+    deactivate Eval
+    
+    alt Verification Success (>= 2/3 pass)
+        Coord->>Worktree: Merge task branch back to integration branch
+        Coord->>DB: Save state as SUCCESS & release OCC lock
+    else Verification Failure
+        Coord->>DB: Increment retries, set to PENDING (or FAILED if retries exceeded)
+    end
+    
+    Coord->>Worktree: Prune and remove Git worktree (git worktree remove --force)
+    deactivate Coord
+```
 
 #### 3.5.2. Hybrid Execution Model: Agentic vs. Deterministic Nodes
 To optimize execution speed and cost, the orchestrator divides the execution loop into agentic nodes (which require LLM reasoning) and deterministic nodes (which run programmatically in Go):
@@ -502,12 +1254,28 @@ To optimize execution speed and cost, the orchestrator divides the execution loo
 
 By offloading formatting, compilation checks, and merge logic to deterministic Go code, the system minimizes LLM token consumption and increases execution robustness.
 
-#### 3.5.3. DB-backed State Coordination & Optimistic Concurrency Engine
-The orchestrator itself runs as a single coordinator program, but operates in a multi-agent environment where multiple worker threads or subprocesses (agents) execute tasks and modify the workspace concurrently. To coordinate these tasks:
-*   **Centralized Database Repository:** A centralized SQLite database (locally) or PostgreSQL instance (remotely) serves as the shared storage and transactional source of truth.
-*   **Optimistic Concurrency Control (OCC):** The system coordinates concurrent state updates using a monotonic `Version` field on the `State` entity. Reads are non-blocking and do not hold database locks, allowing parallel worker agents to fetch state and construct prompts concurrently.
-*   **Short-Lived Transactions:** Writes and state updates (such as task status changes or action logs) are executed inside short-lived database transactions that immediately release connection handles. Under no circumstances should database connections or transactions be held open during slow external network calls (such as LLM completions) or long-running shell builds.
-*   **Conflict Resolution Loop:** If a worker's update fails due to a version conflict (another worker updated the state first), the worker automatically performs a reload-modify-retry cycle.
+#### 3.5.3. DB-backed State Coordination & Command Channel Event Loop
+The orchestrator operates in a multi-agent environment where multiple worker threads (agents) execute tasks and modify the workspace concurrently. To coordinate these tasks safely:
+*   **Centralized Database Repository:** PostgreSQL (recommended) or SQLite serves as the shared storage and transactional source of truth.
+*   **Command Channel Event Loop (`pkg/usecase/command_channel.go`):** To completely eliminate database OCC lock contentions, worker goroutines do not execute write operations directly to the database. Instead, they write mutation command payloads (e.g., `UpdateTaskStatusCmd`, `SaveActionCmd`, `ReserveTokensCmd`) to a thread-safe Go FIFO channel. The orchestrator runs a single-threaded transaction writer goroutine that processes incoming command payloads from this channel sequentially, executing writes inside isolated, serial transactions.
+*   **Optimistic Concurrency Control (OCC) Fallback:** The system retains a monotonic `Version` field on the `State` entity as a secondary guard. If a manual CLI operation or external process updates the state directly, the event loop detects the version conflict, aborts the write, and triggers a reload-modify-retry cycle. The retry cycle follows an exponential backoff strategy:
+    *   `--occ-max-retries`: Maximum number of retry attempts (default: `5`).
+    *   `--occ-backoff-base`: Base delay time duration (default: `50ms`).
+    *   `--occ-backoff-factor`: Multiplication factor for successive retries (default: `2.0`).
+    If conflicts persist after the maximum retries, the task status is marked as `CONFLICT_FAILED` in the database.
+*   **Short-Lived Transactions:** All database writes are executed inside short-lived database transactions that immediately release connection handles. Database connections are never held open during slow external network calls (such as LLM API completions) or execution runs.
+
+##### OCC Conflict & Command Channel Sequence Example:
+```
+Time  | Worker Goroutines (Parallel)          | Command Channel Queue (FIFO)          | Single Writer Event Loop (Serial)
+------|--------------------------------------|---------------------------------------|----------------------------------
+T0    | Read State (Ver: 5)                  | -                                     | -
+T1    | Gen A: Finish task, queue status cmd | [UpdateStatusCmd{Task:1, Status:SUCC}]| -
+T2    | Gen B: Finish task, queue status cmd | [..., UpdateStatusCmd{T:2, S:SUCC}]   | Drains Gen A cmd, starts DB Tx
+T3    | -                                    | [UpdateStatusCmd{Task:2, Status:SUCC}]| Commit A Success (Ver: 6)
+T4    | -                                    | -                                     | Drains Gen B cmd, starts DB Tx
+T5    | -                                    | -                                     | Commit B Success (Ver: 7)
+```
 
 #### 3.5.4. DAG Task Splitting, Dependency Computation, & Concurrency Scheduler
 To achieve true multi-agent autonomy without collision, `noctifab` implements a formal DAG scheduling and worker dispatching loop:
@@ -518,41 +1286,132 @@ To achieve true multi-agent autonomy without collision, `noctifab` implements a 
     *   Each logical unit is converted into a `Task` struct populated with a unique ID, description, and target files.
 
 2.  **Dependency Computation (DAG Construction):**
-    *   The Planner Agent computes execution dependencies by determining which tasks are prerequisite for others. For instance, the database schema migration task must complete before the repository adapter task can be built.
-    *   It populates the `DependsOn` array of each `Task` with the IDs of its prerequisites.
+    *   The Planner Agent computes execution dependencies by determining which tasks are prerequisite for others.
+    *   It populates the `DependsOn` array of each `Task`. In the Planner output payload, dependencies can be defined using parent task **Titles** or parent task **IDs**.
+    *   **Pre-computation Title Map:** Prior to cycle validation, the orchestrator builds a map of task titles to unique task IDs. If duplicate task titles are detected in the DAG, it fails validation immediately and returns a lint error to the Planner.
+    *   **Strict ID Resolution:** The orchestrator resolves all `DependsOn` references. If a title or ID reference cannot be mapped to any task, it transitions the planning phase to failed.
     *   The orchestrator validates that the resulting task list forms a valid, cycle-free Directed Acyclic Graph (DAG) using a standard depth-first search (DFS) cycle-detection algorithm. Any cycle detected halts planning.
 
-3.  **Topological Scheduling & Parallel Worker Assignment:**
+##### DAG Cycle Detection Failure Example:
+```
+DAG Validation Error:
+Prerequisites create a circular reference cycle:
+  Task-1 ("Middleware") depends_on: Task-2 ("DB Migrator")
+  Task-2 ("DB Migrator") depends_on: Task-3 ("Config Validation")
+  Task-3 ("Config Validation") depends_on: Task-1 ("Middleware")
+→ Halt: "Cycle detected in task DAG: Task-1 → Task-2 → Task-3 → Task-1"
+```
+
+3.  **Topological Scheduling, File Locks & Parallel Worker Assignment:**
     *   During the execution loop (`noctifab start`), the scheduler continuously polls the task DAG.
     *   It identifies **ready tasks** — tasks that are currently `TaskPending` and whose prerequisite tasks listed in `DependsOn` all have a status of `TaskSuccess`.
-    *   For each ready task, if the number of currently active worker threads is less than `--agents` (or `NOCTIFAB_AGENTS_COUNT`), the orchestrator:
+    *   **File-Level Lock Registry:** To prevent parallel workers from editing the same codebase files in isolation, the scheduler implements an in-memory lock registry. Before dispatching a task, the scheduler locks all paths declared in `TargetFiles`. If a ready task's target files overlap with a currently active task's files, the scheduler defers dispatching that task until the active task completes and releases its file locks.
+    *   For each ready task that is not blocked by file locks, if the number of currently active worker threads is less than `--agents`, the orchestrator:
         1. Transitions the task status to `TaskInProgress`.
         2. Spawns an independent Go goroutine running a **Generator Agent** instance.
         3. Assigns the `Task` to this instance.
-    *   Each goroutine operates in its isolated branch sandbox, which is branched off the main feature integration branch (e.g. `feature/feature-auth`). This ensures zero state pollution between concurrent running tasks.
+    *   **Isolated Git Worktrees:** Each worker goroutine operates in a dedicated, isolated Git worktree workspace created dynamically via `git worktree add` located at `.noctifab/worktrees/task-<id>-agent-<agent_id>`. The worker checks out the task-specific branch (e.g. `noctifab/task-<id>-agent-<agent_id>`) inside this worktree directory.
+    *   **Shared Cache & Sparse Checkouts:** The executor configures sandbox environments to share cache mounts (e.g. `GOCACHE`, `node_modules` cache) and utilizes Git's sparse checkout features to checkout only the directories containing target files and their direct dependencies, optimizing host storage and execution I/O.
+    *   **Serialized Package Installation Lock:** To prevent parallel package installations (`npm install`, `go mod download`) from thumping disk write heads and hitting registry rate-limits, the orchestrator serializes all package installations using an in-memory lock, executing only one installation globally at any time.
 
 4.  **Feedback, Integration, and Validation Loop:**
     *   Once a Generator worker completes its task, the orchestrator triggers local linter, compiler, and test checks.
-    *   **Automatic Rebase & Merge:** If verification checks pass, the orchestrator automatically attempts to rebase or merge the completed task branch back into the feature integration branch (`feature/feature-auth`). The orchestrator also attempts to automatically rebase or merge this updated integration branch into all other currently active task branches to keep them synchronized.
-    *   **Conflict & Failure Escalation:** If an automatic rebase or merge encounters conflicts that cannot be programmatically resolved, or if validation checks fail post-merge, the orchestrator does not halt the entire daemon loop. Instead, it marks the conflicting task status as `CONFLICT_BLOCKED` in the database, isolates the quarantined branch in the repository, and creates an asynchronous draft branch or PR on the remote VCS for manual conflict resolution in the IDE. The orchestrator continues scheduling and executing other independent task paths in the DAG that do not depend on the blocked task.
-    *   **State Update:** Once integrated successfully, the task status is updated to `TaskSuccess` in the state database (guarded by transactional OCC write lock). Any subsequent ready tasks that depend on this task will now branch off the updated integration branch.
-    *   **Retry & Failure Limits:** If compilation or tests fail and cannot be automatically fixed by diagnostic loops, the task's `Retries` count is incremented. If it exceeds `MaxRetries`, the task becomes `TaskFailed`, downstream dependent tasks are halted, and the orchestrator requests human assistance.
+    *   **Two-Phase State Commit:** To prevent database-VCS drift (where database update succeeds but VCS merge fails), the orchestrator treats VCS branch integration as a prerequisite *within* the final state transition transaction. If the Git merge/push fails, the transaction rolls back, and the task status resets to `PENDING` (or incremented retry).
+    *   **Lazy Synchronization & Sequential Rebase Queue:** Rather than triggering cascading waves of rebases on all parallel branches reactively on every merge, the orchestrator uses **Lazy Synchronization**: active worker branches are only rebased when they start a new task. All Git rebase/merge write actions are routed to a **Sequential Rebase Queue** (`pkg/usecase/rebase_queue.go`) running in a serialized channel, preventing concurrent git repository metadata write locks.
+    *   **Centralized Git Mutex:** To prevent concurrent Git lock errors (`fatal: Unable to create '.git/index.lock'`), all Git execution commands in the codebase are wrapped in a centralized read/write mutex (`sync.RWMutex`). Write-intensive git operations (commit, branch, merge, push) acquire a write lock; read-only git operations acquire a read lock.
+    *   **Stash-and-Sync & Verification:** The rebase wrapper automatically runs `git stash`, executes the rebase, and performs `git stash pop`. Post-rebase, the runner re-runs compilation and validation tests in the worker's branch before resuming.
+    *   **Conflict & Failure Escalation:** If an automatic rebase/merge encounters unresolvable conflicts, the task is marked as `CONFLICT_BLOCKED`, its branch quarantined, and execution continues on other independent DAG branches. If a task exceeds `MaxRetries`, it becomes `TaskFailed` and halts downstream dependency tasks.
 
----
+#### 3.5.6. Centralized Git Mutex & Concurrency Controls
 
-## 3.6. Edge Cases & Safety Guardrails
+To support robust multi-agent parallel execution without corrupting repository metadata or triggering Git lock contentions (such as `fatal: Unable to create '.git/index.lock'`), `noctifab` utilizes a centralized concurrency orchestration design combining in-memory file locks, thread limits, and a global read/write mutex.
 
-To run autonomously with zero human intervention and prevent infinite loops, workspace corruption, or parse failures, `noctifab` implements the following deterministic behaviors:
+##### A. Concurrency Limits (`concurrency`)
+* **Worker Thread Bounds**: The `concurrency` property (equivalent to CLI `--agents`) sets the maximum number of Generator agent worker goroutines that can execute tasks concurrently.
+* **Ready Task Dispatching**: The scheduler evaluates the task DAG and flags tasks whose dependencies are met as `Ready`. If the number of active workers is less than the configured `concurrency` limit, the scheduler attempts to dispatch these tasks.
+* **Scheduler File Locking**: To prevent parallel workers from editing overlapping files, the scheduler maintains an in-memory lock map of target file paths. If a `Ready` task's target files are currently being modified by an active worker, that task is deferred until the active task releases its file locks.
 
-### 3.6.1. Infinite Loop Prevention
-*   **Task Level:** Every `Task` contains a `Retries` count and a `MaxRetries` boundary. If a worker agent attempts to execute a task and fails (e.g. tests do not compile or linter fails) more than `MaxRetries` times, the orchestrator transitions the task's status directly to `TaskFailed` and raises an exception event rather than looping infinitely.
-*   **Orchestrator Level:** The CLI loop implements a global action count ceiling (e.g. max 100 actions per start run) or elapsed duration timeout to automatically terminate execution if the loop does not resolve.
+##### B. Centralized Git Mutex (`sync.RWMutex`)
+All Git commands executed by the daemon or worker sandbox environments are forced to route through a centralized repository wrapper protected by a global Read/Write Mutex (`sync.RWMutex`). This prevents git processes from executing concurrently on the same git database metadata directories:
+1. **Read-Only Operations (Acquiring Read Lock `RLock`)**:
+   * Operations that do not modify git metadata (e.g. `git status`, `git log`, checking if a branch exists, listing branches, `git show`) acquire the read lock.
+   * Multiple read-only operations can execute concurrently.
+2. **Write-Intensive Operations (Acquiring Write Lock `Lock`)**:
+   * Operations that modify git metadata (e.g. `git worktree add`, `git worktree remove`, `git commit`, `git checkout`, `git merge`, `git rebase`, `git push`) acquire the write lock.
+   * A write operation blocks all other read and write operations.
+3. **Lock Timeout and Fallback**:
+   * To prevent execution threads from hanging indefinitely during heavy lock contention, all lock acquisition requests are context-aware and enforce the configured `git_mutex_timeout` (default `30s`).
+   * If a thread fails to acquire the lock within the timeout duration, the operation fails with a transient error, triggering a reload-modify-retry sequence backed by the configured `git_operation_retries` and `git_retry_backoff` backoff.
 
-### 3.6.2. Safe JSON Extraction Algorithm
-Low-reasoning LLMs sometimes surround JSON structures with conversational text or Markdown formatting (e.g., ` ```json `). The orchestrator parser must extract the JSON payload using the following matchers:
-1. Search the raw response using a greedy regex matcher finding the first `{` and the last `}` (`(?s)\{.*\}`).
-2. If no brace pattern matches, feed the parsing error back to the LLM as a warning prompt (counting against the retry limit).
-3. If braces match, extract the matched substring and decode using `json.Unmarshal`.
+#### 3.5.5. Agent Permission Profiles & Security Sandbox
+To ensure secure and controlled operations, the orchestrator divides tool execution and network routing configurations using a profile-based permission system defined under the `.noctifab/` configuration directory.
+
+*   **Orchestrator Mode (Unrestricted):** The orchestrator runs in a fully-privileged context. It is the only component allowed to invoke Git tools (`git_checkout`, `git_commit`, `git_push`, `git_create_pr`) and run deterministic container commands (`docker_action`) directly on the host or inside sandbox orchestrations.
+*   **LLM Agent Mode (Restricted by Profile):** LLM agents executing planning, code generation, or evaluation are strictly restricted to the tool permissions and network policy specified in their active profile configuration file located at `.noctifab/profiles/<profile_name>.yaml`.
+    *   **Default Restrictive Behavior:** By default, LLM agents do not have access to Git tools, Docker daemon actions, or unrestricted outbound network requests.
+    *   **Allowed Operations:** The default profile limits LLM agents strictly to:
+        1. Workspace file operations (`read_file`, `write_file`, `edit_file`, `list_directory`, `find_files`, `grep_search`).
+        2. Test verification tasks (`run_tests`).
+        3. Simple orchestration metadata tools (`add_task`, `log_message`, `noop`).
+        4. Outbound network requests strictly restricted to the configured LLM API provider endpoint (to fetch completions). All other external internet connections (e.g. databases, HTTP downloads) are blocked.
+
+### 3.6. Execution Engine & Parser
+
+This component handles parsing LLM response payloads, extracting structured tool call lists, and executing sandbox commands safely.
+
+#### 3.6.1. Execution Flow
+The orchestrator parses the JSON block returned by the LLM, validates tool permissions, executes the actions sequentially via the Tool Registry, and feeds results back to the agent's context.
+
+#### 3.6.2. Safe JSON Extraction Algorithm
+Low-reasoning LLMs sometimes surround JSON structures with conversational text or Markdown formatting (e.g., ` ```json `). Rather than using regular expressions which fail on nested braces or trailing inputs, the orchestrator parser implements a deterministic brace-counting JSON extractor:
+1.  **Scanning:** The parser scans the LLM output character-by-character from left to right to find the first occurrence of `{` (signifying the start of the JSON object).
+2.  **Brace Tracking:** Once `{` is located, a counter starts at 1. The scanner reads each subsequent character, incrementing the counter for every `{` encountered, and decrementing the counter for every `}`.
+3.  **Boundary Extraction:** When the counter returns to 0, the scanner captures the substring from the initial `{` to that closing `}`.
+4.  **Verification:** The extracted substring is passed directly to Go's standard library `json.Unmarshal`. If unmarshalling succeeds, the parsed actions are queued. If it fails, or if no matching outer braces were found, the error is fed back to the LLM as a warning prompt (incrementing the task retry counter).
+
+##### Safe JSON Extraction Examples:
+
+###### Example A: Markdown code fences wrapper
+*   *LLM Output:*
+    ```markdown
+    Certainly! I will add a task to implement configuration loading.
+    ```json
+    {
+      "reasoning": "Adding configuration task",
+      "actions": [{"tool": "add_task", "args": {"title": "Load Config"}}]
+    }
+    ```
+    I hope this helps!
+    ```
+*   *Extracted JSON Substring:*
+    ```json
+    {
+      "reasoning": "Adding configuration task",
+      "actions": [{"tool": "add_task", "args": {"title": "Load Config"}}]
+    }
+    ```
+
+###### Example B: Conversational prefix and suffix
+*   *LLM Output:*
+    ```text
+    Here is the requested tool call action:
+    {"reasoning": "No-op task run", "actions": [{"tool": "noop", "args": {}}]}
+    Let me know if you need anything else.
+    ```
+*   *Extracted JSON Substring:*
+    ```json
+    {"reasoning": "No-op task run", "actions": [{"tool": "noop", "args": {}}]}
+    ```
+
+###### Example C: Completely invalid output (error fed back to LLM)
+*   *LLM Output:*
+    ```text
+    I am sorry, but I cannot execute this action because I don't see any files in the workspace.
+    ```
+*   *Orchestrator Feedback Prompt:*
+    ```text
+    Error parsing response: No valid JSON object detected (brace counter did not resolve). Please return only the structured JSON block matching the schema.
+    ```
 
 ### 3.6.3. Git Sandbox Branch Conflicts & Pruning
 *   **Sandbox Isolation:** Parallel worker agents checkout task-specific sandboxes formatted as:
@@ -560,28 +1419,125 @@ Low-reasoning LLMs sometimes surround JSON structures with conversational text o
 *   **Branch Collision Recovery:** If a branch name already exists locally or remotely, the agent fetches the latest commits, pulls from target branch, or appends a random execution suffix to ensure a clean commit sequence.
 *   **Pruning on Failures:** If a task fails terminal validation checks, the branch is discarded or pushed to a quarantine tracking prefix `noctifab-quarantine/task-<id>` to keep the clean feature branches unpolluted.
 
-### 3.6.4. Non-Blocking Interactive Stdin & Clarification Loop
-*   **Always-Open Stdin Console:** The orchestrator must keep `stdin` open and active for interactive user input throughout the entire execution loop, rather than blocking the execution loop synchronously.
-*   **Dynamic User Directions:** The user can input answers, commands, or directions at any time. These inputs can:
-    *   Resolve open clarifications raised by the LLM or blocked merging processes.
-    *   Provide manual steering or directions to complement currently running tasks.
-    *   Create new tasks or modify existing future tasks in the DAG dynamically (e.g., if the initial input specification was incomplete or requires alteration mid-run).
-*   **Task Suspension:** The orchestrator will only suspend the execution of tasks that are directly dependent on unresolved clarifications or blocked merges. Independent tasks in the DAG continue executing concurrently.
-*   **Stdin Command Structure:** The interactive prompt allows structured directions (e.g., `answer <clarification-id> <response>`, `add-task <title>`, `override-merge <task-id>`) as well as plain text comments appended to the active agent run contexts.
-*   **Daemon Control Interface (UNIX Socket / Local REST API):** To support non-blocking interactions when the orchestrator is run in background daemon mode (where standard `stdin` is detached and unavailable), the daemon exposes a local UNIX domain socket (or a lightweight localhost REST API on port `18080`). External clients and manual operators can use the `noctifab` CLI to send signals or answers to the daemon (e.g., `noctifab clarify --id <id> --answer <answer>`), which routes them directly into the state database.
-*   **Clarification Deadline & LLM Fallback:** For each clarification waiting for user input, a maximum response deadline of 5 minutes is enforced. If the user does not respond within this 5-minute window, the orchestrator triggers an LLM completion. It prompts the LLM as a Staff Software Engineer to make a robust, production-grade design decision that follows SOLID design and good software engineering practices. The resulting recommendation is automatically written to the clarification's `Answer` field, the clarification is marked as resolved, and the orchestrator resumes execution of the dependent tasks.
+### 3.6.4. Non-Blocking Interactive Stdin, REST API & Clarification Loop
+To support manual intervention and steering during autonomous operations, the orchestrator exposes two concurrent control channels:
+
+#### A. Serial Command Mailbox (`pkg/usecase/command_channel.go`)
+*   **Stdin & API Synchronization:** Throughout the execution loop, the orchestrator keeps `stdin` open for interactive CLI inputs. Simultaneously, the daemon listens for REST API inputs.
+*   **Race Prevention:** To prevent memory race conditions and inconsistent database updates (e.g. if the user resolves a clarification while a task worker completes), all state-modifying operator directions are routed to a thread-safe Go channel acting as a **Serial Command Mailbox**.
+*   **Loop-Synchronized Processing:** The main orchestrator thread drains and processes commands from this channel serially at a specific designated step of its polling cycle rather than spawning concurrent handler goroutines, guaranteeing single-threaded execution safety.
+*   **Stdin Command Structure:** Stdin allows structured directions: `answer <clarification-id> <response>`, `add-task <title> <description> [dependencies]`, and `override-merge <task-id>`.
+
+#### B. Local Daemon REST API Interface
+When running in background daemon mode, the orchestrator binds a local HTTP server strictly to loopback interface `127.0.0.1:18080`. To prevent unauthorized remote access, bindings to external interfaces (like `0.0.0.0`) are rejected.
+The REST API exposes the following endpoints:
+*   `POST /api/v1/clarifications/{id}/resolve` (payload: `{"answer": "string"}`): Resolves an active clarification, pushing the response to the Command Mailbox.
+*   `POST /api/v1/tasks` (payload: `{"title": "string", "description": "string", "depends_on": []}`): Dynamically registers a new task node into the database.
+*   `POST /api/v1/tasks/{id}/override-merge`: Forces a manual merge approval of a failing or blocked branch.
+*   `GET /healthz` (liveness probe): Returns HTTP 200 `{"status": "ok"}` to indicate the process is active.
+*   `GET /readyz` (readiness probe): Returns HTTP 200 `{"status": "ready"}` if the daemon is actively loop-polling, and HTTP 503 during daemon shutdown.
+*   `GET /statusz` (diagnostic status probe): Returns a structured JSON payload dumping active task DAGs, running workers, and cost statistics.
+
+#### C. Clarification Timeout & LLM Auto-Decision
+For each clarification waiting for user input, a configurable response deadline is enforced (configured via `--clarification-timeout`, defaulting to `30m` or 30 minutes). If the user does not respond within this window, the orchestrator triggers an LLM completion. It prompts the LLM as a Staff Software Engineer to make a robust, production-grade design decision that follows SOLID design and Go idioms. The resulting recommendation is automatically written to the clarification's `Answer` field, the clarification is marked as resolved, and the orchestrator resumes execution of the dependent tasks.
+
+##### Clarification Timeout Auto-Decision Example:
+*   *Open Clarification in State:*
+    ```json
+    {
+      "question": "Should we use JWT or session-based cookies for authentication?",
+      "resolved": false,
+      "asked_at": "2026-06-19T10:00:00Z"
+    }
+    ```
+*   *Timeout Event:* 30 minutes pass without operator input.
+*   *LLM Auto-Answer Output:*
+    ```text
+    Use JWT (JSON Web Tokens) with HS256 algorithm stored in secure HttpOnly cookies. This enforces stateless validation across concurrent nodes while safeguarding against XSS.
+    ```
+*   *Resolved Clarification in State:*
+    ```json
+    {
+      "question": "Should we use JWT or session-based cookies for authentication?",
+      "answer": "Use JWT (JSON Web Tokens) with HS256 algorithm stored in secure HttpOnly cookies. This enforces stateless validation across concurrent nodes while safeguarding against XSS.",
+      "resolved": true,
+      "asked_at": "2026-06-19T10:00:00Z"
+    }
+    ```
 
 ### 3.6.5. Digital Twins (API Mocks)
 *   To avoid test flakiness and billing costs during scenario evaluation, the system registry integrates mock adapters ("Digital Twins") simulating external dependencies (e.g., payment portals, third-party databases), guaranteeing reliable, deterministic test feedback.
 
 ### 3.6.6. Auto-Rollback Policies
-To prevent unstable builds or broken endpoints from being committed to the target branch (e.g., if post-merge validations fail or the release deployment encounters problems):
+To prevent unstable builds or broken endpoints from being committed to the target branch:
 1.  **Verification Failure Trigger:** If a merged pull request or a deployment trigger fails the holdout evaluation checks, the validator signals a rollback event.
 2.  **Git Rollback Actions:** The VCS manager automatically executes Git rollback procedures:
     *   Reverting the specific merge commit on the target release branch (`git revert -m 1 <commit-hash>`).
     *   Restoring the last-known-good tag/commit reference.
     *   Pushing a standard revert commit back to the remote VCS provider, thereby respecting branch protection policies and avoiding force-pushes.
 3.  **State Synchronization:** The rollback event updates the state database, resetting the failed tasks back to `TaskPending` or `TaskFailed` (depending on remaining retries) and moving the faulty branch into a quarantined namespace (`noctifab-quarantine/`) for diagnostic inspection.
+
+##### Auto-Rollback Sequence Example:
+1. Feature integration branch `feature/auth` is merged into target branch `main` at commit `a1b2c3d4`.
+2. Post-merge integration tests fail under Holdout evaluation.
+3. Revert event triggers. The orchestrator executes:
+   ```bash
+   git checkout main
+   git revert -m 1 a1b2c3d4 --no-edit
+   git push origin main
+   ```
+4. The failed task branch is quarantined:
+   ```bash
+   git branch -m feature/auth noctifab-quarantine/feature/auth-failed-a1b2
+   git push origin :feature/auth
+   git push origin noctifab-quarantine/feature/auth-failed-a1b2
+   ```
+5. Task database state is updated (setting state version to next digit, reset task status to `PENDING` if retries remain).
+
+### 3.6.7. Graceful Shutdown Protocol & Subprocess PGID Terminations
+When the daemon receives an interruption signal (`SIGINT` or `SIGTERM`), it executes the following shutdown sequence to prevent repository or state corruption:
+1.  **Stop Dispatching:** The coordinator halts the concurrency scheduler, ensuring no new ready tasks are transitioned to `IN_PROGRESS` or worker goroutines spawned.
+2.  **Subprocess process group killing:** In host isolation mode, active workers run test suites via shell subprocesses. To prevent child processes from remaining orphaned after daemon termination, the command executor assigns a unique Process Group ID (PGID) to all commands by setting `SysProcAttr: &syscall.SysProcAttr{Setpgid: true}` in Go.
+3.  **Context Cancellation & Recursive Kill:** The global context is cancelled. Upon cancellation, the command wrapper executes a system call targeting the negative PGID (e.g. `syscall.Kill(-pgid, syscall.SIGKILL)`) to recursively terminate the process group and all of its spawned child processes.
+4.  **Active Worker Grace Period:** The daemon blocks and waits for a configurable period (via `--shutdown-grace-period`, default `30s`) for running tools to complete cleanups or file saves.
+5.  **Save Interrupted State:** Any workers that do not complete within the grace period are terminated. The orchestrator marks their respective tasks as `INTERRUPTED` in the state, releases their git worktree locks, and saves the final consolidated `State` back to the database.
+
+##### Graceful Shutdown State Snapshot Example:
+The database stores the following task states after a shutdown event halts execution:
+```json
+{
+  "id": "session-xyz",
+  "project_path": "/Users/diegoj/repos/noctifab",
+  "version": 12,
+  "tasks": [
+    {
+      "id": "task-001",
+      "title": "Migrate DB Schema",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "task-002",
+      "title": "Write Controller API",
+      "status": "INTERRUPTED",
+      "assigned_to": "agent-04"
+    },
+    {
+      "id": "task-003",
+      "title": "Build UI View",
+      "status": "PENDING"
+    }
+  ]
+}
+```
+
+> **Note:** The remaining subsections of §3 (§3.7 through §3.9) describe supporting workflows, integration pipelines, and configuration layout that build on top of the five core components defined above (State, Tool Registry, LLM Client, Validator, and Multi-Agent Orchestrator).
+
+---es spawned.
+2.  **Context Cancellation:** The global context `context.WithCancel` is cancelled, propagating the cancellation signal to all active worker goroutines.
+3.  **Active Worker Grace Period:** The daemon blocks and waits for a configurable period (via `--shutdown-grace-period`, default `30s`) for running tools to complete cleanups or file saves.
+4.  **Save Interrupted State:** Any workers that do not complete within the grace period are terminated. The orchestrator marks their respective tasks as `INTERRUPTED` (value `INTERRUPTED` in the TaskStatus enum) in the state, releases their git worktree locks, and saves the final consolidated `State` back to the SQLite/PostgreSQL database repository.
+
+> **Note:** The remaining subsections of §3 (§3.7 through §3.9) describe supporting workflows, integration pipelines, and configuration layout that build on top of the five core components defined above (State, Tool Registry, LLM Client, Validator, and Multi-Agent Orchestrator).
 
 ### 3.7. Specification Ingestion & External Clients
 To support dynamic task generation from multiple workflow sources, `noctifab` abstracts the feature specification retrieval through an ingestion layer. The CLI command `noctifab plan --input <source>` parses `<source>` to determine the appropriate adapter to execute:
@@ -617,27 +1573,35 @@ To support dynamic task generation from multiple workflow sources, `noctifab` ab
 #### 3.7.3. Jira Issue Ingestion
 *   **Behavior:** If the input matches a Jira issue URL (e.g., `https://company.atlassian.net/browse/KEY-101`), the Jira client is initialized.
 *   **Jira Client Implementation:** Under `pkg/infrastructure/jira/client.go`, a REST client connects to Atlassian's issue API.
-*   **Payload Construction:** The client fetches the issue summary, description, and comments, converting Atlassian Document Format (ADF) or rich-text fields into standard Markdown representation.
 *   **Authentication:** Authenticates using basic authentication headers via the developer email (`--jira-user` / `NOCTIFAB_JIRA_USER`) and API token (`--jira-token` / `NOCTIFAB_JIRA_TOKEN`).
+*   **ADF AST Document Walker:** To prevent data loss when parsing complex Atlassian Document Format (ADF) descriptions, the client implements a recursive AST document walker in Go. It walks the ADF JSON node tree structure, mapping standard nodes (`heading`, `paragraph`, `bulletList`, `orderedList`, `table`, `tableRow`, `tableCell`, `codeBlock`, `panel`) and text marks (`strong`, `em`, `strike`, `code`) directly into GitHub Flavored Markdown (GFM).
+*   **Lossless Fallback Placeholders:** If the ADF walker encounters unsupported node types (such as custom macros, third-party plug-ins, or rich media attachments like `mediaSingle`), it does not drop them silently. It inserts a visible warning fallback placeholder block into the Markdown output (e.g. `[Warning: Unsupported Media Attachment - View Issue URL]` or `[Unsupported block node: mediaSingle]`), alerting the Planner Agent to refer to the original Jira issue URL if required.
 
 ### 3.8. Automatic Commits, Centralized Versioning, & Pull Requests
 When the automated commit setting is enabled (via CLI flag `--auto-commit` or environment variable `NOCTIFAB_AUTO_COMMIT=true`), the orchestrator automatically manages the integration pipeline: branch creation, centralized version bumping, changelog updates, and pull request creation.
 
+*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start` and `noctifab run-once`). The planning command (`noctifab plan`) is strictly read-only with respect to the target repository; it builds the task dependency DAG and writes/updates the state database (`noctifab.db`), but it **never** creates branches, makes commits, or writes any changes to the target workspace source repository.
+
 #### 3.8.1. Branch Naming Policy
-The branch created by the worker agent is dynamically named based on the specification source:
-*   **Markdown File:** Suffix of the filename (e.g., branch name: `feature/feature-auth` from `feature-auth.md`).
-*   **Jira Issue:** Suffix of the Jira key (e.g., branch name: `jira/KEY-123`).
-*   **GitHub/GitLab Issue:** Suffix of the issue ID (e.g., branch name: `issue/gh-45` or `issue/gl-78`).
+The branch created by the worker agent is dynamically named using the configured `branch_prefix` (configured under `vcs:` in `.noctifab/config.yaml`):
+*   **Configured Prefix Behavior**: The branch is named `[branch_prefix]task-[task_id]-agent-[agent_id]`.
+*   **Fallback Suffix Resolution**: If no explicit prefix is configured, it defaults to `noctifab/` and is resolved based on the specification source:
+    *   **Markdown File**: Suffix of the filename (e.g., `noctifab/feature-auth` from `feature-auth.md`).
+    *   **Jira Issue**: Suffix of the Jira key (e.g., `noctifab/KEY-123`).
+    *   **GitHub/GitLab Issue**: Suffix of the issue ID (e.g., `noctifab/gh-45`).
 
 #### 3.8.2. Centralized Release Pipeline & Version Bumping
 To prevent git merge conflicts and version stagnation in a multi-agent environment, **individual worker agents do not modify the `VERSION` file or `CHANGELOG.md`**. Instead, the release pipeline is managed centrally:
-1.  **Partial Changelog Collection:** As each worker agent successfully completes its assigned task, it records a list of specific change description items (a partial changelog list, e.g. `["Added token authorization controller", "Fixed memory leak in connection pool"]`) to its task record in the state database.
-2.  **Aggregation:** Once all tasks in the DAG are successfully completed (`TaskSuccess`), the orchestrator coordinator gathers all partial changelog items.
-3.  **Bumping Logic:** The orchestrator reads the current version from the `VERSION` file at the workspace root (formatted as `MAJOR.MINOR.PATCH`) and determines the combined upgrade scope based on the change types of all completed tasks:
-    *   **Major Bump (`+1.0.0`):** Triggered if any task specification includes breaking changes or explicitly requests a major release.
-    *   **Minor Bump (`+0.1.0`):** Triggered if the tasks contain new features (e.g. `feat: ...`) and no breaking changes.
-    *   **Patch Bump (`+0.0.1`):** Triggered if all tasks are bug fixes (e.g. `fix: ...`).
-4.  **Version Update:** The orchestrator writes the final bumped version string back to the `VERSION` file at the root.
+1.  **Initial Version:** The `VERSION` file is initialized to `0.0.1` when the workspace is first created via `noctifab git_init`. This is the baseline version before any agent work.
+2.  **Raw Semver Format and Validation:** The `VERSION` file must strictly contain a raw semantic version string (e.g., `MAJOR.MINOR.PATCH` with no leading `v` or formatting, and a single trailing newline). The version reader and writer strip leading/trailing whitespaces and validate the parsed version against a strict semver regex. If the parsed string is invalid, the orchestrator aborts execution and logs a validation error.
+3.  **VCS Credential Helper & Expiration:** To support rotating tokens or short-lived enterprise credentials, the orchestrator accepts a `--vcs-credential-helper` path flag pointing to a local script. Prior to executing VCS API requests, the orchestrator runs the helper to retrieve a fresh auth token. Any VCS API request that returns an HTTP 401/403 status is mapped to a permanent error classification that immediately suspends worker dispatching and alerts the operator, rather than retrying and risking IP bans.
+4.  **Partial Changelog Collection:** As each worker agent successfully completes its assigned task, it records a list of specific change description items (a partial changelog list, e.g. `["Added token authorization controller", "Fixed memory leak in connection pool"]`) to its `PartialChangelog` field in the task record.
+5.  **Aggregation:** Once all tasks in the DAG are successfully completed (`TaskSuccess`), the orchestrator coordinator gathers all partial changelog items.
+6.  **Bumping Logic:** The orchestrator reads the current version from the `VERSION` file at the workspace root and determines the combined upgrade scope based on the `ChangeType` field of all completed tasks:
+    *   **Major Bump (`+1.0.0`):** Triggered if any task has `ChangeType = ChangeTypeBreaking`.
+    *   **Minor Bump (`+0.1.0`):** Triggered if any task has `ChangeType = ChangeTypeFeature` and no task has `ChangeTypeBreaking`.
+    *   **Patch Bump (`+0.0.1`):** Triggered if all tasks have `ChangeType = ChangeTypeFix`.
+7.  **Version Update:** The orchestrator writes the final bumped version string back to the `VERSION` file at the root.
 
 #### 3.8.3. CHANGELOG.md Management (Keep a Changelog Standard)
 Once all tasks are done, the orchestrator updates the `CHANGELOG.md` file located at the workspace root, adhering strictly to the **Keep a Changelog** standard. It prepends the unified release section at the top of the file under the `# Changelog` heading, compiling all gathered partial changelog items into categorized lists:
@@ -645,25 +1609,237 @@ Once all tasks are done, the orchestrator updates the `CHANGELOG.md` file locate
 *   Categorized lists of changes under subheadings: `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`.
 
 #### 3.8.4. Conventional Commits & Pull Request Creation
-*   **Conventional Commit Message:** The orchestrator writes the commit message conforming to the **Conventional Commits** specification (e.g., `feat(auth): integrate oauth2 login`, `fix(db): resolve connection pool leak`), describing the aggregated changes.
+*   **Conventional Commit Message:** If conventional commits are enabled in the configuration (`conventional_commits.enabled: true`), the commit messages written by the orchestrator follow the Conventional Commits specification. The message prefix is determined by the task change type (e.g. `feat` for Feature, `fix` for Fix) and applies the configured `default_scope` (e.g. `feat(core): integrate oauth2 login`).
 *   **Remote Push:** The Git wrapper pushes the branch to the remote repository.
-*   **Pull Request Creation:** The VCS client makes a REST/GraphQL call to the remote provider (GitHub/GitLab/Bitbucket) to create a Pull Request targeting the default branch (e.g., `main`), providing a detailed description outlining:
+*   **Pull Request Creation:** The VCS client makes a REST/GraphQL call to the remote provider (GitHub/GitLab) to create a Pull Request targeting the configured `base_branch` (which defaults to `master`), providing a detailed description outlining:
     *   The feature/fix goal.
     *   List of files modified.
     *   A summary of holdout test evaluation outcomes.
+
+#### 3.8.5. Workspace Cleanup & Completion Notification
+Once the VCS pull request has been successfully created and the final verification validation criteria pass:
+1.  **Git Branch Cleanup:** The orchestrator prunes and deletes the local Git task branches (`noctifab/task-<id>-agent-<agent_id>`) from the workspace repository.
+2.  **State Archival:** The daemon archives the completed task entries in the database and cleans up transient execution records.
+3.  **Operator Notification:** The daemon prints a structured completion message to `stdout` (or outputs to the daemon control socket) informing the user that the PR process is complete, outputting the generated remote Pull Request URL (e.g. `https://github.com/owner/repo/pull/42`).
+
+### 3.9. Workspace Directory & Configuration Layout
+The daemon initializes and operates inside a dedicated `.noctifab/` directory at the root of the target workspace.
+
+#### 3.9.1. Directory Structure
+```
+.noctifab/
+├── config.yaml              # Core YAML configuration file
+├── config/
+│   └── noctifab.db          # SQLite state database
+├── holdout/                 # Hidden directory containing BDD holdout test scenarios
+├── logs/                    # Execution/audit logs folder
+├── profiles/                # Agent permission profiles (default.yaml, etc.)
+└── .gitignore               # Local VCS ignore file to prevent pushing database/logs
+```
+
+#### 3.9.2. YAML Configuration Schema (`.noctifab/config.yaml`)
+```yaml
+config_version: "1.0"
+
+orchestrator:
+  max_tools_per_response: 5     # Maximum parallel tool calls allowed per LLM response
+  concurrency: 3                # Max concurrent worker agents running parallel tasks
+  poll_interval: "5m"           # Interval between task scanning iterations
+  max_clarification_wait: "30m" # Max wait time waiting for user clarifications (user requested: 30 minutes)
+  clarification_timeout_action: "abort" # Action on clarification timeout: abort, continue, fail
+
+storage:
+  provider: "sqlite"            # Options: sqlite, postgres, mysql, json
+  conn_string: "./config/noctifab.db" # Database connection string or sqlite filepath
+  json_file_path: "./config/state.json" # File path used strictly if provider is "json"
+
+llm:
+  provider: "gemini"            # Options: gemini (Gemini), anthropic (Claude), openai (ChatGPT/GPT-4o), ollama
+  model: "gemini-1.5-pro"       # Target LLM model identifier
+  temperature: 0.0              # Default temperature for completions
+  api_key_env: "GEMINI_API_KEY" # Environment variable containing the secret API token/credentials
+  max_retries: 10               # Max retries for outbound HTTP requests
+  retry_backoff: "100ms"        # Base delay time duration for exponential backoff (e.g. retry_backoff * 2^retry)
+  retry_backoff_factor: 2.0     # Multiplier factor for exponential backoff retry logic
+  max_budget_usd: 10.0          # Max daily LLM credit budget boundary in USD (locally monitored & safeguarded)
+
+vcs:
+  provider: "github"            # Options: github, gitlab
+  repository: "owner/repo"
+  base_branch: "master"         # Base target integration branch for PRs (default: master)
+  branch_prefix: "noctifab/"    # Branch prefix for worker branches (e.g., noctifab/task-)
+  token_env: "GITHUB_TOKEN"     # Environment variable for VCS authentication API token
+  conventional_commits:
+    enabled: true               # Enforce conventional commit structures
+    default_scope: "core"       # Default scope mapping to commit titles (e.g., feat(core): message)
+  git_mutex_timeout: "30s"      # Max wait timeout limit for acquiring the centralized git lock mutex
+  git_operation_retries: 3      # Max retries on transient Git write / lock collisions
+  git_retry_backoff: "500ms"    # Delay base between Git lock retry attempts
+
+sandbox:
+  mode: "host"                  # Options: host, docker
+  timeout_seconds: 300
+  grace_period_seconds: 30
+  test_command: "go test -v ./..." # Default command used by run_tests if none is supplied
+  # --- Formatters and Linters Settings ---
+  # Common linters & formatters for reference across supported languages:
+  # - Go: Linter="golangci-lint run", Formatter="go fmt ./..." (or "goimports -w")
+  # - Python: Linter="ruff check", Formatter="ruff format" (or "black")
+  # - Ruby: Linter="rubocop", Formatter="rubocop -A"
+  # - Java: Linter="checkstyle", Formatter="google-java-format"
+  # - JavaScript/TypeScript: Linter="eslint .", Formatter="prettier --write ."
+  linter_command: "golangci-lint run" # Default deterministic linter tool command
+  formatter_command: "go fmt ./..." # Default deterministic code formatter tool command
+  exclude_paths:                # Scanned path exclusions
+    - "node_modules/"
+    - "vendor/"
+    - "bin/"
+    - "dist/"
+    - ".noctifab/"
+  allowed_commands:              # Whitelisted utility binaries allowed to run in host sandbox
+    - "go"
+    - "git"
+    - "npm"
+    - "python"
+    - "make"
+
+roles:
+  orchestrator:
+    profile: "orchestrator"      # References .noctifab/profiles/orchestrator.yaml
+  planner:
+    model: "claude-3-5-sonnet"
+    temperature: 0.5
+    profile: "planner"          # References .noctifab/profiles/planner.yaml
+  generator:
+    model: "gemini-1.5-pro"
+    temperature: 0.0
+    profile: "generator"        # References .noctifab/profiles/generator.yaml
+  evaluator:
+    model: "gemini-1.5-pro"
+    temperature: 0.0
+    profile: "evaluator"        # References .noctifab/profiles/evaluator.yaml
+```
+
+#### 3.9.3. Profile Configuration Schema (`.noctifab/profiles/<profile_name>.yaml`)
+Each profile defines a set of tool execution permissions and network routing rules to enforce the security sandbox. 
+
+If a role in `.noctifab/config.yaml` specifies a `profile`, the orchestrator loads the configuration from `.noctifab/profiles/<profile>.yaml`. If no profile property is specified, the orchestrator automatically searches for a profile matching the role name (e.g. `generator.yaml`), and if not found, falls back to `default.yaml`.
+
+##### Orchestrator Profile (`.noctifab/profiles/orchestrator.yaml`)
+By default, the Orchestrator runs in a privileged/unrestricted context. It is the only component allowed to invoke Git tools (`git_checkout`, `git_commit`, `git_push`, `git_create_pr`) and run container commands (`docker_action`) on the host system or inside docker networks.
+
+```yaml
+permissions:
+  allowed_tools:
+    - "*"  # Wildcard allowing all registered core and agentic tools
+  network:
+    allow_ai_provider: true  # Allow connection to the configured LLM API endpoints
+    allow_external: true     # Allow outgoing database connection, VCS push/pull, and API integration
+```
+
+##### Default Profile (`.noctifab/profiles/default.yaml`)
+By default, the LLM agents only have permissions to edit workspace files, run package tests, and communicate with the configured AI provider. No other tools or outbound network calls are allowed.
+
+```yaml
+permissions:
+  allowed_tools:
+    - "read_file"
+    - "write_file"
+    - "edit_file"
+    - "list_directory"
+    - "find_files"
+    - "grep_search"
+    - "run_tests"
+    - "add_task"
+    - "log_message"
+    - "noop"
+  # Note: Git tools (git_checkout, git_commit, git_push, git_create_pr) and docker_action
+  # are strictly excluded from the default agent profile.
+  network:
+    allow_ai_provider: true  # Allow connection to the configured LLM API endpoints
+    allow_external: false    # Block all other external outbound internet traffic
+```
+
+##### Planner Profile (`.noctifab/profiles/planner.yaml`)
+Enforces constraints specific to the Planner role:
+
+```yaml
+permissions:
+  allowed_tools:
+    - "add_task"
+    - "log_message"
+    - "noop"
+  network:
+    allow_ai_provider: true
+    allow_external: false
+```
+
+##### Generator Profile (`.noctifab/profiles/generator.yaml`)
+Enforces constraints specific to the Generator role, enabling files query and code modification:
+
+```yaml
+permissions:
+  allowed_tools:
+    - "read_file"
+    - "write_file"
+    - "edit_file"
+    - "list_directory"
+    - "find_files"
+    - "grep_search"
+    - "run_tests"
+    - "noop"
+  network:
+    allow_ai_provider: true
+    allow_external: false
+```
+
+##### Evaluator Profile (`.noctifab/profiles/evaluator.yaml`)
+Enforces constraints specific to the Evaluator role:
+
+```yaml
+permissions:
+  allowed_tools:
+    - "run_tests"
+    - "read_file"
+    - "noop"
+  network:
+    allow_ai_provider: true
+    allow_external: false
+```
 
 ---
 
 ## 4. Command Line Interface (CLI)
 
-`noctifab` exposes a structured Command Line Interface. It supports multiple subcommands to configure, run, and validate the agent's operations.
+`noctifab` exposes a structured Command Line Interface built using the `github.com/spf13/cobra` framework.
+
+### 4.0. Cobra CLI Configuration and Error SILENCE
+To prevent console log clutter and improve developer user experience, the Cobra framework settings are modified:
+1.  **Usage and Error Silencing:** All commands and subcommands are initialized with `SilenceUsage: true` and `SilenceErrors: true`. This prevents Cobra from printing the standard CLI usage instruction manual whenever a runtime command error is returned.
+2.  **Centralized Error Handling:** Main execution logic in `cmd/noctifab/main.go` catches all errors returned by subcommand execution handlers. The main wrapper formats the error using the configured logger, writes the message clearly to `stderr`, and terminates the process with the corresponding exit code.
 
 ### 4.1. CLI Commands
 
-*   `noctifab init`
-    Initializes a new `noctifab` workspace config directory and initializes the database.
+*   `noctifab git_init`
+    Clones the target VCS repository directly into the Current Working Directory (CWD) and initializes the workspace config directory and database. This command is strictly idempotent:
+    *   **Clone Protocol CLI Flag:** Adds a `--vcs-clone-protocol` flag (values: `https`, `ssh`, default: `https`). The command constructs the clone URL dynamically using the VCS provider API (e.g. `https://github.com/owner/repo.git`).
+    *   **Directory Cleanliness Guard:** Prior to execution, the command walks the current directory. If the directory contains files or folders other than `.noctifab` layout assets, the command aborts immediately with process exit code `4` and logs a security warning to `stderr` to prevent accidental codebase overwrites.
+    *   If run in a clean directory, it clones the repository, creates the `.noctifab/` configuration directory structure, generates a default `.noctifab/config.yaml` file, and initializes the local SQLite database.
+    *   If run in a directory where a repository or `.noctifab` directory already exists, it verifies remote origin configurations and database schemas, preserving existing configuration values or task state without overwriting or corrupting them.
 *   `noctifab start`
     Starts the daemonized execution loop, continuously polling and executing actions.
+    
+    ##### Startup Pre-Flight Health & Maintenance Checks:
+    Prior to starting the loop, `noctifab start` executes the following checks sequentially:
+    1. **Git CLI Availability:** Runs `git --version` to ensure git is installed and executable on the host system PATH.
+    2. **Orphaned Worktree Cleanup:** Triggers a non-destructive version of the maintenance routine, scanning `.noctifab/worktrees/` and Git registries to prune and remove orphaned worktree directories left over from previous unclean terminations.
+    3. **Database Connectivity:** Opens connection to SQLite/PostgreSQL database and executes a write-test and applies pending schema migrations.
+    4. **LLM API Reachability:** Calls a minimal verification ping request to the configured LLM API provider.
+    5. **Sandbox Integrity:** If `--sandbox-mode docker` is set, verifies that the local Docker daemon is reachable and can run containers.
+    If any check fails, the command aborts immediately with a non-zero exit status and logs the specific dependency failure to `stderr`.
+    
+    ##### Daemon Lock & PID File:
+    At start, `noctifab start` attempts to acquire a file lock (`flock`) on `.noctifab/noctifab.pid` and writes its process PID inside. If another process holds the lock, the command exits with `"noctifab daemon is already running in this workspace."`
 *   `noctifab run-once`
     Executes exactly one cycle of the orchestrator loop (Observe -> Decide -> Validate -> Execute -> Save) and then terminates. Excellent for debugging and running in crontab.
 *   `noctifab validate`
@@ -671,7 +1847,12 @@ Once all tasks are done, the orchestrator updates the `CHANGELOG.md` file locate
 *   `noctifab plan`
     Reads the input specification file, performs the clarification loop if needed, and builds/updates the task DAG in the configuration state.
 *   `noctifab maintenance`
-    Launches a dedicated Quality Maintenance run. Scans the target workspace repository for code drift, stale document links, and deprecated imports, creating cleanup PRs.
+    Runs a deterministic quality maintenance cycle. It:
+    1. Prunes dangling task branches whose tasks are already resolved as `SUCCESS` or `FAILED` in the repository.
+    2. Cleans up orphaned Git worktrees in `.noctifab/worktrees/`.
+    3. Executes pending database schema migrations. Migrations are tracked in a `schema_migrations` table inside the database. The migrations read embedded SQL scripts using standard `go:embed` inside the binary and run within a single transaction.
+    4. Validates the `.noctifab/config.yaml` schema against environment variables and configuration properties.
+    This command runs entirely deterministically and does not invoke the LLM, avoiding execution costs.
 
 ### 4.2. CLI Flags & Environment Mappings
 
@@ -679,36 +1860,92 @@ The CLI configuration can be provided via flags or matching environment variable
 
 | Flag Name | Short | Environment Variable | Default Value | Description |
 |---|---|---|---|---|
-| `--config` | `-c` | `NOCTIFAB_CONFIG` | `cwd/.noctifab/config/noctifab.db` | Path to the database or configuration file |
-| `--storage-provider` | | `NOCTIFAB_STORAGE_PROVIDER` | `sqlite` | Storage backend provider: `sqlite`, `postgres` |
+| `--config` | `-c` | `NOCTIFAB_CONFIG` | `cwd/.noctifab/config.yaml` | Path to the YAML configuration file |
+| `--db-path` | | `NOCTIFAB_DB_PATH` | `cwd/.noctifab/config/noctifab.db` | Path to the local SQLite database file (SQLite provider only) |
+| `--storage-provider` | | `NOCTIFAB_STORAGE_PROVIDER` | `sqlite` | Storage backend provider: `sqlite`, `postgres`, `mysql`, `json` |
 | `--storage-conn` | | `NOCTIFAB_STORAGE_CONN` | | Connection string or filepath for the storage database |
 | `--input` | `-i` | `NOCTIFAB_INPUT` | | Path, GitHub/GitLab issue URL, or Jira URL to fetch the feature specification |
 | `--auto-commit` | | `NOCTIFAB_AUTO_COMMIT` | `false` | Enable automatic branch creation, conventional commit, version bump, and PR creation |
 | `--agents` | `-a` | `NOCTIFAB_AGENTS_COUNT` | `3` | Maximum number of parallel workers/agents to spawn |
 | `--interval` | `-t` | `NOCTIFAB_INTERVAL` | `5m` | Cycle loop polling duration interval |
-| `--vcs-provider` | `-p` | `NOCTIFAB_VCS_PROVIDER` | `github` | Version Control System (VCS) target: `github`, `gitlab`, `bitbucket` |
+| `--vcs-provider` | `-p` | `NOCTIFAB_VCS_PROVIDER` | `github` | Version Control System (VCS) target: `github`, `gitlab` |
 | `--vcs-token` | | `NOCTIFAB_VCS_TOKEN` | (Required) | API Access Token for the VCS provider |
 | `--vcs-repo` | `-r` | `NOCTIFAB_VCS_REPO` | (Required) | Repository identifier format: `owner/repo` |
 | `--llm-provider` | `-l` | `NOCTIFAB_LLM_PROVIDER` | `openai` | LLM client API provider: `openai`, `anthropic`, `gemini`, `ollama` |
-| `--llm-model` | `-m` | `NOCTIFAB_LLM_MODEL` | `gpt-4o` | LLM Model Identifier (e.g., `gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro`) |
+| `--llm-model` | `-m` | `NOCTIFAB_LLM_MODEL` | `gpt-4o` | LLM Model Identifier (e.g., `gpt-4o`, `claude-3-5-sonnet`) |
 | `--llm-api-key` | `-k` | `NOCTIFAB_LLM_API_KEY` | | API authentication key. Falls back to `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` if not set |
 | `--llm-url` | `-u` | `NOCTIFAB_LLM_URL` | | Custom endpoint URL (useful for local Ollama instances) |
+| `--llm-planner-model` | | `NOCTIFAB_LLM_PLANNER_MODEL` | | Model override for the Planner agent (default: same as `--llm-model`) |
+| `--llm-generator-model` | | `NOCTIFAB_LLM_GENERATOR_MODEL` | | Model override for the Generator agent (default: same as `--llm-model`) |
+| `--llm-evaluator-model` | | `NOCTIFAB_LLM_EVALUATOR_MODEL` | | Model override for the Evaluator agent (default: same as `--llm-model`) |
 | `--jira-user` | | `NOCTIFAB_JIRA_USER` | | User email for Jira REST API authentication |
 | `--jira-token` | | `NOCTIFAB_JIRA_TOKEN` | | API Token for Jira REST API authentication |
 | `--jira-url` | | `NOCTIFAB_JIRA_URL` | | Base URL of the Jira cloud instance (e.g., https://company.atlassian.net) |
 | `--http-max-retries` | | `NOCTIFAB_HTTP_MAX_RETRIES` | `10` | Maximum HTTP request retries for API clients |
 | `--http-retry-backoff` | | `NOCTIFAB_HTTP_RETRY_BACKOFF` | `100ms` | Base delay time duration for exponential backoff retry logic |
+| `--max-tools-per-response`|| `NOCTIFAB_MAX_TOOLS_PER_RESPONSE`| `5` | Maximum number of parallel tool calls/actions allowed in a single LLM response |
+| `--max-actions` | | `NOCTIFAB_MAX_ACTIONS` | `100` | Global action count ceiling per run session |
+| `--max-duration` | | `NOCTIFAB_MAX_DURATION` | `0` | Elapsed duration run ceiling (e.g. `2h`, `30m`). 0 disables limit. |
+| `--conversation-mode` | | `NOCTIFAB_CONVERSATION_MODE` | `sliding-window` | Conversation history tracking mode: `sliding-window` or `compaction` |
+| `--max-history-messages` | | `NOCTIFAB_MAX_HISTORY_MESSAGES` | `10` | Maximum number of messages kept in history for sliding-window mode |
+| `--compaction-threshold` | | `NOCTIFAB_COMPACTION_THRESHOLD` | `15` | Message count threshold before triggering conversation compaction |
+| `--max-history-tokens` | | `NOCTIFAB_MAX_HISTORY_TOKENS` | `4096` | Token limit for conversation history context |
+| `--sandbox-mode` | | `NOCTIFAB_SANDBOX_MODE` | `host` | Sandbox isolation mode: `host` (directory jail) or `docker` (containerized runner) |
+| `--shutdown-grace-period` | | `NOCTIFAB_SHUTDOWN_GRACE_PERIOD` | `30s` | Delay period to wait for in-flight tasks during graceful shutdown |
+| `--occ-max-retries` | | `NOCTIFAB_OCC_MAX_RETRIES` | `5` | Maximum number of reload-modify-retry iterations on version conflicts |
+| `--occ-backoff-base` | | `NOCTIFAB_OCC_BACKOFF_BASE` | `50ms` | Base delay time duration for OCC lock retry backoff |
+| `--occ-backoff-factor` | | `NOCTIFAB_OCC_BACKOFF_FACTOR` | `2.0` | Exponential backoff factor on OCC conflicts |
+| `--max-budget-usd` | | `NOCTIFAB_MAX_BUDGET_USD` | `10.00` | Daily LLM credit budget boundary in USD |
+| `--token-usage-limit` | | `NOCTIFAB_TOKEN_USAGE_LIMIT` | `0` | Daily token limit boundary (0 disables limit) |
+| `--log-level` | | `NOCTIFAB_LOG_LEVEL` | `info` | Logging verbosity: `debug`, `info`, `warn`, `error` |
+| `--log-file` | | `NOCTIFAB_LOG_FILE` | | Path to target log file (default writes to stdout) |
+| `--clarification-timeout` | | `NOCTIFAB_CLARIFICATION_TIMEOUT` | `30m` | Time limit before auto-answering open clarification questions |
+| `--otel-exporter-otlp-endpoint` | | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | Target endpoint for OTLP gRPC/HTTP trace collector |
+| `--otel-service-name` | | `OTEL_SERVICE_NAME` | `noctifab-daemon` | Service name identifier exported in OpenTelemetry traces |
+| `--llm-planner-temperature` | | `NOCTIFAB_LLM_PLANNER_TEMPERATURE` | `0.5` | LLM temperature override for the Planner role |
+| `--llm-generator-temperature` | | `NOCTIFAB_LLM_GENERATOR_TEMPERATURE` | `0.0` | LLM temperature override for the Generator role |
+| `--llm-evaluator-temperature` | | `NOCTIFAB_LLM_EVALUATOR_TEMPERATURE` | `0.0` | LLM temperature override for the Evaluator role |
 
----
+##### Stdin Interactive Command Grammar
 
-## 5. Observability & Logging Specifications
+When running in non-blocking interactive mode, operators can send the following structured text commands via `stdin` or UNIX domain sockets to steer execution:
 
-The loop execution output is printed to standard output (`stdout`) or a configured log file. To facilitate debugging and state reconstruction, logging must contain:
+| Command Pattern | Arguments | Example | Description |
+|---|---|---|---|
+| `answer <id> <text>` | `id` (string), `text` (string) | `answer clar-12 JWT` | Submits response to an open clarification request. |
+| `add-task <title> <desc> [deps]` | `title`, `desc`, `deps` (comma list) | `add-task "Doc API" "Write docs"### 5.1. OpenTelemetry Specifications
+For distributed tracing and instrumentation, `noctifab` integrates with OpenTelemetry (OTel). Traces are exported in OTLP format to a configured OpenTelemetry collector.
 
-1.  **State Snapshots:** Serialized state outputs printed before asking the LLM (at trace log level).
-2.  **LLM Decisions:** Logs representing the chosen `tool`, parsed arguments (`args`), and reasoning explanation.
-3.  **Validation Failures:** Warnings detailing validation errors (e.g. `validation failed: no tasks to complete`).
-4.  **Tool Execution Outcome:** Output results, elapsed execution time, and status codes.
+#### 5.1.1. Trace Span Hierarchy
+Each execution cycle and worker action is wrapped inside a trace span:
+1.  **Orchestrator Cycle Span (`noctifab.cycle`):** Wraps the top-level loop run.
+2.  **Task Executor Worker Span (`noctifab.task_worker`):** Spanned when a Generator goroutine starts working on a topological DAG task. Contains attribute `noctifab.task_id`.
+3.  **Action Execution Span (`noctifab.action`):** Wrapped around every standard production tool call.
+4.  **LLM Request Span (`noctifab.llm_completion`):** Wrapped around LLM client network calls.
+
+#### 5.1.2. Span Correlation ID
+To trace actions across concurrent routines back to their scheduling source, every span initiated under a task worker thread must propagate a correlation attribute:
+*   **Correlation ID:** The attribute `noctifab.task_id` must match the unique ID of the target `Task` from the database.
+
+#### 5.1.3. Standard Semantic Attributes
+All trace spans must record the following standard OpenTelemetry attributes where applicable:
+*   `service.name`: Configured name of the service (default: `noctifab-daemon`).
+*   `llm.provider`: `openai`, `anthropic`, `gemini`, `ollama`.
+*   `llm.model`: Model identifier string (e.g. `gpt-4o`).
+*   `action.tool`: Name of the executed tool (e.g. `read_file`, `git_checkout`).
+*   `action.success`: Boolean flag indicating tool command success.
+*   `error.type`: Classification of failure kind (`ErrTransient`, `ErrPermanent`, etc.).
+
+#### 5.1.4. OTel SDK Setup, Async Processor, and Noop Fallback
+The system imports standard Go OTel packages (`go.opentelemetry.io/otel`, `go.opentelemetry.io/otel/sdk/trace`, and `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc`).
+To prevent trace transmission latency from blocking orchestrator cycles:
+*   **Asynchronous Batch Span Processor:** The SDK is configured using an asynchronous Batch Span Processor (`sdktrace.NewBatchSpanProcessor`) with a bounded queue size and strict export timeout (default: 5 seconds max).
+*   **Non-Blocking Startup:** If the OTel collector at `--otel-exporter-otlp-endpoint` is offline or unreachable on boot, the initialization routine logs a non-blocking warning to `stderr` and automatically registers a noop tracer provider, avoiding process crashes or execution delays.
+
+#### 5.1.5. Context Propagation across Process & Network Boundaries
+Standard Go contexts do not cross operating system process boundaries natively. To link execution traces across sandboxes, subprocesses, and HTTP APIs:
+*   **Subprocess Environment Injection:** Before starting any command tool execution (`run_tests`, `docker_action` or shell subprocesses), the runner extracts the active span's W3C trace context details using the OTel text map propagator. It injects these attributes as environment variables (`TRACEPARENT` and `TRACESTATE`) into the target execution process or container environment.
+*   **Outbound API HTTP Headers:** For all external HTTP request integrations (e.g. LLM providers, Jira REST API, VCS API requests), the http client uses the standard W3C Trace Context propagator to inject span context headers (`traceparent`, `tracestate`) into the outbound HTTP headers, ensuring trace continuity.
 
 ---
 
@@ -718,25 +1955,71 @@ Stability is paramount. `noctifab` requires a two-tiered testing approach: Unit 
 
 ### 6.1. Unit Testing
 *   **Location:** All unit tests must be defined alongside the source files in files matching `*_test.go`.
-*   **Command:** Run unit tests via `go test ./...`
+*   **Command:** Run unit tests via `go test -v ./...`
+*   **Testing Conventions:**
+    1. **Table-Driven Tests:** All unit tests verifying multiple input/output scenarios must use table-driven layout.
+    2. **Test helper validation (`t.Helper()`):** Any test assertions grouped inside custom helper functions must call `t.Helper()` as the first statement to preserve line trace failures.
+    3. **Concurreny execution (`t.Parallel()`):** Tests that do not share state must call `t.Parallel()` to optimize build times.
+    4. **Assertion Library:** Use `github.com/stretchr/testify/assert` and `github.com/stretchr/testify/require` for clean assertions.
+
+##### Table-Driven Unit Test Example:
+```go
+func TestDAGCycleDetection(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		tasks   []domain.Task
+		wantErr bool
+	}{
+		{
+			name: "valid acyclic graph",
+			tasks: []domain.Task{
+				{ID: "1", DependsOn: []string{}},
+				{ID: "2", DependsOn: []string{"1"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "simple cyclic dependency",
+			tasks: []domain.Task{
+				{ID: "1", DependsOn: []string{"2"}},
+				{ID: "2", DependsOn: []string{"1"}},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := checkCycles(tt.tasks)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+```
 
 ### 6.2. E2E Docker Integration Testing
-To test the complete orchestrator without making real API calls, we implement a multi-container E2E framework managed by Docker Compose.
+To test the complete orchestrator without making real API calls, we implement a multi-container E2E framework managed by Docker Compose. Real services are run wherever computationally feasible (e.g. Git and Databases), whereas mock services are strictly limited to the LLM/AI provider to avoid the massive resource overhead of running actual LLM models locally.
 
 ```
        ┌────────────────────────┐
        │     Docker Network     │
        └───────────┬────────────┘
                    │
-         ┌─────────┼─────────┐
-         │         │         │
-         ▼         ▼         ▼
-    ┌─────────┐┌─────────┐┌─────────┐
-    │llm      ││github   ││sqlite/  │
-    │(mock)   ││(mock)   ││postgres │
-    └────┬────┘└────┬────┘└────┬────┘
-         │          │          │
-         └──────────┼──────────┘
+         ┌─────────┼─────────┬─────────┐
+         │         │         │         │
+         ▼         ▼         ▼         ▼
+    ┌─────────┐┌─────────┐┌─────────┐┌─────────┐
+    │llm      ││github   ││git-srv  ││sqlite/  │
+    │(mock)   ││api(mock)││(real)   ││postgres │
+    └────┬────┘└────┬────┘└────┬────┘└────┬────┘
+         │          │          │          │
+         └──────────┼──────────┼──────────┘
                     │
                     ▼
               ┌───────────┐
@@ -752,36 +2035,76 @@ To test the complete orchestrator without making real API calls, we implement a 
 ```
 
 The testing suite creates a network consisting of:
-1.  **`harness`:** The `noctifab` binary container built from local source. It accepts environmental parameters to connect to mock dependencies.
-2.  **`llm` (Mock LLM Provider):** A lightweight service mimicking the OpenAI or Ollama JSON protocols. It executes a deterministic matching engine that matches incoming prompts against defined rules.
-3.  **`github` (Mock VCS API and Git Server):** An HTTP service wrapping `git-http-backend` via CGI to host a real Git repository, combined with mock handlers for the GitHub REST API (allowing issue reading, PR creation, and merges).
-4.  **`sqlite` / `postgres`:** Database instances configured to check state preservation, migration compatibility, and schema parity.
-5.  **`mock-project`:** A target directory mounted into the harness containing intentional issues, broken code, and failing unit tests to act as the test subject for the autonomous agent.
+1.  **`harness`:** The `noctifab` binary container built from local source. It accepts environmental parameters to connect to database and mock endpoints.
+2.  **`llm` (Mock LLM Provider):** A lightweight service mimicking the OpenAI or Ollama JSON protocols. It is the only fully mocked service in the E2E framework. Because running actual LLM models locally is computationally expensive, this mock service executes a deterministic matching engine that matches incoming prompts against defined rules.
+3.  **`git-srv` (Real Git Server):** A standard Git Server container (e.g. standard Git HTTP daemon or SSH container, running a real Git daemon) hosting authentic repositories. All git operations (cloning, branch checkouts, staging, commits, pushes, rebases, merges) executed by the orchestrator run directly against this real service.
+4.  **`github-api` (Mock VCS API):** A lightweight HTTP service that mocks REST API endpoints for the GitHub API (allowing issue reading, PR creation, and merges), keeping its database in memory.
+5.  **`sqlite` / `postgres`:** Real database instances configured to check state preservation, migration compatibility, and schema parity.
+6.  **`mock-project`:** A target directory mounted into the harness containing intentional issues, broken code, and failing unit tests to act as the test subject for the autonomous agent.
 
-#### 6.2.1. Mock Git & VCS API Server Architecture
-The mock VCS service (e.g., matching the GitHub API) provides two main features:
-*   **Git CGI Wrapper:** Uses Go's standard library `net/http/cgi` to wrap the standard `git-http-backend` binary. This enables authentic git actions (clone, pull, push, checkout) inside the harness sandbox targeting the mock remote.
-*   **REST API Handlers:** Exposes matching HTTP endpoints for VCS interactions:
+#### 6.2.1. VCS Integration Architecture
+*   **Git Server Access:** The orchestrator clones, pulls, and pushes code directly using standard Git commands targeting the `git-srv` container over the network.
+*   **REST API Handlers:** The mock `github-api` service exposes matching HTTP endpoints for VCS interactions:
     *   `GET /api/v3/repos/{owner}/{repo}/issues/{number}` - Returns the issue body/specification for ingestion.
     *   `POST /api/v3/repos/{owner}/{repo}/pulls` - Creates a PR, returning status information and storing it in an in-memory database.
     *   `GET /api/v3/repos/{owner}/{repo}/pulls/{number}` - Queries mergeability and status.
-    *   `PUT /api/v3/repos/{owner}/{repo}/pulls/{number}/merge` - Merges the branch and updates the mock repository's default branch.
+    *   `PUT /api/v3/repos/{owner}/{repo}/pulls/{number}/merge` - Merges the branch and updates the default branch on `git-srv`.
+
+#### 6.2.1.1. E2E Testing as Development Leverage
+E2E integration tests are not just validation gates for releases; they are a critical tool for local development leverage:
+*   **Rapid Feedback Loop:** Running the E2E suite locally allows developers to test the entire application loop from end to end (Observe -> Decide -> Validate -> Execute -> Save) in seconds rather than waiting for CI pipelines.
+*   **Regressions & Race Protection:** Running the E2E tests validates multi-agent scheduling, database connection limits, file lock registry delays, rebase queues, and subprocess cancellations under simulated concurrent loads, ensuring that new features do not introduce race conditions or lockouts.
+*   **Continuous Improvement Loop:** The E2E test suite acts as immediate feedback during development. Developers should run the E2E suite continuously when refactoring or adding new features to ensure the application works correctly.
 
 #### 6.2.2. Mock LLM Rule Engine Architecture
 The mock LLM client serves requests dynamically based on rules written for specific test scenarios, allowing verification of both happy and unhappy paths (such as retries and guardrail blocks) deterministically:
 *   **Request-Dependent Matching:** The server accepts `/v1/chat/completions` (OpenAI style) or `/api/generate` (Ollama style) requests. It matches the prompt content and the serialized state (injected in the prompt) against a list of rule definitions:
     *   `match.prompt_contains`: Substring/regex matching on the text prompt instructions.
     *   `match.state_contains`: JSON path or substring matching on the current state.
-*   **Response Generation:** Upon a successful match, the server returns the associated structured JSON object:
+*   **Response Generation & JSON schema:** Upon a successful match, the server returns the associated structured JSON object:
     ```json
     {
       "reasoning": "Explanation of the decision",
-      "tool": "tool_name",
-      "args": {
-        "arg_name": "value"
-      }
+      "actions": [
+        {
+          "tool": "tool_name",
+          "args": {
+            "arg_name": "value"
+          }
+        }
+      ]
     }
     ```
+    
+    ##### Mock LLM Scenario Rules JSON Schema:
+    E2E scenarios are loaded from a JSON rule mapping file containing array definitions:
+    ```json
+    {
+      "rules": [
+        {
+          "id": "scenario-init-plan",
+          "match": {
+            "prompt_contains": "Decompose the following input specification",
+            "state_contains": "PENDING"
+          },
+          "response": {
+            "reasoning": "Splitting features",
+            "actions": [
+              {
+                "tool": "add_task",
+                "args": {
+                  "title": "Task 1",
+                  "description": "Write code",
+                  "depends_on": []
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+    ```
+
 *   **Fallback:** If no rule matches the incoming prompt/state, the mock server returns an HTTP 400 error detailing the unmatched prompt to simplify debugging.
 
 #### 6.2.3. Host-Side E2E Test Runner
@@ -816,7 +2139,7 @@ To ensure high cohesion, low coupling, and compliance with the 500-line source c
     *   `pkg/domain/state_repository.go` - [StateRepository](file:///Users/diegoj/repos/noctifab/SPEC.md#L206-L216) interface.
     *   `pkg/infrastructure/storage/sqlite_repository.go` - SQLite database implementation of state storage.
     *   `pkg/infrastructure/storage/postgres_repository.go` - PostgreSQL database implementation of state storage.
-    *   `cmd/noctifab/main.go` - Main CLI bootstrap routing commands (`noctifab init`, `noctifab validate`).
+    *   `cmd/noctifab/main.go` - Main CLI bootstrap routing commands (`noctifab git_init`, `noctifab validate`).
 *   **Verification:** Unit tests for SQLite and PostgreSQL loading/saving, connection management, and transaction OCC safety.
 
 ### 7.2. Phase 2: Task DAG & Concurrency Scheduler
@@ -870,9 +2193,9 @@ To guarantee stable and autonomous execution without human intervention, `noctif
 ### 8.1. Probabilistic and Conversational LLM Outputs
 *   **Challenge:** Large Language Models (LLMs) are probabilistic and often return conversational text, markdown formatting (such as ` ```json ` tags), or explanations alongside the JSON payload.
 *   **Resolution:** 
-    1.  **Greedy Extraction Regex:** The parser implements a greedy regular expression `(?s)\{.*\}` to extract the substring between the first `{` and the last `}`.
-    2.  **Schema Unmarshalling:** The matched string is decoded directly using Go's `json.Unmarshal`.
-    3.  **Instructional Feedback Loops:** If unmarshalling fails or schema validation fails, the orchestrator does not crash. It formats the error as a lint-like prompt (e.g., `"Error parsing response: missing 'tool' field. Please return only the structured JSON"`), incrementing the loop retry counter.
+    1.  **Deterministic Brace-Counting Scanner:** The parser walks the response stream to find the first `{`, tracks nesting depth by incrementing on `{` and decrementing on `}`, and extracts the precise boundary substring.
+    2.  **Schema Unmarshalling:** The extracted substring is unmarshalled using Go standard library's `json.Unmarshal`.
+    3.  **Instructional Feedback Loops:** If unmarshalling fails or schema validation fails, the orchestrator does not crash. It formats the error as a lint-like prompt (e.g., `"Error parsing response: missing 'actions' field. Please return only the structured JSON"`), incrementing the loop retry counter.
 
 ### 8.2. Go File Line Limit Compliance (Max 500 Lines)
 *   **Challenge:** Large infrastructure adapters, orchestrators, or CLI flag setups can easily grow past 500 lines of code, violating the strict `AGENTS.md` limit.
@@ -902,7 +2225,7 @@ To guarantee stable and autonomous execution without human intervention, `noctif
 *   **Challenge:** Concurrent developer agents processing parallel DAG tasks might cause git conflicts, branch collisions, or corrupt the state.
 *   **Resolution:**
     1.  **Optimistic Concurrency Control (OCC):** Access is synchronized through a monotonic versioning system on the database record. Simultaneous writes are rejected at the database transaction level if a conflict is detected, triggering a safe reload-retry loop in the worker.
-    2.  **Sandboxed Branch isolation:** Parallel agents checkout tasks to unique branches named `feature/task-<id>-agent-<agent_id>`. Direct pushes to protected branches are blocked at the validator sandbox level.
+    2.  **Sandboxed Branch isolation:** Parallel agents checkout tasks to unique branches named `noctifab/task-<id>-agent-<agent_id>`. Direct pushes to protected branches are blocked at the validator sandbox level.
 
 ### 8.6. AI Code Gaming and Test Overfitting
 *   **Challenge:** Generator agents might write mocked or hardcoded return values to satisfy specific unit tests rather than implementing generalized production logic.
@@ -916,4 +2239,18 @@ To guarantee stable and autonomous execution without human intervention, `noctif
 *   **Resolution:**
     1.  **AST-based ADF Transformer:** The Jira integration client contains a document transformer that recursively walks the ADF node tree (e.g. `heading`, `paragraph`, `bulletList`, `codeBlock`) and maps them directly to standard GitHub Flavored Markdown (GFM) strings.
     2.  **Parser Fallbacks:** If the ADF payload is malformed, the parser falls back to fetching plaintext representation from the Jira API description.
+
+### 8.8. Glossary & Distributed Concepts Reference
+The following glossary defines key software engineering, version control, and distributed systems concepts used throughout the `noctifab` specification:
+
+| Concept / Term | Definition | Context / Usage in noctifab |
+| :--- | :--- | :--- |
+| **Optimistic Concurrency Control (OCC)** | A non-blocking concurrency control method that checks for version conflicts before committing transactions, aborting and retrying if a conflict is detected. | Used in §3.5.3 (DB-backed State Coordination & Optimistic Concurrency Engine) to coordinate concurrent updates to the single shared state database from parallel agent goroutines. |
+| **Git Worktree** | A Git feature allowing a single repository to have multiple checkouts in separate directories concurrently, each on a different branch. | Used in §3.5.4 (DAG Task Splitting, Dependency Computation, & Concurrency Scheduler) to provide complete isolation for parallel worker agents executing in concurrent branches. |
+| **Directed Acyclic Graph (DAG)** | A finite directed graph with no directed cycles, representing topological hierarchies where nodes flow in a single direction. | Used in §3.5.4 (DAG Task Splitting, Dependency Computation, & Concurrency Scheduler) to compute task scheduling sequences and topological execution steps. |
+| **Behavior-Driven Development (BDD)** | A development workflow using natural language specifications (contextual "when/it" context formats) to define software behavior and run tests. | Used in §3.4 (Validator & Holdout Scenario Quality Gates) for holdout scenarios and quality verification gates. |
+| **Holdout Scenario** | Acceptance test scenarios kept hidden from the generator agent to prevent overfitting, mimicking test-set isolation in machine learning. | Detailed in §3.4 (Validator & Holdout Scenario Quality Gates) as a core gate preventing the LLM from gaming test suites. |
+| **Quarantine Branch** | A temporary Git branch prefix (e.g. `noctifab-quarantine/`) where failing or conflicting tasks are isolated for manual developer investigation. | Specified in §3.6.6 (Auto-Rollback Policies) to avoid polluting clean release branches. |
+| **Compaction** | A context management technique that summarizes preceding conversation turns to fit within context limits instead of hard truncation. | Described in §3.3.1 (Conversation History & Context Management) to optimize token costs for long-running debugging iterations. |
+| **OCC Livelock** | A failure state where concurrent update threads repeatedly conflict, abort, and retry in lockstep, blocking overall progress. | Prevented in §3.5.3 (DB-backed State Coordination & Optimistic Concurrency Engine) using exponential backoff with full jitter and retry bounds. |
 
