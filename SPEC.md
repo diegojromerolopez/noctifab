@@ -2133,10 +2133,10 @@ To ensure high cohesion, low coupling, and compliance with the 500-line source c
 
 ### 7.1. Phase 1: Domain & Core Storage Infrastructure
 *   **Objective:** Establish the primary domain models, state persistence, concurrency locking, and basic CLI entrypoints.
-    *   `pkg/domain/state.go` - The [State](file:///Users/diegoj/repos/noctifab/SPEC.md#L194-L203) structures, metadata models, and interfaces.
+    *   `pkg/domain/state.go` - The [State](/SPEC.md#L194-L203) structures, metadata models, and interfaces.
     *   `pkg/domain/task.go` - Task entities, status types, and lifecycle behaviors.
     *   `pkg/domain/action.go` - Action execution logs.
-    *   `pkg/domain/state_repository.go` - [StateRepository](file:///Users/diegoj/repos/noctifab/SPEC.md#L206-L216) interface.
+    *   `pkg/domain/state_repository.go` - [StateRepository](/SPEC.md#L206-L216) interface.
     *   `pkg/infrastructure/storage/sqlite_repository.go` - SQLite database implementation of state storage.
     *   `pkg/infrastructure/storage/postgres_repository.go` - PostgreSQL database implementation of state storage.
     *   `cmd/noctifab/main.go` - Main CLI bootstrap routing commands (`noctifab git_init`, `noctifab validate`).
@@ -2152,8 +2152,8 @@ To ensure high cohesion, low coupling, and compliance with the 500-line source c
 ### 7.3. Phase 3: LLM Client & Tool Registry
 *   **Objective:** Build standard agent tool implementations and establish structured model chat interfaces.
 *   **Key Deliverables:**
-    *   `pkg/usecase/registry.go` - The [Registry](file:///Users/diegoj/repos/noctifab/SPEC.md#L235-L239) and tool routing.
-    *   `pkg/infrastructure/llm/client.go` - The [Client](file:///Users/diegoj/repos/noctifab/SPEC.md#L289-L302) interface and OpenAI/Anthropic/Gemini/Ollama implementations.
+    *   `pkg/usecase/registry.go` - The [Registry](/SPEC.md#L235-L239) and tool routing.
+    *   `pkg/infrastructure/llm/client.go` - The [Client](/SPEC.md#L289-L302) interface and OpenAI/Anthropic/Gemini/Ollama implementations.
     *   `pkg/infrastructure/llm/parser.go` - The Safe JSON Extraction logic parser.
     *   Standard tools definitions in `pkg/usecase/tools/`: bootstrap (`add_task`, `complete_task`, `log_message`) and production (`read_file`, `write_file`, `run_tests`).
 *   **Verification:** Unit tests for JSON extraction edge-cases (conversational wrappers, malformed JSON regex fallback) and mock API responses.
@@ -2161,8 +2161,8 @@ To ensure high cohesion, low coupling, and compliance with the 500-line source c
 ### 7.4. Phase 4: Validator, Sandbox Boundaries & Holdout Evaluator
 *   **Objective:** Define security sandbox filters and holdout scenario gates to ensure code quality and system safety.
 *   **Key Deliverables:**
-    *   `pkg/usecase/validator.go` - Code quality [Validator](file:///Users/diegoj/repos/noctifab/SPEC.md#L344-L351) engine.
-    *   `pkg/usecase/sandbox.go` - Path traversal filtering ([filepath.Clean](file:///Users/diegoj/repos/noctifab/SPEC.md#L387)) and command execution whitelist checks.
+    *   `pkg/usecase/validator.go` - Code quality [Validator](/SPEC.md#L344-L351) engine.
+    *   `pkg/usecase/sandbox.go` - Path traversal filtering ([filepath.Clean](/SPEC.md#L387)) and command execution whitelist checks.
     *   `pkg/usecase/holdout.go` - BDD holdout evaluator logic (running tests 3 times, checking majority vote, filtering feedback logs).
 *   **Verification:** Unit tests confirming sandbox boundary violations are correctly blocked, and holdout majority voting returns expected boolean values.
 

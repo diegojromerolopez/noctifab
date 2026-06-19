@@ -27,7 +27,7 @@ To maintain modularity and high context compatibility, the following guidelines 
     *   After making any change to the codebase, you **must** run the test suite (e.g. `go test ./...`) to verify correctness.
     *   Tests must reside in files ending with `_test.go` in the same directory as the target logic.
     *   When writing new features, ensure corresponding unit tests are implemented concurrently.
-    *   Use Docker-based container services for End-to-End tests (see [SPEC.md](file:///Users/diegoj/repos/noctifab/SPEC.md#42-e2e-docker-integration-testing)).
+    *   Use Docker-based container services for End-to-End tests (see [SPEC.md](/SPEC.md#42-e2e-docker-integration-testing)).
     *   **BDD Specifications:** Holdout scenarios and acceptance tests must always run under a test runner using BDD format with the context pattern: `when <scenario>`, `it <action happens>`.
 4.  **Formatting & Linting:**
     *   **Formatting:** All Go source code must strictly follow the standard `go fmt` format. Ensure `go fmt ./...` runs clean.
