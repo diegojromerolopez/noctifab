@@ -1,0 +1,253 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/spf13/cobra"
+)
+
+func TestLoad_Errors(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "noctifab-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create a directory at configPath so ReadFile fails
+	dirPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.Mkdir(dirPath, 0755); err != nil {
+		t.Fatalf("failed to create dummy dir: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("config", dirPath, "")
+	_ = cmd.Flags().Set("config", dirPath)
+
+	_, err = Load(cmd)
+	if err == nil {
+		t.Error("expected error loading directory as file")
+	}
+
+	// Create an invalid yaml file
+	invalidYamlPath := filepath.Join(tmpDir, "invalid.yaml")
+	if err := os.WriteFile(invalidYamlPath, []byte("invalid: [yaml: block"), 0644); err != nil {
+		t.Fatalf("failed to write invalid yaml: %v", err)
+	}
+
+	cmd2 := &cobra.Command{Use: "test"}
+	cmd2.Flags().String("config", invalidYamlPath, "")
+	_ = cmd2.Flags().Set("config", invalidYamlPath)
+
+	_, err = Load(cmd2)
+	if err == nil {
+		t.Error("expected error parsing invalid YAML")
+	}
+}
+
+func TestLoad_NilCommand(t *testing.T) {
+	_ = os.Setenv("NOCTIFAB_CONFIG", "nonexistent-config-path-12345.yaml")
+	defer func() { _ = os.Unsetenv("NOCTIFAB_CONFIG") }()
+
+	_, err := Load(nil)
+	if err == nil {
+		t.Error("expected validation error since no repo/token are set")
+	}
+}
+
+func TestLoad_BadValues(t *testing.T) {
+	// Bad boolean env
+	_ = os.Setenv("NOCTIFAB_AUTO_COMMIT", "invalid-bool")
+	cfg := &Config{}
+	applyEnvOverrides(cfg)
+	if cfg.AutoCommit {
+		t.Error("expected AutoCommit to remain false on invalid env value")
+	}
+	_ = os.Unsetenv("NOCTIFAB_AUTO_COMMIT")
+
+	// Bad int env
+	_ = os.Setenv("NOCTIFAB_AGENTS_COUNT", "invalid-int")
+	cfg = &Config{}
+	applyEnvOverrides(cfg)
+	if cfg.Orchestrator.Concurrency != 0 {
+		t.Error("expected Concurrency to remain 0 on invalid env value")
+	}
+	_ = os.Unsetenv("NOCTIFAB_AGENTS_COUNT")
+
+	// Bad duration env
+	_ = os.Setenv("NOCTIFAB_INTERVAL", "invalid-duration")
+	cfg = &Config{}
+	applyEnvOverrides(cfg)
+	if time.Duration(cfg.Orchestrator.PollInterval) != 0 {
+		t.Error("expected PollInterval to remain 0 on invalid env value")
+	}
+	_ = os.Unsetenv("NOCTIFAB_INTERVAL")
+
+	// Bad float env
+	_ = os.Setenv("NOCTIFAB_OCC_BACKOFF_FACTOR", "invalid-float")
+	cfg = &Config{}
+	applyEnvOverrides(cfg)
+	if cfg.OCCBackoffFactor != 0.0 {
+		t.Error("expected OCCBackoffFactor to remain 0.0 on invalid env value")
+	}
+	_ = os.Unsetenv("NOCTIFAB_OCC_BACKOFF_FACTOR")
+}
+
+func TestLoad_BadFlags(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("auto-commit", "", "")
+	cmd.Flags().String("agents", "", "")
+	cmd.Flags().String("interval", "", "")
+	cmd.Flags().String("occ-backoff-factor", "", "")
+
+	_ = cmd.Flags().Set("auto-commit", "invalid-bool")
+	_ = cmd.Flags().Set("agents", "invalid-int")
+	_ = cmd.Flags().Set("interval", "invalid-duration")
+	_ = cmd.Flags().Set("occ-backoff-factor", "invalid-float")
+
+	cfg := &Config{}
+	applyFlagOverrides(cfg, cmd)
+
+	if cfg.AutoCommit {
+		t.Error("expected AutoCommit to remain false on invalid flag value")
+	}
+	if cfg.Orchestrator.Concurrency != 0 {
+		t.Error("expected Concurrency to remain 0 on invalid flag value")
+	}
+	if time.Duration(cfg.Orchestrator.PollInterval) != 0 {
+		t.Error("expected PollInterval to remain 0 on invalid flag value")
+	}
+	if cfg.OCCBackoffFactor != 0.0 {
+		t.Error("expected OCCBackoffFactor to remain 0.0 on invalid flag value")
+	}
+}
+
+func TestResolveSecrets(t *testing.T) {
+	t.Run("OpenAI fallback", func(t *testing.T) {
+		_ = os.Setenv("OPENAI_API_KEY", "openai-fallback")
+		defer func() { _ = os.Unsetenv("OPENAI_API_KEY") }()
+
+		cfg := &Config{}
+		cfg.LLM.Provider = "openai"
+		resolveSecrets(cfg)
+
+		if cfg.LLM.APIKeyValue != "openai-fallback" {
+			t.Errorf("expected openai-fallback, got %s", cfg.LLM.APIKeyValue)
+		}
+	})
+
+	t.Run("Anthropic fallback", func(t *testing.T) {
+		_ = os.Setenv("ANTHROPIC_API_KEY", "anthropic-fallback")
+		defer func() { _ = os.Unsetenv("ANTHROPIC_API_KEY") }()
+
+		cfg := &Config{}
+		cfg.LLM.Provider = "anthropic"
+		resolveSecrets(cfg)
+
+		if cfg.LLM.APIKeyValue != "anthropic-fallback" {
+			t.Errorf("expected anthropic-fallback, got %s", cfg.LLM.APIKeyValue)
+		}
+	})
+
+	t.Run("Gemini fallback", func(t *testing.T) {
+		_ = os.Setenv("GEMINI_API_KEY", "gemini-fallback")
+		defer func() { _ = os.Unsetenv("GEMINI_API_KEY") }()
+
+		cfg := &Config{}
+		cfg.LLM.Provider = "gemini"
+		resolveSecrets(cfg)
+
+		if cfg.LLM.APIKeyValue != "gemini-fallback" {
+			t.Errorf("expected gemini-fallback, got %s", cfg.LLM.APIKeyValue)
+		}
+	})
+
+	t.Run("Custom LLM API Key Env", func(t *testing.T) {
+		_ = os.Setenv("CUSTOM_LLM_KEY", "custom-llm-val")
+		defer func() { _ = os.Unsetenv("CUSTOM_LLM_KEY") }()
+
+		cfg := &Config{}
+		cfg.LLM.APIKeyEnv = "CUSTOM_LLM_KEY"
+		resolveSecrets(cfg)
+
+		if cfg.LLM.APIKeyValue != "custom-llm-val" {
+			t.Errorf("expected custom-llm-val, got %s", cfg.LLM.APIKeyValue)
+		}
+	})
+}
+
+func TestValidate(t *testing.T) {
+	baseCfg := func() *Config {
+		cfg := DefaultConfig()
+		cfg.VCS.Repository = "owner/repo"
+		cfg.VCS.TokenValue = "vcs-token"
+		cfg.LLM.APIKeyValue = "llm-key"
+		return cfg
+	}
+
+	t.Run("Valid default", func(t *testing.T) {
+		cfg := baseCfg()
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("expected valid config, got error: %v", err)
+		}
+	})
+
+	t.Run("Invalid storage provider", func(t *testing.T) {
+		cfg := baseCfg()
+		cfg.Storage.Provider = "invalid"
+		if err := cfg.Validate(); err == nil {
+			t.Error("expected error for invalid storage provider")
+		}
+	})
+
+	t.Run("Invalid LLM provider", func(t *testing.T) {
+		cfg := baseCfg()
+		cfg.LLM.Provider = "invalid"
+		if err := cfg.Validate(); err == nil {
+			t.Error("expected error for invalid LLM provider")
+		}
+	})
+
+	t.Run("Invalid VCS provider", func(t *testing.T) {
+		cfg := baseCfg()
+		cfg.VCS.Provider = "invalid"
+		if err := cfg.Validate(); err == nil {
+			t.Error("expected error for invalid VCS provider")
+		}
+	})
+
+	t.Run("Missing VCS repository", func(t *testing.T) {
+		cfg := baseCfg()
+		cfg.VCS.Repository = ""
+		if err := cfg.Validate(); err == nil {
+			t.Error("expected error for missing VCS repository")
+		}
+	})
+
+	t.Run("Missing VCS token", func(t *testing.T) {
+		cfg := baseCfg()
+		cfg.VCS.TokenValue = ""
+		if err := cfg.Validate(); err == nil {
+			t.Error("expected error for missing VCS token")
+		}
+	})
+
+	t.Run("Missing LLM API Key for non-ollama", func(t *testing.T) {
+		cfg := baseCfg()
+		cfg.LLM.APIKeyValue = ""
+		if err := cfg.Validate(); err == nil {
+			t.Error("expected error for missing LLM API Key")
+		}
+	})
+
+	t.Run("Missing LLM API Key is OK for ollama", func(t *testing.T) {
+		cfg := baseCfg()
+		cfg.LLM.Provider = "ollama"
+		cfg.LLM.APIKeyValue = ""
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("expected valid config for ollama without key, got error: %v", err)
+		}
+	})
+}

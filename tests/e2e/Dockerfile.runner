@@ -1,0 +1,12 @@
+FROM debian:bookworm-slim
+
+# Install runtime dependencies for testing git behavior
+RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tests
+
+# Set the environment variable for our tests to find the noctifab binary
+ENV NOCTIFAB_BIN=/shared/noctifab
+
+# Wait for the builder service to compile and write the e2e test runner to the shared volume, then run it.
+CMD while [ ! -f /shared/e2e.test ]; do sleep 0.5; done; /shared/e2e.test -test.v

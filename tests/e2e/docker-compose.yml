@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: noctifab
+      POSTGRES_PASSWORD: noctifab_password
+      POSTGRES_DB: noctifab_test
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noctifab -d noctifab_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build:
+      context: ../../
+      dockerfile: tests/e2e/Dockerfile.app
+    volumes:
+      - shared-bin:/shared
+
+  test-runner:
+    build:
+      context: ../../
+      dockerfile: tests/e2e/Dockerfile.runner
+    volumes:
+      - shared-bin:/shared
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+    environment:
+      - NOCTIFAB_STORAGE_PROVIDER=postgres
+      - NOCTIFAB_STORAGE_CONN=postgres://noctifab:noctifab_password@db:5432/noctifab_test?sslmode=disable
+      - NOCTIFAB_TEST_DB_DSN=postgres://noctifab:noctifab_password@db:5432/noctifab_test?sslmode=disable
+      - GITHUB_TOKEN=test-token
+      - NOCTIFAB_VCS_REPO=owner/repo
+      - OPENAI_API_KEY=test-api-key
+
+volumes:
+  shared-bin:
