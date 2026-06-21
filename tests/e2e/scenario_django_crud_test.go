@@ -85,7 +85,7 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
-		assert.ErrorContains(t, err, "Cycle detected in task DAG")
+		assert.ErrorContains(t, err, "cycle detected in task DAG")
 
 		// Verify cycle validation failure action was logged in state
 		finalState, err := repo.Load(ctx)
@@ -94,7 +94,7 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		lastAction := finalState.LastActions[len(finalState.LastActions)-1]
 		assert.Equal(t, "validate_dag", lastAction.Tool)
 		assert.False(t, lastAction.Success)
-		assert.Contains(t, lastAction.Result, "Cycle detected")
+		assert.Contains(t, lastAction.Result, "cycle detected")
 	})
 
 	t.Run("when requirement is to create a Django Contact CRUD Notebook", func(t *testing.T) {

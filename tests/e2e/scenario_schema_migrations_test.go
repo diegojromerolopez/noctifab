@@ -42,12 +42,12 @@ func TestScenario_SchemaMigration(t *testing.T) {
 			},
 			Tasks: []domain.Task{
 				{
-					ID:          "task-migration",
-					Title:       "Task Migration",
-					Status:      domain.TaskPending,
-					ChangeType:  domain.ChangeTypeFeature,
-					CreatedAt:   time.Now(),
-					UpdatedAt:   time.Now(),
+					ID:         "task-migration",
+					Title:      "Task Migration",
+					Status:     domain.TaskPending,
+					ChangeType: domain.ChangeTypeFeature,
+					CreatedAt:  time.Now(),
+					UpdatedAt:  time.Now(),
 				},
 			},
 		}
@@ -121,12 +121,12 @@ func TestScenario_ShutdownResumption(t *testing.T) {
 			},
 			Tasks: []domain.Task{
 				{
-					ID:          "task-1",
-					Title:       "Task 1",
-					Status:      domain.TaskPending,
-					ChangeType:  domain.ChangeTypeFeature,
-					CreatedAt:   time.Now(),
-					UpdatedAt:   time.Now(),
+					ID:         "task-1",
+					Title:      "Task 1",
+					Status:     domain.TaskPending,
+					ChangeType: domain.ChangeTypeFeature,
+					CreatedAt:  time.Now(),
+					UpdatedAt:  time.Now(),
 				},
 			},
 		}

@@ -42,12 +42,12 @@ func TestScenario_ContextCompaction(t *testing.T) {
 			},
 			Tasks: []domain.Task{
 				{
-					ID:          "task-1",
-					Title:       "Task 1",
-					Status:      domain.TaskPending,
-					ChangeType:  domain.ChangeTypeFeature,
-					CreatedAt:   time.Now(),
-					UpdatedAt:   time.Now(),
+					ID:         "task-1",
+					Title:      "Task 1",
+					Status:     domain.TaskPending,
+					ChangeType: domain.ChangeTypeFeature,
+					CreatedAt:  time.Now(),
+					UpdatedAt:  time.Now(),
 				},
 			},
 			LastActions: []domain.Action{
@@ -124,12 +124,12 @@ func TestScenario_SandboxViolation(t *testing.T) {
 			},
 			Tasks: []domain.Task{
 				{
-					ID:          "task-1",
-					Title:       "Task 1",
-					Status:      domain.TaskPending,
-					ChangeType:  domain.ChangeTypeFeature,
-					CreatedAt:   time.Now(),
-					UpdatedAt:   time.Now(),
+					ID:         "task-1",
+					Title:      "Task 1",
+					Status:     domain.TaskPending,
+					ChangeType: domain.ChangeTypeFeature,
+					CreatedAt:  time.Now(),
+					UpdatedAt:  time.Now(),
 				},
 			},
 		}

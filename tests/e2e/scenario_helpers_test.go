@@ -49,8 +49,6 @@ func setupRepo(t *testing.T, ctx context.Context, tempDir, subDir, sessionID str
 	return repo, func() { _ = repo.Close() }
 }
 
-
-
 func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, client *mockLLMClient, workspace string, maxBudgetUSD float64) error {
 	const pricingRate = 0.000015
 

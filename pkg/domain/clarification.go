@@ -9,4 +9,5 @@ type Clarification struct {
 	Answer   string    `json:"answer,omitempty"`
 	Resolved bool      `json:"resolved"`
 	AskedAt  time.Time `json:"asked_at"`
+	TaskID   string    `json:"task_id,omitempty"`
 }
