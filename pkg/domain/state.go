@@ -34,6 +34,8 @@ const (
 	AgentRoleGenerator AgentRole = "GENERATOR"
 	// AgentRoleEvaluator runs holdout tests and validates output.
 	AgentRoleEvaluator AgentRole = "EVALUATOR"
+	// AgentRoleResolver resolves source code merge conflicts.
+	AgentRoleResolver AgentRole = "RESOLVER"
 )
 
 // AgentStatus tracks the lifecycle state of a worker agent.

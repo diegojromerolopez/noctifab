@@ -369,6 +369,100 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 			}
 
 			if passed {
+				// Simulating Git Merge Conflict:
+				// If the feature is a conflict test, and readyTask is task-agent-2,
+				// simulate a merge conflict since task-agent-1 has already been integrated.
+				if strings.Contains(state.Metadata.FeatureName, "conflict") && readyTask.ID == "task-agent-2" {
+					readyTask.Status = domain.TaskConflictBlocked
+					state.LastActions = append(state.LastActions, domain.Action{
+						Timestamp: time.Now(),
+						Tool:      "git_merge",
+						Args:      map[string]any{"branch": "noctifab/task-" + readyTask.ID + "-agent-generator"},
+						Success:   false,
+						Result:    "Merge Conflict: conflict detected on common.py",
+					})
+
+					// Spawn a new agent-resolver agent (Name: "Conflict Resolver", Role: domain.AgentRoleResolver, Status: domain.AgentWorking)
+					resolverAgent := domain.Agent{
+						ID:        "agent-resolver",
+						Name:      "Conflict Resolver",
+						Role:      domain.AgentRoleResolver,
+						Status:    domain.AgentWorking,
+						TaskID:    readyTask.ID,
+						StartedAt: time.Now(),
+					}
+					// Find generator agent and set status to Idle
+					for j := range state.ActiveAgents {
+						if state.ActiveAgents[j].ID == "agent-generator" {
+							state.ActiveAgents[j].Status = domain.AgentIdle
+						}
+					}
+					state.ActiveAgents = append(state.ActiveAgents, resolverAgent)
+
+					if err := repo.Save(ctx, state); err != nil {
+						return err
+					}
+
+					// Call client.Complete(ctx, "resolve git conflict on common.py")
+					resp, err := client.Complete(ctx, "resolve git conflict on common.py")
+					if err != nil {
+						return err
+					}
+
+					state.Metadata.TotalTokensUsed += 800
+					if currentCost, parseErr := strconv.ParseFloat(state.Metadata.TotalCostUSD, 64); parseErr == nil {
+						state.Metadata.TotalCostUSD = fmt.Sprintf("%.4f", currentCost+(float64(800)*pricingRate))
+					}
+
+					// Apply conflict resolution write_file actions
+					for _, act := range resp.Actions {
+						if act.Tool == "write_file" {
+							relPath := act.Args["path"].(string)
+							content := act.Args["content"].(string)
+							fullPath := filepath.Join(workspace, relPath)
+							if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+								return err
+							}
+							if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+								return err
+							}
+							state.LastActions = append(state.LastActions, domain.Action{
+								Timestamp: time.Now(),
+								Tool:      "write_file",
+								Args:      map[string]any{"path": relPath},
+								Success:   true,
+								Result:    "File written successfully",
+							})
+						}
+					}
+
+					// Set task status to domain.TaskSuccess
+					readyTask.Status = domain.TaskSuccess
+					readyTask.UpdatedAt = time.Now()
+
+					// Log a successful resolve_conflict action
+					state.LastActions = append(state.LastActions, domain.Action{
+						Timestamp: time.Now(),
+						Tool:      "resolve_conflict",
+						Args:      map[string]any{"file": "common.py"},
+						Success:   true,
+						Result:    "Conflict resolved successfully via Resolver agent",
+					})
+
+					// Set resolver agent status to domain.AgentCompleted
+					for j := range state.ActiveAgents {
+						if state.ActiveAgents[j].ID == "agent-resolver" {
+							state.ActiveAgents[j].Status = domain.AgentCompleted
+							state.ActiveAgents[j].CompletedAt = time.Now()
+						}
+					}
+
+					if err := repo.Save(ctx, state); err != nil {
+						return err
+					}
+					continue
+				}
+
 				readyTask.Status = domain.TaskSuccess
 				state.LastActions = append(state.LastActions, domain.Action{
 					Timestamp: time.Now(),
@@ -414,6 +508,9 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 				"contacts/views.py",
 				"contacts/templates/contacts/contact_list.html",
 			}
+			if strings.Contains(state.Metadata.FeatureName, "conflict") {
+				reqFiles = []string{"common.py"}
+			}
 			passed := true
 			for _, rf := range reqFiles {
 				if _, err := os.Stat(filepath.Join(workspace, rf)); err != nil {
@@ -441,6 +538,9 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 
 				changelogPath := filepath.Join(workspace, "CHANGELOG.md")
 				changelogContent := "## [0.1.1] - 2026-06-20\n- Added Django contact CRUD notebook\n"
+				if strings.Contains(state.Metadata.FeatureName, "conflict") {
+					changelogContent = "## [0.1.1] - 2026-06-20\n- Resolved conflict on common.py\n"
+				}
 				_ = os.WriteFile(changelogPath, []byte(changelogContent), 0644)
 
 				state.LastActions = append(state.LastActions, domain.Action{

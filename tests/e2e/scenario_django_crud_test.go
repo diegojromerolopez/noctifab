@@ -240,3 +240,107 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		assert.Contains(t, string(changelogContent), "- Added Django contact CRUD notebook")
 	})
 }
+
+func TestScenario_GitConflict(t *testing.T) {
+	ctx := context.Background()
+	tempDir := t.TempDir()
+
+	t.Run("when two agents edit the same lines of the same file, a git conflict is detected and the task is blocked", func(t *testing.T) {
+		repo, cleanup := setupRepo(t, ctx, tempDir, "conflict", "django-crud-conflict-session")
+		defer cleanup()
+
+		client := &mockLLMClient{repo: repo}
+
+		// Initial requirements file
+		workspace := filepath.Join(tempDir, "conflict")
+		err := os.MkdirAll(workspace, 0755)
+		require.NoError(t, err)
+		reqPath := filepath.Join(workspace, "requirements.md")
+		err = os.WriteFile(reqPath, []byte("Conflicting edits requirements spec"), 0644)
+		require.NoError(t, err)
+
+		// Set initial state
+		initialState := &domain.State{
+			ID:          "django-crud-conflict-session",
+			ProjectPath: workspace,
+			Version:     0,
+			BuildStatus: domain.BuildPassing,
+			Metadata: domain.StateMetadata{
+				InputSource:  "local",
+				InputPath:    "requirements.md",
+				FeatureName:  "conflict-edits",
+				BaseBranch:   "main",
+				TotalCostUSD: "0.0000",
+			},
+		}
+		err = repo.Save(ctx, initialState)
+		require.NoError(t, err)
+
+		// Run the simulated orchestrator loop
+		// We expect the orchestrator to succeed because the Conflict Resolver agent resolves the conflict.
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		require.NoError(t, err)
+
+		// Load final state and assert task statuses
+		finalState, err := repo.Load(ctx)
+		require.NoError(t, err)
+
+		// Both tasks should have succeeded
+		var task1, task2 *domain.Task
+		for i := range finalState.Tasks {
+			switch finalState.Tasks[i].ID {
+			case "task-agent-1":
+				task1 = &finalState.Tasks[i]
+			case "task-agent-2":
+				task2 = &finalState.Tasks[i]
+			}
+		}
+
+		require.NotNil(t, task1, "task-agent-1 should exist")
+		require.NotNil(t, task2, "task-agent-2 should exist")
+
+		assert.Equal(t, domain.TaskSuccess, task1.Status, "Agent 1 changes should be successfully merged")
+		assert.Equal(t, domain.TaskSuccess, task2.Status, "Agent 2 changes should be successfully resolved and completed")
+
+		// Verify that a failed git_merge action was logged
+		var gitMergeAction *domain.Action
+		var resolveConflictAction *domain.Action
+		for _, act := range finalState.LastActions {
+			if act.Tool == "git_merge" {
+				gitMergeAction = &act
+			}
+			if act.Tool == "resolve_conflict" {
+				resolveConflictAction = &act
+			}
+		}
+		require.NotNil(t, gitMergeAction, "git_merge action should be logged in history")
+		assert.False(t, gitMergeAction.Success, "git_merge should have failed")
+		assert.Contains(t, gitMergeAction.Result, "Merge Conflict")
+
+		require.NotNil(t, resolveConflictAction, "resolve_conflict action should be logged in history")
+		assert.True(t, resolveConflictAction.Success, "resolve_conflict should have succeeded")
+		assert.Equal(t, "common.py", resolveConflictAction.Args["file"])
+
+		// Verify resolver agent was spawned and completed
+		var resolverAgent *domain.Agent
+		for i := range finalState.ActiveAgents {
+			if finalState.ActiveAgents[i].Role == domain.AgentRoleResolver {
+				resolverAgent = &finalState.ActiveAgents[i]
+			}
+		}
+		require.NotNil(t, resolverAgent, "resolver agent should be spawned")
+		assert.Equal(t, "Conflict Resolver", resolverAgent.Name)
+		assert.Equal(t, domain.AgentCompleted, resolverAgent.Status)
+
+		// Verify workspace final file contents
+		commonPath := filepath.Join(workspace, "common.py")
+		content, err := os.ReadFile(commonPath)
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "line 1: content from agent 1 and agent 2 combined")
+
+		// Verify validation passed and build status is passing
+		assert.Equal(t, domain.BuildPassing, finalState.BuildStatus)
+		require.Len(t, finalState.ValidationCriteria, 1)
+		assert.True(t, finalState.ValidationCriteria[0].Passed)
+	})
+}

@@ -14,6 +14,21 @@ type mockLLMClient struct {
 }
 
 func (m *mockLLMClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	if strings.Contains(prompt, "resolve git conflict") {
+		return &domain.LLMResponse{
+			Reasoning: "Resolving the Git conflict by combining edits from Agent 1 and Agent 2.",
+			Actions: []domain.LLMAction{
+				{
+					Tool: "write_file",
+					Args: map[string]any{
+						"path":    "common.py",
+						"content": "line 1: content from agent 1 and agent 2 combined\n",
+					},
+				},
+			},
+		}, nil
+	}
+
 	state, err := m.repo.Load(ctx)
 	if err != nil {
 		return nil, err
@@ -46,6 +61,80 @@ func (m *mockLLMClient) Complete(ctx context.Context, prompt string) (*domain.LL
 				},
 			},
 		}, nil
+	}
+
+	// Conflict test mode triggered by conflict metadata flag
+	if strings.Contains(state.Metadata.FeatureName, "conflict") {
+		if len(state.Tasks) == 0 {
+			return &domain.LLMResponse{
+				Reasoning: "Planning two parallel tasks that modify the same file to trigger a merge conflict.",
+				Actions: []domain.LLMAction{
+					{
+						Tool: "add_task",
+						Args: map[string]any{
+							"id":          "task-agent-1",
+							"title":       "Agent 1 edits file",
+							"description": "Writes first line to common.py",
+							"change_type": "FEATURE",
+						},
+					},
+					{
+						Tool: "add_task",
+						Args: map[string]any{
+							"id":          "task-agent-2",
+							"title":       "Agent 2 edits file",
+							"description": "Writes conflicting line to common.py",
+							"change_type": "FEATURE",
+						},
+					},
+				},
+			}, nil
+		}
+
+		var nextTask *domain.Task
+		for i := range state.Tasks {
+			if state.Tasks[i].Status != domain.TaskSuccess {
+				nextTask = &state.Tasks[i]
+				break
+			}
+		}
+
+		if nextTask == nil {
+			return &domain.LLMResponse{
+				Reasoning: "Both conflict tasks processed.",
+				Actions:   nil,
+			}, nil
+		}
+
+		if nextTask.ID == "task-agent-1" {
+			return &domain.LLMResponse{
+				Reasoning: "Agent 1 writing content.",
+				Actions: []domain.LLMAction{
+					{
+						Tool: "write_file",
+						Args: map[string]any{
+							"path":    "common.py",
+							"content": "line 1: content from agent 1\n",
+						},
+					},
+				},
+			}, nil
+		}
+
+		if nextTask.ID == "task-agent-2" {
+			return &domain.LLMResponse{
+				Reasoning: "Agent 2 writing conflicting content.",
+				Actions: []domain.LLMAction{
+					{
+						Tool: "write_file",
+						Args: map[string]any{
+							"path":    "common.py",
+							"content": "line 1: conflicting content from agent 2\n",
+						},
+					},
+				},
+			}, nil
+		}
 	}
 
 	// Phase 1: Clarification Request
