@@ -10,10 +10,14 @@ import (
 )
 
 type mockLLMClient struct {
-	repo domain.StateRepository
+	repo       domain.StateRepository
+	completeFn func(ctx context.Context, prompt string) (*domain.LLMResponse, error)
 }
 
 func (m *mockLLMClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	if m.completeFn != nil {
+		return m.completeFn(ctx, prompt)
+	}
 	if strings.Contains(prompt, "resolve git conflict") {
 		return &domain.LLMResponse{
 			Reasoning: "Resolving the Git conflict by combining edits from Agent 1 and Agent 2.",

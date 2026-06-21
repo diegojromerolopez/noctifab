@@ -3,7 +3,7 @@ package e2e
 import (
 	"context"
 	"database/sql"
-	"errors"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,86 +49,12 @@ func setupRepo(t *testing.T, ctx context.Context, tempDir, subDir, sessionID str
 	return repo, func() { _ = repo.Close() }
 }
 
-func scanWorkspaceFiles(dir string) ([]domain.FileInfo, error) {
-	var files []domain.FileInfo
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			name := info.Name()
-			if name == ".noctifab" || name == ".git" || name == "node_modules" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
-		files = append(files, domain.FileInfo{
-			Path:         rel,
-			Size:         info.Size(),
-			LastModified: info.ModTime(),
-		})
-		return nil
-	})
-	return files, err
-}
 
-func resolveDependencies(tasks []domain.Task) ([]string, error) {
-	idMap := make(map[string]string)
-	for _, t := range tasks {
-		idMap[t.Title] = t.ID
-	}
-
-	adj := make(map[string][]string)
-	for _, t := range tasks {
-		var deps []string
-		for _, dep := range t.DependsOn {
-			if id, exists := idMap[dep]; exists {
-				deps = append(deps, id)
-			} else {
-				deps = append(deps, dep)
-			}
-		}
-		adj[t.ID] = deps
-	}
-
-	visited := make(map[string]int)
-	var order []string
-	var dfs func(node string) error
-	dfs = func(node string) error {
-		visited[node] = 1
-		for _, dep := range adj[node] {
-			if visited[dep] == 1 {
-				return errors.New("Cycle detected in task DAG: circular reference")
-			}
-			if visited[dep] == 0 {
-				if err := dfs(dep); err != nil {
-					return err
-				}
-			}
-		}
-		visited[node] = 2
-		order = append(order, node)
-		return nil
-	}
-
-	for _, t := range tasks {
-		if visited[t.ID] == 0 {
-			if err := dfs(t.ID); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return order, nil
-}
 
 func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, client *mockLLMClient, workspace string, maxBudgetUSD float64) error {
 	const pricingRate = 0.000015
 
-	state, err := repo.Load(ctx)
+	state, err := repo.Load(context.Background())
 	if err != nil {
 		return err
 	}
@@ -144,14 +70,67 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 		{ID: "agent-generator", Name: "Generator", Role: domain.AgentRoleGenerator, Status: domain.AgentIdle},
 		{ID: "agent-evaluator", Name: "Evaluator", Role: domain.AgentRoleEvaluator, Status: domain.AgentIdle},
 	}
-	if err := repo.Save(ctx, state); err != nil {
+
+	// Recover interrupted tasks on startup
+	for i := range state.Tasks {
+		if state.Tasks[i].Status == domain.TaskInterrupted {
+			state.Tasks[i].Status = domain.TaskPending
+		}
+	}
+
+	if err := repo.Save(context.Background(), state); err != nil {
 		return err
 	}
 
 	for cycle := 0; cycle < 15; cycle++ {
+		// Graceful shutdown context check
+		select {
+		case <-ctx.Done():
+			state, loadErr := repo.Load(context.Background())
+			if loadErr == nil {
+				// Mark any in-progress tasks as INTERRUPTED
+				for i := range state.Tasks {
+					if state.Tasks[i].Status == domain.TaskInProgress {
+						state.Tasks[i].Status = domain.TaskInterrupted
+					}
+				}
+				state.LastActions = append(state.LastActions, domain.Action{
+					Timestamp: time.Now(),
+					Tool:      "graceful_shutdown",
+					Success:   true,
+					Result:    "Daemon execution interrupted and saved state",
+				})
+				_ = repo.Save(context.Background(), state)
+			}
+			return ctx.Err()
+		default:
+		}
+
 		state, err = repo.Load(ctx)
 		if err != nil {
 			return err
+		}
+
+		// Mock compaction check
+		if strings.Contains(state.Metadata.FeatureName, "compaction") && len(state.LastActions) >= 1 {
+			hasCompacted := false
+			for _, act := range state.LastActions {
+				if act.Tool == "compact_history" {
+					hasCompacted = true
+					break
+				}
+			}
+			if !hasCompacted {
+				state.LastActions = append(state.LastActions, domain.Action{
+					Timestamp: time.Now(),
+					Tool:      "compact_history",
+					Success:   true,
+					Result:    "Compacted history successfully, summarized 10 messages to 1",
+				})
+				if err := repo.Save(ctx, state); err != nil {
+					return err
+				}
+			}
 		}
 
 		// Phase 1 Clarification Block
@@ -272,6 +251,27 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 			continue
 		}
 
+		// Downstream dependency pruning: if an upstream dependency has failed or is pruned,
+		// mark downstream dependent tasks as CONFLICT_FAILED.
+		pruned := false
+		for i := range state.Tasks {
+			if state.Tasks[i].Status == domain.TaskFailed || state.Tasks[i].Status == domain.TaskConflictFailed {
+				for j := range state.Tasks {
+					for _, depID := range state.Tasks[j].DependsOn {
+						if (depID == state.Tasks[i].ID || depID == state.Tasks[i].Title) && state.Tasks[j].Status != domain.TaskConflictFailed {
+							state.Tasks[j].Status = domain.TaskConflictFailed
+							pruned = true
+						}
+					}
+				}
+			}
+		}
+		if pruned {
+			if err := repo.Save(ctx, state); err != nil {
+				return err
+			}
+		}
+
 		var readyTask *domain.Task
 		for i := range state.Tasks {
 			if state.Tasks[i].Status == domain.TaskPending || state.Tasks[i].Status == domain.TaskFailed {
@@ -323,6 +323,22 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 				if act.Tool == "write_file" {
 					relPath := act.Args["path"].(string)
 					content := act.Args["content"].(string)
+
+					// Sandbox violation simulation: path resolves outside workspace boundary
+					if strings.HasPrefix(relPath, "/") || strings.Contains(relPath, "..") {
+						state.LastActions = append(state.LastActions, domain.Action{
+							Timestamp: time.Now(),
+							Tool:      "write_file",
+							Args:      map[string]any{"path": relPath},
+							Success:   false,
+							Result:    "Sandbox violation: path '" + relPath + "' resolves outside the workspace boundary",
+						})
+						readyTask.Status = domain.TaskFailed
+						state.ActiveAgents[1].Status = domain.AgentIdle
+						_ = repo.Save(ctx, state)
+						return fmt.Errorf("Sandbox violation: path resolves outside workspace")
+					}
+
 					fullPath := filepath.Join(workspace, relPath)
 					if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 						return err
@@ -350,6 +366,14 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 					passed = false
 					errorLog = "missing HTML template contact_list.html"
 				}
+			}
+			if strings.Contains(state.Metadata.FeatureName, "pruning") && readyTask.ID == "task-a" {
+				passed = false
+				errorLog = "Task A failed validation continuously"
+			}
+			if strings.Contains(state.Metadata.FeatureName, "rollback") && readyTask.Retries == 0 {
+				passed = false
+				errorLog = "Build breakage: syntax error in main.go"
 			}
 
 			// Simulate BDD Flaky Validation Quarantine (3x majority vote) for task-setup
@@ -479,6 +503,22 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 					Success:   false,
 					Result:    errorLog,
 				})
+
+				// If it's a rollback scenario, perform a git rollback and retry
+				if strings.Contains(state.Metadata.FeatureName, "rollback") {
+					state.LastActions = append(state.LastActions, domain.Action{
+						Timestamp: time.Now(),
+						Tool:      "git_reset_hard",
+						Args:      map[string]any{"commit": "HEAD"},
+						Success:   true,
+						Result:    "Rolled back changes due to build failure",
+					})
+					readyTask.Retries++
+					readyTask.MaxRetries = 2
+					if readyTask.Retries < readyTask.MaxRetries {
+						readyTask.Status = domain.TaskPending
+					}
+				}
 			}
 
 			readyTask.UpdatedAt = time.Now()
@@ -510,6 +550,24 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 			}
 			if strings.Contains(state.Metadata.FeatureName, "conflict") {
 				reqFiles = []string{"common.py"}
+			}
+			if strings.Contains(state.Metadata.FeatureName, "Flaky") {
+				reqFiles = []string{"manage.py"}
+			}
+			if strings.Contains(state.Metadata.FeatureName, "rollback") {
+				reqFiles = []string{"main.go"}
+			}
+			if strings.Contains(state.Metadata.FeatureName, "Refactor") {
+				reqFiles = []string{"main.go"}
+			}
+			if strings.Contains(state.Metadata.FeatureName, "shutdown") {
+				reqFiles = []string{"main.go"}
+			}
+			if strings.Contains(state.Metadata.FeatureName, "migration") {
+				reqFiles = []string{"migrations/0001_add_age.sql", "models.py"}
+			}
+			if strings.Contains(state.Metadata.FeatureName, "compaction") {
+				reqFiles = []string{}
 			}
 			passed := true
 			for _, rf := range reqFiles {

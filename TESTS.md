@@ -58,7 +58,7 @@ The E2E test suite executes offline integration tests to verify the orchestrator
 
 - [e2e_test.go](file:///Users/diegoj/repos/noctifab/tests/e2e/e2e_test.go): Executes CLI subcommands tests against the compiled binary and verifies migration parity on the active database target.
 
-- [scenario_django_crud_test.go](file:///Users/diegoj/repos/noctifab/tests/e2e/scenario_django_crud_test.go): Evaluates a complete multi-agent project lifecycle simulation (creating a Django CRUD application for contacts).
+- [scenario_django_crud_test.go](file:///Users/diegoj/repos/noctifab/tests/e2e/scenario_django_crud_test.go): Evaluates multi-agent project lifecycle and repository conflict simulations.
   - **Observe Phase (Exclusions Walk)**: Asserts that files under build/asset folders (`node_modules/`, `.git/`, `.noctifab/`) are filtered out by the scanner and never synced.
   - **Decide Phase (Clarification & Cycle Detection)**:
     - Simulates an ambiguity pause where the Planner asks a question and blocks the loop until the operator replies.
@@ -67,6 +67,7 @@ The E2E test suite executes offline integration tests to verify the orchestrator
     - Verifies that tasks are executed inside isolated branch environments (`noctifab/task-<id>-agent-...`).
     - Simulates the Evaluator failing a task due to a generator bug (missing HTML template) and verifies the Generator reads the error diagnostics logs to fix it in the subsequent turn.
     - **Flaky Build Quarantine**: Simulates majority voting over 3 test runs. Flaky builds are approved on a 2/3 pass vote but flagged with a `Warning: Potentially Flaky Build` in the database.
+  - **Git Merge Conflict Handling**: Simulates a scenario where two parallel agents attempt to write conflicting edits on the same lines of the same file. Asserts that the second agent's integration fails with a merge conflict, the task status is marked as `CONFLICT_BLOCKED`, its branch is quarantined, and the orchestrator halts execution cleanly.
   - **Budget Safeguarding**: Asserts that before each LLM call, token estimations prevent overspending, halting execution with `ErrBudgetExhausted` if the daily limit is breached.
   - **Release Phase**: Verifies auto-bumping of version files (`VERSION`), updates to `CHANGELOG.md` matching Keep a Changelog formatting, and conventional git commits and pull requests.
 
