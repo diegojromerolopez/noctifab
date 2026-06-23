@@ -12,7 +12,7 @@ all: build
 # Build the Go binary in the dist directory
 build:
 	mkdir -p $(DIST_DIR)
-	go build $(GOFLAGS) -o $(DIST_DIR)/$(BINARY_NAME) cmd/noctifab/main.go
+	CGO_ENABLED=0 go build $(GOFLAGS) -o $(DIST_DIR)/$(BINARY_NAME) cmd/noctifab/main.go
 
 # Clean build artifacts
 clean:
@@ -20,7 +20,7 @@ clean:
 
 # Run unit tests
 test:
-	go test ./...
+	CGO_ENABLED=0 go test ./...
 
 # Run static analysis linter as specified in AGENTS.md
 lint:

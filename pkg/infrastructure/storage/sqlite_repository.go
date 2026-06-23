@@ -6,13 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type SQLiteRepository struct {
@@ -24,29 +23,23 @@ var _ domain.StateRepository = (*SQLiteRepository)(nil)
 
 // NewSQLiteRepository creates, initializes and runs migrations on a SQLite database.
 func NewSQLiteRepository(ctx context.Context, dsn string) (*SQLiteRepository, error) {
-	// Add busy timeout and WAL journal mode DSN parameters if not present
-	if !strings.Contains(dsn, "_busy_timeout") {
-		if strings.Contains(dsn, "?") {
-			dsn += "&_busy_timeout=5000"
-		} else {
-			dsn += "?_busy_timeout=5000"
-		}
-	}
-	if !strings.Contains(dsn, "_journal_mode") {
-		if strings.Contains(dsn, "?") {
-			dsn += "&_journal_mode=WAL"
-		} else {
-			dsn += "?_journal_mode=WAL"
-		}
-	}
-
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
 
 	// Serialized writes by using MaxOpenConns = 1
 	db.SetMaxOpenConns(1)
+
+	// Set WAL journal mode and busy timeout via PRAGMA queries
+	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode = WAL;"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to set SQLite journal_mode pragma: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout = 5000;"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to set SQLite busy_timeout pragma: %w", err)
+	}
 
 	if err := Migrate(ctx, db, "sqlite"); err != nil {
 		_ = db.Close()

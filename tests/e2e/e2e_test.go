@@ -12,9 +12,9 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 // getNoctifabBin returns the path to the compiled noctifab binary
@@ -262,7 +262,7 @@ func TestE2E_Database_Migration_Parity(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = repo.Close() }()
 
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 

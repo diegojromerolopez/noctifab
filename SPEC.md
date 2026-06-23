@@ -105,7 +105,7 @@ The codebase functions as a Go module with the canonical module path `github.com
 
 The required third-party dependencies are:
 1.  `github.com/spf13/cobra` - The standard CLI framework for subcommand routing.
-2.  `github.com/mattn/go-sqlite3` - CGO SQLite driver for local state persistence.
+2.  `modernc.org/sqlite` - Pure Go SQLite driver for local state persistence.
 3.  `github.com/jackc/pgx/v5` - Pure Go PostgreSQL driver and toolkit.
 4.  `go.opentelemetry.io/otel` - OpenTelemetry instrumentation framework.
 5.  `github.com/google/uuid` - Standard UUID generation library.
