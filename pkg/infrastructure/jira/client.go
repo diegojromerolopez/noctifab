@@ -15,9 +15,9 @@ import (
 type IssueResponse struct {
 	Key    string `json:"key"`
 	Fields struct {
-		Summary     string    `json:"summary"`
-		Description ADFNode   `json:"description"`
-		DescriptionText string `json:"description_text,omitempty"`
+		Summary         string  `json:"summary"`
+		Description     ADFNode `json:"description"`
+		DescriptionText string  `json:"description_text,omitempty"`
 	} `json:"fields"`
 }
 

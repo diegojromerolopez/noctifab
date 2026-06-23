@@ -189,7 +189,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	if passed {
 		task.Status = domain.TaskSuccess
-		
+
 		// Push branch to remote and submit/merge Pull Request
 		_, pushErr := o.git.Run(ctx, true, "push", "origin", branchName)
 		if pushErr == nil {
