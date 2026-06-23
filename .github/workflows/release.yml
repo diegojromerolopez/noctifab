@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & Release Binary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Build Binaries
+        run: |
+          mkdir -p dist
+          # Build cross-compiled binaries for standard OS/arch targets
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -v -o dist/noctifab-darwin-amd64 cmd/noctifab/main.go
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -v -o dist/noctifab-darwin-arm64 cmd/noctifab/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v -o dist/noctifab-linux-amd64 cmd/noctifab/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -v -o dist/noctifab-linux-arm64 cmd/noctifab/main.go
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -v -o dist/noctifab-windows-amd64.exe cmd/noctifab/main.go
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/noctifab-darwin-amd64
+            dist/noctifab-darwin-arm64
+            dist/noctifab-linux-amd64
+            dist/noctifab-linux-arm64
+            dist/noctifab-windows-amd64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

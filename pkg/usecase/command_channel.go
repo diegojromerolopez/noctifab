@@ -1,0 +1,219 @@
+package usecase
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
+)
+
+// Command represents a state mutation operation routed through the CommandMailbox.
+type Command interface {
+	Execute(ctx context.Context, repo domain.StateRepository) error
+}
+
+// CommandMailbox serializes state changes to prevent database write conflicts.
+type CommandMailbox struct {
+	repo domain.StateRepository
+	cmds chan Command
+}
+
+func NewCommandMailbox(repo domain.StateRepository) *CommandMailbox {
+	return &CommandMailbox{
+		repo: repo,
+		cmds: make(chan Command, 100),
+	}
+}
+
+// Start processes mailbox commands sequentially in a single loop
+func (m *CommandMailbox) Start(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case cmd := <-m.cmds:
+			if err := cmd.Execute(ctx, m.repo); err != nil {
+				// Log command execution failure
+				fmt.Printf("Command execution error: %v\n", err)
+			}
+		}
+	}
+}
+
+func (m *CommandMailbox) Send(cmd Command) {
+	m.cmds <- cmd
+}
+
+// ResolveClarificationCmd is sent to resolve a clarification question.
+type ResolveClarificationCmd struct {
+	ID     string
+	Answer string
+}
+
+func (c *ResolveClarificationCmd) Execute(ctx context.Context, repo domain.StateRepository) error {
+	state, err := repo.Load(ctx)
+	if err != nil {
+		return err
+	}
+
+	for i := range state.Clarifications {
+		// Matching on either custom ID or resolving matching questions
+		if state.Clarifications[i].Question == c.ID || fmt.Sprintf("%d", i) == c.ID {
+			state.Clarifications[i].Answer = c.Answer
+			state.Clarifications[i].Resolved = true
+			return repo.Save(ctx, state)
+		}
+	}
+	return errors.New("clarification not found")
+}
+
+// AddTaskCmd is sent to dynamically add a task.
+type AddTaskCmd struct {
+	Task domain.Task
+}
+
+func (c *AddTaskCmd) Execute(ctx context.Context, repo domain.StateRepository) error {
+	state, err := repo.Load(ctx)
+	if err != nil {
+		return err
+	}
+	state.Tasks = append(state.Tasks, c.Task)
+	return repo.Save(ctx, state)
+}
+
+// OverrideMergeCmd manually forces success status on a blocked task.
+type OverrideMergeCmd struct {
+	TaskID string
+}
+
+func (c *OverrideMergeCmd) Execute(ctx context.Context, repo domain.StateRepository) error {
+	state, err := repo.Load(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range state.Tasks {
+		if state.Tasks[i].ID == c.TaskID {
+			state.Tasks[i].Status = domain.TaskSuccess
+			state.Tasks[i].UpdatedAt = time.Now()
+			return repo.Save(ctx, state)
+		}
+	}
+	return domain.ErrTaskNotFound
+}
+
+// StartDaemonServer sets up local loopback REST API bindings.
+func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox) *http.Server {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	})
+
+	mux.HandleFunc("/statusz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		state, err := repo.Load(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(state)
+	})
+
+	mux.HandleFunc("/api/v1/clarifications/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		path := r.URL.Path
+		parts := strings.Split(path, "/")
+		if len(parts) < 6 || parts[5] != "resolve" {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		id := parts[4]
+
+		var body struct {
+			Answer string `json:"answer"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		mailbox.Send(&ResolveClarificationCmd{ID: id, Answer: body.Answer})
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"accepted"}`))
+	})
+
+	mux.HandleFunc("/api/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var payload struct {
+			Title       string   `json:"title"`
+			Description string   `json:"description"`
+			DependsOn   []string `json:"depends_on"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		task := domain.Task{
+			ID:          fmt.Sprintf("task-%d", time.Now().UnixNano()),
+			Title:       payload.Title,
+			Description: payload.Description,
+			DependsOn:   payload.DependsOn,
+			Status:      domain.TaskPending,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		}
+		mailbox.Send(&AddTaskCmd{Task: task})
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(task)
+	})
+
+	mux.HandleFunc("/api/v1/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		path := r.URL.Path
+		parts := strings.Split(path, "/")
+		if len(parts) < 6 || parts[5] != "override-merge" {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		id := parts[4]
+
+		mailbox.Send(&OverrideMergeCmd{TaskID: id})
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"accepted"}`))
+	})
+
+	// Enforce loopback binding (127.0.0.1)
+	server := &http.Server{
+		Addr:    "127.0.0.1:18080",
+		Handler: mux,
+	}
+
+	go func() {
+		_ = server.ListenAndServe()
+	}()
+
+	return server
+}
