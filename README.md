@@ -36,6 +36,55 @@ The platform classifies development automation into distinct levels. `noctifab` 
 
 ---
 
+## Architecture: The Software Dark Factory Loop
+
+To understand how `noctifab` works as a "dark factory" (an automated software development environment operating without human intervention), it helps to view the system as a **stateful orchestrator** controlling **stateless, role-segregated agent workers**.
+
+```mermaid
+graph TD
+    Spec["Feature Specification"] -->|Parsed by Planner| DAG["Topological Task DAG"]
+    DAG -->|Read by| Orchestrator["Orchestrator Coordinator"]
+    
+    subgraph Execution Loop
+        Orchestrator -->|Observe| StateDB[("State DB (SQLite/Postgres)")]
+        Orchestrator -->|Decide| Scheduler["Task Scheduler"]
+        Scheduler -->|Dispatch task branch| Worktree["Git Worktree Sandbox"]
+        
+        Worktree -->|Spawn| Gen["Generator Agent"]
+        Gen -->|Code / Edit / Test| Worktree
+        
+        Worktree -->|Validate| Eval["Evaluator Agent"]
+        Eval -->|Run BDD Holdout Tests| Worktree
+    end
+    
+    Eval -->|"Success (>= 2/3)"| Merge["Rebase / Auto-Merge to main"]
+    Eval -->|Failure| Retry["Increment Retries / Backoff"]
+    
+    Merge -->|Update State| StateDB
+    Retry -->|Update State| StateDB
+```
+
+### The Orchestrator Loop (Observe -> Decide -> Validate -> Execute -> Save)
+The core engine runs a continuous polling event loop that drives all development tasks:
+1. **Observe (State Sync)**: The orchestrator scans the filesystem to index files, build metadata, and check the task database. It ensures a consistent, up-to-date representation of the workspace.
+2. **Decide (Task Scheduling)**: It analyzes the Directed Acyclic Graph (DAG) of tasks. Ready tasks (those whose dependencies have succeeded) are selected and dispatched concurrently up to the configured limit.
+3. **Execute (Agent Dispatch)**: For each ready task, the orchestrator:
+   - Spawns a dedicated git worktree/sandbox environment.
+   - Dispatches a specialized **Generator Agent** to write code, edit files, and self-correct based on compiler and test feedback.
+4. **Validate (Quality Gate Evaluation)**: Post-generation, the orchestrator spawns a distinct **Evaluator Agent** inside an isolated sandbox to run BDD holdout tests. These tests are hidden from the Generator to ensure generalized code correctness.
+5. **Save & Integrate (Rebase/Merge & State Update)**:
+   - If tests pass (requiring a majority vote, e.g., 2/3 passing runs), the branch is pushed, a Pull Request is automatically created and merged into `main`, and the task is updated to `SUCCESS`.
+   - If tests fail, the task is marked as `PENDING` to be retried (or `FAILED` if retry limit is reached).
+   - In all cases, the ephemeral worktree is pruned to maintain a clean workspace.
+
+### Autonomous Agent Roles
+To prevent "evaluation gaming" (where code generators approve their own buggy code), `noctifab` partitions cognitive execution into three isolated, specialized agent roles:
+1. **Planner Agent**: Decomposes a raw feature specification (Markdown/text file) into a topological task graph (DAG). Uses a reasoning-focused model configuration.
+2. **Generator Agent**: Sandbox-restricted worker executing in a task-specific Git branch. Writes/edits code and runs local unit tests. Low temperature setting for deterministic code generation.
+3. **Evaluator Agent**: Post-generation verification worker locked strictly to the holdout tests path (`tests/holdout`). It executes testing scenarios and returns objective validation metrics, preventing code gaming.
+
+---
+
 ## Quick Start
 
 ### Installation
