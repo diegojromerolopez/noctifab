@@ -80,7 +80,7 @@ Ensure Go 1.25 is installed on your host system:
 
 ```bash
 # Run all unit and in-process CLI integration tests
-go test -v ./pkg/... ./tests/integration_test.go
+go test -v ./pkg/... ./tests
 ```
 
 ### 5.2. Running Containerized (PostgreSQL Target via Docker Compose)

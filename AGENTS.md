@@ -24,10 +24,23 @@ To maintain modularity and high context compatibility, the following guidelines 
     *   **Domain-Driven Design (DDD):** Align packaging boundaries to domain logic (e.g., domain entities, value objects, and service interfaces), not technical categories.
 3.  **Testing Strategy:**
     *   All code must be **100% unit tested**. Every Go package must be accompanied by unit tests.
-    *   After making any change to the codebase, you **must** run the test suite (e.g. `go test ./...`) to verify correctness.
+    *   After making any change to the codebase, you **must** run the test suite to verify correctness.
     *   Tests must reside in files ending with `_test.go` in the same directory as the target logic.
     *   When writing new features, ensure corresponding unit tests are implemented concurrently.
-    *   Use Docker-based container services for End-to-End tests (see [SPEC.md](/SPEC.md#42-e2e-docker-integration-testing)).
+    *   **How to Run Unit & Local Integration Tests:**
+        *   Run all unit and in-process CLI integration tests locally:
+            ```bash
+            go test -v ./pkg/... ./tests
+            ```
+        *   Alternatively, use the Makefile target:
+            ```bash
+            make test
+            ```
+    *   **How to Run End-to-End (E2E) Tests:**
+        *   Run the containerized E2E test suite (which sets up a PostgreSQL instance via Docker Compose):
+            ```bash
+            docker compose -f tests/e2e/docker-compose.yml up --build --exit-code-from test-runner
+            ```
     *   **BDD Specifications:** Holdout scenarios and acceptance tests must always run under a test runner using BDD format with the context pattern: `when <scenario>`, `it <action happens>`.
 4.  **Formatting & Linting:**
     *   **Formatting:** All Go source code must strictly follow the standard `go fmt` format. Ensure `go fmt ./...` runs clean.
