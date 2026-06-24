@@ -83,10 +83,13 @@ var runOnceCmd = &cobra.Command{
 		evaluator := usecase.NewHoldoutEvaluator(sandboxRunner, false)
 
 		orchConfig := usecase.OrchestratorConfig{
-			PollInterval: time.Duration(cfg.Orchestrator.PollInterval),
-			MaxRetries:   3,
-			Concurrency:  cfg.Orchestrator.Concurrency,
-			MaxBudgetUSD: cfg.LLM.MaxBudgetUSD,
+			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
+			MaxRetries:       3,
+			Concurrency:      cfg.Orchestrator.Concurrency,
+			MaxBudgetUSD:     cfg.LLM.MaxBudgetUSD,
+			OCCMaxRetries:    cfg.OCCMaxRetries,
+			OCCBackoffBase:   time.Duration(cfg.OCCBackoffBase),
+			OCCBackoffFactor: cfg.OCCBackoffFactor,
 		}
 
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)

@@ -2,20 +2,26 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 type OrchestratorConfig struct {
-	PollInterval time.Duration
-	MaxRetries   int
-	Concurrency  int
-	MaxBudgetUSD float64
+	PollInterval     time.Duration
+	MaxRetries       int
+	Concurrency      int
+	MaxBudgetUSD     float64
+	OCCMaxRetries    int
+	OCCBackoffBase   time.Duration
+	OCCBackoffFactor float64
 }
 
 type Orchestrator struct {
@@ -92,12 +98,86 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 		return nil
 	}
 
+	fmt.Printf("Orchestrator: Found %d ready task(s) to execute in this cycle\n", len(ready))
+
+	var wg sync.WaitGroup
 	// 3. Dispatch ready tasks
 	for _, task := range ready {
-		go o.executeTask(ctx, state.ID, task.ID)
+		wg.Add(1)
+		go func(t domain.Task) {
+			defer wg.Done()
+			o.executeTask(ctx, state.ID, t.ID)
+		}(task)
 	}
 
+	wg.Wait()
 	return nil
+}
+
+func (o *Orchestrator) updateStateWithRetry(ctx context.Context, updateFn func(state *domain.State) error) error {
+	maxRetries := o.cfg.OCCMaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 5
+	}
+	backoff := o.cfg.OCCBackoffBase
+	if backoff <= 0 {
+		backoff = 50 * time.Millisecond
+	}
+	factor := o.cfg.OCCBackoffFactor
+	if factor <= 0 {
+		factor = 2.0
+	}
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		state, err := o.repo.Load(ctx)
+		if err != nil {
+			return err
+		}
+
+		if err := updateFn(state); err != nil {
+			return err
+		}
+
+		err = o.repo.Save(ctx, state)
+		if err == nil {
+			return nil
+		}
+
+		if !errors.Is(err, domain.ErrVersionConflict) {
+			return err
+		}
+
+		if attempt == maxRetries {
+			return fmt.Errorf("state update failed after %d retries due to OCC conflict: %w", maxRetries, err)
+		}
+
+		sleepDur := time.Duration(float64(backoff) * math.Pow(factor, float64(attempt)))
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(sleepDur):
+		}
+	}
+	return nil
+}
+
+func (o *Orchestrator) markTaskFailed(ctx context.Context, taskID, reason string) {
+	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+		for i := range st.Tasks {
+			if st.Tasks[i].ID == taskID {
+				st.Tasks[i].Status = domain.TaskFailed
+				st.Tasks[i].UpdatedAt = time.Now()
+				break
+			}
+		}
+		st.LastActions = append(st.LastActions, domain.Action{
+			Timestamp: time.Now(),
+			Tool:      "execute",
+			Success:   false,
+			Result:    reason,
+		})
+		return nil
+	})
 }
 
 func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) {
@@ -122,19 +202,46 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		return
 	}
 
-	// Update task status
-	task.Status = domain.TaskInProgress
-	task.UpdatedAt = time.Now()
-	_ = o.repo.Save(ctx, state)
+	fmt.Printf("Orchestrator: Task %s (%s) is starting...\n", taskID, task.Title)
 
-	branchName := fmt.Sprintf("noctifab/task-%s-worker", task.ID)
+	baseBranch := state.Metadata.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
+	// Update task status
+	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+		for i := range st.Tasks {
+			if st.Tasks[i].ID == taskID {
+				st.Tasks[i].Status = domain.TaskInProgress
+				st.Tasks[i].UpdatedAt = time.Now()
+				return nil
+			}
+		}
+		return fmt.Errorf("task %s not found in state", taskID)
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to update task status to IN_PROGRESS for task %s: %v\n", taskID, err)
+		return
+	}
+
+	branchName := fmt.Sprintf("noctifab/task-%s-worker", taskID)
+
+	// Switch to base branch first to branch off clean state
+	if _, err := o.git.Run(ctx, true, "checkout", baseBranch); err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout base branch %s: %v\n", baseBranch, err)
+		o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout base branch: %v", err))
+		return
+	}
+
+	// Force delete worker branch if left over from a previous crashed run
+	_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
 
 	// Create worker branch
 	_, err = o.git.Run(ctx, true, "checkout", "-b", branchName)
 	if err != nil {
-		task.Status = domain.TaskFailed
-		task.UpdatedAt = time.Now()
-		_ = o.repo.Save(ctx, state)
+		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to create worker branch %s: %v\n", branchName, err)
+		o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to create worker branch: %v", err))
 		return
 	}
 
@@ -155,74 +262,85 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				if valRes != nil && valRes.Reason != "" {
 					reason = valRes.Reason
 				}
-				task.Status = domain.TaskFailed
-				state.LastActions = append(state.LastActions, domain.Action{
-					Timestamp: time.Now(),
-					Tool:      action.Tool,
-					Success:   false,
-					Result:    reason,
-				})
-				_ = o.repo.Save(ctx, state)
-				o.scheduler.ReleaseLocks(task.ID)
-				_, _ = o.git.Run(ctx, true, "checkout", "main")
+				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s action %s validation failed: %s\n", taskID, action.Tool, reason)
+				o.markTaskFailed(ctx, taskID, reason)
+				o.scheduler.ReleaseLocks(taskID)
+				_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
 				_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
 				return
 			}
 
+			fmt.Printf("Orchestrator: Task %s executing tool: %s\n", taskID, action.Tool)
 			tool, ok := o.registry.Get(action.Tool)
 			if ok {
 				_, _ = tool.Execute(genCtx, state, action.Args)
 			}
 		}
+	} else {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s LLM completion failed: %v\n", taskID, err)
 	}
 
+	fmt.Printf("Orchestrator: Task %s running holdout tests...\n", taskID)
 	// Run Evaluator holdout tests
 	passed, logMsg, _ := o.evaluator.EvaluateTask(ctx, state, *task, "tests/holdout")
 
-	state, _ = o.repo.Load(ctx)
-	for i := range state.Tasks {
-		if state.Tasks[i].ID == task.ID {
-			task = &state.Tasks[i]
-			break
+	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+		var targetTask *domain.Task
+		for i := range st.Tasks {
+			if st.Tasks[i].ID == taskID {
+				targetTask = &st.Tasks[i]
+				break
+			}
 		}
+		if targetTask == nil {
+			return fmt.Errorf("task %s not found in state", taskID)
+		}
+
+		if passed {
+			targetTask.Status = domain.TaskSuccess
+		} else {
+			targetTask.Retries++
+			if targetTask.Retries >= targetTask.MaxRetries {
+				targetTask.Status = domain.TaskFailed
+			} else {
+				targetTask.Status = domain.TaskPending
+			}
+		}
+		targetTask.UpdatedAt = time.Now()
+
+		st.LastActions = append(st.LastActions, domain.Action{
+			Timestamp: time.Now(),
+			Tool:      "evaluate",
+			Success:   passed,
+			Result:    logMsg,
+		})
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to save task execution outcome for task %s: %v\n", taskID, err)
 	}
 
 	if passed {
-		task.Status = domain.TaskSuccess
-
+		fmt.Printf("Orchestrator: Task %s completed successfully!\n", taskID)
 		// Push branch to remote and submit/merge Pull Request
 		_, pushErr := o.git.Run(ctx, true, "push", "origin", branchName)
 		if pushErr == nil {
-			prURL, prErr := o.vcsClient.CreatePullRequest(ctx, "Resolve task "+task.ID, "Automated Level 4 merge for task: "+task.Title, branchName, "main")
+			prURL, prErr := o.vcsClient.CreatePullRequest(ctx, "Resolve task "+taskID, "Automated Level 4 merge for task: "+task.Title, branchName, "main")
 			if prErr == nil {
 				_ = o.vcsClient.MergePullRequest(ctx, prURL)
 			}
 		}
 
 		// Merge back sequentially using RebaseQueue
-		_ = o.rebaseQueue.Push(ctx, branchName, "main")
+		_ = o.rebaseQueue.Push(ctx, branchName, baseBranch)
 	} else {
-		task.Retries++
-		if task.Retries >= task.MaxRetries {
-			task.Status = domain.TaskFailed
-		} else {
-			task.Status = domain.TaskPending
-		}
+		fmt.Printf("Orchestrator: Task %s failed holdout tests. Retrying or marking FAILED.\n", taskID)
 	}
 
-	task.UpdatedAt = time.Now()
-	state.LastActions = append(state.LastActions, domain.Action{
-		Timestamp: time.Now(),
-		Tool:      "evaluate",
-		Success:   passed,
-		Result:    logMsg,
-	})
-
-	_ = o.repo.Save(ctx, state)
-	o.scheduler.ReleaseLocks(task.ID)
+	o.scheduler.ReleaseLocks(taskID)
 
 	// Clean up branch
-	_, _ = o.git.Run(ctx, true, "checkout", "main")
+	_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
 	_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
 }
 
