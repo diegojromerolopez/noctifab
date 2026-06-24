@@ -1667,7 +1667,7 @@ The branch created by the worker agent is dynamically named using the configured
 
 #### 3.8.2. Centralized Release Pipeline & Version Bumping
 To prevent git merge conflicts and version stagnation in a multi-agent environment, **individual worker agents do not modify the `VERSION` file or `CHANGELOG.md`**. Instead, the release pipeline is managed centrally:
-1.  **Initial Version:** The `VERSION` file is initialized to `0.0.1` when the workspace is first created via `noctifab git_init`. This is the baseline version before any agent work.
+1.  **Initial Version:** The `VERSION` file is initialized to `0.0.1` when the workspace is first created via `noctifab init`. This is the baseline version before any agent work.
 2.  **Raw Semver Format and Validation:** The `VERSION` file must strictly contain a raw semantic version string (e.g., `MAJOR.MINOR.PATCH` with no leading `v` or formatting, and a single trailing newline). The version reader and writer strip leading/trailing whitespaces and validate the parsed version against a strict semver regex. If the parsed string is invalid, the orchestrator aborts execution and logs a validation error.
 3.  **VCS Credential Helper & Expiration:** To support rotating tokens or short-lived enterprise credentials, the orchestrator accepts a `--vcs-credential-helper` path flag pointing to a local script. Prior to executing VCS API requests, the orchestrator runs the helper to retrieve a fresh auth token. Any VCS API request that returns an HTTP 401/403 status is mapped to a permanent error classification that immediately suspends worker dispatching and alerts the operator, rather than retrying and risking IP bans.
 4.  **Partial Changelog Collection:** As each worker agent successfully completes its assigned task, it records a list of specific change description items (a partial changelog list, e.g. `["Added token authorization controller", "Fixed memory leak in connection pool"]`) to its `PartialChangelog` field in the task record.
@@ -1899,7 +1899,7 @@ To prevent console log clutter and improve developer user experience, the Cobra 
 
 ### 4.1. CLI Commands
 
-*   `noctifab git_init`
+*   `noctifab init`
     Clones the target VCS repository directly into the Current Working Directory (CWD) and initializes the workspace config directory and database. This command is strictly idempotent:
     *   **Clone Protocol CLI Flag:** Adds a `--vcs-clone-protocol` flag (values: `https`, `ssh`, default: `https`). The command constructs the clone URL dynamically using the VCS provider API (e.g. `https://github.com/owner/repo.git`).
     *   **Directory Cleanliness Guard:** Prior to execution, the command walks the current directory. If the directory contains files or folders other than `.noctifab` layout assets, the command aborts immediately with process exit code `4` and logs a security warning to `stderr` to prevent accidental codebase overwrites.
@@ -2222,7 +2222,7 @@ To ensure high cohesion, low coupling, and compliance with the 500-line source c
     *   `pkg/domain/state_repository.go` - [StateRepository](/SPEC.md#L206-L216) interface.
     *   `pkg/infrastructure/storage/sqlite_repository.go` - SQLite database implementation of state storage.
     *   `pkg/infrastructure/storage/postgres_repository.go` - PostgreSQL database implementation of state storage.
-    *   `cmd/noctifab/main.go` - Main CLI bootstrap routing commands (`noctifab git_init`, `noctifab validate`).
+    *   `cmd/noctifab/main.go` - Main CLI bootstrap routing commands (`noctifab init`, `noctifab validate`).
 *   **Verification:** Unit tests for SQLite and PostgreSQL loading/saving, connection management, and transaction OCC safety.
 
 ### 7.2. Phase 2: Task DAG & Concurrency Scheduler

@@ -103,7 +103,7 @@ This compiles the binary to `./dist/noctifab`.
 
 ```bash
 # 1. Initialize the noctifab workspace configurations
-./dist/noctifab git_init
+./dist/noctifab init
 
 # 2. Validate configurations
 ./dist/noctifab validate
@@ -119,7 +119,7 @@ This compiles the binary to `./dist/noctifab`.
 
 ## Command Reference
 
-- **`git_init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles.
+- **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles.
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
 - **`plan`**: Invokes the LLM Planner model to decompose a specification into task dependencies.
 - **`start`**: Spawns the daemon workers, initializes the API server, and runs the polling event loop.

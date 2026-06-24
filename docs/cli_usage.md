@@ -6,10 +6,10 @@
 
 ## Workspace Initialization
 
-To set up a repository for use with `noctifab`, run the `git_init` command from the root of the target codebase:
+To set up a repository for use with `noctifab`, run the `init` command from the root of the target codebase:
 
 ```bash
-noctifab git_init
+noctifab init
 ```
 
 This creates the default configuration structure in the `.noctifab/` directory:
@@ -32,10 +32,10 @@ This creates the default configuration structure in the `.noctifab/` directory:
 
 `noctifab` provides several subcommands for orchestrating development pipelines:
 
-### 1. `git_init`
+### 1. `init`
 Initializes a repository workspace with the necessary folder structure, database, default YAML configuration, and security permission profiles.
 ```bash
-noctifab git_init [flags]
+noctifab init [flags]
 ```
 - **Security Check**: If the target directory contains existing project files but does not have a `.noctifab` directory, the command will warn the developer and abort with exit code `4` to prevent unintended code overwrites.
 
@@ -103,7 +103,7 @@ Below is a typical sequence of commands to execute a feature specification:
 
 ```bash
 # 1. Initialize the workspace
-noctifab git_init
+noctifab init
 
 # 2. Add your LLM keys and configuration to .noctifab/config.yaml
 # (e.g. set llm-provider: "openai" and llm-model: "gpt-4o")

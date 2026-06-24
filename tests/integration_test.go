@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestGitInitCommand(t *testing.T) {
+func TestInitCommand(t *testing.T) {
 	// Set required environment variables for validation inside commands
 	_ = os.Setenv("GITHUB_TOKEN", "test-token")
 	defer func() { _ = os.Unsetenv("GITHUB_TOKEN") }()
@@ -26,11 +26,11 @@ func TestGitInitCommand(t *testing.T) {
 		cli.WorkspaceDir = tmpDir
 		defer func() { cli.WorkspaceDir = oldDir }()
 
-		// Run git_init subcommand
-		cli.RootCmd.SetArgs([]string{"git_init", "--vcs-clone-protocol", "https"})
+		// Run init subcommand
+		cli.RootCmd.SetArgs([]string{"init", "--vcs-clone-protocol", "https"})
 		err := cli.RootCmd.Execute()
 		if err != nil {
-			t.Fatalf("expected git_init to succeed on clean dir, got: %v", err)
+			t.Fatalf("expected init to succeed on clean dir, got: %v", err)
 		}
 
 		// Verify files created
@@ -45,7 +45,7 @@ func TestGitInitCommand(t *testing.T) {
 		}
 
 		gitIgnorePath := filepath.Join(tmpDir, ".noctifab", ".gitignore")
-		if _, err := os.Stat(gitIgnorePath); err != nil {
+		if _, err := os.Stat(gitIgnorePath); os.IsNotExist(err) {
 			t.Errorf("expected .gitignore to be created, got: %v", err)
 		}
 
@@ -57,7 +57,7 @@ func TestGitInitCommand(t *testing.T) {
 		// Run again (idempotent check)
 		err = cli.RootCmd.Execute()
 		if err != nil {
-			t.Fatalf("expected git_init to be idempotent and succeed, got: %v", err)
+			t.Fatalf("expected init to be idempotent and succeed, got: %v", err)
 		}
 	})
 
@@ -75,11 +75,11 @@ func TestGitInitCommand(t *testing.T) {
 		cli.WorkspaceDir = tmpDir
 		defer func() { cli.WorkspaceDir = oldDir }()
 
-		// Run git_init subcommand
-		cli.RootCmd.SetArgs([]string{"git_init"})
+		// Run init subcommand
+		cli.RootCmd.SetArgs([]string{"init"})
 		err := cli.RootCmd.Execute()
 		if err == nil {
-			t.Fatal("expected git_init to return exit error, got nil")
+			t.Fatal("expected init to return exit error, got nil")
 		}
 
 		exitErr, ok := err.(*cli.ExitError)
@@ -101,7 +101,7 @@ func TestGitInitCommand(t *testing.T) {
 		cli.WorkspaceDir = "/nonexistent-path-987654"
 		defer func() { cli.WorkspaceDir = oldDir }()
 
-		cli.RootCmd.SetArgs([]string{"git_init"})
+		cli.RootCmd.SetArgs([]string{"init"})
 		err := cli.RootCmd.Execute()
 		if err == nil {
 			t.Fatal("expected error reading nonexistent directory")

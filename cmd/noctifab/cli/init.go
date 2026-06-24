@@ -11,8 +11,8 @@ import (
 
 var WorkspaceDir = "."
 
-var gitInitCmd = &cobra.Command{
-	Use:           "git_init",
+var initCmd = &cobra.Command{
+	Use:           "init",
 	Short:         "Initialize noctifab workspace and config",
 	SilenceErrors: true,
 	SilenceUsage:  true,
@@ -121,6 +121,6 @@ var gitInitCmd = &cobra.Command{
 }
 
 func init() {
-	gitInitCmd.Flags().String("vcs-clone-protocol", "https", "VCS clone protocol: https, ssh")
-	RootCmd.AddCommand(gitInitCmd)
+	initCmd.Flags().String("vcs-clone-protocol", "https", "VCS clone protocol: https, ssh")
+	RootCmd.AddCommand(initCmd)
 }
