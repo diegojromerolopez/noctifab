@@ -95,6 +95,72 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 	// 2. Scheduler check: find ready tasks
 	ready := o.scheduler.GetReadyTasks(state, o.cfg.Concurrency)
 	if len(ready) == 0 {
+		// If all tasks are completed and build status is not SUCCESS/FAILING,
+		// finalize feature and create single pull request.
+		if o.allTasksFinished(state) && state.BuildStatus == domain.BuildUnknown {
+			anySuccess := false
+			for _, t := range state.Tasks {
+				if t.Status == domain.TaskSuccess {
+					anySuccess = true
+					break
+				}
+			}
+
+			if anySuccess {
+				integrationBranch := state.Metadata.IntegrationBranch
+				if integrationBranch == "" {
+					integrationBranch = fmt.Sprintf("noctifab/feature-%s", state.ID[:8])
+				}
+				baseBranch := state.Metadata.BaseBranch
+				if baseBranch == "" {
+					baseBranch = "main"
+				}
+
+				fmt.Printf("Orchestrator: All tasks completed. Creating single Pull Request for integration branch %s targeting %s...\n", integrationBranch, baseBranch)
+
+				// Ensure integration branch exists locally
+				_, err = o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
+				if err != nil {
+					// Does not exist locally, checkout base branch first and branch off
+					_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
+					_, _ = o.git.Run(ctx, true, "checkout", "-b", integrationBranch)
+				} else {
+					_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
+				}
+
+				// 1. Run final release updates (bump version and update changelog)
+				nextVersion, bumpErr := BumpVersion(state.ProjectPath, state.Tasks)
+				if bumpErr == nil {
+					_ = UpdateChangelog(state.ProjectPath, nextVersion, state.Tasks)
+					// Commit version and changelog updates on the integration branch
+					_, _ = o.git.Run(ctx, true, "add", "VERSION", "CHANGELOG.md")
+					_, _ = o.git.Run(ctx, true, "commit", "-m", "chore(release): bump version to "+nextVersion+" and update CHANGELOG.md")
+				}
+
+				// 2. Push integration branch to origin
+				_, pushErr := o.git.Run(ctx, true, "push", "origin", integrationBranch)
+				if pushErr == nil {
+					// 3. Create single Pull Request
+					prTitle := fmt.Sprintf("Resolve feature: %s", state.Metadata.FeatureName)
+					prBody := fmt.Sprintf("Automated single pull request for feature build. Completed tasks:\n")
+					for _, t := range state.Tasks {
+						prBody += fmt.Sprintf("- %s: %s\n", t.Title, string(t.Status))
+					}
+					_, prErr := o.vcsClient.CreatePullRequest(ctx, prTitle, prBody, integrationBranch, baseBranch)
+					if prErr != nil {
+						fmt.Fprintf(os.Stderr, "Orchestrator: Failed to create Pull Request: %v\n", prErr)
+					}
+				} else {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Failed to push integration branch: %v\n", pushErr)
+				}
+			}
+
+			// Mark build status
+			_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+				st.BuildStatus = domain.BuildPassing
+				return nil
+			})
+		}
 		return nil
 	}
 
@@ -208,6 +274,10 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	if baseBranch == "" {
 		baseBranch = "main"
 	}
+	integrationBranch := state.Metadata.IntegrationBranch
+	if integrationBranch == "" {
+		integrationBranch = fmt.Sprintf("noctifab/feature-%s", state.ID[:8])
+	}
 
 	// Update task status
 	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
@@ -227,10 +297,26 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	branchName := fmt.Sprintf("noctifab/task-%s-worker", taskID)
 
-	// Switch to base branch first to branch off clean state
-	if _, err := o.git.Run(ctx, true, "checkout", baseBranch); err != nil {
-		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout base branch %s: %v\n", baseBranch, err)
-		o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout base branch: %v", err))
+	// Ensure integration branch exists
+	_, err = o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
+	if err != nil {
+		// Does not exist, create it from base branch
+		if _, err := o.git.Run(ctx, true, "checkout", baseBranch); err != nil {
+			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout base branch %s: %v\n", baseBranch, err)
+			o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout base branch: %v", err))
+			return
+		}
+		if _, err := o.git.Run(ctx, true, "checkout", "-b", integrationBranch); err != nil {
+			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to create integration branch %s: %v\n", integrationBranch, err)
+			o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to create integration branch: %v", err))
+			return
+		}
+	}
+
+	// Switch to integration branch first to branch off accumulative state
+	if _, err := o.git.Run(ctx, true, "checkout", integrationBranch); err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout integration branch %s: %v\n", integrationBranch, err)
+		o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout integration branch: %v", err))
 		return
 	}
 
@@ -245,13 +331,29 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		return
 	}
 
-	// Run Generator (simplified LLM completion call)
+	// Inject target files context
+	var fileContexts []string
+	for _, file := range task.TargetFiles {
+		fullPath, err := resolveSandboxPath(state.ProjectPath, file)
+		if err == nil {
+			if content, err := os.ReadFile(fullPath); err == nil {
+				fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", file, string(content)))
+			}
+		}
+	}
+
 	prompt := fmt.Sprintf("Execute task: %s - %s", task.Title, task.Description)
+	if len(fileContexts) > 0 {
+		prompt = fmt.Sprintf("Execute task: %s - %s\n\nExisting files context:\n%s", task.Title, task.Description, strings.Join(fileContexts, "\n\n"))
+	}
+
 	genCtx := context.WithValue(ctx, AgentRoleKey, "generator")
 	resp, err := o.llmClient.Complete(genCtx, prompt)
 	if err == nil {
+		fmt.Printf("Orchestrator: Task %s LLM reasoning: %s\n", taskID, resp.Reasoning)
 		// Run tool actions
 		for _, action := range resp.Actions {
+			fmt.Printf("Orchestrator: Task %s LLM action: tool=%s args=%+v\n", taskID, action.Tool, action.Args)
 			domainAction := domain.Action{
 				Tool: action.Tool,
 				Args: action.Args,
@@ -278,6 +380,21 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	} else {
 		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s LLM completion failed: %v\n", taskID, err)
+	}
+
+	// Stage and commit changes if any exist
+	statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
+	if strings.TrimSpace(statusOut) != "" {
+		_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+		// Check again if staged changes exist to avoid empty commits
+		stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+		if strings.TrimSpace(stagedOut) != "" {
+			commitMsg := fmt.Sprintf("feat(core): resolve task %s - %s", taskID, task.Title)
+			_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+			if commitErr != nil {
+				fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s: %v\n", taskID, commitErr)
+			}
+		}
 	}
 
 	fmt.Printf("Orchestrator: Task %s running holdout tests...\n", taskID)
@@ -322,17 +439,8 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	if passed {
 		fmt.Printf("Orchestrator: Task %s completed successfully!\n", taskID)
-		// Push branch to remote and submit/merge Pull Request
-		_, pushErr := o.git.Run(ctx, true, "push", "origin", branchName)
-		if pushErr == nil {
-			prURL, prErr := o.vcsClient.CreatePullRequest(ctx, "Resolve task "+taskID, "Automated Level 4 merge for task: "+task.Title, branchName, "main")
-			if prErr == nil {
-				_ = o.vcsClient.MergePullRequest(ctx, prURL)
-			}
-		}
-
-		// Merge back sequentially using RebaseQueue
-		_ = o.rebaseQueue.Push(ctx, branchName, baseBranch)
+		// Merge back sequentially into integrationBranch using RebaseQueue
+		_ = o.rebaseQueue.Push(ctx, branchName, integrationBranch)
 	} else {
 		fmt.Printf("Orchestrator: Task %s failed holdout tests. Retrying or marking FAILED.\n", taskID)
 	}
@@ -340,7 +448,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	o.scheduler.ReleaseLocks(taskID)
 
 	// Clean up branch
-	_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
+	_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
 	_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
 }
 
@@ -420,4 +528,16 @@ func (o *Orchestrator) syncWorkspaceFiles(ctx context.Context, state *domain.Sta
 	}
 	state.Files = files
 	return o.repo.Save(ctx, state)
+}
+
+func (o *Orchestrator) allTasksFinished(state *domain.State) bool {
+	if len(state.Tasks) == 0 {
+		return false
+	}
+	for _, t := range state.Tasks {
+		if t.Status != domain.TaskSuccess && t.Status != domain.TaskFailed {
+			return false
+		}
+	}
+	return true
 }

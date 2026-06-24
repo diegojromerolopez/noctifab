@@ -71,17 +71,24 @@ var planCmd = &cobra.Command{
 				if getwdErr != nil {
 					cwd = "."
 				}
+				featName := filepath.Base(cfg.Input)
+				featNameClean := strings.TrimSuffix(featName, filepath.Ext(featName))
+				integrationBranch := cfg.VCS.BranchPrefix + "feature-" + featNameClean
+				if cfg.VCS.BranchPrefix == "" {
+					integrationBranch = "noctifab/feature-" + featNameClean
+				}
 				state = &domain.State{
 					ID:          uuid.New().String(),
 					ProjectPath: cwd,
 					Version:     0,
 					BuildStatus: domain.BuildUnknown,
 					Metadata: domain.StateMetadata{
-						InputSource:  "markdown",
-						InputPath:    cfg.Input,
-						FeatureName:  filepath.Base(cfg.Input),
-						BaseBranch:   cfg.VCS.BaseBranch,
-						TotalCostUSD: "0.00000",
+						InputSource:       "markdown",
+						InputPath:         cfg.Input,
+						FeatureName:       featName,
+						BaseBranch:        cfg.VCS.BaseBranch,
+						IntegrationBranch: integrationBranch,
+						TotalCostUSD:      "0.00000",
 					},
 				}
 			} else {

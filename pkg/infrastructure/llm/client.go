@@ -83,6 +83,12 @@ Your task is to implement the specified task.
 Task Details:
 %s
 
+CRITICAL:
+1. You only have ONE single turn to complete this task. You must write/edit files and run tests immediately in your response actions. Do NOT run read_file, find_files, grep_search, or list_directory first, as you will not get another turn.
+2. The package name is 'frontpunch'. All implementation files MUST be created or modified inside the 'frontpunch/' directory (e.g., 'frontpunch/worker.py', 'frontpunch/cli.py', 'frontpunch/client.py'). Do NOT create a directory named 'factory' or edit files in 'src/'.
+3. All unit/integration tests must be placed in the 'tests/' directory (e.g., 'tests/unit/test_worker.py', 'tests/unit/test_client.py') and import from 'frontpunch'. Do not import from 'factory'.
+4. For all Python test files, use the standard library 'unittest' and 'unittest.mock'. Do NOT import or use 'pytest' under any circumstance, as it is not installed in the sandbox environment.
+
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
 - write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
