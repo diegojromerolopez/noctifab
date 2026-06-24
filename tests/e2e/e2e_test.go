@@ -201,27 +201,6 @@ func TestE2E_StartCommand(t *testing.T) {
 	assert.Contains(t, stdout.String(), "Pre-flight checks passed successfully.")
 }
 
-func TestE2E_RunOnceCommand(t *testing.T) {
-	bin := getNoctifabBin()
-	tempDir := t.TempDir()
-
-	cmdInit := exec.Command(bin, "init")
-	cmdInit.Dir = tempDir
-	err := cmdInit.Run()
-	require.NoError(t, err)
-
-	cmdRun := exec.Command(bin, "run-once")
-	cmdRun.Dir = tempDir
-	cmdRun.Env = getTestEnv()
-
-	var stdout, stderr bytes.Buffer
-	cmdRun.Stdout = &stdout
-	cmdRun.Stderr = &stderr
-
-	err = cmdRun.Run()
-	require.NoError(t, err, "run-once failed: %s", stderr.String())
-	assert.Contains(t, stdout.String(), "Cycle completed successfully.")
-}
 
 func TestE2E_MaintenanceCommand(t *testing.T) {
 	bin := getNoctifabBin()
@@ -305,3 +284,26 @@ func TestE2E_Database_Migration_Parity(t *testing.T) {
 		}
 	}
 }
+
+func TestE2E_CreateCommand(t *testing.T) {
+	bin := getNoctifabBin()
+	tempDir := t.TempDir()
+
+	cmdInit := exec.Command(bin, "init")
+	cmdInit.Dir = tempDir
+	err := cmdInit.Run()
+	require.NoError(t, err)
+
+	cmdCreate := exec.Command(bin, "create")
+	cmdCreate.Dir = tempDir
+	cmdCreate.Env = getTestEnv()
+
+	var stdout, stderr bytes.Buffer
+	cmdCreate.Stdout = &stdout
+	cmdCreate.Stderr = &stderr
+
+	err = cmdCreate.Run()
+	require.NoError(t, err, "create failed: %s", stderr.String())
+	assert.Contains(t, stdout.String(), "Feature successfully implemented and validated.")
+}
+

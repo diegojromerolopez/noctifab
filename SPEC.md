@@ -1655,7 +1655,7 @@ To support dynamic task generation from multiple workflow sources, `noctifab` ab
 ### 3.8. Automatic Commits, Centralized Versioning, & Pull Requests
 When the automated commit setting is enabled (via CLI flag `--auto-commit` or environment variable `NOCTIFAB_AUTO_COMMIT=true`), the orchestrator automatically manages the integration pipeline: branch creation, centralized version bumping, changelog updates, and pull request creation.
 
-*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start` and `noctifab run-once`). The planning command (`noctifab plan`) is strictly read-only with respect to the target repository; it builds the task dependency DAG and writes/updates the state database (`noctifab.db`), but it **never** creates branches, makes commits, or writes any changes to the target workspace source repository.
+*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start` and `noctifab create`). The planning command (`noctifab plan`) is strictly read-only with respect to the target repository; it builds the task dependency DAG and writes/updates the state database (`noctifab.db`), but it **never** creates branches, makes commits, or writes any changes to the target workspace source repository.
 
 #### 3.8.1. Branch Naming Policy
 The branch created by the worker agent is dynamically named using the configured `branch_prefix` (configured under `vcs:` in `.noctifab/config.yaml`):
@@ -1919,8 +1919,6 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     
     ##### Daemon Lock & PID File:
     At start, `noctifab start` attempts to acquire a file lock (`flock`) on `.noctifab/noctifab.pid` and writes its process PID inside. If another process holds the lock, the command exits with `"noctifab daemon is already running in this workspace."`
-*   `noctifab run-once`
-    Executes exactly one cycle of the orchestrator loop (Observe -> Decide -> Validate -> Execute -> Save) and then terminates. Excellent for debugging and running in crontab.
 *   `noctifab create`
     Plans and executes the feature specification end-to-end. It first runs the Planner phase to decompose the specification into a task DAG (if not already planned), then runs the execution loop continuously, calling the Generator/Evaluator to implement and validate tasks, and retrying/fixing any failures until the build is passing. Once complete, it pushes the branch, creates a single Pull Request, and exits cleanly.
 *   `noctifab validate`

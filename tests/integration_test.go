@@ -140,7 +140,7 @@ llm:
 	// Set args to override config path and point to our temp config
 	configFlag := filepath.Join(noctifabDir, "config.yaml")
 
-	subcommands := []string{"start", "run-once", "validate", "plan", "maintenance", "create"}
+	subcommands := []string{"start", "validate", "plan", "maintenance", "create"}
 
 	for _, sub := range subcommands {
 		t.Run("Command "+sub, func(t *testing.T) {
