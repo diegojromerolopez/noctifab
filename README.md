@@ -113,6 +113,9 @@ This compiles the binary to `./dist/noctifab`.
 
 # 4. Start the autonomous loop
 ./dist/noctifab start
+
+# Alternatively, run planning and execution end-to-end until validated
+./dist/noctifab create --input ./examples/markdown-to-html/spec.md
 ```
 
 ---
@@ -124,6 +127,7 @@ This compiles the binary to `./dist/noctifab`.
 - **`plan`**: Invokes the LLM Planner model to decompose a specification into task dependencies.
 - **`start`**: Spawns the daemon workers, initializes the API server, and runs the polling event loop.
 - **`run-once`**: Runs exactly one execution cycle and exits.
+- **`create`**: Plans and executes a feature specification end-to-end, running task workers and holdout validation in a loop until complete, then exits.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
 
 ---

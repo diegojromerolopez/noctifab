@@ -1921,6 +1921,8 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     At start, `noctifab start` attempts to acquire a file lock (`flock`) on `.noctifab/noctifab.pid` and writes its process PID inside. If another process holds the lock, the command exits with `"noctifab daemon is already running in this workspace."`
 *   `noctifab run-once`
     Executes exactly one cycle of the orchestrator loop (Observe -> Decide -> Validate -> Execute -> Save) and then terminates. Excellent for debugging and running in crontab.
+*   `noctifab create`
+    Plans and executes the feature specification end-to-end. It first runs the Planner phase to decompose the specification into a task DAG (if not already planned), then runs the execution loop continuously, calling the Generator/Evaluator to implement and validate tasks, and retrying/fixing any failures until the build is passing. Once complete, it pushes the branch, creates a single Pull Request, and exits cleanly.
 *   `noctifab validate`
     Runs a dry-run check of the current local state file, project directory constraints, and linter commands without polling the LLM or running actions.
 *   `noctifab plan`
