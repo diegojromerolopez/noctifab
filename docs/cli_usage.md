@@ -18,7 +18,7 @@ This creates the default configuration structure in the `.noctifab/` directory:
 .noctifab/
 ├── config.yaml          # Main YAML configuration file
 ├── .gitignore           # Ignores database, logs, and lock files
-├── config/
+├── data/
 │   └── noctifab.db      # SQLite local database
 ├── profiles/
 │   ├── default.yaml     # Role permission boundaries (read-only tools, local only)
@@ -78,7 +78,7 @@ The following flags can be passed to the root command or configured in `.noctifa
 | Long Flag | Short Flag | Default Value | Description |
 | :--- | :---: | :--- | :--- |
 | `--config` | `-c` | `.noctifab/config.yaml` | Path to the YAML configuration file |
-| `--db-path` | | `.noctifab/config/noctifab.db` | Path to the local SQLite database file |
+| `--db-path` | | `.noctifab/data/noctifab.db` | Path to the local SQLite database file |
 | `--storage-provider` | | `sqlite` | Storage provider (`sqlite`, `postgres`, `mysql`, `json`) |
 | `--storage-conn` | | | Connection string or filepath for the storage database |
 | `--input` | `-i` | | Path or issue URL to fetch the feature specification |
@@ -116,4 +116,98 @@ noctifab plan --input ./examples/markdown-to-html/spec.md
 
 # 5. Execute the work loop
 noctifab start
+```
+
+---
+
+## Sandbox Language Configurations
+
+For language-specific workspaces, you should configure the `sandbox` block in your `.noctifab/config.yaml` to specify the correct test runner, linter, formatter, and allowed binaries.
+
+Below are configurations for common programming languages:
+
+### Python
+```yaml
+sandbox:
+  mode: host
+  test_command: "pytest" # or "python -m unittest discover"
+  linter_command: "ruff check ."
+  formatter_command: "black ." # or "ruff format ."
+  allowed_commands:
+    - python
+    - git
+    - pip
+    - pytest
+    - ruff
+    - black
+```
+
+### Ruby
+```yaml
+sandbox:
+  mode: host
+  test_command: "bundle exec rspec"
+  linter_command: "bundle exec rubocop"
+  formatter_command: "bundle exec rubocop -A"
+  allowed_commands:
+    - ruby
+    - bundle
+    - git
+    - rspec
+    - rubocop
+```
+
+### Node.js (JavaScript / TypeScript)
+```yaml
+sandbox:
+  mode: host
+  test_command: "npm test" # or "jest" / "vitest"
+  linter_command: "npm run lint" # or "eslint ."
+  formatter_command: "npx prettier --write ."
+  allowed_commands:
+    - node
+    - npm
+    - npx
+    - git
+```
+
+### Java
+```yaml
+sandbox:
+  mode: host
+  test_command: "mvn test" # or "./gradlew test"
+  linter_command: "mvn checkstyle:check"
+  formatter_command: "mvn spotless:apply"
+  allowed_commands:
+    - java
+    - mvn
+    - gradle
+    - ./gradlew
+    - git
+```
+
+### Go (Golang)
+```yaml
+sandbox:
+  mode: host
+  test_command: "go test -v ./..."
+  linter_command: "golangci-lint run"
+  formatter_command: "go fmt ./..."
+  allowed_commands:
+    - go
+    - git
+    - make
+```
+
+### Rust
+```yaml
+sandbox:
+  mode: host
+  test_command: "cargo test"
+  linter_command: "cargo clippy -- -D warnings"
+  formatter_command: "cargo fmt"
+  allowed_commands:
+    - cargo
+    - rustc
+    - git
 ```

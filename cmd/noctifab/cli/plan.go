@@ -2,8 +2,11 @@ package cli
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/usecase"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
@@ -62,7 +66,27 @@ var planCmd = &cobra.Command{
 
 		state, err := repo.Load(context.Background())
 		if err != nil {
-			return err
+			if errors.Is(err, sql.ErrNoRows) {
+				cwd, getwdErr := os.Getwd()
+				if getwdErr != nil {
+					cwd = "."
+				}
+				state = &domain.State{
+					ID:          uuid.New().String(),
+					ProjectPath: cwd,
+					Version:     0,
+					BuildStatus: domain.BuildUnknown,
+					Metadata: domain.StateMetadata{
+						InputSource:  "markdown",
+						InputPath:    cfg.Input,
+						FeatureName:  filepath.Base(cfg.Input),
+						BaseBranch:   cfg.VCS.BaseBranch,
+						TotalCostUSD: "0.00000",
+					},
+				}
+			} else {
+				return err
+			}
 		}
 
 		// Invoke LLM Planner
