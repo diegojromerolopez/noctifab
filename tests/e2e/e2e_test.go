@@ -50,7 +50,7 @@ func TestE2E_Init_CleanDirectory(t *testing.T) {
 
 	// Verify directory structure
 	noctifabDir := filepath.Join(tempDir, ".noctifab")
-	assert.DirExists(t, filepath.Join(noctifabDir, "config"))
+	assert.DirExists(t, filepath.Join(noctifabDir, "data"))
 	assert.DirExists(t, filepath.Join(noctifabDir, "holdout"))
 	assert.DirExists(t, filepath.Join(noctifabDir, "logs"))
 	assert.DirExists(t, filepath.Join(noctifabDir, "profiles"))
@@ -59,14 +59,14 @@ func TestE2E_Init_CleanDirectory(t *testing.T) {
 	assert.FileExists(t, filepath.Join(noctifabDir, "config.yaml"))
 
 	// Verify database file
-	assert.FileExists(t, filepath.Join(noctifabDir, "config", "noctifab.db"))
+	assert.FileExists(t, filepath.Join(noctifabDir, "data", "noctifab.db"))
 
 	// Verify .gitignore
 	gitIgnorePath := filepath.Join(noctifabDir, ".gitignore")
 	assert.FileExists(t, gitIgnorePath)
 	content, err := os.ReadFile(gitIgnorePath)
 	require.NoError(t, err)
-	assert.True(t, strings.Contains(string(content), "config/noctifab.db"))
+	assert.True(t, strings.Contains(string(content), "data/noctifab.db"))
 
 	// Verify default profile
 	assert.FileExists(t, filepath.Join(noctifabDir, "profiles", "default.yaml"))
@@ -254,7 +254,7 @@ func TestE2E_Database_Migration_Parity(t *testing.T) {
 	err := cmd.Run()
 	require.NoError(t, err)
 
-	dbPath := filepath.Join(tempDir, ".noctifab", "config", "noctifab.db")
+	dbPath := filepath.Join(tempDir, ".noctifab", "data", "noctifab.db")
 	require.FileExists(t, dbPath)
 
 	// SQLite check

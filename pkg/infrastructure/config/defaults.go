@@ -22,8 +22,8 @@ func DefaultConfig() *Config {
 		},
 		Storage: StorageConfig{
 			Provider:     "sqlite",
-			ConnString:   ".noctifab/config/noctifab.db",
-			JSONFilePath: ".noctifab/config/state.json",
+			ConnString:   ".noctifab/data/noctifab.db",
+			JSONFilePath: ".noctifab/data/state.json",
 		},
 		LLM: LLMConfig{
 			Provider:           "openai",

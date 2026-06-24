@@ -49,7 +49,7 @@ var startCmd = &cobra.Command{
 		} else {
 			dbPath := cfg.Storage.ConnString
 			if dbPath == "" {
-				dbPath = ".noctifab/config/noctifab.db"
+				dbPath = ".noctifab/data/noctifab.db"
 			}
 			repo, err = storage.NewSQLiteRepository(context.Background(), dbPath)
 		}

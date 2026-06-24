@@ -39,7 +39,7 @@ func TestInitCommand(t *testing.T) {
 			t.Errorf("expected config.yaml to be created, got: %v", err)
 		}
 
-		dbPath := filepath.Join(tmpDir, ".noctifab", "config", "noctifab.db")
+		dbPath := filepath.Join(tmpDir, ".noctifab", "data", "noctifab.db")
 		if _, err := os.Stat(dbPath); err != nil {
 			t.Errorf("expected noctifab.db to be created, got: %v", err)
 		}
@@ -115,8 +115,8 @@ func TestSubcommands_Success(t *testing.T) {
 
 	// Write a valid config file and mock DB
 	noctifabDir := filepath.Join(tmpDir, ".noctifab")
-	if err := os.MkdirAll(filepath.Join(noctifabDir, "config"), 0755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
+	if err := os.MkdirAll(filepath.Join(noctifabDir, "data"), 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
 	}
 
 	validYaml := `

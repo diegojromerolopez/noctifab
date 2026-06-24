@@ -17,6 +17,10 @@ var initCmd = &cobra.Command{
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			WorkspaceDir = args[0]
+		}
+
 		// 1. Directory cleanliness check
 		entries, err := os.ReadDir(WorkspaceDir)
 		if err != nil {
@@ -24,28 +28,31 @@ var initCmd = &cobra.Command{
 		}
 
 		hasNoctifab := false
+		hasGit := false
 		hasOtherFiles := false
 		for _, entry := range entries {
 			name := entry.Name()
 			if name == ".noctifab" {
 				hasNoctifab = true
-			} else if name != ".git" && name != ".tool-versions" && name != "." && name != ".." {
+			} else if name == ".git" {
+				hasGit = true
+			} else if name != ".tool-versions" && name != "." && name != ".." {
 				hasOtherFiles = true
 			}
 		}
 
-		// If no .noctifab folder, but contains other project files, abort with code 4
-		if !hasNoctifab && hasOtherFiles {
+		// If no .noctifab folder AND it's not a git repository AND contains other project files, abort with code 4
+		if !hasNoctifab && !hasGit && hasOtherFiles {
 			return &ExitError{
 				Code: 4,
-				Msg:  "Security Warning: Target directory contains existing project files but is not initialized with .noctifab. Aborting to prevent overwrite.",
+				Msg:  "Security Warning: Target directory contains existing project files but is not initialized with .noctifab or .git. Aborting to prevent overwrite.",
 			}
 		}
 
 		// 2. Create directory structure
 		noctifabDir := filepath.Join(WorkspaceDir, ".noctifab")
 		subDirs := []string{
-			"config",
+			"data",
 			"holdout",
 			"logs",
 			"profiles",
@@ -66,7 +73,7 @@ var initCmd = &cobra.Command{
 		}
 
 		// 4. Initialize local SQLite database file if it doesn't exist
-		dbPath := filepath.Join(noctifabDir, "config", "noctifab.db")
+		dbPath := filepath.Join(noctifabDir, "data", "noctifab.db")
 		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 			f, err := os.OpenFile(dbPath, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
@@ -78,7 +85,7 @@ var initCmd = &cobra.Command{
 		// 5. Create local VCS ignore file (.noctifab/.gitignore) to exclude database, logs and lock files
 		gitIgnorePath := filepath.Join(noctifabDir, ".gitignore")
 		if _, err := os.Stat(gitIgnorePath); os.IsNotExist(err) {
-			ignoreContent := "config/noctifab.db\nlogs/\nworktrees/\nnoctifab.pid\n"
+			ignoreContent := "data/noctifab.db\nlogs/\nworktrees/\nnoctifab.pid\n"
 			if err := os.WriteFile(gitIgnorePath, []byte(ignoreContent), 0644); err != nil {
 				return fmt.Errorf("failed to create .gitignore: %w", err)
 			}

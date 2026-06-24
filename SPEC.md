@@ -87,7 +87,7 @@ noctifab/
 ├── .noctifab/                 # Local daemon runtime configuration directory
 │   ├── .gitignore             # Config gitignore file (ignores database and logs)
 │   ├── config.yaml            # Main YAML configuration file
-│   ├── config/
+│   ├── data/
 │   │   └── noctifab.db        # SQLite database file
 │   └── profiles/              # Role authorization profiles (planner.yaml, generator.yaml, etc.)
 ├── .readthedocs.yaml          # Read the Docs configuration file
@@ -1708,7 +1708,7 @@ The daemon initializes and operates inside a dedicated `.noctifab/` directory at
 ```
 .noctifab/
 ├── config.yaml              # Core YAML configuration file
-├── config/
+├── data/
 │   └── noctifab.db          # SQLite state database
 ├── holdout/                 # Hidden directory containing BDD holdout test scenarios
 ├── logs/                    # Execution/audit logs folder
@@ -1729,8 +1729,8 @@ orchestrator:
 
 storage:
   provider: "sqlite"            # Options: sqlite, postgres, mysql, json
-  conn_string: "./config/noctifab.db" # Database connection string or sqlite filepath
-  json_file_path: "./config/state.json" # File path used strictly if provider is "json"
+  conn_string: "./data/noctifab.db" # Database connection string or sqlite filepath
+  json_file_path: "./data/state.json" # File path used strictly if provider is "json"
 
 llm:
   provider: "gemini"            # Options: gemini (Gemini), anthropic (Claude), openai (ChatGPT/GPT-4o), ollama
@@ -1940,7 +1940,7 @@ The CLI configuration can be provided via flags or matching environment variable
 | Flag Name | Short | Environment Variable | Default Value | Description |
 |---|---|---|---|---|
 | `--config` | `-c` | `NOCTIFAB_CONFIG` | `cwd/.noctifab/config.yaml` | Path to the YAML configuration file |
-| `--db-path` | | `NOCTIFAB_DB_PATH` | `cwd/.noctifab/config/noctifab.db` | Path to the local SQLite database file (SQLite provider only) |
+| `--db-path` | | `NOCTIFAB_DB_PATH` | `cwd/.noctifab/data/noctifab.db` | Path to the local SQLite database file (SQLite provider only) |
 | `--storage-provider` | | `NOCTIFAB_STORAGE_PROVIDER` | `sqlite` | Storage backend provider: `sqlite`, `postgres`, `mysql`, `json` |
 | `--storage-conn` | | `NOCTIFAB_STORAGE_CONN` | | Connection string or filepath for the storage database |
 | `--input` | `-i` | `NOCTIFAB_INPUT` | | Path, GitHub/GitLab issue URL, or Jira URL to fetch the feature specification |
