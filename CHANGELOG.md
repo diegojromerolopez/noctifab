@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Renamed Command**: Renamed the `create` command to `start-one`.
+- **CI Workflow Optimization**:
+  - Restricted the CI `push` trigger to only run on the `main` branch to prevent duplicate CI job runs when branches have active pull requests.
 
 ## [0.0.1] - 2026-06-24
 
