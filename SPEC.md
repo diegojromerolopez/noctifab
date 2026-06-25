@@ -87,7 +87,7 @@ noctifab/
 ├── .noctifab/                 # Local daemon runtime configuration directory
 │   ├── .gitignore             # Config gitignore file (ignores database and logs)
 │   ├── config.yaml            # Main YAML configuration file
-│   ├── config/
+│   ├── data/
 │   │   └── noctifab.db        # SQLite database file
 │   └── profiles/              # Role authorization profiles (planner.yaml, generator.yaml, etc.)
 ├── .readthedocs.yaml          # Read the Docs configuration file
@@ -1655,7 +1655,7 @@ To support dynamic task generation from multiple workflow sources, `noctifab` ab
 ### 3.8. Automatic Commits, Centralized Versioning, & Pull Requests
 When the automated commit setting is enabled (via CLI flag `--auto-commit` or environment variable `NOCTIFAB_AUTO_COMMIT=true`), the orchestrator automatically manages the integration pipeline: branch creation, centralized version bumping, changelog updates, and pull request creation.
 
-*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start` and `noctifab run-once`). The planning command (`noctifab plan`) is strictly read-only with respect to the target repository; it builds the task dependency DAG and writes/updates the state database (`noctifab.db`), but it **never** creates branches, makes commits, or writes any changes to the target workspace source repository.
+*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start` and `noctifab create`). The planning command (`noctifab plan`) is strictly read-only with respect to the target repository; it builds the task dependency DAG and writes/updates the state database (`noctifab.db`), but it **never** creates branches, makes commits, or writes any changes to the target workspace source repository.
 
 #### 3.8.1. Branch Naming Policy
 The branch created by the worker agent is dynamically named using the configured `branch_prefix` (configured under `vcs:` in `.noctifab/config.yaml`):
@@ -1667,7 +1667,7 @@ The branch created by the worker agent is dynamically named using the configured
 
 #### 3.8.2. Centralized Release Pipeline & Version Bumping
 To prevent git merge conflicts and version stagnation in a multi-agent environment, **individual worker agents do not modify the `VERSION` file or `CHANGELOG.md`**. Instead, the release pipeline is managed centrally:
-1.  **Initial Version:** The `VERSION` file is initialized to `0.0.1` when the workspace is first created via `noctifab git_init`. This is the baseline version before any agent work.
+1.  **Initial Version:** The `VERSION` file is initialized to `0.0.1` when the workspace is first created via `noctifab init`. This is the baseline version before any agent work.
 2.  **Raw Semver Format and Validation:** The `VERSION` file must strictly contain a raw semantic version string (e.g., `MAJOR.MINOR.PATCH` with no leading `v` or formatting, and a single trailing newline). The version reader and writer strip leading/trailing whitespaces and validate the parsed version against a strict semver regex. If the parsed string is invalid, the orchestrator aborts execution and logs a validation error.
 3.  **VCS Credential Helper & Expiration:** To support rotating tokens or short-lived enterprise credentials, the orchestrator accepts a `--vcs-credential-helper` path flag pointing to a local script. Prior to executing VCS API requests, the orchestrator runs the helper to retrieve a fresh auth token. Any VCS API request that returns an HTTP 401/403 status is mapped to a permanent error classification that immediately suspends worker dispatching and alerts the operator, rather than retrying and risking IP bans.
 4.  **Partial Changelog Collection:** As each worker agent successfully completes its assigned task, it records a list of specific change description items (a partial changelog list, e.g. `["Added token authorization controller", "Fixed memory leak in connection pool"]`) to its `PartialChangelog` field in the task record.
@@ -1708,7 +1708,7 @@ The daemon initializes and operates inside a dedicated `.noctifab/` directory at
 ```
 .noctifab/
 ├── config.yaml              # Core YAML configuration file
-├── config/
+├── data/
 │   └── noctifab.db          # SQLite state database
 ├── holdout/                 # Hidden directory containing BDD holdout test scenarios
 ├── logs/                    # Execution/audit logs folder
@@ -1729,8 +1729,8 @@ orchestrator:
 
 storage:
   provider: "sqlite"            # Options: sqlite, postgres, mysql, json
-  conn_string: "./config/noctifab.db" # Database connection string or sqlite filepath
-  json_file_path: "./config/state.json" # File path used strictly if provider is "json"
+  conn_string: "./data/noctifab.db" # Database connection string or sqlite filepath
+  json_file_path: "./data/state.json" # File path used strictly if provider is "json"
 
 llm:
   provider: "gemini"            # Options: gemini (Gemini), anthropic (Claude), openai (ChatGPT/GPT-4o), ollama
@@ -1899,7 +1899,7 @@ To prevent console log clutter and improve developer user experience, the Cobra 
 
 ### 4.1. CLI Commands
 
-*   `noctifab git_init`
+*   `noctifab init`
     Clones the target VCS repository directly into the Current Working Directory (CWD) and initializes the workspace config directory and database. This command is strictly idempotent:
     *   **Clone Protocol CLI Flag:** Adds a `--vcs-clone-protocol` flag (values: `https`, `ssh`, default: `https`). The command constructs the clone URL dynamically using the VCS provider API (e.g. `https://github.com/owner/repo.git`).
     *   **Directory Cleanliness Guard:** Prior to execution, the command walks the current directory. If the directory contains files or folders other than `.noctifab` layout assets, the command aborts immediately with process exit code `4` and logs a security warning to `stderr` to prevent accidental codebase overwrites.
@@ -1919,8 +1919,8 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     
     ##### Daemon Lock & PID File:
     At start, `noctifab start` attempts to acquire a file lock (`flock`) on `.noctifab/noctifab.pid` and writes its process PID inside. If another process holds the lock, the command exits with `"noctifab daemon is already running in this workspace."`
-*   `noctifab run-once`
-    Executes exactly one cycle of the orchestrator loop (Observe -> Decide -> Validate -> Execute -> Save) and then terminates. Excellent for debugging and running in crontab.
+*   `noctifab create`
+    Plans and executes the feature specification end-to-end. It first runs the Planner phase to decompose the specification into a task DAG (if not already planned), then runs the execution loop continuously, calling the Generator/Evaluator to implement and validate tasks, and retrying/fixing any failures until the build is passing. Once complete, it pushes the branch, creates a single Pull Request, and exits cleanly.
 *   `noctifab validate`
     Runs a dry-run check of the current local state file, project directory constraints, and linter commands without polling the LLM or running actions.
 *   `noctifab plan`
@@ -1940,7 +1940,7 @@ The CLI configuration can be provided via flags or matching environment variable
 | Flag Name | Short | Environment Variable | Default Value | Description |
 |---|---|---|---|---|
 | `--config` | `-c` | `NOCTIFAB_CONFIG` | `cwd/.noctifab/config.yaml` | Path to the YAML configuration file |
-| `--db-path` | | `NOCTIFAB_DB_PATH` | `cwd/.noctifab/config/noctifab.db` | Path to the local SQLite database file (SQLite provider only) |
+| `--db-path` | | `NOCTIFAB_DB_PATH` | `cwd/.noctifab/data/noctifab.db` | Path to the local SQLite database file (SQLite provider only) |
 | `--storage-provider` | | `NOCTIFAB_STORAGE_PROVIDER` | `sqlite` | Storage backend provider: `sqlite`, `postgres`, `mysql`, `json` |
 | `--storage-conn` | | `NOCTIFAB_STORAGE_CONN` | | Connection string or filepath for the storage database |
 | `--input` | `-i` | `NOCTIFAB_INPUT` | | Path, GitHub/GitLab issue URL, or Jira URL to fetch the feature specification |
@@ -2222,7 +2222,7 @@ To ensure high cohesion, low coupling, and compliance with the 500-line source c
     *   `pkg/domain/state_repository.go` - [StateRepository](/SPEC.md#L206-L216) interface.
     *   `pkg/infrastructure/storage/sqlite_repository.go` - SQLite database implementation of state storage.
     *   `pkg/infrastructure/storage/postgres_repository.go` - PostgreSQL database implementation of state storage.
-    *   `cmd/noctifab/main.go` - Main CLI bootstrap routing commands (`noctifab git_init`, `noctifab validate`).
+    *   `cmd/noctifab/main.go` - Main CLI bootstrap routing commands (`noctifab init`, `noctifab validate`).
 *   **Verification:** Unit tests for SQLite and PostgreSQL loading/saving, connection management, and transaction OCC safety.
 
 ### 7.2. Phase 2: Task DAG & Concurrency Scheduler

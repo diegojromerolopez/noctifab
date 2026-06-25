@@ -55,25 +55,33 @@ func Load(cmd *cobra.Command) (*Config, error) {
 
 func resolveSecrets(cfg *Config) {
 	if cfg.VCS.TokenValue == "" {
-		envKey := cfg.VCS.TokenEnv
-		if envKey == "" {
-			envKey = "GITHUB_TOKEN"
+		if cfg.VCS.Token != "" {
+			cfg.VCS.TokenValue = cfg.VCS.Token
+		} else {
+			envKey := cfg.VCS.TokenEnv
+			if envKey == "" {
+				envKey = "GITHUB_TOKEN"
+			}
+			cfg.VCS.TokenValue = os.Getenv(envKey)
 		}
-		cfg.VCS.TokenValue = os.Getenv(envKey)
 	}
 
 	if cfg.LLM.APIKeyValue == "" {
-		if cfg.LLM.APIKeyEnv != "" {
-			cfg.LLM.APIKeyValue = os.Getenv(cfg.LLM.APIKeyEnv)
-		}
-		if cfg.LLM.APIKeyValue == "" {
-			switch strings.ToLower(cfg.LLM.Provider) {
-			case "openai":
-				cfg.LLM.APIKeyValue = os.Getenv("OPENAI_API_KEY")
-			case "anthropic":
-				cfg.LLM.APIKeyValue = os.Getenv("ANTHROPIC_API_KEY")
-			case "gemini":
-				cfg.LLM.APIKeyValue = os.Getenv("GEMINI_API_KEY")
+		if cfg.LLM.APIKey != "" {
+			cfg.LLM.APIKeyValue = cfg.LLM.APIKey
+		} else {
+			if cfg.LLM.APIKeyEnv != "" {
+				cfg.LLM.APIKeyValue = os.Getenv(cfg.LLM.APIKeyEnv)
+			}
+			if cfg.LLM.APIKeyValue == "" {
+				switch strings.ToLower(cfg.LLM.Provider) {
+				case "openai":
+					cfg.LLM.APIKeyValue = os.Getenv("OPENAI_API_KEY")
+				case "anthropic":
+					cfg.LLM.APIKeyValue = os.Getenv("ANTHROPIC_API_KEY")
+				case "gemini":
+					cfg.LLM.APIKeyValue = os.Getenv("GEMINI_API_KEY")
+				}
 			}
 		}
 	}

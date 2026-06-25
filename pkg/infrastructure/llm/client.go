@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -36,6 +37,83 @@ func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Dura
 }
 
 func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	// Preprocess prompt to inject system instructions and schemas based on the target action type
+	if strings.HasPrefix(prompt, "Decompose specification into tasks:") {
+		specStr := strings.TrimPrefix(prompt, "Decompose specification into tasks:")
+		prompt = fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json or `+"`"+`) outside the JSON.
+
+You are acting as the Planner Agent.
+Your task is to decompose the following specification into a Directed Acyclic Graph (DAG) of small, testable tasks.
+
+Specification:
+%s
+
+You may only use the 'add_task' tool to define the tasks.
+'add_task' tool arguments:
+- title: Short, unique title for the task (string)
+- description: Detailed instructions of what needs to be implemented (string)
+- change_type: Type of modification (string: "FEATURE", "FIX", or "BREAKING")
+- depends_on: Array of parent task titles or IDs that must complete first (array of strings)
+
+Return format:
+{
+  "reasoning": "Detailed technical rationale explaining your next step",
+  "actions": [
+    {
+      "tool": "add_task",
+      "args": {
+        "title": "Task title",
+        "description": "Task description...",
+        "change_type": "FEATURE",
+        "depends_on": []
+      }
+    }
+  ]
+}
+`, specStr)
+	} else if strings.HasPrefix(prompt, "Execute task:") {
+		taskDetails := strings.TrimPrefix(prompt, "Execute task:")
+		prompt = fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json or `+"`"+`) outside the JSON.
+
+You are acting as the Generator Agent.
+Your task is to implement the specified task.
+
+Task Details:
+%s
+
+CRITICAL:
+1. You only have ONE single turn to complete this task. You must write/edit files and run tests immediately in your response actions. Do NOT run read_file, find_files, grep_search, or list_directory first, as you will not get another turn.
+2. The package name is 'frontpunch'. All implementation files MUST be created or modified inside the 'frontpunch/' directory (e.g., 'frontpunch/worker.py', 'frontpunch/cli.py', 'frontpunch/client.py'). Do NOT create a directory named 'factory' or edit files in 'src/'.
+3. All unit/integration tests must be placed in the 'tests/' directory (e.g., 'tests/unit/test_worker.py', 'tests/unit/test_client.py') and import from 'frontpunch'. Do not import from 'factory'.
+4. For all Python test files, use the standard library 'unittest' and 'unittest.mock'. Do NOT import or use 'pytest' under any circumstance, as it is not installed in the sandbox environment.
+
+You may use the following tools:
+- read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
+- write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+- edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace", "replacement_content": "new code block"}
+- list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
+- find_files: search for files. Args: {"pattern": "*.py"}
+- grep_search: search for a pattern in files. Args: {"query": "search_term"}
+- run_tests: run the project's tests to verify correctness. Args: {}
+- noop: call this when the implementation is fully complete and all tests pass. Args: {}
+
+Return format:
+{
+  "reasoning": "Detailed technical rationale explaining your next step",
+  "actions": [
+    {
+      "tool": "tool_name",
+      "args": {
+         "arg_name": "value"
+      }
+    }
+  ]
+}
+`, taskDetails)
+	}
+
 	apiKey := c.APIKey
 	if apiKey == "" {
 		switch c.Provider {
@@ -112,11 +190,7 @@ func (c *Client) doPost(ctx context.Context, apiKey, prompt string) ([]byte, err
 		reqBody, _ = json.Marshal(payload)
 
 	case "gemini":
-		model := c.Model
-		if model == "" {
-			model = "gemini-1.5-pro"
-		}
-		url = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+		url = resolveGeminiURL(c.Model, apiKey)
 		headers["Content-Type"] = "application/json"
 		payload := map[string]any{
 			"contents": []map[string]any{
@@ -223,4 +297,12 @@ func (c *Client) doPost(ctx context.Context, apiKey, prompt string) ([]byte, err
 	}
 
 	return respBody, nil
+}
+
+func resolveGeminiURL(modelInput, apiKey string) string {
+	model := strings.TrimPrefix(modelInput, "models/")
+	if model == "" || model == "gemini-1.5-pro" {
+		model = "gemini-2.5-pro"
+	}
+	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
 }

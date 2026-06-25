@@ -108,18 +108,18 @@ graph TD
 
 ### Task 2: Cobra CLI Bootstrap & Configuration Loading `[MANDATORY CORE]`
 * **Dependencies**: Task 1 (Domain Models & Dual Database Storage Persistence)
-* **Description**: Set up the Command Line Interface commands (`git_init`, `plan`, `start`, `run-once`, `validate`, `maintenance`) using `github.com/spf13/cobra`. Parse YAML configuration file (`.noctifab/config.yaml`) and override properties via environment variables or CLI flags.
+* **Description**: Set up the Command Line Interface commands (`init`, `plan`, `start`, `run-once`, `validate`, `maintenance`) using `github.com/spf13/cobra`. Parse YAML configuration file (`.noctifab/config.yaml`) and override properties via environment variables or CLI flags.
 * **Definition of Done**:
   - Cobra subcommands defined under `cmd/noctifab/` and routed from `main.go`.
   - Config loading logic parses YAML file and binds environmental flags.
   - Usage text is silenced (`SilenceUsage: true`, `SilenceErrors: true`) globally for all commands, with execution errors routed to centralized logging.
 * **Acceptance Criteria**:
-  1. Running `noctifab git_init` in a clean directory creates `.noctifab/config.yaml` and initializes the database.
-  2. Running `noctifab git_init` in a directory containing project files (without a `.noctifab` directory) aborts with exit code `4`.
+  1. Running `noctifab init` in a clean directory creates `.noctifab/config.yaml` and initializes the database.
+  2. Running `noctifab init` in a directory containing project files (without a `.noctifab` directory) aborts with exit code `4`.
 * **E2E Test Cases**:
   * *Scenario: CLI Directory Cleanliness Guard*
     * **Given** a directory containing existing source files.
-    * **When** `noctifab git_init` is run.
+    * **When** `noctifab init` is run.
     * **Then** the command logs a warning and exits with code `4`, without creating configuration folders.
 
 ---
@@ -295,7 +295,7 @@ graph TD
   - GitHub and GitLab API adapters handle pull request creation.
   - Auto-rollback policies revert merge commits and push failed branches to the `noctifab-quarantine/` namespace.
 * **Acceptance Criteria**:
-  1. The `VERSION` file is initialized to `0.0.1` by `git_init` and matches raw semver formatting.
+  1. The `VERSION` file is initialized to `0.0.1` by `init` and matches raw semver formatting.
   2. Authentication errors (401/403) from VCS operations immediately halt dispatching and trigger operator alerts.
   3. Branch integration failures trigger auto-rollback: revert merge on integration branch and quarantine task branch.
 * **E2E Test Cases**:

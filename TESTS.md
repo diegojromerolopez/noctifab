@@ -45,7 +45,7 @@ Unit tests reside adjacent to their target logic files inside the `pkg/` directo
 ## 3. CLI Integration Tests (`tests/`)
 
 - [integration_test.go](file:///Users/diegoj/repos/noctifab/tests/integration_test.go): Tests the subcommands exposed by the Cobra CLI framework in-process by invoking the package-exported `cli.RootCmd.Execute()`.
-  - **`git_init`**: Tests successful configuration bootstrap on a clean directory and asserts the directory guard returns **Exit Code 4** (Security Warning) when running on a dirty directory containing existing project files.
+  - **`init`**: Tests successful configuration bootstrap on a clean directory and asserts the directory guard returns **Exit Code 4** (Security Warning) when running on a dirty directory containing existing project files.
   - **`validate`**: Asserts config and env validations behave correctly.
   - **`plan` / `start` / `run-once` / `maintenance`**: Verifies CLI parser parameters routing, pre-flight checks output, and execution cycle initialization.
   - **`Execute` & `ExitError`**: Verifies in-process command execution error routing and custom shell exit code formatting.

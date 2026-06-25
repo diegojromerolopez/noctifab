@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.2] - 2026-06-25
+
+### Added
+- **Interactive REPL & Background Daemon**:
+  - Overhauled the `start` command to spawn `noctifab serve` as a background daemon process and run an interactive foreground command line REPL.
+  - Implemented the `ListenerAgent` to interpret operator free-text commands using the LLM with a rule-based parser fallback.
+  - Added the `ClarificationPoller` to query pending clarification questions from the daemon and prompt the developer for answers inline.
+- **New CLI Commands**:
+  - Added the `stop` command to gracefully stop the background daemon and save state.
+  - Added the `clean` command to reset the database and logs. It includes a check to prevent clearing state if the daemon is currently running, unless overridden via `--force`.
+- **Per-Story Log Files**:
+  - Created spec-specific log files at `.noctifab/logs/roadmap/<spec-name>.log`.
+- **Per-Story Pull Requests**:
+  - Decoupled pull request finalization into `orchestrator_finalize.go`. The orchestrator now pushes branches and creates separate pull requests on a per-user-story completion basis.
+- **Unit and Integration Tests**:
+  - Added extensive BDD-style unit tests for `DaemonClient`, `ClarificationPoller`, and `FinalizeUserStory` with local bare Git remote mocks.
+  - Added integration tests for process signaling, daemon graceful stop, and the clean command.
+
+### Changed
+- **Renamed Command**: Renamed the `create` command to `start-one`.
+- **CI Workflow Optimization**:
+  - Restricted the CI `push` trigger to only run on the `main` branch to prevent duplicate CI job runs when branches have active pull requests.
+
 ## [0.0.1] - 2026-06-24
 
 ### Added

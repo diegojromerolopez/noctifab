@@ -34,11 +34,11 @@ func getTestEnv() []string {
 	)
 }
 
-func TestE2E_GitInit_CleanDirectory(t *testing.T) {
+func TestE2E_Init_CleanDirectory(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()
 
-	cmd := exec.Command(bin, "git_init")
+	cmd := exec.Command(bin, "init")
 	cmd.Dir = tempDir
 
 	var stdout, stderr bytes.Buffer
@@ -46,11 +46,11 @@ func TestE2E_GitInit_CleanDirectory(t *testing.T) {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	require.NoError(t, err, "git_init failed: %s", stderr.String())
+	require.NoError(t, err, "init failed: %s", stderr.String())
 
 	// Verify directory structure
 	noctifabDir := filepath.Join(tempDir, ".noctifab")
-	assert.DirExists(t, filepath.Join(noctifabDir, "config"))
+	assert.DirExists(t, filepath.Join(noctifabDir, "data"))
 	assert.DirExists(t, filepath.Join(noctifabDir, "holdout"))
 	assert.DirExists(t, filepath.Join(noctifabDir, "logs"))
 	assert.DirExists(t, filepath.Join(noctifabDir, "profiles"))
@@ -59,20 +59,20 @@ func TestE2E_GitInit_CleanDirectory(t *testing.T) {
 	assert.FileExists(t, filepath.Join(noctifabDir, "config.yaml"))
 
 	// Verify database file
-	assert.FileExists(t, filepath.Join(noctifabDir, "config", "noctifab.db"))
+	assert.FileExists(t, filepath.Join(noctifabDir, "data", "noctifab.db"))
 
 	// Verify .gitignore
 	gitIgnorePath := filepath.Join(noctifabDir, ".gitignore")
 	assert.FileExists(t, gitIgnorePath)
 	content, err := os.ReadFile(gitIgnorePath)
 	require.NoError(t, err)
-	assert.True(t, strings.Contains(string(content), "config/noctifab.db"))
+	assert.True(t, strings.Contains(string(content), "data/noctifab.db"))
 
 	// Verify default profile
 	assert.FileExists(t, filepath.Join(noctifabDir, "profiles", "default.yaml"))
 }
 
-func TestE2E_GitInit_DirtyDirectory_SecurityExitCode4(t *testing.T) {
+func TestE2E_Init_DirtyDirectory_SecurityExitCode4(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()
 
@@ -80,7 +80,7 @@ func TestE2E_GitInit_DirtyDirectory_SecurityExitCode4(t *testing.T) {
 	err := os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main"), 0644)
 	require.NoError(t, err)
 
-	cmd := exec.Command(bin, "git_init")
+	cmd := exec.Command(bin, "init")
 	cmd.Dir = tempDir
 
 	var stdout, stderr bytes.Buffer
@@ -103,12 +103,12 @@ func TestE2E_GitInit_DirtyDirectory_SecurityExitCode4(t *testing.T) {
 	assert.NoDirExists(t, noctifabDir)
 }
 
-func TestE2E_GitInit_Idempotency(t *testing.T) {
+func TestE2E_Init_Idempotency(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()
 
 	// First initialization
-	cmd1 := exec.Command(bin, "git_init")
+	cmd1 := exec.Command(bin, "init")
 	cmd1.Dir = tempDir
 	err := cmd1.Run()
 	require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestE2E_GitInit_Idempotency(t *testing.T) {
 	require.NoError(t, err)
 
 	// Second initialization (idempotency check)
-	cmd2 := exec.Command(bin, "git_init")
+	cmd2 := exec.Command(bin, "init")
 	cmd2.Dir = tempDir
 	err = cmd2.Run()
 	require.NoError(t, err)
@@ -136,7 +136,7 @@ func TestE2E_Validate_Configuration(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Initialize config first
-	cmdInit := exec.Command(bin, "git_init")
+	cmdInit := exec.Command(bin, "init")
 	cmdInit.Dir = tempDir
 	err := cmdInit.Run()
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestE2E_PlanCommand(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()
 
-	cmdInit := exec.Command(bin, "git_init")
+	cmdInit := exec.Command(bin, "init")
 	cmdInit.Dir = tempDir
 	err := cmdInit.Run()
 	require.NoError(t, err)
@@ -183,7 +183,7 @@ func TestE2E_StartCommand(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()
 
-	cmdInit := exec.Command(bin, "git_init")
+	cmdInit := exec.Command(bin, "init")
 	cmdInit.Dir = tempDir
 	err := cmdInit.Run()
 	require.NoError(t, err)
@@ -201,33 +201,11 @@ func TestE2E_StartCommand(t *testing.T) {
 	assert.Contains(t, stdout.String(), "Pre-flight checks passed successfully.")
 }
 
-func TestE2E_RunOnceCommand(t *testing.T) {
-	bin := getNoctifabBin()
-	tempDir := t.TempDir()
-
-	cmdInit := exec.Command(bin, "git_init")
-	cmdInit.Dir = tempDir
-	err := cmdInit.Run()
-	require.NoError(t, err)
-
-	cmdRun := exec.Command(bin, "run-once")
-	cmdRun.Dir = tempDir
-	cmdRun.Env = getTestEnv()
-
-	var stdout, stderr bytes.Buffer
-	cmdRun.Stdout = &stdout
-	cmdRun.Stderr = &stderr
-
-	err = cmdRun.Run()
-	require.NoError(t, err, "run-once failed: %s", stderr.String())
-	assert.Contains(t, stdout.String(), "Cycle completed successfully.")
-}
-
 func TestE2E_MaintenanceCommand(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()
 
-	cmdInit := exec.Command(bin, "git_init")
+	cmdInit := exec.Command(bin, "init")
 	cmdInit.Dir = tempDir
 	err := cmdInit.Run()
 	require.NoError(t, err)
@@ -249,12 +227,12 @@ func TestE2E_Database_Migration_Parity(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()
 
-	cmd := exec.Command(bin, "git_init")
+	cmd := exec.Command(bin, "init")
 	cmd.Dir = tempDir
 	err := cmd.Run()
 	require.NoError(t, err)
 
-	dbPath := filepath.Join(tempDir, ".noctifab", "config", "noctifab.db")
+	dbPath := filepath.Join(tempDir, ".noctifab", "data", "noctifab.db")
 	require.FileExists(t, dbPath)
 
 	// SQLite check
@@ -304,4 +282,26 @@ func TestE2E_Database_Migration_Parity(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestE2E_StartOneCommand(t *testing.T) {
+	bin := getNoctifabBin()
+	tempDir := t.TempDir()
+
+	cmdInit := exec.Command(bin, "init")
+	cmdInit.Dir = tempDir
+	err := cmdInit.Run()
+	require.NoError(t, err)
+
+	cmdStartOne := exec.Command(bin, "start-one")
+	cmdStartOne.Dir = tempDir
+	cmdStartOne.Env = getTestEnv()
+
+	var stdout, stderr bytes.Buffer
+	cmdStartOne.Stdout = &stdout
+	cmdStartOne.Stderr = &stderr
+
+	err = cmdStartOne.Run()
+	require.NoError(t, err, "start-one failed: %s", stderr.String())
+	assert.Contains(t, stdout.String(), "Feature successfully implemented and validated.")
 }

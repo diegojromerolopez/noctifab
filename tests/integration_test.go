@@ -3,15 +3,20 @@ package tests
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/cmd/noctifab/cli"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestGitInitCommand(t *testing.T) {
+func TestInitCommand(t *testing.T) {
 	// Set required environment variables for validation inside commands
 	_ = os.Setenv("GITHUB_TOKEN", "test-token")
 	defer func() { _ = os.Unsetenv("GITHUB_TOKEN") }()
@@ -26,11 +31,11 @@ func TestGitInitCommand(t *testing.T) {
 		cli.WorkspaceDir = tmpDir
 		defer func() { cli.WorkspaceDir = oldDir }()
 
-		// Run git_init subcommand
-		cli.RootCmd.SetArgs([]string{"git_init", "--vcs-clone-protocol", "https"})
+		// Run init subcommand
+		cli.RootCmd.SetArgs([]string{"init", "--vcs-clone-protocol", "https"})
 		err := cli.RootCmd.Execute()
 		if err != nil {
-			t.Fatalf("expected git_init to succeed on clean dir, got: %v", err)
+			t.Fatalf("expected init to succeed on clean dir, got: %v", err)
 		}
 
 		// Verify files created
@@ -39,13 +44,13 @@ func TestGitInitCommand(t *testing.T) {
 			t.Errorf("expected config.yaml to be created, got: %v", err)
 		}
 
-		dbPath := filepath.Join(tmpDir, ".noctifab", "config", "noctifab.db")
+		dbPath := filepath.Join(tmpDir, ".noctifab", "data", "noctifab.db")
 		if _, err := os.Stat(dbPath); err != nil {
 			t.Errorf("expected noctifab.db to be created, got: %v", err)
 		}
 
 		gitIgnorePath := filepath.Join(tmpDir, ".noctifab", ".gitignore")
-		if _, err := os.Stat(gitIgnorePath); err != nil {
+		if _, err := os.Stat(gitIgnorePath); os.IsNotExist(err) {
 			t.Errorf("expected .gitignore to be created, got: %v", err)
 		}
 
@@ -57,7 +62,7 @@ func TestGitInitCommand(t *testing.T) {
 		// Run again (idempotent check)
 		err = cli.RootCmd.Execute()
 		if err != nil {
-			t.Fatalf("expected git_init to be idempotent and succeed, got: %v", err)
+			t.Fatalf("expected init to be idempotent and succeed, got: %v", err)
 		}
 	})
 
@@ -75,11 +80,11 @@ func TestGitInitCommand(t *testing.T) {
 		cli.WorkspaceDir = tmpDir
 		defer func() { cli.WorkspaceDir = oldDir }()
 
-		// Run git_init subcommand
-		cli.RootCmd.SetArgs([]string{"git_init"})
+		// Run init subcommand
+		cli.RootCmd.SetArgs([]string{"init"})
 		err := cli.RootCmd.Execute()
 		if err == nil {
-			t.Fatal("expected git_init to return exit error, got nil")
+			t.Fatal("expected init to return exit error, got nil")
 		}
 
 		exitErr, ok := err.(*cli.ExitError)
@@ -101,7 +106,7 @@ func TestGitInitCommand(t *testing.T) {
 		cli.WorkspaceDir = "/nonexistent-path-987654"
 		defer func() { cli.WorkspaceDir = oldDir }()
 
-		cli.RootCmd.SetArgs([]string{"git_init"})
+		cli.RootCmd.SetArgs([]string{"init"})
 		err := cli.RootCmd.Execute()
 		if err == nil {
 			t.Fatal("expected error reading nonexistent directory")
@@ -115,8 +120,8 @@ func TestSubcommands_Success(t *testing.T) {
 
 	// Write a valid config file and mock DB
 	noctifabDir := filepath.Join(tmpDir, ".noctifab")
-	if err := os.MkdirAll(filepath.Join(noctifabDir, "config"), 0755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
+	if err := os.MkdirAll(filepath.Join(noctifabDir, "data"), 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
 	}
 
 	validYaml := `
@@ -140,7 +145,7 @@ llm:
 	// Set args to override config path and point to our temp config
 	configFlag := filepath.Join(noctifabDir, "config.yaml")
 
-	subcommands := []string{"start", "run-once", "validate", "plan", "maintenance"}
+	subcommands := []string{"start", "validate", "plan", "maintenance", "start-one", "stop", "clean"}
 
 	for _, sub := range subcommands {
 		t.Run("Command "+sub, func(t *testing.T) {
@@ -253,4 +258,125 @@ func TestExecuteAndMain(t *testing.T) {
 			t.Errorf("expected exitedCode 1, got %d", exitedCode)
 		}
 	})
+}
+
+func TestStopCommand_DaemonIntegration(t *testing.T) {
+	_ = os.Setenv("GITHUB_TOKEN", "test-token")
+	defer func() { _ = os.Unsetenv("GITHUB_TOKEN") }()
+	_ = os.Setenv("OPENAI_API_KEY", "test-api-key")
+	defer func() { _ = os.Unsetenv("OPENAI_API_KEY") }()
+
+	tmpDir := t.TempDir()
+	oldDir := cli.WorkspaceDir
+	cli.WorkspaceDir = tmpDir
+	defer func() { cli.WorkspaceDir = oldDir }()
+
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { _ = os.Chdir(wd) }()
+
+	err = os.Chdir(tmpDir)
+	require.NoError(t, err)
+
+	err = os.MkdirAll(".noctifab/data", 0755)
+	require.NoError(t, err)
+
+	cmd := exec.Command("sleep", "10")
+	err = cmd.Start()
+	require.NoError(t, err)
+	go func() { _ = cmd.Wait() }()
+	defer func() { _ = cmd.Process.Kill() }()
+
+	pid := cmd.Process.Pid
+	err = os.WriteFile(".noctifab/noctifab.pid", []byte(strconv.Itoa(pid)), 0644)
+	require.NoError(t, err)
+
+	cli.RootCmd.SetArgs([]string{"stop"})
+	err = cli.RootCmd.Execute()
+	assert.NoError(t, err)
+
+	proc, err := os.FindProcess(pid)
+	if err == nil {
+		err = proc.Signal(syscall.Signal(0))
+		assert.Error(t, err, "expected process to be terminated")
+	}
+
+	_, statErr := os.Stat(".noctifab/noctifab.pid")
+	assert.True(t, os.IsNotExist(statErr), "expected PID file to be removed")
+}
+
+func TestCleanCommand_DaemonIntegration(t *testing.T) {
+	_ = os.Setenv("GITHUB_TOKEN", "test-token")
+	defer func() { _ = os.Unsetenv("GITHUB_TOKEN") }()
+	_ = os.Setenv("OPENAI_API_KEY", "test-api-key")
+	defer func() { _ = os.Unsetenv("OPENAI_API_KEY") }()
+
+	tmpDir := t.TempDir()
+	oldDir := cli.WorkspaceDir
+	cli.WorkspaceDir = tmpDir
+	defer func() { cli.WorkspaceDir = oldDir }()
+
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { _ = os.Chdir(wd) }()
+
+	err = os.Chdir(tmpDir)
+	require.NoError(t, err)
+
+	err = os.MkdirAll(".noctifab/data", 0755)
+	require.NoError(t, err)
+	err = os.MkdirAll(".noctifab/logs/roadmap", 0755)
+	require.NoError(t, err)
+
+	dbFile := ".noctifab/data/noctifab.db"
+	err = os.WriteFile(dbFile, []byte("dummy db content"), 0644)
+	require.NoError(t, err)
+
+	logFile := ".noctifab/logs/roadmap/US-0001.log"
+	err = os.WriteFile(logFile, []byte("some log"), 0644)
+	require.NoError(t, err)
+
+	daemonLog := ".noctifab/logs/daemon.log"
+	err = os.WriteFile(daemonLog, []byte("daemon log"), 0644)
+	require.NoError(t, err)
+
+	configYaml := `
+config_version: "1.0"
+vcs:
+  repository: "owner/repo"
+`
+	err = os.WriteFile(".noctifab/config.yaml", []byte(configYaml), 0644)
+	require.NoError(t, err)
+
+	cmd := exec.Command("sleep", "10")
+	err = cmd.Start()
+	require.NoError(t, err)
+	go func() { _ = cmd.Wait() }()
+	defer func() { _ = cmd.Process.Kill() }()
+
+	pid := cmd.Process.Pid
+	err = os.WriteFile(".noctifab/noctifab.pid", []byte(strconv.Itoa(pid)), 0644)
+	require.NoError(t, err)
+
+	cli.RootCmd.SetArgs([]string{"clean", "--config", ".noctifab/config.yaml"})
+	err = cli.RootCmd.Execute()
+	assert.Error(t, err, "expected clean to fail when daemon is running")
+	assert.Contains(t, err.Error(), "daemon is still running")
+
+	// Case 2: clean with --force
+	cli.RootCmd.SetArgs([]string{"clean", "--config", ".noctifab/config.yaml", "--force"})
+	err = cli.RootCmd.Execute()
+	assert.NoError(t, err)
+
+	_, err = os.Stat(dbFile)
+	assert.True(t, os.IsNotExist(err), "DB should be deleted")
+
+	_, err = os.Stat(".noctifab/noctifab.pid")
+	assert.True(t, os.IsNotExist(err), "PID file should be deleted")
+
+	_, err = os.Stat(".noctifab/logs/roadmap")
+	assert.True(t, os.IsNotExist(err), "roadmap logs should be deleted")
+
+	_, err = os.Stat(daemonLog)
+	assert.True(t, os.IsNotExist(err), "daemon log should be deleted")
 }

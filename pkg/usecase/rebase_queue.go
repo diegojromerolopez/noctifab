@@ -113,6 +113,16 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 		return fmt.Errorf("rebase conflict detected: %w", err)
 	}
 
+	// Checkout base and merge branch to fast-forward local base branch
+	_, err = q.git.Run(ctx, true, "checkout", base)
+	if err != nil {
+		return fmt.Errorf("failed to checkout base: %w", err)
+	}
+	_, err = q.git.Run(ctx, true, "merge", branch)
+	if err != nil {
+		return fmt.Errorf("failed to merge branch into base: %w", err)
+	}
+
 	// Pop stash if we stashed
 	if stashed {
 		_, err = q.git.Run(ctx, true, "stash", "pop")

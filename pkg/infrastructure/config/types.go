@@ -71,6 +71,7 @@ type LLMConfig struct {
 	Provider           string   `yaml:"provider"`
 	Model              string   `yaml:"model"`
 	Temperature        float64  `yaml:"temperature"`
+	APIKey             string   `yaml:"api_key"`
 	APIKeyEnv          string   `yaml:"api_key_env"`
 	APIKeyValue        string   `yaml:"-"`
 	URL                string   `yaml:"url"`
@@ -85,6 +86,7 @@ type VCSConfig struct {
 	Repository          string                   `yaml:"repository"`
 	BaseBranch          string                   `yaml:"base_branch"`
 	BranchPrefix        string                   `yaml:"branch_prefix"`
+	Token               string                   `yaml:"token"`
 	TokenEnv            string                   `yaml:"token_env"`
 	TokenValue          string                   `yaml:"-"`
 	ConventionalCommits ConventionalCommitConfig `yaml:"conventional_commits"`

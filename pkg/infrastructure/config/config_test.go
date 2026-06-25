@@ -176,6 +176,33 @@ func TestResolveSecrets(t *testing.T) {
 			t.Errorf("expected custom-llm-val, got %s", cfg.LLM.APIKeyValue)
 		}
 	})
+
+	t.Run("Direct APIKey takes precedence over env", func(t *testing.T) {
+		_ = os.Setenv("GEMINI_API_KEY", "gemini-env-val")
+		defer func() { _ = os.Unsetenv("GEMINI_API_KEY") }()
+
+		cfg := &Config{}
+		cfg.LLM.Provider = "gemini"
+		cfg.LLM.APIKey = "direct-api-key"
+		resolveSecrets(cfg)
+
+		if cfg.LLM.APIKeyValue != "direct-api-key" {
+			t.Errorf("expected direct-api-key, got %s", cfg.LLM.APIKeyValue)
+		}
+	})
+
+	t.Run("Direct Token takes precedence over env", func(t *testing.T) {
+		_ = os.Setenv("GITHUB_TOKEN", "github-env-val")
+		defer func() { _ = os.Unsetenv("GITHUB_TOKEN") }()
+
+		cfg := &Config{}
+		cfg.VCS.Token = "direct-token"
+		resolveSecrets(cfg)
+
+		if cfg.VCS.TokenValue != "direct-token" {
+			t.Errorf("expected direct-token, got %s", cfg.VCS.TokenValue)
+		}
+	})
 }
 
 func TestValidate(t *testing.T) {

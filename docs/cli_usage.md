@@ -6,10 +6,10 @@
 
 ## Workspace Initialization
 
-To set up a repository for use with `noctifab`, run the `git_init` command from the root of the target codebase:
+To set up a repository for use with `noctifab`, run the `init` command from the root of the target codebase:
 
 ```bash
-noctifab git_init
+noctifab init
 ```
 
 This creates the default configuration structure in the `.noctifab/` directory:
@@ -18,7 +18,7 @@ This creates the default configuration structure in the `.noctifab/` directory:
 .noctifab/
 ├── config.yaml          # Main YAML configuration file
 ├── .gitignore           # Ignores database, logs, and lock files
-├── config/
+├── data/
 │   └── noctifab.db      # SQLite local database
 ├── profiles/
 │   ├── default.yaml     # Role permission boundaries (read-only tools, local only)
@@ -32,10 +32,10 @@ This creates the default configuration structure in the `.noctifab/` directory:
 
 `noctifab` provides several subcommands for orchestrating development pipelines:
 
-### 1. `git_init`
+### 1. `init`
 Initializes a repository workspace with the necessary folder structure, database, default YAML configuration, and security permission profiles.
 ```bash
-noctifab git_init [flags]
+noctifab init [flags]
 ```
 - **Security Check**: If the target directory contains existing project files but does not have a `.noctifab` directory, the command will warn the developer and abort with exit code `4` to prevent unintended code overwrites.
 
@@ -52,18 +52,30 @@ noctifab plan --input ./feature-spec.md
 ```
 
 ### 4. `start`
-Spawns the long-running daemon loop. It regularly polls the database for pending/ready tasks, coordinates the worker concurrency pool, binds a REST API command server, and executes agents.
+Spawns the background daemon process (`noctifab serve`) and starts a foreground interactive REPL loop. The REPL accepts operator orders (e.g. `start roadmap/US-0001.md`) and displays/prompts for clarification answers.
 ```bash
 noctifab start
 ```
 
-### 5. `run-once`
-Executes exactly one cycle of the event loop (Observation, Scheduling, Execution, Holdout Evaluation, and VCS Handoff) and exits immediately. This is ideal for manual verification or cron-based pipelines.
+### 5. `start-one`
+Plans and executes a single user story specification file end-to-end in a blocking execution loop until complete or failed, then exits.
 ```bash
-noctifab run-once
+noctifab start-one --input ./feature-spec.md
 ```
 
-### 6. `maintenance`
+### 6. `stop`
+Gracefully stops the background daemon process and saves state.
+```bash
+noctifab stop
+```
+
+### 7. `clean`
+Wipes all noctifab state (deletes database, PID, and story/daemon logs).
+```bash
+noctifab clean
+```
+
+### 8. `maintenance`
 Performs cleanup actions: prunes fully merged task branches from the local directory, cleans orphaned worktrees, and executes state database schema migrations.
 ```bash
 noctifab maintenance
@@ -78,7 +90,7 @@ The following flags can be passed to the root command or configured in `.noctifa
 | Long Flag | Short Flag | Default Value | Description |
 | :--- | :---: | :--- | :--- |
 | `--config` | `-c` | `.noctifab/config.yaml` | Path to the YAML configuration file |
-| `--db-path` | | `.noctifab/config/noctifab.db` | Path to the local SQLite database file |
+| `--db-path` | | `.noctifab/data/noctifab.db` | Path to the local SQLite database file |
 | `--storage-provider` | | `sqlite` | Storage provider (`sqlite`, `postgres`, `mysql`, `json`) |
 | `--storage-conn` | | | Connection string or filepath for the storage database |
 | `--input` | `-i` | | Path or issue URL to fetch the feature specification |
@@ -103,7 +115,7 @@ Below is a typical sequence of commands to execute a feature specification:
 
 ```bash
 # 1. Initialize the workspace
-noctifab git_init
+noctifab init
 
 # 2. Add your LLM keys and configuration to .noctifab/config.yaml
 # (e.g. set llm-provider: "openai" and llm-model: "gpt-4o")
@@ -111,9 +123,103 @@ noctifab git_init
 # 3. Validate configuration
 noctifab validate
 
-# 4. Decompose a markdown specification into task DAGs
-noctifab plan --input ./examples/markdown-to-html/spec.md
-
-# 5. Execute the work loop
+# 4. Start the background daemon and interactive REPL
 noctifab start
+
+# 5. From the REPL prompt, queue a user story
+> start examples/markdown-to-html/spec.md
+```
+
+---
+
+## Sandbox Language Configurations
+
+For language-specific workspaces, you should configure the `sandbox` block in your `.noctifab/config.yaml` to specify the correct test runner, linter, formatter, and allowed binaries.
+
+Below are configurations for common programming languages:
+
+### Python
+```yaml
+sandbox:
+  mode: host
+  test_command: "pytest" # or "python -m unittest discover"
+  linter_command: "ruff check ."
+  formatter_command: "black ." # or "ruff format ."
+  allowed_commands:
+    - python
+    - git
+    - pip
+    - pytest
+    - ruff
+    - black
+```
+
+### Ruby
+```yaml
+sandbox:
+  mode: host
+  test_command: "bundle exec rspec"
+  linter_command: "bundle exec rubocop"
+  formatter_command: "bundle exec rubocop -A"
+  allowed_commands:
+    - ruby
+    - bundle
+    - git
+    - rspec
+    - rubocop
+```
+
+### Node.js (JavaScript / TypeScript)
+```yaml
+sandbox:
+  mode: host
+  test_command: "npm test" # or "jest" / "vitest"
+  linter_command: "npm run lint" # or "eslint ."
+  formatter_command: "npx prettier --write ."
+  allowed_commands:
+    - node
+    - npm
+    - npx
+    - git
+```
+
+### Java
+```yaml
+sandbox:
+  mode: host
+  test_command: "mvn test" # or "./gradlew test"
+  linter_command: "mvn checkstyle:check"
+  formatter_command: "mvn spotless:apply"
+  allowed_commands:
+    - java
+    - mvn
+    - gradle
+    - ./gradlew
+    - git
+```
+
+### Go (Golang)
+```yaml
+sandbox:
+  mode: host
+  test_command: "go test -v ./..."
+  linter_command: "golangci-lint run"
+  formatter_command: "go fmt ./..."
+  allowed_commands:
+    - go
+    - git
+    - make
+```
+
+### Rust
+```yaml
+sandbox:
+  mode: host
+  test_command: "cargo test"
+  linter_command: "cargo clippy -- -D warnings"
+  formatter_command: "cargo fmt"
+  allowed_commands:
+    - cargo
+    - rustc
+    - git
 ```
