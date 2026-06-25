@@ -20,9 +20,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var createCmd = &cobra.Command{
-	Use:           "create",
-	Short:         "Plan and execute the feature specification end-to-end until validated",
+var startOneCmd = &cobra.Command{
+	Use:           "start-one",
+	Short:         "Plan and execute a single feature specification end-to-end until validated and PR created",
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -45,7 +45,7 @@ var createCmd = &cobra.Command{
 		}
 
 		if cfg.Input == "" {
-			return errors.New("specification file (-i/--input) is required for create command")
+			return errors.New("specification file (-i/--input) is required for start-one command")
 		}
 
 		// Initialize repository
@@ -228,5 +228,5 @@ func allTasksFinished(state *domain.State) bool {
 }
 
 func init() {
-	RootCmd.AddCommand(createCmd)
+	RootCmd.AddCommand(startOneCmd)
 }

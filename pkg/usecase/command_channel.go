@@ -107,7 +107,9 @@ func (c *OverrideMergeCmd) Execute(ctx context.Context, repo domain.StateReposit
 }
 
 // StartDaemonServer sets up local loopback REST API bindings.
-func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox) *http.Server {
+// storyCh is the channel into which story work items are forwarded when the daemon
+// operates in server mode; pass nil when running in single-story mode.
+func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, storyCh chan<- StoryWorkItem) *http.Server {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +130,36 @@ func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox) *ht
 			return
 		}
 		_ = json.NewEncoder(w).Encode(state)
+	})
+
+	// GET /api/v1/clarifications?pending=true  — returns unresolved clarifications
+	// POST /api/v1/clarifications/{id}/resolve  — resolves a clarification by ID
+	mux.HandleFunc("/api/v1/clarifications", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		state, err := repo.Load(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		pendingOnly := r.URL.Query().Get("pending") == "true"
+		result := make([]map[string]any, 0)
+		for i, c := range state.Clarifications {
+			if pendingOnly && c.Resolved {
+				continue
+			}
+			result = append(result, map[string]any{
+				"id":       fmt.Sprintf("%d", i),
+				"question": c.Question,
+				"resolved": c.Resolved,
+				"answer":   c.Answer,
+				"asked_at": c.AskedAt,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
 	})
 
 	mux.HandleFunc("/api/v1/clarifications/", func(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +188,35 @@ func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox) *ht
 		_, _ = w.Write([]byte(`{"status":"accepted"}`))
 	})
 
+	// POST /api/v1/stories — enqueue a user story or directory in server mode
+	mux.HandleFunc("/api/v1/stories", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if storyCh == nil {
+			http.Error(w, "server not in story-queue mode", http.StatusServiceUnavailable)
+			return
+		}
+		var payload struct {
+			Path      string `json:"path"`
+			Directory bool   `json:"directory"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if payload.Directory {
+			mailbox.Send(&StartDirectoryCmd{DirPath: payload.Path, StoryCh: storyCh})
+		} else {
+			mailbox.Send(&StartUserStoryCmd{Path: payload.Path, StoryCh: storyCh})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"accepted"}`))
+	})
+
+	// POST /api/v1/tasks — add a manual task
 	mux.HandleFunc("/api/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

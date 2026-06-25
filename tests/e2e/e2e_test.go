@@ -201,7 +201,6 @@ func TestE2E_StartCommand(t *testing.T) {
 	assert.Contains(t, stdout.String(), "Pre-flight checks passed successfully.")
 }
 
-
 func TestE2E_MaintenanceCommand(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()
@@ -285,7 +284,7 @@ func TestE2E_Database_Migration_Parity(t *testing.T) {
 	}
 }
 
-func TestE2E_CreateCommand(t *testing.T) {
+func TestE2E_StartOneCommand(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()
 
@@ -294,16 +293,15 @@ func TestE2E_CreateCommand(t *testing.T) {
 	err := cmdInit.Run()
 	require.NoError(t, err)
 
-	cmdCreate := exec.Command(bin, "create")
-	cmdCreate.Dir = tempDir
-	cmdCreate.Env = getTestEnv()
+	cmdStartOne := exec.Command(bin, "start-one")
+	cmdStartOne.Dir = tempDir
+	cmdStartOne.Env = getTestEnv()
 
 	var stdout, stderr bytes.Buffer
-	cmdCreate.Stdout = &stdout
-	cmdCreate.Stderr = &stderr
+	cmdStartOne.Stdout = &stdout
+	cmdStartOne.Stderr = &stderr
 
-	err = cmdCreate.Run()
-	require.NoError(t, err, "create failed: %s", stderr.String())
+	err = cmdStartOne.Run()
+	require.NoError(t, err, "start-one failed: %s", stderr.String())
 	assert.Contains(t, stdout.String(), "Feature successfully implemented and validated.")
 }
-

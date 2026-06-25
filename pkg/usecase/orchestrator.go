@@ -94,67 +94,12 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 	// 2. Scheduler check: find ready tasks
 	ready := o.scheduler.GetReadyTasks(state, o.cfg.Concurrency)
 	if len(ready) == 0 {
-		// If all tasks are completed and build status is not SUCCESS/FAILING,
-		// finalize feature and create single pull request.
+		// If all tasks are completed and build status is still UNKNOWN,
+		// delegate to FinalizeUserStory to bump version, push branch, and create PR.
 		if o.allTasksFinished(state) && state.BuildStatus == domain.BuildUnknown {
-			anySuccess := false
-			for _, t := range state.Tasks {
-				if t.Status == domain.TaskSuccess {
-					anySuccess = true
-					break
-				}
+			if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
+				fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
 			}
-
-			if anySuccess {
-				integrationBranch := state.Metadata.IntegrationBranch
-				if integrationBranch == "" {
-					integrationBranch = fmt.Sprintf("noctifab/feature-%s", state.ID[:8])
-				}
-				baseBranch := state.Metadata.BaseBranch
-				if baseBranch == "" {
-					baseBranch = "main"
-				}
-
-				fmt.Printf("Orchestrator: All tasks completed. Creating single Pull Request for integration branch %s targeting %s...\n", integrationBranch, baseBranch)
-
-				// Ensure integration branch exists locally
-				_, err = o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
-				if err != nil {
-					// Does not exist locally, checkout base branch first and branch off
-					_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
-					_, _ = o.git.Run(ctx, true, "checkout", "-b", integrationBranch)
-				} else {
-					_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
-				}
-
-				// 1. Run final release updates (bump version and update changelog)
-				nextVersion, bumpErr := BumpVersion(state.ProjectPath, state.Tasks)
-				if bumpErr == nil {
-					_ = UpdateChangelog(state.ProjectPath, nextVersion, state.Tasks)
-					// Commit version and changelog updates on the integration branch
-					_, _ = o.git.Run(ctx, true, "add", "VERSION", "CHANGELOG.md")
-					_, _ = o.git.Run(ctx, true, "commit", "-m", "chore(release): bump version to "+nextVersion+" and update CHANGELOG.md")
-				}
-
-				// 2. Push integration branch to origin
-				_, pushErr := o.git.Run(ctx, true, "push", "origin", integrationBranch)
-				if pushErr == nil {
-					// 3. Create single Pull Request
-					prTitle := fmt.Sprintf("Resolve feature: %s", state.Metadata.FeatureName)
-					prBody := fmt.Sprintf("Automated single pull request for feature build. Completed tasks:\n")
-					for _, t := range state.Tasks {
-						prBody += fmt.Sprintf("- %s: %s\n", t.Title, string(t.Status))
-					}
-					_, prErr := o.vcsClient.CreatePullRequest(ctx, prTitle, prBody, integrationBranch, baseBranch)
-					if prErr != nil {
-						fmt.Fprintf(os.Stderr, "Orchestrator: Failed to create Pull Request: %v\n", prErr)
-					}
-				} else {
-					fmt.Fprintf(os.Stderr, "Orchestrator: Failed to push integration branch: %v\n", pushErr)
-				}
-			}
-
-			// Mark build status
 			_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 				st.BuildStatus = domain.BuildPassing
 				return nil

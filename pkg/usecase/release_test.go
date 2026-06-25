@@ -14,7 +14,7 @@ func TestBumpVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Case 1: VERSION does not exist, defaults to 0.0.1 and bumps to 0.0.2
 	tasks := []domain.Task{
@@ -70,7 +70,7 @@ func TestUpdateChangelog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	tasks := []domain.Task{
 		{

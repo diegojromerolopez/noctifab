@@ -52,18 +52,30 @@ noctifab plan --input ./feature-spec.md
 ```
 
 ### 4. `start`
-Spawns the long-running daemon loop. It regularly polls the database for pending/ready tasks, coordinates the worker concurrency pool, binds a REST API command server, and executes agents.
+Spawns the background daemon process (`noctifab serve`) and starts a foreground interactive REPL loop. The REPL accepts operator orders (e.g. `start roadmap/US-0001.md`) and displays/prompts for clarification answers.
 ```bash
 noctifab start
 ```
 
-### 5. `run-once`
-Executes exactly one cycle of the event loop (Observation, Scheduling, Execution, Holdout Evaluation, and VCS Handoff) and exits immediately. This is ideal for manual verification or cron-based pipelines.
+### 5. `start-one`
+Plans and executes a single user story specification file end-to-end in a blocking execution loop until complete or failed, then exits.
 ```bash
-noctifab run-once
+noctifab start-one --input ./feature-spec.md
 ```
 
-### 6. `maintenance`
+### 6. `stop`
+Gracefully stops the background daemon process and saves state.
+```bash
+noctifab stop
+```
+
+### 7. `clean`
+Wipes all noctifab state (deletes database, PID, and story/daemon logs).
+```bash
+noctifab clean
+```
+
+### 8. `maintenance`
 Performs cleanup actions: prunes fully merged task branches from the local directory, cleans orphaned worktrees, and executes state database schema migrations.
 ```bash
 noctifab maintenance
@@ -111,11 +123,11 @@ noctifab init
 # 3. Validate configuration
 noctifab validate
 
-# 4. Decompose a markdown specification into task DAGs
-noctifab plan --input ./examples/markdown-to-html/spec.md
-
-# 5. Execute the work loop
+# 4. Start the background daemon and interactive REPL
 noctifab start
+
+# 5. From the REPL prompt, queue a user story
+> start examples/markdown-to-html/spec.md
 ```
 
 ---

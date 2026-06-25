@@ -111,11 +111,11 @@ This compiles the binary to `./dist/noctifab`.
 # 3. Plan a task DAG from a feature specification
 ./dist/noctifab plan --input ./examples/markdown-to-html/spec.md
 
-# 4. Start the autonomous loop
+# 4. Start the background daemon and interactive REPL
 ./dist/noctifab start
 
-# Alternatively, run planning and execution end-to-end until validated
-./dist/noctifab create --input ./examples/markdown-to-html/spec.md
+# Alternatively, run planning and execution end-to-end for a single story specification
+./dist/noctifab start-one --input ./examples/markdown-to-html/spec.md
 ```
 
 ---
@@ -125,8 +125,10 @@ This compiles the binary to `./dist/noctifab`.
 - **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles.
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
 - **`plan`**: Invokes the LLM Planner model to decompose a specification into task dependencies.
-- **`start`**: Spawns the daemon workers, initializes the API server, and runs the polling event loop.
-- **`create`**: Plans and executes a feature specification end-to-end, running task workers and holdout validation in a loop until complete, then exits.
+- **`start`**: Spawns the background daemon process (`noctifab serve`) and launches a foreground interactive REPL loop to accept operator orders (e.g. `start roadmap/US-0001.md`) and display clarification prompts.
+- **`start-one`**: Plans and executes a single specification end-to-end, running task workers and holdout validation in a blocking loop until complete, then exits.
+- **`stop`**: Gracefully stops the background daemon process and saves state.
+- **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files).
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
 
 ---
