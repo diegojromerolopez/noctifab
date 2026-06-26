@@ -128,10 +128,31 @@ This compiles the binary to `./dist/noctifab`.
 - **`start`**: Spawns the background daemon process (`noctifab serve`) and launches a foreground interactive REPL loop to accept operator orders (e.g. `start roadmap/US-0001.md`) and display clarification prompts.
 - **`start-one`**: Plans and executes a single specification end-to-end, running task workers and holdout validation in a blocking loop until complete, then exits.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
-- **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files).
+- **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
 
 ---
+
+## Secrets Management
+
+Credentials such as API keys and VCS tokens must **not** be stored as literal values in `config.yaml`. Use the `secret:` reference syntax to load them from a gitignored `secrets.yaml` file instead:
+
+```yaml
+# .noctifab/secrets.yaml  (gitignored — never commit)
+GEMINI_API_KEY: "AIzaSy..."
+GITHUB_TOKEN:   "github_pat_..."
+```
+
+```yaml
+# .noctifab/config.yaml  (safe to commit)
+llm:
+  api_key: "secret:GEMINI_API_KEY"
+vcs:
+  token:   "secret:GITHUB_TOKEN"
+```
+
+`noctifab init` automatically adds `secrets.yaml` to `.noctifab/.gitignore`. For full details, supported fields, CI/CD patterns, and the security checklist see **[docs/secrets.md](docs/secrets.md)**.
+
 
 ## Target Scenarios & Examples
 

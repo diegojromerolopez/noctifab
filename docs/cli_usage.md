@@ -16,10 +16,11 @@ This creates the default configuration structure in the `.noctifab/` directory:
 
 ```
 .noctifab/
-├── config.yaml          # Main YAML configuration file
-├── .gitignore           # Ignores database, logs, and lock files
+├── config.yaml          # Main YAML configuration file (safe to commit)
+├── secrets.yaml         # Secret credentials — NEVER committed (gitignored)
+├── .gitignore           # Ignores data/, secrets.yaml, logs, and lock files
 ├── data/
-│   └── noctifab.db      # SQLite local database
+│   └── noctifab.db      # SQLite local database (runtime, gitignored)
 ├── profiles/
 │   ├── default.yaml     # Role permission boundaries (read-only tools, local only)
 │   └── orchestrator.yaml# Orchestrator permissions (allow all tools & external APIs)
@@ -71,9 +72,17 @@ noctifab stop
 
 ### 7. `clean`
 Wipes all noctifab state (deletes database, PID, and story/daemon logs).
+
 ```bash
-noctifab clean
+noctifab clean           # asks for confirmation interactively
+noctifab clean --yes     # skip confirmation (alias: -y)
+noctifab clean --dry-run # preview what would be deleted without deleting
 ```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--yes` | `-y` | Skip the `Are you sure? [y/N]` prompt |
+| `--dry-run` | | Print what would be removed without deleting anything |
 
 ### 8. `maintenance`
 Performs cleanup actions: prunes fully merged task branches from the local directory, cleans orphaned worktrees, and executes state database schema migrations.
@@ -109,6 +118,37 @@ The following flags can be passed to the root command or configured in `.noctifa
 
 ---
 
+## Secrets Management
+
+Sensitive credentials (API keys, VCS tokens) must **not** be written directly into `config.yaml`, which may be committed to version control. Instead, use the `secret:` reference syntax to load values from a gitignored `secrets.yaml` file.
+
+### Quick Setup
+
+**Step 1 — Create `.noctifab/secrets.yaml`** (already gitignored after `noctifab init`):
+
+```yaml
+# .noctifab/secrets.yaml — never commit this file
+GEMINI_API_KEY: "AIzaSy..."
+GITHUB_TOKEN: "github_pat_..."
+```
+
+**Step 2 — Reference secrets in `config.yaml`**:
+
+```yaml
+llm:
+  api_key: "secret:GEMINI_API_KEY"
+vcs:
+  token: "secret:GITHUB_TOKEN"
+```
+
+During startup, noctifab resolves each `secret:<KEY>` reference from `secrets.yaml`. If the file does not exist, noctifab falls back to environment variables and CLI flags.
+
+**Precedence (highest wins):** CLI flag → environment variable → `secrets.yaml` → literal value in `config.yaml`
+
+For full details, supported fields, and CI/CD usage see [docs/secrets.md](secrets.md).
+
+---
+
 ## End-to-End Workflow Example
 
 Below is a typical sequence of commands to execute a feature specification:
@@ -117,16 +157,23 @@ Below is a typical sequence of commands to execute a feature specification:
 # 1. Initialize the workspace
 noctifab init
 
-# 2. Add your LLM keys and configuration to .noctifab/config.yaml
-# (e.g. set llm-provider: "openai" and llm-model: "gpt-4o")
+# 2. Add credentials to .noctifab/secrets.yaml (gitignored)
+cat >> .noctifab/secrets.yaml <<'EOF'
+GEMINI_API_KEY: "AIzaSy..."
+GITHUB_TOKEN: "github_pat_..."
+EOF
 
-# 3. Validate configuration
+# 3. Reference them in .noctifab/config.yaml
+#    llm.api_key: "secret:GEMINI_API_KEY"
+#    vcs.token:   "secret:GITHUB_TOKEN"
+
+# 4. Validate configuration
 noctifab validate
 
-# 4. Start the background daemon and interactive REPL
+# 5. Start the background daemon and interactive REPL
 noctifab start
 
-# 5. From the REPL prompt, queue a user story
+# 6. From the REPL prompt, queue a user story
 > start examples/markdown-to-html/spec.md
 ```
 

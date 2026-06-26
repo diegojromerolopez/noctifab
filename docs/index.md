@@ -32,6 +32,7 @@ A "Dark Factory" (in a software engineering context) is a fully automated reposi
 cli_usage
 architecture
 developer_guide
+secrets
 ```
 
 ---
