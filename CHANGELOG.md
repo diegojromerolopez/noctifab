@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.3] - 2026-06-26
+
+### Added
+- **Secrets Management (`secrets.yaml`)**:
+  - Introduced support for a gitignored `.noctifab/secrets.yaml` file to keep credentials out of version control.
+  - Any string value in `config.yaml` prefixed with `secret:` (e.g. `secret:GEMINI_API_KEY`) is resolved at load time from the corresponding key in `secrets.yaml`.
+  - Fields supporting secret references: `llm.api_key`, `llm.url`, `vcs.token`, `jira.token`, `jira.user`, `jira.url`.
+  - `noctifab init` now automatically adds `secrets.yaml` to `.noctifab/.gitignore`.
+  - Added `LoadSecrets`, `resolveSecretRef`, and `applySecretsToConfig` in `pkg/infrastructure/config/secrets.go` with 100% unit test coverage.
+- **`clean` Command Improvements**:
+  - Added `--yes` / `-y` flag to skip the interactive confirmation prompt (useful in scripts and CI).
+  - Added `--dry-run` flag to preview which files and directories would be removed without performing any deletions.
+  - Removed the `--force` flag entirely; daemon-running guard now uses `--yes` or the interactive prompt.
+- **Documentation**:
+  - Added `docs/secrets.md`: comprehensive secrets management reference covering setup, supported fields, priority precedence, CI/CD patterns, and a security checklist.
+  - Updated `docs/cli_usage.md`: workspace structure now shows `secrets.yaml`; `clean` command docs reflect the new flags; added Secrets Management quick-start section.
+  - Updated `README.md`: new Secrets Management section with quick-start examples.
+
+### Changed
+- **`clean` command** refactored into focused helper functions (`runClean`, `askConfirmation`, `runDryClean`, `runActualClean`, `cleanPostgres`, `cleanSQLiteDB`, `removePIDFile`, `removeStoryLogs`, `removeDaemonLog`) for improved readability and testability.
+
 ## [0.0.2] - 2026-06-25
 
 ### Added

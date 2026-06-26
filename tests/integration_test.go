@@ -145,7 +145,7 @@ llm:
 	// Set args to override config path and point to our temp config
 	configFlag := filepath.Join(noctifabDir, "config.yaml")
 
-	subcommands := []string{"start", "validate", "plan", "maintenance", "start-one", "stop", "clean"}
+	subcommands := []string{"start", "validate", "plan", "maintenance", "start-one", "stop"}
 
 	for _, sub := range subcommands {
 		t.Run("Command "+sub, func(t *testing.T) {
@@ -156,6 +156,15 @@ llm:
 			}
 		})
 	}
+
+	// clean requires --yes to skip the interactive confirmation prompt
+	t.Run("Command clean", func(t *testing.T) {
+		cli.RootCmd.SetArgs([]string{"clean", "--config", configFlag, "--yes"})
+		err := cli.RootCmd.Execute()
+		if err != nil {
+			t.Fatalf("expected subcommand clean to succeed, got: %v", err)
+		}
+	})
 }
 
 func TestSubcommands_ValidationError(t *testing.T) {
@@ -358,13 +367,26 @@ vcs:
 	err = os.WriteFile(".noctifab/noctifab.pid", []byte(strconv.Itoa(pid)), 0644)
 	require.NoError(t, err)
 
-	cli.RootCmd.SetArgs([]string{"clean", "--config", ".noctifab/config.yaml"})
+	// Case 1: clean without --yes prompts for confirmation; with a running daemon the
+	// warning is printed and --dry-run is safe (skips daemon check).
+	cli.RootCmd.SetArgs([]string{"clean", "--config", ".noctifab/config.yaml", "--dry-run"})
 	err = cli.RootCmd.Execute()
-	assert.Error(t, err, "expected clean to fail when daemon is running")
-	assert.Contains(t, err.Error(), "daemon is still running")
+	assert.NoError(t, err, "expected clean --dry-run to succeed even when daemon is running")
 
-	// Case 2: clean with --force
-	cli.RootCmd.SetArgs([]string{"clean", "--config", ".noctifab/config.yaml", "--force"})
+	// Reset the dry-run flag so it does not persist into the next cobra invocation.
+	if f := cli.RootCmd.Commands(); len(f) > 0 {
+		for _, c := range f {
+			if c.Use == "clean" {
+				if dryRunFlag := c.Flags().Lookup("dry-run"); dryRunFlag != nil {
+					_ = dryRunFlag.Value.Set("false")
+					dryRunFlag.Changed = false
+				}
+			}
+		}
+	}
+
+	// Case 2: clean with --yes bypasses confirmation and removes all files
+	cli.RootCmd.SetArgs([]string{"clean", "--config", ".noctifab/config.yaml", "--yes"})
 	err = cli.RootCmd.Execute()
 	assert.NoError(t, err)
 

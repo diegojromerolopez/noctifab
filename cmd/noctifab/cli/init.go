@@ -85,7 +85,7 @@ var initCmd = &cobra.Command{
 		// 5. Create local VCS ignore file (.noctifab/.gitignore) to exclude database, logs and lock files
 		gitIgnorePath := filepath.Join(noctifabDir, ".gitignore")
 		if _, err := os.Stat(gitIgnorePath); os.IsNotExist(err) {
-			ignoreContent := "data/noctifab.db\nlogs/\nworktrees/\nnoctifab.pid\n"
+			ignoreContent := "data/noctifab.db\nlogs/\nworktrees/\nnoctifab.pid\nsecrets.yaml\n"
 			if err := os.WriteFile(gitIgnorePath, []byte(ignoreContent), 0644); err != nil {
 				return fmt.Errorf("failed to create .gitignore: %w", err)
 			}

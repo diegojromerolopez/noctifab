@@ -278,3 +278,45 @@ func TestValidate(t *testing.T) {
 		}
 	})
 }
+
+func TestLoad_SecretsFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	configYaml := `
+config_version: "1.0"
+vcs:
+  provider: "github"
+  repository: "owner/repo"
+  token: "secret:MY_VCS_TOKEN"
+llm:
+  provider: "openai"
+  api_key: "secret:MY_API_KEY"
+`
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configYaml), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	secretsYaml := "MY_VCS_TOKEN: \"resolved-vcs-token\"\nMY_API_KEY: \"resolved-api-key\"\n"
+	secretsPath := filepath.Join(tmpDir, "secrets.yaml")
+	if err := os.WriteFile(secretsPath, []byte(secretsYaml), 0600); err != nil {
+		t.Fatalf("failed to write secrets: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("config", configPath, "")
+	_ = cmd.Flags().Set("config", configPath)
+
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	// resolveSecrets propagates Token -> TokenValue
+	if cfg.VCS.TokenValue != "resolved-vcs-token" {
+		t.Errorf("VCS.TokenValue: expected resolved-vcs-token, got %q", cfg.VCS.TokenValue)
+	}
+	if cfg.LLM.APIKeyValue != "resolved-api-key" {
+		t.Errorf("LLM.APIKeyValue: expected resolved-api-key, got %q", cfg.LLM.APIKeyValue)
+	}
+}

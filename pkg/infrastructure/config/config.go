@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -33,6 +34,14 @@ func Load(cmd *cobra.Command) (*Config, error) {
 			return nil, fmt.Errorf("failed to parse YAML config: %w", err)
 		}
 	}
+
+	// 2a. Load secrets.yaml (optional) from the same directory as config.yaml.
+	secretsPath := filepath.Join(filepath.Dir(configPath), "secrets.yaml")
+	secrets, err := LoadSecrets(secretsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load secrets file: %w", err)
+	}
+	applySecretsToConfig(cfg, secrets)
 
 	// 3. Override from environment variables
 	applyEnvOverrides(cfg)
