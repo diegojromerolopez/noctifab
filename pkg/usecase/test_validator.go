@@ -8,28 +8,29 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-// HoldoutEvaluator runs acceptance tests up to 3 times to detect flakiness
-type HoldoutEvaluator struct {
+// TestValidator runs the project's tests up to 3 times to check for flakiness
+type TestValidator struct {
 	Runner Sandbox
 	Strict bool
 }
 
-func NewHoldoutEvaluator(runner Sandbox, strict bool) *HoldoutEvaluator {
-	return &HoldoutEvaluator{
+func NewTestValidator(runner Sandbox, strict bool) *TestValidator {
+	return &TestValidator{
 		Runner: runner,
 		Strict: strict,
 	}
 }
 
-// EvaluateTask executes the tests 3 times and counts majority votes
-func (h *HoldoutEvaluator) EvaluateTask(ctx context.Context, state *domain.State, task domain.Task, testPkg string) (bool, string, error) {
+// ValidateTask executes the project's tests 3 times and counts majority votes
+func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, task domain.Task) (bool, string, error) {
 	successes := 0
 	var lastErrorLog string
 	var logs []string
 
 	for run := 1; run <= 3; run++ {
-		// Run tests for the package
-		out, err := h.Runner.RunCommand(ctx, state.ProjectPath, "", testPkg)
+		// Run tests for the workspace by passing empty package and command arguments.
+		// This defaults to executing the project's configured test suite.
+		out, err := v.Runner.RunCommand(ctx, state.ProjectPath, "", "")
 		if err == nil || strings.Contains(out, "NO TESTS RAN") {
 			successes++
 			logs = append(logs, fmt.Sprintf("Run %d: PASS", run))
@@ -44,12 +45,12 @@ func (h *HoldoutEvaluator) EvaluateTask(ctx context.Context, state *domain.State
 	}
 
 	if successes == 2 {
-		if h.Strict {
+		if v.Strict {
 			return false, fmt.Sprintf("Strict Mode Rejection: Task is flaky (2/3 runs passed). Logs: %s", strings.Join(logs, ", ")), nil
 		}
 		return true, "Warning: Potentially Flaky Build", nil
 	}
 
 	// Sanitized output format
-	return false, fmt.Sprintf("Holdout Evaluation Failed (%d/3 runs passed). Last error log:\n%s", successes, lastErrorLog), nil
+	return false, fmt.Sprintf("Test validation failed (%d/3 runs passed). Last error log:\n%s", successes, lastErrorLog), nil
 }

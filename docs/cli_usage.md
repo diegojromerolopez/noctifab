@@ -46,31 +46,26 @@ Loads and validates the current configurations, state, and directory constraints
 noctifab validate
 ```
 
-### 3. `plan`
-Loads a feature specification (from a markdown file or remote issue URL) and uses the LLM Planner model to decompose it into a Directed Acyclic Graph (DAG) of discrete task models.
-```bash
-noctifab plan --input ./feature-spec.md
-```
 
-### 4. `start`
+### 3. `start`
 Spawns the background daemon process (`noctifab serve`) and starts a foreground interactive REPL loop. The REPL accepts operator orders (e.g. `start roadmap/US-0001.md`) and displays/prompts for clarification answers.
 ```bash
 noctifab start
 ```
 
-### 5. `start-one`
+### 4. `start-one`
 Plans and executes a single user story specification file end-to-end in a blocking execution loop until complete or failed, then exits.
 ```bash
 noctifab start-one --input ./feature-spec.md
 ```
 
-### 6. `stop`
+### 5. `stop`
 Gracefully stops the background daemon process and saves state.
 ```bash
 noctifab stop
 ```
 
-### 7. `clean`
+### 6. `clean`
 Wipes all noctifab state (deletes database, PID, and story/daemon logs).
 
 ```bash
@@ -84,7 +79,7 @@ noctifab clean --dry-run # preview what would be deleted without deleting
 | `--yes` | `-y` | Skip the `Are you sure? [y/N]` prompt |
 | `--dry-run` | | Print what would be removed without deleting anything |
 
-### 8. `maintenance`
+### 7. `maintenance`
 Performs cleanup actions: prunes fully merged task branches from the local directory, cleans orphaned worktrees, and executes state database schema migrations.
 ```bash
 noctifab maintenance

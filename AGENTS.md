@@ -41,7 +41,7 @@ To maintain modularity and high context compatibility, the following guidelines 
             ```bash
             docker compose -f tests/e2e/docker-compose.yml up --build --exit-code-from test-runner
             ```
-    *   **BDD Specifications:** Holdout scenarios and acceptance tests must always run under a test runner using BDD format with the context pattern: `when <scenario>`, `it <action happens>`.
+    *   **BDD Specifications:** Acceptance tests must always run under a test runner using BDD format with the context pattern: `when <scenario>`, `it <action happens>`. Generated tests must be e2e as much as possible for the happy paths, input validations/edge cases must be unit tests, and complex internal validation flows must be integration tests.
 4.  **Formatting & Linting:**
     *   **Formatting:** All Go source code must strictly follow the standard `go fmt` format. Ensure `go fmt ./...` runs clean.
     *   **Linting:** Code must pass static analysis checks. You must run `docker run -t --rm -v $(pwd):/app -w /app golangci/golangci-lint:v2.12.2 golangci-lint run` after every change to ensure the code passes all linter rules.

@@ -41,7 +41,7 @@ flowchart TD
         K --> L[Update State DB]
     end
     subgraph Evaluate ["5. Evaluate Phase"]
-        L --> M[Run Holdout BDD Evaluator]
+        L --> M[Run Test Validator]
         M -- Passed --> N[Push & Merge Pull Request]
         M -- Failed --> O[Retry / Keep In Progress]
     end

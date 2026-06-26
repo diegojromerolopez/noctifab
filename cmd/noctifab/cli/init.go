@@ -53,7 +53,6 @@ var initCmd = &cobra.Command{
 		noctifabDir := filepath.Join(WorkspaceDir, ".noctifab")
 		subDirs := []string{
 			"data",
-			"holdout",
 			"logs",
 			"profiles",
 		}
@@ -119,6 +118,27 @@ var initCmd = &cobra.Command{
 `
 			if err := os.WriteFile(orchestratorProfilePath, []byte(orchestratorProfile), 0644); err != nil {
 				return fmt.Errorf("failed to write orchestrator profile: %w", err)
+			}
+		}
+
+		testerProfilePath := filepath.Join(noctifabDir, "profiles", "tester.yaml")
+		if _, err := os.Stat(testerProfilePath); os.IsNotExist(err) {
+			testerProfile := `permissions:
+  allowed_tools:
+    - "run_tests"
+    - "read_file"
+    - "write_file"
+    - "edit_file"
+    - "list_directory"
+    - "find_files"
+    - "grep_search"
+    - "noop"
+  network:
+    allow_ai_provider: true
+    allow_external: false
+`
+			if err := os.WriteFile(testerProfilePath, []byte(testerProfile), 0644); err != nil {
+				return fmt.Errorf("failed to write tester profile: %w", err)
 			}
 		}
 

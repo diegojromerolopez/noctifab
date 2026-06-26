@@ -72,13 +72,56 @@ Return format:
   ]
 }
 `, specStr)
+	} else if strings.HasPrefix(prompt, "Write tests for task:") {
+		taskDetails := strings.TrimPrefix(prompt, "Write tests for task:")
+		prompt = fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON.
+
+You are acting as the Test Writer Agent.
+Your task is to write tests that verify the implementation of the specified task.
+
+Task Details:
+%s
+
+CRITICAL:
+1. You only have ONE single turn to complete this task. You must write/edit test files immediately in your response actions. Do NOT run read_file, find_files, grep_search, or list_directory first, as you will not get another turn.
+2. The package name is 'frontpunch'. All implementation files exist inside the 'frontpunch/' directory.
+3. You must write tests according to the following guidelines:
+   - Happy paths MUST be verified using end-to-end (e2e) tests as much as possible. Place these under 'tests/e2e/' or similar.
+   - Input validations and simple edge cases MUST be verified using unit tests. Place these under 'tests/unit/' or similar.
+   - Complex edge-cases, internal validation flows, and multi-component interactions MUST be verified using integration tests. Place these under 'tests/integration/' or similar.
+4. For all Python test files, use the standard library 'unittest' and 'unittest.mock'. Do NOT import or use 'pytest' under any circumstance, as it is not installed in the sandbox environment.
+
+You may use the following tools:
+- read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
+- write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+- edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace", "replacement_content": "new code block"}
+- list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
+- find_files: search for files. Args: {"pattern": "*.py"}
+- grep_search: search for a pattern in files. Args: {"query": "search_term"}
+- run_tests: run the project's tests to verify correctness. Args: {}
+- noop: call this when the tests have been successfully written. Args: {}
+
+Return format:
+{
+  "reasoning": "Detailed technical rationale explaining your next step",
+  "actions": [
+    {
+      "tool": "tool_name",
+      "args": {
+         "arg_name": "value"
+      }
+    }
+  ]
+}
+`, taskDetails)
 	} else if strings.HasPrefix(prompt, "Execute task:") {
 		taskDetails := strings.TrimPrefix(prompt, "Execute task:")
 		prompt = fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
-You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json or `+"`"+`) outside the JSON.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON.
 
 You are acting as the Generator Agent.
-Your task is to implement the specified task.
+Your task is to implement the specified task. Note that the tests for this task have already been written by the Test Writer Agent. Your job is to implement the functionality to make all tests pass successfully.
 
 Task Details:
 %s

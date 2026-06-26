@@ -65,7 +65,7 @@ The E2E test suite executes offline integration tests to verify the orchestrator
     - Validates that task DAG topological sorting correctly handles prerequisites and fails if circular dependency cycles are planned.
   - **Execute Phase (Corrective Turn & Sandboxing)**:
     - Verifies that tasks are executed inside isolated branch environments (`noctifab/task-<id>-agent-...`).
-    - Simulates the Evaluator failing a task due to a generator bug (missing HTML template) and verifies the Generator reads the error diagnostics logs to fix it in the subsequent turn.
+    - Simulates the Test Validator failing a task due to a generator bug (missing HTML template) and verifies the Generator reads the error diagnostics logs to fix it in the subsequent turn.
     - **Flaky Build Quarantine**: Simulates majority voting over 3 test runs. Flaky builds are approved on a 2/3 pass vote but flagged with a `Warning: Potentially Flaky Build` in the database.
   - **Git Merge Conflict Handling**: Simulates a scenario where two parallel agents attempt to write conflicting edits on the same lines of the same file. Asserts that the second agent's integration fails with a merge conflict, the task status is marked as `CONFLICT_BLOCKED`, its branch is quarantined, and the orchestrator halts execution cleanly.
   - **Budget Safeguarding**: Asserts that before each LLM call, token estimations prevent overspending, halting execution with `ErrBudgetExhausted` if the daily limit is breached.

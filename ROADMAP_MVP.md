@@ -12,7 +12,7 @@ To guarantee the success of the Minimum Viable Product, implementation tasks are
 
 *   **Mandatory Core (M)**:
     - **Topological Task Scheduling & Execution**: Constructing the task DAG, file locks registry, and dispatching tasks up to concurrency limits.
-    - **Loop-Validation Cycle**: Running sandboxed execution processes, executing holdout BDD scenario tests, counting majority votes, and applying auto-rollback git commands on validation failure.
+    - **Loop-Validation Cycle**: Running sandboxed execution processes, executing project test suites, counting majority votes, and applying auto-rollback git commands on validation failure.
     - **Resilient State Persistence**: Relational database CRUD mappings for state, tasks, actions, and version tracking.
     - **LLM Completion & Parser**: Deterministic JSON extraction, brace-counting, and type coercion.
     - **Offline E2E Validation**: The Docker Compose testing harness verifying loop integration scenarios completely offline.
@@ -37,7 +37,7 @@ graph TD
     T7["Task 7: Sandbox File I/O & PGID Subprocess Wrapper"]
     T8["Task 8: LLM Client & Lenient JSON Parser"]
     T9["Task 9: Budget Safeguarding Engine"]
-    T10["Task 10: Holdout Evaluator BDD Gate"]
+    T10["Task 10: Test Validator Gate"]
     T11["Task 11: Git Branch Sandbox, Mutex & Rebase Queue"]
     T12["Task 12: Release Bump, Changelog & VCS PR Creator"]
     T13["Task 13: Local Daemon REST API & Command Mailbox"]
@@ -248,21 +248,18 @@ graph TD
 
 ---
 
-### Task 10: Holdout Evaluator BDD Gate `[MANDATORY CORE]`
+### Task 10: Test Validator Gate `[MANDATORY CORE]`
 * **Dependencies**: Task 2 (Cobra CLI Bootstrap & Configuration Loading), Task 7 (Sandbox File I/O & PGID Subprocess Wrapper)
-* **Description**: Create the holdout evaluator BDD engine using the `github.com/cucumber/godog` test runner. BDD scenarios reside under `tests/holdout/` and are blacklisted from the Generator agent's filesystem tools. Run test suites 3 times sequentially, perform majority voting (requiring >= 2/3 pass), quarantine flaky/non-unanimous builds, and return filtered summary error feedback logs to the Generator.
+* **Description**: Create the test validator engine. Run project test suites 3 times sequentially, perform majority voting (requiring >= 2/3 pass), quarantine flaky/non-unanimous builds, and return summary error feedback logs to the Generator.
 * **Definition of Done**:
-  - BDD cucumber test runner initialized under `tests/holdout/`.
-  - Evaluator package runs tests 3 times and counts passes/failures.
-  - Sandbox file tools block the Generator from accessing the `tests/holdout/` path.
+  - Test validator engine initialized.
+  - Validator package runs tests 3 times and counts passes/failures.
 * **Acceptance Criteria**:
-  1. Generator cannot view or edit holdout tests.
-  2. BDD test runner cleans database state between runs.
-  3. Builds fail validation if less than 2 out of 3 runs pass.
+  - Builds fail validation if less than 2 out of 3 runs pass.
 * **E2E Test Cases**:
-  * *Scenario: Holdout Evaluation Flaky Quarantine*
-    * **Given** a holdout test suite that fails 1 out of 3 runs due to transient timeouts.
-    * **When** Evaluator runs majority voting.
+  * *Scenario: Test Validation Flaky Quarantine*
+    * **Given** a test suite that fails 1 out of 3 runs due to transient timeouts.
+    * **When** Test Validator runs majority voting.
     * **Then** the task succeeds, but the task is flagged with a "Potentially Flaky Build" warning in the state.
 
 ---
@@ -300,7 +297,7 @@ graph TD
   3. Branch integration failures trigger auto-rollback: revert merge on integration branch and quarantine task branch.
 * **E2E Test Cases**:
   * *Scenario: Auto-Rollback on Integration Failure*
-    * **Given** a merged branch that subsequently fails holdout validation checks.
+    * **Given** a merged branch that subsequently fails test validation checks.
     * **When** the auto-rollback policy triggers.
     * **Then** the orchestrator reverts the merge commit on the main branch, pushes the revert, moves the task branch to quarantine, and resets the task status to `PENDING` (or `FAILED` if retries are exhausted).
 
@@ -326,7 +323,7 @@ graph TD
 ---
 
 ### Task 14: Daemon Orchestrator Event Loop & Context Propagation `[MANDATORY CORE]`
-* **Dependencies**: Task 4 (Workspace Filesystem Scanner & Sync), Task 5 (Task DAG Computation & Concurrency Scheduler), Task 6 (Tool Registry & Bootstrap Tools), Task 7 (Sandbox File I/O & PGID Subprocess Wrapper), Task 8 (LLM Client & Lenient JSON Response Parser), Task 9 (Budget Safeguarding Engine), Task 10 (Holdout Evaluator BDD Gate), Task 11 (Git Branch Sandbox, Centralized Git Mutex & Rebase Queue), Task 12 (Centralized Release Bumping, CHANGELOG.md & VCS PR Creator), Task 13 (Local Daemon REST API Interface & Command Mailbox Server)
+* **Dependencies**: Task 4 (Workspace Filesystem Scanner & Sync), Task 5 (Task DAG Computation & Concurrency Scheduler), Task 6 (Tool Registry & Bootstrap Tools), Task 7 (Sandbox File I/O & PGID Subprocess Wrapper), Task 8 (LLM Client & Lenient JSON Response Parser), Task 9 (Budget Safeguarding Engine), Task 10 (Test Validator Gate), Task 11 (Git Branch Sandbox, Centralized Git Mutex & Rebase Queue), Task 12 (Centralized Release Bumping, CHANGELOG.md & VCS PR Creator), Task 13 (Local Daemon REST API Interface & Command Mailbox Server)
 * **Description**: Implement the core daemon execution loop in `pkg/usecase/orchestrator.go`. Manage the Observe-Decide-Validate-Execute cycles. Drains the database mutation command channel sequentially to prevent OCC locking contentions. Limit context size using sliding window and compaction modes. Integrate OpenTelemetry (OTel) tracing.
   * *Simplification Rule*: OpenTelemetry tracer integrations can be omitted or stubbed using standard logging wrappers initially, but the loop coordination and Observe-Decide-Validate-Execute state transitions are strictly mandatory.
 * **Definition of Done**:
@@ -358,7 +355,7 @@ graph TD
   * *Scenario: Full Offline Autonomous Loop Integration*
     * **Given** a mock project repository containing a broken unit test.
     * **When** the host runner starts the `noctifab` container with the associated LLM rules.
-    * **Then** the daemon plans tasks, checkout branches, resolves the code, validates via holdout BDD, bumps version files, updates the changelog, merges the code, and exits with 0.
+    * **Then** the daemon plans tasks, checkout branches, resolves the code, validates via Test Validator, bumps version files, updates the changelog, merges the code, and exits with 0.
 
 ---
 

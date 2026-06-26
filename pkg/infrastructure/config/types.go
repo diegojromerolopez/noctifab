@@ -121,7 +121,7 @@ type RolesConfig struct {
 	Orchestrator RoleSetting `yaml:"orchestrator"`
 	Planner      RoleSetting `yaml:"planner"`
 	Generator    RoleSetting `yaml:"generator"`
-	Evaluator    RoleSetting `yaml:"evaluator"`
+	Tester       RoleSetting `yaml:"tester"`
 }
 
 type JiraConfig struct {

@@ -115,8 +115,8 @@ func spawnDaemon(parentCmd *cobra.Command) error {
 	// Forward config-related flags so the daemon gets the same configuration.
 	flagNames := []string{
 		"config", "storage-provider", "storage-conn", "db-path",
-		"llm-provider", "llm-model", "llm-api-key", "llm-url",
-		"vcs-provider", "vcs-token", "vcs-repo",
+		"llm-provider", "llm-model", "llm-url",
+		"vcs-provider", "vcs-repo",
 		"agents", "interval", "sandbox-mode",
 		"log-level",
 	}

@@ -32,8 +32,8 @@ const (
 	AgentRolePlanner AgentRole = "PLANNER"
 	// AgentRoleGenerator writes code and executes tool actions.
 	AgentRoleGenerator AgentRole = "GENERATOR"
-	// AgentRoleEvaluator runs holdout tests and validates output.
-	AgentRoleEvaluator AgentRole = "EVALUATOR"
+	// AgentRoleTester writes tests and validates output.
+	AgentRoleTester AgentRole = "TESTER"
 	// AgentRoleResolver resolves source code merge conflicts.
 	AgentRoleResolver AgentRole = "RESOLVER"
 )

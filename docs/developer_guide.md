@@ -88,16 +88,11 @@ Unit tests are co-located in the packages they test and must run clean:
 go test -v ./...
 ```
 
-### 2. BDD Holdout Specifications
-Acceptance scenarios gate task quality. These are written in a Behavior-Driven Development (BDD) context pattern:
-```go
-// Example in test execution
-When("submitting task completion", func() {
-    It("must pass the holdout test suite", func() {
-        // Assertions
-    })
-})
-```
+### 2. Test-Driven Development (TDD) Specifications
+Tests are written by the Tester Agent before implementation. The Test Validator executes the workspace's tests:
+- **E2E tests** for happy paths.
+- **Unit tests** for input validation and simple edge cases.
+- **Integration tests** for complex internal validation flows and multi-component interactions.
 
 ### 3. E2E Integration Testing
 The E2E test suite validates the orchestration loop end-to-end under mock scenarios:

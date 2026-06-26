@@ -31,7 +31,7 @@ type Orchestrator struct {
 	scheduler   *Scheduler
 	git         *GitClient
 	rebaseQueue *RebaseQueue
-	evaluator   *HoldoutEvaluator
+	evaluator   *TestValidator
 	vcsClient   domain.VCSClient
 	cfg         OrchestratorConfig
 }
@@ -44,7 +44,7 @@ func NewOrchestrator(
 	sched *Scheduler,
 	git *GitClient,
 	queue *RebaseQueue,
-	eval *HoldoutEvaluator,
+	eval *TestValidator,
 	vcsClient domain.VCSClient,
 	cfg OrchestratorConfig,
 ) *Orchestrator {
@@ -192,7 +192,7 @@ func (o *Orchestrator) markTaskFailed(ctx context.Context, taskID, reason string
 
 func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) {
 	// Spawns worker branch, performs checkouts, updates task PENDING -> IN_PROGRESS,
-	// runs Generator & Evaluator, merges back if success, and cleans worktrees.
+	// runs Tester & Generator, validates tests, merges back if success, and cleans worktrees.
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 
@@ -286,13 +286,93 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	prompt := fmt.Sprintf("Execute task: %s - %s", task.Title, task.Description)
+	// 1. Run Test Writer Agent (role "tester") to write tests
+	testPrompt := fmt.Sprintf("Write tests for task: %s - %s", task.Title, task.Description)
 	if len(fileContexts) > 0 {
-		prompt = fmt.Sprintf("Execute task: %s - %s\n\nExisting files context:\n%s", task.Title, task.Description, strings.Join(fileContexts, "\n\n"))
+		testPrompt = fmt.Sprintf("Write tests for task: %s - %s\n\nExisting files context:\n%s", task.Title, task.Description, strings.Join(fileContexts, "\n\n"))
+	}
+
+	testerCtx := context.WithValue(ctx, AgentRoleKey, "tester")
+	testResp, err := o.llmClient.Complete(testerCtx, testPrompt)
+	if err == nil {
+		fmt.Printf("Orchestrator: Task %s Tester LLM reasoning: %s\n", taskID, testResp.Reasoning)
+		// Run tool actions
+		for _, action := range testResp.Actions {
+			fmt.Printf("Orchestrator: Task %s Tester LLM action: tool=%s args=%+v\n", taskID, action.Tool, action.Args)
+			domainAction := domain.Action{
+				Tool: action.Tool,
+				Args: action.Args,
+			}
+			valRes, valErr := o.validator.Validate(testerCtx, domainAction, state)
+			if valErr != nil || (valRes != nil && !valRes.Allowed) {
+				reason := "validation policy blocked tester execution"
+				if valRes != nil && valRes.Reason != "" {
+					reason = valRes.Reason
+				}
+				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s tester action %s validation failed: %s\n", taskID, action.Tool, reason)
+				o.markTaskFailed(ctx, taskID, reason)
+				o.scheduler.ReleaseLocks(taskID)
+				_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
+				_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
+				return
+			}
+
+			fmt.Printf("Orchestrator: Task %s tester executing tool: %s\n", taskID, action.Tool)
+			tool, ok := o.registry.Get(action.Tool)
+			if ok {
+				_, _ = tool.Execute(testerCtx, state, action.Args)
+			}
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s Tester LLM completion failed: %v\n", taskID, err)
+	}
+
+	// Stage and commit tests
+	statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
+	if strings.TrimSpace(statusOut) != "" {
+		_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+		stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+		if strings.TrimSpace(stagedOut) != "" {
+			commitMsg := fmt.Sprintf("test(core): write tests for task %s - %s", taskID, task.Title)
+			_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+			if commitErr != nil {
+				fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s tests: %v\n", taskID, commitErr)
+			}
+		}
+	}
+
+	// Read recently written tests from git to pass to the Generator Agent
+	recentTestsContext := ""
+	diffOut, diffErr := o.git.Run(ctx, false, "show", "--name-only", "--format=", "HEAD")
+	if diffErr == nil {
+		var testFileContexts []string
+		for _, file := range strings.Split(diffOut, "\n") {
+			file = strings.TrimSpace(file)
+			if file != "" && strings.Contains(file, "tests/") {
+				fullPath, err := resolveSandboxPath(state.ProjectPath, file)
+				if err == nil {
+					if content, err := os.ReadFile(fullPath); err == nil {
+						testFileContexts = append(testFileContexts, fmt.Sprintf("Test File %s:\n```\n%s\n```", file, string(content)))
+					}
+				}
+			}
+		}
+		if len(testFileContexts) > 0 {
+			recentTestsContext = "\n\nWritten tests context:\n" + strings.Join(testFileContexts, "\n\n")
+		}
+	}
+
+	// 2. Run Generator Agent (role "generator") to implement functionality
+	genPrompt := fmt.Sprintf("Execute task: %s - %s", task.Title, task.Description)
+	if len(fileContexts) > 0 {
+		genPrompt = fmt.Sprintf("Execute task: %s - %s\n\nExisting files context:\n%s", task.Title, task.Description, strings.Join(fileContexts, "\n\n"))
+	}
+	if recentTestsContext != "" {
+		genPrompt += recentTestsContext
 	}
 
 	genCtx := context.WithValue(ctx, AgentRoleKey, "generator")
-	resp, err := o.llmClient.Complete(genCtx, prompt)
+	resp, err := o.llmClient.Complete(genCtx, genPrompt)
 	if err == nil {
 		fmt.Printf("Orchestrator: Task %s LLM reasoning: %s\n", taskID, resp.Reasoning)
 		// Run tool actions
@@ -327,7 +407,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	}
 
 	// Stage and commit changes if any exist
-	statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
+	statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 	if strings.TrimSpace(statusOut) != "" {
 		_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
 		// Check again if staged changes exist to avoid empty commits
@@ -341,9 +421,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	fmt.Printf("Orchestrator: Task %s running holdout tests...\n", taskID)
-	// Run Evaluator holdout tests
-	passed, logMsg, _ := o.evaluator.EvaluateTask(ctx, state, *task, "tests/holdout")
+	fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
+	// Run test suite validation
+	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, state, *task)
 
 	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		var targetTask *domain.Task
@@ -386,7 +466,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		// Merge back sequentially into integrationBranch using RebaseQueue
 		_ = o.rebaseQueue.Push(ctx, branchName, integrationBranch)
 	} else {
-		fmt.Printf("Orchestrator: Task %s failed holdout tests. Retrying or marking FAILED.\n", taskID)
+		fmt.Printf("Orchestrator: Task %s failed test validation. Retrying or marking FAILED.\n", taskID)
 	}
 
 	o.scheduler.ReleaseLocks(taskID)

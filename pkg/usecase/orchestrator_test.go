@@ -61,7 +61,7 @@ func TestOrchestrator_Initialization(t *testing.T) {
 	scheduler := NewScheduler(NewFileLockRegistry())
 	git := NewGitClient("/tmp")
 	queue := NewRebaseQueue(git)
-	evaluator := NewHoldoutEvaluator(NewHostSandbox(nil, ""), false)
+	evaluator := NewTestValidator(NewHostSandbox(nil, ""), false)
 	vcsClient := &mockVCS{}
 
 	cfg := OrchestratorConfig{
