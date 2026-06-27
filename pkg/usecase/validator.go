@@ -144,6 +144,12 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 				Reason:  fmt.Sprintf("Sandbox violation: path '%s' resolves outside the workspace boundary '%s'", path, state.ProjectPath),
 			}, nil
 		}
+		if strings.Contains(absPath, "tests/holdout") || strings.Contains(absPath, "holdout") {
+			return &ValidationResult{
+				Allowed: false,
+				Reason:  "Sandbox violation: tests/holdout directory must not be created, modified, or used under any circumstance",
+			}, nil
+		}
 
 	case "git_checkout", "git_push":
 		branch, _ := action.Args["branch"].(string)

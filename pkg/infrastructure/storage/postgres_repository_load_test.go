@@ -36,10 +36,10 @@ func TestPostgresRepository_Load_Errors(t *testing.T) {
 		repo := &PostgresRepository{db: db}
 		stateRows := sqlmock.NewRows([]string{
 			"s.id", "s.project_path", "s.version", "s.build_status", "s.input_source", "s.input_path", "s.integration_branch", "s.feature_name", "s.base_branch", "s.project_version", "s.total_tokens_used", "s.total_cost_usd",
-			"t.id", "t.title", "t.description", "t.status", "t.change_type", "t.assigned_to", "t.depends_on", "t.target_files", "t.partial_changelog", "t.retries", "t.max_retries", "t.created_at", "t.updated_at",
+			"t.id", "t.title", "t.description", "t.status", "t.change_type", "t.assigned_to", "t.depends_on", "t.target_files", "t.partial_changelog", "t.retries", "t.max_retries", "t.failure_log", "t.created_at", "t.updated_at",
 		}).AddRow(
 			"state-1", "/src", 2, "PASSING", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100, "0.00300",
-			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		)
 
 		mock.ExpectQuery("SELECT s.id, s.project_path").WillReturnRows(stateRows)
@@ -60,10 +60,10 @@ func TestPostgresRepository_Load_Errors(t *testing.T) {
 		repo := &PostgresRepository{db: db}
 		stateRows := sqlmock.NewRows([]string{
 			"s.id", "s.project_path", "s.version", "s.build_status", "s.input_source", "s.input_path", "s.integration_branch", "s.feature_name", "s.base_branch", "s.project_version", "s.total_tokens_used", "s.total_cost_usd",
-			"t.id", "t.title", "t.description", "t.status", "t.change_type", "t.assigned_to", "t.depends_on", "t.target_files", "t.partial_changelog", "t.retries", "t.max_retries", "t.created_at", "t.updated_at",
+			"t.id", "t.title", "t.description", "t.status", "t.change_type", "t.assigned_to", "t.depends_on", "t.target_files", "t.partial_changelog", "t.retries", "t.max_retries", "t.failure_log", "t.created_at", "t.updated_at",
 		}).AddRow(
 			"state-1", "/src", 2, "PASSING", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100, "0.00300",
-			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		)
 
 		mock.ExpectQuery("SELECT s.id, s.project_path").WillReturnRows(stateRows)
@@ -91,10 +91,10 @@ func TestPostgresRepository_Load(t *testing.T) {
 
 		stateRows := sqlmock.NewRows([]string{
 			"s.id", "s.project_path", "s.version", "s.build_status", "s.input_source", "s.input_path", "s.integration_branch", "s.feature_name", "s.base_branch", "s.project_version", "s.total_tokens_used", "s.total_cost_usd",
-			"t.id", "t.title", "t.description", "t.status", "t.change_type", "t.assigned_to", "t.depends_on", "t.target_files", "t.partial_changelog", "t.retries", "t.max_retries", "t.created_at", "t.updated_at",
+			"t.id", "t.title", "t.description", "t.status", "t.change_type", "t.assigned_to", "t.depends_on", "t.target_files", "t.partial_changelog", "t.retries", "t.max_retries", "t.failure_log", "t.created_at", "t.updated_at",
 		}).AddRow(
 			"state-1", "/src", 2, "PASSING", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100, "0.00300",
-			"task-1", "Task Title", "Desc", "PENDING", "FIX", "agent-1", `["task-0"]`, `["foo.go"]`, `["Changelog"]`, 0, 3, now, now,
+			"task-1", "Task Title", "Desc", "PENDING", "FIX", "agent-1", `["task-0"]`, `["foo.go"]`, `["Changelog"]`, 0, 3, "Test Failure Log", now, now,
 		)
 
 		mock.ExpectQuery("SELECT s.id, s.project_path").WillReturnRows(stateRows)

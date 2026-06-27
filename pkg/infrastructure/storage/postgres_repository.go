@@ -111,11 +111,11 @@ func (r *PostgresRepository) Save(ctx context.Context, state *domain.State) erro
 		}
 
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, depends_on, target_files, partial_changelog, retries, max_retries, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 			task.ID, state.ID, task.Title, task.Description, string(task.Status), string(task.ChangeType),
 			task.AssignedTo, dependsOnJSON, targetFilesJSON, partialChangelogJSON,
-			task.Retries, task.MaxRetries, task.CreatedAt, task.UpdatedAt,
+			task.Retries, task.MaxRetries, task.FailureLog, task.CreatedAt, task.UpdatedAt,
 		)
 		if err != nil {
 			return err
@@ -221,7 +221,7 @@ func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT 
 			s.id, s.project_path, s.version, s.build_status, s.input_source, s.input_path, s.integration_branch, s.feature_name, s.base_branch, s.project_version, s.total_tokens_used, s.total_cost_usd,
-			t.id, t.title, t.description, t.status, t.change_type, t.assigned_to, t.depends_on, t.target_files, t.partial_changelog, t.retries, t.max_retries, t.created_at, t.updated_at
+			t.id, t.title, t.description, t.status, t.change_type, t.assigned_to, t.depends_on, t.target_files, t.partial_changelog, t.retries, t.max_retries, t.failure_log, t.created_at, t.updated_at
 		FROM state s
 		LEFT JOIN tasks t ON s.id = t.state_id
 		LIMIT 1000`)
@@ -240,6 +240,7 @@ func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
 		var statusStr, changeTypeStr, dependsOnStr, targetFilesStr, partialChangelogStr sql.NullString
 		var titleStr, descStr, assignedToStr sql.NullString
 		var retriesNull, maxRetriesNull sql.NullInt64
+		var failureLogNull sql.NullString
 		var createdAtNull, updatedAtNull sql.NullTime
 		var taskID sql.NullString
 
@@ -250,7 +251,7 @@ func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
 			&state.Metadata.TotalTokensUsed, &state.Metadata.TotalCostUSD,
 			&taskID, &titleStr, &descStr, &statusStr, &changeTypeStr, &assignedToStr,
 			&dependsOnStr, &targetFilesStr, &partialChangelogStr, &retriesNull, &maxRetriesNull,
-			&createdAtNull, &updatedAtNull,
+			&failureLogNull, &createdAtNull, &updatedAtNull,
 		)
 		if err != nil {
 			return nil, err
@@ -269,6 +270,9 @@ func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
 			task.ChangeType = domain.ChangeType(changeTypeStr.String)
 			task.Retries = int(retriesNull.Int64)
 			task.MaxRetries = int(maxRetriesNull.Int64)
+			if failureLogNull.Valid {
+				task.FailureLog = failureLogNull.String
+			}
 			task.CreatedAt = createdAtNull.Time
 			task.UpdatedAt = updatedAtNull.Time
 

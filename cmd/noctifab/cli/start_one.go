@@ -122,6 +122,10 @@ var startOneCmd = &cobra.Command{
 				}
 			}
 
+			if err := usecase.ValidatePlannedTasks(state.Tasks); err != nil {
+				return err
+			}
+
 			if err := repo.Save(context.Background(), state); err != nil {
 				return err
 			}
@@ -156,6 +160,7 @@ var startOneCmd = &cobra.Command{
 		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch)
 		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())
 		evaluator := usecase.NewTestValidator(sandboxRunner, false)
+		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
 		orchConfig := usecase.OrchestratorConfig{

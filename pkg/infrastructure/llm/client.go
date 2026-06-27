@@ -55,6 +55,11 @@ You may only use the 'add_task' tool to define the tasks.
 - description: Detailed instructions of what needs to be implemented (string)
 - change_type: Type of modification (string: "FEATURE", "FIX", or "BREAKING")
 - depends_on: Array of parent task titles or IDs that must complete first (array of strings)
+- target_files: Array of relative file paths in the workspace that this task targets or creates (array of strings)
+
+CRITICAL:
+1. You must always specify 'target_files' for each task to inform downstream generator agents of which files they need to work on.
+2. The planned tasks must include enough detail so generator agents have all the instructions they need.
 
 Return format:
 {
@@ -66,7 +71,8 @@ Return format:
         "title": "Task title",
         "description": "Task description...",
         "change_type": "FEATURE",
-        "depends_on": []
+        "depends_on": [],
+        "target_files": ["frontpunch/example.py"]
       }
     }
   ]
@@ -87,10 +93,11 @@ CRITICAL:
 1. You only have ONE single turn to complete this task. You must write/edit test files immediately in your response actions. Do NOT run read_file, find_files, grep_search, or list_directory first, as you will not get another turn.
 2. The package name is 'frontpunch'. All implementation files exist inside the 'frontpunch/' directory.
 3. You must write tests according to the following guidelines:
-   - Happy paths MUST be verified using end-to-end (e2e) tests as much as possible. Place these under 'tests/e2e/' or similar.
-   - Input validations and simple edge cases MUST be verified using unit tests. Place these under 'tests/unit/' or similar.
-   - Complex edge-cases, internal validation flows, and multi-component interactions MUST be verified using integration tests. Place these under 'tests/integration/' or similar.
+   - Happy paths MUST be verified using end-to-end (e2e) tests as much as possible. Place these under 'tests/e2e/' or similar. E2E tests guideline: do not use mocks, use mock docker services. Check the main flows.
+   - Input validations and simple edge cases MUST be verified using unit tests. Place these under 'tests/unit/' or similar. Unit tests guideline: all mock calls need to be asserted, all return values need to be checked. Do not write trivial tests or mocks.
+   - Complex edge-cases, internal validation flows, and multi-component interactions MUST be verified using integration tests. Place these under 'tests/integration/' or similar. Integration tests guideline: only mock the lowest level possible (I/O mainly), so for example if your Python package depends on an external library that does HTTP requests, mock that library only. The project code must be tested fully.
 4. For all Python test files, use the standard library 'unittest' and 'unittest.mock'. Do NOT import or use 'pytest' under any circumstance, as it is not installed in the sandbox environment.
+5. NEVER use or create the 'tests/holdout' directory under any circumstance.
 
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
@@ -131,6 +138,7 @@ CRITICAL:
 2. The package name is 'frontpunch'. All implementation files MUST be created or modified inside the 'frontpunch/' directory (e.g., 'frontpunch/worker.py', 'frontpunch/cli.py', 'frontpunch/client.py'). Do NOT create a directory named 'factory' or edit files in 'src/'.
 3. All unit/integration tests must be placed in the 'tests/' directory (e.g., 'tests/unit/test_worker.py', 'tests/unit/test_client.py') and import from 'frontpunch'. Do not import from 'factory'.
 4. For all Python test files, use the standard library 'unittest' and 'unittest.mock'. Do NOT import or use 'pytest' under any circumstance, as it is not installed in the sandbox environment.
+5. NEVER use or create the 'tests/holdout' directory under any circumstance.
 
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}

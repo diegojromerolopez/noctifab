@@ -50,7 +50,7 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_LLM_URL":                "llm-url-env",
 		"NOCTIFAB_LLM_PLANNER_MODEL":      "planner-env",
 		"NOCTIFAB_LLM_GENERATOR_MODEL":    "generator-env",
-		"NOCTIFAB_LLM_TESTER_MODEL":      "tester-env",
+		"NOCTIFAB_LLM_TESTER_MODEL":       "tester-env",
 		"NOCTIFAB_JIRA_USER":              "jira-user-env",
 		"NOCTIFAB_JIRA_TOKEN":             "jira-token-env",
 		"NOCTIFAB_JIRA_URL":               "jira-url-env",

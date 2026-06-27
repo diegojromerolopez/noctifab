@@ -156,7 +156,6 @@ func TestE2E_Validate_Configuration(t *testing.T) {
 	assert.Contains(t, stdout.String(), "Configuration is valid")
 }
 
-
 func TestE2E_StartCommand(t *testing.T) {
 	bin := getNoctifabBin()
 	tempDir := t.TempDir()

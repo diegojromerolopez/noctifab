@@ -6,12 +6,33 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
+
+func checkPythonSyntax(path string) error {
+	if !strings.HasSuffix(path, ".py") {
+		return nil
+	}
+	// Try running python3 -m py_compile
+	cmd := exec.Command("python3", "-m", "py_compile", path)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Fallback to python
+		cmdFallback := exec.Command("python", "-m", "py_compile", path)
+		if outFallback, errFallback := cmdFallback.CombinedOutput(); errFallback != nil {
+			errMsg := string(outFallback)
+			if len(errMsg) == 0 {
+				errMsg = string(out)
+			}
+			return fmt.Errorf("python syntax compilation failed:\n%s", errMsg)
+		}
+	}
+	return nil
+}
 
 // resolveSandboxPath checks prefix path jail and blacklists .noctifab
 func resolveSandboxPath(projectPath, targetPath string) (string, error) {
@@ -88,6 +109,9 @@ func (t *WriteFileTool) Execute(ctx context.Context, state *domain.State, args m
 		return "", err
 	}
 	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+		return "", err
+	}
+	if err := checkPythonSyntax(fullPath); err != nil {
 		return "", err
 	}
 	return "File written successfully", nil
@@ -188,7 +212,9 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	if err := os.WriteFile(fullPath, []byte(newContent), 0644); err != nil {
 		return "", err
 	}
-
+	if err := checkPythonSyntax(fullPath); err != nil {
+		return "", err
+	}
 	return "Edits applied successfully", nil
 }
 

@@ -45,6 +45,7 @@ type Task struct {
 	DependsOn        []string   `json:"depends_on"` // Can store parent task IDs or matching titles
 	TargetFiles      []string   `json:"target_files,omitempty"`
 	PartialChangelog []string   `json:"partial_changelog,omitempty"`
+	FailureLog       string     `json:"failure_log,omitempty"`
 	Retries          int        `json:"retries"`
 	MaxRetries       int        `json:"max_retries"`
 	CreatedAt        time.Time  `json:"created_at"`
