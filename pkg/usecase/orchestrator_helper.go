@@ -108,6 +108,10 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	if len(readerContexts) > 0 {
 		promptContext = append(promptContext, fmt.Sprintf("Inspection context gathered:\n%s", strings.Join(readerContexts, "\n\n")))
 	}
+	if task.Retries > 0 && task.FailureLog != "" {
+		warning := "WARNING: The previous implementation/refactoring changes have been reset to the clean base commit state (minimal implementation + tests). You must re-apply all your changes from previous tries along with your new fixes. Do not assume your previous modifications persist in the files."
+		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Test/Linter output:\n```\n%s\n```\nFix the tests to address these errors.", warning, task.FailureLog))
+	}
 	if len(promptContext) > 0 {
 		testPrompt = fmt.Sprintf("%s\n\n%s", customPrompt, strings.Join(promptContext, "\n\n"))
 	}
@@ -156,7 +160,8 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	}
 	// Add previous failure context if retrying (Requirement 7)
 	if task.Retries > 0 && task.FailureLog != "" {
-		promptContext = append(promptContext, fmt.Sprintf("Previous implementation attempt FAILED. Test/Linter output:\n```\n%s\n```\nFix the code to address these errors.", task.FailureLog))
+		warning := "WARNING: The previous implementation/refactoring changes have been reset to the clean base commit state (minimal implementation + tests). You must re-apply all your changes from previous tries along with your new fixes. Do not assume your previous modifications persist in the files."
+		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Test/Linter output:\n```\n%s\n```\nFix the code to address these errors.", warning, task.FailureLog))
 	}
 
 	if len(promptContext) > 0 {
