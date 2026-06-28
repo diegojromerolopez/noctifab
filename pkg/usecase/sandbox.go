@@ -162,6 +162,11 @@ func (s *HostSandbox) runPythonTestsIsolated(ctx context.Context, targetDir stri
 			return err
 		}
 		if !info.IsDir() && strings.HasPrefix(info.Name(), "test_") && strings.HasSuffix(info.Name(), ".py") {
+			// Read file to verify it actually contains a TestCase class definition
+			content, readErr := os.ReadFile(path)
+			if readErr == nil && !strings.Contains(string(content), "TestCase") {
+				return nil
+			}
 			// Get relative path from targetDir
 			rel, err := filepath.Rel(targetDir, path)
 			if err == nil {
@@ -232,4 +237,3 @@ func (s *HostSandbox) runPythonTestsIsolated(ctx context.Context, targetDir stri
 	}
 	return overallOutput.String(), nil
 }
-

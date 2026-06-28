@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2026-06-28
+
+### Added
+- **Sequential Agent Dependency Flow**: Reordered the task orchestrator execution cycle so that the Generator Agent always runs before the Tester Agent in both initial and refactoring/retry phases.
+- **Task Retry State Reset Warning**: Added explicit context warnings to both the Generator and Tester agents during task retries to inform them that files have been reset to the clean base commit.
+- **Git Revert Loop on Task Retry**: Implemented a recursive commit reset loop to clean previous refactoring attempts from task branches on retries.
+- **Development Rule Updates (`AGENTS.md`)**: Documented rules restricting main branch commits and enforcing changelog updates on every commit.
+
+### Fixed
+- **Robust Isolated Test Runner**: Modified the isolated test discovery to read file contents and exclude helper python scripts that do not declare `TestCase` classes, avoiding false-positive validation failures on `0 tests ran`.
+
 ## [0.0.4] - 2026-06-28
 
 ### Added

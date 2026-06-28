@@ -244,6 +244,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	}
 
 	branchName := fmt.Sprintf("noctifab/task-%s-worker", taskID)
+	var statusOut, stagedOut string
 
 	// Ensure integration branch exists
 	_, err = o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
@@ -280,10 +281,22 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout existing worker branch %s: %v\n", branchName, err)
 			return
 		}
-		// Revert last commit if it was a generator refactor commit
-		lastMsg, err := o.git.Run(ctx, false, "log", "-1", "--pretty=%s")
-		if err == nil && strings.HasPrefix(strings.TrimSpace(lastMsg), "feat(core): refactor/resolve task") {
-			_, _ = o.git.Run(ctx, true, "reset", "--hard", "HEAD~1")
+		// Revert refactor/fix commits (both test and feat) to start retry from base minimal implementation
+		for {
+			lastMsg, err := o.git.Run(ctx, false, "log", "-1", "--pretty=%s")
+			if err != nil {
+				break
+			}
+			lastMsg = strings.TrimSpace(lastMsg)
+			if strings.HasPrefix(lastMsg, "test(core): refactor tests") ||
+				strings.HasPrefix(lastMsg, "test(core): fix/refactor tests") ||
+				strings.HasPrefix(lastMsg, "feat(core): refactor implementation") ||
+				strings.HasPrefix(lastMsg, "feat(core): fix/refactor implementation") ||
+				strings.HasPrefix(lastMsg, "feat(core): refactor/resolve task") {
+				_, _ = o.git.Run(ctx, true, "reset", "--hard", "HEAD~1")
+			} else {
+				break
+			}
 		}
 	} else {
 		// Force delete worker branch if left over from a previous crashed run or not a retry
@@ -309,16 +322,16 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	// 1. Run Generator Agent (role "generator") to implement minimal functionality
 	if task.Retries == 0 {
+		// 1. Run Generator Agent (role "generator") to implement minimal functionality
 		minimalGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFocus on creating the minimal implementation/functionality to fulfill the task requirements. The tests will be written in a later phase.", task.Title, task.Description)
 		o.RunGeneratorAgent(ctx, *task, state, fileContexts, "", minimalGenPrompt)
 
 		// Stage and commit minimal implementation
-		statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
+		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
 			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
-			stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+			stagedOut, _ = o.git.Run(ctx, false, "diff", "--cached", "--name-only")
 			if strings.TrimSpace(stagedOut) != "" {
 				commitMsg := fmt.Sprintf("feat(core): implement minimal functionality for task %s - %s", taskID, task.Title)
 				_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
@@ -336,7 +349,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
 			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
-			stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+			stagedOut, _ = o.git.Run(ctx, false, "diff", "--cached", "--name-only")
 			if strings.TrimSpace(stagedOut) != "" {
 				commitMsg := fmt.Sprintf("test(core): write tests for task %s - %s", taskID, task.Title)
 				_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
@@ -345,43 +358,100 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				}
 			}
 		}
-	}
 
-	// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
-	recentTestsContext := ""
-	diffOut, diffErr := o.git.Run(ctx, false, "show", "--name-only", "--format=", "HEAD")
-	if diffErr == nil {
-		var testFileContexts []string
-		for _, file := range strings.Split(diffOut, "\n") {
-			file = strings.TrimSpace(file)
-			if file != "" && strings.Contains(file, "tests/") {
-				fullPath, err := resolveSandboxPath(state.ProjectPath, file)
-				if err == nil {
-					if content, err := os.ReadFile(fullPath); err == nil {
-						testFileContexts = append(testFileContexts, fmt.Sprintf("Test File %s:\n```\n%s\n```", file, string(content)))
+		// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
+		recentTestsContext := ""
+		diffOut, diffErr := o.git.Run(ctx, false, "show", "--name-only", "--format=", "HEAD")
+		if diffErr == nil {
+			var testFileContexts []string
+			for _, file := range strings.Split(diffOut, "\n") {
+				file = strings.TrimSpace(file)
+				if file != "" && strings.Contains(file, "tests/") {
+					fullPath, err := resolveSandboxPath(state.ProjectPath, file)
+					if err == nil {
+						if content, err := os.ReadFile(fullPath); err == nil {
+							testFileContexts = append(testFileContexts, fmt.Sprintf("Test File %s:\n```\n%s\n```", file, string(content)))
+						}
 					}
 				}
 			}
+			if len(testFileContexts) > 0 {
+				recentTestsContext = "\n\nWritten tests context:\n" + strings.Join(testFileContexts, "\n\n")
+			}
 		}
-		if len(testFileContexts) > 0 {
-			recentTestsContext = "\n\nWritten tests context:\n" + strings.Join(testFileContexts, "\n\n")
+
+		// 3a. Run Generator Agent (role "generator") to refactor/improve the implementation and tests to pass
+		refactorGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nRefactor the implementation to make the code better and prepare it to pass all tests. You may update both the implementation files and the test files if needed.", task.Title, task.Description)
+		o.RunGeneratorAgent(ctx, *task, state, fileContexts, recentTestsContext, refactorGenPrompt)
+
+		// Stage and commit refactoring changes
+		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
+		if strings.TrimSpace(statusOut) != "" {
+			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+			stagedOut, _ = o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+			if strings.TrimSpace(stagedOut) != "" {
+				commitMsg := fmt.Sprintf("feat(core): refactor implementation for task %s - %s", taskID, task.Title)
+				_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+				if commitErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s refactor: %v\n", taskID, commitErr)
+				}
+			}
 		}
-	}
 
-	// 3. Run Generator Agent (role "generator") to refactor/improve the implementation and tests to pass
-	refactorGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nRefactor the implementation to make the code better and ensure all tests pass. You may update both the implementation files and the test files if needed.", task.Title, task.Description)
-	o.RunGeneratorAgent(ctx, *task, state, fileContexts, recentTestsContext, refactorGenPrompt)
+		// 3b. Run Test Writer Agent (role "tester") to refactor/improve/align the tests
+		refactorTestPrompt := fmt.Sprintf("Write/Refactor tests for task: %s - %s\n\nThe implementation has been refactored/improved. Refactor the tests to align them with the updated code, improve coverage, and ensure they are correct.", task.Title, task.Description)
+		o.RunTesterAgent(ctx, *task, state, fileContexts, refactorTestPrompt)
 
-	// Stage and commit refactoring changes
-	statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
-	if strings.TrimSpace(statusOut) != "" {
-		_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
-		stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
-		if strings.TrimSpace(stagedOut) != "" {
-			commitMsg := fmt.Sprintf("feat(core): refactor/resolve task %s - %s", taskID, task.Title)
-			_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
-			if commitErr != nil {
-				fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s refactor: %v\n", taskID, commitErr)
+		// Stage and commit refactored tests
+		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
+		if strings.TrimSpace(statusOut) != "" {
+			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+			stagedOut, _ = o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+			if strings.TrimSpace(stagedOut) != "" {
+				commitMsg := fmt.Sprintf("test(core): refactor tests for task %s - %s", taskID, task.Title)
+				_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+				if commitErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s test refactor: %v\n", taskID, commitErr)
+				}
+			}
+		}
+
+	} else {
+		// Retries loop: Generator always runs first, followed by Tester, then Validator
+
+		// 1. Run Generator Agent to fix/refactor implementation
+		fixGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nRefactor and fix the implementation to resolve the previous failures.", task.Title, task.Description)
+		o.RunGeneratorAgent(ctx, *task, state, fileContexts, "", fixGenPrompt)
+
+		// Stage and commit fixes
+		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
+		if strings.TrimSpace(statusOut) != "" {
+			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+			stagedOut, _ = o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+			if strings.TrimSpace(stagedOut) != "" {
+				commitMsg := fmt.Sprintf("feat(core): fix/refactor implementation for task %s - %s", taskID, task.Title)
+				_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+				if commitErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s fix implementation: %v\n", taskID, commitErr)
+				}
+			}
+		}
+
+		// 2. Run Test Writer Agent to fix/refactor tests to align with updated implementation
+		fixTestPrompt := fmt.Sprintf("Write/Refactor tests for task: %s - %s\n\nRefactor and fix the tests to resolve the previous failures and align them with the updated code.", task.Title, task.Description)
+		o.RunTesterAgent(ctx, *task, state, fileContexts, fixTestPrompt)
+
+		// Stage and commit test fixes
+		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
+		if strings.TrimSpace(statusOut) != "" {
+			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+			stagedOut, _ = o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+			if strings.TrimSpace(stagedOut) != "" {
+				commitMsg := fmt.Sprintf("test(core): fix/refactor tests for task %s - %s", taskID, task.Title)
+				_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+				if commitErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s fix tests: %v\n", taskID, commitErr)
+				}
 			}
 		}
 	}
@@ -489,4 +559,3 @@ func collectTargetFilesRecursively(task domain.Task, tasks []domain.Task) []stri
 	sort.Strings(uniqueFiles)
 	return uniqueFiles
 }
-
