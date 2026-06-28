@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,4 +78,39 @@ func TestOrchestrator_Initialization(t *testing.T) {
 	if orch.vcsClient != vcsClient {
 		t.Error("vcs client not wired correctly")
 	}
+}
+
+func TestSummarizeFailureLog(t *testing.T) {
+	t.Run("Extract error and failure lines", func(t *testing.T) {
+		inputLog := "some generic log line\nERROR: test_failure\n  Traceback info here\nFAIL: test_another_failure\n  Some more details\nsuccess lines"
+		expected := "ERROR: test_failure\n  Traceback info here\nFAIL: test_another_failure\n  Some more details\nsuccess lines"
+		result := summarizeFailureLog(inputLog)
+		if result != expected {
+			t.Errorf("expected:\n%q\ngot:\n%q", expected, result)
+		}
+	})
+
+	t.Run("Extract inline exception or failure keywords", func(t *testing.T) {
+		inputLog := "line 1\nImportError: module not found\nline 3\nException occurred here"
+		expected := "ImportError: module not found\nException occurred here"
+		result := summarizeFailureLog(inputLog)
+		if result != expected {
+			t.Errorf("expected:\n%q\ngot:\n%q", expected, result)
+		}
+	})
+
+	t.Run("Fallback to last 15 lines", func(t *testing.T) {
+		lines := []string{
+			"line 1", "line 2", "line 3", "line 4", "line 5",
+			"line 6", "line 7", "line 8", "line 9", "line 10",
+			"line 11", "line 12", "line 13", "line 14", "line 15",
+			"line 16", "line 17",
+		}
+		inputLog := strings.Join(lines, "\n")
+		expected := strings.Join(lines[2:], "\n") // last 15 lines (from line 3 to 17)
+		result := summarizeFailureLog(inputLog)
+		if result != expected {
+			t.Errorf("expected:\n%q\ngot:\n%q", expected, result)
+		}
+	})
 }

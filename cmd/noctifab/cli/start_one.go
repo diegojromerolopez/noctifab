@@ -73,6 +73,17 @@ var startOneCmd = &cobra.Command{
 		// Initialize LLM Client
 		llmClient := llm.NewClient(cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue, cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff))
 
+		// Resolve git-detect base branch if configured
+		if cfg.VCS.BaseBranch == "git-detect" {
+			gitClient := usecase.NewGitClient(".")
+			detected, err := gitClient.Run(context.Background(), false, "rev-parse", "--abbrev-ref", "HEAD")
+			if err == nil {
+				cfg.VCS.BaseBranch = strings.TrimSpace(detected)
+			} else {
+				cfg.VCS.BaseBranch = "main" // fallback
+			}
+		}
+
 		state, err := repo.Load(context.Background())
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

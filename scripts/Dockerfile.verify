@@ -1,0 +1,19 @@
+FROM golang:1.25-alpine AS go-builder
+RUN apk add --no-cache git bash build-base
+WORKDIR /app
+COPY . .
+RUN go build -o bin/noctifab cmd/noctifab/main.go
+
+FROM python:3.12-alpine
+RUN apk add --no-cache git bash
+WORKDIR /app
+
+# Copy the built binary
+COPY --from=go-builder /app/bin/noctifab /usr/local/bin/noctifab
+
+# Copy the scripts and set them up
+COPY scripts/verify_autonomy.sh /app/verify_autonomy.sh
+RUN chmod +x /app/verify_autonomy.sh
+
+# Run the verification script directly in the container
+CMD ["/app/verify_autonomy.sh"]

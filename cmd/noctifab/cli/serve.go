@@ -86,6 +86,14 @@ var serveCmd = &cobra.Command{
 
 		// Initialize orchestrator components.
 		gitClient := usecase.NewGitClient(".")
+		if cfg.VCS.BaseBranch == "git-detect" {
+			detected, err := gitClient.Run(context.Background(), false, "rev-parse", "--abbrev-ref", "HEAD")
+			if err == nil {
+				cfg.VCS.BaseBranch = strings.TrimSpace(detected)
+			} else {
+				cfg.VCS.BaseBranch = "main" // fallback
+			}
+		}
 		rebaseQueue := usecase.NewRebaseQueue(gitClient)
 		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch)
 		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())
