@@ -36,6 +36,10 @@ type RoleProfile struct {
 	Role            string   `yaml:"role"`
 	AllowedTools    []string `yaml:"allowed_tools"`
 	AllowedCommands []string `yaml:"allowed_commands"`
+	Permissions     struct {
+		AllowedTools    []string `yaml:"allowed_tools"`
+		AllowedCommands []string `yaml:"allowed_commands"`
+	} `yaml:"permissions"`
 }
 
 // PolicyValidator implements Validator interface.
@@ -69,8 +73,12 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 				var profile RoleProfile
 				if err := yaml.Unmarshal(profileData, &profile); err == nil {
 					// Check tool permissions
+					allowedTools := profile.AllowedTools
+					if len(allowedTools) == 0 && len(profile.Permissions.AllowedTools) > 0 {
+						allowedTools = profile.Permissions.AllowedTools
+					}
 					toolAllowed := false
-					for _, tool := range profile.AllowedTools {
+					for _, tool := range allowedTools {
 						if tool == "*" || tool == action.Tool {
 							toolAllowed = true
 							break
@@ -84,14 +92,18 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 					}
 
 					// Check specific run_tests commands if white-listed
-					if action.Tool == "run_tests" && len(profile.AllowedCommands) > 0 {
+					allowedCommands := profile.AllowedCommands
+					if len(allowedCommands) == 0 && len(profile.Permissions.AllowedCommands) > 0 {
+						allowedCommands = profile.Permissions.AllowedCommands
+					}
+					if action.Tool == "run_tests" && len(allowedCommands) > 0 {
 						command, _ := action.Args["command"].(string)
 						if command != "" {
 							parts := strings.Fields(command)
 							if len(parts) > 0 {
 								binary := parts[0]
 								cmdAllowed := false
-								for _, c := range profile.AllowedCommands {
+								for _, c := range allowedCommands {
 									if c == "*" || c == binary {
 										cmdAllowed = true
 										break
@@ -130,6 +142,12 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 			return &ValidationResult{
 				Allowed: false,
 				Reason:  fmt.Sprintf("Sandbox violation: path '%s' resolves outside the workspace boundary '%s'", path, state.ProjectPath),
+			}, nil
+		}
+		if strings.Contains(absPath, "tests/holdout") || strings.Contains(absPath, "holdout") {
+			return &ValidationResult{
+				Allowed: false,
+				Reason:  "Sandbox violation: tests/holdout directory must not be created, modified, or used under any circumstance",
 			}, nil
 		}
 

@@ -66,7 +66,7 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 	state.ActiveAgents = []domain.Agent{
 		{ID: "agent-planner", Name: "Planner", Role: domain.AgentRolePlanner, Status: domain.AgentIdle},
 		{ID: "agent-generator", Name: "Generator", Role: domain.AgentRoleGenerator, Status: domain.AgentIdle},
-		{ID: "agent-evaluator", Name: "Evaluator", Role: domain.AgentRoleEvaluator, Status: domain.AgentIdle},
+		{ID: "agent-tester", Name: "Tester", Role: domain.AgentRoleTester, Status: domain.AgentIdle},
 	}
 
 	// Recover interrupted tasks on startup
@@ -354,7 +354,7 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 				}
 			}
 
-			// Evaluator checks task
+			// Tester checks task
 			passed := true
 			var errorLog string
 			if readyTask.ID == "task-views" {

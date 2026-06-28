@@ -51,7 +51,6 @@ func TestE2E_Init_CleanDirectory(t *testing.T) {
 	// Verify directory structure
 	noctifabDir := filepath.Join(tempDir, ".noctifab")
 	assert.DirExists(t, filepath.Join(noctifabDir, "data"))
-	assert.DirExists(t, filepath.Join(noctifabDir, "holdout"))
 	assert.DirExists(t, filepath.Join(noctifabDir, "logs"))
 	assert.DirExists(t, filepath.Join(noctifabDir, "profiles"))
 
@@ -155,28 +154,6 @@ func TestE2E_Validate_Configuration(t *testing.T) {
 	err = cmdVal.Run()
 	require.NoError(t, err, "validation failed: %s", stderr.String())
 	assert.Contains(t, stdout.String(), "Configuration is valid")
-}
-
-func TestE2E_PlanCommand(t *testing.T) {
-	bin := getNoctifabBin()
-	tempDir := t.TempDir()
-
-	cmdInit := exec.Command(bin, "init")
-	cmdInit.Dir = tempDir
-	err := cmdInit.Run()
-	require.NoError(t, err)
-
-	cmdPlan := exec.Command(bin, "plan")
-	cmdPlan.Dir = tempDir
-	cmdPlan.Env = getTestEnv()
-
-	var stdout, stderr bytes.Buffer
-	cmdPlan.Stdout = &stdout
-	cmdPlan.Stderr = &stderr
-
-	err = cmdPlan.Run()
-	require.NoError(t, err, "plan failed: %s", stderr.String())
-	assert.Contains(t, stdout.String(), "Plan created successfully.")
 }
 
 func TestE2E_StartCommand(t *testing.T) {

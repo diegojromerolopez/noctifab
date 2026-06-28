@@ -217,7 +217,7 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		assert.Len(t, finalState.ActiveAgents, 3)
 		assert.Equal(t, domain.AgentCompleted, finalState.ActiveAgents[0].Status) // Planner
 		assert.Equal(t, domain.AgentIdle, finalState.ActiveAgents[1].Status)      // Generator
-		assert.Equal(t, domain.AgentCompleted, finalState.ActiveAgents[2].Status) // Evaluator
+		assert.Equal(t, domain.AgentCompleted, finalState.ActiveAgents[2].Status) // Tester
 
 		// 7. Verify all planned tasks succeeded
 		assert.Len(t, finalState.Tasks, 3)

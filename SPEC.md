@@ -14,7 +14,7 @@ The platform classifies development automation into five distinct levels:
 |---|---|---|
 | **Level 1** | Autocomplete | AI suggests code inline. Human drives the editor and makes all decisions. |
 | **Level 2** | Interactive Assistant | AI generates entire files/functions. Human reviews every single change in the editor. |
-| **Level 3** | Spec-Driven (Gated) | AI generates code autonomously from specifications. Holdout scenarios gate quality. Human clicks merge. |
+| **Level 3** | Spec-Driven (Gated) | AI generates code autonomously from specifications. Continuous test suites gate quality. Human clicks merge. |
 | **Level 3.5** | Selective Auto-Merge | Same as Level 3, but low-risk modules merge automatically. Human can block. |
 | **Level 4** | Full Dark Factory | Specs go in, tested code comes out fully merged. Human reviews only exceptions. |
 
@@ -65,7 +65,7 @@ noctifab/
 │   │   ├── validator.go       # Policy & safety rules checker
 │   │   ├── scheduler.go       # Topological scheduling, worker goroutine pool & file locks
 │   │   ├── dag.go             # cycle checks, title-to-UUID resolving maps
-│   │   ├── holdout.go         # BDD scenario execution, 3x runner & majority voter
+│   │   ├── test_validator.go  # Test validation suite execution, 3x runner & majority voter
 │   │   ├── sandbox.go         # Host path jail, warm docker containers & CLI execution wrapper
 │   │   ├── release.go         # Semver bump algorithm & CHANGELOG.md compiler
 │   │   ├── command_channel.go # FIFO serial input mailbox & transaction loop
@@ -82,7 +82,6 @@ noctifab/
 │   │   ├── mock_llm/          # Mock LLM provider service
 │   │   ├── mock_vcs/          # Mock VCS Git CGI server & API mock endpoints
 │   │   └── scenarios/         # Directory for JSON rules and scenario inputs
-│   └── holdout/               # Hidden directory containing BDD holdout tests (isolated from Gen Agent)
 ├── .gitignore                 # Root level gitignore file to exclude build binaries, temp files, etc.
 ├── .noctifab/                 # Local daemon runtime configuration directory
 │   ├── .gitignore             # Config gitignore file (ignores database and logs)
@@ -204,8 +203,8 @@ const (
 	AgentRolePlanner   AgentRole = "PLANNER"
 	// AgentRoleGenerator writes code and executes tool actions.
 	AgentRoleGenerator AgentRole = "GENERATOR"
-	// AgentRoleEvaluator runs holdout tests and validates output.
-	AgentRoleEvaluator AgentRole = "EVALUATOR"
+	// AgentRoleTester writes tests and validates output.
+	AgentRoleTester   AgentRole = "TESTER"
 )
 
 // AgentStatus tracks the lifecycle state of a worker agent.
@@ -931,30 +930,30 @@ What is the next best action?
     1. Read relevant code files using 'read_file'.
     2. Write or modify logic using 'write_file' or 'edit_file'.
     3. Run test suites locally using 'run_tests' to verify compile status.
-    4. When all logic is complete and local tests pass, invoke 'noop' and explain that the task is ready for evaluator checks.
+    4. When all logic is complete and local tests pass, invoke 'noop' and explain that the task is ready for validation checks.
     ```
 
-###### 3. Evaluator Template (`evaluator.tmpl`)
-*   **Purpose:** Guides the Evaluator agent to run holdout tests, verify requirements, and validate overall quality.
+###### 3. Tester Template (`tester.tmpl`)
+*   **Purpose:** Guides the Tester agent to write tests that verify the requirements of the task.
 *   **Variables Injected:**
     *   `{{.State}}` - The current State struct serialized as JSON.
-    *   `{{.Task}}` - The completed Task being evaluated.
-    *   `{{.TestOutput}}` - The stdout/stderr output from the latest test run.
+    *   `{{.Task}}` - The Task model currently being worked on.
 *   **Template Content:**
     ```
     {{template "base_system_prompt"}}
-    Role: Evaluator Agent.
+    Role: Tester Agent.
     Task ID: {{.Task.ID}}
     Task Title: {{.Task.Title}}
     Task Description: {{.Task.Description}}
     
-    Holdout Test Verification Log:
-    {{.TestOutput}}
-    
     Guidelines:
-    1. Review the test verification logs.
-    2. If the logs show assertions passing, call 'noop' and indicate that the verification checks are success.
-    3. If they fail, provide constructive, detailed feedback summarizing the failure to the Generator.
+    1. Write tests according to the following guidelines:
+       - Happy paths must be verified using end-to-end (e2e) tests.
+       - Input validations and simple edge cases must be verified using unit tests.
+       - Complex internal validation flows and multi-component interactions must be verified using integration tests.
+    2. Create test files using 'write_file'.
+    3. Run test suites locally using 'run_tests' to verify compile/failure status.
+    4. When all tests are written, invoke 'noop' and explain that the test suite is ready.
     ```
 
 
@@ -1042,17 +1041,17 @@ An example of a Planner Agent decomposing a specification into two dependent tas
 }
 ```
 
-##### C. Evaluator Action Request (Tool: `run_tests`)
-An example of an Evaluator Agent requesting the execution of holdout tests to verify code compliance:
+##### C. Agent Action Request (Tool: `run_tests`)
+An example of an agent requesting the execution of test suites to verify code compliance:
 ```json
 {
-  "reasoning": "Running the user authentication holdout test suite to verify token middleware behavior.",
+  "reasoning": "Running the user authentication test suite to verify token middleware behavior.",
   "actions": [
     {
       "tool": "run_tests",
       "args": {
-        "package": "tests/holdout/auth",
-        "command": "go test -v ./tests/holdout/auth"
+        "package": "pkg/usecase/middleware",
+        "command": "go test -v ./pkg/usecase/middleware"
       }
     }
   ]
@@ -1082,9 +1081,9 @@ Since AI providers (Google Gemini, Anthropic Claude, OpenAI) do not expose real-
 
 ---
 
-### 3.4. Validator & Holdout Scenario Quality Gates
+### 3.4. Validator & Test-Driven Quality Gates
 
-The Validator serves as the safety policy enforcement layer and determines goal accomplishment. It implements a strict split between the code generation execution context and the acceptance validation checks.
+The Validator serves as the safety policy enforcement layer and determines goal accomplishment. It implements a strict split between the test writing execution context, the code generation execution context, and the project test validation checks.
 
 #### Interface (`pkg/usecase/validator.go`)
 ```go
@@ -1113,45 +1112,37 @@ type Validator interface {
 }
 ```
 
-#### Holdout Scenarios Architecture & Godog Testing Engine
-To prevent agents from gaming tests or writing overfitted implementations, `noctifab` implements the **Holdout Scenarios Pattern** (equivalent to ML train/test data split):
+#### Test-Driven Development (TDD) Agent Architecture
+To ensure correct software implementation, `noctifab` utilizes a sequential Test-Driven Development (TDD) loop employing dedicated test-writing and code-generation agents:
 
 ```
 ┌─────────────────────────────────┐
-│     Code Gen Agent Context      │
+│       Tester Agent              │
 └────────────────┬────────────────┘
-                 │ (Can read)
+                 │ (Writes)
                  ▼
-          [Feature Spec]
+          [Test Suite]
                  │
-                 ▼ (Builds)
-         [Feature Branch]
-                 │
-                 ▼ (Evaluated by)
+                 ▼ (Implemented by)
 ┌─────────────────────────────────┐
-│     Scenario Evaluator Agent    │◄─── [Holdout Scenarios (BDD)]
-└─────────────────────────────────┘     (Completely hidden from Gen Agent)
+│     Generator Agent             │
+└────────────────┬────────────────┘
+                 │ (Verifies via)
+                 ▼
+          [Test Validator]
 ```
 
-1.  **Isolation & Path Standards:** Acceptance tests (Holdout Scenarios) are stored in the `tests/holdout/` directory. They are compiled and checked into the repository alongside production code. However, the Generator Agent sandbox explicitly **blacklists** path access to the `tests/holdout/` directory, preventing the agent from reading or inspecting test cases.
-2.  **Godog Test Engine & BDD Context Framework:** Holdout scenarios are executed using the BDD cucumber framework for Go, standardizing on the `github.com/cucumber/godog` test runner. Scenarios are defined in plain-English `.feature` files containing the contextual BDD syntax: `Given <context>`, `When <action happens>`, `Then <assertion holds>`.
-3.  **Test Run Isolation Hooks:** To prevent database state cross-contamination between test runs, the Evaluator executes database clean and migration tasks inside a Godog `BeforeScenario` lifecycle hook. The runner executes tests against distinct database transactions or isolated file sockets.
-4.  **Deterministic Test Runs & Majority Voting:** The test runner runs the scenario's test suite up to 3 times as independent processes:
+1.  **Tester Agent:** Dedicated test-writing agent that runs before the Generator Agent. It reads the feature specification and task details to write the tests. It follows the test classification rules:
+    - **Happy paths** must be verified using end-to-end (e2e) tests.
+    - **Input validations and simple edge cases** must be verified using unit tests.
+    - **Complex internal validation flows and multi-component interactions** must be verified using integration tests.
+2.  **Generator Agent:** Sandbox-restricted worker executing in a task-specific Git branch. It reads the written tests and implements the functionality to make them pass.
+3.  **Deterministic Test Runs & Majority Voting:** The Test Validator runs the project's test suite up to 3 times as independent processes in the workspace root:
     *   **Majority Vote:** If at least 2 out of 3 runs succeed (exit code `0`), the scenario is approved and marked as `TaskSuccess`.
-    *   **Flaky Warning Quarantine:** If a scenario passes with exactly a 2 out of 3 vote (non-unanimous success), the orchestrator flags the task with a `Warning: Potentially Flaky Build` in the database state to alert the operator.
+    *   **Flaky Warning Quarantine:** If a test suite passes with exactly a 2 out of 3 vote (non-unanimous success), the orchestrator flags the task with a `Warning: Potentially Flaky Build` in the database state to alert the operator.
     *   **Enforced Strict Mode:** The CLI provides a `--strict-validation` flag. When enabled, the Validator rejects non-unanimous runs and requires a unanimous 3 out of 3 success rate before code can be auto-merged.
-5.  **Failure Feedback Filter:** When a holdout scenario fails, the generator agent **never** receives the scenario details (the actual test code or BDD text). Instead, the Evaluator Agent returns a sanitized stderr/stdout execution log output of the failing integration test run, providing sufficient context for programmatic debugging without leaking test assets.
-
-##### Holdout Evaluation Failure Example:
-```
-Holdout Evaluation Failed (2/3 runs failed):
---- FAIL: TestAuthTokenValidation (0.42s)
-    auth_test.go:42: expected response status 200, got 500
-    auth_test.go:43: response payload: "invalid authorization signature"
-FAIL
-```
-
-6.  **Merge Gate:** 100% of all holdout scenarios (as determined by majority vote) must pass before the Validator approves a pull request for merge.
+4.  **Failure Feedback Filter:** When the tests fail, the Generator Agent receives the sanitized stderr/stdout execution log output of the failing test run, providing sufficient context for programmatic debugging.
+5.  **Merge Gate:** 100% of all written tests (as determined by majority vote) must pass before the Validator approves a pull request for merge.
 
 #### Static Policy Safeguards (Default Rules)
 In addition to dynamic validation, the Validator blocks actions violating:
@@ -1255,21 +1246,21 @@ func NewOrchestrator(
 }
 ```
 
-#### 3.5.1. Planner-Generator-Evaluator Loop & Agentic Roles
-`noctifab` utilizes a structured loop that partitions agent cognitive tasks into three distinct roles, preventing "evaluation gaming" (where a generator reviews its own code).
+#### 3.5.1. Planner-Tester-Generator Loop & Agentic Roles
+`noctifab` utilizes a structured loop that partitions agent cognitive tasks into distinct roles.
 
 The following Role Configuration Matrix defines the operation, privileges, and boundaries of each role:
 
 | Role | System Prompt | Available Tools | Execution Context & Isolation | LLM Config Override |
 | :--- | :--- | :--- | :--- | :--- |
 | **Planner** | `planner.tmpl` | `add_task`, `log_message`, `noop` | Main orchestrator process context (runs inside workspace). | Configured to use a reasoning-focused model (e.g., Claude 3.5 Sonnet / GPT-4o) with higher temperature (0.5) for creative task planning and decomposition. |
-| **Generator** | `generator.tmpl` | `read_file`, `write_file`, `edit_file`, `list_directory`, `find_files`, `grep_search`, `run_tests`, `noop` | Spawns as a sandboxed goroutine worker operating in an isolated git worktree / branch sandbox directory. Path traversal is restricted to the specific task worktree. Configuration folder `.noctifab/` is blacklisted. | Primary code generation model with low temperature (0.0) for deterministic and precise coding. |
-| **Evaluator** | `evaluator.tmpl` | `run_tests`, `read_file` (restricted to hidden tests directory only), `noop` | Spawns as a separate sandboxed goroutine post-generation. Operating directory is locked to the holdout tests path (`.noctifab/holdout/`) and target branch. No write access to production source code files. | Evaluator model with zero temperature (0.0) for objective verification and evaluation of test outcomes. |
+| **Tester** | `tester.tmpl` | `read_file`, `write_file`, `edit_file`, `list_directory`, `find_files`, `grep_search`, `run_tests`, `noop` | Spawns as a sandboxed goroutine worker operating in an isolated git worktree / branch sandbox directory. Writes unit, integration, and end-to-end tests based on specifications. | Tester model with zero temperature (0.0) for objective test coverage creation. |
+| **Generator** | `generator.tmpl` | `read_file`, `write_file`, `edit_file`, `list_directory`, `find_files`, `grep_search`, `run_tests`, `noop` | Spawns as a sandboxed goroutine worker operating in an isolated git worktree / branch sandbox directory. Path traversal is restricted to the specific task worktree. Configuration folder `.noctifab/` is blacklisted. Writes code to satisfy pre-written tests. | Primary code generation model with low temperature (0.0) for deterministic and precise coding. |
 
-The generator agent is only given high-level feedback (e.g., error logs and test failure summaries), never the source test cases themselves, to guarantee code generalization.
+The tester agent writes the test cases, and then the generator agent writes the implementation code to satisfy them.
 
 ##### A. Concurrency & Orchestrator-Worker Handoff Sequence
-The following sequence diagram illustrates the lifecycle of a task and the interactions between the orchestrator coordinator, SQLite/PostgreSQL state database, isolated worktrees, and concurrent Planner, Generator, and Evaluator agent goroutines:
+The following sequence diagram illustrates the lifecycle of a task and the interactions between the orchestrator coordinator, SQLite/PostgreSQL state database, isolated worktrees, and concurrent Planner, Tester, and Generator agent goroutines:
 
 ```mermaid
 sequenceDiagram
@@ -1277,32 +1268,30 @@ sequenceDiagram
     participant DB as SQLite/PostgreSQL Database
     participant Coord as Orchestrator Coordinator
     participant Worktree as Git Worktree Sandbox
+    participant Tester as Tester Agent (Goroutine)
     participant Gen as Generator Agent (Goroutine)
-    participant Eval as Evaluator Agent (Goroutine)
 
     Coord->>DB: Poll for ready tasks (DependsOn fully SUCCESS)
     activate Coord
     DB-->>Coord: Return task list
     Coord->>DB: Transition task status to IN_PROGRESS (OCC Version check)
     Coord->>Worktree: Create isolated workspace (git worktree add)
+    
+    Coord->>Tester: Spawn Tester worker goroutine
+    activate Tester
+    Tester->>Worktree: Checkout task branch and write tests
+    Tester-->>Coord: Complete tests (test files committed)
+    deactivate Tester
+    
     Coord->>Gen: Spawn Generator worker goroutine
     activate Gen
-    Gen->>Worktree: Checkout task sandbox branch (noctifab/task-<id>-agent-<agent_id>)
-    
-    loop Development Cycle
-        Gen->>Worktree: Read/Write files & run local tests
-    end
-    
-    Gen-->>Coord: Complete task (code changes written)
+    Gen->>Worktree: Checkout task branch and implement code
+    Gen-->>Coord: Complete coding (implementation committed)
     deactivate Gen
     
-    Coord->>Eval: Spawn Evaluator Agent goroutine
-    activate Eval
-    loop Holdout Test Evaluation (Up to 3 Runs)
-        Eval->>Worktree: Execute BDD holdout scenario test suite
+    loop Test Suite Validation (Up to 3 Runs)
+        Coord->>Worktree: Execute project test suite
     end
-    Eval-->>Coord: Report BDD results (Majority Vote outcome)
-    deactivate Eval
     
     alt Verification Success (>= 2/3 pass)
         Coord->>Worktree: Merge task branch back to integration branch
@@ -1541,7 +1530,7 @@ For each clarification waiting for user input, a configurable response deadline 
 
 ### 3.6.6. Auto-Rollback Policies
 To prevent unstable builds or broken endpoints from being committed to the target branch:
-1.  **Verification Failure Trigger:** If a merged pull request or a deployment trigger fails the holdout evaluation checks, the validator signals a rollback event.
+1.  **Verification Failure Trigger:** If a merged pull request or a deployment trigger fails the test validation checks, the validator signals a rollback event.
 2.  **Git Rollback Actions:** The VCS manager automatically executes Git rollback procedures:
     *   Reverting the specific merge commit on the target release branch (`git revert -m 1 <commit-hash>`).
     *   Restoring the last-known-good tag/commit reference.
@@ -1554,7 +1543,7 @@ To prevent unstable builds or broken endpoints from being committed to the targe
 
 ##### Auto-Rollback Sequence Example:
 1. Feature integration branch `feature/auth` is merged into target branch `main` at commit `a1b2c3d4`.
-2. Post-merge integration tests fail under Holdout evaluation.
+2. Post-merge integration tests fail under Test Validator evaluation.
 3. Revert event triggers. The orchestrator executes:
    ```bash
    git checkout main
@@ -1615,12 +1604,12 @@ The database stores the following task states after a shutdown event halts execu
 > **Note:** The remaining subsections of §3 (§3.7 through §3.9) describe supporting workflows, integration pipelines, and configuration layout that build on top of the five core components defined above (State, Tool Registry, LLM Client, Validator, and Multi-Agent Orchestrator).
 
 ### 3.7. Specification Ingestion & External Clients
-To support dynamic task generation from multiple workflow sources, `noctifab` abstracts the feature specification retrieval through an ingestion layer. The CLI command `noctifab plan --input <source>` parses `<source>` to determine the appropriate adapter to execute:
+To support dynamic task generation from multiple workflow sources, `noctifab` abstracts the feature specification retrieval through an ingestion layer. The `--input` flag (available on `noctifab start-one` and `noctifab start`) parses `<source>` to determine the appropriate adapter to execute:
 
 ```
-                  ┌──────────────────────┐
-                  │ noctifab plan --input│
-                  └──────────┬───────────┘
+                  ┌──────────────────────────────┐
+                  │ noctifab start-one --input   │
+                  └──────────────┬───────────────┘
                              │
             ┌────────────────┼────────────────┐
             ▼ (Jira URL)     ▼ (VCS URL)      ▼ (Local Path)
@@ -1655,7 +1644,7 @@ To support dynamic task generation from multiple workflow sources, `noctifab` ab
 ### 3.8. Automatic Commits, Centralized Versioning, & Pull Requests
 When the automated commit setting is enabled (via CLI flag `--auto-commit` or environment variable `NOCTIFAB_AUTO_COMMIT=true`), the orchestrator automatically manages the integration pipeline: branch creation, centralized version bumping, changelog updates, and pull request creation.
 
-*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start` and `noctifab create`). The planning command (`noctifab plan`) is strictly read-only with respect to the target repository; it builds the task dependency DAG and writes/updates the state database (`noctifab.db`), but it **never** creates branches, makes commits, or writes any changes to the target workspace source repository.
+*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start` and `noctifab start-one`). These commands manage the integration pipeline: branch creation, conventional commits, version bumping, and PR creation. The `--auto-commit` flag has no effect on read-only commands such as `noctifab validate` or `noctifab maintenance`.
 
 #### 3.8.1. Branch Naming Policy
 The branch created by the worker agent is dynamically named using the configured `branch_prefix` (configured under `vcs:` in `.noctifab/config.yaml`):
@@ -1693,7 +1682,7 @@ Once all tasks are done, the orchestrator updates the `CHANGELOG.md` file locate
 *   **Pull Request Creation:** The VCS client makes a REST/GraphQL call to the remote provider (GitHub/GitLab) to create a Pull Request targeting the configured `base_branch` (which defaults to `master`), providing a detailed description outlining:
     *   The feature/fix goal.
     *   List of files modified.
-    *   A summary of holdout test evaluation outcomes.
+    *   A summary of test suite verification outcomes.
 
 #### 3.8.5. Workspace Cleanup & Completion Notification
 Once the VCS pull request has been successfully created and the final verification validation criteria pass:
@@ -1710,7 +1699,6 @@ The daemon initializes and operates inside a dedicated `.noctifab/` directory at
 ├── config.yaml              # Core YAML configuration file
 ├── data/
 │   └── noctifab.db          # SQLite state database
-├── holdout/                 # Hidden directory containing BDD holdout test scenarios
 ├── logs/                    # Execution/audit logs folder
 ├── profiles/                # Agent permission profiles (default.yaml, etc.)
 └── .gitignore               # Local VCS ignore file to prevent pushing database/logs
@@ -1793,10 +1781,10 @@ roles:
     model: "gemini-1.5-pro"
     temperature: 0.0
     profile: "generator"        # References .noctifab/profiles/generator.yaml
-  evaluator:
+  tester:
     model: "gemini-1.5-pro"
     temperature: 0.0
-    profile: "evaluator"        # References .noctifab/profiles/evaluator.yaml
+    profile: "tester"           # References .noctifab/profiles/tester.yaml
 ```
 
 #### 3.9.3. Profile Configuration Schema (`.noctifab/profiles/<profile_name>.yaml`)
@@ -1872,14 +1860,19 @@ permissions:
     allow_external: false
 ```
 
-##### Evaluator Profile (`.noctifab/profiles/evaluator.yaml`)
-Enforces constraints specific to the Evaluator role:
+##### Tester Profile (`.noctifab/profiles/tester.yaml`)
+Enforces constraints specific to the Tester role:
 
 ```yaml
 permissions:
   allowed_tools:
     - "run_tests"
     - "read_file"
+    - "write_file"
+    - "edit_file"
+    - "list_directory"
+    - "find_files"
+    - "grep_search"
     - "noop"
   network:
     allow_ai_provider: true
@@ -1892,7 +1885,10 @@ permissions:
 
 `noctifab` exposes a structured Command Line Interface built using the `github.com/spf13/cobra` framework.
 
-### 4.0. Cobra CLI Configuration and Error SILENCE
+### 4.0. CLI Design Rule: Secret and Token Isolation
+To prevent credential leaks, `noctifab` CLI commands must never accept secrets or tokens as command-line arguments or flags. All sensitive credentials (such as LLM API keys, VCS access tokens, and Jira API tokens) must be read from `config.yaml` (directly or resolved via env vars specified in `config.yaml`). If a credential reference in `config.yaml` starts with `secret:`, it will be resolved from `.noctifab/secrets.yaml`.
+
+### 4.1. Cobra CLI Configuration and Error SILENCE
 To prevent console log clutter and improve developer user experience, the Cobra framework settings are modified:
 1.  **Usage and Error Silencing:** All commands and subcommands are initialized with `SilenceUsage: true` and `SilenceErrors: true`. This prevents Cobra from printing the standard CLI usage instruction manual whenever a runtime command error is returned.
 2.  **Centralized Error Handling:** Main execution logic in `cmd/noctifab/main.go` catches all errors returned by subcommand execution handlers. The main wrapper formats the error using the configured logger, writes the message clearly to `stderr`, and terminates the process with the corresponding exit code.
@@ -1920,11 +1916,9 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     ##### Daemon Lock & PID File:
     At start, `noctifab start` attempts to acquire a file lock (`flock`) on `.noctifab/noctifab.pid` and writes its process PID inside. If another process holds the lock, the command exits with `"noctifab daemon is already running in this workspace."`
 *   `noctifab create`
-    Plans and executes the feature specification end-to-end. It first runs the Planner phase to decompose the specification into a task DAG (if not already planned), then runs the execution loop continuously, calling the Generator/Evaluator to implement and validate tasks, and retrying/fixing any failures until the build is passing. Once complete, it pushes the branch, creates a single Pull Request, and exits cleanly.
+    Plans and executes the feature specification end-to-end. It first runs the Planner phase to decompose the specification into a task DAG (if not already planned), then runs the execution loop continuously, calling the Tester/Generator to implement and validate tasks, and retrying/fixing any failures until the build is passing. Once complete, it pushes the branch, creates a single Pull Request, and exits cleanly.
 *   `noctifab validate`
     Runs a dry-run check of the current local state file, project directory constraints, and linter commands without polling the LLM or running actions.
-*   `noctifab plan`
-    Reads the input specification file, performs the clarification loop if needed, and builds/updates the task DAG in the configuration state.
 *   `noctifab maintenance`
     Runs a deterministic quality maintenance cycle. It:
     1. Prunes dangling task branches whose tasks are already resolved as `SUCCESS` or `FAILED` in the repository.
@@ -1948,17 +1942,14 @@ The CLI configuration can be provided via flags or matching environment variable
 | `--agents` | `-a` | `NOCTIFAB_AGENTS_COUNT` | `3` | Maximum number of parallel workers/agents to spawn |
 | `--interval` | `-t` | `NOCTIFAB_INTERVAL` | `5m` | Cycle loop polling duration interval |
 | `--vcs-provider` | `-p` | `NOCTIFAB_VCS_PROVIDER` | `github` | Version Control System (VCS) target: `github`, `gitlab` |
-| `--vcs-token` | | `NOCTIFAB_VCS_TOKEN` | (Required) | API Access Token for the VCS provider |
 | `--vcs-repo` | `-r` | `NOCTIFAB_VCS_REPO` | (Required) | Repository identifier format: `owner/repo` |
 | `--llm-provider` | `-l` | `NOCTIFAB_LLM_PROVIDER` | `openai` | LLM client API provider: `openai`, `anthropic`, `gemini`, `ollama` |
 | `--llm-model` | `-m` | `NOCTIFAB_LLM_MODEL` | `gpt-4o` | LLM Model Identifier (e.g., `gpt-4o`, `claude-3-5-sonnet`) |
-| `--llm-api-key` | `-k` | `NOCTIFAB_LLM_API_KEY` | | API authentication key. Falls back to `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY` if not set |
 | `--llm-url` | `-u` | `NOCTIFAB_LLM_URL` | | Custom endpoint URL (useful for local Ollama instances) |
 | `--llm-planner-model` | | `NOCTIFAB_LLM_PLANNER_MODEL` | | Model override for the Planner agent (default: same as `--llm-model`) |
 | `--llm-generator-model` | | `NOCTIFAB_LLM_GENERATOR_MODEL` | | Model override for the Generator agent (default: same as `--llm-model`) |
-| `--llm-evaluator-model` | | `NOCTIFAB_LLM_EVALUATOR_MODEL` | | Model override for the Evaluator agent (default: same as `--llm-model`) |
+| `--llm-tester-model` | | `NOCTIFAB_LLM_TESTER_MODEL` | | Model override for the Tester agent (default: same as `--llm-model`) |
 | `--jira-user` | | `NOCTIFAB_JIRA_USER` | | User email for Jira REST API authentication |
-| `--jira-token` | | `NOCTIFAB_JIRA_TOKEN` | | API Token for Jira REST API authentication |
 | `--jira-url` | | `NOCTIFAB_JIRA_URL` | | Base URL of the Jira cloud instance (e.g., https://company.atlassian.net) |
 | `--http-max-retries` | | `NOCTIFAB_HTTP_MAX_RETRIES` | `10` | Maximum HTTP request retries for API clients |
 | `--http-retry-backoff` | | `NOCTIFAB_HTTP_RETRY_BACKOFF` | `100ms` | Base delay time duration for exponential backoff retry logic |
@@ -1983,7 +1974,7 @@ The CLI configuration can be provided via flags or matching environment variable
 | `--otel-service-name` | | `OTEL_SERVICE_NAME` | `noctifab-daemon` | Service name identifier exported in OpenTelemetry traces |
 | `--llm-planner-temperature` | | `NOCTIFAB_LLM_PLANNER_TEMPERATURE` | `0.5` | LLM temperature override for the Planner role |
 | `--llm-generator-temperature` | | `NOCTIFAB_LLM_GENERATOR_TEMPERATURE` | `0.0` | LLM temperature override for the Generator role |
-| `--llm-evaluator-temperature` | | `NOCTIFAB_LLM_EVALUATOR_TEMPERATURE` | `0.0` | LLM temperature override for the Evaluator role |
+| `--llm-tester-temperature` | | `NOCTIFAB_LLM_TESTER_TEMPERATURE` | `0.0` | LLM temperature override for the Tester role |
 
 ##### Stdin Interactive Command Grammar
 
@@ -2241,13 +2232,13 @@ To ensure high cohesion, low coupling, and compliance with the 500-line source c
     *   Standard tools definitions in `pkg/usecase/tools/`: bootstrap (`add_task`, `complete_task`, `log_message`) and production (`read_file`, `write_file`, `run_tests`).
 *   **Verification:** Unit tests for JSON extraction edge-cases (conversational wrappers, malformed JSON regex fallback) and mock API responses.
 
-### 7.4. Phase 4: Validator, Sandbox Boundaries & Holdout Evaluator
-*   **Objective:** Define security sandbox filters and holdout scenario gates to ensure code quality and system safety.
+### 7.4. Phase 4: Validator, Sandbox Boundaries & Test Validator
+*   **Objective:** Define security sandbox filters and test validation gates to ensure code quality and system safety.
 *   **Key Deliverables:**
     *   `pkg/usecase/validator.go` - Code quality [Validator](/SPEC.md#L344-L351) engine.
     *   `pkg/usecase/sandbox.go` - Path traversal filtering ([filepath.Clean](/SPEC.md#L387)) and command execution whitelist checks.
-    *   `pkg/usecase/holdout.go` - BDD holdout evaluator logic (running tests 3 times, checking majority vote, filtering feedback logs).
-*   **Verification:** Unit tests confirming sandbox boundary violations are correctly blocked, and holdout majority voting returns expected boolean values.
+    *   `pkg/usecase/test_validator.go` - Test validation logic (running project tests 3 times, checking majority vote).
+*   **Verification:** Unit tests confirming sandbox boundary violations are correctly blocked, and majority voting returns expected boolean values.
 
 ### 7.5. Phase 5: VCS API, Versioning & Ingestion Adapters
 *   **Objective:** Implement Git commands, release version tags, Keep a Changelog management, and remote issue fetching.
@@ -2310,12 +2301,11 @@ To guarantee stable and autonomous execution without human intervention, `noctif
     1.  **Optimistic Concurrency Control (OCC):** Access is synchronized through a monotonic versioning system on the database record. Simultaneous writes are rejected at the database transaction level if a conflict is detected, triggering a safe reload-retry loop in the worker.
     2.  **Sandboxed Branch isolation:** Parallel agents checkout tasks to unique branches named `noctifab/task-<id>-agent-<agent_id>`. Direct pushes to protected branches are blocked at the validator sandbox level.
 
-### 8.6. AI Code Gaming and Test Overfitting
-*   **Challenge:** Generator agents might write mocked or hardcoded return values to satisfy specific unit tests rather than implementing generalized production logic.
+### 8.6. Test-Driven Development & Flakiness Gates
+*   **Challenge:** Generator agents might write mocked or hardcoded return values to satisfy tests, or write code that introduces flaky test behaviors.
 *   **Resolution:**
-    1.  **Holdout Scenario Isolation:** Acceptance/BDD integration scenarios are kept inside a secure directory (`tests/holdout/`) which is not mounted into the code generator agent sandbox.
-    2.  **Filtered Error Logs:** When a holdout scenario fails, the Generator Agent is only provided with a filtered summary of the failure (e.g., `Holdout failed: Validation Endpoint returned status 500`), never the source test cases, forcing the agent to build correct logic from the specification.
-    3.  **Deterministic CLI Execution:** All holdout scenarios are executed deterministically using standard CLI commands (e.g., `go test`). A 100% success rate is required for the validation runner to approve the build.
+    1.  **Tester Agent Role Partition:** The task execution partitioning decouples test writing from implementation. The Tester agent writes unit, integration, and e2e tests based strictly on the task specifications.
+    2.  **Test Validator Gate:** The Test Validator executes the project's test suite 3 times sequentially. A majority vote (2/3 passing runs) determines if the task succeeds, with warnings generated if any individual run fails (indicating flakiness quarantine).
 
 ### 8.7. Jira ADF Formatting and Rich Text Parsing Issues
 *   **Challenge:** Jira API returns descriptions using the complex Atlassian Document Format (ADF) JSON structure rather than Markdown. Directly feeding raw ADF JSON to planning prompts increases token size and causes parser errors.
@@ -2331,8 +2321,8 @@ The following glossary defines key software engineering, version control, and di
 | **Optimistic Concurrency Control (OCC)** | A non-blocking concurrency control method that checks for version conflicts before committing transactions, aborting and retrying if a conflict is detected. | Used in §3.5.3 (DB-backed State Coordination & Optimistic Concurrency Engine) to coordinate concurrent updates to the single shared state database from parallel agent goroutines. |
 | **Git Worktree** | A Git feature allowing a single repository to have multiple checkouts in separate directories concurrently, each on a different branch. | Used in §3.5.4 (DAG Task Splitting, Dependency Computation, & Concurrency Scheduler) to provide complete isolation for parallel worker agents executing in concurrent branches. |
 | **Directed Acyclic Graph (DAG)** | A finite directed graph with no directed cycles, representing topological hierarchies where nodes flow in a single direction. | Used in §3.5.4 (DAG Task Splitting, Dependency Computation, & Concurrency Scheduler) to compute task scheduling sequences and topological execution steps. |
-| **Behavior-Driven Development (BDD)** | A development workflow using natural language specifications (contextual "when/it" context formats) to define software behavior and run tests. | Used in §3.4 (Validator & Holdout Scenario Quality Gates) for holdout scenarios and quality verification gates. |
-| **Holdout Scenario** | Acceptance test scenarios kept hidden from the generator agent to prevent overfitting, mimicking test-set isolation in machine learning. | Detailed in §3.4 (Validator & Holdout Scenario Quality Gates) as a core gate preventing the LLM from gaming test suites. |
+| **Test-Driven Development (TDD)** | A development workflow where tests are written before the production logic, guiding the implementation and ensuring high quality. | Used in §3.5.1 (Planner-Tester-Generator Loop & Agentic Roles) for the Tester-Generator agent loop. |
+| **Test Validator** | A verification component that executes the project's test suite multiple times to determine correctness and identify flaky test patterns. | Detailed in §3.4 (Validator & Test-Driven Quality Gates) as the quality gate preventing flaky code. |
 | **Quarantine Branch** | A temporary Git branch prefix (e.g. `noctifab-quarantine/`) where failing or conflicting tasks are isolated for manual developer investigation. | Specified in §3.6.6 (Auto-Rollback Policies) to avoid polluting clean release branches. |
 | **Compaction** | A context management technique that summarizes preceding conversation turns to fit within context limits instead of hard truncation. | Described in §3.3.1 (Conversation History & Context Management) to optimize token costs for long-running debugging iterations. |
 | **OCC Livelock** | A failure state where concurrent update threads repeatedly conflict, abort, and retry in lockstep, blocking overall progress. | Prevented in §3.5.3 (DB-backed State Coordination & Optimistic Concurrency Engine) using exponential backoff with full jitter and retry bounds. |

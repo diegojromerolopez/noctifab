@@ -39,6 +39,11 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		}
 	}
 
+	// Validate the planned tasks
+	if err := ValidatePlannedTasks(state.Tasks); err != nil {
+		return err
+	}
+
 	if err := o.repo.Save(ctx, state); err != nil {
 		return fmt.Errorf("failed to persist planned tasks: %w", err)
 	}

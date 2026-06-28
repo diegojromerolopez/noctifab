@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -31,7 +32,7 @@ type Orchestrator struct {
 	scheduler   *Scheduler
 	git         *GitClient
 	rebaseQueue *RebaseQueue
-	evaluator   *HoldoutEvaluator
+	evaluator   *TestValidator
 	vcsClient   domain.VCSClient
 	cfg         OrchestratorConfig
 }
@@ -44,7 +45,7 @@ func NewOrchestrator(
 	sched *Scheduler,
 	git *GitClient,
 	queue *RebaseQueue,
-	eval *HoldoutEvaluator,
+	eval *TestValidator,
 	vcsClient domain.VCSClient,
 	cfg OrchestratorConfig,
 ) *Orchestrator {
@@ -192,7 +193,7 @@ func (o *Orchestrator) markTaskFailed(ctx context.Context, taskID, reason string
 
 func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) {
 	// Spawns worker branch, performs checkouts, updates task PENDING -> IN_PROGRESS,
-	// runs Generator & Evaluator, merges back if success, and cleans worktrees.
+	// runs Tester & Generator, validates tests, merges back if success, and cleans worktrees.
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 
@@ -211,6 +212,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	if task == nil {
 		return
 	}
+
+	// Inherit target files recursively from dependencies
+	task.TargetFiles = collectTargetFilesRecursively(*task, state.Tasks)
 
 	fmt.Printf("Orchestrator: Task %s (%s) is starting...\n", taskID, task.Title)
 
@@ -264,15 +268,34 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		return
 	}
 
-	// Force delete worker branch if left over from a previous crashed run
-	_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
+	branchExists := false
+	_, err = o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+branchName)
+	if err == nil {
+		branchExists = true
+	}
 
-	// Create worker branch
-	_, err = o.git.Run(ctx, true, "checkout", "-b", branchName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to create worker branch %s: %v\n", branchName, err)
-		o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to create worker branch: %v", err))
-		return
+	if branchExists && task.Retries > 0 {
+		// Checkout existing worker branch
+		if _, err := o.git.Run(ctx, true, "checkout", branchName); err != nil {
+			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout existing worker branch %s: %v\n", branchName, err)
+			return
+		}
+		// Revert last commit if it was a generator refactor commit
+		lastMsg, err := o.git.Run(ctx, false, "log", "-1", "--pretty=%s")
+		if err == nil && strings.HasPrefix(strings.TrimSpace(lastMsg), "feat(core): refactor/resolve task") {
+			_, _ = o.git.Run(ctx, true, "reset", "--hard", "HEAD~1")
+		}
+	} else {
+		// Force delete worker branch if left over from a previous crashed run or not a retry
+		_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
+
+		// Create worker branch from integrationBranch
+		_, err = o.git.Run(ctx, true, "checkout", "-b", branchName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to create worker branch %s: %v\n", branchName, err)
+			o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to create worker branch: %v", err))
+			return
+		}
 	}
 
 	// Inject target files context
@@ -286,64 +309,86 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	prompt := fmt.Sprintf("Execute task: %s - %s", task.Title, task.Description)
-	if len(fileContexts) > 0 {
-		prompt = fmt.Sprintf("Execute task: %s - %s\n\nExisting files context:\n%s", task.Title, task.Description, strings.Join(fileContexts, "\n\n"))
-	}
+	// 1. Run Generator Agent (role "generator") to implement minimal functionality
+	if task.Retries == 0 {
+		minimalGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFocus on creating the minimal implementation/functionality to fulfill the task requirements. The tests will be written in a later phase.", task.Title, task.Description)
+		o.RunGeneratorAgent(ctx, *task, state, fileContexts, "", minimalGenPrompt)
 
-	genCtx := context.WithValue(ctx, AgentRoleKey, "generator")
-	resp, err := o.llmClient.Complete(genCtx, prompt)
-	if err == nil {
-		fmt.Printf("Orchestrator: Task %s LLM reasoning: %s\n", taskID, resp.Reasoning)
-		// Run tool actions
-		for _, action := range resp.Actions {
-			fmt.Printf("Orchestrator: Task %s LLM action: tool=%s args=%+v\n", taskID, action.Tool, action.Args)
-			domainAction := domain.Action{
-				Tool: action.Tool,
-				Args: action.Args,
-			}
-			valRes, valErr := o.validator.Validate(genCtx, domainAction, state)
-			if valErr != nil || (valRes != nil && !valRes.Allowed) {
-				reason := "validation policy blocked execution"
-				if valRes != nil && valRes.Reason != "" {
-					reason = valRes.Reason
+		// Stage and commit minimal implementation
+		statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
+		if strings.TrimSpace(statusOut) != "" {
+			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+			stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+			if strings.TrimSpace(stagedOut) != "" {
+				commitMsg := fmt.Sprintf("feat(core): implement minimal functionality for task %s - %s", taskID, task.Title)
+				_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+				if commitErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s minimal implementation: %v\n", taskID, commitErr)
 				}
-				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s action %s validation failed: %s\n", taskID, action.Tool, reason)
-				o.markTaskFailed(ctx, taskID, reason)
-				o.scheduler.ReleaseLocks(taskID)
-				_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
-				_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
-				return
-			}
-
-			fmt.Printf("Orchestrator: Task %s executing tool: %s\n", taskID, action.Tool)
-			tool, ok := o.registry.Get(action.Tool)
-			if ok {
-				_, _ = tool.Execute(genCtx, state, action.Args)
 			}
 		}
-	} else {
-		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s LLM completion failed: %v\n", taskID, err)
+
+		// 2. Run Test Writer Agent (role "tester") to write tests against the minimal implementation
+		testerPrompt := fmt.Sprintf("Write tests for task: %s - %s\n\nThe minimal implementation has already been created. Write tests to verify this implementation, including unit and integration tests as specified in the guidelines.", task.Title, task.Description)
+		o.RunTesterAgent(ctx, *task, state, fileContexts, testerPrompt)
+
+		// Stage and commit tests
+		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
+		if strings.TrimSpace(statusOut) != "" {
+			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+			stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+			if strings.TrimSpace(stagedOut) != "" {
+				commitMsg := fmt.Sprintf("test(core): write tests for task %s - %s", taskID, task.Title)
+				_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+				if commitErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s tests: %v\n", taskID, commitErr)
+				}
+			}
+		}
 	}
 
-	// Stage and commit changes if any exist
+	// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
+	recentTestsContext := ""
+	diffOut, diffErr := o.git.Run(ctx, false, "show", "--name-only", "--format=", "HEAD")
+	if diffErr == nil {
+		var testFileContexts []string
+		for _, file := range strings.Split(diffOut, "\n") {
+			file = strings.TrimSpace(file)
+			if file != "" && strings.Contains(file, "tests/") {
+				fullPath, err := resolveSandboxPath(state.ProjectPath, file)
+				if err == nil {
+					if content, err := os.ReadFile(fullPath); err == nil {
+						testFileContexts = append(testFileContexts, fmt.Sprintf("Test File %s:\n```\n%s\n```", file, string(content)))
+					}
+				}
+			}
+		}
+		if len(testFileContexts) > 0 {
+			recentTestsContext = "\n\nWritten tests context:\n" + strings.Join(testFileContexts, "\n\n")
+		}
+	}
+
+	// 3. Run Generator Agent (role "generator") to refactor/improve the implementation and tests to pass
+	refactorGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nRefactor the implementation to make the code better and ensure all tests pass. You may update both the implementation files and the test files if needed.", task.Title, task.Description)
+	o.RunGeneratorAgent(ctx, *task, state, fileContexts, recentTestsContext, refactorGenPrompt)
+
+	// Stage and commit refactoring changes
 	statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
 	if strings.TrimSpace(statusOut) != "" {
 		_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
-		// Check again if staged changes exist to avoid empty commits
 		stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
 		if strings.TrimSpace(stagedOut) != "" {
-			commitMsg := fmt.Sprintf("feat(core): resolve task %s - %s", taskID, task.Title)
+			commitMsg := fmt.Sprintf("feat(core): refactor/resolve task %s - %s", taskID, task.Title)
 			_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
 			if commitErr != nil {
-				fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s: %v\n", taskID, commitErr)
+				fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s refactor: %v\n", taskID, commitErr)
 			}
 		}
 	}
 
-	fmt.Printf("Orchestrator: Task %s running holdout tests...\n", taskID)
-	// Run Evaluator holdout tests
-	passed, logMsg, _ := o.evaluator.EvaluateTask(ctx, state, *task, "tests/holdout")
+	fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
+	// Run test suite validation
+	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, state, *task)
 
 	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		var targetTask *domain.Task
@@ -359,8 +404,10 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 		if passed {
 			targetTask.Status = domain.TaskSuccess
+			targetTask.FailureLog = ""
 		} else {
 			targetTask.Retries++
+			targetTask.FailureLog = logMsg
 			if targetTask.Retries >= targetTask.MaxRetries {
 				targetTask.Status = domain.TaskFailed
 			} else {
@@ -385,13 +432,61 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		fmt.Printf("Orchestrator: Task %s completed successfully!\n", taskID)
 		// Merge back sequentially into integrationBranch using RebaseQueue
 		_ = o.rebaseQueue.Push(ctx, branchName, integrationBranch)
+
+		// Clean up branch
+		_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
+		_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
 	} else {
-		fmt.Printf("Orchestrator: Task %s failed holdout tests. Retrying or marking FAILED.\n", taskID)
+		fmt.Printf("Orchestrator: Task %s failed test validation. Retrying or marking FAILED.\n", taskID)
+		if task.Retries+1 >= task.MaxRetries {
+			_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
+			_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
+		} else {
+			_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
+		}
 	}
 
 	o.scheduler.ReleaseLocks(taskID)
-
-	// Clean up branch
-	_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
-	_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
 }
+
+func collectTargetFilesRecursively(task domain.Task, tasks []domain.Task) []string {
+	// Build map of ID/Title to Task
+	taskMap := make(map[string]domain.Task)
+	for _, t := range tasks {
+		taskMap[t.ID] = t
+		taskMap[t.Title] = t
+	}
+
+	visited := make(map[string]bool)
+	var files []string
+	var visit func(t domain.Task)
+	visit = func(t domain.Task) {
+		if visited[t.ID] {
+			return
+		}
+		visited[t.ID] = true
+		// Add target files of this task
+		files = append(files, t.TargetFiles...)
+		// Recurse on dependencies
+		for _, dep := range t.DependsOn {
+			if parent, exists := taskMap[dep]; exists {
+				visit(parent)
+			}
+		}
+	}
+
+	visit(task)
+
+	// Deduplicate
+	uniqueFiles := make([]string, 0, len(files))
+	seen := make(map[string]bool)
+	for _, f := range files {
+		if !seen[f] {
+			seen[f] = true
+			uniqueFiles = append(uniqueFiles, f)
+		}
+	}
+	sort.Strings(uniqueFiles)
+	return uniqueFiles
+}
+

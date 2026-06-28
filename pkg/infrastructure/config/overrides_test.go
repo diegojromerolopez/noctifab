@@ -50,7 +50,7 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_LLM_URL":                "llm-url-env",
 		"NOCTIFAB_LLM_PLANNER_MODEL":      "planner-env",
 		"NOCTIFAB_LLM_GENERATOR_MODEL":    "generator-env",
-		"NOCTIFAB_LLM_EVALUATOR_MODEL":    "evaluator-env",
+		"NOCTIFAB_LLM_TESTER_MODEL":       "tester-env",
 		"NOCTIFAB_JIRA_USER":              "jira-user-env",
 		"NOCTIFAB_JIRA_TOKEN":             "jira-token-env",
 		"NOCTIFAB_JIRA_URL":               "jira-url-env",
@@ -83,9 +83,9 @@ func TestLoad_AndOverrides(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	flags := []string{
 		"config", "db-path", "storage-provider", "storage-conn", "input", "auto-commit",
-		"agents", "interval", "vcs-provider", "vcs-token", "vcs-repo", "llm-provider",
-		"llm-model", "llm-api-key", "llm-url", "llm-planner-model", "llm-generator-model",
-		"llm-evaluator-model", "jira-user", "jira-token", "jira-url", "http-max-retries",
+		"agents", "interval", "vcs-provider", "vcs-repo", "llm-provider",
+		"llm-model", "llm-url", "llm-planner-model", "llm-generator-model",
+		"llm-tester-model", "jira-user", "jira-url", "http-max-retries",
 		"http-retry-backoff", "max-tools-per-response", "max-actions", "max-duration",
 		"conversation-mode", "max-history-messages", "compaction-threshold",
 		"max-history-tokens", "sandbox-mode", "shutdown-grace-period", "occ-max-retries",
@@ -151,8 +151,8 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if cfg.Roles.Generator.Model != "generator-env" {
 		t.Errorf("expected generator-env, got %s", cfg.Roles.Generator.Model)
 	}
-	if cfg.Roles.Evaluator.Model != "evaluator-env" {
-		t.Errorf("expected evaluator-env, got %s", cfg.Roles.Evaluator.Model)
+	if cfg.Roles.Tester.Model != "tester-env" {
+		t.Errorf("expected tester-env, got %s", cfg.Roles.Tester.Model)
 	}
 	if cfg.Jira.User != "jira-user-env" {
 		t.Errorf("expected jira-user-env, got %s", cfg.Jira.User)
@@ -227,17 +227,14 @@ func TestLoad_AndOverrides(t *testing.T) {
 	_ = cmd.Flags().Set("agents", "11")
 	_ = cmd.Flags().Set("interval", "15m")
 	_ = cmd.Flags().Set("vcs-provider", "gitlab")
-	_ = cmd.Flags().Set("vcs-token", "vcs-token-flag")
 	_ = cmd.Flags().Set("vcs-repo", "owner/repo-flag")
 	_ = cmd.Flags().Set("llm-provider", "anthropic")
 	_ = cmd.Flags().Set("llm-model", "llm-model-flag")
-	_ = cmd.Flags().Set("llm-api-key", "llm-api-key-flag")
 	_ = cmd.Flags().Set("llm-url", "llm-url-flag")
 	_ = cmd.Flags().Set("llm-planner-model", "planner-flag")
 	_ = cmd.Flags().Set("llm-generator-model", "generator-flag")
-	_ = cmd.Flags().Set("llm-evaluator-model", "evaluator-flag")
+	_ = cmd.Flags().Set("llm-tester-model", "tester-flag")
 	_ = cmd.Flags().Set("jira-user", "jira-user-flag")
-	_ = cmd.Flags().Set("jira-token", "jira-token-flag")
 	_ = cmd.Flags().Set("jira-url", "jira-url-flag")
 	_ = cmd.Flags().Set("http-max-retries", "13")
 	_ = cmd.Flags().Set("http-retry-backoff", "250ms")
@@ -284,9 +281,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if cfg2.VCS.Provider != "gitlab" {
 		t.Errorf("expected gitlab, got %s", cfg2.VCS.Provider)
 	}
-	if cfg2.VCS.TokenValue != "vcs-token-flag" {
-		t.Errorf("expected vcs-token-flag, got %s", cfg2.VCS.TokenValue)
-	}
 	if cfg2.VCS.Repository != "owner/repo-flag" {
 		t.Errorf("expected owner/repo-flag, got %s", cfg2.VCS.Repository)
 	}
@@ -295,9 +289,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	}
 	if cfg2.LLM.Model != "llm-model-flag" {
 		t.Errorf("expected llm-model-flag, got %s", cfg2.LLM.Model)
-	}
-	if cfg2.LLM.APIKeyValue != "llm-api-key-flag" {
-		t.Errorf("expected llm-api-key-flag, got %s", cfg2.LLM.APIKeyValue)
 	}
 	if cfg2.LLM.URL != "llm-url-flag" {
 		t.Errorf("expected llm-url-flag, got %s", cfg2.LLM.URL)
@@ -308,14 +299,11 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if cfg2.Roles.Generator.Model != "generator-flag" {
 		t.Errorf("expected generator-flag, got %s", cfg2.Roles.Generator.Model)
 	}
-	if cfg2.Roles.Evaluator.Model != "evaluator-flag" {
-		t.Errorf("expected evaluator-flag, got %s", cfg2.Roles.Evaluator.Model)
+	if cfg2.Roles.Tester.Model != "tester-flag" {
+		t.Errorf("expected tester-flag, got %s", cfg2.Roles.Tester.Model)
 	}
 	if cfg2.Jira.User != "jira-user-flag" {
 		t.Errorf("expected jira-user-flag, got %s", cfg2.Jira.User)
-	}
-	if cfg2.Jira.Token != "jira-token-flag" {
-		t.Errorf("expected jira-token-flag, got %s", cfg2.Jira.Token)
 	}
 	if cfg2.Jira.URL != "jira-url-flag" {
 		t.Errorf("expected jira-url-flag, got %s", cfg2.Jira.URL)

@@ -21,7 +21,7 @@ The platform classifies development automation into distinct levels. `noctifab` 
 | :--- | :--- | :--- |
 | **Level 1** | Autocomplete | AI suggests code inline. Human drives the editor and makes all decisions. |
 | **Level 2** | Interactive Assistant | AI generates entire files/functions. Human reviews every single change in the editor. |
-| **Level 3** | Spec-Driven (Gated) | AI generates code autonomously from specifications. Holdout scenarios gate quality. Human clicks merge. |
+| **Level 3** | Spec-Driven (Gated) | AI generates code autonomously from specifications. Continuous test suites gate quality. Human clicks merge. |
 | **Level 3.5** | Selective Auto-Merge | Same as Level 3, but low-risk modules merge automatically. Human can block. |
 | **Level 4** | Full Dark Factory | Specs go in, tested code comes out fully merged. Human reviews only exceptions. |
 
@@ -31,7 +31,7 @@ The platform classifies development automation into distinct levels. `noctifab` 
 
 1. **Stateless Agent, Stateful Orchestrator**: The AI agents have no memory of previous runs or actions. Instead, the orchestrator compiles and tracks system state (tasks, file indices, action logs, and clarifications) in a local database (SQLite/PostgreSQL) and feeds it to the agent at each step.
 2. **Topological Task Scheduling**: Decomposes complex feature specifications into a Directed Acyclic Graph (DAG) of task models, running independent tasks concurrently.
-3. **Behavior-Driven Quality Gates**: Employs BDD holdout scenario validation with majority voting to ensure that generated code is safe and completely regression-free before merging.
+3. **Test-Driven Quality Gates**: Employs sequential TDD validation with dedicated test-writer and generator agents to ensure that generated code is safe and completely regression-free before merging.
 4. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers.
 
 ---
@@ -50,15 +50,18 @@ graph TD
         Orchestrator -->|Decide| Scheduler["Task Scheduler"]
         Scheduler -->|Dispatch task branch| Worktree["Git Worktree Sandbox"]
         
-        Worktree -->|Spawn| Gen["Generator Agent"]
-        Gen -->|Code / Edit / Test| Worktree
+        Worktree -->|Spawn| Tester["Tester Agent"]
+        Tester -->|Write Tests| Worktree
         
-        Worktree -->|Validate| Eval["Evaluator Agent"]
-        Eval -->|Run BDD Holdout Tests| Worktree
+        Worktree -->|Spawn| Gen["Generator Agent"]
+        Gen -->|Code / Edit| Worktree
+        
+        Worktree -->|Validate| Val["Test Validator"]
+        Val -->|Run Test Suite| Worktree
     end
     
-    Eval -->|"Success (>= 2/3)"| Merge["Rebase / Auto-Merge to main"]
-    Eval -->|Failure| Retry["Increment Retries / Backoff"]
+    Val -->|"Success (>= 2/3)"| Merge["Rebase / Auto-Merge to main"]
+    Val -->|Failure| Retry["Increment Retries / Backoff"]
     
     Merge -->|Update State| StateDB
     Retry -->|Update State| StateDB
@@ -70,8 +73,9 @@ The core engine runs a continuous polling event loop that drives all development
 2. **Decide (Task Scheduling)**: It analyzes the Directed Acyclic Graph (DAG) of tasks. Ready tasks (those whose dependencies have succeeded) are selected and dispatched concurrently up to the configured limit.
 3. **Execute (Agent Dispatch)**: For each ready task, the orchestrator:
    - Spawns a dedicated git worktree/sandbox environment.
-   - Dispatches a specialized **Generator Agent** to write code, edit files, and self-correct based on compiler and test feedback.
-4. **Validate (Quality Gate Evaluation)**: Post-generation, the orchestrator spawns a distinct **Evaluator Agent** inside an isolated sandbox to run BDD holdout tests. These tests are hidden from the Generator to ensure generalized code correctness.
+   - Dispatches a specialized **Tester Agent** to write tests representing happy paths, validations, and edge cases.
+   - Dispatches a specialized **Generator Agent** to implement the functionality to make those tests pass.
+4. **Validate (Quality Gate Evaluation)**: Post-generation, the orchestrator runs the project's test suite using the **Test Validator** inside the sandbox to verify code correctness.
 5. **Save & Integrate (Rebase/Merge & State Update)**:
    - If tests pass (requiring a majority vote, e.g., 2/3 passing runs), the branch is pushed, a Pull Request is automatically created and merged into `main`, and the task is updated to `SUCCESS`.
    - If tests fail, the task is marked as `PENDING` to be retried (or `FAILED` if retry limit is reached).
@@ -80,8 +84,8 @@ The core engine runs a continuous polling event loop that drives all development
 ### Autonomous Agent Roles
 To prevent "evaluation gaming" (where code generators approve their own buggy code), `noctifab` partitions cognitive execution into three isolated, specialized agent roles:
 1. **Planner Agent**: Decomposes a raw feature specification (Markdown/text file) into a topological task graph (DAG). Uses a reasoning-focused model configuration.
-2. **Generator Agent**: Sandbox-restricted worker executing in a task-specific Git branch. Writes/edits code and runs local unit tests. Low temperature setting for deterministic code generation.
-3. **Evaluator Agent**: Post-generation verification worker locked strictly to the holdout tests path (`tests/holdout`). It executes testing scenarios and returns objective validation metrics, preventing code gaming.
+2. **Tester Agent**: Dedicated test-writing agent that runs before the Generator Agent to write unit, integration, and end-to-end tests based on the task description and specification.
+3. **Generator Agent**: Sandbox-restricted worker executing in a task-specific Git branch. Writes/edits code to satisfy the written tests. Low temperature setting for deterministic code generation.
 
 ---
 
@@ -108,10 +112,7 @@ This compiles the binary to `./dist/noctifab`.
 # 2. Validate configurations
 ./dist/noctifab validate
 
-# 3. Plan a task DAG from a feature specification
-./dist/noctifab plan --input ./examples/markdown-to-html/spec.md
-
-# 4. Start the background daemon and interactive REPL
+# 3. Start the background daemon and interactive REPL
 ./dist/noctifab start
 
 # Alternatively, run planning and execution end-to-end for a single story specification
@@ -124,9 +125,9 @@ This compiles the binary to `./dist/noctifab`.
 
 - **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles.
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
-- **`plan`**: Invokes the LLM Planner model to decompose a specification into task dependencies.
+
 - **`start`**: Spawns the background daemon process (`noctifab serve`) and launches a foreground interactive REPL loop to accept operator orders (e.g. `start roadmap/US-0001.md`) and display clarification prompts.
-- **`start-one`**: Plans and executes a single specification end-to-end, running task workers and holdout validation in a blocking loop until complete, then exits.
+- **`start-one`**: Plans and executes a single specification end-to-end, running task workers and test validation in a blocking loop until complete, then exits.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
 - **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.

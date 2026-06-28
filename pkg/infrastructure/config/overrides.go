@@ -63,8 +63,8 @@ func applyEnvOverrides(cfg *Config) {
 	if val, ok := os.LookupEnv("NOCTIFAB_LLM_GENERATOR_MODEL"); ok {
 		cfg.Roles.Generator.Model = val
 	}
-	if val, ok := os.LookupEnv("NOCTIFAB_LLM_EVALUATOR_MODEL"); ok {
-		cfg.Roles.Evaluator.Model = val
+	if val, ok := os.LookupEnv("NOCTIFAB_LLM_TESTER_MODEL"); ok {
+		cfg.Roles.Tester.Model = val
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_JIRA_USER"); ok {
 		cfg.Jira.User = val
@@ -196,9 +196,6 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	setIfChanged("vcs-provider", func(val string) {
 		cfg.VCS.Provider = val
 	})
-	setIfChanged("vcs-token", func(val string) {
-		cfg.VCS.TokenValue = val
-	})
 	setIfChanged("vcs-repo", func(val string) {
 		cfg.VCS.Repository = val
 	})
@@ -207,9 +204,6 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	})
 	setIfChanged("llm-model", func(val string) {
 		cfg.LLM.Model = val
-	})
-	setIfChanged("llm-api-key", func(val string) {
-		cfg.LLM.APIKeyValue = val
 	})
 	setIfChanged("llm-url", func(val string) {
 		cfg.LLM.URL = val
@@ -220,14 +214,11 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	setIfChanged("llm-generator-model", func(val string) {
 		cfg.Roles.Generator.Model = val
 	})
-	setIfChanged("llm-evaluator-model", func(val string) {
-		cfg.Roles.Evaluator.Model = val
+	setIfChanged("llm-tester-model", func(val string) {
+		cfg.Roles.Tester.Model = val
 	})
 	setIfChanged("jira-user", func(val string) {
 		cfg.Jira.User = val
-	})
-	setIfChanged("jira-token", func(val string) {
-		cfg.Jira.Token = val
 	})
 	setIfChanged("jira-url", func(val string) {
 		cfg.Jira.URL = val

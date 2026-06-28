@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 )
@@ -72,6 +74,11 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 	cleanProj := filepath.Clean(projectPath)
 	if !strings.HasPrefix(targetDir, cleanProj) {
 		return "", fmt.Errorf("Sandbox violation: package target '%s' is outside the workspace prefix", pkg)
+	}
+
+	// Intercept Python unittest discover for Test Suite Isolation
+	if strings.Contains(cmdStr, "unittest discover") {
+		return s.runPythonTestsIsolated(ctx, targetDir, cmdStr)
 	}
 
 	var cmd *exec.Cmd
@@ -146,3 +153,83 @@ func (s *DockerSandbox) RunCommand(ctx context.Context, projectPath string, comm
 	}
 	return output, nil
 }
+
+func (s *HostSandbox) runPythonTestsIsolated(ctx context.Context, targetDir string, command string) (string, error) {
+	// Find all test_*.py files recursively under targetDir
+	var testFiles []string
+	err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasPrefix(info.Name(), "test_") && strings.HasSuffix(info.Name(), ".py") {
+			// Get relative path from targetDir
+			rel, err := filepath.Rel(targetDir, path)
+			if err == nil {
+				// Exclude virtualenv, holdout or cache directories
+				if !strings.Contains(rel, "node_modules") && !strings.Contains(rel, ".noctifab") && !strings.Contains(rel, "venv") && !strings.Contains(rel, "holdout") {
+					testFiles = append(testFiles, rel)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to walk tests directory: %w", err)
+	}
+
+	if len(testFiles) == 0 {
+		return "No test files found to isolate.", nil
+	}
+
+	// Sort test files to ensure deterministic execution order
+	sort.Strings(testFiles)
+
+	var overallOutput strings.Builder
+	var lastErr error
+
+	for _, file := range testFiles {
+		// Prepare command: python -m unittest <file>
+		parts := strings.Fields(command)
+		pythonBin := "python"
+		if len(parts) > 0 && (parts[0] == "python" || parts[0] == "python3") {
+			pythonBin = parts[0]
+		}
+
+		cmdArgs := []string{"-m", "unittest", file}
+		cmd := exec.CommandContext(ctx, pythonBin, cmdArgs...)
+		cmd.Dir = targetDir
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+		var stdoutStderr strings.Builder
+		cmd.Stdout = &stdoutStderr
+		cmd.Stderr = &stdoutStderr
+
+		// PGID process group termination on cancellation
+		go func() {
+			<-ctx.Done()
+			if cmd.Process != nil {
+				pgid, err := syscall.Getpgid(cmd.Process.Pid)
+				if err == nil {
+					_ = syscall.Kill(-pgid, syscall.SIGKILL)
+				}
+			}
+		}()
+
+		err := cmd.Run()
+		runOutput := stdoutStderr.String()
+
+		fmt.Fprintf(&overallOutput, "=== RUNNING TEST FILE: %s ===\n", file)
+		overallOutput.WriteString(runOutput)
+		overallOutput.WriteString("\n")
+
+		if err != nil {
+			lastErr = fmt.Errorf("test file %s failed: %w", file, err)
+		}
+	}
+
+	if lastErr != nil {
+		return overallOutput.String(), fmt.Errorf("some tests failed: %w", lastErr)
+	}
+	return overallOutput.String(), nil
+}
+

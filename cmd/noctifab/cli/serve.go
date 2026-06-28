@@ -76,6 +76,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&usecase.FindFilesTool{})
 		reg.Register(&usecase.GrepSearchTool{})
 		reg.Register(&usecase.RunTestsTool{Runner: sandboxRunner})
+		reg.Register(&usecase.RequestTestFixTool{})
 
 		// Initialize LLM client.
 		llmClient := llm.NewClient(
@@ -88,7 +89,8 @@ var serveCmd = &cobra.Command{
 		rebaseQueue := usecase.NewRebaseQueue(gitClient)
 		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch)
 		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())
-		evaluator := usecase.NewHoldoutEvaluator(sandboxRunner, false)
+		evaluator := usecase.NewTestValidator(sandboxRunner, false)
+		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
 		orchConfig := usecase.OrchestratorConfig{

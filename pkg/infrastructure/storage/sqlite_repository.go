@@ -127,11 +127,11 @@ func (r *SQLiteRepository) Save(ctx context.Context, state *domain.State) error 
 		}
 
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, depends_on, target_files, partial_changelog, retries, max_retries, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			task.ID, state.ID, task.Title, task.Description, string(task.Status), string(task.ChangeType),
 			task.AssignedTo, string(dependsOnJSON), string(targetFilesJSON), string(partialChangelogJSON),
-			task.Retries, task.MaxRetries, task.CreatedAt, task.UpdatedAt,
+			task.Retries, task.MaxRetries, task.FailureLog, task.CreatedAt, task.UpdatedAt,
 		)
 		if err != nil {
 			return err
@@ -256,7 +256,7 @@ func (r *SQLiteRepository) Load(ctx context.Context) (*domain.State, error) {
 
 	// Load Tasks
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, title, description, status, change_type, assigned_to, depends_on, target_files, partial_changelog, retries, max_retries, created_at, updated_at
+		`SELECT id, title, description, status, change_type, assigned_to, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at
 		FROM tasks WHERE state_id = ?`, state.ID)
 	if err != nil {
 		return nil, err
@@ -267,13 +267,17 @@ func (r *SQLiteRepository) Load(ctx context.Context) (*domain.State, error) {
 	for rows.Next() {
 		var task domain.Task
 		var statusStr, changeTypeStr, dependsOnStr, targetFilesStr, partialChangelogStr string
+		var failureLogNull sql.NullString
 		err := rows.Scan(
 			&task.ID, &task.Title, &task.Description, &statusStr, &changeTypeStr, &task.AssignedTo,
 			&dependsOnStr, &targetFilesStr, &partialChangelogStr, &task.Retries, &task.MaxRetries,
-			&task.CreatedAt, &task.UpdatedAt,
+			&failureLogNull, &task.CreatedAt, &task.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if failureLogNull.Valid {
+			task.FailureLog = failureLogNull.String
 		}
 		task.Status = domain.TaskStatus(statusStr)
 		task.ChangeType = domain.ChangeType(changeTypeStr)

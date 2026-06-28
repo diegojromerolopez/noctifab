@@ -64,7 +64,7 @@ func DefaultConfig() *Config {
 			Orchestrator: RoleSetting{Profile: "orchestrator", Temperature: 0.0},
 			Planner:      RoleSetting{Profile: "planner", Temperature: 0.5},
 			Generator:    RoleSetting{Profile: "generator", Temperature: 0.0},
-			Evaluator:    RoleSetting{Profile: "evaluator", Temperature: 0.0},
+			Tester:       RoleSetting{Profile: "tester", Temperature: 0.0},
 		},
 		AutoCommit:          false,
 		MaxActions:          100,
