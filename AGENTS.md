@@ -48,6 +48,9 @@ To maintain modularity and high context compatibility, the following guidelines 
 5.  **Continuous Integration (CI):**
     *   A GitHub Actions workflow configured in `.github/workflows/ci.yml` executes on every push and pull request.
     *   All unit tests and static analysis linting checks must pass successfully in the CI pipeline before merging.
+6.  **Branching & Commit Guidelines:**
+    *   **No Commits on Main**: Never create commits directly on the `main` branch. Always create a new branch with the changes.
+    *   **CHANGELOG Updates**: Every commit must contain the corresponding changes documented in `CHANGELOG.md`, incrementing the version accordingly: minor version bump for features, and patch version bump for bug fixes.
 
 ---
 
