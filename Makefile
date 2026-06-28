@@ -36,10 +36,9 @@ help:
 	@echo "  lint            - Run static analysis lint checks using Docker"
 	@echo "  verify-autonomy - Run autonomous E2E checks inside Docker (isolated)"
 
-# Run the autonomous E2E check inside Docker container (fully isolated)
 verify-autonomy:
 	@if [ -z "$$GEMINI_API_KEY" ] && [ -f "/Users/diegoj/repos/frontpunch/.noctifab/secrets.yaml" ]; then \
-		GEMINI_KEY=$$(grep "GEMINI_API_KEY:" /Users/diegoj/repos/frontpunch/.noctifab/secrets.yaml | awk -F'"' '{print $2}'); \
+		GEMINI_KEY=$$(grep "GEMINI_API_KEY:" /Users/diegoj/repos/frontpunch/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
 	else \
 		GEMINI_KEY=$$GEMINI_API_KEY; \
 	fi; \
@@ -47,5 +46,12 @@ verify-autonomy:
 		echo "Error: GEMINI_API_KEY is not set."; \
 		exit 1; \
 	fi; \
-	docker build -t noctifab-verify -f scripts/Dockerfile.verify .; \
+	rm -rf validation/data; \
+	mkdir -p validation/data/frontpunch; \
+	cp -R /Users/diegoj/repos/frontpunch/roadmap validation/data/frontpunch/roadmap; \
+	cp -R /Users/diegoj/repos/frontpunch/.noctifab validation/data/frontpunch/.noctifab; \
+	rm -f validation/data/frontpunch/.noctifab/data/noctifab.db; \
+	cd validation/data/frontpunch && git init && git checkout -b main && git config user.name "Noctifab Tester" && git config user.email "tester@noctifab.local" && git add . && git commit -m "initial frontpunch structures"; \
+	docker build -t noctifab-verify -f validation/Dockerfile.validation .; \
+	rm -rf validation/data; \
 	docker run --rm -e GEMINI_API_KEY="$$GEMINI_KEY" -e GITHUB_TOKEN="dummy-token" noctifab-verify

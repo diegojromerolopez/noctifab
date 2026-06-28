@@ -18,21 +18,23 @@ fi
 TMP_DIR="$(pwd)/tmp_verify_autonomy"
 echo "Setting up temporary workspace at ${TMP_DIR}..."
 rm -rf "${TMP_DIR}"
-mkdir -p "${TMP_DIR}"
+
+# 3. Copy the frontpunch project copy into the workspace
+cp -R /app/frontpunch "${TMP_DIR}"
 cd "${TMP_DIR}"
 
-# 3. Initialize git repository
-git init
+# Ensure git user name and email are configured for commits inside the container
 git config user.name "Noctifab Tester"
 git config user.email "tester@noctifab.local"
-echo "# Dummy File" > README.md
-git add README.md
-git commit -m "initial commit"
 
-# 4. Initialize noctifab
+# 4. Checkout the main branch
+echo "Checking out main branch of frontpunch (contains only roadmap and .noctifab)..."
+git checkout -f main
+
+# 5. Initialize noctifab
 "${NOCTIFAB_BIN}" init --vcs-clone-protocol https
 
-# 5. Detect LLM credentials from environment
+# 6. Detect LLM credentials from environment
 if [ -n "${GEMINI_API_KEY:-}" ]; then
   PROVIDER="gemini"
   MODEL="gemini-1.5-pro"
@@ -50,7 +52,7 @@ fi
 
 echo "Using LLM provider: ${PROVIDER} with model: ${MODEL}"
 
-# 6. Write custom config.yaml
+# 7. Write custom config.yaml configured for US-001
 cat <<EOF > .noctifab/config.yaml
 config_version: "1.0"
 storage:
@@ -61,11 +63,11 @@ llm:
   model: "${MODEL}"
   api_key: "${API_KEY_CONFIG}"
   api_key_env: "${KEY_ENV}"
-  max_budget_usd: 2.0
+  max_budget_usd: 5.0
 vcs:
   provider: "github"
-  repository: "test/hello-world"
-  base_branch: "git-detect"
+  repository: "diegojromerolopez/frontpunch"
+  base_branch: "main"
   branch_prefix: "noctifab/"
   token_env: "GITHUB_TOKEN"
 sandbox:
@@ -75,42 +77,30 @@ sandbox:
   allowed_commands:
     - "python3"
     - "git"
+    - "python"
+    - "pip"
+    - "ruff"
+    - "black"
+    - "mypy"
 EOF
 
 echo "Generated config.yaml:"
 cat .noctifab/config.yaml
 
-# 7. Write the feature specification
-cat <<EOF > spec.md
-# Specification: Reverse String Function
-
-Create a python function \`reverse_string(s: str) -> str\` in a module named \`string_utils.py\` that reverses a string.
-Ensure that the function is covered by unit tests in the \`tests/\` directory.
-EOF
-
-# Make sure tests directory exists
-mkdir -p tests
-touch tests/__init__.py
-
 # Set dummy GITHUB_TOKEN if not present to pass pre-flight checks
 export GITHUB_TOKEN="${GITHUB_TOKEN:-dummy-token}"
 
-# 8. Run noctifab start-one command
-echo "Running noctifab start-one..."
-"${NOCTIFAB_BIN}" start-one --input spec.md
+# 8. Run noctifab start-one command for US-001
+echo "Running noctifab start-one for US-001..."
+"${NOCTIFAB_BIN}" start-one --input roadmap/US-001.md
 
 # 9. Verify results
 echo "Verifying results..."
-if [ ! -f "string_utils.py" ] && [ ! -f "frontpunch/string_utils.py" ]; then
-  echo "❌ Error: string_utils.py was not created in root or frontpunch/!"
+if [ ! -f "frontpunch/worker.py" ]; then
+  echo "❌ Error: frontpunch/worker.py was not created/modified!"
   exit 1
 fi
 
-if [ ! -d "tests" ]; then
-  echo "❌ Error: tests directory was not created!"
-  exit 1
-fi
-
-echo "✅ Success: Noctifab executed autonomously, generated string_utils.py, and passed validation!"
+echo "✅ Success: Noctifab executed autonomously, implemented US-001 features, and passed validation!"
 cd ..
 rm -rf "${TMP_DIR}"
