@@ -559,4 +559,3 @@ func collectTargetFilesRecursively(task domain.Task, tasks []domain.Task) []stri
 	sort.Strings(uniqueFiles)
 	return uniqueFiles
 }
-

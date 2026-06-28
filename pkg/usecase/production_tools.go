@@ -417,4 +417,3 @@ func (t *RequestTestFixTool) Execute(ctx context.Context, state *domain.State, a
 	}
 	return fmt.Sprintf("Test fix requested: %s", feedback), nil
 }
-

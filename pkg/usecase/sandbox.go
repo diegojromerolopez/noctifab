@@ -237,4 +237,3 @@ func (s *HostSandbox) runPythonTestsIsolated(ctx context.Context, targetDir stri
 	}
 	return overallOutput.String(), nil
 }
-
