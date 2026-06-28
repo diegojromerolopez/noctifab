@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
@@ -137,31 +138,41 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	if !ok || path == "" {
 		return "", errors.New("missing or invalid 'path' argument")
 	}
-	editsRaw, ok := args["edits"].([]any)
-	if !ok {
-		return "", errors.New("missing or invalid 'edits' argument")
-	}
-
 	var edits []ReplacementChunk
-	for _, eVal := range editsRaw {
-		m, ok := eVal.(map[string]any)
-		if !ok {
-			return "", errors.New("invalid ReplacementChunk structure")
+	editsRaw, ok := args["edits"].([]any)
+	if ok {
+		for _, eVal := range editsRaw {
+			m, ok := eVal.(map[string]any)
+			if !ok {
+				return "", errors.New("invalid ReplacementChunk structure")
+			}
+			var chunk ReplacementChunk
+			if sl, ok := m["start_line"].(float64); ok {
+				chunk.StartLine = int(sl)
+			} else if slInt, ok := m["start_line"].(int); ok {
+				chunk.StartLine = slInt
+			}
+			if el, ok := m["end_line"].(float64); ok {
+				chunk.EndLine = int(el)
+			} else if elInt, ok := m["end_line"].(int); ok {
+				chunk.EndLine = elInt
+			}
+			chunk.TargetContent, _ = m["target_content"].(string)
+			chunk.ReplacementContent, _ = m["replacement_content"].(string)
+			edits = append(edits, chunk)
 		}
-		var chunk ReplacementChunk
-		if sl, ok := m["start_line"].(float64); ok {
-			chunk.StartLine = int(sl)
-		} else if slInt, ok := m["start_line"].(int); ok {
-			chunk.StartLine = slInt
+	} else {
+		target, ok1 := args["target_content"].(string)
+		replacement, ok2 := args["replacement_content"].(string)
+		if !ok1 || !ok2 {
+			return "", errors.New("missing or invalid 'edits' or direct 'target_content'/'replacement_content' arguments")
 		}
-		if el, ok := m["end_line"].(float64); ok {
-			chunk.EndLine = int(el)
-		} else if elInt, ok := m["end_line"].(int); ok {
-			chunk.EndLine = elInt
-		}
-		chunk.TargetContent, _ = m["target_content"].(string)
-		chunk.ReplacementContent, _ = m["replacement_content"].(string)
-		edits = append(edits, chunk)
+		edits = append(edits, ReplacementChunk{
+			StartLine:          1,
+			EndLine:            999999,
+			TargetContent:      target,
+			ReplacementContent: replacement,
+		})
 	}
 
 	fullPath, err := resolveSandboxPath(state.ProjectPath, path)
@@ -386,6 +397,24 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 		return "", errors.New("no sandbox execution engine registered")
 	}
 
-	// Delegate to the sandbox
-	return t.Runner.RunCommand(ctx, state.ProjectPath, command, pkg)
+	// Delegate to the sandbox with a 60-second timeout
+	runCtx, runCancel := context.WithTimeout(ctx, 60*time.Second)
+	defer runCancel()
+	return t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
 }
+
+// RequestTestFixTool implements request_test_fix.
+type RequestTestFixTool struct{}
+
+func (t *RequestTestFixTool) Name() string { return "request_test_fix" }
+func (t *RequestTestFixTool) Description() string {
+	return "request_test_fix requests the Tester Agent to fix a bug in the test code. Arguments: feedback (string)."
+}
+func (t *RequestTestFixTool) Execute(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
+	feedback, _ := args["feedback"].(string)
+	if feedback == "" {
+		return "", errors.New("missing 'feedback' argument")
+	}
+	return fmt.Sprintf("Test fix requested: %s", feedback), nil
+}
+

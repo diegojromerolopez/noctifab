@@ -184,14 +184,14 @@ Below are configurations for common programming languages:
 ```yaml
 sandbox:
   mode: host
-  test_command: "pytest" # or "python -m unittest discover"
+  test_command: "coverage run --branch -m unittest discover -s tests -p \"test_*.py\" && coverage report --fail-under=80"
   linter_command: "ruff check ."
   formatter_command: "black ." # or "ruff format ."
   allowed_commands:
     - python
     - git
     - pip
-    - pytest
+    - coverage
     - ruff
     - black
 ```

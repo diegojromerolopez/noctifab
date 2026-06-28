@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -212,6 +213,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		return
 	}
 
+	// Inherit target files recursively from dependencies
+	task.TargetFiles = collectTargetFilesRecursively(*task, state.Tasks)
+
 	fmt.Printf("Orchestrator: Task %s (%s) is starting...\n", taskID, task.Title)
 
 	baseBranch := state.Metadata.BaseBranch
@@ -276,9 +280,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout existing worker branch %s: %v\n", branchName, err)
 			return
 		}
-		// Revert last commit if it was a generator commit
+		// Revert last commit if it was a generator refactor commit
 		lastMsg, err := o.git.Run(ctx, false, "log", "-1", "--pretty=%s")
-		if err == nil && strings.HasPrefix(strings.TrimSpace(lastMsg), "feat(core):") {
+		if err == nil && strings.HasPrefix(strings.TrimSpace(lastMsg), "feat(core): refactor/resolve task") {
 			_, _ = o.git.Run(ctx, true, "reset", "--hard", "HEAD~1")
 		}
 	} else {
@@ -305,12 +309,31 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	// 1. Run Test Writer Agent (role "tester") to write tests - Skip if retrying
+	// 1. Run Generator Agent (role "generator") to implement minimal functionality
 	if task.Retries == 0 {
-		o.RunTesterAgent(ctx, *task, state, fileContexts)
+		minimalGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFocus on creating the minimal implementation/functionality to fulfill the task requirements. The tests will be written in a later phase.", task.Title, task.Description)
+		o.RunGeneratorAgent(ctx, *task, state, fileContexts, "", minimalGenPrompt)
+
+		// Stage and commit minimal implementation
+		statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
+		if strings.TrimSpace(statusOut) != "" {
+			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+			stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+			if strings.TrimSpace(stagedOut) != "" {
+				commitMsg := fmt.Sprintf("feat(core): implement minimal functionality for task %s - %s", taskID, task.Title)
+				_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+				if commitErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s minimal implementation: %v\n", taskID, commitErr)
+				}
+			}
+		}
+
+		// 2. Run Test Writer Agent (role "tester") to write tests against the minimal implementation
+		testerPrompt := fmt.Sprintf("Write tests for task: %s - %s\n\nThe minimal implementation has already been created. Write tests to verify this implementation, including unit and integration tests as specified in the guidelines.", task.Title, task.Description)
+		o.RunTesterAgent(ctx, *task, state, fileContexts, testerPrompt)
 
 		// Stage and commit tests
-		statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
+		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
 			_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
 			stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
@@ -324,7 +347,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	// Read recently written tests from git to pass to the Generator Agent
+	// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
 	recentTestsContext := ""
 	diffOut, diffErr := o.git.Run(ctx, false, "show", "--name-only", "--format=", "HEAD")
 	if diffErr == nil {
@@ -345,20 +368,20 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	// 2. Run Generator Agent (role "generator") to implement functionality
-	o.RunGeneratorAgent(ctx, *task, state, fileContexts, recentTestsContext)
+	// 3. Run Generator Agent (role "generator") to refactor/improve the implementation and tests to pass
+	refactorGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nRefactor the implementation to make the code better and ensure all tests pass. You may update both the implementation files and the test files if needed.", task.Title, task.Description)
+	o.RunGeneratorAgent(ctx, *task, state, fileContexts, recentTestsContext, refactorGenPrompt)
 
-	// Stage and commit changes if any exist
+	// Stage and commit refactoring changes
 	statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
 	if strings.TrimSpace(statusOut) != "" {
 		_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
-		// Check again if staged changes exist to avoid empty commits
 		stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
 		if strings.TrimSpace(stagedOut) != "" {
-			commitMsg := fmt.Sprintf("feat(core): resolve task %s - %s", taskID, task.Title)
+			commitMsg := fmt.Sprintf("feat(core): refactor/resolve task %s - %s", taskID, task.Title)
 			_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
 			if commitErr != nil {
-				fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s: %v\n", taskID, commitErr)
+				fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s refactor: %v\n", taskID, commitErr)
 			}
 		}
 	}
@@ -425,3 +448,47 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	o.scheduler.ReleaseLocks(taskID)
 }
+
+func collectTargetFilesRecursively(task domain.Task, tasks []domain.Task) []string {
+	// Build map of ID/Title to Task
+	taskMap := make(map[string]domain.Task)
+	for _, t := range tasks {
+		taskMap[t.ID] = t
+		taskMap[t.Title] = t
+	}
+
+	visited := make(map[string]bool)
+	var files []string
+	var visit func(t domain.Task)
+	visit = func(t domain.Task) {
+		if visited[t.ID] {
+			return
+		}
+		visited[t.ID] = true
+		// Add target files of this task
+		for _, f := range t.TargetFiles {
+			files = append(files, f)
+		}
+		// Recurse on dependencies
+		for _, dep := range t.DependsOn {
+			if parent, exists := taskMap[dep]; exists {
+				visit(parent)
+			}
+		}
+	}
+
+	visit(task)
+
+	// Deduplicate
+	uniqueFiles := make([]string, 0, len(files))
+	seen := make(map[string]bool)
+	for _, f := range files {
+		if !seen[f] {
+			seen[f] = true
+			uniqueFiles = append(uniqueFiles, f)
+		}
+	}
+	sort.Strings(uniqueFiles)
+	return uniqueFiles
+}
+

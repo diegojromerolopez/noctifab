@@ -153,6 +153,7 @@ var startOneCmd = &cobra.Command{
 		reg.Register(&usecase.FindFilesTool{})
 		reg.Register(&usecase.GrepSearchTool{})
 		reg.Register(&usecase.RunTestsTool{Runner: sandboxRunner})
+		reg.Register(&usecase.RequestTestFixTool{})
 
 		// Initialize orchestrator components
 		gitClient := usecase.NewGitClient(".")

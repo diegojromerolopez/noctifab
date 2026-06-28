@@ -76,6 +76,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&usecase.FindFilesTool{})
 		reg.Register(&usecase.GrepSearchTool{})
 		reg.Register(&usecase.RunTestsTool{Runner: sandboxRunner})
+		reg.Register(&usecase.RequestTestFixTool{})
 
 		// Initialize LLM client.
 		llmClient := llm.NewClient(

@@ -27,6 +27,11 @@ func ValidatePlannedTasks(tasks []domain.Task) error {
 
 // RunReaderPhase runs the pre-step to collect workspace context before execution
 func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task domain.Task, state *domain.State) []string {
+	var availableFilesMsg string
+	if files, err := o.git.Run(ctx, false, "ls-files"); err == nil {
+		availableFilesMsg = fmt.Sprintf("\nBelow is a list of all existing files in the repository:\n%s\n", strings.TrimSpace(files))
+	}
+
 	prompt := fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
 You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json or `+"`"+`) outside the JSON.
 
@@ -39,7 +44,7 @@ Description: %s
 
 Below is a list of target files for this task:
 %v
-
+%s
 You may call the following inspection tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
 - list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
@@ -59,7 +64,7 @@ Return format:
     }
   ]
 }
-`, role, task.Title, task.Description, task.TargetFiles)
+`, role, task.Title, task.Description, task.TargetFiles, availableFilesMsg)
 
 	resp, err := o.llmClient.Complete(ctx, prompt)
 	if err != nil {
@@ -91,11 +96,11 @@ Return format:
 }
 
 // RunTesterAgent runs the test writer agent for the task
-func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string) {
+func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, customPrompt string) {
 	// Reader Phase: collect inspection context first! (Requirement 5)
 	readerContexts := o.RunReaderPhase(ctx, "tester", task, state)
 
-	testPrompt := fmt.Sprintf("Write tests for task: %s - %s", task.Title, task.Description)
+	testPrompt := customPrompt
 	var promptContext []string
 	if len(fileContexts) > 0 {
 		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(fileContexts, "\n\n")))
@@ -104,7 +109,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 		promptContext = append(promptContext, fmt.Sprintf("Inspection context gathered:\n%s", strings.Join(readerContexts, "\n\n")))
 	}
 	if len(promptContext) > 0 {
-		testPrompt = fmt.Sprintf("Write tests for task: %s - %s\n\n%s", task.Title, task.Description, strings.Join(promptContext, "\n\n"))
+		testPrompt = fmt.Sprintf("%s\n\n%s", customPrompt, strings.Join(promptContext, "\n\n"))
 	}
 
 	testerCtx := context.WithValue(ctx, AgentRoleKey, "tester")
@@ -134,11 +139,11 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 }
 
 // RunGeneratorAgent runs the generator agent to implement task functionality
-func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, recentTestsContext string) {
+func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, recentTestsContext string, customPrompt string) {
 	// Reader Phase: collect inspection context first! (Requirement 5)
 	readerContexts := o.RunReaderPhase(ctx, "generator", task, state)
 
-	genPrompt := fmt.Sprintf("Execute task: %s - %s", task.Title, task.Description)
+	genPrompt := customPrompt
 	var promptContext []string
 	if len(fileContexts) > 0 {
 		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(fileContexts, "\n\n")))
@@ -155,7 +160,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	}
 
 	if len(promptContext) > 0 {
-		genPrompt = fmt.Sprintf("Execute task: %s - %s\n\n%s", task.Title, task.Description, strings.Join(promptContext, "\n\n"))
+		genPrompt = fmt.Sprintf("%s\n\n%s", customPrompt, strings.Join(promptContext, "\n\n"))
 	}
 
 	genCtx := context.WithValue(ctx, AgentRoleKey, "generator")
@@ -177,6 +182,28 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			tool, ok := o.registry.Get(action.Tool)
 			if ok {
 				_, _ = tool.Execute(genCtx, state, action.Args)
+			}
+
+			if action.Tool == "request_test_fix" {
+				feedback, _ := action.Args["feedback"].(string)
+				fmt.Printf("Orchestrator: Generator requested test fix: %s\n", feedback)
+
+				testerPrompt := fmt.Sprintf("Fix the tests for task: %s - %s\n\nFeedback from generator agent:\n%s\n\nCorrect the test files to resolve this issue.", task.Title, task.Description, feedback)
+				o.RunTesterAgent(ctx, task, state, fileContexts, testerPrompt)
+
+				// Stage and commit test fixes
+				statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
+				if strings.TrimSpace(statusOut) != "" {
+					_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+					stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
+					if strings.TrimSpace(stagedOut) != "" {
+						commitMsg := fmt.Sprintf("test(core): fix tests for task %s - %s (requested by generator)", task.ID, task.Title)
+						_, commitErr := o.git.Run(ctx, true, "commit", "-m", commitMsg)
+						if commitErr != nil {
+							fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s test fixes: %v\n", task.ID, commitErr)
+						}
+					}
+				}
 			}
 		}
 	} else {

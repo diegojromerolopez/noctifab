@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
@@ -40,7 +41,9 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	for run := 1; run <= 3; run++ {
 		// Run tests for the workspace by passing empty package and command arguments.
 		// This defaults to executing the project's configured test suite.
-		out, err := v.Runner.RunCommand(ctx, state.ProjectPath, "", "")
+		runCtx, runCancel := context.WithTimeout(ctx, 60*time.Second)
+		out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
+		runCancel()
 
 		hasFailed := err != nil
 		outLower := strings.ToLower(out)
