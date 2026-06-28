@@ -51,7 +51,7 @@ verify-autonomy:
 	cp -R /Users/diegoj/repos/frontpunch/roadmap validation/data/frontpunch/roadmap; \
 	cp -R /Users/diegoj/repos/frontpunch/.noctifab validation/data/frontpunch/.noctifab; \
 	rm -f validation/data/frontpunch/.noctifab/data/noctifab.db; \
-	cd validation/data/frontpunch && git init && git checkout -b main && git config user.name "Noctifab Tester" && git config user.email "tester@noctifab.local" && git add . && git commit -m "initial frontpunch structures"; \
+	(cd validation/data/frontpunch && git init && git checkout -b main && git config user.name "Noctifab Tester" && git config user.email "tester@noctifab.local" && git add . && git commit -m "initial frontpunch structures"); \
 	docker build -t noctifab-verify -f validation/Dockerfile.validation .; \
 	rm -rf validation/data; \
 	docker run --rm -e GEMINI_API_KEY="$$GEMINI_KEY" -e GITHUB_TOKEN="dummy-token" noctifab-verify
