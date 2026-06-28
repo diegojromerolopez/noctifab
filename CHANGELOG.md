@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-06-28
+
+### Added
+- **Test Suite Isolation**: Intercepts python test discovery execution in `HostSandbox` to run each `test_*.py` file in a separate, isolated python process. This prevents global state mutations (such as disabling logging or changing global variables) from polluting subsequent tests.
+- **Automatic Target Files Context Inheritance**: Implemented recursive dependency target files resolution in `Orchestrator.executeTask`. Downstream tasks automatically inherit the target files of their upstream dependencies.
+- **Dynamic Read-Only Repository Visibility**: Updated the Context Gathering reader prompt to query and inject a list of all tracked repository files (via `git ls-files`), enabling agents to call `read_file` on any existing module.
+- **Inter-Agent Communication Loop**: Added the `request_test_fix` tool and orchestrator intercept logic to let the Generator Agent dynamically request the Tester Agent to fix buggy tests, resolving retry deadlocks.
+- **Agent Guidelines & Safeties**:
+  - Added Tester Rule 20 to forbid global state mutations in unit/integration tests.
+  - Added Generator Rule 9 to enforce dependency injection of logging objects.
+  - Added Generator Rule 10 to require surgical merging via `edit_file` instead of wholesale `write_file` overwrites.
+  - Added Generator Rule 11 to require checking and adding missing dependencies/manifests (e.g. `pyproject.toml`, `docker-compose.yml`) before implementing features.
+
 ## [0.0.3] - 2026-06-26
 
 ### Added
