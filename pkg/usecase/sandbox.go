@@ -218,7 +218,7 @@ func (s *HostSandbox) runPythonTestsIsolated(ctx context.Context, targetDir stri
 		err := cmd.Run()
 		runOutput := stdoutStderr.String()
 
-		overallOutput.WriteString(fmt.Sprintf("=== RUNNING TEST FILE: %s ===\n", file))
+		fmt.Fprintf(&overallOutput, "=== RUNNING TEST FILE: %s ===\n", file)
 		overallOutput.WriteString(runOutput)
 		overallOutput.WriteString("\n")
 

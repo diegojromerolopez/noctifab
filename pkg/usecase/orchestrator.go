@@ -466,9 +466,7 @@ func collectTargetFilesRecursively(task domain.Task, tasks []domain.Task) []stri
 		}
 		visited[t.ID] = true
 		// Add target files of this task
-		for _, f := range t.TargetFiles {
-			files = append(files, f)
-		}
+		files = append(files, t.TargetFiles...)
 		// Recurse on dependencies
 		for _, dep := range t.DependsOn {
 			if parent, exists := taskMap[dep]; exists {
