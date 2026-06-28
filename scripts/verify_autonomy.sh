@@ -32,31 +32,19 @@ git commit -m "initial commit"
 # 4. Initialize noctifab
 "${NOCTIFAB_BIN}" init --vcs-clone-protocol https
 
-# 5. Detect LLM credentials from environment or secrets.yaml
-PROVIDER="gemini"
-MODEL="gemini-1.5-pro"
-API_KEY_CONFIG="secret:GEMINI_API_KEY"
-KEY_ENV="GEMINI_API_KEY"
-
+# 5. Detect LLM credentials from environment
 if [ -n "${GEMINI_API_KEY:-}" ]; then
   PROVIDER="gemini"
   MODEL="gemini-1.5-pro"
-  API_KEY_CONFIG="${GEMINI_API_KEY}"
+  API_KEY_CONFIG=$(echo "${GEMINI_API_KEY}" | sed -E 's/.*GEMINI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
   KEY_ENV="GEMINI_API_KEY"
 elif [ -n "${OPENAI_API_KEY:-}" ]; then
   PROVIDER="openai"
   MODEL="gpt-4o"
-  API_KEY_CONFIG="${OPENAI_API_KEY}"
+  API_KEY_CONFIG=$(echo "${OPENAI_API_KEY}" | sed -E 's/.*OPENAI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
   KEY_ENV="OPENAI_API_KEY"
-elif [ -f "/Users/diegoj/repos/frontpunch/.noctifab/secrets.yaml" ]; then
-  echo "No API key in environment. Copying secrets.yaml from frontpunch..."
-  cp "/Users/diegoj/repos/frontpunch/.noctifab/secrets.yaml" .noctifab/secrets.yaml
-  PROVIDER="gemini"
-  MODEL="gemini-1.5-pro"
-  API_KEY_CONFIG="secret:GEMINI_API_KEY"
-  KEY_ENV="GEMINI_API_KEY"
 else
-  echo "⚠ Error: Neither GEMINI_API_KEY nor OPENAI_API_KEY is set in environment, and no secrets.yaml found."
+  echo "⚠ Error: Neither GEMINI_API_KEY nor OPENAI_API_KEY is set in environment."
   exit 1
 fi
 
@@ -88,6 +76,9 @@ sandbox:
     - "python3"
     - "git"
 EOF
+
+echo "Generated config.yaml:"
+cat .noctifab/config.yaml
 
 # 7. Write the feature specification
 cat <<EOF > spec.md
