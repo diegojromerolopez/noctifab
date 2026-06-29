@@ -256,11 +256,16 @@ Return format:
 			return LenientUnmarshal(extracted)
 		}
 
-		is503 := strings.Contains(err.Error(), "HTTP error 503") || strings.Contains(err.Error(), "503 Service Unavailable")
-		if is503 {
+		isFallbackError := strings.Contains(err.Error(), "HTTP error 503") ||
+			strings.Contains(err.Error(), "503 Service Unavailable") ||
+			strings.Contains(err.Error(), "HTTP error 429") ||
+			strings.Contains(err.Error(), "429 Too Many Requests") ||
+			strings.Contains(err.Error(), "RESOURCE_EXHAUSTED")
+
+		if isFallbackError {
 			nextModel := c.getNextLowerModel(ctx, apiKey)
 			if nextModel != "" {
-				fmt.Fprintf(os.Stderr, "⚠ Model %s returned HTTP 503. Falling back to lower model: %s...\n", c.Model, nextModel)
+				fmt.Fprintf(os.Stderr, "⚠ Model %s returned transient/quota error. Falling back to lower model: %s...\n", c.Model, nextModel)
 				c.Model = nextModel
 				continue
 			}
