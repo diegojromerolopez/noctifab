@@ -81,11 +81,19 @@ var serveCmd = &cobra.Command{
 		// Initialize LLM client.
 		llmClient := llm.NewClient(
 			cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
-			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff),
+			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
 		)
 
 		// Initialize orchestrator components.
 		gitClient := usecase.NewGitClient(".")
+		if cfg.VCS.BaseBranch == "git-detect" {
+			detected, err := gitClient.Run(context.Background(), false, "rev-parse", "--abbrev-ref", "HEAD")
+			if err == nil {
+				cfg.VCS.BaseBranch = strings.TrimSpace(detected)
+			} else {
+				cfg.VCS.BaseBranch = "main" // fallback
+			}
+		}
 		rebaseQueue := usecase.NewRebaseQueue(gitClient)
 		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch)
 		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())

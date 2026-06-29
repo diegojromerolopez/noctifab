@@ -110,7 +110,8 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	}
 	if task.Retries > 0 && task.FailureLog != "" {
 		warning := "WARNING: The previous implementation/refactoring changes have been reset to the clean base commit state (minimal implementation + tests). You must re-apply all your changes from previous tries along with your new fixes. Do not assume your previous modifications persist in the files."
-		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Test/Linter output:\n```\n%s\n```\nFix the tests to address these errors.", warning, task.FailureLog))
+		summary := summarizeFailureLog(task.FailureLog)
+		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the tests to address these specific errors.", warning, summary))
 	}
 	if len(promptContext) > 0 {
 		testPrompt = fmt.Sprintf("%s\n\n%s", customPrompt, strings.Join(promptContext, "\n\n"))
@@ -161,7 +162,8 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	// Add previous failure context if retrying (Requirement 7)
 	if task.Retries > 0 && task.FailureLog != "" {
 		warning := "WARNING: The previous implementation/refactoring changes have been reset to the clean base commit state (minimal implementation + tests). You must re-apply all your changes from previous tries along with your new fixes. Do not assume your previous modifications persist in the files."
-		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Test/Linter output:\n```\n%s\n```\nFix the code to address these errors.", warning, task.FailureLog))
+		summary := summarizeFailureLog(task.FailureLog)
+		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the code to address these specific errors.", warning, summary))
 	}
 
 	if len(promptContext) > 0 {
@@ -214,4 +216,32 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	} else {
 		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s Generator LLM completion failed: %v\n", task.ID, err)
 	}
+}
+
+func summarizeFailureLog(log string) string {
+	lines := strings.Split(log, "\n")
+	var importantLines []string
+	capture := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "ERROR:") || strings.HasPrefix(trimmed, "FAIL:") {
+			capture = true
+		}
+		if capture {
+			importantLines = append(importantLines, line)
+		} else if strings.Contains(line, "Error:") || strings.Contains(line, "Exception") || strings.Contains(line, "FAILED") {
+			importantLines = append(importantLines, line)
+		}
+	}
+
+	if len(importantLines) == 0 {
+		// Fallback to last 15 lines if no specific failures are captured
+		start := len(lines) - 15
+		if start < 0 {
+			start = 0
+		}
+		return strings.Join(lines[start:], "\n")
+	}
+
+	return strings.Join(importantLines, "\n")
 }

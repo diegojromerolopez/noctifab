@@ -31,8 +31,8 @@ The platform classifies development automation into distinct levels. `noctifab` 
 
 1. **Stateless Agent, Stateful Orchestrator**: The AI agents have no memory of previous runs or actions. Instead, the orchestrator compiles and tracks system state (tasks, file indices, action logs, and clarifications) in a local database (SQLite/PostgreSQL) and feeds it to the agent at each step.
 2. **Topological Task Scheduling**: Decomposes complex feature specifications into a Directed Acyclic Graph (DAG) of task models, running independent tasks concurrently.
-3. **Test-Driven Quality Gates**: Employs sequential TDD validation with dedicated test-writer and generator agents to ensure that generated code is safe and completely regression-free before merging.
-4. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers.
+3. **Test-Driven Quality Gates**: Employs a multi-stage sequential execution cycle between the generator and test-writer agents. By keeping test generation and code implementation strictly separated and sequenced, the platform guarantees that code is verified by independent, robust test suites.
+4. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers, restricted by role-based authorization profiles.
 
 ---
 
@@ -50,13 +50,19 @@ graph TD
         Orchestrator -->|Decide| Scheduler["Task Scheduler"]
         Scheduler -->|Dispatch task branch| Worktree["Git Worktree Sandbox"]
         
-        Worktree -->|Spawn| Tester["Tester Agent"]
-        Tester -->|Write Tests| Worktree
+        Worktree -->|1. Minimal code| GenMinimal["Generator Agent (Minimal)"]
+        GenMinimal -->|Commit| Worktree
         
-        Worktree -->|Spawn| Gen["Generator Agent"]
-        Gen -->|Code / Edit| Worktree
+        Worktree -->|2. Write tests| TesterWrite["Tester Agent (Tests)"]
+        TesterWrite -->|Commit| Worktree
         
-        Worktree -->|Validate| Val["Test Validator"]
+        Worktree -->|3. Refactor implementation| GenRefactor["Generator Agent (Refactor)"]
+        GenRefactor -->|Commit| Worktree
+        
+        Worktree -->|4. Refactor tests| TesterRefactor["Tester Agent (Align Tests)"]
+        TesterRefactor -->|Commit| Worktree
+        
+        Worktree -->|Validate| Val["Test Validator (3x consensus)"]
         Val -->|Run Test Suite| Worktree
     end
     
@@ -69,23 +75,31 @@ graph TD
 
 ### The Orchestrator Loop (Observe -> Decide -> Validate -> Execute -> Save)
 The core engine runs a continuous polling event loop that drives all development tasks:
-1. **Observe (State Sync)**: The orchestrator scans the filesystem to index files, build metadata, and check the task database. It ensures a consistent, up-to-date representation of the workspace.
+1. **Observe (State Sync)**: The orchestrator scans the filesystem to index files, build metadata, and check the task database. It ensures a consistent, up-to-date representation of the workspace. During startup, it automatically executes database migrations inside transactions.
 2. **Decide (Task Scheduling)**: It analyzes the Directed Acyclic Graph (DAG) of tasks. Ready tasks (those whose dependencies have succeeded) are selected and dispatched concurrently up to the configured limit.
-3. **Execute (Agent Dispatch)**: For each ready task, the orchestrator:
-   - Spawns a dedicated git worktree/sandbox environment.
-   - Dispatches a specialized **Tester Agent** to write tests representing happy paths, validations, and edge cases.
-   - Dispatches a specialized **Generator Agent** to implement the functionality to make those tests pass.
-4. **Validate (Quality Gate Evaluation)**: Post-generation, the orchestrator runs the project's test suite using the **Test Validator** inside the sandbox to verify code correctness.
+3. **Execute (Agent Dispatch)**: For each ready task, the orchestrator sets up an ephemeral git worktree/sandbox environment and executes a multi-stage, sequential coordination flow:
+   - **Initial Flow (Retries = 0)**:
+     1. *Minimal Implementation*: Dispatches the **Generator Agent** to implement the bare-minimum logic for the task.
+     2. *Test Writing*: Dispatches the **Tester Agent** to write unit and integration tests verifying the minimal implementation based on the task specification.
+     3. *Refactoring & Implementation*: Dispatches the **Generator Agent** to refactor and expand the code to pass the written tests (the agent is provided with the test files as context).
+     4. *Test Alignment*: Dispatches the **Tester Agent** to refine, clean, and align the test suite to match the final implementation structure.
+   - **Retry Flow (Retries > 0)**:
+     1. *Fix Implementation*: Dispatches the **Generator Agent** to address validation failures and refactor the code.
+     2. *Fix Tests*: Dispatches the **Tester Agent** to fix or refactor tests to align with the updated code.
+4. **Validate (Quality Gate Evaluation)**: Post-generation, the orchestrator runs the project's test suite inside the sandbox. To guard against flaky tests, the **Test Validator** runs the suite 3 times, requiring a majority vote consensus (e.g., at least 2/3 passing runs) to succeed.
 5. **Save & Integrate (Rebase/Merge & State Update)**:
-   - If tests pass (requiring a majority vote, e.g., 2/3 passing runs), the branch is pushed, a Pull Request is automatically created and merged into `main`, and the task is updated to `SUCCESS`.
+   - If tests pass, the branch is pushed, a Pull Request is created and automatically merged using the rebase queue, and the task is updated to `SUCCESS`.
    - If tests fail, the task is marked as `PENDING` to be retried (or `FAILED` if retry limit is reached).
    - In all cases, the ephemeral worktree is pruned to maintain a clean workspace.
 
-### Autonomous Agent Roles
+### Autonomous Agent Roles & Relationship
 To prevent "evaluation gaming" (where code generators approve their own buggy code), `noctifab` partitions cognitive execution into three isolated, specialized agent roles:
 1. **Planner Agent**: Decomposes a raw feature specification (Markdown/text file) into a topological task graph (DAG). Uses a reasoning-focused model configuration.
-2. **Tester Agent**: Dedicated test-writing agent that runs before the Generator Agent to write unit, integration, and end-to-end tests based on the task description and specification.
+2. **Tester Agent**: Dedicated test-writing agent that writes and refactors unit, integration, and end-to-end tests based on the task description and specification.
 3. **Generator Agent**: Sandbox-restricted worker executing in a task-specific Git branch. Writes/edits code to satisfy the written tests. Low temperature setting for deterministic code generation.
+
+**Inter-Agent Relationship**: The Generator Agent and Tester Agent are coordinated sequentially by the orchestrator. The Generator Agent implements the functionality, while the Tester Agent writes the tests. By keeping these roles separate and preventing the Generator from writing its own test suite from scratch without verification, `noctifab` ensures that tests act as an objective quality gate. If the Generator Agent discovers a bug in the test definitions, it can request test modifications using the orchestrator's inter-agent communication channel (`request_test_fix`).
+
 
 ---
 
@@ -153,6 +167,166 @@ vcs:
 ```
 
 `noctifab init` automatically adds `secrets.yaml` to `.noctifab/.gitignore`. For full details, supported fields, CI/CD patterns, and the security checklist see **[docs/secrets.md](docs/secrets.md)**.
+
+---
+
+## Security & Permission Profiles
+
+To ensure secure and controlled agent execution, `noctifab` employs a profile-based Role-Based Access Control (RBAC) and security sandboxing system. 
+
+Every active agent role (such as `orchestrator`, `planner`, `generator`, or `tester`) is constrained by a security profile YAML file located in `.noctifab/profiles/<profile_name>.yaml`. If no profile is explicitly defined for a role in `config.yaml`, the orchestrator looks for a profile matching the role name (e.g., `generator.yaml`), falling back to `default.yaml` if not found.
+
+### Security Sandbox Policies
+
+1. **Tool Whitelisting (`allowed_tools`)**: Restricts the exact tools an agent is authorized to invoke (e.g., `read_file`, `write_file`, `edit_file`, `run_tests`). By default, dangerous system commands and Git mutation actions (`git_checkout`, `git_commit`, `git_push`, `docker_action`) are strictly reserved for the privileged `orchestrator` profile.
+2. **Command Whitelisting (`allowed_commands`)**: Restricts which shell execution binaries are allowed to run under the `run_tests` tool. For example, `tester` and `generator` profiles are restricted to language-specific runtimes (e.g., `go`, `npm`, `pytest`, `make`, `python`), preventing command injection or host shell execution escapes.
+3. **Path Jail Protection**: The validator dynamically enforces path checks preventing directory traversal attacks. Any file read or write tool parameters that resolve outside the workspace root path trigger an automatic sandbox boundary violation.
+4. **Target Path Exclusion**: Agents are forbidden from reading, writing, or accessing sensitive testing framework directories (specifically `tests/holdout` and `holdout` directories) to prevent gaming the evaluation process.
+5. **Branch Protection**: Direct git checkouts, commits, or pushes on protected base branches (like `main` or `master`) are rejected by the Policy Validator.
+6. **Network Outbound Policies**: Profiles restrict internet access to control data exfiltration. Default configurations allow connections only to the configured LLM API provider endpoint (`allow_ai_provider: true`) and block all other external outbound internet traffic (`allow_external: false`).
+
+### Example Profile (`.noctifab/profiles/generator.yaml`)
+
+```yaml
+permissions:
+  allowed_tools:
+    - "read_file"
+    - "write_file"
+    - "edit_file"
+    - "list_directory"
+    - "find_files"
+    - "grep_search"
+    - "run_tests"
+    - "noop"
+  allowed_commands:
+    - "go"
+    - "npm"
+    - "pytest"
+    - "make"
+  network:
+    allow_ai_provider: true
+    allow_external: false
+```
+
+---
+
+## LLM Providers
+
+`noctifab` supports multiple LLM providers via a pluggable `llm.ProviderClient` interface. The active provider, model, and API key are set in `.noctifab/config.yaml`.
+
+### Resilience Features
+
+All providers benefit from the same resilience layer automatically:
+
+* **Automatic retry with backoff** – transient errors (HTTP 5xx, network timeouts) are retried up to 3 times with exponential back-off.
+* **Rate-limit awareness (HTTP 429)** – when a `429 Too Many Requests` response is received, `noctifab` warns the user, parses the provider's `retryDelay` field from the response body, and sleeps for exactly that duration before retrying.
+* **Automatic model fallback** – if the chosen model is unavailable, `noctifab` first queries the provider for its live model list and falls back to the next smaller model in the static hierarchy below. The fallback continues down the chain until a working model is found or all options are exhausted.
+
+### Provider Configuration Reference
+
+#### Google Gemini
+
+```yaml
+# .noctifab/config.yaml
+llm:
+  provider: gemini
+  model: gemini-2.5-pro          # fallback chain: → gemini-2.5-flash
+  api_key: "secret:GEMINI_API_KEY"
+```
+
+```yaml
+# .noctifab/secrets.yaml
+GEMINI_API_KEY: "AIzaSy..."
+```
+
+#### OpenAI
+
+```yaml
+llm:
+  provider: openai
+  model: gpt-4o                  # fallback chain: → gpt-4o-mini
+  api_key: "secret:OPENAI_API_KEY"
+```
+
+```yaml
+OPENAI_API_KEY: "sk-..."
+```
+
+#### Anthropic (Claude)
+
+```yaml
+llm:
+  provider: anthropic
+  model: claude-3-5-sonnet-latest  # fallback chain: → claude-3-5-haiku-latest
+  api_key: "secret:ANTHROPIC_API_KEY"
+```
+
+```yaml
+ANTHROPIC_API_KEY: "sk-ant-..."
+```
+
+#### Mistral AI
+
+```yaml
+llm:
+  provider: mistral
+  model: mistral-large-latest    # fallback chain: → mistral-medium-latest → mistral-small-latest → open-mistral-7b
+  api_key: "secret:MISTRAL_API_KEY"
+```
+
+```yaml
+MISTRAL_API_KEY: "..."
+```
+
+#### DeepSeek
+
+```yaml
+llm:
+  provider: deepseek
+  model: deepseek-coder          # fallback chain: → deepseek-chat
+  api_key: "secret:DEEPSEEK_API_KEY"
+```
+
+```yaml
+DEEPSEEK_API_KEY: "..."
+```
+
+#### Hermes (Nous Research via Hugging Face)
+
+```yaml
+llm:
+  provider: hermes
+  model: hermes-3-llama-3.1-405b  # fallback chain: → hermes-3-llama-3.1-70b → hermes-3-llama-3.1-8b
+  api_key: "secret:HUGGINGFACE_API_KEY"
+```
+
+```yaml
+HUGGINGFACE_API_KEY: "hf_..."
+```
+
+#### Ollama (local / self-hosted)
+
+```yaml
+llm:
+  provider: ollama
+  model: llama3.1                # any model pulled locally via `ollama pull`
+  url: "http://localhost:11434"  # optional: override if running on a different host/port
+  api_key: ""                    # not required for local Ollama instances
+```
+
+### Model Fallback Chains
+
+| Provider | Model priority (high → low) |
+|---|---|
+| **Gemini** | `gemini-2.5-pro` → `gemini-2.5-flash` |
+| **OpenAI** | `gpt-4o` → `gpt-4o-mini` |
+| **Anthropic** | `claude-3-5-sonnet-latest` → `claude-3-5-haiku-latest` |
+| **Mistral** | `mistral-large-latest` → `mistral-medium-latest` → `mistral-small-latest` → `open-mistral-7b` |
+| **DeepSeek** | `deepseek-coder` → `deepseek-chat` |
+| **Hermes** | `hermes-3-llama-3.1-405b` → `hermes-3-llama-3.1-70b` → `hermes-3-llama-3.1-8b` |
+| **Ollama** | Queries the local `/api/tags` endpoint live; uses whatever models are pulled |
+
+
 
 
 ## Target Scenarios & Examples

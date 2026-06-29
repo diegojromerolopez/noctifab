@@ -277,6 +277,16 @@ func TestValidate(t *testing.T) {
 			t.Errorf("expected valid config for ollama without key, got error: %v", err)
 		}
 	})
+
+	t.Run("New LLM providers are valid", func(t *testing.T) {
+		for _, provider := range []string{"hermes", "huggingface", "mistral", "deepseek"} {
+			cfg := baseCfg()
+			cfg.LLM.Provider = provider
+			if err := cfg.Validate(); err != nil {
+				t.Errorf("expected provider %s to be valid, got error: %v", provider, err)
+			}
+		}
+	})
 }
 
 func TestLoad_SecretsFile(t *testing.T) {

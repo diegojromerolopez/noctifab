@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-06-29
+
+### Added
+- **Per-provider 429 retry delay parsing**: Introduced `httpError` struct that carries the HTTP response headers alongside the body. All provider `Call` methods (`gemini.go`, `openai.go`, `anthropic.go`) now return `*httpError` instead of a plain `fmt.Errorf`, making HTTP headers available to the retry layer.
+- **`Retry-After` header support**: `parseRetryDelay` now reads the standard `Retry-After` header (integer or fractional seconds) returned by OpenAI, Anthropic, Mistral, and DeepSeek on 429 responses.
+- **HuggingFace `ratelimit` header support**: Parses the `t=<seconds>` field from the HuggingFace `ratelimit` response header (e.g. `"api";r=0;t=55`).
+- **Extended `TestParseRetryDelay`**: Added 7 new test cases covering `Retry-After` header (integer and fractional), HuggingFace `ratelimit` header, priority ordering (header beats body), Gemini complex duration strings (e.g. `7h2m3s`), and no-hint-present fallback.
+
+### Fixed
+- **Gemini `retryDelay` parsing**: Replaced `fmt.Sscanf` numeric fallback with `strconv.ParseFloat` for robustness; simplified the duration/numeric branching logic.
+
+### Changed
+- **Documentation Updates**: Updated `README.md` to reflect the latest orchestrator design, specifically describing the sequential execution flow, the relationship between the Generator and Tester agents, and the profile-based RBAC/security sandbox system.
+
+### Research
+- Investigated 429 rate-limit response formats for all 7 supported providers (Gemini, OpenAI, Anthropic, Mistral, DeepSeek, HuggingFace, Ollama). Key finding: only Gemini embeds retry timing in the JSON body; all others rely exclusively on HTTP headers. Ollama (local) never returns 429 — it uses 503 for queue-full conditions.
+
+## [0.1.3] - 2026-06-29
+
+### Added
+- **Model Fallback Hierarchies for All Providers**: Extended `modelHierarchy` in `helpers.go` with static fallback chains for Mistral (`large → medium → small → open-mistral-7b`), DeepSeek (`coder → chat`), Hermes (`405b → 70b → 8b`), and Anthropic (`sonnet → haiku`). All providers now support automatic downgrade to a smaller model when the chosen model is unavailable.
+- **Unit Tests for Gemini and Anthropic Provider Clients**: Added `gemini_test.go` and `anthropic_test.go` covering `Call` success/error paths and `GetAvailableModels`.
+- **Extended `TestGetNextLowerModel`**: Added test cases for all new providers (Mistral, DeepSeek, Hermes, Anthropic) and bottom-of-chain boundary cases.
+- **LLM Providers section in README**: Documented all supported providers with YAML configuration examples, secrets file examples, resilience features (retry, 429 handling, fallback), and the complete model fallback chain table.
+
+### Fixed
+- **Model matching precision**: Replaced fuzzy `strings.Contains` matching in `getNextLowerModel` with exact equality, preventing false matches between models sharing a common prefix (e.g., `gpt-4o` incorrectly matching `gpt-4o-mini`).
+
+## [0.1.2] - 2026-06-29
+
+### Changed
+- **LLM Client Refactoring**: Refactored the monolithic LLM client into a modular interface-driven architecture. Created a `ProviderClient` interface (`provider.go`) and extracted OpenAI (`openai.go`), Gemini (`gemini.go`), and Anthropic (`anthropic.go`) clients into separate, dedicated implementations.
+
+
+## [0.1.1] - 2026-06-29
+
+### Added
+- **Dynamic Base Branch Detection**: Support `"git-detect"` as a base branch configuration value to dynamically resolve the base branch to the current active git branch.
+- **Verification Script**: Created `scripts/verify_autonomy.sh` and containerized `scripts/verify_autonomy_docker.sh` + `scripts/Dockerfile.verify` to validate execution loop end-to-end.
+- **Five New AI Providers**: Added support for Nous Research Hermes, HuggingFace, Mistral, DeepSeek, and Ollama Cloud LLM providers using OpenAI-compatible endpoints.
+- **429 Quota Exceeded Warnings**: Warn the user on `os.Stderr` when 429 quota exhaustion errors occur.
+- **API retryDelay Backoff Support**: Parse the API-returned `retryDelay` from error responses and apply it as the next backoff wait time.
+
+### Fixed
+- **Log Sanitizer / Synthesizer**: Implemented a failure log synthesizer that extracts key error messages and tracebacks, preventing LLM formatting confusion and JSON parsing crashes during retries.
+- **Branch Cache Reset**: Force-reset the integration branch to the base branch on fresh story start if it already exists, avoiding dirty caches from previous runs.
+- **Tester Agent Fix Prompt Handling**: Resolved a bug where `Fix the tests for task:` prompt types were not intercepted in the LLM client, resulting in unformatted Tester LLM responses.
+- **Dynamic Project Context Prompts**: Preprocess and adapt prompt templates to inject specific target package details, target files examples, and robust design guidelines based on the detected target project.
+
 ## [0.1.0] - 2026-06-28
 
 ### Added

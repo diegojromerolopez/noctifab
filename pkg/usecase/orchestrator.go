@@ -247,6 +247,22 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	var statusOut, stagedOut string
 
 	// Ensure integration branch exists
+	isFreshStart := true
+	for _, t := range state.Tasks {
+		if t.Status == domain.TaskSuccess {
+			isFreshStart = false
+			break
+		}
+	}
+
+	if isFreshStart {
+		_, err = o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
+		if err == nil {
+			_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
+			_, _ = o.git.Run(ctx, true, "branch", "-f", integrationBranch, baseBranch)
+		}
+	}
+
 	_, err = o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
 	if err != nil {
 		// Does not exist, create it from base branch

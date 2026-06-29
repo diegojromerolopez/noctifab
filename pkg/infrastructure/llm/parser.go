@@ -32,9 +32,47 @@ func ExtractJSONBlock(input string) (string, error) {
 	return "", errors.New("error parsing response: no valid JSON object detected (brace counter did not resolve); please return only the structured JSON block matching the schema")
 }
 
+func escapeNewlinesInJSON(input string) string {
+	var builder strings.Builder
+	inString := false
+	isEscaped := false
+
+	for i := 0; i < len(input); i++ {
+		char := input[i]
+
+		if char == '"' && !isEscaped {
+			inString = !inString
+		}
+
+		if inString {
+			if char == '\n' {
+				builder.WriteString(`\n`)
+				isEscaped = false
+				continue
+			}
+			if char == '\r' {
+				builder.WriteString(`\r`)
+				isEscaped = false
+				continue
+			}
+		}
+
+		builder.WriteByte(char)
+
+		if char == '\\' {
+			isEscaped = !isEscaped
+		} else {
+			isEscaped = false
+		}
+	}
+
+	return builder.String()
+}
+
 // LenientUnmarshal unmarshals the extracted JSON string into intermediate map interfaces
 // and programmatically walks and coerces types to construct a validated domain.LLMResponse.
 func LenientUnmarshal(jsonStr string) (*domain.LLMResponse, error) {
+	jsonStr = escapeNewlinesInJSON(jsonStr)
 	var raw map[string]any
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
 		return nil, err

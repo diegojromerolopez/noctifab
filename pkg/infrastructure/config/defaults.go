@@ -31,7 +31,7 @@ func DefaultConfig() *Config {
 			Temperature:        0.0,
 			APIKeyEnv:          "",
 			URL:                "",
-			MaxRetries:         10,
+			MaxRetries:         5,
 			RetryBackoff:       Duration(100 * time.Millisecond),
 			RetryBackoffFactor: 2.0,
 			MaxBudgetUSD:       10.0,
