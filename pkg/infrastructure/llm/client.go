@@ -234,17 +234,17 @@ Return format:
 		var pClient ProviderClient
 		switch strings.ToLower(c.Provider) {
 		case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
-			pClient = NewOpenAIProviderClient(c.Provider)
+			pClient = NewOpenAIProviderClient(c.Provider, c.URL)
 		case "gemini":
-			pClient = NewGeminiProviderClient()
+			pClient = NewGeminiProviderClient(c.URL)
 		case "anthropic":
-			pClient = NewAnthropicProviderClient()
+			pClient = NewAnthropicProviderClient(c.URL)
 		default:
 			return nil, fmt.Errorf("unsupported LLM provider: %s", c.Provider)
 		}
 
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			responseBody, err = pClient.Call(ctx, c.Model, apiKey, prompt, c.URL)
+			responseBody, err = pClient.Call(ctx, c.Model, apiKey, prompt)
 			if err == nil {
 				break
 			}
@@ -308,11 +308,11 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 	var pClient ProviderClient
 	switch strings.ToLower(c.Provider) {
 	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
-		pClient = NewOpenAIProviderClient(c.Provider)
+		pClient = NewOpenAIProviderClient(c.Provider, c.URL)
 	case "gemini":
-		pClient = NewGeminiProviderClient()
+		pClient = NewGeminiProviderClient(c.URL)
 	case "anthropic":
-		pClient = NewAnthropicProviderClient()
+		pClient = NewAnthropicProviderClient(c.URL)
 	default:
 		return ""
 	}
@@ -329,7 +329,7 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 		isAvailable := false
 		for _, availModel := range available {
 			availNorm := strings.TrimPrefix(strings.ToLower(availModel), "models/")
-			if strings.Contains(availNorm, rankedNorm) || strings.Contains(rankedNorm, availNorm) {
+			if rankedNorm == availNorm {
 				isAvailable = true
 				break
 			}
@@ -343,14 +343,12 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 		filteredHierarchy = list
 	}
 
-	normCurrent := normalizeModel(c.Model)
-	normCurrent = strings.ToLower(normCurrent)
+	normCurrent := strings.TrimPrefix(strings.ToLower(normalizeModel(c.Model)), "models/")
 
 	idx := -1
 	for i, m := range filteredHierarchy {
-		normM := strings.TrimPrefix(m, "models/")
-		normM = strings.ToLower(normM)
-		if strings.Contains(normCurrent, normM) || strings.Contains(normM, normCurrent) {
+		normM := strings.TrimPrefix(strings.ToLower(m), "models/")
+		if normCurrent == normM {
 			idx = i
 			break
 		}

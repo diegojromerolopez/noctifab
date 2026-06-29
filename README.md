@@ -154,6 +154,126 @@ vcs:
 
 `noctifab init` automatically adds `secrets.yaml` to `.noctifab/.gitignore`. For full details, supported fields, CI/CD patterns, and the security checklist see **[docs/secrets.md](docs/secrets.md)**.
 
+---
+
+## LLM Providers
+
+`noctifab` supports multiple LLM providers via a pluggable `llm.ProviderClient` interface. The active provider, model, and API key are set in `.noctifab/config.yaml`.
+
+### Resilience Features
+
+All providers benefit from the same resilience layer automatically:
+
+* **Automatic retry with backoff** – transient errors (HTTP 5xx, network timeouts) are retried up to 3 times with exponential back-off.
+* **Rate-limit awareness (HTTP 429)** – when a `429 Too Many Requests` response is received, `noctifab` warns the user, parses the provider's `retryDelay` field from the response body, and sleeps for exactly that duration before retrying.
+* **Automatic model fallback** – if the chosen model is unavailable, `noctifab` first queries the provider for its live model list and falls back to the next smaller model in the static hierarchy below. The fallback continues down the chain until a working model is found or all options are exhausted.
+
+### Provider Configuration Reference
+
+#### Google Gemini
+
+```yaml
+# .noctifab/config.yaml
+llm:
+  provider: gemini
+  model: gemini-2.5-pro          # fallback chain: → gemini-2.5-flash
+  api_key: "secret:GEMINI_API_KEY"
+```
+
+```yaml
+# .noctifab/secrets.yaml
+GEMINI_API_KEY: "AIzaSy..."
+```
+
+#### OpenAI
+
+```yaml
+llm:
+  provider: openai
+  model: gpt-4o                  # fallback chain: → gpt-4o-mini
+  api_key: "secret:OPENAI_API_KEY"
+```
+
+```yaml
+OPENAI_API_KEY: "sk-..."
+```
+
+#### Anthropic (Claude)
+
+```yaml
+llm:
+  provider: anthropic
+  model: claude-3-5-sonnet-latest  # fallback chain: → claude-3-5-haiku-latest
+  api_key: "secret:ANTHROPIC_API_KEY"
+```
+
+```yaml
+ANTHROPIC_API_KEY: "sk-ant-..."
+```
+
+#### Mistral AI
+
+```yaml
+llm:
+  provider: mistral
+  model: mistral-large-latest    # fallback chain: → mistral-medium-latest → mistral-small-latest → open-mistral-7b
+  api_key: "secret:MISTRAL_API_KEY"
+```
+
+```yaml
+MISTRAL_API_KEY: "..."
+```
+
+#### DeepSeek
+
+```yaml
+llm:
+  provider: deepseek
+  model: deepseek-coder          # fallback chain: → deepseek-chat
+  api_key: "secret:DEEPSEEK_API_KEY"
+```
+
+```yaml
+DEEPSEEK_API_KEY: "..."
+```
+
+#### Hermes (Nous Research via Hugging Face)
+
+```yaml
+llm:
+  provider: hermes
+  model: hermes-3-llama-3.1-405b  # fallback chain: → hermes-3-llama-3.1-70b → hermes-3-llama-3.1-8b
+  api_key: "secret:HUGGINGFACE_API_KEY"
+```
+
+```yaml
+HUGGINGFACE_API_KEY: "hf_..."
+```
+
+#### Ollama (local / self-hosted)
+
+```yaml
+llm:
+  provider: ollama
+  model: llama3.1                # any model pulled locally via `ollama pull`
+  url: "http://localhost:11434"  # optional: override if running on a different host/port
+  api_key: ""                    # not required for local Ollama instances
+```
+
+### Model Fallback Chains
+
+| Provider | Model priority (high → low) |
+|---|---|
+| **Gemini** | `gemini-2.5-pro` → `gemini-2.5-flash` |
+| **OpenAI** | `gpt-4o` → `gpt-4o-mini` |
+| **Anthropic** | `claude-3-5-sonnet-latest` → `claude-3-5-haiku-latest` |
+| **Mistral** | `mistral-large-latest` → `mistral-medium-latest` → `mistral-small-latest` → `open-mistral-7b` |
+| **DeepSeek** | `deepseek-coder` → `deepseek-chat` |
+| **Hermes** | `hermes-3-llama-3.1-405b` → `hermes-3-llama-3.1-70b` → `hermes-3-llama-3.1-8b` |
+| **Ollama** | Queries the local `/api/tags` endpoint live; uses whatever models are pulled |
+
+
+
 
 ## Target Scenarios & Examples
 

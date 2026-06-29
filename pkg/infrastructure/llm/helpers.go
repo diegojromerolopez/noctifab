@@ -15,6 +15,25 @@ var modelHierarchy = map[string][]string{
 		"gpt-4o",
 		"gpt-4o-mini",
 	},
+	"mistral": {
+		"mistral-large-latest",
+		"mistral-medium-latest",
+		"mistral-small-latest",
+		"open-mistral-7b",
+	},
+	"deepseek": {
+		"deepseek-coder",
+		"deepseek-chat",
+	},
+	"hermes": {
+		"hermes-3-llama-3.1-405b",
+		"hermes-3-llama-3.1-70b",
+		"hermes-3-llama-3.1-8b",
+	},
+	"anthropic": {
+		"claude-3-5-sonnet-latest",
+		"claude-3-5-haiku-latest",
+	},
 }
 
 func normalizeModel(model string) string {
