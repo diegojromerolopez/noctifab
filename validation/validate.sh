@@ -44,6 +44,13 @@ EOF
 git add .
 git commit -m "initial project structures and gitignore"
 
+# Set up a local "origin" bare repository inside the container to allow git pushes
+echo "Setting up local git origin remote..."
+git init --bare /app/origin.git
+git remote add origin /app/origin.git
+git push -u origin main
+
+
 # 5. Sanitize credentials in environment
 if [ -n "${GEMINI_API_KEY:-}" ]; then
   export GEMINI_API_KEY=$(echo "${GEMINI_API_KEY}" | sed -E 's/.*GEMINI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')

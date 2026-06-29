@@ -226,6 +226,8 @@ Return format:
 			break
 		}
 
+		fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
+
 		if attempt == maxRetries {
 			return nil, fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
 		}
