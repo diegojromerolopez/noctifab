@@ -89,7 +89,7 @@ var startCmd = &cobra.Command{
 		// Start the foreground interactive REPL (blocks until EOF or SIGINT).
 		llmClient := llm.NewClient(
 			cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
-			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff),
+			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
 		)
 		listener := usecase.NewListenerAgent(llmClient, daemonClient, os.Stdin, os.Stdout)
 		listener.Start(ctx)

@@ -90,6 +90,20 @@ func resolveSecrets(cfg *Config) {
 					cfg.LLM.APIKeyValue = os.Getenv("ANTHROPIC_API_KEY")
 				case "gemini":
 					cfg.LLM.APIKeyValue = os.Getenv("GEMINI_API_KEY")
+				case "hermes":
+					cfg.LLM.APIKeyValue = os.Getenv("NOUS_API_KEY")
+				case "huggingface":
+					val := os.Getenv("HF_TOKEN")
+					if val == "" {
+						val = os.Getenv("HUGGINGFACE_API_KEY")
+					}
+					cfg.LLM.APIKeyValue = val
+				case "mistral":
+					cfg.LLM.APIKeyValue = os.Getenv("MISTRAL_API_KEY")
+				case "deepseek":
+					cfg.LLM.APIKeyValue = os.Getenv("DEEPSEEK_API_KEY")
+				case "ollama":
+					cfg.LLM.APIKeyValue = os.Getenv("OLLAMA_API_KEY")
 				}
 			}
 		}
@@ -104,7 +118,17 @@ func (cfg *Config) Validate() error {
 	}
 
 	lp := strings.ToLower(cfg.LLM.Provider)
-	if lp != "openai" && lp != "anthropic" && lp != "gemini" && lp != "ollama" {
+	validLLM := map[string]bool{
+		"openai":      true,
+		"anthropic":   true,
+		"gemini":       true,
+		"ollama":       true,
+		"hermes":       true,
+		"huggingface": true,
+		"mistral":     true,
+		"deepseek":    true,
+	}
+	if !validLLM[lp] {
 		return fmt.Errorf("invalid LLM provider: %s", cfg.LLM.Provider)
 	}
 

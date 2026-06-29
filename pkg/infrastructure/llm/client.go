@@ -23,17 +23,19 @@ type Client struct {
 	APIKey     string
 	MaxRetries int
 	Backoff    time.Duration
+	URL        string
 }
 
 var _ domain.LLMClient = (*Client)(nil)
 
-func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Duration) *Client {
+func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Duration, url string) *Client {
 	return &Client{
 		Provider:   provider,
 		Model:      model,
 		APIKey:     apiKey,
 		MaxRetries: maxRetries,
 		Backoff:    backoff,
+		URL:        url,
 	}
 }
 
@@ -240,6 +242,9 @@ Return format:
 			}
 
 			fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
+			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") {
+				fmt.Fprintln(os.Stderr, "⚠ Warning: You have exceeded your LLM API quota (HTTP 429). Please check your plan and billing details.")
+			}
 
 			if attempt == maxRetries {
 				break
@@ -247,6 +252,10 @@ Return format:
 
 			// Exponential backoff with jitter
 			jitter := time.Duration(float64(backoff) * (1.0 + rand.Float64()))
+			if delay, ok := parseRetryDelay(err); ok {
+				jitter = delay
+				fmt.Fprintf(os.Stderr, "⚠ Rate limited. Backing off for %v as requested by the API.\n", delay)
+			}
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -288,9 +297,32 @@ func (c *Client) doPost(ctx context.Context, apiKey, prompt string) ([]byte, err
 	headers := make(map[string]string)
 
 	switch c.Provider {
-	case "openai":
-		url = "https://api.openai.com/v1/chat/completions"
-		headers["Authorization"] = "Bearer " + apiKey
+	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
+		var baseURL string
+		switch c.Provider {
+		case "openai":
+			baseURL = "https://api.openai.com/v1"
+		case "hermes":
+			baseURL = "https://inference-api.nousresearch.com/v1"
+		case "huggingface":
+			baseURL = "https://api-inference.huggingface.co/v1"
+		case "mistral":
+			baseURL = "https://api.mistral.ai/v1"
+		case "deepseek":
+			baseURL = "https://api.deepseek.com/v1"
+		case "ollama":
+			baseURL = "https://ollama.com/v1"
+		}
+
+		if c.URL != "" {
+			url = c.URL
+		} else {
+			url = baseURL + "/chat/completions"
+		}
+
+		if apiKey != "" {
+			headers["Authorization"] = "Bearer " + apiKey
+		}
 		headers["Content-Type"] = "application/json"
 		payload := map[string]any{
 			"model": c.Model,
@@ -373,14 +405,14 @@ func (c *Client) doPost(ctx context.Context, apiKey, prompt string) ([]byte, err
 
 	// Parse actual content out of the provider envelope
 	switch c.Provider {
-	case "openai":
+	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
 		var result map[string]any
 		if err := json.Unmarshal(respBody, &result); err != nil {
 			return nil, err
 		}
 		choices, ok := result["choices"].([]any)
 		if !ok || len(choices) == 0 {
-			return nil, fmt.Errorf("unexpected OpenAI response: %s", string(respBody))
+			return nil, fmt.Errorf("unexpected OpenAI-compatible response: %s", string(respBody))
 		}
 		choice := choices[0].(map[string]any)
 		msg := choice["message"].(map[string]any)
@@ -632,4 +664,46 @@ func getProjectContext() projectContext {
 	}
 
 	return ctx
+}
+
+type geminiErrorResponse struct {
+	Error struct {
+		Details []struct {
+			Type       string `json:"@type"`
+			RetryDelay string `json:"retryDelay"`
+		} `json:"details"`
+	} `json:"error"`
+}
+
+func parseRetryDelay(err error) (time.Duration, bool) {
+	if err == nil {
+		return 0, false
+	}
+	errStr := err.Error()
+	firstBrace := strings.Index(errStr, "{")
+	if firstBrace == -1 {
+		return 0, false
+	}
+	jsonStr := errStr[firstBrace:]
+	var resp geminiErrorResponse
+	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
+		return 0, false
+	}
+	for _, detail := range resp.Error.Details {
+		if detail.RetryDelay != "" {
+			delayStr := detail.RetryDelay
+			if strings.HasSuffix(delayStr, "s") {
+				d, err := time.ParseDuration(delayStr)
+				if err == nil {
+					return d, true
+				}
+			} else {
+				var sec float64
+				if _, err := fmt.Sscanf(delayStr, "%f", &sec); err == nil {
+					return time.Duration(sec * float64(time.Second)), true
+				}
+			}
+		}
+	}
+	return 0, false
 }

@@ -81,7 +81,7 @@ var serveCmd = &cobra.Command{
 		// Initialize LLM client.
 		llmClient := llm.NewClient(
 			cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
-			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff),
+			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
 		)
 
 		// Initialize orchestrator components.

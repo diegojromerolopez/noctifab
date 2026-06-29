@@ -71,7 +71,7 @@ var startOneCmd = &cobra.Command{
 		specStr := string(specBytes)
 
 		// Initialize LLM Client
-		llmClient := llm.NewClient(cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue, cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff))
+		llmClient := llm.NewClient(cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue, cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL)
 
 		// Resolve git-detect base branch if configured
 		if cfg.VCS.BaseBranch == "git-detect" {
