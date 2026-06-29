@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New Rust `wc` Validator Project**: Added a new E2E validator project replicating UNIX `wc` in Rust under `validation/projects/wc` with specifications and user stories (US-001, US-002, US-003) enforcing SOLID/DDD and memory-efficient streaming.
 - **Rust Toolchain in Validation Container**: Added `rust` and `cargo` packages to the E2E verification image (`Dockerfile.validation`).
 - **Rust validation check**: Updated `validate.sh` to check for `Cargo.toml` and `src/main.rs`.
+- **Dynamic Base Branch Detection**: Implemented base branch resolution in `serve` and `start-one` commands when the base branch is configured as `"git-detect"`, falling back to the current active Git branch.
+- **Centralized LLM Base URL Config**: Added support for custom LLM API URLs (`url` under `llm` block) in command initialization to support alternative and custom endpoints.
+
+### Changed
+- **Default LLM Max Retries**: Reduced the default `max_retries` setting from 10 to 5 in the global configuration defaults to improve validation recovery speeds.
+- **Flexible Test Command Execution**: Updated `DockerSandbox.RunCommand` to dynamically execute Python unittest discovery (`python -m unittest discover tests`) when `go.mod` is not found, enabling out-of-the-box non-Go verification.
+
+### Fixed
+- **Broadened Gitignore Protections**: Updated the main `.gitignore` file to ignore `.noctifab/secrets.yaml`, `.noctifab/data/`, and `.noctifab/logs/` directories recursively across all validation projects.
+
+### Removed
+- **Obsolete Permission Profiles**: Removed legacy `.noctifab/profiles/` folders and YAML profiles from all template validation projects (`frontpunch`, `todo-cli`, and `wc`) to enforce the new centralized `profiles:` config block.
 
 ## [0.2.0] - 2026-06-29
 
