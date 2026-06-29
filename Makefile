@@ -40,10 +40,10 @@ PROJECT ?= frontpunch
 
 validate:
 	@if [ -z "$$GEMINI_API_KEY" ]; then \
-		if [ -f "validation/data/$(PROJECT)/.noctifab/secrets.yaml" ]; then \
-			GEMINI_KEY=$$(grep "GEMINI_API_KEY:" validation/data/$(PROJECT)/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
-		elif [ -f "validation/data/frontpunch/.noctifab/secrets.yaml" ]; then \
-			GEMINI_KEY=$$(grep "GEMINI_API_KEY:" validation/data/frontpunch/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
+		if [ -f "validation/projects/$(PROJECT)/.noctifab/secrets.yaml" ]; then \
+			GEMINI_KEY=$$(grep "GEMINI_API_KEY:" validation/projects/$(PROJECT)/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
+		elif [ -f "validation/projects/frontpunch/.noctifab/secrets.yaml" ]; then \
+			GEMINI_KEY=$$(grep "GEMINI_API_KEY:" validation/projects/frontpunch/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
 		fi; \
 	else \
 		GEMINI_KEY=$$GEMINI_API_KEY; \

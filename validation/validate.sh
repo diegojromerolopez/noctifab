@@ -22,11 +22,11 @@ rm -rf "${TMP_DIR}"
 # 3. Copy the project copy into the workspace
 PROJECT="${PROJECT:-frontpunch}"
 echo "Validating project: ${PROJECT}..."
-if [ ! -d "/app/data/${PROJECT}" ]; then
-  echo "❌ Error: Project ${PROJECT} does not exist in /app/data/"
+if [ ! -d "/app/projects/${PROJECT}" ]; then
+  echo "❌ Error: Project ${PROJECT} does not exist in /app/projects/"
   exit 1
 fi
-cp -R "/app/data/${PROJECT}" "${TMP_DIR}"
+cp -R "/app/projects/${PROJECT}" "${TMP_DIR}"
 cd "${TMP_DIR}"
 
 # 4. Initialize git repository inside the container workspace

@@ -12,7 +12,7 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 ## How It Works
 
 1. **Host Setup**:
-   The `Makefile` target builds a Docker image (`Dockerfile.validation`) containing `noctifab` compiled in a multi-stage builder, along with the static validation files under `validation/data/`.
+   The `Makefile` target builds a Docker image (`Dockerfile.validation`) containing `noctifab` compiled in a multi-stage builder, along with the static validation files under `validation/projects/`.
 2. **Execution**:
    The container starts with no volume mounts (100% isolated from your host filesystem). 
 3. **Workspace Initialization**:
@@ -30,7 +30,7 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 ### 1. Credentials Setup (ignored in git)
 To run validation, you need a Gemini API Key. Place it in the `frontpunch` configuration directory so the Makefile can extract it automatically:
 ```yaml
-# validation/data/frontpunch/.noctifab/secrets.yaml
+# validation/projects/frontpunch/.noctifab/secrets.yaml
 GEMINI_API_KEY: "your-actual-api-key"
 ```
 Alternatively, set the key directly in your terminal environment:

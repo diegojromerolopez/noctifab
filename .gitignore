@@ -35,7 +35,10 @@ go.work.sum
 /dist/
 
 # Validation artifacts
-/validation/data/frontpunch/.noctifab/secrets.yaml
-/validation/data/frontpunch/.noctifab/data/
+/validation/projects/frontpunch/.noctifab/secrets.yaml
+/validation/projects/frontpunch/.noctifab/data/
+/validation/projects/todo-cli/.noctifab/secrets.yaml
+/validation/projects/todo-cli/.noctifab/data/
+
 
 

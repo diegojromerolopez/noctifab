@@ -11,8 +11,8 @@ WORKDIR /app
 # Copy the built binary
 COPY --from=go-builder /app/bin/noctifab /usr/local/bin/noctifab
 
-# Copy the validation data
-COPY validation/data /app/data
+# Copy the validation projects
+COPY validation/projects /app/projects
 
 # Copy the scripts and set them up
 COPY validation/validate.sh /app/validate.sh
