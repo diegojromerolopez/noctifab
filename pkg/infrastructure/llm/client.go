@@ -306,7 +306,8 @@ func (c *Client) doPost(ctx context.Context, apiKey, prompt string) ([]byte, err
 				},
 			},
 			"generationConfig": map[string]any{
-				"temperature": 0.0,
+				"temperature":      0.0,
+				"responseMimeType": "application/json",
 			},
 		}
 		reqBody, _ = json.Marshal(payload)
