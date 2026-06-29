@@ -129,7 +129,11 @@ func NewDockerSandbox(containerName string) *DockerSandbox {
 func (s *DockerSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
 	cmdStr := command
 	if cmdStr == "" {
-		cmdStr = "go test -v ./..."
+		if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+			cmdStr = "go test -v ./..."
+		} else {
+			cmdStr = "python -m unittest discover tests"
+		}
 	}
 
 	parts := strings.Fields(cmdStr)
