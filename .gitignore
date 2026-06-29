@@ -37,6 +37,7 @@ go.work.sum
 # Validation artifacts
 /validation/projects/*/.noctifab/secrets.yaml
 /validation/projects/*/.noctifab/data/
+/validation/projects/*/.noctifab/logs/
 
 
 
