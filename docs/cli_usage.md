@@ -102,11 +102,9 @@ The following flags can be passed to the root command or configured in `.noctifa
 | `--agents` | `-a` | `3` | Maximum number of parallel workers/agents to spawn |
 | `--interval` | `-t` | `5m` | Cycle loop polling duration interval |
 | `--vcs-provider` | `-p` | `github` | Version Control System target (`github`, `gitlab`) |
-| `--vcs-token` | | | API Access Token for the VCS provider |
 | `--vcs-repo` | `-r` | | Repository identifier format: `owner/repo` |
 | `--llm-provider` | `-l` | `openai` | LLM client API provider (`openai`, `anthropic`, `gemini`, `ollama`) |
 | `--llm-model` | `-m` | `gpt-4o` | LLM Model Identifier |
-| `--llm-api-key` | `-k` | | API authentication key for LLM provider |
 | `--sandbox-mode` | | `host` | Sandbox isolation mode (`host` or `docker`) |
 | `--max-budget-usd` | | `10.00` | Daily LLM credit budget boundary in USD |
 | `--log-level` | | `info` | Logging verbosity: `debug`, `info`, `warn`, `error` |
@@ -136,9 +134,9 @@ vcs:
   token: "secret:GITHUB_TOKEN"
 ```
 
-During startup, noctifab resolves each `secret:<KEY>` reference from `secrets.yaml`. If the file does not exist, noctifab falls back to environment variables and CLI flags.
+During startup, noctifab resolves each `secret:<KEY>` reference from `secrets.yaml`. If the file does not exist, noctifab falls back to environment variables or config files (note that CLI flags are not provided for credentials to prevent secrets leakage in shell history).
 
-**Precedence (highest wins):** CLI flag → environment variable → `secrets.yaml` → literal value in `config.yaml`
+**Precedence (highest wins):** Environment variable → `secrets.yaml` → literal value in `config.yaml`
 
 For full details, supported fields, and CI/CD usage see [docs/secrets.md](secrets.md).
 
