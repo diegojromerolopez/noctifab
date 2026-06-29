@@ -1,8 +1,10 @@
 package llm
-
+ 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 )
 
 func TestResolveGeminiURL(t *testing.T) {
@@ -105,6 +107,77 @@ func TestGetNextLowerModel(t *testing.T) {
 			got := c.getNextLowerModel(context.Background(), "mockkey")
 			if got != tt.wantModel {
 				t.Errorf("getNextLowerModel(%q, %q) = %q; want %q", tt.provider, tt.currentModel, got, tt.wantModel)
+			}
+		})
+	}
+}
+
+func TestParseRetryDelay(t *testing.T) {
+	tests := []struct {
+		name      string
+		errString string
+		wantDelay time.Duration
+		wantOk    bool
+	}{
+		{
+			name:      "no json braces",
+			errString: "HTTP error 429: Rate limit exceeded",
+			wantDelay: 0,
+			wantOk:    false,
+		},
+		{
+			name:      "invalid json",
+			errString: "HTTP error 429: {invalid json",
+			wantDelay: 0,
+			wantOk:    false,
+		},
+		{
+			name: "valid google rate limit with s suffix",
+			errString: `HTTP error 429: {
+				"error": {
+					"code": 429,
+					"message": "...",
+					"status": "RESOURCE_EXHAUSTED",
+					"details": [
+						{
+							"@type": "type.googleapis.com/google.rpc.RetryInfo",
+							"retryDelay": "25323s"
+						}
+					]
+				}
+			}`,
+			wantDelay: 25323 * time.Second,
+			wantOk:    true,
+		},
+		{
+			name: "valid google rate limit numeric",
+			errString: `HTTP error 429: {
+				"error": {
+					"code": 429,
+					"message": "...",
+					"status": "RESOURCE_EXHAUSTED",
+					"details": [
+						{
+							"@type": "type.googleapis.com/google.rpc.RetryInfo",
+							"retryDelay": "12.5"
+						}
+					]
+				}
+			}`,
+			wantDelay: 12500 * time.Millisecond,
+			wantOk:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := fmt.Errorf("%s", tt.errString)
+			gotDelay, gotOk := parseRetryDelay(err)
+			if gotOk != tt.wantOk {
+				t.Fatalf("parseRetryDelay() ok = %v; want %v", gotOk, tt.wantOk)
+			}
+			if gotOk && gotDelay != tt.wantDelay {
+				t.Errorf("parseRetryDelay() delay = %v; want %v", gotDelay, tt.wantDelay)
 			}
 		})
 	}
