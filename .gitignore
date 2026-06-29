@@ -34,3 +34,8 @@ go.work.sum
 # Build artifacts
 /dist/
 
+# Validation artifacts
+/validation/data/frontpunch/.noctifab/secrets.yaml
+/validation/data/frontpunch/.noctifab/data/
+
+

@@ -1,0 +1,6 @@
+permissions:
+  allowed_tools:
+    - "*"
+  network:
+    allow_ai_provider: true
+    allow_external: true

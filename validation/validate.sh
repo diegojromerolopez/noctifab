@@ -23,78 +23,37 @@ rm -rf "${TMP_DIR}"
 cp -R /app/frontpunch "${TMP_DIR}"
 cd "${TMP_DIR}"
 
-# Ensure git user name and email are configured for commits inside the container
+# 4. Initialize git repository inside the container workspace
+echo "Initializing clean git repository on branch main..."
+git init
+git checkout -b main
 git config user.name "Noctifab Tester"
 git config user.email "tester@noctifab.local"
+git add .
+git commit -m "initial frontpunch structures"
 
-# 4. Checkout the main branch
-echo "Checking out main branch of frontpunch (contains only roadmap and .noctifab)..."
-git checkout -f main
-
-# 5. Initialize noctifab
-"${NOCTIFAB_BIN}" init --vcs-clone-protocol https
-
-# 6. Detect LLM credentials from environment
+# 5. Sanitize credentials in environment
 if [ -n "${GEMINI_API_KEY:-}" ]; then
-  PROVIDER="gemini"
-  MODEL="gemini-1.5-pro"
-  API_KEY_CONFIG=$(echo "${GEMINI_API_KEY}" | sed -E 's/.*GEMINI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
-  KEY_ENV="GEMINI_API_KEY"
-elif [ -n "${OPENAI_API_KEY:-}" ]; then
-  PROVIDER="openai"
-  MODEL="gpt-4o"
-  API_KEY_CONFIG=$(echo "${OPENAI_API_KEY}" | sed -E 's/.*OPENAI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
-  KEY_ENV="OPENAI_API_KEY"
-else
-  echo "⚠ Error: Neither GEMINI_API_KEY nor OPENAI_API_KEY is set in environment."
-  exit 1
+  export GEMINI_API_KEY=$(echo "${GEMINI_API_KEY}" | sed -E 's/.*GEMINI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
+fi
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  export OPENAI_API_KEY=$(echo "${OPENAI_API_KEY}" | sed -E 's/.*OPENAI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
 fi
 
-echo "Using LLM provider: ${PROVIDER} with model: ${MODEL}"
+# Set dummy GITHUB_FRONTPUNCH_TOKEN if not present to pass pre-flight checks
+export GITHUB_FRONTPUNCH_TOKEN="${GITHUB_FRONTPUNCH_TOKEN:-${GITHUB_TOKEN:-dummy-token}}"
 
-# 7. Write custom config.yaml configured for US-001
-cat <<EOF > .noctifab/config.yaml
-config_version: "1.0"
-storage:
-  provider: "sqlite"
-  conn_string: ".noctifab/data/noctifab.db"
-llm:
-  provider: "${PROVIDER}"
-  model: "${MODEL}"
-  api_key: "${API_KEY_CONFIG}"
-  api_key_env: "${KEY_ENV}"
-  max_budget_usd: 5.0
-vcs:
-  provider: "github"
-  repository: "diegojromerolopez/frontpunch"
-  base_branch: "main"
-  branch_prefix: "noctifab/"
-  token_env: "GITHUB_TOKEN"
-sandbox:
-  mode: "host"
-  test_command: "python3 -m unittest discover -s tests"
-  linter_command: ""
-  allowed_commands:
-    - "python3"
-    - "git"
-    - "python"
-    - "pip"
-    - "ruff"
-    - "black"
-    - "mypy"
-EOF
+# 6. Initialize noctifab
+"${NOCTIFAB_BIN}" init --vcs-clone-protocol https
 
-echo "Generated config.yaml:"
+echo "Using pre-configured config.yaml:"
 cat .noctifab/config.yaml
 
-# Set dummy GITHUB_TOKEN if not present to pass pre-flight checks
-export GITHUB_TOKEN="${GITHUB_TOKEN:-dummy-token}"
-
-# 8. Run noctifab start-one command for US-001
+# 7. Run noctifab start-one command for US-001
 echo "Running noctifab start-one for US-001..."
 "${NOCTIFAB_BIN}" start-one --input roadmap/US-001.md
 
-# 9. Verify results
+# 8. Verify results
 echo "Verifying results..."
 if [ ! -f "frontpunch/worker.py" ]; then
   echo "❌ Error: frontpunch/worker.py was not created/modified!"
