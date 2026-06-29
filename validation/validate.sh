@@ -22,11 +22,15 @@ rm -rf "${TMP_DIR}"
 # 3. Copy the project copy into the workspace
 PROJECT="${PROJECT:-frontpunch}"
 echo "Validating project: ${PROJECT}..."
-if [ ! -d "/app/projects/${PROJECT}" ]; then
-  echo "❌ Error: Project ${PROJECT} does not exist in /app/projects/"
+PROJECT_SRC="/app/projects/${PROJECT}"
+if [ ! -d "${PROJECT_SRC}" ]; then
+  PROJECT_SRC="$(pwd)/validation/projects/${PROJECT}"
+fi
+if [ ! -d "${PROJECT_SRC}" ]; then
+  echo "❌ Error: Project ${PROJECT} does not exist in /app/projects/ or validation/projects/"
   exit 1
 fi
-cp -R "/app/projects/${PROJECT}" "${TMP_DIR}"
+cp -R "${PROJECT_SRC}" "${TMP_DIR}"
 cd "${TMP_DIR}"
 
 # 4. Initialize git repository inside the container workspace
@@ -46,10 +50,12 @@ EOF
 git add .
 git commit -m "initial project structures and gitignore"
 
-# Set up a local "origin" bare repository inside the container to allow git pushes
+# Set up a local "origin" bare repository inside the workspace to allow git pushes
 echo "Setting up local git origin remote..."
-git init --bare /app/origin.git
-git remote add origin /app/origin.git
+ORIGIN_DIR="$(pwd)/../origin.git"
+rm -rf "${ORIGIN_DIR}"
+git init --bare "${ORIGIN_DIR}"
+git remote add origin "${ORIGIN_DIR}"
 git push -u origin main
 
 
