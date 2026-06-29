@@ -258,7 +258,7 @@ Return format:
 
 		is503 := strings.Contains(err.Error(), "HTTP error 503") || strings.Contains(err.Error(), "503 Service Unavailable")
 		if is503 {
-			nextModel := getNextLowerModel(c.Provider, c.Model)
+			nextModel := c.getNextLowerModel(ctx, apiKey)
 			if nextModel != "" {
 				fmt.Fprintf(os.Stderr, "⚠ Model %s returned HTTP 503. Falling back to lower model: %s...\n", c.Model, nextModel)
 				c.Model = nextModel
@@ -434,17 +434,43 @@ var modelHierarchy = map[string][]string{
 	},
 }
 
-func getNextLowerModel(provider, currentModel string) string {
-	list, ok := modelHierarchy[strings.ToLower(provider)]
+func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
+	list, ok := modelHierarchy[strings.ToLower(c.Provider)]
 	if !ok || len(list) <= 1 {
 		return ""
 	}
 
-	normCurrent := strings.TrimPrefix(currentModel, "models/")
+	available, err := c.fetchAvailableModels(ctx, apiKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ Warning: failed to query available models from %s: %v. Using static fallback hierarchy.\n", c.Provider, err)
+		available = list
+	}
+
+	var filteredHierarchy []string
+	for _, rankedModel := range list {
+		rankedNorm := strings.TrimPrefix(strings.ToLower(rankedModel), "models/")
+		isAvailable := false
+		for _, availModel := range available {
+			availNorm := strings.TrimPrefix(strings.ToLower(availModel), "models/")
+			if strings.Contains(availNorm, rankedNorm) || strings.Contains(rankedNorm, availNorm) {
+				isAvailable = true
+				break
+			}
+		}
+		if isAvailable {
+			filteredHierarchy = append(filteredHierarchy, rankedModel)
+		}
+	}
+
+	if len(filteredHierarchy) == 0 {
+		filteredHierarchy = list
+	}
+
+	normCurrent := strings.TrimPrefix(c.Model, "models/")
 	normCurrent = strings.ToLower(normCurrent)
 
 	idx := -1
-	for i, m := range list {
+	for i, m := range filteredHierarchy {
 		normM := strings.TrimPrefix(m, "models/")
 		normM = strings.ToLower(normM)
 		if strings.Contains(normCurrent, normM) || strings.Contains(normM, normCurrent) {
@@ -453,8 +479,88 @@ func getNextLowerModel(provider, currentModel string) string {
 		}
 	}
 
-	if idx != -1 && idx+1 < len(list) {
-		return list[idx+1]
+	if idx != -1 && idx+1 < len(filteredHierarchy) {
+		return filteredHierarchy[idx+1]
 	}
 	return ""
+}
+
+func (c *Client) fetchAvailableModels(ctx context.Context, apiKey string) ([]string, error) {
+	var url string
+	headers := make(map[string]string)
+
+	switch c.Provider {
+	case "gemini":
+		url = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", apiKey)
+	case "openai":
+		url = "https://api.openai.com/v1/models"
+		headers["Authorization"] = "Bearer " + apiKey
+	default:
+		return nil, fmt.Errorf("provider %s does not support listing models", c.Provider)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch models (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var models []string
+	if c.Provider == "gemini" {
+		var result struct {
+			Models []struct {
+				Name                       string   `json:"name"`
+				SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
+			} `json:"models"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+		for _, m := range result.Models {
+			supportsGen := false
+			for _, method := range m.SupportedGenerationMethods {
+				if method == "generateContent" {
+					supportsGen = true
+					break
+				}
+			}
+			if supportsGen {
+				name := strings.TrimPrefix(m.Name, "models/")
+				models = append(models, name)
+			}
+		}
+	} else if c.Provider == "openai" {
+		var result struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+		for _, m := range result.Data {
+			models = append(models, m.ID)
+		}
+	}
+
+	return models, nil
 }

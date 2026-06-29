@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"testing"
 )
 
@@ -94,7 +95,8 @@ func TestGetNextLowerModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := getNextLowerModel(tt.provider, tt.currentModel)
+			c := &Client{Provider: tt.provider, Model: tt.currentModel}
+			got := c.getNextLowerModel(context.Background(), "mockkey")
 			if got != tt.wantModel {
 				t.Errorf("getNextLowerModel(%q, %q) = %q; want %q", tt.provider, tt.currentModel, got, tt.wantModel)
 			}
