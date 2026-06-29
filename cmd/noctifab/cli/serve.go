@@ -95,7 +95,14 @@ var serveCmd = &cobra.Command{
 			}
 		}
 		rebaseQueue := usecase.NewRebaseQueue(gitClient)
-		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch)
+		profilesMap := make(map[string]usecase.ProfileConfig)
+		for role, prof := range cfg.Profiles {
+			profilesMap[role] = usecase.ProfileConfig{
+				AllowedTools:    prof.AllowedTools,
+				AllowedCommands: prof.AllowedCommands,
+			}
+		}
+		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
 		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())
 		evaluator := usecase.NewTestValidator(sandboxRunner, false)
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand

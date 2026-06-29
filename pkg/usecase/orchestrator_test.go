@@ -58,7 +58,7 @@ func TestOrchestrator_Initialization(t *testing.T) {
 	repo := &mockRepo{state: state}
 	reg := NewToolRegistry()
 	llmClient := &mockLLM{}
-	validator := NewPolicyValidator(nil, "main")
+	validator := NewPolicyValidator(nil, "main", nil)
 	scheduler := NewScheduler(NewFileLockRegistry())
 	git := NewGitClient("/tmp")
 	queue := NewRebaseQueue(git)

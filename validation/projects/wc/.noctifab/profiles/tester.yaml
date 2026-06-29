@@ -1,0 +1,13 @@
+permissions:
+  allowed_tools:
+    - "run_tests"
+    - "read_file"
+    - "write_file"
+    - "edit_file"
+    - "list_directory"
+    - "find_files"
+    - "grep_search"
+    - "noop"
+  network:
+    allow_ai_provider: true
+    allow_external: false

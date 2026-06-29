@@ -92,6 +92,11 @@ elif [ "${PROJECT}" = "todo-cli" ]; then
     echo "❌ Error: todo.py was not created/modified!"
     exit 1
   fi
+elif [ "${PROJECT}" = "wc" ]; then
+  if [ ! -f "Cargo.toml" ] || [ ! -f "src/main.rs" ]; then
+    echo "❌ Error: Cargo.toml or src/main.rs was not created/modified!"
+    exit 1
+  fi
 else
   echo "⚠ Warning: No specific file check defined for project ${PROJECT}."
 fi

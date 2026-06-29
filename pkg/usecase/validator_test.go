@@ -2,15 +2,13 @@ package usecase
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 func TestPolicyValidator_GlobalChecks(t *testing.T) {
-	validator := NewPolicyValidator([]string{"go", "npm"}, "main")
+	validator := NewPolicyValidator([]string{"go", "npm"}, "main", nil)
 	state := &domain.State{
 		ProjectPath: "/workspace",
 	}
@@ -43,26 +41,14 @@ func TestPolicyValidator_GlobalChecks(t *testing.T) {
 }
 
 func TestPolicyValidator_RoleProfiles(t *testing.T) {
-	tempProfilesDir := t.TempDir()
-
-	// Write dummy generator profile
-	genProfileContent := `
-role: generator
-allowed_tools:
-  - read_file
-  - write_file
-  - run_tests
-allowed_commands:
-  - go
-  - npm
-`
-	err := os.WriteFile(filepath.Join(tempProfilesDir, "generator.yaml"), []byte(genProfileContent), 0644)
-	if err != nil {
-		t.Fatalf("failed to write test profile: %v", err)
+	profiles := map[string]ProfileConfig{
+		"generator": {
+			AllowedTools:    []string{"read_file", "write_file", "run_tests"},
+			AllowedCommands: []string{"go", "npm"},
+		},
 	}
 
-	validator := NewPolicyValidator([]string{"*"}, "main")
-	validator.ProfilesDir = tempProfilesDir
+	validator := NewPolicyValidator([]string{"*"}, "main", profiles)
 	state := &domain.State{
 		ProjectPath: "/workspace",
 	}

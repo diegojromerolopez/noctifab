@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-06-29
+
+### Added
+- **New Rust `wc` Validator Project**: Added a new E2E validator project replicating UNIX `wc` in Rust under `validation/projects/wc` with specifications and user stories (US-001, US-002, US-003) enforcing SOLID/DDD and memory-efficient streaming.
+- **Rust Toolchain in Validation Container**: Added `rust` and `cargo` packages to the E2E verification image (`Dockerfile.validation`).
+- **Rust validation check**: Updated `validate.sh` to check for `Cargo.toml` and `src/main.rs`.
+
+## [0.2.0] - 2026-06-29
+
+### Added
+- **Simplified Permission Profiles**: Consolidated custom agent role profiles directly in `.noctifab/config.yaml` under the `profiles:` block.
+- **Secure Built-in Defaults**: Enabled secure, built-in memory-based permission profiles for the four standard agent roles (`orchestrator`, `planner`, `tester`, `generator`). If overrides are not provided in `config.yaml`, the system automatically falls back to these secure defaults, resolving the write-blocking bug on missing `generator.yaml` profiles.
+
+### Changed
+- **Workspace Scaffolding Cleanup**: Removed profiles directory and YAML files generation from the `noctifab init` command.
+
 ## [0.1.5] - 2026-06-29
 
 ### Fixed
