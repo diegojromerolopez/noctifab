@@ -42,7 +42,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 	if strings.HasPrefix(prompt, "Decompose specification into tasks:") {
 		specStr := strings.TrimPrefix(prompt, "Decompose specification into tasks:")
 		prompt = fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
-You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json or `+"`"+`) outside the JSON.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json or `+"`"+`) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\"); never use single quotes (') for JSON strings or keys.
 
 You are acting as the Planner Agent.
 Your task is to decompose the following specification into a Directed Acyclic Graph (DAG) of small, testable tasks.
@@ -82,7 +82,7 @@ Return format:
 	} else if strings.HasPrefix(prompt, "Write tests for task:") {
 		taskDetails := strings.TrimPrefix(prompt, "Write tests for task:")
 		prompt = fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
-You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\"); never use single quotes (') for JSON strings or keys.
 
 You are acting as the Test Writer Agent.
 Your task is to write tests that verify the implementation of the specified task.
@@ -143,7 +143,7 @@ Return format:
 	} else if strings.HasPrefix(prompt, "Execute task:") {
 		taskDetails := strings.TrimPrefix(prompt, "Execute task:")
 		prompt = fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
-You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\"); never use single quotes (') for JSON strings or keys.
 
 You are acting as the Generator Agent.
 Your task is to implement the specified task. Note that the tests for this task have already been written by the Test Writer Agent. Your job is to implement the functionality to make all tests pass successfully.
