@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Default LLM Max Retries**: Reduced the default `max_retries` setting from 10 to 5 in the global configuration defaults to improve validation recovery speeds.
 - **Flexible Test Command Execution**: Updated `DockerSandbox.RunCommand` to dynamically execute Python unittest discovery (`python -m unittest discover tests`) when `go.mod` is not found, enabling out-of-the-box non-Go verification.
+- **Validation README**: Updated `validation/README.md` to document the new `wc` Rust project as a third available validation target, including its success criteria (`Cargo.toml` + `src/main.rs` present) and added the `make validate PROJECT=wc` example command.
+- **Main README E2E Validation Section**: Added a new "E2E Autonomy Validation" section to `README.md` with a summary table of all three validation projects (`frontpunch`, `todo-cli`, `wc`), their languages, user stories, and checked outputs. Updated the test command in the Collaboration section to use `go test -v ./pkg/... ./tests` per `AGENTS.md`.
 
 ### Fixed
 - **Broadened Gitignore Protections**: Updated the main `.gitignore` file to ignore `.noctifab/secrets.yaml`, `.noctifab/data/`, and `.noctifab/logs/` directories recursively across all validation projects.

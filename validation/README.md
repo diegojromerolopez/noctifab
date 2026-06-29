@@ -6,6 +6,7 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 
 1. **`frontpunch`**: Checks out the base `main` branch of the frontpunch spec and executes `roadmap/US-001.md`. Validates that the Python worker infrastructure is successfully planned, written, tested, and passing.
 2. **`todo-cli`**: Checks out the base `main` branch of a clean Todo CLI project spec and executes `roadmap/US-001.md`. Validates that task addition and listing commands are planned, implemented in a single `todo.py` module, tested, and validated.
+3. **`wc`**: Checks out the base `main` branch of a Rust `wc` (word count) project spec and executes `roadmap/US-001.md`. Validates that a UNIX `wc`-compatible CLI is planned and implemented in Rust following SOLID/DDD principles and memory-efficient streaming, with `Cargo.toml` and `src/main.rs` present and tests passing.
 
 ---
 
@@ -50,4 +51,7 @@ make validate PROJECT=todo-cli
 ```
 ```bash
 make validate PROJECT=frontpunch
+```
+```bash
+make validate PROJECT=wc
 ```
