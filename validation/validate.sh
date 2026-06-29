@@ -35,8 +35,14 @@ git init
 git checkout -b main
 git config user.name "Noctifab Tester"
 git config user.email "tester@noctifab.local"
+cat <<EOF > .gitignore
+__pycache__/
+*.pyc
+.noctifab/data/
+.noctifab/logs/
+EOF
 git add .
-git commit -m "initial frontpunch structures"
+git commit -m "initial project structures and gitignore"
 
 # 5. Sanitize credentials in environment
 if [ -n "${GEMINI_API_KEY:-}" ]; then
