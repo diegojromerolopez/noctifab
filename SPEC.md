@@ -1632,12 +1632,12 @@ To support dynamic task generation from multiple workflow sources, `noctifab` ab
 #### 3.7.2. GitHub / GitLab Issue Ingestion
 *   **Behavior:** If the input matches a GitHub/GitLab issue URL or reference (e.g., `https://github.com/owner/repo/issues/42`), the VCS client makes authenticated API calls to fetch the issue details.
 *   **Payload Construction:** The system extracts the issue title, body description, and relevant discussion comments, consolidating them into a unified Markdown payload for parsing and DAG planning.
-*   **Authentication:** Uses the standard `--vcs-token` / `NOCTIFAB_VCS_TOKEN` configuration.
+*   **Authentication:** Uses the standard `NOCTIFAB_VCS_TOKEN` environment variable or the VCS token configuration setting.
 
 #### 3.7.3. Jira Issue Ingestion
 *   **Behavior:** If the input matches a Jira issue URL (e.g., `https://company.atlassian.net/browse/KEY-101`), the Jira client is initialized.
 *   **Jira Client Implementation:** Under `pkg/infrastructure/jira/client.go`, a REST client connects to Atlassian's issue API.
-*   **Authentication:** Authenticates using basic authentication headers via the developer email (`--jira-user` / `NOCTIFAB_JIRA_USER`) and API token (`--jira-token` / `NOCTIFAB_JIRA_TOKEN`).
+*   **Authentication:** Authenticates using basic authentication headers via the developer email (`--jira-user` / `NOCTIFAB_JIRA_USER`) and API token (`NOCTIFAB_JIRA_TOKEN` environment variable or config setting).
 *   **ADF AST Document Walker:** To prevent data loss when parsing complex Atlassian Document Format (ADF) descriptions, the client implements a recursive AST document walker in Go. It walks the ADF JSON node tree structure, mapping standard nodes (`heading`, `paragraph`, `bulletList`, `orderedList`, `table`, `tableRow`, `tableCell`, `codeBlock`, `panel`) and text marks (`strong`, `em`, `strike`, `code`) directly into GitHub Flavored Markdown (GFM).
 *   **Lossless Fallback Placeholders:** If the ADF walker encounters unsupported node types (such as custom macros, third-party plug-ins, or rich media attachments like `mediaSingle`), it does not drop them silently. It inserts a visible warning fallback placeholder block into the Markdown output (e.g. `[Warning: Unsupported Media Attachment - View Issue URL]` or `[Unsupported block node: mediaSingle]`), alerting the Planner Agent to refer to the original Jira issue URL if required.
 

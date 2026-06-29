@@ -93,33 +93,35 @@ The following `config.yaml` fields support `secret:` references:
 
 ---
 
-## `secrets.yaml` is Optional
-
-If `secrets.yaml` does not exist, noctifab proceeds normally — no error is raised. You can still provide credentials via environment variables or CLI flags:
+If `secrets.yaml` does not exist, noctifab proceeds normally — no error is raised. You can still provide credentials via environment variables:
 
 ```bash
-# Via environment variable
-GEMINI_API_KEY="AIzaSy..." noctifab start-one --input roadmap/US-001.md
+# Via standard provider environment variables
+GEMINI_API_KEY="AIzaSy..." GITHUB_TOKEN="github_pat_..." noctifab start-one --input roadmap/US-001.md
 
-# Via CLI flag
-noctifab start-one --input roadmap/US-001.md --llm-api-key "AIzaSy..." --vcs-token "github_pat_..."
+# Via explicit noctifab environment overrides
+NOCTIFAB_LLM_API_KEY="AIzaSy..." NOCTIFAB_VCS_TOKEN="github_pat_..." noctifab start-one --input roadmap/US-001.md
 ```
 
 ---
 
 ## Priority Precedence (highest wins)
 
+To protect sensitive keys from leaking into shell command histories, `noctifab` does not register CLI flags for secrets. The precedence for resolving credentials is:
+
 ```
-CLI flag  >  Environment variable  >  secrets.yaml  >  config.yaml literal value
+Environment variable  >  secrets.yaml  >  config.yaml literal value
 ```
 
-This means you can always override a secret from the command line or CI environment without touching any file.
+*(Note: For non-sensitive configurations like `--agents` or `--storage-provider`, CLI flags are supported and take the highest precedence: CLI flag > Environment variable > secrets.yaml > config.yaml).*
+
+This means you can always override a secret using environment variables or a CI environment without touching any file.
 
 ---
 
 ## CI/CD Usage
 
-In CI pipelines, prefer environment variables or CLI flags rather than committing `secrets.yaml`:
+In CI pipelines, prefer environment variables rather than committing `secrets.yaml`:
 
 ```yaml
 # GitHub Actions example

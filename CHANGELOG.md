@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-06-29
+
+### Fixed
+- **Documentation Discrepancies**: Removed non-existent CLI flags (`--llm-api-key`, `--vcs-token`, `--jira-token`) from `docs/cli_usage.md`, `docs/secrets.md`, and `SPEC.md` examples. Documented environment variables (`NOCTIFAB_LLM_API_KEY`, `NOCTIFAB_VCS_TOKEN`, `NOCTIFAB_JIRA_TOKEN`) as the supported mechanism to override credentials.
+- **Secrets Precedence**: Documented specific precedence logic for sensitive credentials where CLI flags are disabled for security reasons.
+
+### Changed
+- **Pillar Highlights**: Updated `README.md` to detail the 3x Test Validator execution with majority vote consensus inside the Test-Driven Quality Gates pillar.
+
 ## [0.1.4] - 2026-06-29
 
 ### Added
