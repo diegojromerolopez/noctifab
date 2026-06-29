@@ -18,16 +18,16 @@ func TestResolveGeminiURL(t *testing.T) {
 			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=testkey",
 		},
 		{
-			name:       "gemini-1.5-pro maps to gemini-1.5-pro-latest",
+			name:       "gemini-1.5-pro maps to gemini-2.5-pro",
 			modelInput: "gemini-1.5-pro",
 			apiKey:     "testkey",
-			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=testkey",
+			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=testkey",
 		},
 		{
-			name:       "models/gemini-1.5-pro maps to gemini-1.5-pro-latest",
+			name:       "models/gemini-1.5-pro maps to gemini-2.5-pro",
 			modelInput: "models/gemini-1.5-pro",
 			apiKey:     "testkey",
-			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=testkey",
+			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=testkey",
 		},
 		{
 			name:       "gemini-2.5-flash remains gemini-2.5-flash",
@@ -61,27 +61,21 @@ func TestGetNextLowerModel(t *testing.T) {
 		wantModel    string
 	}{
 		{
-			name:         "gemini-2.5-pro falls back to gemini-1.5-pro-latest",
+			name:         "gemini-2.5-pro falls back to gemini-2.5-flash",
 			provider:     "gemini",
 			currentModel: "gemini-2.5-pro",
-			wantModel:    "gemini-1.5-pro-latest",
-		},
-		{
-			name:         "models/gemini-2.5-pro falls back to gemini-1.5-pro-latest",
-			provider:     "Gemini",
-			currentModel: "models/gemini-2.5-pro",
-			wantModel:    "gemini-1.5-pro-latest",
-		},
-		{
-			name:         "gemini-1.5-pro-latest falls back to gemini-2.5-flash",
-			provider:     "gemini",
-			currentModel: "gemini-1.5-pro-latest",
 			wantModel:    "gemini-2.5-flash",
 		},
 		{
-			name:         "gemini-1.5-flash-latest is lowest and returns empty",
+			name:         "models/gemini-2.5-pro falls back to gemini-2.5-flash",
+			provider:     "Gemini",
+			currentModel: "models/gemini-2.5-pro",
+			wantModel:    "gemini-2.5-flash",
+		},
+		{
+			name:         "gemini-2.5-flash is lowest and returns empty",
 			provider:     "gemini",
-			currentModel: "gemini-1.5-flash-latest",
+			currentModel: "gemini-2.5-flash",
 			wantModel:    "",
 		},
 		{
