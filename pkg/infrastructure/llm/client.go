@@ -213,7 +213,7 @@ Return format:
 
 	maxRetries := c.MaxRetries
 	if maxRetries <= 0 {
-		maxRetries = 10
+		maxRetries = 5
 	}
 	backoff := c.Backoff
 	if backoff <= 0 {

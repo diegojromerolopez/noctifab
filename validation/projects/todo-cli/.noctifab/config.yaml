@@ -16,7 +16,7 @@ llm:
     api_key: "secret:GEMINI_API_KEY"
     api_key_env: GEMINI_API_KEY
     url: ""
-    max_retries: 10
+    max_retries: 5
     retry_backoff: 100ms
     retry_backoff_factor: 2
     max_budget_usd: 10
