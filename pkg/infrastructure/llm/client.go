@@ -81,13 +81,18 @@ Return format:
   ]
 }
 `, specStr, proj.ExampleTargetFile)
-	} else if strings.HasPrefix(prompt, "Write tests for task:") {
-		taskDetails := strings.TrimPrefix(prompt, "Write tests for task:")
+	} else if strings.HasPrefix(prompt, "Write tests for task:") || strings.HasPrefix(prompt, "Fix the tests for task:") {
+		var taskDetails string
+		if strings.HasPrefix(prompt, "Write tests for task:") {
+			taskDetails = strings.TrimPrefix(prompt, "Write tests for task:")
+		} else {
+			taskDetails = strings.TrimPrefix(prompt, "Fix the tests for task:")
+		}
 		prompt = fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
 You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\"); never use single quotes (') for JSON strings or keys.
 
-You are acting as the Test Writer Agent.
-Your task is to write tests that verify the implementation of the specified task.
+You are acting as the Tester Agent.
+Your task is to write or fix tests that verify the implementation of the specified task.
 
 Task Details:
 %s
