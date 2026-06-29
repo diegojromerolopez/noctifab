@@ -40,6 +40,8 @@ __pycache__/
 *.pyc
 .noctifab/data/
 .noctifab/logs/
+todo.json
+*.json
 EOF
 git add .
 git commit -m "initial project structures and gitignore"
