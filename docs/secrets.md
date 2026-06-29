@@ -115,13 +115,13 @@ Environment variable  >  secrets.yaml  >  config.yaml literal value
 
 *(Note: For non-sensitive configurations like `--agents` or `--storage-provider`, CLI flags are supported and take the highest precedence: CLI flag > Environment variable > secrets.yaml > config.yaml).*
 
-This means you can always override a secret from the command line or CI environment without touching any file.
+This means you can always override a secret using environment variables or a CI environment without touching any file.
 
 ---
 
 ## CI/CD Usage
 
-In CI pipelines, prefer environment variables or CLI flags rather than committing `secrets.yaml`:
+In CI pipelines, prefer environment variables rather than committing `secrets.yaml`:
 
 ```yaml
 # GitHub Actions example
