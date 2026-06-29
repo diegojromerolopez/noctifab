@@ -423,6 +423,17 @@ func resolveGeminiURL(modelInput, apiKey string) string {
 	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
 }
 
+func normalizeModel(modelInput string) string {
+	model := strings.TrimPrefix(modelInput, "models/")
+	if model == "gemini-1.5-pro" {
+		return "gemini-2.5-pro"
+	}
+	if model == "gemini-1.5-flash" {
+		return "gemini-2.5-flash"
+	}
+	return model
+}
+
 var modelHierarchy = map[string][]string{
 	"gemini": {
 		"gemini-2.5-pro",
@@ -471,7 +482,7 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 		filteredHierarchy = list
 	}
 
-	normCurrent := strings.TrimPrefix(c.Model, "models/")
+	normCurrent := normalizeModel(c.Model)
 	normCurrent = strings.ToLower(normCurrent)
 
 	idx := -1

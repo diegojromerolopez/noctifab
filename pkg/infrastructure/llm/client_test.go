@@ -74,6 +74,12 @@ func TestGetNextLowerModel(t *testing.T) {
 			wantModel:    "gemini-2.5-flash",
 		},
 		{
+			name:         "gemini-1.5-pro falls back to gemini-2.5-flash (legacy mapping)",
+			provider:     "gemini",
+			currentModel: "gemini-1.5-pro",
+			wantModel:    "gemini-2.5-flash",
+		},
+		{
 			name:         "gemini-2.5-flash is lowest and returns empty",
 			provider:     "gemini",
 			currentModel: "gemini-2.5-flash",
