@@ -1,8 +1,0 @@
-permissions:
-  allowed_tools:
-    - "run_tests"
-    - "read_file"
-    - "noop"
-  network:
-    allow_ai_provider: true
-    allow_external: false
