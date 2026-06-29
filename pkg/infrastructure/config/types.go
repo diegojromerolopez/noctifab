@@ -27,12 +27,12 @@ func (d Duration) MarshalYAML() (interface{}, error) {
 }
 
 type Config struct {
-	ConfigVersion string             `yaml:"config_version"`
-	Orchestrator  OrchestratorConfig `yaml:"orchestrator"`
-	Storage       StorageConfig      `yaml:"storage"`
-	LLM           LLMConfig          `yaml:"llm"`
-	VCS           VCSConfig          `yaml:"vcs"`
-	Sandbox       SandboxConfig      `yaml:"sandbox"`
+	ConfigVersion string                   `yaml:"config_version"`
+	Orchestrator  OrchestratorConfig       `yaml:"orchestrator"`
+	Storage       StorageConfig            `yaml:"storage"`
+	LLM           LLMConfig                `yaml:"llm"`
+	VCS           VCSConfig                `yaml:"vcs"`
+	Sandbox       SandboxConfig            `yaml:"sandbox"`
 	Roles         RolesConfig              `yaml:"roles"`
 	Profiles      map[string]ProfileConfig `yaml:"profiles"`
 	Jira          JiraConfig               `yaml:"jira"`

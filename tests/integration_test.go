@@ -54,10 +54,9 @@ func TestInitCommand(t *testing.T) {
 			t.Errorf("expected .gitignore to be created, got: %v", err)
 		}
 
-		profilePath := filepath.Join(tmpDir, ".noctifab", "profiles", "default.yaml")
-		if _, err := os.Stat(profilePath); err != nil {
-			t.Errorf("expected profiles/default.yaml to be created, got: %v", err)
-		}
+		// Note: profiles/default.yaml is no longer created on init.
+		// As of the simplified-permission-profiles feature, profiles are
+		// embedded directly inside config.yaml under the `profiles` key.
 
 		// Run again (idempotent check)
 		err = cli.RootCmd.Execute()

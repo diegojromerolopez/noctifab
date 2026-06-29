@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-06-30
+
+### Fixed
+- **Stale Integration Test Assertion**: Removed the `profiles/default.yaml` file existence check from `TestInitCommand/Clean_directory_initialization` in `tests/integration_test.go`. The `feat/simplified-permission-profiles` feature moved permission profiles out of separate YAML files and into the `profiles:` block inside `config.yaml`, so `noctifab init` no longer creates a `profiles/` directory.
+
 ## [0.2.1] - 2026-06-29
 
 ### Added
