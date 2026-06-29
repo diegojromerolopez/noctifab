@@ -412,15 +412,21 @@ func resolveGeminiURL(modelInput, apiKey string) string {
 	if model == "" {
 		model = "gemini-2.5-pro"
 	}
+	if model == "gemini-1.5-pro" {
+		model = "gemini-1.5-pro-latest"
+	}
+	if model == "gemini-1.5-flash" {
+		model = "gemini-1.5-flash-latest"
+	}
 	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
 }
 
 var modelHierarchy = map[string][]string{
 	"gemini": {
 		"gemini-2.5-pro",
-		"gemini-1.5-pro",
+		"gemini-1.5-pro-latest",
 		"gemini-2.5-flash",
-		"gemini-1.5-flash",
+		"gemini-1.5-flash-latest",
 	},
 	"openai": {
 		"o1",
