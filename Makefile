@@ -36,9 +36,15 @@ help:
 	@echo "  lint            - Run static analysis lint checks using Docker"
 	@echo "  validate        - Run autonomous E2E checks inside Docker (isolated)"
 
+PROJECT ?= frontpunch
+
 validate:
-	@if [ -z "$$GEMINI_API_KEY" ] && [ -f "validation/data/frontpunch/.noctifab/secrets.yaml" ]; then \
-		GEMINI_KEY=$$(grep "GEMINI_API_KEY:" validation/data/frontpunch/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
+	@if [ -z "$$GEMINI_API_KEY" ]; then \
+		if [ -f "validation/data/$(PROJECT)/.noctifab/secrets.yaml" ]; then \
+			GEMINI_KEY=$$(grep "GEMINI_API_KEY:" validation/data/$(PROJECT)/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
+		elif [ -f "validation/data/frontpunch/.noctifab/secrets.yaml" ]; then \
+			GEMINI_KEY=$$(grep "GEMINI_API_KEY:" validation/data/frontpunch/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
+		fi; \
 	else \
 		GEMINI_KEY=$$GEMINI_API_KEY; \
 	fi; \
@@ -47,4 +53,4 @@ validate:
 		exit 1; \
 	fi; \
 	docker build -t noctifab-verify -f validation/Dockerfile.validation .; \
-	docker run --rm -e GEMINI_API_KEY="$$GEMINI_KEY" -e GITHUB_TOKEN="dummy-token" noctifab-verify
+	docker run --rm -e GEMINI_API_KEY="$$GEMINI_KEY" -e GITHUB_TOKEN="dummy-token" -e PROJECT="$(PROJECT)" noctifab-verify

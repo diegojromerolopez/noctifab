@@ -11,8 +11,8 @@ WORKDIR /app
 # Copy the built binary
 COPY --from=go-builder /app/bin/noctifab /usr/local/bin/noctifab
 
-# Copy the frontpunch files
-COPY validation/data/frontpunch /app/frontpunch
+# Copy the validation data
+COPY validation/data /app/data
 
 # Copy the scripts and set them up
 COPY validation/validate.sh /app/validate.sh

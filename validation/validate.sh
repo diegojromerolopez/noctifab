@@ -19,8 +19,14 @@ TMP_DIR="$(pwd)/tmp_verify_autonomy"
 echo "Setting up temporary workspace at ${TMP_DIR}..."
 rm -rf "${TMP_DIR}"
 
-# 3. Copy the frontpunch project copy into the workspace
-cp -R /app/frontpunch "${TMP_DIR}"
+# 3. Copy the project copy into the workspace
+PROJECT="${PROJECT:-frontpunch}"
+echo "Validating project: ${PROJECT}..."
+if [ ! -d "/app/data/${PROJECT}" ]; then
+  echo "❌ Error: Project ${PROJECT} does not exist in /app/data/"
+  exit 1
+fi
+cp -R "/app/data/${PROJECT}" "${TMP_DIR}"
 cd "${TMP_DIR}"
 
 # 4. Initialize git repository inside the container workspace
@@ -55,11 +61,20 @@ echo "Running noctifab start-one for US-001..."
 
 # 8. Verify results
 echo "Verifying results..."
-if [ ! -f "frontpunch/worker.py" ]; then
-  echo "❌ Error: frontpunch/worker.py was not created/modified!"
-  exit 1
+if [ "${PROJECT}" = "frontpunch" ]; then
+  if [ ! -f "frontpunch/worker.py" ]; then
+    echo "❌ Error: frontpunch/worker.py was not created/modified!"
+    exit 1
+  fi
+elif [ "${PROJECT}" = "todo-cli" ]; then
+  if [ ! -f "todo.py" ]; then
+    echo "❌ Error: todo.py was not created/modified!"
+    exit 1
+  fi
+else
+  echo "⚠ Warning: No specific file check defined for project ${PROJECT}."
 fi
 
-echo "✅ Success: Noctifab executed autonomously, implemented US-001 features, and passed validation!"
+echo "✅ Success: Noctifab executed autonomously, implemented US-001 features, and passed validation for ${PROJECT}!"
 cd ..
 rm -rf "${TMP_DIR}"
