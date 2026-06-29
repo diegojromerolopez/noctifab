@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -360,6 +363,26 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 	return ""
 }
 
+// httpError is returned by provider Call methods on non-2xx responses.
+// It carries the raw response body and the HTTP headers that providers use
+// to signal retry timing (e.g. Retry-After, ratelimit).
+type httpError struct {
+	StatusCode int
+	Body       string
+	Header     http.Header
+}
+
+func (e *httpError) Error() string {
+	return fmt.Sprintf("HTTP error %d: %s", e.StatusCode, e.Body)
+}
+
+// hfRatelimitRe matches the HuggingFace `ratelimit` header value, e.g.
+// `"api";r=0;t=55`  — we want the `t=<seconds>` component.
+var hfRatelimitRe = regexp.MustCompile(`t=(\d+)`)
+
+// geminiRetryDelayRe is used to extract retryDelay strings from Gemini JSON
+// bodies without a full unmarshal when the body may already be partially
+// embedded in an error message string.
 type geminiErrorResponse struct {
 	Error struct {
 		Details []struct {
@@ -369,34 +392,58 @@ type geminiErrorResponse struct {
 	} `json:"error"`
 }
 
+// parseRetryDelay extracts a provider-specific retry wait duration from an
+// error returned by a provider Call method.  It tries, in order:
+//  1. The Retry-After HTTP header (integer seconds) — used by OpenAI,
+//     Anthropic, Mistral, DeepSeek.
+//  2. The HuggingFace `ratelimit` header  t=<seconds> field.
+//  3. The Gemini JSON body  error.details[].retryDelay  duration string.
 func parseRetryDelay(err error) (time.Duration, bool) {
 	if err == nil {
 		return 0, false
 	}
+
+	// 1. Structured httpError — check headers first.
+	var he *httpError
+	if errors.As(err, &he) {
+		// 1a. Standard Retry-After header (integer seconds).
+		if ra := he.Header.Get("Retry-After"); ra != "" {
+			if secs, e := strconv.ParseFloat(strings.TrimSpace(ra), 64); e == nil {
+				return time.Duration(secs * float64(time.Second)), true
+			}
+		}
+		// 1b. HuggingFace `ratelimit` header — extract t=<seconds>.
+		if rl := he.Header.Get("ratelimit"); rl != "" {
+			if m := hfRatelimitRe.FindStringSubmatch(rl); len(m) == 2 {
+				if secs, e := strconv.Atoi(m[1]); e == nil {
+					return time.Duration(secs) * time.Second, true
+				}
+			}
+		}
+	}
+
+	// 2. Gemini JSON body retryDelay — works whether error is *httpError or
+	//    a plain fmt.Errorf (legacy path).
 	errStr := err.Error()
 	firstBrace := strings.Index(errStr, "{")
 	if firstBrace == -1 {
 		return 0, false
 	}
-	jsonStr := errStr[firstBrace:]
 	var resp geminiErrorResponse
-	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
+	if jsonErr := json.Unmarshal([]byte(errStr[firstBrace:]), &resp); jsonErr != nil {
 		return 0, false
 	}
 	for _, detail := range resp.Error.Details {
-		if detail.RetryDelay != "" {
-			delayStr := detail.RetryDelay
-			if strings.HasSuffix(delayStr, "s") {
-				d, err := time.ParseDuration(delayStr)
-				if err == nil {
-					return d, true
-				}
-			} else {
-				var sec float64
-				if _, err := fmt.Sscanf(delayStr, "%f", &sec); err == nil {
-					return time.Duration(sec * float64(time.Second)), true
-				}
-			}
+		if detail.RetryDelay == "" {
+			continue
+		}
+		delayStr := strings.TrimSpace(detail.RetryDelay)
+		if d, e := time.ParseDuration(delayStr); e == nil {
+			return d, true
+		}
+		// Numeric seconds without unit suffix.
+		if secs, e := strconv.ParseFloat(delayStr, 64); e == nil {
+			return time.Duration(secs * float64(time.Second)), true
 		}
 	}
 	return 0, false

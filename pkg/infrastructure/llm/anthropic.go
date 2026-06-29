@@ -11,17 +11,19 @@ import (
 	"time"
 )
 
-type anthropicProviderClient struct{}
-
-// NewAnthropicProviderClient creates a ProviderClient for Anthropic (Claude) API.
-func NewAnthropicProviderClient() ProviderClient {
-	return &anthropicProviderClient{}
+type anthropicProviderClient struct {
+	url string
 }
 
-func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt, customURL string) ([]byte, error) {
+// NewAnthropicProviderClient creates a ProviderClient for Anthropic (Claude) API.
+func NewAnthropicProviderClient(url string) ProviderClient {
+	return &anthropicProviderClient{url: url}
+}
+
+func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
 	var url string
-	if customURL != "" {
-		url = customURL
+	if a.url != "" {
+		url = a.url
 	} else {
 		url = "https://api.anthropic.com/v1/messages"
 	}
@@ -74,7 +76,7 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBody))
+		return nil, &httpError{StatusCode: resp.StatusCode, Body: string(respBody), Header: resp.Header}
 	}
 
 	var result map[string]any

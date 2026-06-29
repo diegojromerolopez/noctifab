@@ -12,17 +12,19 @@ import (
 	"time"
 )
 
-type geminiProviderClient struct{}
-
-// NewGeminiProviderClient creates a ProviderClient for Gemini API.
-func NewGeminiProviderClient() ProviderClient {
-	return &geminiProviderClient{}
+type geminiProviderClient struct {
+	url string
 }
 
-func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt, customURL string) ([]byte, error) {
+// NewGeminiProviderClient creates a ProviderClient for Gemini API.
+func NewGeminiProviderClient(url string) ProviderClient {
+	return &geminiProviderClient{url: url}
+}
+
+func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
 	var url string
-	if customURL != "" {
-		url = customURL
+	if g.url != "" {
+		url = g.url
 	} else {
 		url = resolveGeminiURL(model, apiKey)
 	}
@@ -78,7 +80,7 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt, 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBody))
+		return nil, &httpError{StatusCode: resp.StatusCode, Body: string(respBody), Header: resp.Header}
 	}
 
 	var result map[string]any
@@ -98,7 +100,25 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt, 
 }
 
 func (g *geminiProviderClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", apiKey)
+	var url string
+	if g.url != "" {
+		if strings.Contains(g.url, "generateContent") {
+			idx := strings.Index(g.url, "/models/")
+			if idx != -1 {
+				url = g.url[:idx] + "/models"
+				if qIdx := strings.Index(g.url, "?"); qIdx != -1 {
+					url += g.url[qIdx:]
+				}
+			} else {
+				url = g.url
+			}
+		} else {
+			url = g.url + "/models?key=" + apiKey
+		}
+	} else {
+		url = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", apiKey)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err

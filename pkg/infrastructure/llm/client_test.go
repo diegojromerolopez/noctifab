@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -161,72 +162,117 @@ func TestGetNextLowerModel(t *testing.T) {
 }
 
 func TestParseRetryDelay(t *testing.T) {
-	tests := []struct {
-		name      string
-		errString string
-		wantDelay time.Duration
-		wantOk    bool
-	}{
-		{
-			name:      "no json braces",
-			errString: "HTTP error 429: Rate limit exceeded",
-			wantDelay: 0,
-			wantOk:    false,
-		},
-		{
-			name:      "invalid json",
-			errString: "HTTP error 429: {invalid json",
-			wantDelay: 0,
-			wantOk:    false,
-		},
-		{
-			name: "valid google rate limit with s suffix",
-			errString: `HTTP error 429: {
-				"error": {
-					"code": 429,
-					"message": "...",
-					"status": "RESOURCE_EXHAUSTED",
-					"details": [
-						{
-							"@type": "type.googleapis.com/google.rpc.RetryInfo",
-							"retryDelay": "25323s"
-						}
-					]
-				}
-			}`,
-			wantDelay: 25323 * time.Second,
-			wantOk:    true,
-		},
-		{
-			name: "valid google rate limit numeric",
-			errString: `HTTP error 429: {
-				"error": {
-					"code": 429,
-					"message": "...",
-					"status": "RESOURCE_EXHAUSTED",
-					"details": [
-						{
-							"@type": "type.googleapis.com/google.rpc.RetryInfo",
-							"retryDelay": "12.5"
-						}
-					]
-				}
-			}`,
-			wantDelay: 12500 * time.Millisecond,
-			wantOk:    true,
-		},
-	}
+	t.Run("no json braces plain error", func(t *testing.T) {
+		err := fmt.Errorf("HTTP error 429: Rate limit exceeded")
+		_, ok := parseRetryDelay(err)
+		if ok {
+			t.Fatal("expected ok=false for plain error with no JSON body")
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := fmt.Errorf("%s", tt.errString)
-			gotDelay, gotOk := parseRetryDelay(err)
-			if gotOk != tt.wantOk {
-				t.Fatalf("parseRetryDelay() ok = %v; want %v", gotOk, tt.wantOk)
-			}
-			if gotOk && gotDelay != tt.wantDelay {
-				t.Errorf("parseRetryDelay() delay = %v; want %v", gotDelay, tt.wantDelay)
-			}
-		})
-	}
+	t.Run("invalid json body", func(t *testing.T) {
+		err := fmt.Errorf("HTTP error 429: {invalid json")
+		_, ok := parseRetryDelay(err)
+		if ok {
+			t.Fatal("expected ok=false for invalid JSON body")
+		}
+	})
+
+	t.Run("gemini retryDelay with duration suffix", func(t *testing.T) {
+		body := `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"25323s"}]}}`
+		err := &httpError{StatusCode: 429, Body: body, Header: http.Header{}}
+		d, ok := parseRetryDelay(err)
+		if !ok {
+			t.Fatal("expected ok=true for Gemini retryDelay")
+		}
+		if d != 25323*time.Second {
+			t.Errorf("expected 25323s, got %v", d)
+		}
+	})
+
+	t.Run("gemini retryDelay numeric seconds", func(t *testing.T) {
+		body := `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"12.5"}]}}`
+		err := &httpError{StatusCode: 429, Body: body, Header: http.Header{}}
+		d, ok := parseRetryDelay(err)
+		if !ok {
+			t.Fatal("expected ok=true for Gemini numeric retryDelay")
+		}
+		if d != 12500*time.Millisecond {
+			t.Errorf("expected 12.5s, got %v", d)
+		}
+	})
+
+	t.Run("gemini retryDelay complex duration (hours+minutes+seconds)", func(t *testing.T) {
+		body := `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"7h2m3s"}]}}`
+		err := &httpError{StatusCode: 429, Body: body, Header: http.Header{}}
+		d, ok := parseRetryDelay(err)
+		if !ok {
+			t.Fatal("expected ok=true for Gemini complex retryDelay")
+		}
+		want := 7*time.Hour + 2*time.Minute + 3*time.Second
+		if d != want {
+			t.Errorf("expected %v, got %v", want, d)
+		}
+	})
+
+	t.Run("Retry-After header integer seconds (OpenAI/Anthropic/Mistral/DeepSeek)", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("Retry-After", "60")
+		err := &httpError{StatusCode: 429, Body: `{"error":{"type":"rate_limit_error"}}`, Header: h}
+		d, ok := parseRetryDelay(err)
+		if !ok {
+			t.Fatal("expected ok=true for Retry-After header")
+		}
+		if d != 60*time.Second {
+			t.Errorf("expected 60s, got %v", d)
+		}
+	})
+
+	t.Run("Retry-After header fractional seconds", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("Retry-After", "33.5")
+		err := &httpError{StatusCode: 429, Body: `{}`, Header: h}
+		d, ok := parseRetryDelay(err)
+		if !ok {
+			t.Fatal("expected ok=true for fractional Retry-After header")
+		}
+		if d != 33500*time.Millisecond {
+			t.Errorf("expected 33.5s, got %v", d)
+		}
+	})
+
+	t.Run("HuggingFace ratelimit header t= field", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("ratelimit", `"api";r=0;t=55`)
+		err := &httpError{StatusCode: 429, Body: `{"error":"Rate limit reached."}`, Header: h}
+		d, ok := parseRetryDelay(err)
+		if !ok {
+			t.Fatal("expected ok=true for HuggingFace ratelimit header")
+		}
+		if d != 55*time.Second {
+			t.Errorf("expected 55s, got %v", d)
+		}
+	})
+
+	t.Run("Retry-After takes priority over HuggingFace ratelimit header", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("Retry-After", "10")
+		h.Set("ratelimit", `"api";r=0;t=55`)
+		err := &httpError{StatusCode: 429, Body: `{}`, Header: h}
+		d, ok := parseRetryDelay(err)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if d != 10*time.Second {
+			t.Errorf("expected Retry-After=10s to win, got %v", d)
+		}
+	})
+
+	t.Run("no retry hint at all returns false", func(t *testing.T) {
+		err := &httpError{StatusCode: 429, Body: `{"error":{"type":"rate_limit_error"}}`, Header: http.Header{}}
+		_, ok := parseRetryDelay(err)
+		if ok {
+			t.Fatal("expected ok=false when no retry hint present anywhere")
+		}
+	})
 }
