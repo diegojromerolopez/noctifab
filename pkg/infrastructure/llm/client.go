@@ -208,46 +208,66 @@ Return format:
 		return nil, errors.New("missing API key for LLM provider")
 	}
 
-	var responseBody []byte
-	var err error
+	originalModel := c.Model
+	defer func() {
+		c.Model = originalModel
+	}()
 
-	maxRetries := c.MaxRetries
-	if maxRetries <= 0 {
-		maxRetries = 5
-	}
-	backoff := c.Backoff
-	if backoff <= 0 {
-		backoff = 100 * time.Millisecond
-	}
+	for {
+		var responseBody []byte
+		var err error
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		responseBody, err = c.doPost(ctx, apiKey, prompt)
+		maxRetries := c.MaxRetries
+		if maxRetries <= 0 {
+			maxRetries = 5
+		}
+		backoff := c.Backoff
+		if backoff <= 0 {
+			backoff = 100 * time.Millisecond
+		}
+
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			responseBody, err = c.doPost(ctx, apiKey, prompt)
+			if err == nil {
+				break
+			}
+
+			fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
+
+			if attempt == maxRetries {
+				break
+			}
+
+			// Exponential backoff with jitter
+			jitter := time.Duration(float64(backoff) * (1.0 + rand.Float64()))
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(jitter):
+			}
+			backoff *= 2
+		}
+
 		if err == nil {
-			break
+			extracted, err := ExtractJSONBlock(string(responseBody))
+			if err != nil {
+				return nil, err
+			}
+			return LenientUnmarshal(extracted)
 		}
 
-		fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
-
-		if attempt == maxRetries {
-			return nil, fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
+		is503 := strings.Contains(err.Error(), "HTTP error 503") || strings.Contains(err.Error(), "503 Service Unavailable")
+		if is503 {
+			nextModel := getNextLowerModel(c.Provider, c.Model)
+			if nextModel != "" {
+				fmt.Fprintf(os.Stderr, "⚠ Model %s returned HTTP 503. Falling back to lower model: %s...\n", c.Model, nextModel)
+				c.Model = nextModel
+				continue
+			}
 		}
 
-		// Exponential backoff with jitter
-		jitter := time.Duration(float64(backoff) * (1.0 + rand.Float64()))
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(jitter):
-		}
-		backoff *= 2
+		return nil, fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
 	}
-
-	extracted, err := ExtractJSONBlock(string(responseBody))
-	if err != nil {
-		return nil, err
-	}
-
-	return LenientUnmarshal(extracted)
 }
 
 func (c *Client) doPost(ctx context.Context, apiKey, prompt string) ([]byte, error) {
@@ -389,8 +409,51 @@ func (c *Client) doPost(ctx context.Context, apiKey, prompt string) ([]byte, err
 
 func resolveGeminiURL(modelInput, apiKey string) string {
 	model := strings.TrimPrefix(modelInput, "models/")
-	if model == "" || model == "gemini-1.5-pro" {
+	if model == "" {
 		model = "gemini-2.5-pro"
 	}
 	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+}
+
+var modelHierarchy = map[string][]string{
+	"gemini": {
+		"gemini-2.5-pro",
+		"gemini-1.5-pro",
+		"gemini-2.5-flash",
+		"gemini-1.5-flash",
+	},
+	"openai": {
+		"o1",
+		"gpt-4o",
+		"gpt-4o-mini",
+	},
+	"anthropic": {
+		"claude-3-5-sonnet",
+		"claude-3-5-haiku",
+	},
+}
+
+func getNextLowerModel(provider, currentModel string) string {
+	list, ok := modelHierarchy[strings.ToLower(provider)]
+	if !ok || len(list) <= 1 {
+		return ""
+	}
+
+	normCurrent := strings.TrimPrefix(currentModel, "models/")
+	normCurrent = strings.ToLower(normCurrent)
+
+	idx := -1
+	for i, m := range list {
+		normM := strings.TrimPrefix(m, "models/")
+		normM = strings.ToLower(normM)
+		if strings.Contains(normCurrent, normM) || strings.Contains(normM, normCurrent) {
+			idx = i
+			break
+		}
+	}
+
+	if idx != -1 && idx+1 < len(list) {
+		return list[idx+1]
+	}
+	return ""
 }
