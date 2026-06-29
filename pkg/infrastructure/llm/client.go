@@ -1,15 +1,11 @@
 package llm
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -172,7 +168,7 @@ CRITICAL:
 9. CRITICAL: Loggers must be dependency injected (either via class constructor argument or setter method). This allows tests to pass mock logging objects or custom loggers and verify log calls without relying on or modifying global logger configuration.
 10. CRITICAL: When modifying a file that already exists and contains business logic, do NOT overwrite it wholesale with 'write_file'. Instead, use 'edit_file' (or 'multi_replace_file_content') to surgically merge your changes into the existing file, preserving the original structure, functions, docstrings, and behaviors.
 11. CRITICAL: Before writing any code, always check if any dependencies or infrastructure configurations (such as Docker database services) are missing from the project manifests (e.g. 'pyproject.toml', 'requirements.txt', 'docker-compose.yml'). If a dependency or service is required by the SPEC, you MUST create or update these manifests first to include them.
-12. CRITICAL: If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' tool to explain the bug and trigger a test fix by the Tester Agent.
+12. CRITICAL: If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' block to explain the bug and trigger a test fix by the Tester Agent.
 
 
 You may use the following tools:
@@ -235,8 +231,20 @@ Return format:
 			backoff = 100 * time.Millisecond
 		}
 
+		var pClient ProviderClient
+		switch strings.ToLower(c.Provider) {
+		case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
+			pClient = NewOpenAIProviderClient(c.Provider)
+		case "gemini":
+			pClient = NewGeminiProviderClient()
+		case "anthropic":
+			pClient = NewAnthropicProviderClient()
+		default:
+			return nil, fmt.Errorf("unsupported LLM provider: %s", c.Provider)
+		}
+
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			responseBody, err = c.doPost(ctx, apiKey, prompt)
+			responseBody, err = pClient.Call(ctx, c.Model, apiKey, prompt, c.URL)
 			if err == nil {
 				break
 			}
@@ -291,212 +299,25 @@ Return format:
 	}
 }
 
-func (c *Client) doPost(ctx context.Context, apiKey, prompt string) ([]byte, error) {
-	var url string
-	var reqBody []byte
-	headers := make(map[string]string)
-
-	switch c.Provider {
-	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
-		var baseURL string
-		switch c.Provider {
-		case "openai":
-			baseURL = "https://api.openai.com/v1"
-		case "hermes":
-			baseURL = "https://inference-api.nousresearch.com/v1"
-		case "huggingface":
-			baseURL = "https://api-inference.huggingface.co/v1"
-		case "mistral":
-			baseURL = "https://api.mistral.ai/v1"
-		case "deepseek":
-			baseURL = "https://api.deepseek.com/v1"
-		case "ollama":
-			baseURL = "https://ollama.com/v1"
-		}
-
-		if c.URL != "" {
-			url = c.URL
-		} else {
-			url = baseURL + "/chat/completions"
-		}
-
-		if apiKey != "" {
-			headers["Authorization"] = "Bearer " + apiKey
-		}
-		headers["Content-Type"] = "application/json"
-		payload := map[string]any{
-			"model": c.Model,
-			"messages": []map[string]string{
-				{"role": "user", "content": prompt},
-			},
-			"temperature": 0.0,
-		}
-		reqBody, _ = json.Marshal(payload)
-
-	case "gemini":
-		url = resolveGeminiURL(c.Model, apiKey)
-		headers["Content-Type"] = "application/json"
-		payload := map[string]any{
-			"contents": []map[string]any{
-				{
-					"parts": []map[string]string{
-						{"text": prompt},
-					},
-				},
-			},
-			"generationConfig": map[string]any{
-				"temperature":      0.0,
-				"responseMimeType": "application/json",
-			},
-		}
-		reqBody, _ = json.Marshal(payload)
-
-	case "anthropic":
-		url = "https://api.anthropic.com/v1/messages"
-		headers["X-API-Key"] = apiKey
-		headers["anthropic-version"] = "2023-06-01"
-		headers["Content-Type"] = "application/json"
-		payload := map[string]any{
-			"model": c.Model,
-			"messages": []map[string]string{
-				{"role": "user", "content": prompt},
-			},
-			"max_tokens":  4096,
-			"temperature": 0.0,
-		}
-		reqBody, _ = json.Marshal(payload)
-
-	default:
-		return nil, fmt.Errorf("unsupported LLM provider: %s", c.Provider)
-	}
-
-	postCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, err
-	}
-
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	client := &http.Client{
-		Timeout: 10 * time.Minute,
-		Transport: &http.Transport{
-			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
-		},
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	// Parse actual content out of the provider envelope
-	switch c.Provider {
-	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
-		var result map[string]any
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, err
-		}
-		choices, ok := result["choices"].([]any)
-		if !ok || len(choices) == 0 {
-			return nil, fmt.Errorf("unexpected OpenAI-compatible response: %s", string(respBody))
-		}
-		choice := choices[0].(map[string]any)
-		msg := choice["message"].(map[string]any)
-		content, _ := msg["content"].(string)
-		return []byte(content), nil
-
-	case "gemini":
-		var result map[string]any
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, err
-		}
-		candidates, ok := result["candidates"].([]any)
-		if !ok || len(candidates) == 0 {
-			return nil, fmt.Errorf("unexpected Gemini response: %s", string(respBody))
-		}
-		candidate := candidates[0].(map[string]any)
-		content := candidate["content"].(map[string]any)
-		parts := content["parts"].([]any)
-		part := parts[0].(map[string]any)
-		text, _ := part["text"].(string)
-		return []byte(text), nil
-
-	case "anthropic":
-		var result map[string]any
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, err
-		}
-		content, ok := result["content"].([]any)
-		if !ok || len(content) == 0 {
-			return nil, fmt.Errorf("unexpected Anthropic response: %s", string(respBody))
-		}
-		item := content[0].(map[string]any)
-		text, _ := item["text"].(string)
-		return []byte(text), nil
-	}
-
-	return respBody, nil
-}
-
-func resolveGeminiURL(modelInput, apiKey string) string {
-	model := strings.TrimPrefix(modelInput, "models/")
-	if model == "" || model == "gemini-1.5-pro" {
-		model = "gemini-2.5-pro"
-	}
-	if model == "gemini-1.5-flash" {
-		model = "gemini-2.5-flash"
-	}
-	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
-}
-
-func normalizeModel(modelInput string) string {
-	model := strings.TrimPrefix(modelInput, "models/")
-	if model == "gemini-1.5-pro" {
-		return "gemini-2.5-pro"
-	}
-	if model == "gemini-1.5-flash" {
-		return "gemini-2.5-flash"
-	}
-	return model
-}
-
-var modelHierarchy = map[string][]string{
-	"gemini": {
-		"gemini-2.5-pro",
-		"gemini-2.5-flash",
-	},
-	"openai": {
-		"o1",
-		"gpt-4o",
-		"gpt-4o-mini",
-	},
-	"anthropic": {
-		"claude-3-5-sonnet",
-		"claude-3-5-haiku",
-	},
-}
-
 func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 	list, ok := modelHierarchy[strings.ToLower(c.Provider)]
 	if !ok || len(list) <= 1 {
 		return ""
 	}
 
-	available, err := c.fetchAvailableModels(ctx, apiKey)
+	var pClient ProviderClient
+	switch strings.ToLower(c.Provider) {
+	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
+		pClient = NewOpenAIProviderClient(c.Provider)
+	case "gemini":
+		pClient = NewGeminiProviderClient()
+	case "anthropic":
+		pClient = NewAnthropicProviderClient()
+	default:
+		return ""
+	}
+
+	available, err := pClient.GetAvailableModels(ctx, apiKey)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "⚠ Warning: failed to query available models from %s: %v. Using static fallback hierarchy.\n", c.Provider, err)
 		available = list
@@ -539,131 +360,6 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 		return filteredHierarchy[idx+1]
 	}
 	return ""
-}
-
-func (c *Client) fetchAvailableModels(ctx context.Context, apiKey string) ([]string, error) {
-	var url string
-	headers := make(map[string]string)
-
-	switch c.Provider {
-	case "gemini":
-		url = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", apiKey)
-	case "openai":
-		url = "https://api.openai.com/v1/models"
-		headers["Authorization"] = "Bearer " + apiKey
-	default:
-		return nil, fmt.Errorf("provider %s does not support listing models", c.Provider)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch models (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var models []string
-	if c.Provider == "gemini" {
-		var result struct {
-			Models []struct {
-				Name                       string   `json:"name"`
-				SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
-			} `json:"models"`
-		}
-		if err := json.Unmarshal(body, &result); err != nil {
-			return nil, err
-		}
-		for _, m := range result.Models {
-			supportsGen := false
-			for _, method := range m.SupportedGenerationMethods {
-				if method == "generateContent" {
-					supportsGen = true
-					break
-				}
-			}
-			if supportsGen {
-				name := strings.TrimPrefix(m.Name, "models/")
-				models = append(models, name)
-			}
-		}
-	} else if c.Provider == "openai" {
-		var result struct {
-			Data []struct {
-				ID string `json:"id"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(body, &result); err != nil {
-			return nil, err
-		}
-		for _, m := range result.Data {
-			models = append(models, m.ID)
-		}
-	}
-
-	return models, nil
-}
-
-type projectContext struct {
-	PackageName            string
-	Instructions           string
-	TestInstructions       string
-	TestWriterInstructions string
-	TestTasksInstructions1 string
-	TestTasksInstructions2 string
-	CliInstructions        string
-	ExampleTargetFile      string
-}
-
-func getProjectContext() projectContext {
-	ctx := projectContext{
-		PackageName:            "frontpunch",
-		Instructions:           "2. The package name is 'frontpunch'. All implementation files MUST be created or modified inside the 'frontpunch/' directory (e.g., 'frontpunch/worker.py', 'frontpunch/cli.py', 'frontpunch/client.py'). Do NOT create a directory named 'factory' or edit files in 'src/'.",
-		TestInstructions:       "3. All unit/integration tests must be placed in the 'tests/' directory (e.g., 'tests/unit/test_worker.py', 'tests/unit/test_client.py') and import from 'frontpunch'. Do not import from 'factory'.",
-		TestWriterInstructions: "2. The package name is 'frontpunch'. All implementation files exist inside the 'frontpunch/' directory.",
-		TestTasksInstructions1: "6. CRITICAL: When writing integration tests that execute worker tasks, do NOT define the task function inside the test file or under the 'tests/' directory, as this causes Python double-import issues where the test and worker threads use different module namespaces. Instead, define any test task functions inside a 'frontpunch' module (e.g. 'frontpunch/test_tasks.py') so they are imported consistently.",
-		TestTasksInstructions2: "10. CRITICAL: When writing or editing test helper modules like 'frontpunch/test_tasks.py', you MUST preserve all existing functions, variables, and comments (such as GLOBAL_RECORD_LIST, recording_task, etc.) that may be used by tests from other tasks, unless specifically instructed to delete them.",
-		CliInstructions:        "8. CRITICAL: When connecting Click CLI to the worker logic in 'frontpunch/cli.py', wrap the 'worker_instance.run()' call in a 'try...except (ImportError, Exception)' block. This is required because in E2E tests run locally, the 'valkey' package is not installed and/or the Valkey service is not running on localhost, which raises ImportError or ConnectionError. Catching these exceptions and logging them gracefully ensures the CLI command exits with code 0 in test environments, while still validating arguments and invoking the worker instantiation.",
-		ExampleTargetFile:      "frontpunch/example.py",
-	}
-
-	specBytes, err := os.ReadFile("SPEC.md")
-	if err == nil {
-		specStr := string(specBytes)
-		if strings.Contains(specStr, "Todo CLI") || strings.Contains(specStr, "TODO CLI") || strings.Contains(specStr, "todo-cli") {
-			ctx.PackageName = "todo_app"
-			ctx.Instructions = "2. The package name is 'todo_app'. All implementation files MUST be created or modified inside the 'todo_app/' directory (e.g., 'todo_app/tasks.py', 'todo_app/storage.py'). The main CLI entry point file is 'todo.py' at the root of the repository. Do NOT create files in 'src/' or 'frontpunch/'.\n" +
-				"11. CRITICAL: When opening files (reading or writing), always explicitly specify `encoding='utf-8'` (e.g. `open(path, 'w', encoding='utf-8')`) to ensure compatibility with strict unit test assertions.\n" +
-				"12. CRITICAL: When loading tasks or reading JSON, use a try...except FileNotFoundError block and check if the read content is empty rather than calling os.path.exists or os.path.getsize. This prevents test errors where only one of exists/getsize is mocked.\n" +
-				"13. CRITICAL: When modifying lists returned by storage utilities (like load_tasks), always copy the list first (e.g. `tasks = list(load_tasks(path))`) before appending or mutating, as mutating the returned list directly causes python unittest mock assertions on call arguments to fail."
-			ctx.TestInstructions = "3. All unit/integration tests must be placed in the 'tests/' directory (e.g., 'tests/unit/test_tasks.py', 'tests/e2e/test_todo_e2e.py') and import from 'todo_app' and 'todo' (if testing the CLI). Do not import from 'factory' or 'frontpunch'."
-			ctx.TestWriterInstructions = "2. The package name is 'todo_app'. Implementation files exist inside the 'todo_app/' directory and 'todo.py' exists at the root.\n" +
-				"11. CRITICAL: When writing mock assertions on file operations, ensure you assert with `encoding='utf-8'` or match the production code pattern. When mocking file existence or sizes, mock both `os.path.exists` and `os.path.getsize` to prevent FileNotFoundError on real disks."
-			ctx.TestTasksInstructions1 = "6. CRITICAL: When writing integration tests, define any test helper functions inside a 'todo_app' module (e.g. 'todo_app/test_helpers.py') so they are imported consistently."
-			ctx.TestTasksInstructions2 = "10. CRITICAL: When writing or editing test helper modules like 'todo_app/test_helpers.py', you MUST preserve all existing functions, variables, and comments that may be used by tests from other tasks."
-			ctx.CliInstructions = "8. CRITICAL: When implementing the CLI parser in 'todo.py', make sure to support the subcommands ('add', 'list', 'done', 'rm') and arguments precisely as specified in the SPEC.md, including handling --file option correctly."
-			ctx.ExampleTargetFile = "todo.py"
-		}
-	}
-
-	return ctx
 }
 
 type geminiErrorResponse struct {
