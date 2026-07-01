@@ -1,16 +1,48 @@
-# Autonomous Software Factory — Implementation Roadmap
+# Autonomous Software Factory — Implementation Plan
 
-This document defines the concrete, implementation-ready plan to transition `noctifab` from its current level to a fully autonomous **Level 5 Dark Factory**.
+This document is the authoritative implementation plan for transitioning `noctifab` from Level 2/3 to **Level 5 Autonomous Software Factory (Dark Factory)**.
 
-The plan is organized into **6 implementation phases**, each containing discrete work items with specific file paths, struct signatures, config schemas, and test requirements.
+Every task has an ID, estimated effort, acceptance criteria, file-by-file change specification, interface contracts, test requirements, risk assessment, and rollback strategy.
 
 ---
 
-## Current State Assessment
+## Table of Contents
+
+1. [Plan Overview & Milestones](#1-plan-overview--milestones)
+2. [Task Dependency Graph](#2-task-dependency-graph)
+3. [Phase 1 — Resilience (Tasks AUT-100 – AUT-199)](#3-phase-1--resilience)
+4. [Phase 2 — Liveness (Tasks AUT-200 – AUT-299)](#4-phase-2--liveness)
+5. [Phase 3 — Prompt Guard (Tasks AUT-300 – AUT-399)](#5-phase-3--prompt-guard)
+6. [Phase 4 — Self-Repair (Tasks AUT-400 – AUT-499)](#6-phase-4--self-repair)
+7. [Phase 5 — Self-Healing (Tasks AUT-500 – AUT-599)](#7-phase-5--self-healing)
+8. [Phase 6 — Self-Evolution (Tasks AUT-600 – AUT-699)](#8-phase-6--self-evolution)
+9. [Schedule & Milestones](#9-schedule--milestones)
+10. [Appendices](#10-appendices)
+
+---
+
+## 1. Plan Overview & Milestones
+
+### Milestone Definitions
+
+| Milestone | Phase | Tasks | Definition of Done | Target |
+|-----------|-------|-------|--------------------|--------|
+| M1: Network Resilience | Phase 1 | AUT-101–103 | Daemon survives 429/503 without human intervention; failover chain operational | Day 3 |
+| M2: Hang Prevention | Phase 3 | AUT-301–302 | LLM-generated code includes thread-safety invariants; no deadlock hangs from generated Python/Go | Day 4 |
+| M3: Self-Repair | Phase 4 | AUT-401–402 | Watchdog kill triggers automated diagnosis + rewrite loop; failed tasks auto-recover | Day 7 |
+| M4: Cost Control | Phase 1 | AUT-102 | Budget tracked in DB across restarts; daily cap enforced | Day 8 |
+| M5: Flaky Elimination | Phase 5 | AUT-502 | Flaky tests auto-detected and auto-stabilized | Day 10 |
+| M6: Environment Healing | Phase 5 | AUT-501 | Missing toolchains auto-installed | Day 12 |
+| M7: Observability | Phase 5 | AUT-503 | OpenTelemetry spans emitted for all major operations | Day 15 |
+| M8: Security Baseline | Phase 6 | AUT-603 | SAST scanners run before PR creation; high-severity blocks merge | Day 17 |
+| M9: Self-Evolution | Phase 6 | AUT-601–602 | Daemon patches, builds, tests, and hot-reloads its own binary | Day 22 |
+| M10: Intent Disambiguation | Phase 6 | AUT-604 | Ambiguous specs resolved via git context without human pause | Day 24 |
+
+### Current State
 
 ```
-Phase 1 (Resilience):       40% — FailoverClient exists but is DEAD CODE (not wired)
-Phase 2 (Liveness):        100% — Watchdog runnning in HostSandbox, tested
+Phase 1 (Resilience):       40% — FailoverClient exists but is DEAD CODE (not wired in serve.go or start_one.go)
+Phase 2 (Liveness):        100% — Complete and tested
 Phase 3 (Prompt Guard):      0%
 Phase 4 (Self-Repair):       0%
 Phase 5 (Self-Healing):      0%
@@ -19,59 +51,84 @@ Phase 6 (Self-Evolution):    0%
 
 ---
 
-## Phase 1 — Resilience
+## 2. Task Dependency Graph
 
-### Goal
-Make the daemon survive network failures, API quota exhaustion, and provider outages without halting.
+```
+AUT-101 ──────────────> AUT-102 ──> AUT-103
+                                      │
+AUT-301 ──> AUT-302                   │
+               │                      │
+               ▼                      ▼
+AUT-401 ──────────────────────────> AUT-402
+                                      │
+AUT-501 ──> AUT-502 ──> AUT-503      │
+               │                      │
+               ▼                      ▼
+AUT-601 ──> AUT-602 ──> AUT-603 ──> AUT-604
+```
+
+**Legend**:
+- Horizontal arrow = sequential dependency
+- Vertical alignment = parallelizable
+- AUT-103 and AUT-402 are on the critical path to M3
 
 ---
 
-### 1.1 Wire FailoverClient into Production
+## 3. Phase 1 — Resilience
 
-**Problem**: `pkg/infrastructure/llm/failover_client.go` has a complete multi-provider failover implementation with cooldown tracking, but both `serve.go:82` and `start_one.go:74` use `llm.NewClient` directly. The failover logic is dead code.
+### Goal
+Daemon survives network failures, API quota exhaustion, and provider outages without halting.
 
-**Files to modify**:
-- `cmd/noctifab/cli/serve.go`
-- `cmd/noctifab/cli/start_one.go`
-- `pkg/infrastructure/config/types.go`
-- `pkg/infrastructure/config/defaults.go`
+---
 
-**Config schema changes** (`pkg/infrastructure/config/types.go`):
+### AUT-101: Wire FailoverClient into Production
 
+| Field | Value |
+|-------|-------|
+| **Effort** | 2 days |
+| **Dependencies** | None |
+| **Risk** | Low — existing code, just wiring |
+| **Rollback** | Revert `serve.go` and `start_one.go` to `llm.NewClient` |
+
+#### Acceptance Criteria
+
+1. When `llm.failover.enabled: false`, `BuildFailoverClient` returns a plain `*Client` (backward compatible)
+2. When `llm.failover.enabled: true`, `BuildFailoverClient` returns a `*FailoverClient` with backends from config
+3. CLI flags `serve` and `start-one` use `BuildFailoverClient` instead of `NewClient`
+4. Config parsing round-trips correctly (marshal → unmarshal → compare)
+5. All backends on cooldown → `Complete` returns error: `all LLM backends failed. Last error: ...`
+6. `Enabled: false` with no config change → existing production behavior unchanged
+
+#### File Change Specifications
+
+**`pkg/infrastructure/config/types.go`** (modify):
+
+After line 34 (`MaxBudgetUSD`), insert:
 ```go
-// LLMConfig — add FailoverConfig field
-type LLMConfig struct {
-    Provider           string         `yaml:"provider"`
-    Model              string         `yaml:"model"`
-    Temperature        float64        `yaml:"temperature"`
-    APIKey             string         `yaml:"api_key"`
-    APIKeyEnv          string         `yaml:"api_key_env"`
-    APIKeyValue        string         `yaml:"-"` // populated at runtime
-    URL                string         `yaml:"url"`
-    MaxRetries         int            `yaml:"max_retries"`
-    RetryBackoff       Duration       `yaml:"retry_backoff"`
-    RetryBackoffFactor float64        `yaml:"retry_backoff_factor"`
-    MaxBudgetUSD       float64        `yaml:"max_budget_usd"`
-    Failover           FailoverConfig `yaml:"failover"`
-}
-
+// FailoverConfig controls multi-provider LLM failover behavior.
 type FailoverConfig struct {
     Enabled      bool              `yaml:"enabled"`
-    Cooldown     Duration          `yaml:"cooldown"`      // default 5m
-    MaxCallLimit int               `yaml:"max_call_limit"` // 0 = unlimited
+    Cooldown     Duration          `yaml:"cooldown"`
+    MaxCallLimit int               `yaml:"max_call_limit"`
     Backends     []FailoverBackend `yaml:"backends"`
 }
-
 type FailoverBackend struct {
-    Provider    string `yaml:"provider"`
-    Model       string `yaml:"model"`
-    APIKeyEnv   string `yaml:"api_key_env"`
-    URL         string `yaml:"url"`
-    MaxRetries  int    `yaml:"max_retries"`
+    Provider   string `yaml:"provider"`
+    Model      string `yaml:"model"`
+    APIKeyEnv  string `yaml:"api_key_env"`
+    URL        string `yaml:"url"`
+    MaxRetries int    `yaml:"max_retries"`
 }
 ```
 
-**Default config** (`pkg/infrastructure/config/defaults.go`):
+In `LLMConfig`, add field:
+```go
+Failover FailoverConfig `yaml:"failover"`
+```
+
+**`pkg/infrastructure/config/defaults.go`** (modify):
+
+After `MaxBudgetUSD: 10.0,` add:
 ```go
 Failover: FailoverConfig{
     Enabled:      false,
@@ -81,49 +138,136 @@ Failover: FailoverConfig{
 },
 ```
 
-**Implementation plan**:
+**`pkg/infrastructure/llm/factory.go`** (new file):
 
-1. Add `FailoverConfig` struct and embed in `LLMConfig`
-2. Add `BuildFailoverClient(cfg *LLMConfig) domain.LLMClient` factory function in `pkg/infrastructure/llm/factory.go`:
-   - If `Failover.Enabled == false` → return `NewClient(...)` (existing behavior)
-   - If `Failover.Enabled == true` → build `[]NamedClient` from `Failover.Backends`, call `NewFailoverClient(backends, cooldown, maxCalls)`
-3. In `serve.go` and `start_one.go`, replace `llm.NewClient(...)` with `llm.BuildFailoverClient(cfg.LLM)`
-4. Update `FailoverClient` to accept a `domain.LLMClient` interface for each backend (already done via `NamedClient`)
+```go
+package llm
 
-**Tests**:
-- Existing `failover_client_test.go` covers cooldown and fallback
-- Add: config parsing test for `FailoverConfig` YAML
-- Add: e2e test with mock backends (one fails, one succeeds) through `BuildFailoverClient`
-- **Edge case**: all backends on cooldown → verify last error wraps correctly
-- **Edge case**: `Enabled: false` → returns non-failover client
+import (
+    "os"
+
+    "github.com/diegojromerolopez/noctifab/pkg/domain"
+    "github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
+)
+
+// BuildFailoverClient constructs the appropriate LLM client based on config.
+// If failover is disabled (default), returns a plain *Client.
+// If failover is enabled, returns a *FailoverClient wrapping all backends.
+func BuildFailoverClient(cfg *config.LLMConfig) domain.LLMClient {
+    if !cfg.Failover.Enabled || len(cfg.Failover.Backends) == 0 {
+        return NewClient(
+            cfg.Provider, cfg.Model, cfg.APIKeyValue,
+            cfg.MaxRetries, time.Duration(cfg.RetryBackoff), cfg.URL,
+        )
+    }
+
+    backends := make([]NamedClient, 0, len(cfg.Failover.Backends))
+    for _, b := range cfg.Failover.Backends {
+        apiKey := os.Getenv(b.APIKeyEnv)
+        client := NewClient(b.Provider, b.Model, apiKey, b.MaxRetries, time.Duration(cfg.RetryBackoff), b.URL)
+        backends = append(backends, NamedClient{
+            Name:   b.Provider + "/" + b.Model,
+            Client: client,
+        })
+    }
+
+    return NewFailoverClient(backends, time.Duration(cfg.Failover.Cooldown), cfg.Failover.MaxCallLimit)
+}
+```
+
+**`cmd/noctifab/cli/serve.go`** — replace line 82–85:
+```go
+// Before (line 82):
+llmClient := llm.NewClient(cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue, cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL)
+// After:
+llmClient := llm.BuildFailoverClient(&cfg.LLM)
+```
+
+**`cmd/noctifab/cli/start_one.go`** — replace line 74:
+```go
+// Before (line 74):
+llmClient := llm.NewClient(cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue, cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL)
+// After:
+llmClient := llm.BuildFailoverClient(&cfg.LLM)
+```
+
+#### Interface Contracts
+
+- `BuildFailoverClient` must accept `*config.LLMConfig` and return `domain.LLMClient`
+- Must not modify `*config.LLMConfig` (no side effects)
+- Must be safe for concurrent calls (no shared state in construction)
+
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestBuildFailoverClient_Disabled` | `factory_test.go` (new) | `Enabled: false` returns non-failover `*Client` |
+| `TestBuildFailoverClient_Enabled` | `factory_test.go` | `Enabled: true` returns `*FailoverClient` with correct backend count |
+| `TestBuildFailoverClient_EmptyBackends` | `factory_test.go` | `Enabled: true` but empty backends falls back to `*Client` |
+| `TestBuildFailoverClient_AllCooldown` | `factory_test.go` | All backends on cooldown → error wraps last error |
+| `TestFailoverConfigYAML` | `config/types_test.go` | Marshal/unmarshal round-trip preserves all fields |
+| `TestServeUsesFailoverClient` | `cmd/noctifab/cli/serve_test.go` (new) | Integration test verifying `BuildFailoverClient` is called |
 
 ---
 
-### 1.2 Daily USD Budget Tracking with DB Persistence
+### AUT-102: Daily USD Budget Tracking with DB Persistence
 
-**Problem**: `FailoverClient` uses an in-memory call counter that resets on restart. AUTONOMY.md proposes per-provider daily USD budget stored in the database, surviving restarts. The current `TokenUsageLimit` config value is unused.
+| Field | Value |
+|-------|-------|
+| **Effort** | 2 days |
+| **Dependencies** | AUT-101 (FailoverClient must exist to add budget to it) |
+| **Risk** | Medium — DB schema migration required; both SQLite and Postgres |
+| **Rollback** | Revert schema migration; remove `budget` table create from migration |
 
-**Files to create/modify**:
-- `pkg/domain/budget.go` (new)
-- `pkg/infrastructure/storage/budget_repository.go` (new)
-- `pkg/infrastructure/llm/failover_client.go` (modify)
-- `pkg/infrastructure/config/types.go` (modify)
-- `pkg/domain/state.go` (modify — add budget fields)
+#### Acceptance Criteria
 
-**Domain type** (`pkg/domain/budget.go`):
+1. `BudgetStore` interface has `LoadBudget`, `SaveBudget`, `ListBudgets` methods
+2. SQLite and Postgres both implement `BudgetStore`
+3. `FailoverClient.Complete` checks budget before each call; skips provider if `CostUSD >= maxBudgetUSD`
+4. After successful LLM call, budget record is updated (tokens_in, tokens_out, cost_usd)
+5. Records are keyed by `(date, provider)` — rollover at midnight UTC resets counter
+6. `ResetPeriod` supports `daily`, `weekly`, `monthly`
+7. If `budget` table doesn't exist on startup, it's auto-created via migration
+8. Existing `NoctifabDB` tests pass without modification (backward compatible)
+
+#### File Change Specifications
+
+**`pkg/domain/budget.go`** (new):
 
 ```go
 package domain
 
-import "time"
+import (
+    "context"
+    "time"
+    "math"
+)
 
 type BudgetRecord struct {
-    Date       string    `json:"date"`        // "2026-07-01"
-    Provider   string    `json:"provider"`    // "openai"
-    TokensIn   int64     `json:"tokens_in"`
-    TokensOut  int64     `json:"tokens_out"`
-    CostUSD    float64   `json:"cost_usd"`
-    UpdatedAt  time.Time `json:"updated_at"`
+    Date      string    `json:"date"`       // "2026-07-01"
+    Provider  string    `json:"provider"`   // "openai"
+    TokensIn  int64     `json:"tokens_in"`
+    TokensOut int64     `json:"tokens_out"`
+    CostUSD   float64   `json:"cost_usd"`
+    UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CostForTokens estimates USD cost for token counts using standard pricing.
+// Returns 0 if provider is unknown (safe default).
+func CostForTokens(provider string, tokensIn, tokensOut int64) float64 {
+    rates := map[string]struct{ in, out float64 }{
+        "openai/gpt-4o":       {0.0000025, 0.00001},
+        "gemini/gemini-2.5":   {0.00000125, 0.000005},
+        "anthropic/claude-3":  {0.000003, 0.000015},
+    }
+    // Match prefix for model variants
+    for key, rate := range rates {
+        if strings.Contains(provider, key) {
+            return float64(tokensIn)*rate.in + float64(tokensOut)*rate.out
+        }
+    }
+    // Fallback: openai gpt-4o-mini pricing
+    return float64(tokensIn)*0.00000015 + float64(tokensOut)*0.0000006
 }
 
 type BudgetStore interface {
@@ -133,9 +277,48 @@ type BudgetStore interface {
 }
 ```
 
-**Storage implementation** (`pkg/infrastructure/storage/budget_repository.go`):
+**`pkg/infrastructure/storage/sqlite_budget.go`** (new):
 
-Add a `budget` table:
+```go
+package storage
+
+import (
+    "context"
+    "database/sql"
+    "time"
+    "github.com/diegojromerolopez/noctifab/pkg/domain"
+)
+
+type sqliteBudgetStore struct {
+    db *sql.DB
+}
+
+func (s *sqliteBudgetStore) LoadBudget(ctx context.Context, date, provider string) (*domain.BudgetRecord, error) {
+    row := s.db.QueryRowContext(ctx,
+        `SELECT date, provider, tokens_in, tokens_out, cost_usd, updated_at
+         FROM budget WHERE date = ? AND provider = ?`, date, provider)
+    // ... scan into BudgetRecord
+}
+
+func (s *sqliteBudgetStore) SaveBudget(ctx context.Context, record *domain.BudgetRecord) error {
+    _, err := s.db.ExecContext(ctx,
+        `INSERT INTO budget (date, provider, tokens_in, tokens_out, cost_usd, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(date, provider) DO UPDATE SET
+           tokens_in = excluded.tokens_in,
+           tokens_out = excluded.tokens_out,
+           cost_usd = excluded.cost_usd,
+           updated_at = excluded.updated_at`,
+        record.Date, record.Provider, record.TokensIn, record.TokensOut, record.CostUSD, record.UpdatedAt)
+    return err
+}
+
+func (s *sqliteBudgetStore) ListBudgets(ctx context.Context, since time.Time) ([]domain.BudgetRecord, error) {
+    // ... SELECT with WHERE updated_at >= ?
+}
+```
+
+**Migration** — add to existing migration (both SQLite and Postgres):
 ```sql
 CREATE TABLE IF NOT EXISTS budget (
     date       TEXT NOT NULL,
@@ -148,45 +331,80 @@ CREATE TABLE IF NOT EXISTS budget (
 );
 ```
 
-Both `SQLiteRepository` and `PostgresRepository` implement `domain.BudgetStore`.
+**`pkg/infrastructure/llm/failover_client.go`** — modify `Complete`:
 
-**Config** — add to `LLMConfig`:
+Add after line 50 (the callCount check):
 ```go
-MaxBudgetUSD  float64        `yaml:"max_budget_usd"`     // existing
-ResetPeriod   string         `yaml:"reset_period"`        // "daily" (default), "weekly", "monthly"
-```
-
-**FailoverClient changes**:
-```go
-type FailoverClient struct {
-    backends      []NamedClient
-    cooldowns     map[string]time.Time
-    duration      time.Duration
-    budgetStore   domain.BudgetStore
-    maxBudgetUSD  float64
-    resetPeriod   string
+if f.budgetStore != nil && f.maxBudgetUSD > 0 {
+    today := time.Now().UTC().Format("2006-01-02")
+    record, err := f.budgetStore.LoadBudget(ctx, today, backend.Name)
+    if err == nil && record.CostUSD >= f.maxBudgetUSD {
+        continue // skip this provider, budget exceeded
+    }
 }
 ```
 
-`Complete()` checks `budgetStore.LoadBudget(date, provider)` before each call — if `CostUSD >= maxBudgetUSD`, skip that provider. After a successful response, `budgetStore.SaveBudget(updatedRecord)` persists usage.
+Add after successful response (before `return resp, nil`):
+```go
+if f.budgetStore != nil {
+    today := time.Now().UTC().Format("2006-01-02")
+    record, _ := f.budgetStore.LoadBudget(ctx, today, backend.Name)
+    if record == nil {
+        record = &domain.BudgetRecord{
+            Date:      today,
+            Provider:  backend.Name,
+            UpdatedAt: time.Now(),
+        }
+    }
+    record.TokensIn += countTokens(prompt)
+    record.TokensOut += countTokens(resp.Reasoning)
+    record.CostUSD = domain.CostForTokens(backend.Name, record.TokensIn, record.TokensOut)
+    record.UpdatedAt = time.Now()
+    _ = f.budgetStore.SaveBudget(ctx, record)
+}
+```
 
-**Tests**:
-- Unit test for budget store (SQLite in-memory)
-- Unit test for FailoverClient budget enforcement (exceed → skip provider)
-- Unit test for reset period boundary (rollover at midnight UTC)
+**`pkg/infrastructure/config/types.go`** — add to `LLMConfig`:
+```go
+ResetPeriod string `yaml:"reset_period"` // "daily" (default), "weekly", "monthly"
+```
+
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestSQLiteBudgetStore_CRUD` | `sqlite_budget_test.go` | Create, read, update budget record |
+| `TestSQLiteBudgetStore_UpdateExisting` | `sqlite_budget_test.go` | UPSERT increments rather than replacing |
+| `TestBudgetExceeded_SkipProvider` | `failover_client_test.go` | Budget > max → skip provider |
+| `TestBudgetNotExceeded_CallProceeds` | `failover_client_test.go` | Budget < max → call goes through |
+| `TestCostForTokens_KnownProvider` | `budget_test.go` | Correct rate applied for openai/gpt-4o |
+| `TestCostForTokens_UnknownProvider` | `budget_test.go` | Safe fallback rate, no error |
+| `TestResetPeriod_Daily` | `failover_client_test.go` | New day = new budget window |
+| `Edge: zero maxBudgetUSD` | `failover_client_test.go` | 0 = unlimited (skip budget check, no skip) |
+| `Edge: missing budget table` | `sqlite_budget_test.go` | Auto-created on first SaveBudget |
 
 ---
 
-### 1.3 Universal Interruptible Sleep
+### AUT-103: Universal Interruptible Sleep
 
-**Problem**: `SleepWithInterrupt` is only used in `orchestrator.updateStateWithRetry`. Other blocking sleep/poll locations don't respond to mailbox commands.
+| Field | Value |
+|-------|-------|
+| **Effort** | 1 day |
+| **Dependencies** | AUT-102 (optional — can be done in parallel) |
+| **Risk** | Low — well-understood pattern, already proven in `updateStateWithRetry` |
+| **Rollback** | Revert changes to `orchestrator.Start()` and `serve.go` |
 
-**Files to modify**:
-- `pkg/usecase/orchestrator.go` — `Start()` ticker
-- `cmd/noctifab/cli/serve.go` — `runServerLoop` story loop
-- `pkg/usecase/command_channel.go` — ensure `SleepWithInterrupt` accepts multiple wakeup channels
+#### Acceptance Criteria
 
-**Change in `orchestrator.Start()`** — replace the blocking ticker with interruptible sleep:
+1. `orchestrator.Start()` replaces `time.NewTicker` loop with `SleepWithInterrupt` using mailbox wakeup channel
+2. When mailbox receives a command during poll interval, orchestrator wakes up and re-polls immediately
+3. `runServerLoop` in `serve.go` selects on both `storyCh` and `ctx.Done()` (verify it already does)
+4. All existing tests continue to pass
+
+#### File Change Specifications
+
+**`pkg/usecase/orchestrator.go`** — replace `Start` method (lines 43–58):
+
 ```go
 func (o *Orchestrator) Start(ctx context.Context) error {
     for {
@@ -207,117 +425,171 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 }
 ```
 
-**Change in `runServerLoop`** — the `select` on `storyCh` should also select on `ctx.Done()` (already does), but the story loop shouldn't block the mailbox. When a clarification comes in during story execution, `SleepWithInterrupt` in `updateStateWithRetry` already handles it.
+**`cmd/noctifab/cli/serve.go`** — verify `runServerLoop` already selects on `ctx.Done()` (line 172). No change needed.
 
-**Tests**:
-- Existing `command_channel_test.go` covers `SleepWithInterrupt`
-- Add: end-to-end test where mailbox sends commands during poll interval and orchestrator wakes up
+**`pkg/usecase/command_channel.go`** — no changes needed (SleepWithInterrupt already supports wakeup channel).
 
----
+#### Test Specifications
 
-## Phase 2 — Liveness
-
-### Completed Items
-- ✅ `pkg/usecase/watchdog.go` — Watchdog with `MaxDuration` and `IdleTimeout`
-- ✅ `pkg/usecase/sandbox.go` — Watchdog integrated into `HostSandbox.RunCommand`
-- ✅ `tests/e2e/e2e_test.go` — 5 E2E tests for idle timeout
-- ✅ `pkg/infrastructure/config/types.go` — `IdleTimeoutSeconds` in `SandboxConfig`
-- ✅ `pkg/infrastructure/config/defaults.go` — default idle timeout 30s
-
-### No remaining work.
+| Test | File | What it verifies |
+|------|------|------------------|
+| Existing `TestSleepWithInterrupt_*` | `command_channel_test.go` | 5 existing tests pass unchanged |
+| `TestOrchestratorStart_WakesOnMailbox` | `orchestrator_test.go` (new) | Send command to mailbox during Start() → RunOnce is called within 1s |
 
 ---
 
-## Phase 3 — Prompt Guard
+## 4. Phase 2 — Liveness
+
+### Completed — No remaining work.
+
+| AUT ID | Item | Status | Evidence |
+|--------|------|--------|----------|
+| AUT-201 | Watchdog with MaxDuration + IdleTimeout | ✅ | `pkg/usecase/watchdog.go` |
+| AUT-202 | HostSandbox integration | ✅ | `pkg/usecase/sandbox.go:95` |
+| AUT-203 | Idle timeout E2E tests (5 tests) | ✅ | `tests/e2e/e2e_test.go` |
+| AUT-204 | Config schema (IdleTimeoutSeconds) | ✅ | `pkg/infrastructure/config/types.go` |
+| AUT-205 | Default idle timeout 30s | ✅ | `pkg/infrastructure/config/defaults.go` |
+
+---
+
+## 5. Phase 3 — Prompt Guard
 
 ### Goal
-Prevent the LLM from generating code with common concurrency bugs (background threads that swallow exceptions, missing `KeyboardInterrupt` propagation, non-daemon threads blocking termination).
+Prevent the LLM from generating code with concurrency bugs: background threads that swallow exceptions, missing `KeyboardInterrupt` propagation, non-daemon threads, goroutines that ignore context cancellation.
 
 ---
 
-### 3.1 Concurrency Invariants in Agent Prompts
+### AUT-301: Concurrency Invariants in Agent Prompts
 
-**Files to create/modify**:
-- `pkg/infrastructure/llm/prompts.go` (new — centralize all prompt templates)
-- `pkg/infrastructure/llm/client.go` (modify — use templates)
-- `pkg/infrastructure/llm/client_test.go` (modify — verify invariants in prompts)
+| Field | Value |
+|-------|-------|
+| **Effort** | 1 day |
+| **Dependencies** | None |
+| **Risk** | Low — additive change, no runtime logic modified |
+| **Rollback** | Revert `prompts.go`; remove `PromptBuilder.Build` call in `client.go` |
 
-**Architecture decision**: Extract prompt construction from `client.go` into a dedicated file. Each agent role gets a `PromptBuilder` that injects invariant blocks based on the role and detected language.
+#### Acceptance Criteria
+
+1. `PromptBuilder` has separate invariant blocks for Python, Go, and default (empty)
+2. Python block includes all 4 invariants from AUTONOMY.md §3.A (exception capture, thread join, daemon threads, SIGINT handler)
+3. Go block includes all 4 invariants (ctx.Done(), WaitGroup, buffered channels, sync.Once)
+4. Unknown language returns empty string (no invariants injected)
+5. `PromptBuilder.Build(prompt)` appends invariants after a blank line separator
+6. Invariants are not injected when the prompt already contains them (idempotent)
+7. Existing tests in `client_test.go` pass unchanged (backward compatible)
+
+#### File Change Specifications
+
+**`pkg/infrastructure/llm/prompts.go`** (new):
 
 ```go
 package llm
 
+import (
+    "strings"
+    "github.com/diegojromerolopez/noctifab/pkg/domain"
+)
+
 type PromptBuilder struct {
-    Role           domain.AgentRole
-    DetectedLang   string // "python", "go", "javascript", "rust"
+    Role         domain.AgentRole
+    DetectedLang string
 }
 
 func (pb *PromptBuilder) Build(prompt string) string {
-    var sb strings.Builder
-    sb.WriteString(prompt)
-    sb.WriteString("\n\n")
-    sb.WriteString(pb.concurrencyInvariants())
-    return sb.String()
+    invariants := pb.concurrencyInvariants()
+    if invariants == "" {
+        return prompt
+    }
+    // Idempotency: don't inject if already present
+    if strings.Contains(prompt, "CONCURRENCY & THREADING INVARIANTS") {
+        return prompt
+    }
+    return prompt + "\n\n" + invariants
 }
 
 func (pb *PromptBuilder) concurrencyInvariants() string {
     switch pb.DetectedLang {
     case "python":
-        return pb.pythonConcurrencyInvariants()
+        return pythonInvariants
     case "go":
-        return pb.goConcurrencyInvariants()
+        return goInvariants
     default:
         return ""
     }
 }
-```
 
-**Python invariants** (as proposed in AUTONOMY.md §3.A):
-
-```
-CONCURRENCY & THREADING INVARIANTS (Python):
+const pythonInvariants = `CONCURRENCY & THREADING INVARIANTS (Python):
 1. If executing a task function inside a background thread, capture any
    raised exceptions (including BaseException classes like KeyboardInterrupt
    or SystemExit) and propagate them back to the main thread.
 2. The main loop must join or check the thread status frequently
-   (e.g., in a loop with a small timeout t.join(0.1)) and re-raise any
-   captured exception to terminate the main loop.
-3. Set daemon=True on all background threads before calling start(), so
-   they don't prevent process termination on abrupt shutdown.
+   (e.g., t.join(0.1)) and re-raise any captured exception immediately.
+3. Set daemon=True on ALL background threads before t.start().
 4. Use signal.signal(signal.SIGINT, handler) to handle Ctrl+C explicitly
-   when threads are involved; do not rely on KeyboardInterrupt propagation
-   through thread boundaries.
-```
+   when threads are involved.`
 
-**Go invariants**:
-
-```
-CONCURRENCY & THREADING INVARIANTS (Go):
+const goInvariants = `CONCURRENCY & THREADING INVARIANTS (Go):
 1. Always select on ctx.Done() in goroutines that perform blocking
    operations — never block indefinitely without a context check.
 2. Use sync.WaitGroup to track goroutine completion; always call
    wg.Wait() before returning from functions that spawn goroutines.
-3. Buffered channels (size >= 1) for signalling goroutines to avoid
-   deadlock on send if the receiver has exited.
-4. Use sync.Once for lazy initialization in concurrent contexts.
+3. Use buffered channels (size >= 1) for signalling to avoid deadlock
+   if the receiver has exited.
+4. Use sync.Once for lazy initialization in concurrent contexts.`
 ```
 
-**Tests**:
-- Verify `PromptBuilder.Build("test")` for python role includes all 4 invariants
-- Verify `PromptBuilder.Build("test")` for go role includes all 4 invariants
-- Verify default (unknown lang) returns no invariants
+**`pkg/infrastructure/llm/client.go`** — modify `Complete`:
+
+After line where prompt is received, wrap it:
+```go
+builder := &PromptBuilder{
+    Role:         detectRoleFromPrompt(prompt),
+    DetectedLang: extractLangFromState(), // passed via context or state
+}
+enrichedPrompt := builder.Build(prompt)
+// Use enrichedPrompt instead of prompt for the LLM call
+```
+
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestPromptBuilder_PythonInvariants` | `prompts_test.go` (new) | All 4 Python invariants present |
+| `TestPromptBuilder_GoInvariants` | `prompts_test.go` | All 4 Go invariants present |
+| `TestPromptBuilder_UnknownLang` | `prompts_test.go` | Empty string returned |
+| `TestPromptBuilder_Idempotent` | `prompts_test.go` | Prompt containing "CONCURRENCY & THREADING INVARIANTS" is not modified |
+| `TestPromptBuilder_AppendsAfterBlankLine` | `prompts_test.go` | Invariants separated by `\n\n` from original prompt |
+| `Edge: empty prompt` | `prompts_test.go` | Build("") returns "\n\n" + invariants |
+| `Edge: role is empty string` | `prompts_test.go` | Defaults to unknown language |
 
 ---
 
-### 3.2 Language Detection in Sandbox
+### AUT-302: Language Detection in Sandbox
 
-**Files to modify**:
-- `pkg/usecase/sandbox.go` — detect language from project files
-- `pkg/infrastructure/llm/client.go` — pass detected language to prompt builder
+| Field | Value |
+|-------|-------|
+| **Effort** | 0.5 day |
+| **Dependencies** | AUT-301 (PromptBuilder needs detected language) |
+| **Risk** | Low |
+| **Rollback** | Revert `DetectProjectLanguage` in `sandbox.go` |
 
-**Detection logic** in `sandbox.go`:
+#### Acceptance Criteria
+
+1. `DetectProjectLanguage(projectPath)` returns `"go"` if `go.mod` exists
+2. Returns `"rust"` if `Cargo.toml` exists
+3. Returns `"javascript"` if `package.json` exists
+4. Returns `"python"` if `requirements.txt` or `setup.py` exists
+5. Returns `"java"` if `pom.xml` exists
+6. Returns `""` for empty directory
+7. Precedence: `go.mod` > `Cargo.toml` > `package.json` > `requirements.txt` / `setup.py` > `pom.xml`
+
+#### File Change Specifications
+
+**`pkg/usecase/sandbox.go`** — add function before `NewHostSandbox`:
 
 ```go
+// DetectProjectLanguage inspects the project directory for manifest files
+// and returns the detected programming language identifier.
 func DetectProjectLanguage(projectPath string) string {
     if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
         return "go"
@@ -337,124 +609,115 @@ func DetectProjectLanguage(projectPath string) string {
     if _, err := os.Stat(filepath.Join(projectPath, "pom.xml")); err == nil {
         return "java"
     }
-    // default based on sandbox config language hint
     return ""
 }
 ```
 
-**Tests**:
-- Create temp dirs with `go.mod`, `Cargo.toml`, `package.json`, `requirements.txt`, verify correct detection
-- Verify empty dir returns `""`
-
----
-
-## Phase 4 — Self-Repair
-
-### Goal
-When the Watchdog kills a hanging test, the orchestrator must capture the partial output, formulate a diagnostic prompt, and feed it back to the Generator Agent for an automated rewrite.
-
----
-
-### 4.1 Watchdog Error Analysis & Rewrite Loop
-
-**Files to create/modify**:
-- `pkg/usecase/watchdog_repair.go` (new)
-- `pkg/usecase/orchestrator.go` (modify `executeTask`)
-- `pkg/domain/error.go` (modify — add watchdog-specific error types)
-
-**New error types** (`pkg/domain/error.go`):
+**`pkg/usecase/sandbox_test.go`** (new file — no sandbox test existed before):
 
 ```go
-var (
-    ErrWatchdogTimeout   = errors.New("command killed by watchdog")
-    ErrMaxRetriesReached = errors.New("maximum retries exceeded")
-    ErrBudgetExhausted   = errors.New("LLM token budget exhausted")
-)
+func TestDetectProjectLanguage_Go(t *testing.T) {
+    tmp := t.TempDir()
+    os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module test"), 0644)
+    if got := DetectProjectLanguage(tmp); got != "go" {
+        t.Errorf("expected 'go', got %q", got)
+    }
+}
+// ... one test per language, one for empty dir, one for precedence
 ```
 
-**Repair orchestrator** (`pkg/usecase/watchdog_repair.go`):
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestDetectProjectLanguage_Go` | `sandbox_test.go` (new) | `go.mod` → "go" |
+| `TestDetectProjectLanguage_Rust` | `sandbox_test.go` | `Cargo.toml` → "rust" |
+| `TestDetectProjectLanguage_JS` | `sandbox_test.go` | `package.json` → "javascript" |
+| `TestDetectProjectLanguage_Python` | `sandbox_test.go` | `requirements.txt` → "python" |
+| `TestDetectProjectLanguage_PythonSetup` | `sandbox_test.go` | `setup.py` → "python" |
+| `TestDetectProjectLanguage_Java` | `sandbox_test.go` | `pom.xml` → "java" |
+| `TestDetectProjectLanguage_Empty` | `sandbox_test.go` | Empty dir → "" |
+| `TestDetectProjectLanguage_Precedence` | `sandbox_test.go` | Both `go.mod` and `Cargo.toml` → "go" (go.mod wins) |
+
+---
+
+## 6. Phase 4 — Self-Repair
+
+### Goal
+When the Watchdog kills a hanging test, the orchestrator captures partial output, generates a diagnostic prompt, and feeds it back to the Generator Agent for automated rewrite.
+
+---
+
+### AUT-401: Watchdog Diagnostic Prompt Builder
+
+| Field | Value |
+|-------|-------|
+| **Effort** | 1 day |
+| **Dependencies** | AUT-301 (prompt infrastructure) |
+| **Risk** | Low — isolated struct, no production wiring |
+| **Rollback** | Revert `watchdog_repair.go` |
+
+#### Acceptance Criteria
+
+1. `WatchdogRepair.buildDiagnosticPrompt` includes: task title, task description, watchdog error, last stdout output
+2. `WatchdogRepair.buildRetryPrompt` includes: previous prompt, test output, test error
+3. `CategorizeFailureLog` returns `FailureTimeout` for idle timeout / max duration messages
+4. `CategorizeFailureLog` returns `FailureSandbox` for sandbox violation messages
+5. `CategorizeFailureLog` returns `FailureCompile` for compile / syntax error messages
+6. `CategorizeFailureLog` returns `FailureTestLogic` for ERROR:/FAIL: lines
+7. `CategorizeFailureLog` returns `FailureUnknown` for unrecognized logs
+
+#### File Change Specifications
+
+**`pkg/usecase/watchdog_repair.go`** (new — diagnostic prompt methods only, no repair loop yet):
 
 ```go
 package usecase
 
 import (
-    "context"
     "fmt"
     "strings"
 )
 
-// WatchdogRepair handles the automated repair loop when a watchdog kills a
-// command. It captures the partial output, generates a diagnostic prompt,
-// and feeds it to a Generator Agent for rewrite.
-type WatchdogRepair struct {
-    llmClient   domain.LLMClient
-    maxRetries  int
-    sandbox     Sandbox
+// Categories for failure log classification.
+type FailureCategory int
+
+const (
+    FailureUnknown     FailureCategory = iota
+    FailureTestLogic   FailureCategory = iota
+    FailureTimeout     FailureCategory = iota
+    FailureCompile     FailureCategory = iota
+    FailureSandbox     FailureCategory = iota
+)
+
+func (fc FailureCategory) String() string {
+    return [...]string{"unknown", "test_logic", "timeout", "compile", "sandbox"}[fc]
 }
 
-type RepairResult struct {
-    Success     bool
-    Output      string
-    FixedCode   bool
-    Attempts    int
-    FailureLog  string
-}
-
-func (wr *WatchdogRepair) AttemptRepair(
-    ctx context.Context,
-    projectPath string,
-    task domain.Task,
-    watchdogOutput string,
-    watchdogErr error,
-) (*RepairResult, error) {
-    // 1. Formulate diagnostic prompt
-    diagPrompt := wr.buildDiagnosticPrompt(task, watchdogOutput, watchdogErr)
-
-    // 2. Loop: generate fix → run test → if passes → done
-    for attempt := 0; attempt < wr.maxRetries; attempt++ {
-        // Send diagnostic to LLM
-        resp, err := wr.llmClient.Complete(ctx, diagPrompt)
-        if err != nil {
-            return nil, fmt.Errorf("repair LLM call failed: %w", err)
-        }
-
-        // Apply the fix actions (write_file, edit_file, etc.)
-        for _, action := range resp.Actions {
-            if action.Tool == "write_file" {
-                // ... apply write with WriteFileTool
-            }
-            if action.Tool == "edit_file" {
-                // ... apply edit with EditFileTool
-            }
-        }
-
-        // Re-run tests
-        testOutput, testErr := wr.sandbox.RunCommand(ctx, projectPath, "", "")
-        if testErr == nil {
-            return &RepairResult{
-                Success:    true,
-                Output:     testOutput,
-                FixedCode:  true,
-                Attempts:   attempt + 1,
-            }, nil
-        }
-
-        // Append test failure to next prompt for incremental repair
-        diagPrompt = wr.buildRetryPrompt(diagPrompt, testOutput, testErr)
+// CategorizeFailureLog classifies a failure log by error type.
+func CategorizeFailureLog(log string) FailureCategory {
+    lower := strings.ToLower(log)
+    switch {
+    case strings.Contains(lower, "no output produced within idle timeout"),
+         strings.Contains(lower, "max wall-clock duration exceeded"):
+        return FailureTimeout
+    case strings.Contains(lower, "sandbox violation"):
+        return FailureSandbox
+    case strings.Contains(lower, "compile error"),
+         strings.Contains(lower, "syntax error"),
+         strings.Contains(lower, "compilation error"):
+        return FailureCompile
+    case strings.Contains(lower, "error:"),
+         strings.Contains(lower, "fail:"),
+         strings.Contains(lower, "traceback"):
+        return FailureTestLogic
+    default:
+        return FailureUnknown
     }
-
-    return &RepairResult{
-        Success:    false,
-        Attempts:   wr.maxRetries,
-        FailureLog: "all repair attempts failed",
-    }, nil
 }
 
-func (wr *WatchdogRepair) buildDiagnosticPrompt(
-    task domain.Task,
-    output string,
-    err error,
-) string {
+// buildDiagnosticPrompt creates the initial diagnostic prompt for a watchdog timeout.
+func buildDiagnosticPrompt(title, description string, watchdogErr error, output string) string {
     return fmt.Sprintf(`The test suite hung and was forcefully terminated by the watchdog.
 
 Task: %s - %s
@@ -470,16 +733,13 @@ This usually indicates:
 - A blocking operation (wait/sleep) that is never unblocked
 - A resource leak exhausting file descriptors
 
-Analyze the output above and fix the issue. Rewrite any files that need
-changes. Focus on making the code terminate correctly.
-`, task.Title, task.Description, err, output)
+Analyze the output above and fix the issue. Rewrite any files that need changes.
+Focus on making the code terminate correctly.
+`, title, description, watchdogErr, output)
 }
 
-func (wr *WatchdogRepair) buildRetryPrompt(
-    prevPrompt string,
-    testOutput string,
-    testErr error,
-) string {
+// buildRetryPrompt appends retry context to the previous diagnostic prompt.
+func buildRetryPrompt(prevPrompt, testOutput string, testErr error) string {
     return fmt.Sprintf(`%s
 
 The fix attempt was made but tests still failed or hung:
@@ -494,403 +754,1004 @@ Please try a different approach to fix the hang/deadlock.
 }
 ```
 
-**Modify `orchestrator.go` — `executeTask`** to intercept watchdog errors:
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestBuildDiagnosticPrompt_IncludesFields` | `watchdog_repair_test.go` (new) | Contains task title, description, error, output |
+| `TestBuildRetryPrompt_AppendsContext` | `watchdog_repair_test.go` | Contains previous prompt + new test output |
+| `TestCategorizeFailureLog_Timeout` | `watchdog_repair_test.go` | "no output produced within idle timeout" → `FailureTimeout` |
+| `TestCategorizeFailureLog_Sandbox` | `watchdog_repair_test.go` | "sandbox violation" → `FailureSandbox` |
+| `TestCategorizeFailureLog_Compile` | `watchdog_repair_test.go` | "compile error" → `FailureCompile` |
+| `TestCategorizeFailureLog_TestLogic` | `watchdog_repair_test.go` | "ERROR: test failure" → `FailureTestLogic` |
+| `TestCategorizeFailureLog_Unknown` | `watchdog_repair_test.go` | "random output" → `FailureUnknown` |
+
+---
+
+### AUT-402: Automated Rewrite Loop in Orchestrator
+
+| Field | Value |
+|-------|-------|
+| **Effort** | 2 days |
+| **Dependencies** | AUT-401 (diagnostic prompts), AUT-301 (prompt builder) |
+| **Risk** | Medium — modifies `executeTask`; could cause infinite repair loops if LLM can't fix |
+| **Rollback** | Revert changes to `orchestrator.go` executeTask |
+
+#### Acceptance Criteria
+
+1. When `ValidateTask` returns an error, check if `CategorizeFailureLog` is `FailureTimeout`
+2. If timeout → call `AttemptRepair` (diagnose → LLM → rewrites → re-run tests)
+3. `AttemptRepair` has a `maxRetries` limit (default 3); stops after exceeded
+4. If `AttemptRepair` returns `Success: true` → mark task as `TaskSuccess`
+5. If `AttemptRepair` returns `Success: false` → fall through to normal retry logic
+6. Repair applies write_file and edit_file actions from LLM response
+7. Repair is only attempted for timeout failures, not compile/sandbox/test-logic failures
+8. Maximum total repair time is bounded (maxRetries × LLM call time × test run time)
+
+#### File Change Specifications
+
+**`pkg/usecase/watchdog_repair.go`** — add `AttemptRepair`:
 
 ```go
-// inside executeTask, after evaluator.ValidateTask returns failed:
-if errors.Is(err, usecase.ErrWatchdogIdleTimeout) || errors.Is(err, usecase.ErrWatchdogMaxDuration) {
-    repair := &WatchdogRepair{
-        llmClient:  o.llmClient,
+type WatchdogRepair struct {
+    llmClient  domain.LLMClient
+    maxRetries int
+    sandbox    Sandbox
+    tools      map[string]Tool // write_file, edit_file tools
+}
+
+type RepairResult struct {
+    Success    bool
+    Output     string
+    FixedCode  bool
+    Attempts   int
+    FailureLog string
+}
+
+func NewWatchdogRepair(llmClient domain.LLMClient, sandbox Sandbox, tools map[string]Tool) *WatchdogRepair {
+    return &WatchdogRepair{
+        llmClient:  llmClient,
         maxRetries: 3,
-        sandbox:    o.evaluator.Runner,
+        sandbox:    sandbox,
+        tools:      tools,
     }
-    result, repairErr := repair.AttemptRepair(ctx, state.ProjectPath, *task, logMsg, err)
-    if repairErr == nil && result.Success {
-        // repair succeeded — mark task success
-        task.Status = domain.TaskSuccess
-        continue
+}
+
+func (wr *WatchdogRepair) AttemptRepair(
+    ctx context.Context,
+    state *domain.State,
+    task domain.Task,
+    watchdogOutput string,
+    watchdogErr error,
+) (*RepairResult, error) {
+
+    diagPrompt := buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput)
+
+    for attempt := 0; attempt < wr.maxRetries; attempt++ {
+        resp, err := wr.llmClient.Complete(ctx, diagPrompt)
+        if err != nil {
+            return nil, fmt.Errorf("repair LLM call failed: %w", err)
+        }
+
+        // Apply each action using registered tools
+        for _, action := range resp.Actions {
+            if tool, ok := wr.tools[action.Tool]; ok {
+                if _, err := tool.Execute(ctx, state, action.Args); err != nil {
+                    // Log but continue — some tool calls may fail
+                    fmt.Fprintf(os.Stderr, "Repair tool %s failed: %v\n", action.Tool, err)
+                }
+            }
+        }
+
+        // Re-run tests — use sandbox directly
+        testOutput, testErr := wr.sandbox.RunCommand(ctx, state.ProjectPath, "", "")
+        if testErr == nil {
+            return &RepairResult{
+                Success:   true,
+                Output:    testOutput,
+                FixedCode: true,
+                Attempts:  attempt + 1,
+            }, nil
+        }
+
+        diagPrompt = buildRetryPrompt(diagPrompt, testOutput, testErr)
     }
-    // repair failed — fall through to normal retry logic
+
+    return &RepairResult{
+        Success:    false,
+        Attempts:   wr.maxRetries,
+        FailureLog: "all repair attempts failed to resolve the hang/deadlock",
+    }, nil
 }
 ```
 
-**Tests**:
-- Unit test `WatchdogRepair.buildDiagnosticPrompt` — verify error and output are included
-- Unit test `buildRetryPrompt` — verify previous attempt context is appended
-- Mock test: `AttemptRepair` with mock LLM that returns a fix, mock sandbox that passes on second call → verify repair succeeds
-- Mock test: `AttemptRepair` with mock LLM that returns fixes that never pass → verify failure after maxRetries
+**`pkg/usecase/orchestrator.go`** — modify `executeTask`:
 
----
-
-### 4.2 Failure Log Summarization Enhancement
-
-**Problem**: `summarizeFailureLog` in `orchestrator_helper.go` extracts ERROR/FAIL lines, but doesn't distinguish watchdog timeouts from test logic failures.
-
-**File to modify**: `pkg/usecase/orchestrator_helper.go`
+After the line `passed, logMsg, _ := o.evaluator.ValidateTask(ctx, state, *task)` (around line 350), add:
 
 ```go
-// CategorizeFailureLog classifies a failure log by error type.
-type FailureCategory int
+if !passed && CategorizeFailureLog(logMsg) == FailureTimeout {
+    repair := NewWatchdogRepair(o.llmClient, o.evaluator.Runner, o.registry.AllTools())
+    result, repairErr := repair.AttemptRepair(ctx, state, *task, logMsg, ErrWatchdogIdleTimeout)
+    if repairErr == nil && result.Success {
+        logMsg = "Repaired after watchdog timeout: " + result.Output
+        passed = true
+    }
+}
+```
 
-const (
-    FailureUnknown     FailureCategory = iota
-    FailureTestLogic   FailureCategory = iota
-    FailureTimeout     FailureCategory = iota
-    FailureCompile     FailureCategory = iota
-    FailureSandbox     FailureCategory = iota
-)
+Add to `Registry` interface (or `ToolRegistry`):
+```go
+func (r *ToolRegistry) AllTools() map[string]Tool {
+    return r.tools // return a copy
+}
+```
 
-func CategorizeFailureLog(log string) FailureCategory {
-    logLower := strings.ToLower(log)
-    if strings.Contains(logLower, "no output produced within idle timeout") ||
-       strings.Contains(logLower, "max wall-clock duration exceeded") {
-        return FailureTimeout
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestAttemptRepair_SuccessOnFirstTry` | `watchdog_repair_test.go` | Mock LLM returns fix, sandbox passes → success |
+| `TestAttemptRepair_SuccessOnRetry` | `watchdog_repair_test.go` | First sandbox fails, second passes → success |
+| `TestAttemptRepair_AllRetriesFail` | `watchdog_repair_test.go` | All 3 attempts fail → FailureResult |
+| `TestAttemptRepair_AppliesWriteFile` | `watchdog_repair_test.go` | LLM action `write_file` is executed via tool |
+| `TestAttemptRepair_AppliesEditFile` | `watchdog_repair_test.go` | LLM action `edit_file` is executed via tool |
+| `TestExecuteTask_TriggersRepairOnTimeout` | `orchestrator_test.go` | `ValidateTask` returns timeout → `AttemptRepair` called |
+| `TestExecuteTask_NoRepairOnCompileFailure` | `orchestrator_test.go` | Compile error → normal retry, no repair |
+| `Edge: LLM returns no actions` | `watchdog_repair_test.go` | Empty actions list → repair continues (no-op) |
+| `Edge: sandbox passes but LLM call fails` | `watchdog_repair_test.go` | LLM error → returns wrapped error, not repair |
+| `Edge: maxRetries = 0` | `watchdog_repair_test.go` | Constructor with 0 → no repair attempted |
+
+---
+
+### AUT-403: Failure Log Enhancement in summarizeFailureLog
+
+| Field | Value |
+|-------|-------|
+| **Effort** | 0.5 day |
+| **Dependencies** | AUT-401 (CategorizeFailureLog) |
+| **Risk** | Low |
+| **Rollback** | Revert changes to `orchestrator_helper.go` |
+
+#### Acceptance Criteria
+
+1. `summarizeFailureLog` now includes failure category annotation in its output
+2. The annotation is `[TIMEOUT]`, `[SANDBOX]`, `[COMPILE]`, `[TEST_LOGIC]`, or `[UNKNOWN]`
+3. All existing callers of `summarizeFailureLog` continue to work
+
+#### File Change Specifications
+
+**`pkg/usecase/orchestrator_helper.go`** — modify `summarizeFailureLog`:
+
+```go
+func summarizeFailureLog(log string) string {
+    category := CategorizeFailureLog(log)
+    prefix := fmt.Sprintf("[%s] ", strings.ToUpper(category.String()))
+
+    // Existing logic: find ERROR/FAIL lines or last 15 lines
+    lines := strings.Split(log, "\n")
+    var relevant []string
+    for _, line := range lines {
+        if strings.Contains(line, "ERROR:") || strings.Contains(line, "FAIL:") ||
+           strings.Contains(line, "Traceback") || strings.Contains(line, "Exception") {
+            relevant = append(relevant, line)
+        }
     }
-    if strings.Contains(logLower, "sandbox violation") {
-        return FailureSandbox
+
+    result := strings.Join(relevant, "\n")
+    if result == "" {
+        // Fallback: last 15 lines
+        start := len(lines) - 15
+        if start < 0 {
+            start = 0
+        }
+        result = strings.Join(lines[start:], "\n")
     }
-    if strings.Contains(logLower, "compile") || strings.Contains(logLower, "syntax error") {
-        return FailureCompile
-    }
-    if strings.Contains(logLower, "error:") || strings.Contains(logLower, "fail:") {
-        return FailureTestLogic
-    }
-    return FailureUnknown
+
+    return prefix + "\n" + result
 }
 ```
 
 ---
 
-## Phase 5 — Self-Healing
+## 7. Phase 5 — Self-Healing
 
 ### Goal
-The daemon survives environment drift (missing toolchains), validates code in staging, eliminates flaky tests, and uses telemetry feedback to auto-repair production regressions.
+Daemon survives environment drift (missing toolchains), eliminates flaky tests, and provides observability via OpenTelemetry.
 
 ---
 
-### 5.1 Dynamic Dependency Installation
+### AUT-501: Dynamic Dependency Installation
 
-**Problem**: If the sandbox lacks `cargo`, `pytest`, `golangci-lint`, etc., the task fails immediately. A human must install the dependency.
+| Field | Value |
+|-------|-------|
+| **Effort** | 2 days |
+| **Dependencies** | None |
+| **Risk** | Medium — shelling out to package managers; must sandbox to allowed managers |
+| **Rollback** | Revert `dependency_manager.go`; set `auto_install_deps: false` in config |
 
-**Files to create/modify**:
-- `pkg/infrastructure/sandbox/dependency_manager.go` (new)
-- `pkg/infrastructure/config/types.go` (modify — add `auto_install_deps`)
-- `pkg/usecase/sandbox.go` (modify — intercept `executable file not found`)
+#### Acceptance Criteria
 
-**Config**:
+1. `DetectMissingTool` matches "executable file not found", "command not found", "No such file or directory" in command output
+2. `InstallTool` maps tool names to package manager commands via a lookup table
+3. Only package managers in `AllowedPkgManagers` are used (whitelist)
+4. `HostSandbox.RunCommand` intercepts `executable file not found` error, calls `InstallTool`, retries once
+5. If `AutoInstallDeps: false`, skip installation, return original error
+6. If tool is not in the mapping table, return error (don't install unknown tools)
+
+#### File Change Specifications
+
+**`pkg/infrastructure/sandbox/dependency_manager.go`** (new):
+
 ```go
-type SandboxConfig struct {
-    // ... existing fields ...
-    AutoInstallDeps bool     `yaml:"auto_install_deps"`      // default false
-    PackageManagers []string `yaml:"package_managers"`        // e.g., ["brew", "apt", "pip", "cargo"]
-}
-```
+package sandbox
 
-**Dependency manager**:
+import (
+    "context"
+    "fmt"
+    "os/exec"
+    "strings"
+)
 
-```go
 type DependencyManager struct {
-    AllowedPkgManagers []string   // whitelist from config
-    AllowedCommands    []string   // sandbox whitelist
+    AllowedPkgManagers []string
 }
 
-// DetectMissingTool parses command output for "not found" signatures.
+// toolPackageMap maps tool binary names to the package manager command needed to install them.
+var toolPackageMap = map[string]struct {
+    Manager string
+    Pkg     string
+}{
+    "cargo":           {"curl", "curl -sSf https://sh.rustup.rs | sh -s -- -y"},
+    "pytest":          {"pip", "pip install pytest"},
+    "golangci-lint":   {"go", "go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"},
+    "node":            {"brew", "brew install node"},
+    "npm":             {"brew", "brew install node"},
+}
+
 func (dm *DependencyManager) DetectMissingTool(output string) (string, bool) {
+    lower := strings.ToLower(output)
     patterns := []string{
         "executable file not found",
         "command not found",
-        "No such file or directory",
+        "no such file or directory",
     }
-    // ... check output for patterns, return tool name
+    for _, p := range patterns {
+        if strings.Contains(lower, p) {
+            // Extract the tool name from common patterns:
+            // "exec: \"cargo\": executable file not found" -> "cargo"
+            for tool := range toolPackageMap {
+                if strings.Contains(lower, tool) {
+                    return tool, true
+                }
+            }
+        }
+    }
+    return "", false
 }
 
-// InstallTool runs the appropriate package manager command.
+func (dm *DependencyManager) IsAllowed(manager string) bool {
+    for _, m := range dm.AllowedPkgManagers {
+        if m == manager {
+            return true
+        }
+    }
+    return false
+}
+
 func (dm *DependencyManager) InstallTool(ctx context.Context, tool string) error {
-    // Map tool to package manager:
-    // "cargo" → "brew install rust" or "apt install rustc"
-    // "pytest" → "pip install pytest"
-    // "golangci-lint" → "go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+    entry, ok := toolPackageMap[tool]
+    if !ok {
+        return fmt.Errorf("unknown tool %q: no package mapping available", tool)
+    }
+    if !dm.IsAllowed(entry.Manager) {
+        return fmt.Errorf("package manager %q not in allowed list", entry.Manager)
+    }
+
+    parts := strings.Fields(entry.Manager)
+    cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+    output, err := cmd.CombinedOutput()
+    if err != nil {
+        return fmt.Errorf("failed to install %q via %q: %w\nOutput: %s", tool, entry.Manager, err, string(output))
+    }
+    return nil
 }
 ```
 
-**Modify `HostSandbox.RunCommand`**: if command fails with `executable file not found`, call `DependencyManager.InstallTool()` and retry once.
+**`pkg/infrastructure/config/types.go`** — add to `SandboxConfig`:
+```go
+AutoInstallDeps bool     `yaml:"auto_install_deps"`
+PackageManagers []string `yaml:"package_managers"`
+```
 
-**Tests**:
-- Unit test `DetectMissingTool` with various "not found" error strings
-- Unit test `InstallTool` (dry-run mode that logs instead of executing)
-- Edge case: tool maps to unknown package manager → return error, don't install
-- Edge case: `AutoInstallDeps: false` → skip installation, return original error
+**`pkg/usecase/sandbox.go`** — modify `HostSandbox.RunCommand`:
+
+After line where `watchdog.Run` returns error (around line 97):
+```go
+if err != nil && s.depMgr != nil {
+    if tool, found := s.depMgr.DetectMissingTool(string(output)); found {
+        if installErr := s.depMgr.InstallTool(ctx, tool); installErr == nil {
+            // Retry once after installation
+            watchdog := Watchdog{IdleTimeout: s.IdleTimeout}
+            output2, err2 := watchdog.Run(ctx, cmd)
+            if err2 == nil {
+                return string(output2), nil
+            }
+        }
+    }
+}
+```
+
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestDetectMissingTool_ExecNotFound` | `dependency_manager_test.go` (new) | "exec: \"cargo\": executable file not found" → ("cargo", true) |
+| `TestDetectMissingTool_CommandNotFound` | `dependency_manager_test.go` | "bash: cargo: command not found" → ("cargo", true) |
+| `TestDetectMissingTool_NoMatch` | `dependency_manager_test.go` | "unrelated output" → ("", false) |
+| `TestInstallTool_KnownTool` | `dependency_manager_test.go` | Tool in map → no error (dry-run with mock) |
+| `TestInstallTool_UnknownTool` | `dependency_manager_test.go` | Tool not in map → error |
+| `TestInstallTool_DisallowedManager` | `dependency_manager_test.go` | Manager not in allowed list → error |
+| `Edge: AutoInstallDeps false` | `sandbox_test.go` | Config `false` → no install attempted |
+| `Edge: retry succeeds after install` | `sandbox_test.go` | First run fails, install succeeds, retry passes |
+| `Edge: retry fails after install` | `sandbox_test.go` | First run fails, install succeeds, retry also fails → original error returned |
 
 ---
 
-### 5.2 Flaky Test Auto-Stabilization
+### AUT-502: Flaky Test Auto-Stabilization
 
-**Problem**: The 3x majority vote in `TestValidator` detects flaky tests (2 pass, 1 fail) but only logs a warning. A Level 5 agent should fix the flaky test automatically.
+| Field | Value |
+|-------|-------|
+| **Effort** | 2 days |
+| **Dependencies** | AUT-401 (diagnostic prompt) |
+| **Risk** | Medium — LLM may not fix flaky tests reliably |
+| **Rollback** | Revert changes to `test_validator.go`; flaky detection falls back to warning-only |
 
-**Files to modify**:
-- `pkg/usecase/test_validator.go`
-- `pkg/usecase/flaky_detector.go` (new)
+#### Acceptance Criteria
 
-**Flaky detection**:
+1. `DetectFlaky` returns `Flaky: true` when exactly 2/3 tests pass
+2. `DetectFlaky` returns `Flaky: false` for all other combinations
+3. When flaky detected, tests are re-run with race detection (append `-race` for Go)
+4. Diagnostic prompt includes race detection output for LLM analysis
+5. LLM response is applied (write_file actions), then 3x re-validation is performed
+6. If after stabilization all 3 pass → task success
+7. If after stabilization still flaky → mark task as flaky-stable (accept with warning)
+
+#### File Change Specifications
+
+**`pkg/usecase/flaky_detector.go`** (new):
 
 ```go
+package usecase
+
+import (
+    "context"
+    "fmt"
+    "strings"
+)
+
+type TestRunResult struct {
+    RunID  int
+    Passed bool
+    Output string
+}
+
 type FlakyResult struct {
-    TaskID      string
-    Flaky       bool    // true if 2/3 pass
+    Flaky       bool
     FailedCount int
     PassedCount int
     Outputs     []string
 }
 
 func DetectFlaky(results []TestRunResult) *FlakyResult {
-    passed := 0
-    failed := 0
-    for _, r := range results {
+    passed, failed := 0, 0
+    outputs := make([]string, len(results))
+    for i, r := range results {
         if r.Passed {
             passed++
         } else {
             failed++
         }
+        outputs[i] = r.Output
     }
     return &FlakyResult{
         Flaky:       passed >= 2 && failed >= 1,
         FailedCount: failed,
         PassedCount: passed,
+        Outputs:     outputs,
+    }
+}
+
+func BuildFlakyStabilizationPrompt(results []TestRunResult, raceOutput string) string {
+    return fmt.Sprintf(`The test suite has a flaky test — it passes inconsistently across 3 runs.
+
+Outputs:
+%s
+
+Race detection output:
+%s
+
+Analyze the test and implementation for:
+- time.Sleep instead of deterministic polling or signals
+- Shared state between tests (global variables, file system, env vars)
+- Missing mutexes or race conditions
+- Network dependency without retry or timeout
+- Order-dependent test execution
+
+Rewrite to make the test deterministic.
+`, formatResults(results), raceOutput)
+}
+
+func formatResults(results []TestRunResult) string {
+    var sb strings.Builder
+    for i, r := range results {
+        status := "PASS"
+        if !r.Passed {
+            status = "FAIL"
+        }
+        fmt.Fprintf(&sb, "Run %d: %s\n%s\n", i+1, status, r.Output)
+    }
+    return sb.String()
+}
+```
+
+**`pkg/usecase/test_validator.go`** — modify `ValidateTask`:
+
+After majority voting logic, before returning:
+```go
+flaky := DetectFlaky(results)
+if flaky.Flaky {
+    // Run with race detection for diagnostic
+    raceOutput, _ := t.Runner.RunCommand(ctx, state.ProjectPath, t.raceCommand(), "")
+    
+    // Send to LLM for stabilization
+    prompt := BuildFlakyStabilizationPrompt(results, raceOutput)
+    resp, llmErr := t.llmClient.Complete(ctx, prompt)
+    if llmErr == nil {
+        for _, action := range resp.Actions {
+            if action.Tool == "write_file" || action.Tool == "edit_file" {
+                // Apply fix via tools
+            }
+        }
+        // Re-validate 3x
+        restabilized := t.runWithCount(ctx, state, *task, 3)
+        if !DetectFlaky(restabilized).Flaky {
+            passed = true
+        }
     }
 }
 ```
 
-**When flaky detected**: run tests with race detection, collect output, pass to Generator Agent with prompt:
-```
-The test suite has a flaky test — it passes inconsistently.
-Outputs across 3 runs show non-deterministic behavior.
-Run tests with race detection: go test -race ./...
-Analyze the test and implementation for:
-- time.Sleep instead of deterministic polling
-- Shared state between tests (global variables, file system)
-- Missing mutexes or race conditions
-- Network dependency without retry/timeout
-Rewrite to make the test deterministic.
-```
+#### Test Specifications
 
-**Tests**:
-- Unit test `DetectFlaky`: 3/3 pass → not flaky; 2/1 → flaky; 1/2 → not flaky (failing consistently)
-- Mock test: orchestrator calls `AutoStabilize` with flaky test, mock LLM returns fix, re-run passes
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestDetectFlaky_ThreePass` | `flaky_detector_test.go` (new) | 3/3 → not flaky |
+| `TestDetectFlaky_TwoPassOneFail` | `flaky_detector_test.go` | 2/1 → flaky |
+| `TestDetectFlaky_OnePassTwoFail` | `flaky_detector_test.go` | 1/2 → not flaky (consistently failing) |
+| `TestDetectFlaky_ZeroPass` | `flaky_detector_test.go` | 0/3 → not flaky |
+| `TestBuildFlakyPrompt_IncludesOutputs` | `flaky_detector_test.go` | All outputs present in prompt |
+| `TestBuildFlakyPrompt_IncludesRaceOutput` | `flaky_detector_test.go` | Race detection output present |
+| `Edge: empty results slice` | `flaky_detector_test.go` | DetectFlaky handles empty input without panic |
 
 ---
 
-### 5.3 Telemetry Integration (OpenTelemetry)
+### AUT-503: OpenTelemetry Integration
 
-**Problem**: No APM data is collected. The daemon operates blind — no insight into cycle times, failure rates, LLM latency, or error correlations.
+| Field | Value |
+|-------|-------|
+| **Effort** | 3 days |
+| **Dependencies** | None |
+| **Risk** | Medium — new dependency (`go.opentelemetry.io/otel`); configuration plumbing |
+| **Rollback** | Remove `telemetry.Enabled` check in `serve.go`; remove `go.opentelemetry.io/otel` from go.mod |
 
-**Spec reference**: SPEC.md §5.1 defines the telemetry architecture.
+#### Acceptance Criteria
 
-**Files to create/modify**:
-- `pkg/infrastructure/telemetry/tracer.go` (new)
-- `pkg/infrastructure/telemetry/tracer_test.go` (new)
-- `cmd/noctifab/cli/serve.go` (modify — init tracer)
-- `pkg/usecase/orchestrator.go` (modify — add spans)
-- `pkg/infrastructure/llm/client.go` (modify — add spans)
-- `go.mod` (add dependencies)
+1. `InitTracer` creates an OTLP HTTP exporter and `TracerProvider`
+2. `orchestrator.RunOnce` creates a root span `noctifab.cycle`
+3. `executeTask` creates a child span `noctifab.task_worker`
+4. `FailoverClient.Complete` creates a child span `noctifab.llm_completion`
+5. `HostSandbox.RunCommand` creates a child span `noctifab.sandbox_command`
+6. Spans are ended on both success and error paths
+7. `telemetry.enabled: false` in config → no tracing, no error
+8. `telemetry.enabled: true` with no endpoint → graceful fallback (stdout exporter)
 
-**New dependency**: `go.opentelemetry.io/otel`
+#### File Change Specifications
 
-**Tracer setup**:
+**`go.mod`** — add:
+```
+go.opentelemetry.io/otel v1.28.0
+go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.28.0
+go.opentelemetry.io/otel/sdk v1.28.0
+```
+
+**`pkg/infrastructure/telemetry/tracer.go`** (new):
 
 ```go
 package telemetry
 
 import (
+    "context"
+    "fmt"
+    "os"
+
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    "go.opentelemetry.io/otel/trace"
 )
 
+var tracer trace.Tracer
+
 func InitTracer(serviceName, endpoint string) (*sdktrace.TracerProvider, error) {
-    exporter, err := otlptracehttp.New(context.Background(),
-        otlptracehttp.WithEndpoint(endpoint),
-        otlptracehttp.WithInsecure(),
-    )
+    var exporter sdktrace.SpanExporter
+    var err error
+
+    if endpoint == "" {
+        exporter, err = NewStdoutExporter()
+    } else {
+        exporter, err = otlptracehttp.New(context.Background(),
+            otlptracehttp.WithEndpoint(endpoint),
+            otlptracehttp.WithInsecure(),
+        )
+    }
     if err != nil {
-        return nil, err
+        return nil, fmt.Errorf("telemetry: failed to create exporter: %w", err)
     }
 
+    hostname, _ := os.Hostname()
     tp := sdktrace.NewTracerProvider(
         sdktrace.WithBatcher(exporter),
         sdktrace.WithResource(resource.NewWithAttributes(
             semconv.SchemaURL,
             semconv.ServiceName(serviceName),
+            attribute.String("host.name", hostname),
         )),
+        sdktrace.WithSampler(sdktrace.AlwaysSample()),
     )
+
     otel.SetTracerProvider(tp)
+    tracer = tp.Tracer(serviceName)
     return tp, nil
 }
+
+func Tracer() trace.Tracer {
+    return tracer
+}
 ```
 
-**Span hierarchy**:
-```
-noctifab.cycle (orchestrator RunOnce)
-  ├── noctifab.task_worker (per-task execution)
-  │   ├── noctifab.action (per tool call: write_file, run_tests, ...)
-  │   └── noctifab.llm_completion (per LLM Complete call)
-  ├── noctifab.sandbox_command (per RunCommand execution)
-  └── noctifab.occ_retry (OCC conflict retry backoff)
+**`cmd/noctifab/cli/serve.go`** — add after config load (after line 34):
+
+```go
+if cfg.Telemetry.Enabled {
+    tp, err := telemetry.InitTracer(cfg.Telemetry.ServiceName, cfg.Telemetry.Endpoint)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Warning: telemetry init failed: %v\n", err)
+    } else {
+        defer func() { _ = tp.Shutdown(context.Background()) }()
+    }
+}
 ```
 
-**Config**:
+**`pkg/usecase/orchestrator.go`** — add spans to `RunOnce` and `executeTask`:
+
+```go
+import "github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+
+func (o *Orchestrator) RunOnce(ctx context.Context) error {
+    ctx, span := telemetry.Tracer().Start(ctx, "noctifab.cycle")
+    defer span.End()
+    // ... existing body
+}
+
+// In executeTask:
+func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) {
+    ctx, span := telemetry.Tracer().Start(ctx, "noctifab.task_worker",
+        trace.WithAttributes(attribute.String("task.id", taskID)))
+    defer span.End()
+    // ... existing body
+}
+```
+
+**`pkg/infrastructure/llm/client.go`** — add span to `Complete`:
+
+```go
+func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+    ctx, span := telemetry.Tracer().Start(ctx, "noctifab.llm_completion",
+        trace.WithAttributes(attribute.String("provider", c.provider)))
+    defer span.End()
+    // ... existing body
+    span.SetAttributes(attribute.Int("tokens_used", tokenCount))
+}
+```
+
+**`pkg/usecase/sandbox.go`** — add span to `RunCommand`:
+
+```go
+func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
+    ctx, span := telemetry.Tracer().Start(ctx, "noctifab.sandbox_command",
+        trace.WithAttributes(attribute.String("command", command)))
+    defer span.End()
+    // ... existing body
+}
+```
+
+**`pkg/infrastructure/config/types.go`** — add:
 ```go
 type TelemetryConfig struct {
-    Enabled      bool   `yaml:"enabled"`
-    Exporter     string `yaml:"exporter"`      // "otlp", "stdout"
-    Endpoint     string `yaml:"endpoint"`      // "localhost:4318"
-    ServiceName  string `yaml:"service_name"`  // "noctifab"
+    Enabled     bool   `yaml:"enabled"`
+    Exporter    string `yaml:"exporter"`
+    Endpoint    string `yaml:"endpoint"`
+    ServiceName string `yaml:"service_name"`
 }
 ```
 
-**Tests**:
-- Unit test span creation and attribute attachment (with stdout exporter in test)
-- Unit test that spans are properly ended even on error paths
+Add to `Config`:
+```go
+Telemetry TelemetryConfig `yaml:"telemetry"`
+```
+
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestInitTracer_OTLP` | `tracer_test.go` (new) | OTLP exporter created with correct endpoint |
+| `TestInitTracer_Stdout` | `tracer_test.go` | Empty endpoint → stdout exporter fallback |
+| `TestSpanCreatedAndEnded` | `tracer_test.go` | Span is recorded with expected attributes |
+| `TestSpanEndedOnError` | `tracer_test.go` | Span is ended even when error is returned |
+| `Edge: telemetry disabled` | `serve_test.go` | `Enabled: false` → no tracer init, no error |
 
 ---
 
-## Phase 6 — Self-Evolution
+## 8. Phase 6 — Self-Evolution
 
 ### Goal
-The daemon can patch its own Go binary, hot-reload without losing state, and enforce security gates.
+Daemon patches its own Go binary, hot-reloads without state loss, enforces security gates, and resolves ambiguous specs from git context.
 
 ---
 
-### 6.1 Self-Patching Compiler Loop
+### AUT-601: Self-Patching Compiler Loop
 
-**Problem**: If a bug exists in `noctifab` itself, a human must fix it. A Level 5 agent should be able to compile, test, and deploy its own updated binary.
+| Field | Value |
+|-------|-------|
+| **Effort** | 4 days |
+| **Dependencies** | AUT-502 (flaky fix), AUT-503 (telemetry for monitoring) |
+| **Risk** | High — self-modifying code could destabilize production |
+| **Rollback** | Revert `self_update.go`; manual re-deploy from known-good commit |
 
-**Files to create**:
-- `pkg/usecase/self_update.go` (new)
-- `pkg/usecase/self_update_test.go` (new)
+#### Acceptance Criteria
 
-**Design**:
+1. `SelfUpdateManager.BuildAndTest` clones noctifab source to temp directory
+2. Applies LLM-generated `write_file` patches to `.go` files in `cmd/` and `pkg/`
+3. Builds new binary with `go build -o /tmp/noctifab-new ./cmd/noctifab`
+4. Runs `go test ./pkg/...` on the patched code
+5. If all tests pass → returns nil (binary ready at /tmp/noctifab-new)
+6. If build or test fails → rolls back temp directory, returns error
+7. Patches to `go.mod`/`go.sum` are rejected (security constraint)
+8. Patches to files outside `cmd/` and `pkg/` are rejected
+
+#### File Change Specifications
+
+**`pkg/usecase/self_update.go`** (new):
 
 ```go
+package usecase
+
+import (
+    "context"
+    "fmt"
+    "os"
+    "os/exec"
+    "path/filepath"
+    "strings"
+)
+
 type SelfUpdateManager struct {
-    RepoPath    string   // path to noctifab repo
-    BuildCmd    string   // "go build -o /tmp/noctifab-new ./cmd/noctifab"
-    TestCmd     string   // "go test ./..."
-    BinaryPath  string   // current binary path
+    RepoPath   string // path to noctifab repository
+    BinaryPath string // current binary path (e.g., os.Args[0])
+    GoCmd      string // "go" (configurable for testing)
 }
 
-func (sum *SelfUpdateManager) BuildAndTest(ctx context.Context) error {
-    // 1. Clone or pull latest noctifab source
-    // 2. Apply LLM-generated patches to Go source files
-    // 3. Run `go build -o /tmp/noctifab-new ./cmd/noctifab`
-    // 4. Run `go test ./pkg/...`
-    // 5. If tests pass → return nil (ready for hot-reload)
-    // 6. If tests fail → rollback patches, return error
-}
-```
+const selfUpdateTempDir = "/tmp/noctifab-self-update"
 
-**Patch application**:
-- LLM generates `write_file` actions for `.go` files in `cmd/` and `pkg/`
-- `SelfUpdateManager` collects patches, applies to a temp clone, builds, runs full test suite
-- Only if all tests pass is the binary ready for hot-reload
+// allowedSelfPatchPrefixes are the only directories that can be patched.
+var allowedSelfPatchPrefixes = []string{"cmd/noctifab/", "pkg/"}
 
-**Safety constraints**:
-- Only modify files in `cmd/noctifab/` and `pkg/` (not `tests/`, `docs/`, vendor dirs)
-- Build must produce a working binary (`go vet` + `go test ./pkg/...` must pass)
-- Never modify `go.mod` or `go.sum` (dependency changes require human review)
+func (sum *SelfUpdateManager) BuildAndTest(ctx context.Context, patches []Patch) error {
+    tmpDir := filepath.Join(selfUpdateTempDir, "src")
+    defer os.RemoveAll(selfUpdateTempDir)
 
-**Tests**:
-- Mock test: create temp Go project, apply mock patches, verify build succeeds
-- Mock test: apply broken patch (syntax error), verify rollback
+    // 1. Copy repo to temp
+    if err := sum.copyRepo(tmpDir); err != nil {
+        return fmt.Errorf("self-update: failed to copy repo: %w", err)
+    }
 
----
-
-### 6.2 Graceful Stateful Hot-Reload
-
-**Problem**: When replacing the binary, active task state must be preserved and handed off.
-
-**Files to create**:
-- `pkg/usecase/hot_reload.go` (new)
-
-**Design**:
-
-```go
-type HotReloadManager struct {
-    PIDPath     string
-    OldBinary   string
-    NewBinary   string
-    StateRepo   domain.StateRepository
-}
-
-func (hrm *HotReloadManager) Reload(ctx context.Context) error {
-    // 1. Save current state (already persisted by repo)
-    // 2. Spawn new binary as child: exec.Command(newBinary, "serve", "--restore")
-    // 3. New binary starts HTTP server on a different port (+1)
-    // 4. Old binary waits for new binary health check to pass
-    // 5. Old binary signals it's shutting down, stops accepting work
-    // 6. New binary takes over the PID file
-    // 7. Old binary exits
-    return nil
-}
-```
-
-**Protocol**: The old binary passes state to the new binary via the shared database (already persisted). The handoff uses a `handshake` file:
-1. Old writes `{ "new_pid": ..., "status": "handing_off" }` to `.noctifab/hot_reload.json`
-2. New polls this file; when it sees `status: "handing_off"`, it loads state and begins orchestrating
-3. New writes `{ "status": "active", "pid": ... }`
-4. Old reads this and exits
-
-**Tests**:
-- Integration test: start old binary, trigger hot-reload, verify new binary processes tasks
-- Unit test: handshake file protocol
-
----
-
-### 6.3 SAST Security Gates
-
-**Problem**: No automated security scanning. The daemon can merge code with known vulnerabilities.
-
-**Files to create/modify**:
-- `pkg/usecase/sast_scanner.go` (new)
-- `pkg/infrastructure/config/types.go` (modify — add scanner config)
-
-**Config**:
-```go
-type SASTConfig struct {
-    Enabled      bool     `yaml:"enabled"`
-    Scanners     []string `yaml:"scanners"`       // ["gosec", "bandit", "cargo-audit"]
-    FailOnSeverity string `yaml:"fail_on_severity"` // "high" (default), "medium", "low"
-}
-```
-
-**Scanner**:
-
-```go
-type SASTScanner struct {
-    Scanners       []string
-    AllowedCmds    []string
-}
-
-// Run scans the project directory with all configured SAST tools.
-func (s *SASTScanner) Run(ctx context.Context, projectPath string) (*SASTResult, error) {
-    var issues []SecurityIssue
-
-    for _, scanner := range s.Scanners {
-        switch scanner {
-        case "gosec":
-            out, err := s.runGosec(ctx, projectPath)
-            // parse output, append issues
-        case "bandit":
-            out, err := s.runBandit(ctx, projectPath)
-            // parse output, append issues
+    // 2. Validate and apply patches
+    for _, p := range patches {
+        if err := sum.validatePatch(p); err != nil {
+            return fmt.Errorf("self-update: patch validation failed: %w", err)
+        }
+        fullPath := filepath.Join(tmpDir, p.Path)
+        if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+            return fmt.Errorf("self-update: failed to create dir for %s: %w", p.Path, err)
+        }
+        if err := os.WriteFile(fullPath, []byte(p.Content), 0644); err != nil {
+            return fmt.Errorf("self-update: failed to write %s: %w", p.Path, err)
         }
     }
 
-    return &SASTResult{
-        Passed:  countHigh(issues) == 0,
-        Issues:  issues,
-    }, nil
+    // 3. Build
+    buildCmd := exec.CommandContext(ctx, sum.GoCmd, "build", "-o", "/tmp/noctifab-new", "./cmd/noctifab")
+    buildCmd.Dir = tmpDir
+    if output, err := buildCmd.CombinedOutput(); err != nil {
+        return fmt.Errorf("self-update: build failed: %w\nOutput: %s", err, string(output))
+    }
+
+    // 4. Test
+    testCmd := exec.CommandContext(ctx, sum.GoCmd, "test", "./pkg/...")
+    testCmd.Dir = tmpDir
+    if output, err := testCmd.CombinedOutput(); err != nil {
+        return fmt.Errorf("self-update: tests failed: %w\nOutput: %s", err, string(output))
+    }
+
+    return nil
+}
+
+type Patch struct {
+    Path    string // relative path like "pkg/usecase/watchdog.go"
+    Content string
+}
+
+func (sum *SelfUpdateManager) validatePatch(p Patch) error {
+    // Reject go.mod / go.sum changes
+    if p.Path == "go.mod" || p.Path == "go.sum" {
+        return fmt.Errorf("rejected: changes to %s require human review", p.Path)
+    }
+    // Only allow cmd/noctifab/ and pkg/ prefixes
+    allowed := false
+    for _, prefix := range allowedSelfPatchPrefixes {
+        if strings.HasPrefix(p.Path, prefix) {
+            allowed = true
+            break
+        }
+    }
+    if !allowed {
+        return fmt.Errorf("rejected: path %s is outside allowed patch directories", p.Path)
+    }
+    return nil
+}
+
+func (sum *SelfUpdateManager) copyRepo(dst string) error {
+    // Use git clone --depth=1 for speed, or cp -R for local
+    cmd := exec.Command("cp", "-R", sum.RepoPath, dst)
+    return cmd.Run()
+}
+```
+
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestValidatePatch_Allowed` | `self_update_test.go` (new) | `pkg/usecase/x.go` → nil |
+| `TestValidatePatch_GoMod` | `self_update_test.go` | `go.mod` → error |
+| `TestValidatePatch_GoSum` | `self_update_test.go` | `go.sum` → error |
+| `TestValidatePatch_OutsidePrefix` | `self_update_test.go` | `tests/x.go` → error |
+| `TestValidatePatch_Docs` | `self_update_test.go` | `docs/x.md` → error |
+| `TestBuildAndTest_Success` | `self_update_test.go` | Mock patches to valid files → nil |
+| `TestBuildAndTest_BuildFailure` | `self_update_test.go` | Syntax error patch → error, temp dir cleaned up |
+| `TestBuildAndTest_TestFailure` | `self_update_test.go` | Correct syntax but test fails → error |
+| `Edge: empty patches` | `self_update_test.go` | `[]Patch{}` → builds and tests original code |
+
+---
+
+### AUT-602: Graceful Stateful Hot-Reload
+
+| Field | Value |
+|-------|-------|
+| **Effort** | 3 days |
+| **Dependencies** | AUT-601 (new binary must exist) |
+| **Risk** | High — state handoff failure could lose in-flight tasks |
+| **Rollback** | `HotReloadManager.Reload` returns error → old binary continues; no handoff |
+
+#### Acceptance Criteria
+
+1. `HotReloadManager.Reload` saves state, spawns new binary, waits for health check
+2. New binary starts HTTP server on `127.0.0.1:18081` (port +1)
+3. Old binary writes `handoff.json` with `status: handing_off` and new PID
+4. New binary reads `handoff.json`, loads state from DB, begins orchestrating
+5. New binary writes `handoff.json` with `status: active`
+6. Old binary reads `status: active` and exits with code 0
+7. If new binary fails health check within 30s, old binary cancels reload (rollback)
+
+#### File Change Specifications
+
+**`pkg/usecase/hot_reload.go`** (new):
+
+```go
+package usecase
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "os"
+    "os/exec"
+    "path/filepath"
+    "time"
+)
+
+type HandoffStatus string
+
+const (
+    HandoffPending   HandoffStatus = "pending"
+    HandoffHanding   HandoffStatus = "handing_off"
+    HandoffActive    HandoffStatus = "active"
+    HandoffFailed    HandoffStatus = "failed"
+)
+
+type HandoffState struct {
+    NewPID  int           `json:"new_pid"`
+    Status  HandoffStatus `json:"status"`
+    Message string        `json:"message,omitempty"`
+}
+
+type HotReloadManager struct {
+    PIDPath     string // .noctifab/noctifab.pid
+    HandoffPath string // .noctifab/hot_reload.json
+    NewBinary   string // path to new binary (from BuildAndTest)
+    Workspace   string // project workspace directory
+}
+
+func (hrm *HotReloadManager) Reload(ctx context.Context) error {
+    // 1. Spawn new binary
+    cmd := exec.CommandContext(ctx, hrm.NewBinary, "serve", "--port", "18081")
+    cmd.Dir = hrm.Workspace
+    cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
+    if err := cmd.Start(); err != nil {
+        return fmt.Errorf("hot-reload: failed to start new binary: %w", err)
+    }
+
+    newPID := cmd.Process.Pid
+
+    // 2. Write handoff file
+    handoff := HandoffState{NewPID: newPID, Status: HandoffHanding}
+    hrm.writeHandoff(handoff)
+
+    // 3. Wait for new binary to be healthy (up to 30s)
+    if err := hrm.waitForHealth(ctx, "http://127.0.0.1:18081/healthz", 30*time.Second); err != nil {
+        handoff.Status = HandoffFailed
+        handoff.Message = err.Error()
+        hrm.writeHandoff(handoff)
+        _ = cmd.Process.Kill()
+        return fmt.Errorf("hot-reload: new binary health check failed: %w", err)
+    }
+
+    // 4. Wait for active confirmation from new binary
+    if err := hrm.waitForActive(ctx, 10*time.Second); err != nil {
+        handoff.Status = HandoffFailed
+        handoff.Message = err.Error()
+        hrm.writeHandoff(handoff)
+        _ = cmd.Process.Kill()
+        return fmt.Errorf("hot-reload: handoff confirmation failed: %w", err)
+    }
+
+    // 5. Exit cleanly — new binary is now handling requests
+    fmt.Fprintf(os.Stderr, "Hot-reload complete. New PID: %d. Exiting.\n", newPID)
+    return nil
+}
+
+func (hrm *HotReloadManager) waitForHealth(ctx context.Context, url string, timeout time.Duration) error {
+    deadline := time.Now().Add(timeout)
+    for time.Now().Before(deadline) {
+        resp, err := http.Get(url)
+        if err == nil && resp.StatusCode == http.StatusOK {
+            resp.Body.Close()
+            return nil
+        }
+        if resp != nil {
+            resp.Body.Close()
+        }
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-time.After(500 * time.Millisecond):
+        }
+    }
+    return fmt.Errorf("health check did not pass within %s", timeout)
+}
+
+func (hrm *HotReloadManager) waitForActive(ctx context.Context, timeout time.Duration) error {
+    deadline := time.Now().Add(timeout)
+    for time.Now().Before(deadline) {
+        handoff, err := hrm.readHandoff()
+        if err == nil && handoff.Status == HandoffActive {
+            return nil
+        }
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-time.After(200 * time.Millisecond):
+        }
+    }
+    return fmt.Errorf("handoff did not reach 'active' within %s", timeout)
+}
+
+func (hrm *HotReloadManager) writeHandoff(state HandoffState) {
+    data, _ := json.Marshal(state)
+    _ = os.WriteFile(hrm.HandoffPath, data, 0644)
+}
+
+func (hrm *HotReloadManager) readHandoff() (*HandoffState, error) {
+    data, err := os.ReadFile(hrm.HandoffPath)
+    if err != nil {
+        return nil, err
+    }
+    var state HandoffState
+    if err := json.Unmarshal(data, &state); err != nil {
+        return nil, err
+    }
+    return &state, nil
+}
+```
+
+#### Test Specifications
+
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestHandoffFile_RoundTrip` | `hot_reload_test.go` (new) | Write then read → equal |
+| `TestHandoffFile_JSON` | `hot_reload_test.go` | File is valid JSON |
+| `TestWaitForHealth_Success` | `hot_reload_test.go` | Mock HTTP server → no error |
+| `TestWaitForHealth_Timeout` | `hot_reload_test.go` | No server → error after timeout |
+| `TestWaitForActive_Success` | `hot_reload_test.go` | Status transitions to active → no error |
+| `TestWaitForActive_Timeout` | `hot_reload_test.go` | Status stays at handing_off → error |
+| `Edge: handoff file missing` | `hot_reload_test.go` | readHandoff returns os.ErrNotExist |
+| `Edge: handoff file corrupted` | `hot_reload_test.go` | Invalid JSON → unmarshal error |
+
+---
+
+### AUT-603: SAST Security Gates
+
+| Field | Value |
+|-------|-------|
+| **Effort** | 2 days |
+| **Dependencies** | None |
+| **Risk** | Low — additive check, doesn't affect execution |
+| **Rollback** | Set `sast.enabled: false` in config |
+
+#### Acceptance Criteria
+
+1. `SASTScanner.Run` executes gosec (for Go) and bandit (for Python) when configured
+2. Parses scanner output into structured `SecurityIssue` with severity, file, line, description
+3. `FailOnSeverity: "high"` → only high-severity issues block the PR
+4. `FailOnSeverity: "medium"` → medium and high block
+5. Results are stored in state as `ValidationCriterion` items
+6. If SAST is disabled or scanner not found → no error, no block
+
+#### File Change Specifications
+
+**`pkg/usecase/sast_scanner.go`** (new):
+
+```go
+package usecase
+
+import (
+    "bufio"
+    "context"
+    "fmt"
+    "os/exec"
+    "strconv"
+    "strings"
+)
+
+type SASTConfig struct {
+    Enabled        bool     `yaml:"enabled"`
+    Scanners       []string `yaml:"scanners"`
+    FailOnSeverity string   `yaml:"fail_on_severity"` // "high", "medium", "low"
 }
 
 type SecurityIssue struct {
@@ -900,112 +1761,316 @@ type SecurityIssue struct {
     Line        int    `json:"line"`
     Description string `json:"description"`
 }
+
+type SASTResult struct {
+    Passed bool            `json:"passed"`
+    Issues []SecurityIssue `json:"issues"`
+}
+
+type SASTScanner struct {
+    Config SASTConfig
+}
+
+func (s *SASTScanner) Run(ctx context.Context, projectPath string) (*SASTResult, error) {
+    if !s.Config.Enabled {
+        return &SASTResult{Passed: true}, nil
+    }
+
+    var allIssues []SecurityIssue
+
+    for _, scanner := range s.Config.Scanners {
+        switch scanner {
+        case "gosec":
+            issues, err := s.runGosec(ctx, projectPath)
+            if err != nil {
+                return nil, fmt.Errorf("SAST: gosec failed: %w", err)
+            }
+            allIssues = append(allIssues, issues...)
+        case "bandit":
+            issues, err := s.runBandit(ctx, projectPath)
+            if err != nil {
+                return nil, fmt.Errorf("SAST: bandit failed: %w", err)
+            }
+            allIssues = append(allIssues, issues...)
+        }
+    }
+
+    blocked := false
+    for _, issue := range allIssues {
+        if s.isBlockingSeverity(issue.Severity) {
+            blocked = true
+            break
+        }
+    }
+
+    return &SASTResult{
+        Passed: !blocked,
+        Issues: allIssues,
+    }, nil
+}
+
+func (s *SASTScanner) severityScore(sev string) int {
+    switch strings.ToLower(sev) {
+    case "high":
+        return 3
+    case "medium":
+        return 2
+    case "low":
+        return 1
+    default:
+        return 0
+    }
+}
+
+func (s *SASTScanner) isBlockingSeverity(sev string) bool {
+    return s.severityScore(sev) >= s.severityScore(s.Config.FailOnSeverity)
+}
+
+func (s *SASTScanner) runGosec(ctx context.Context, projectPath string) ([]SecurityIssue, error) {
+    cmd := exec.CommandContext(ctx, "gosec", "-fmt", "json", "./...")
+    cmd.Dir = projectPath
+    output, err := cmd.Output()
+    if err != nil {
+        // gosec returns non-zero exit if issues found — parse output anyway
+    }
+    return parseGosecJSON(string(output))
+}
+
+func (s *SASTScanner) runBandit(ctx context.Context, projectPath string) ([]SecurityIssue, error) {
+    cmd := exec.CommandContext(ctx, "bandit", "-r", "-f", "json", ".")
+    cmd.Dir = projectPath
+    output, err := cmd.Output()
+    if err != nil {
+        // bandit returns non-zero if issues found
+    }
+    return parseBanditJSON(string(output))
+}
 ```
 
-**Integration**: Run SAST in `FinalizeUserStory` before creating the PR. If high-severity issues found, block the PR and feed the report to the Generator Agent for remediation.
+#### Test Specifications
 
-**Tests**:
-- Unit test `Run` with mock scanner commands (write temp files with known vulnerabilities)
-- Unit test severity filtering (only high-severity blocks PR)
-- Unit test `FailOnSeverity: "medium"` — medium issues also block
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestSAST_Disabled` | `sast_scanner_test.go` (new) | `Enabled: false` → Passed: true, no issues |
+| `TestSAST_NoScanners` | `sast_scanner_test.go` | Empty scanners list → Passed: true |
+| `TestSeverityScore_high` | `sast_scanner_test.go` | "high" → 3 |
+| `TestSeverityScore_unknown` | `sast_scanner_test.go` | "critical" → 0 |
+| `TestIsBlocking_HighWhenHigh` | `sast_scanner_test.go` | FailOnSeverity=high, issue=high → true |
+| `TestIsBlocking_MediumWhenHigh` | `sast_scanner_test.go` | FailOnSeverity=high, issue=medium → false |
+| `TestParseGosecJSON` | `sast_scanner_test.go` | Parse valid gosec JSON into SecurityIssue |
+| `TestParseBanditJSON` | `sast_scanner_test.go` | Parse valid bandit JSON into SecurityIssue |
+| `Edge: gosec not installed` | `sast_scanner_test.go` | exec.ErrNotFound → wrapped error |
+| `Edge: bandit output empty` | `sast_scanner_test.go` | Empty JSON → no issues, no error |
 
 ---
 
-### 6.4 Zero-Clarification Intent Disambiguation
+### AUT-604: Zero-Clarification Intent Disambiguation
 
-**Problem**: When a spec is ambiguous, the orchestrator raises a clarification and waits for a human. A Level 5 agent should infer intent from git history, issue tracker, and code context.
+| Field | Value |
+|-------|-------|
+| **Effort** | 2 days |
+| **Dependencies** | None |
+| **Risk** | Low — clarification pause is the fallback; disambiguation is best-effort |
+| **Rollback** | Remove `IntentDisambiguator` from orchestrator wiring |
 
-**Files to create**:
-- `pkg/usecase/intent_disambiguator.go` (new)
+#### Acceptance Criteria
 
-**Design**:
+1. `IntentDisambiguator.Disambiguate` returns an inferred answer for a clarification question
+2. Context gathered includes: last 30 git log entries, base branch, feature name
+3. If LLM returns a valid response, clarification is auto-resolved with inferred answer
+4. If LLM returns error or empty response, clarification remains unresolved (human needed)
+5. Disambiguation is only attempted once per clarification (not retried)
+6. The inferred answer and decision are logged in state's LastActions
+
+#### File Change Specifications
+
+**`pkg/usecase/intent_disambiguator.go`** (new):
 
 ```go
+package usecase
+
+import (
+    "context"
+    "fmt"
+    "time"
+
+    "github.com/diegojromerolopez/noctifab/pkg/domain"
+)
+
 type IntentDisambiguator struct {
-    gitClient   *GitClient
-    vcsClient   domain.VCSClient
-    llmClient   domain.LLMClient
+    gitClient *GitClient
+    llmClient domain.LLMClient
 }
 
-// Disambiguate attempts to resolve a clarification without human input.
-// It searches git log, commit messages, and similar issues for context.
-func (id *IntentDisambiguator) Disambiguate(ctx context.Context,
-    clarification domain.Clarification, state *domain.State) (string, error) {
+func NewIntentDisambiguator(gitClient *GitClient, llmClient domain.LLMClient) *IntentDisambiguator {
+    return &IntentDisambiguator{
+        gitClient: gitClient,
+        llmClient: llmClient,
+    }
+}
 
-    // 1. Gather context: recent git log, similar past clarifications, code symbols
+func (id *IntentDisambiguator) Disambiguate(ctx context.Context, clarification domain.Clarification, state *domain.State) (string, error) {
+    // 1. Gather context
     gitLog, _ := id.gitClient.Run(ctx, false, "log", "--oneline", "-30")
-    
-    // 2. Build prompt for LLM to infer intent
-    prompt := fmt.Sprintf(`The system needs to resolve this ambiguity:
+    if gitLog == "" {
+        gitLog = "(no git history available)"
+    }
 
-Question: %s
+    codeFiles := ""
+    for _, f := range state.Files {
+        codeFiles += f.Path + "\n"
+    }
+
+    // 2. Build prompt
+    prompt := fmt.Sprintf(`The system needs to resolve an ambiguity during autonomous development.
+
+Question from the agent: %s
 
 Context:
 - Base branch: %s
 - Feature: %s
+- Files in workspace:
+%s
 - Recent commits:
 %s
 
-Analyze the context and infer the most likely intended behavior.
-Respond with a brief answer to the question above.
-`, clarification.Question, state.Metadata.BaseBranch, 
-   state.Metadata.FeatureName, gitLog)
+Analyze this context and infer the most likely intended behavior.
+Respond with a JSON object: {"answer": "your inferred answer here"}
+Be concise — answer in 1-2 sentences.
+`, clarification.Question, state.Metadata.BaseBranch, state.Metadata.FeatureName,
+        codeFiles, gitLog)
 
-    // 3. Call LLM with the disambiguation prompt
+    // 3. Call LLM
     resp, err := id.llmClient.Complete(ctx, prompt)
     if err != nil {
-        return "", err
+        return "", fmt.Errorf("disambiguation LLM call failed: %w", err)
     }
 
-    // 4. Log the inferred answer and decision
-    inferred := resp.Actions[0].Args["answer"].(string)
-    return inferred, nil
+    if len(resp.Actions) == 0 {
+        return "", fmt.Errorf("disambiguation LLM returned no actions")
+    }
+
+    answer, ok := resp.Actions[0].Args["answer"].(string)
+    if !ok || answer == "" {
+        return "", fmt.Errorf("disambiguation LLM response missing 'answer' field")
+    }
+
+    return answer, nil
 }
 ```
 
-**Integration**: in `orchestrator_helper.go`'s clarification check, before pausing:
+**`pkg/usecase/orchestrator.go`** — add field and init:
+
 ```go
-if o.intentDisambiguator != nil {
-    answer, err := o.intentDisambiguator.Disambiguate(ctx, clar, state)
-    if err == nil {
-        clar.Answer = answer
-        clar.Resolved = true
-        continue // do not block
+type Orchestrator struct {
+    // ... existing fields ...
+    intentDisambiguator *IntentDisambiguator
+}
+
+func NewOrchestrator(..., intent *IntentDisambiguator) *Orchestrator {
+    return &Orchestrator{
+        // ... existing assignments ...
+        intentDisambiguator: intent,
     }
 }
 ```
 
----
+#### Test Specifications
 
-## Implementation Ordering
-
-### Recommended sequence (highest ROI first)
-
-| Priority | Phase | Item | Effort | Impact |
-|----------|-------|------|--------|--------|
-| P0 | 1.1 | Wire FailoverClient | 2 days | Eliminates single-provider 429 death |
-| P0 | 3.1 | Concurrency prompts | 1 day | Prevents infinite-loop test hangs |
-| P1 | 4.1 | Watchdog repair loop | 3 days | Auto-recovers from hangs |
-| P1 | 1.2 | Budget persistence | 2 days | Stops runaway costs |
-| P1 | 5.2 | Flaky auto-stabilization | 2 days | Reduces manual flaky-test burden |
-| P2 | 5.1 | Dynamic dependency install | 2 days | Reduces env setup failures |
-| P2 | 1.3 | Universal interruptible sleep | 1 day | Makes daemon responsive during backoff |
-| P3 | 5.3 | Telemetry integration | 3 days | Observability for all phases |
-| P3 | 6.3 | SAST gates | 2 days | Security baseline |
-| P4 | 6.1 | Self-patching | 4 days | Meta-autonomy |
-| P4 | 6.2 | Hot-reload | 3 days | Zero-downtime updates |
-| P4 | 6.4 | Intent disambiguation | 2 days | Reduces human interaction |
-
-### Effort estimate
-- **P0**: ~3 days
-- **P0+P1**: ~10 days
-- **All phases**: ~25 days
+| Test | File | What it verifies |
+|------|------|------------------|
+| `TestDisambiguate_ReturnsAnswer` | `intent_disambiguator_test.go` (new) | Mock LLM returns answer → answer returned |
+| `TestDisambiguate_LLMFails` | `intent_disambiguator_test.go` | Mock LLM returns error → error propagated |
+| `TestDisambiguate_EmptyAnswer` | `intent_disambiguator_test.go` | Mock LLM returns empty answer → error |
+| `TestDisambiguate_GitLogInContext` | `intent_disambiguator_test.go` | Prompt contains git log output |
+| `TestDisambiguate_FileContext` | `intent_disambiguator_test.go` | Prompt contains workspace files |
+| `Edge: no git history` | `intent_disambiguator_test.go` | gitClient.Run fails → "(no git history available)" in prompt |
+| `Edge: nil disambiguator` | `orchestrator_test.go` | orchestrator with nil disambiguator → clarification blocks normally |
 
 ---
 
-## Appendix: Config Schema Final State
+## 9. Schedule & Milestones
 
-Full `config.yaml` with all Phase 1–6 settings:
+### Critical Path
+
+```
+AUT-101 (2d) → AUT-102 (2d) → AUT-103 (1d)
+                                    │
+AUT-301 (1d) → AUT-302 (0.5d)      │
+                      │             │
+                      ▼             ▼
+               AUT-401 (1d) → AUT-402 (2d) → M3 (Day 7)
+                                    │
+AUT-501 (2d) → AUT-502 (2d) → AUT-503 (3d) → M7 (Day 15)
+                                              │
+                    AUT-601 (4d) → AUT-602 (3d) → AUT-603 (2d) → AUT-604 (2d) → M10 (Day 24)
+```
+
+### Milestone Schedule
+
+```
+Week 1 (Days 1-5):    M1 (Day 3), M2 (Day 4)
+Week 2 (Days 6-10):   M3 (Day 7), M4 (Day 8), M5 (Day 10)
+Week 3 (Days 11-15):  M6 (Day 12), M7 (Day 15)
+Week 4 (Days 16-20):  M8 (Day 17), M9 (Day 22)
+Week 5 (Days 21-25):  M10 (Day 24)
+```
+
+### Parallel Tracks
+
+```
+Track A (Phases 1,4): AUT-101 → AUT-102 → AUT-103 → AUT-401 → AUT-402
+Track B (Phase 3):    AUT-301 → AUT-302
+Track C (Phases 5):   AUT-501 → AUT-502 → AUT-503
+Track D (Phase 6):    AUT-601 → AUT-602 → AUT-603 → AUT-604
+```
+
+Tracks A and B merge at AUT-402 (self-repair needs prompt infrastructure).
+Track C joins after AUT-402.
+Track D starts after AUT-503 has telemetry for monitoring self-patching.
+
+---
+
+## 10. Appendices
+
+### A. Risk Register
+
+| Risk | Phase | Likelihood | Impact | Mitigation |
+|------|-------|-----------|--------|------------|
+| Failover chain never used (always returns to primary) | 1 | Low | Low | Add integration test with mock 429 |
+| Budget table migration fails on Postgres | 1 | Low | Medium | Test both SQLite and Postgres migration paths |
+| LLM repair loop makes code worse | 4 | Medium | Medium | maxRetries=3; manual override via CLI `--skip-repair` flag |
+| Package install blocked by permissions | 5 | Medium | High | `AutoInstallDeps: false` by default; require explicit opt-in |
+| Self-patch introduces compile error | 6 | High | High | Build in temp dir; never modify source; full test suite before promote |
+| Hot-reload handoff drops in-flight task | 6 | Low | High | Tasks are atomic per RunOnce cycle; interrupted tasks reloaded as PENDING |
+| SAST scanner not installed | 6 | Medium | Low | Scanner missing → log warning, continue (no block) |
+
+### B. Error Taxonomy (Final)
+
+```go
+// Phase 1 — Resilience
+var ErrBudgetExhausted   = errors.New("LLM token/budget exhausted")
+var ErrAllBackendsFailed = errors.New("all LLM backends exhausted or on cooldown")
+
+// Phase 2 — Liveness
+var ErrWatchdogMaxDuration = errors.New("command killed: max wall-clock duration exceeded")
+var ErrWatchdogIdleTimeout = errors.New("command killed: no output produced within idle timeout")
+
+// Phase 4 — Self-Repair
+var ErrRepairFailed       = errors.New("all repair attempts failed to fix the issue")
+var ErrHangDiagnosed      = errors.New("hang detected and diagnostic prompt generated")
+
+// Phase 5 — Self-Healing
+var ErrMissingDependency  = errors.New("required toolchain not found and auto-install failed")
+var ErrFlakyTestDetected  = errors.New("test suite has non-deterministic results post-stabilization")
+
+// Phase 6 — Self-Evolution
+var ErrSelfPatchFailed    = errors.New("self-patch build or test suite failed")
+var ErrHotReloadFailed    = errors.New("hot-reload handshake failed")
+var ErrSecurityVulnerability = errors.New("SAST scan found blocking security vulnerabilities")
+```
+
+### C. Final Config Schema (`config.yaml`)
 
 ```yaml
 config_version: "2.0"
@@ -1062,41 +2127,25 @@ sast:
   enabled: false
   scanners: ["gosec"]
   fail_on_severity: high
-
-editor:
-  auto_install_deps: false
-  package_managers: ["brew", "apt", "pip"]
 ```
 
----
+### D. Effort Summary
 
-## Appendix: Complete Error Taxonomy
+| Priority | Tasks | Days | Cumulative |
+|----------|-------|------|------------|
+| P0 | AUT-101, AUT-301 | 3 | 3 |
+| P1 | AUT-102, AUT-103, AUT-302, AUT-401, AUT-402, AUT-502 | 8.5 | 11.5 |
+| P2 | AUT-501 | 2 | 13.5 |
+| P3 | AUT-503, AUT-603 | 5 | 18.5 |
+| P4 | AUT-601, AUT-602, AUT-604 | 9 | 27.5 |
 
-```go
-// Sentinel errors — all domains
-var (
-    // Phase 1
-    ErrBudgetExhausted   = errors.New("LLM token/budget exhausted")
-    ErrAllBackendsFailed = errors.New("all LLM backends exhausted")
+**Total estimated effort: 25–28 working days**
 
-    // Phase 2
-    ErrWatchdogMaxDuration = errors.New("command killed: max wall-clock duration exceeded")
-    ErrWatchdogIdleTimeout = errors.New("command killed: no output produced within idle timeout")
+### E. Rollback Strategy
 
-    // Phase 3
-    // (no new sentinel errors)
+Each task has a specific rollback documented in its header. General principles:
 
-    // Phase 4
-    ErrRepairFailed    = errors.New("all repair attempts failed")
-    ErrHangDiagnosed   = errors.New("hang detected and analyzed")
-
-    // Phase 5
-    ErrMissingDependency   = errors.New("required toolchain not installed")
-    ErrFlakyTestDetected   = errors.New("test suite has non-deterministic results")
-
-    // Phase 6
-    ErrSelfPatchFailed     = errors.New("self-patch build or test failed")
-    ErrHotReloadFailed     = errors.New("hot-reload handshake failed")
-    ErrSecurityVulnerability = errors.New("SAST scan found security vulnerabilities")
-)
-```
+1. **Config gated**: Every new behavior is gated behind a config flag (`enabled: false` by default). Rollback is a config change.
+2. **Schema versioned**: DB migrations are additive only (CREATE TABLE IF NOT EXISTS). No destructive migrations.
+3. **Binary rollback**: Hot-reload keeps the old binary for 30s before deleting. If new binary fails health check, old binary continues.
+4. **Git revert**: Each phase builds on the previous. If Phase X must be rolled back, revert commits for Phases >= X.
