@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-07-01
+
+### Fixed
+- **Stale E2E Test Assertion**: Removed the `profiles/default.yaml` and `profiles` directory existence checks from `TestE2E_Init_CleanDirectory` in `tests/e2e/e2e_test.go`. The simplified permission profiles feature moved profiles into `config.yaml`, making the separate `profiles/` folder obsolete and causing E2E tests to fail.
+
 ## [0.2.2] - 2026-06-30
 
 ### Fixed
