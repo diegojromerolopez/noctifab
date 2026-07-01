@@ -341,6 +341,38 @@ llm:
 
 ---
 
+## E2E Autonomy Validation
+
+The `validation/` directory contains fully containerized, isolated end-to-end integration checks that run `noctifab` autonomously against real project specs — with **zero human intervention** — and verify that the correct source files are produced and all tests pass.
+
+### Available Validation Projects
+
+| Project | Language | User Story | What is Checked |
+| :--- | :--- | :--- | :--- |
+| **`frontpunch`** | Python | `US-001.md` | `frontpunch/worker.py` created/modified and test suite passes |
+| **`todo-cli`** | Python | `US-001.md` | `todo.py` created/modified and test suite passes |
+| **`wc`** | Rust | `US-001.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
+
+The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
+
+### Running Validation
+
+Set your API key, then run via Make:
+
+```bash
+export GEMINI_API_KEY="your-actual-api-key"
+
+# Run the default (frontpunch) validation
+make validate
+
+# Run a specific validation project
+make validate PROJECT=todo-cli
+make validate PROJECT=wc
+make validate PROJECT=frontpunch
+```
+
+See [`validation/README.md`](validation/README.md) for full setup and credential details.
+
 ## Collaboration & Coding Standards
 
 We welcome contributions! To maintain a highly clean and context-friendly repository, all code changes must adhere to the following directives:
@@ -349,7 +381,7 @@ We welcome contributions! To maintain a highly clean and context-friendly reposi
 2. **Dependency Injection**: Provide all clients, database connection objects, and configurations through struct constructors. Global state is strictly prohibited.
 3. **100% Test Coverage**: Every package must be accompanied by unit tests (`_test.go` files). Ensure the test suite passes before submitting:
    ```bash
-   go test -v ./...
+   go test -v ./pkg/... ./tests
    ```
 4. **Code Quality and Lints**: Ensure that the code is formatted using `go fmt` and passes static analysis lints:
    ```bash

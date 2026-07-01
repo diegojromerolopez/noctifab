@@ -3,12 +3,10 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
-	"gopkg.in/yaml.v3"
 )
 
 type contextKey string
@@ -31,34 +29,51 @@ type Validator interface {
 	EvaluateGoals(ctx context.Context, state *domain.State) (bool, error)
 }
 
-// RoleProfile defines the allowed permissions for a specific agent role.
-type RoleProfile struct {
-	Role            string   `yaml:"role"`
+// ProfileConfig defines tool/command permissions (same structure as config).
+type ProfileConfig struct {
 	AllowedTools    []string `yaml:"allowed_tools"`
 	AllowedCommands []string `yaml:"allowed_commands"`
-	Permissions     struct {
-		AllowedTools    []string `yaml:"allowed_tools"`
-		AllowedCommands []string `yaml:"allowed_commands"`
-	} `yaml:"permissions"`
+}
+
+var defaultRoleProfiles = map[string]ProfileConfig{
+	"orchestrator": {
+		AllowedTools:    []string{"*"},
+		AllowedCommands: []string{"*"},
+	},
+	"planner": {
+		AllowedTools:    []string{"add_task", "log_message", "noop"},
+		AllowedCommands: []string{},
+	},
+	"tester": {
+		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "noop"},
+		AllowedCommands: []string{},
+	},
+	"generator": {
+		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "noop"},
+		AllowedCommands: []string{},
+	},
 }
 
 // PolicyValidator implements Validator interface.
 type PolicyValidator struct {
 	AllowedCommands []string
 	ProtectedBranch string
-	ProfilesDir     string
+	Profiles        map[string]ProfileConfig
 }
 
 var _ Validator = (*PolicyValidator)(nil)
 
-func NewPolicyValidator(allowedCommands []string, protectedBranch string) *PolicyValidator {
+func NewPolicyValidator(allowedCommands []string, protectedBranch string, profiles map[string]ProfileConfig) *PolicyValidator {
 	if protectedBranch == "" {
 		protectedBranch = "main"
+	}
+	if profiles == nil {
+		profiles = make(map[string]ProfileConfig)
 	}
 	return &PolicyValidator{
 		AllowedCommands: allowedCommands,
 		ProtectedBranch: protectedBranch,
-		ProfilesDir:     filepath.Join(".noctifab", "profiles"),
+		Profiles:        profiles,
 	}
 }
 
@@ -66,57 +81,60 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 	// 1. Role-based dynamic checks
 	role, _ := ctx.Value(AgentRoleKey).(string)
 	if role != "" {
-		profilePath := filepath.Join(v.ProfilesDir, role+".yaml")
-		if _, err := os.Stat(profilePath); err == nil {
-			profileData, err := os.ReadFile(profilePath)
-			if err == nil {
-				var profile RoleProfile
-				if err := yaml.Unmarshal(profileData, &profile); err == nil {
-					// Check tool permissions
-					allowedTools := profile.AllowedTools
-					if len(allowedTools) == 0 && len(profile.Permissions.AllowedTools) > 0 {
-						allowedTools = profile.Permissions.AllowedTools
-					}
-					toolAllowed := false
-					for _, tool := range allowedTools {
-						if tool == "*" || tool == action.Tool {
-							toolAllowed = true
+		// Get default profile for this role
+		profile, exists := defaultRoleProfiles[role]
+		if !exists {
+			// Fallback to a safe default if role is unrecognized
+			profile = ProfileConfig{
+				AllowedTools:    []string{"run_tests", "read_file", "noop"},
+				AllowedCommands: []string{},
+			}
+		}
+
+		// Apply user configuration overrides if present
+		if userProfile, ok := v.Profiles[role]; ok {
+			if len(userProfile.AllowedTools) > 0 {
+				profile.AllowedTools = userProfile.AllowedTools
+			}
+			if len(userProfile.AllowedCommands) > 0 {
+				profile.AllowedCommands = userProfile.AllowedCommands
+			}
+		}
+
+		// Check tool permissions
+		toolAllowed := false
+		for _, tool := range profile.AllowedTools {
+			if tool == "*" || tool == action.Tool {
+				toolAllowed = true
+				break
+			}
+		}
+		if !toolAllowed {
+			return &ValidationResult{
+				Allowed: false,
+				Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to call tool '%s'", role, action.Tool),
+			}, nil
+		}
+
+		// Check specific run_tests commands if white-listed in the role profile
+		if action.Tool == "run_tests" && len(profile.AllowedCommands) > 0 {
+			command, _ := action.Args["command"].(string)
+			if command != "" {
+				parts := strings.Fields(command)
+				if len(parts) > 0 {
+					binary := parts[0]
+					cmdAllowed := false
+					for _, c := range profile.AllowedCommands {
+						if c == "*" || c == binary {
+							cmdAllowed = true
 							break
 						}
 					}
-					if !toolAllowed {
+					if !cmdAllowed {
 						return &ValidationResult{
 							Allowed: false,
-							Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to call tool '%s'", role, action.Tool),
+							Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to execute command '%s'", role, binary),
 						}, nil
-					}
-
-					// Check specific run_tests commands if white-listed
-					allowedCommands := profile.AllowedCommands
-					if len(allowedCommands) == 0 && len(profile.Permissions.AllowedCommands) > 0 {
-						allowedCommands = profile.Permissions.AllowedCommands
-					}
-					if action.Tool == "run_tests" && len(allowedCommands) > 0 {
-						command, _ := action.Args["command"].(string)
-						if command != "" {
-							parts := strings.Fields(command)
-							if len(parts) > 0 {
-								binary := parts[0]
-								cmdAllowed := false
-								for _, c := range allowedCommands {
-									if c == "*" || c == binary {
-										cmdAllowed = true
-										break
-									}
-								}
-								if !cmdAllowed {
-									return &ValidationResult{
-										Allowed: false,
-										Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to execute command '%s'", role, binary),
-									}, nil
-								}
-							}
-						}
 					}
 				}
 			}

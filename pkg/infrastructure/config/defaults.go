@@ -66,6 +66,7 @@ func DefaultConfig() *Config {
 			Generator:    RoleSetting{Profile: "generator", Temperature: 0.0},
 			Tester:       RoleSetting{Profile: "tester", Temperature: 0.0},
 		},
+		Profiles:            make(map[string]ProfileConfig),
 		AutoCommit:          false,
 		MaxActions:          100,
 		MaxDuration:         Duration(0),

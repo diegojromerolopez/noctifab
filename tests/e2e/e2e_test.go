@@ -52,7 +52,6 @@ func TestE2E_Init_CleanDirectory(t *testing.T) {
 	noctifabDir := filepath.Join(tempDir, ".noctifab")
 	assert.DirExists(t, filepath.Join(noctifabDir, "data"))
 	assert.DirExists(t, filepath.Join(noctifabDir, "logs"))
-	assert.DirExists(t, filepath.Join(noctifabDir, "profiles"))
 
 	// Verify default config file
 	assert.FileExists(t, filepath.Join(noctifabDir, "config.yaml"))
@@ -66,9 +65,6 @@ func TestE2E_Init_CleanDirectory(t *testing.T) {
 	content, err := os.ReadFile(gitIgnorePath)
 	require.NoError(t, err)
 	assert.True(t, strings.Contains(string(content), "data/noctifab.db"))
-
-	// Verify default profile
-	assert.FileExists(t, filepath.Join(noctifabDir, "profiles", "default.yaml"))
 }
 
 func TestE2E_Init_DirtyDirectory_SecurityExitCode4(t *testing.T) {

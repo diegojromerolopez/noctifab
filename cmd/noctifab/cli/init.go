@@ -54,7 +54,6 @@ var initCmd = &cobra.Command{
 		subDirs := []string{
 			"data",
 			"logs",
-			"profiles",
 		}
 		for _, sub := range subDirs {
 			p := filepath.Join(noctifabDir, sub)
@@ -87,58 +86,6 @@ var initCmd = &cobra.Command{
 			ignoreContent := "data/noctifab.db\nlogs/\nworktrees/\nnoctifab.pid\nsecrets.yaml\n"
 			if err := os.WriteFile(gitIgnorePath, []byte(ignoreContent), 0644); err != nil {
 				return fmt.Errorf("failed to create .gitignore: %w", err)
-			}
-		}
-
-		// 6. Write default agent permission profiles
-		defaultProfilePath := filepath.Join(noctifabDir, "profiles", "default.yaml")
-		if _, err := os.Stat(defaultProfilePath); os.IsNotExist(err) {
-			defaultProfile := `permissions:
-  allowed_tools:
-    - "run_tests"
-    - "read_file"
-    - "noop"
-  network:
-    allow_ai_provider: true
-    allow_external: false
-`
-			if err := os.WriteFile(defaultProfilePath, []byte(defaultProfile), 0644); err != nil {
-				return fmt.Errorf("failed to write default profile: %w", err)
-			}
-		}
-
-		orchestratorProfilePath := filepath.Join(noctifabDir, "profiles", "orchestrator.yaml")
-		if _, err := os.Stat(orchestratorProfilePath); os.IsNotExist(err) {
-			orchestratorProfile := `permissions:
-  allowed_tools:
-    - "*"
-  network:
-    allow_ai_provider: true
-    allow_external: true
-`
-			if err := os.WriteFile(orchestratorProfilePath, []byte(orchestratorProfile), 0644); err != nil {
-				return fmt.Errorf("failed to write orchestrator profile: %w", err)
-			}
-		}
-
-		testerProfilePath := filepath.Join(noctifabDir, "profiles", "tester.yaml")
-		if _, err := os.Stat(testerProfilePath); os.IsNotExist(err) {
-			testerProfile := `permissions:
-  allowed_tools:
-    - "run_tests"
-    - "read_file"
-    - "write_file"
-    - "edit_file"
-    - "list_directory"
-    - "find_files"
-    - "grep_search"
-    - "noop"
-  network:
-    allow_ai_provider: true
-    allow_external: false
-`
-			if err := os.WriteFile(testerProfilePath, []byte(testerProfile), 0644); err != nil {
-				return fmt.Errorf("failed to write tester profile: %w", err)
 			}
 		}
 

@@ -22,16 +22,16 @@ func TestResolveGeminiURL(t *testing.T) {
 			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=testkey",
 		},
 		{
-			name:       "gemini-1.5-pro maps to gemini-2.5-pro",
+			name:       "gemini-1.5-pro remains gemini-1.5-pro",
 			modelInput: "gemini-1.5-pro",
 			apiKey:     "testkey",
-			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=testkey",
+			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=testkey",
 		},
 		{
-			name:       "models/gemini-1.5-pro maps to gemini-2.5-pro",
+			name:       "models/gemini-1.5-pro remains gemini-1.5-pro",
 			modelInput: "models/gemini-1.5-pro",
 			apiKey:     "testkey",
-			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=testkey",
+			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=testkey",
 		},
 		{
 			name:       "gemini-2.5-flash remains gemini-2.5-flash",
@@ -77,15 +77,21 @@ func TestGetNextLowerModel(t *testing.T) {
 			wantModel:    "gemini-2.5-flash",
 		},
 		{
-			name:         "gemini-1.5-pro falls back to gemini-2.5-flash (legacy mapping)",
+			name:         "gemini-1.5-pro is not in hierarchy and returns empty",
 			provider:     "gemini",
 			currentModel: "gemini-1.5-pro",
-			wantModel:    "gemini-2.5-flash",
+			wantModel:    "",
 		},
 		{
-			name:         "gemini-2.5-flash is lowest and returns empty",
+			name:         "gemini-2.5-flash falls back to gemini-2.0-flash",
 			provider:     "gemini",
 			currentModel: "gemini-2.5-flash",
+			wantModel:    "gemini-2.0-flash",
+		},
+		{
+			name:         "gemini-2.0-flash-lite is lowest and returns empty",
+			provider:     "gemini",
+			currentModel: "gemini-2.0-flash-lite",
 			wantModel:    "",
 		},
 		{

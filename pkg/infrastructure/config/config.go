@@ -121,9 +121,9 @@ func (cfg *Config) Validate() error {
 	validLLM := map[string]bool{
 		"openai":      true,
 		"anthropic":   true,
-		"gemini":       true,
-		"ollama":       true,
-		"hermes":       true,
+		"gemini":      true,
+		"ollama":      true,
+		"hermes":      true,
 		"huggingface": true,
 		"mistral":     true,
 		"deepseek":    true,
