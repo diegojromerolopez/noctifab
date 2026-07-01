@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
+	"github.com/diegojromerolopez/noctifab/pkg/usecase"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -277,4 +279,71 @@ func TestE2E_StartOneCommand(t *testing.T) {
 	err = cmdStartOne.Run()
 	require.NoError(t, err, "start-one failed: %s", stderr.String())
 	assert.Contains(t, stdout.String(), "Feature successfully implemented and validated.")
+}
+
+// ---------------------------------------------------------------------------
+// Idle Timeout E2E tests – tests the full HostSandbox → Watchdog stack
+// with real subprocess execution. These verify that the idle timeout
+// configured via sandbox.idle_timeout_seconds kills hanging commands,
+// returns partial output, and that periodic output resets the timer.
+// ---------------------------------------------------------------------------
+
+func TestE2E_IdleTimeout_KillsHangingCommand(t *testing.T) {
+	s := usecase.NewHostSandbox([]string{"sleep"}, "", 100*time.Millisecond)
+	ctx := context.Background()
+	_, err := s.RunCommand(ctx, t.TempDir(), "sleep 60", "")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, usecase.ErrWatchdogIdleTimeout)
+}
+
+func TestE2E_IdleTimeout_OutputResetsTimer(t *testing.T) {
+	tmp := t.TempDir()
+	script := filepath.Join(tmp, "ping.sh")
+	err := os.WriteFile(script, []byte("#!/bin/sh\nfor i in 1 2 3 4 5; do echo \"tick $i\"; sleep 0.02; done\n"), 0755)
+	require.NoError(t, err)
+
+	s := usecase.NewHostSandbox([]string{"sh"}, "", 200*time.Millisecond)
+	ctx := context.Background()
+	out, err := s.RunCommand(ctx, tmp, "sh "+script, "")
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "tick 5")
+}
+
+func TestE2E_IdleTimeout_ReturnsPartialOutputOnKill(t *testing.T) {
+	tmp := t.TempDir()
+	script := filepath.Join(tmp, "partial.sh")
+	err := os.WriteFile(script, []byte("#!/bin/sh\necho \"BEFORE\"\nsleep 10\necho \"AFTER\"\n"), 0755)
+	require.NoError(t, err)
+
+	s := usecase.NewHostSandbox([]string{"sh"}, "", 100*time.Millisecond)
+	ctx := context.Background()
+	out, err := s.RunCommand(ctx, tmp, "sh "+script, "")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, usecase.ErrWatchdogIdleTimeout)
+	assert.Contains(t, out, "BEFORE")
+	assert.NotContains(t, out, "AFTER")
+}
+
+func TestE2E_IdleTimeout_WhitelistBlocksDisallowedCommand(t *testing.T) {
+	s := usecase.NewHostSandbox([]string{"echo"}, "", 100*time.Millisecond)
+
+	ctx := context.Background()
+	_, err := s.RunCommand(ctx, t.TempDir(), "sleep 1", "")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Sandbox violation")
+	assert.NotContains(t, err.Error(), "idle timeout")
+}
+
+func TestE2E_IdleTimeout_ZeroTimeoutCompletesNormally(t *testing.T) {
+	s := usecase.NewHostSandbox([]string{"echo"}, "", 0)
+
+	ctx := context.Background()
+	out, err := s.RunCommand(ctx, t.TempDir(), "echo hello world", "")
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "hello world")
 }
