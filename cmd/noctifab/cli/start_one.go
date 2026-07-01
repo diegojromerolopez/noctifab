@@ -148,7 +148,7 @@ var startOneCmd = &cobra.Command{
 		if cfg.Sandbox.Mode == "docker" {
 			sandboxRunner = usecase.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand)
+			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second)
 		}
 
 		// Initialize tool registry for execution
@@ -192,7 +192,7 @@ var startOneCmd = &cobra.Command{
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
 		}
 
-		orchestrator := usecase.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig)
+		orchestrator := usecase.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-01
+
+### Added
+- **Level 5 Autonomy Specification**: Expanded the `AUTONOMY.md` proposal to define Level 5 (Maximum) Autonomy for `noctifab`.
+- **Level 5 Core Pillars**: Outlined requirements for environmental self-healing, closed-loop telemetry staging/production feedback, autogenous flaky test stabilization, binary self-evolution (metaprogramming), automated security/SAST auditing, and zero-clarification intent resolution.
+- **Level 5 Roadmap**: Added Phase 5 (Self-Healing & Telemetry) and Phase 6 (Self-Evolution & Security Auditing) to the implementation roadmap.
+- **Watchdog Liveness Monitor**: Added `pkg/usecase/watchdog.go` with idle output timeout detection for subprocess executions. The `Watchdog` tracks wall-clock duration and resets an idle timer on every byte of stdout/stderr output, killing the process group via `SIGKILL` when either limit is exceeded. Integrated into `HostSandbox.RunCommand`, replacing the previous goroutine-based context cancellation pattern. Sentinels `ErrWatchdogMaxDuration` and `ErrWatchdogIdleTimeout` are wrapped with `%w` so callers can distinguish hang events from normal test failures. Configured via `sandbox.idle_timeout_seconds` in `config.yaml` (default: 30s).
+- **Interruptible OCC Backoff**: Added `SleepWithInterrupt` to `CommandMailbox` with a `Wakeup()` notification channel that fires when a command is enqueued. The OCC retry loop in `Orchestrator.updateStateWithRetry` now selects on this channel instead of blocking on `time.After()`, making the daemon responsive to operator commands (abort, model switch) during database conflict backoff.
+- **LLM Call Budget Enforcement**: Added `maxCalls` parameter to `NewFailoverClient`. When set, `Complete` returns `domain.ErrBudgetExhausted` after the configured number of total calls, preventing runaway API spending when no backends are available.
+- **Unit Test Coverage**: Added 11 new tests — 6 for `Watchdog` (normal exit, max duration, idle timeout, output resets idle timer, context cancellation, no-limits mode) and 5 for `SleepWithInterrupt` (timer expiry, zero duration, cancelled context, immediate wakeup, deferred wakeup). Extended `FailoverClient` test suite with budget exhaustion coverage.
+
 ## [0.2.3] - 2026-07-01
 
 ### Fixed

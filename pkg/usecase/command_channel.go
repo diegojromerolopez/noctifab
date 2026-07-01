@@ -12,6 +12,9 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
+// ErrInterrupted is returned by SleepWithInterrupt when the wakeup channel fires.
+var ErrInterrupted = errors.New("operation interrupted by incoming command")
+
 // Command represents a state mutation operation routed through the CommandMailbox.
 type Command interface {
 	Execute(ctx context.Context, repo domain.StateRepository) error
@@ -19,14 +22,16 @@ type Command interface {
 
 // CommandMailbox serializes state changes to prevent database write conflicts.
 type CommandMailbox struct {
-	repo domain.StateRepository
-	cmds chan Command
+	repo   domain.StateRepository
+	cmds   chan Command
+	wakeup chan struct{}
 }
 
 func NewCommandMailbox(repo domain.StateRepository) *CommandMailbox {
 	return &CommandMailbox{
-		repo: repo,
-		cmds: make(chan Command, 100),
+		repo:   repo,
+		cmds:   make(chan Command, 100),
+		wakeup: make(chan struct{}, 1),
 	}
 }
 
@@ -47,6 +52,34 @@ func (m *CommandMailbox) Start(ctx context.Context) {
 
 func (m *CommandMailbox) Send(cmd Command) {
 	m.cmds <- cmd
+	select {
+	case m.wakeup <- struct{}{}:
+	default:
+	}
+}
+
+// Wakeup returns a channel that fires when a command is sent to the mailbox.
+func (m *CommandMailbox) Wakeup() <-chan struct{} {
+	return m.wakeup
+}
+
+// SleepWithInterrupt sleeps for the given duration or until the context is cancelled
+// or a command notification arrives on the wakeup channel.
+func SleepWithInterrupt(ctx context.Context, duration time.Duration, wakeup <-chan struct{}) error {
+	if duration <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	case <-wakeup:
+		return ErrInterrupted
+	}
 }
 
 // ResolveClarificationCmd is sent to resolve a clarification question.

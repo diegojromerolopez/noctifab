@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type SandboxMode string
@@ -27,14 +28,16 @@ type Sandbox interface {
 type HostSandbox struct {
 	AllowedCommands []string
 	DefaultCommand  string
+	IdleTimeout     time.Duration
 }
 
 var _ Sandbox = (*HostSandbox)(nil)
 
-func NewHostSandbox(allowed []string, defaultCmd string) *HostSandbox {
+func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Duration) *HostSandbox {
 	return &HostSandbox{
 		AllowedCommands: allowed,
 		DefaultCommand:  defaultCmd,
+		IdleTimeout:     idleTimeout,
 	}
 }
 
@@ -88,29 +91,13 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		cmd = exec.CommandContext(ctx, binary)
 	}
 	cmd.Dir = targetDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	var stdoutStderr strings.Builder
-	cmd.Stdout = &stdoutStderr
-	cmd.Stderr = &stdoutStderr
-
-	// PGID process group termination on cancellation
-	go func() {
-		<-ctx.Done()
-		if cmd.Process != nil {
-			pgid, err := syscall.Getpgid(cmd.Process.Pid)
-			if err == nil {
-				_ = syscall.Kill(-pgid, syscall.SIGKILL)
-			}
-		}
-	}()
-
-	err := cmd.Run()
-	output := stdoutStderr.String()
+	watchdog := Watchdog{IdleTimeout: s.IdleTimeout}
+	output, err := watchdog.Run(ctx, cmd)
 	if err != nil {
-		return output, fmt.Errorf("command execution failed: %w (output: %s)", err, output)
+		return string(output), fmt.Errorf("command execution failed: %w (output: %s)", err, string(output))
 	}
-	return output, nil
+	return string(output), nil
 }
 
 // DockerSandbox routes execution inside a warm Docker container.

@@ -35,6 +35,7 @@ type Orchestrator struct {
 	evaluator   *TestValidator
 	vcsClient   domain.VCSClient
 	cfg         OrchestratorConfig
+	mailbox     *CommandMailbox
 }
 
 func NewOrchestrator(
@@ -48,6 +49,7 @@ func NewOrchestrator(
 	eval *TestValidator,
 	vcsClient domain.VCSClient,
 	cfg OrchestratorConfig,
+	mailbox *CommandMailbox,
 ) *Orchestrator {
 	return &Orchestrator{
 		repo:        repo,
@@ -60,6 +62,7 @@ func NewOrchestrator(
 		evaluator:   eval,
 		vcsClient:   vcsClient,
 		cfg:         cfg,
+		mailbox:     mailbox,
 	}
 }
 
@@ -163,10 +166,16 @@ func (o *Orchestrator) updateStateWithRetry(ctx context.Context, updateFn func(s
 		}
 
 		sleepDur := time.Duration(float64(backoff) * math.Pow(factor, float64(attempt)))
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(sleepDur):
+
+		var wakeup <-chan struct{}
+		if o.mailbox != nil {
+			wakeup = o.mailbox.Wakeup()
+		}
+		if err := SleepWithInterrupt(ctx, sleepDur, wakeup); err != nil {
+			if errors.Is(err, ErrInterrupted) {
+				return fmt.Errorf("state update interrupted by incoming command: %w", err)
+			}
+			return err
 		}
 	}
 	return nil

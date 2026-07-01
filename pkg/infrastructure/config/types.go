@@ -104,6 +104,7 @@ type ConventionalCommitConfig struct {
 type SandboxConfig struct {
 	Mode               string   `yaml:"mode"`
 	TimeoutSeconds     int      `yaml:"timeout_seconds"`
+	IdleTimeoutSeconds int      `yaml:"idle_timeout_seconds"`
 	GracePeriodSeconds int      `yaml:"grace_period_seconds"`
 	TestCommand        string   `yaml:"test_command"`
 	LinterCommand      string   `yaml:"linter_command"`

@@ -16,30 +16,45 @@ type NamedClient struct {
 	Client domain.LLMClient
 }
 
-// FailoverClient implements domain.LLMClient with fallback providers and cooldown tracking
+// FailoverClient implements domain.LLMClient with fallback providers, cooldown tracking,
+// and optional call budget enforcement.
 type FailoverClient struct {
-	mu        sync.RWMutex
-	backends  []NamedClient
-	cooldowns map[string]time.Time
-	duration  time.Duration
+	mu          sync.RWMutex
+	backends    []NamedClient
+	cooldowns   map[string]time.Time
+	duration    time.Duration
+	maxCallBudget int
+	callCount   int
 }
 
 var _ domain.LLMClient = (*FailoverClient)(nil)
 
-// NewFailoverClient creates a new FailoverClient
-func NewFailoverClient(backends []NamedClient, cooldownDuration time.Duration) *FailoverClient {
+// NewFailoverClient creates a new FailoverClient.
+// cooldownDuration sets how long a backend is skipped after a transient error.
+// maxCalls limits the total number of Complete calls across all backends (0 = unlimited).
+func NewFailoverClient(backends []NamedClient, cooldownDuration time.Duration, maxCalls int) *FailoverClient {
 	if cooldownDuration <= 0 {
 		cooldownDuration = 5 * time.Minute
 	}
 	return &FailoverClient{
-		backends:  backends,
-		cooldowns: make(map[string]time.Time),
-		duration:  cooldownDuration,
+		backends:    backends,
+		cooldowns:  make(map[string]time.Time),
+		duration:   cooldownDuration,
+		maxCallBudget: maxCalls,
 	}
 }
 
 // Complete iterates through backends in order, skipping those on cooldown.
+// Returns domain.ErrBudgetExhausted if the call budget has been reached.
 func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	f.mu.Lock()
+	if f.maxCallBudget > 0 && f.callCount >= f.maxCallBudget {
+		f.mu.Unlock()
+		return nil, fmt.Errorf("%w: reached limit of %d calls", domain.ErrBudgetExhausted, f.maxCallBudget)
+	}
+	f.callCount++
+	f.mu.Unlock()
+
 	var lastErr error
 
 	f.mu.RLock()

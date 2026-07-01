@@ -60,7 +60,7 @@ var serveCmd = &cobra.Command{
 		if cfg.Sandbox.Mode == "docker" {
 			sandboxRunner = usecase.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand)
+			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second)
 		}
 
 		// Initialize tool registry.
@@ -118,14 +118,14 @@ var serveCmd = &cobra.Command{
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
 		}
 
-		orchestrator := usecase.NewOrchestrator(
-			repo, reg, llmClient, validator, scheduler,
-			gitClient, rebaseQueue, evaluator, vcsClient, orchConfig,
-		)
-
 		// Story queue: the mailbox sends stories here; the server loop processes them.
 		storyCh := make(chan usecase.StoryWorkItem, 32)
 		mailbox := usecase.NewCommandMailbox(repo)
+
+		orchestrator := usecase.NewOrchestrator(
+			repo, reg, llmClient, validator, scheduler,
+			gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox,
+		)
 
 		ctx, cancel := context.WithCancel(context.Background())
 

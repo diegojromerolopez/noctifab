@@ -62,7 +62,7 @@ func TestOrchestrator_Initialization(t *testing.T) {
 	scheduler := NewScheduler(NewFileLockRegistry())
 	git := NewGitClient("/tmp")
 	queue := NewRebaseQueue(git)
-	evaluator := NewTestValidator(NewHostSandbox(nil, ""), false)
+	evaluator := NewTestValidator(NewHostSandbox(nil, "", 0), false)
 	vcsClient := &mockVCS{}
 
 	cfg := OrchestratorConfig{
@@ -70,7 +70,7 @@ func TestOrchestrator_Initialization(t *testing.T) {
 		Concurrency:  1,
 	}
 
-	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg)
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil)
 	if orch == nil {
 		t.Fatal("expected orchestrator instance, got nil")
 	}

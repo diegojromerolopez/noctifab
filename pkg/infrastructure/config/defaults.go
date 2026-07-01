@@ -53,6 +53,7 @@ func DefaultConfig() *Config {
 		Sandbox: SandboxConfig{
 			Mode:               "host",
 			TimeoutSeconds:     300,
+			IdleTimeoutSeconds: 30,
 			GracePeriodSeconds: 30,
 			TestCommand:        "go test -v ./...",
 			LinterCommand:      "golangci-lint run",

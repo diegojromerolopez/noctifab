@@ -106,6 +106,7 @@ The following flags can be passed to the root command or configured in `.noctifa
 | `--llm-provider` | `-l` | `openai` | LLM client API provider (`openai`, `anthropic`, `gemini`, `ollama`) |
 | `--llm-model` | `-m` | `gpt-4o` | LLM Model Identifier |
 | `--sandbox-mode` | | `host` | Sandbox isolation mode (`host` or `docker`) |
+| `--sandbox-idle-timeout` | | `30s` | Kill subprocess if no stdout/stderr output for this duration (0 = disabled) |
 | `--max-budget-usd` | | `10.00` | Daily LLM credit budget boundary in USD |
 | `--log-level` | | `info` | Logging verbosity: `debug`, `info`, `warn`, `error` |
 
@@ -182,6 +183,7 @@ Below are configurations for common programming languages:
 ```yaml
 sandbox:
   mode: host
+  idle_timeout_seconds: 30
   test_command: "coverage run --branch -m unittest discover -s tests -p \"test_*.py\" && coverage report --fail-under=80"
   linter_command: "ruff check ."
   formatter_command: "black ." # or "ruff format ."
@@ -198,6 +200,7 @@ sandbox:
 ```yaml
 sandbox:
   mode: host
+  idle_timeout_seconds: 30
   test_command: "bundle exec rspec"
   linter_command: "bundle exec rubocop"
   formatter_command: "bundle exec rubocop -A"
@@ -213,6 +216,7 @@ sandbox:
 ```yaml
 sandbox:
   mode: host
+  idle_timeout_seconds: 30
   test_command: "npm test" # or "jest" / "vitest"
   linter_command: "npm run lint" # or "eslint ."
   formatter_command: "npx prettier --write ."
@@ -227,6 +231,7 @@ sandbox:
 ```yaml
 sandbox:
   mode: host
+  idle_timeout_seconds: 30
   test_command: "mvn test" # or "./gradlew test"
   linter_command: "mvn checkstyle:check"
   formatter_command: "mvn spotless:apply"
@@ -242,6 +247,7 @@ sandbox:
 ```yaml
 sandbox:
   mode: host
+  idle_timeout_seconds: 30
   test_command: "go test -v ./..."
   linter_command: "golangci-lint run"
   formatter_command: "go fmt ./..."
@@ -255,6 +261,7 @@ sandbox:
 ```yaml
 sandbox:
   mode: host
+  idle_timeout_seconds: 30
   test_command: "cargo test"
   linter_command: "cargo clippy -- -D warnings"
   formatter_command: "cargo fmt"

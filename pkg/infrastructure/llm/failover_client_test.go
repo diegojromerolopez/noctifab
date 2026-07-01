@@ -33,7 +33,7 @@ func TestFailoverClient(t *testing.T) {
 			{Name: "model-2", Client: m2},
 		}
 
-		client := NewFailoverClient(backends, 10*time.Millisecond)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0)
 		resp, err := client.Complete(context.Background(), "hello")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -59,7 +59,7 @@ func TestFailoverClient(t *testing.T) {
 			{Name: "model-2", Client: m2},
 		}
 
-		client := NewFailoverClient(backends, 50*time.Millisecond)
+		client := NewFailoverClient(backends, 50*time.Millisecond, 0)
 
 		// First call: m1 fails, failover to m2
 		resp, err := client.Complete(context.Background(), "hello")
@@ -112,7 +112,7 @@ func TestFailoverClient(t *testing.T) {
 			{Name: "model-2", Client: m2},
 		}
 
-		client := NewFailoverClient(backends, 10*time.Millisecond)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0)
 		_, err := client.Complete(context.Background(), "hello")
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -120,6 +120,39 @@ func TestFailoverClient(t *testing.T) {
 
 		if m1.calls != 1 || m2.calls != 1 {
 			t.Errorf("expected both backends to be called once, got m1: %d, m2: %d", m1.calls, m2.calls)
+		}
+	})
+
+	t.Run("budget exhausted when maxCalls reached", func(t *testing.T) {
+		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "m1 response"}}
+		backends := []NamedClient{
+			{Name: "model-1", Client: m1},
+		}
+
+		client := NewFailoverClient(backends, 10*time.Millisecond, 2)
+
+		// First call should succeed
+		resp, err := client.Complete(context.Background(), "hello")
+		if err != nil {
+			t.Fatalf("unexpected error on first call: %v", err)
+		}
+		if resp.Reasoning != "m1 response" {
+			t.Errorf("expected m1 response, got %s", resp.Reasoning)
+		}
+
+		// Second call should succeed
+		resp, err = client.Complete(context.Background(), "hello again")
+		if err != nil {
+			t.Fatalf("unexpected error on second call: %v", err)
+		}
+
+		// Third call should hit budget limit
+		_, err = client.Complete(context.Background(), "third time")
+		if err == nil {
+			t.Fatal("expected budget exhausted error, got nil")
+		}
+		if !errors.Is(err, domain.ErrBudgetExhausted) {
+			t.Errorf("expected ErrBudgetExhausted, got: %v", err)
 		}
 	})
 }
