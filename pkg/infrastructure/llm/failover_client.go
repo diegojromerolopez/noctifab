@@ -61,7 +61,7 @@ func NewFailoverClient(backends []NamedClient, cooldownDuration time.Duration, m
 // Before each call it checks the monetary budget; after a successful call it
 // records estimated token cost.
 func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.failover_completion",
+	ctx, span := telemetry.Tracer().Start(ctx, "Complete",
 		trace.WithAttributes(
 			attribute.Int("backend_count", len(f.backends)),
 			attribute.Int("max_call_budget", f.maxCallBudget),

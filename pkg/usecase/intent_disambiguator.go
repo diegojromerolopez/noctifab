@@ -23,7 +23,7 @@ func NewIntentDisambiguator(gitClient *GitClient, llmClient domain.LLMClient) *I
 }
 
 func (id *IntentDisambiguator) Disambiguate(ctx context.Context, clarification domain.Clarification, state *domain.State) (string, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.intent_disambiguate",
+	ctx, span := telemetry.Tracer().Start(ctx, "Disambiguate",
 		trace.WithAttributes(
 			attribute.String("feature", state.Metadata.FeatureName),
 			attribute.String("base_branch", state.Metadata.BaseBranch),

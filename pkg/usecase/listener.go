@@ -10,6 +10,9 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // listenerSystemPrompt is injected as the LLM context for every operator command.
@@ -71,6 +74,8 @@ func NewListenerAgent(
 
 // Start begins the blocking read-interpret-route loop. Exits when ctx is cancelled or EOF.
 func (a *ListenerAgent) Start(ctx context.Context) {
+	ctx, span := telemetry.Tracer().Start(ctx, "Start")
+	defer span.End()
 	_, _ = fmt.Fprintln(a.out, "noctifab ready. Type a command (e.g. 'start roadmap/US-0001.md' or 'status').")
 	_, _ = fmt.Fprint(a.out, "> ")
 
@@ -106,6 +111,9 @@ func (a *ListenerAgent) Start(ctx context.Context) {
 // interpretCommand sends the raw operator text to the LLM and returns a parsed Intent.
 // Falls back to rule-based parsing on LLM error.
 func (a *ListenerAgent) interpretCommand(ctx context.Context, rawInput string) (Intent, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "interpretCommand",
+		trace.WithAttributes(attribute.Int("input_length", len(rawInput))))
+	defer span.End()
 	llmResp, err := a.llmClient.Complete(ctx, listenerSystemPrompt+"\n\nOperator command: "+rawInput)
 	if err != nil {
 		return a.ruleBasedParse(rawInput), nil
@@ -149,6 +157,9 @@ func (a *ListenerAgent) ruleBasedParse(input string) Intent {
 
 // routeIntent dispatches the parsed intent to the daemon via HTTP.
 func (a *ListenerAgent) routeIntent(ctx context.Context, intent Intent) {
+	ctx, span := telemetry.Tracer().Start(ctx, "routeIntent",
+		trace.WithAttributes(attribute.String("intent_kind", string(intent.Kind))))
+	defer span.End()
 	switch intent.Kind {
 	case IntentKindStartStory:
 		_, _ = fmt.Fprintf(a.out, "▶ Queuing user story: %s\n", intent.Path)

@@ -61,7 +61,7 @@ func (dm *DependencyManager) IsAllowed(manager string) bool {
 }
 
 func (dm *DependencyManager) InstallTool(ctx context.Context, tool string) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.dep_install",
+	ctx, span := telemetry.Tracer().Start(ctx, "InstallTool",
 		trace.WithAttributes(
 			attribute.String("tool", tool),
 			attribute.StringSlice("allowed_managers", dm.AllowedPkgManagers),

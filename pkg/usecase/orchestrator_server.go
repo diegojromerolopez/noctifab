@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // PollInterval returns the configured polling interval for the execution loop.
@@ -20,6 +23,12 @@ func (o *Orchestrator) PollInterval() time.Duration {
 // PlanStory calls the LLM planner for the given specification and saves the resulting
 // task DAG into state. It is safe to call from both single-story and server-mode contexts.
 func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec string) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "PlanStory",
+		trace.WithAttributes(
+			attribute.String("feature_name", state.Metadata.FeatureName),
+			attribute.Int("existing_tasks", len(state.Tasks)),
+		))
+	defer span.End()
 	if len(state.Tasks) > 0 {
 		// Tasks already planned (e.g., resuming from saved state).
 		return nil

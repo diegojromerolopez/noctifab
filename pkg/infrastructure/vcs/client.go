@@ -33,7 +33,7 @@ func NewClient(provider, repository, token string) *Client {
 }
 
 func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch, baseBranch string) (string, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.vcs_create_pr",
+	ctx, span := telemetry.Tracer().Start(ctx, "CreatePullRequest",
 		trace.WithAttributes(
 			attribute.String("provider", c.Provider),
 			attribute.String("repository", c.Repository),
@@ -95,7 +95,7 @@ func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch,
 }
 
 func (c *Client) MergePullRequest(ctx context.Context, prID string) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.vcs_merge_pr",
+	ctx, span := telemetry.Tracer().Start(ctx, "MergePullRequest",
 		trace.WithAttributes(
 			attribute.String("provider", c.Provider),
 			attribute.String("pr_id", prID),

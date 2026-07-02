@@ -37,7 +37,7 @@ type HotReloadManager struct {
 }
 
 func (hrm *HotReloadManager) Reload(ctx context.Context) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.hot_reload",
+	ctx, span := telemetry.Tracer().Start(ctx, "Reload",
 		trace.WithAttributes(
 			attribute.String("new_binary", hrm.NewBinary),
 			attribute.String("handoff_path", hrm.HandoffPath),

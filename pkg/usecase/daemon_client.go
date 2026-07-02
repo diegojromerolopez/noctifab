@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const daemonBaseURL = "http://127.0.0.1:18080"
@@ -42,6 +45,8 @@ func NewDaemonClientWithBase(base string) *DaemonClient {
 
 // IsAlive returns true if the daemon's /healthz endpoint responds successfully.
 func (c *DaemonClient) IsAlive() bool {
+	_, span := telemetry.Tracer().Start(context.Background(), "IsAlive")
+	defer span.End()
 	resp, err := c.client.Get(c.base + "/healthz")
 	if err != nil {
 		return false
@@ -52,6 +57,9 @@ func (c *DaemonClient) IsAlive() bool {
 
 // SendStartStory asks the daemon to enqueue a single user story file.
 func (c *DaemonClient) SendStartStory(path string) error {
+	_, span := telemetry.Tracer().Start(context.Background(), "SendStartStory",
+		trace.WithAttributes(telemetry.Attr("path", path)))
+	defer span.End()
 	return c.postJSON("/api/v1/stories", map[string]any{
 		"path":      path,
 		"directory": false,
@@ -60,6 +68,9 @@ func (c *DaemonClient) SendStartStory(path string) error {
 
 // SendStartDirectory asks the daemon to enqueue all user stories in a directory.
 func (c *DaemonClient) SendStartDirectory(dirPath string) error {
+	_, span := telemetry.Tracer().Start(context.Background(), "SendStartDirectory",
+		trace.WithAttributes(telemetry.Attr("dir_path", dirPath)))
+	defer span.End()
 	return c.postJSON("/api/v1/stories", map[string]any{
 		"path":      dirPath,
 		"directory": true,
@@ -104,6 +115,8 @@ func (c *DaemonClient) ResolveClarification(id, answer string) error {
 
 // GetStatus fetches the full current state from the daemon.
 func (c *DaemonClient) GetStatus() (*domain.State, error) {
+	_, span := telemetry.Tracer().Start(context.Background(), "GetStatus")
+	defer span.End()
 	resp, err := c.client.Get(c.base + "/statusz")
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch status: %w", err)

@@ -37,7 +37,7 @@ type SASTScanner struct {
 }
 
 func (s *SASTScanner) Run(ctx context.Context, projectPath string) (*SASTResult, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.sast_scan",
+	ctx, span := telemetry.Tracer().Start(ctx, "Run",
 		trace.WithAttributes(
 			attribute.Bool("enabled", s.Config.Enabled),
 			attribute.StringSlice("scanners", s.Config.Scanners),

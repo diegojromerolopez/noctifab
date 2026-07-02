@@ -42,7 +42,7 @@ func raceCommand(cmd string) string {
 // ValidateTask executes the project's tests 3 times and counts majority votes.
 // When flaky is detected and an LLM client is configured, it attempts to auto-stabilize.
 func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, task domain.Task) (bool, string, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.validate_task",
+	ctx, span := telemetry.Tracer().Start(ctx, "ValidateTask",
 		trace.WithAttributes(
 			attribute.String("task.id", task.ID),
 			attribute.String("task.title", task.Title),

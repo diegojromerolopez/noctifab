@@ -98,7 +98,7 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 
 // RunOnce runs a single cycle of the event loop
 func (o *Orchestrator) RunOnce(ctx context.Context) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.cycle",
+	ctx, span := telemetry.Tracer().Start(ctx, "RunOnce",
 		trace.WithAttributes(
 			attribute.Int("concurrency", o.cfg.Concurrency),
 			attribute.Int("occ_max_retries", o.cfg.OCCMaxRetries),
@@ -222,7 +222,7 @@ func (o *Orchestrator) markTaskFailed(ctx context.Context, taskID, reason string
 }
 
 func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.task_worker",
+	ctx, span := telemetry.Tracer().Start(ctx, "executeTask",
 		trace.WithAttributes(attribute.String("task.id", taskID)))
 	defer span.End()
 

@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var semverRegex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)$`)
@@ -17,6 +20,9 @@ var semverRegex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)$`)
 // BumpVersion reads the VERSION file, parses it, determines the bump type based on completed tasks,
 // increments the semver string, and writes it back.
 func BumpVersion(projectPath string, tasks []domain.Task) (string, error) {
+	_, span := telemetry.Tracer().Start(context.Background(), "BumpVersion",
+		trace.WithAttributes(telemetry.Attr("project_path", projectPath)))
+	defer span.End()
 	vPath := filepath.Join(projectPath, "VERSION")
 	contentBytes, err := os.ReadFile(vPath)
 	var current string

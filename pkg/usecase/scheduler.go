@@ -1,9 +1,13 @@
 package usecase
 
 import (
+	"context"
 	"sync"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // FileLockRegistry prevents concurrent tasks from writing to overlapping files.
@@ -64,6 +68,12 @@ func NewScheduler(registry *FileLockRegistry) *Scheduler {
 // GetReadyTasks returns tasks that are PENDING or FAILED (eligible for retry)
 // and whose upstream dependencies are all SUCCESS, respecting file locks and agent concurrency.
 func (s *Scheduler) GetReadyTasks(state *domain.State, concurrencyLimit int) []domain.Task {
+	_, span := telemetry.Tracer().Start(context.Background(), "GetReadyTasks",
+		trace.WithAttributes(
+			attribute.Int("concurrency_limit", concurrencyLimit),
+			attribute.Int("task_count", len(state.Tasks)),
+		))
+	defer span.End()
 	// Build map of task ID / Title to status
 	statusMap := make(map[string]domain.TaskStatus)
 	idMap := make(map[string]string)

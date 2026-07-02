@@ -75,7 +75,7 @@ func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Durati
 }
 
 func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.sandbox_command",
+	ctx, span := telemetry.Tracer().Start(ctx, "RunCommand",
 		trace.WithAttributes(
 			attribute.String("command", command),
 			attribute.String("project_path", projectPath),
@@ -167,6 +167,14 @@ func NewDockerSandbox(containerName string) *DockerSandbox {
 }
 
 func (s *DockerSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "RunCommand",
+		trace.WithAttributes(
+			telemetry.Attr("command", command),
+			telemetry.Attr("project_path", projectPath),
+			telemetry.Attr("package", pkg),
+			attribute.String("container_name", s.ContainerName),
+		))
+	defer span.End()
 	cmdStr := command
 	if cmdStr == "" {
 		if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {

@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	_ "modernc.org/sqlite"
 )
 
@@ -56,6 +59,13 @@ func (r *SQLiteRepository) Close() error {
 
 // Save persists the domain State in a transaction using OCC.
 func (r *SQLiteRepository) Save(ctx context.Context, state *domain.State) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "Save",
+		trace.WithAttributes(
+			attribute.String("state.id", state.ID),
+			attribute.Int("state.version", state.Version),
+			attribute.Int("task_count", len(state.Tasks)),
+		))
+	defer span.End()
 	r.writeMutex.Lock()
 	defer r.writeMutex.Unlock()
 
@@ -234,6 +244,8 @@ func (r *SQLiteRepository) Save(ctx context.Context, state *domain.State) error 
 
 // Load retrieves the State domain object from SQLite.
 func (r *SQLiteRepository) Load(ctx context.Context) (*domain.State, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "Load")
+	defer span.End()
 	row := r.db.QueryRowContext(ctx,
 		`SELECT id, project_path, version, build_status, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd
 		FROM state LIMIT 1`)

@@ -47,7 +47,7 @@ func (c *outputCapturer) SinceLastOutput() time.Duration {
 }
 
 func (w *Watchdog) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.watchdog_run",
+	ctx, span := telemetry.Tracer().Start(ctx, "Run",
 		trace.WithAttributes(
 			attribute.String("max_duration", w.MaxDuration.String()),
 			attribute.String("idle_timeout", w.IdleTimeout.String()),

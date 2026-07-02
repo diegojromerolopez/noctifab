@@ -6,12 +6,21 @@ import (
 	"os"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // FinalizeUserStory performs the post-completion steps for a finished user story:
 // version bump, changelog update, branch push, and pull request creation.
 // It prints a prominent completion banner to stdout so the operator knows the story is done.
 func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.State) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "FinalizeUserStory",
+		trace.WithAttributes(
+			attribute.String("feature_name", state.Metadata.FeatureName),
+			attribute.String("base_branch", state.Metadata.BaseBranch),
+		))
+	defer span.End()
 	integrationBranch := state.Metadata.IntegrationBranch
 	baseBranch := state.Metadata.BaseBranch
 	if baseBranch == "" {

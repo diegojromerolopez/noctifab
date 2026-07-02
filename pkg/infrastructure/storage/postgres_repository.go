@@ -46,7 +46,7 @@ func (r *PostgresRepository) Close() error {
 
 // Save persists the domain State in a transaction using SELECT FOR UPDATE row locking and OCC version checking.
 func (r *PostgresRepository) Save(ctx context.Context, state *domain.State) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.postgres_save",
+	ctx, span := telemetry.Tracer().Start(ctx, "Save",
 		trace.WithAttributes(
 			attribute.String("state.id", state.ID),
 			attribute.Int("state.version", state.Version),
@@ -228,7 +228,7 @@ func (r *PostgresRepository) Save(ctx context.Context, state *domain.State) erro
 
 // Load retrieves the State domain object from PostgreSQL using explicit joins.
 func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.postgres_load")
+	ctx, span := telemetry.Tracer().Start(ctx, "Load")
 	defer span.End()
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT 
