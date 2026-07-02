@@ -1057,7 +1057,7 @@ An example of an agent requesting the execution of test suites to verify code co
       "tool": "run_tests",
       "args": {
         "package": "pkg/usecase/middleware",
-        "command": "go test -v ./pkg/usecase/middleware"
+        "command": "go test -v ./pkg/services/middleware"
       }
     }
   ]

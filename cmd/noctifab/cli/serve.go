@@ -15,7 +15,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
-	"github.com/diegojromerolopez/noctifab/pkg/usecase"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/spf13/cobra"
 )
 
@@ -45,10 +45,10 @@ var serveCmd = &cobra.Command{
 
 		// Write PID file so "stop" and "start" can find this process.
 		pidPath := ".noctifab/noctifab.pid"
-		if err := usecase.WritePIDFile(pidPath); err != nil {
+		if err := services.WritePIDFile(pidPath); err != nil {
 			return fmt.Errorf("failed to write PID file: %w", err)
 		}
-		defer func() { _ = usecase.RemovePIDFile(pidPath) }()
+		defer func() { _ = services.RemovePIDFile(pidPath) }()
 
 		// Initialize repository.
 		var repo domain.StateRepository
@@ -66,37 +66,37 @@ var serveCmd = &cobra.Command{
 		}
 
 		// Initialize sandbox runner.
-		var sandboxRunner usecase.Sandbox
+		var sandboxRunner services.Sandbox
 		if cfg.Sandbox.Mode == "docker" {
-			sandboxRunner = usecase.NewDockerSandbox("noctifab-sandbox")
+			sandboxRunner = services.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			var depMgr *usecase.DependencyManager
+			var depMgr *services.DependencyManager
 			if cfg.Sandbox.AutoInstallDeps {
-				depMgr = usecase.NewDependencyManager(cfg.Sandbox.PackageManagers)
+				depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
 			}
-			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
+			sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 		}
 
 		// Initialize tool registry.
-		reg := usecase.NewToolRegistry()
-		reg.Register(&usecase.AddTaskTool{})
-		reg.Register(&usecase.CompleteTaskTool{})
-		reg.Register(&usecase.LogMessageTool{})
-		reg.Register(&usecase.NoopTool{})
-		reg.Register(&usecase.ReadFileTool{})
-		reg.Register(&usecase.WriteFileTool{})
-		reg.Register(&usecase.EditFileTool{})
-		reg.Register(&usecase.ListDirectoryTool{})
-		reg.Register(&usecase.FindFilesTool{})
-		reg.Register(&usecase.GrepSearchTool{})
-		reg.Register(&usecase.RunTestsTool{Runner: sandboxRunner})
-		reg.Register(&usecase.RequestTestFixTool{})
+		reg := services.NewToolRegistry()
+		reg.Register(&services.AddTaskTool{})
+		reg.Register(&services.CompleteTaskTool{})
+		reg.Register(&services.LogMessageTool{})
+		reg.Register(&services.NoopTool{})
+		reg.Register(&services.ReadFileTool{})
+		reg.Register(&services.WriteFileTool{})
+		reg.Register(&services.EditFileTool{})
+		reg.Register(&services.ListDirectoryTool{})
+		reg.Register(&services.FindFilesTool{})
+		reg.Register(&services.GrepSearchTool{})
+		reg.Register(&services.RunTestsTool{Runner: sandboxRunner})
+		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM client.
 		llmClient := llm.BuildFailoverClient(&cfg.LLM, nil)
 
 		// Initialize orchestrator components.
-		gitClient := usecase.NewGitClient(".")
+		gitClient := services.NewGitClient(".")
 		if cfg.VCS.BaseBranch == "git-detect" {
 			detected, err := gitClient.Run(context.Background(), false, "rev-parse", "--abbrev-ref", "HEAD")
 			if err == nil {
@@ -105,21 +105,21 @@ var serveCmd = &cobra.Command{
 				cfg.VCS.BaseBranch = "main" // fallback
 			}
 		}
-		rebaseQueue := usecase.NewRebaseQueue(gitClient)
-		profilesMap := make(map[string]usecase.ProfileConfig)
+		rebaseQueue := services.NewRebaseQueue(gitClient)
+		profilesMap := make(map[string]services.ProfileConfig)
 		for role, prof := range cfg.Profiles {
-			profilesMap[role] = usecase.ProfileConfig{
+			profilesMap[role] = services.ProfileConfig{
 				AllowedTools:    prof.AllowedTools,
 				AllowedCommands: prof.AllowedCommands,
 			}
 		}
-		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
-		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())
-		evaluator := usecase.NewTestValidator(sandboxRunner, false, nil, nil)
+		validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+		scheduler := services.NewScheduler(services.NewFileLockRegistry())
+		evaluator := services.NewTestValidator(sandboxRunner, false, nil, nil)
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
-		orchConfig := usecase.OrchestratorConfig{
+		orchConfig := services.OrchestratorConfig{
 			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
 			MaxRetries:       3,
 			Concurrency:      cfg.Orchestrator.Concurrency,
@@ -130,10 +130,10 @@ var serveCmd = &cobra.Command{
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.
-		storyCh := make(chan usecase.StoryWorkItem, 32)
-		mailbox := usecase.NewCommandMailbox(repo)
+		storyCh := make(chan services.StoryWorkItem, 32)
+		mailbox := services.NewCommandMailbox(repo)
 
-		orchestrator := usecase.NewOrchestrator(
+		orchestrator := services.NewOrchestrator(
 			repo, reg, llmClient, validator, scheduler,
 			gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox, nil,
 		)
@@ -153,7 +153,7 @@ var serveCmd = &cobra.Command{
 		go mailbox.Start(ctx)
 
 		// Start REST HTTP server (loopback only, passes storyCh for /api/v1/stories).
-		server := usecase.StartDaemonServer(repo, mailbox, storyCh)
+		server := services.StartDaemonServer(repo, mailbox, storyCh)
 		defer func() { _ = server.Close() }()
 
 		fmt.Printf("noctifab daemon started (PID %d). Listening on 127.0.0.1:18080\n", os.Getpid())
@@ -168,9 +168,9 @@ var serveCmd = &cobra.Command{
 // then writes a per-story completion entry and loops back.
 func runServerLoop(
 	ctx context.Context,
-	orchestrator *usecase.Orchestrator,
+	orchestrator *services.Orchestrator,
 	repo domain.StateRepository,
-	storyCh <-chan usecase.StoryWorkItem,
+	storyCh <-chan services.StoryWorkItem,
 	baseBranch, branchPrefix string,
 ) error {
 	cwd, err := os.Getwd()
@@ -184,7 +184,7 @@ func runServerLoop(
 			// Graceful shutdown: mark any in-progress tasks as INTERRUPTED.
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer shutdownCancel()
-			interruptCmd := &usecase.MarkStoryInterruptedCmd{}
+			interruptCmd := &services.MarkStoryInterruptedCmd{}
 			_ = interruptCmd.Execute(shutdownCtx, repo)
 			fmt.Fprintln(os.Stderr, "noctifab daemon: state saved. Goodbye.")
 			return nil
@@ -201,9 +201,9 @@ func runServerLoop(
 // All orchestrator output is written to both stdout and the per-story log file.
 func processStory(
 	ctx context.Context,
-	orchestrator *usecase.Orchestrator,
+	orchestrator *services.Orchestrator,
 	repo domain.StateRepository,
-	item usecase.StoryWorkItem,
+	item services.StoryWorkItem,
 	projectPath, baseBranch, branchPrefix string,
 ) error {
 	// Open per-story log file (.noctifab/logs/roadmap/<story>.log).
@@ -226,7 +226,7 @@ func processStory(
 	logf("▶ Starting story: %s\n", item.Path)
 
 	// Create a fresh State for this story.
-	state := usecase.NewStateForStory(projectPath, item.Path, baseBranch, branchPrefix)
+	state := services.NewStateForStory(projectPath, item.Path, baseBranch, branchPrefix)
 	if err := repo.Save(ctx, state); err != nil {
 		return fmt.Errorf("failed to save initial state: %w", err)
 	}

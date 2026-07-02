@@ -15,7 +15,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
-	"github.com/diegojromerolopez/noctifab/pkg/usecase"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
@@ -75,7 +75,7 @@ var startOneCmd = &cobra.Command{
 
 		// Resolve git-detect base branch if configured
 		if cfg.VCS.BaseBranch == "git-detect" {
-			gitClient := usecase.NewGitClient(".")
+			gitClient := services.NewGitClient(".")
 			detected, err := gitClient.Run(context.Background(), false, "rev-parse", "--abbrev-ref", "HEAD")
 			if err == nil {
 				cfg.VCS.BaseBranch = strings.TrimSpace(detected)
@@ -125,15 +125,15 @@ var startOneCmd = &cobra.Command{
 				return err
 			}
 
-			reg := usecase.NewToolRegistry()
-			reg.Register(&usecase.AddTaskTool{})
+			reg := services.NewToolRegistry()
+			reg.Register(&services.AddTaskTool{})
 			for _, action := range resp.Actions {
 				if tool, ok := reg.Get(action.Tool); ok {
 					_, _ = tool.Execute(context.Background(), state, action.Args)
 				}
 			}
 
-			if err := usecase.ValidatePlannedTasks(state.Tasks); err != nil {
+			if err := services.ValidatePlannedTasks(state.Tasks); err != nil {
 				return err
 			}
 
@@ -144,49 +144,49 @@ var startOneCmd = &cobra.Command{
 		}
 
 		// Initialize sandbox runner
-		var sandboxRunner usecase.Sandbox
+		var sandboxRunner services.Sandbox
 		if cfg.Sandbox.Mode == "docker" {
-			sandboxRunner = usecase.NewDockerSandbox("noctifab-sandbox")
+			sandboxRunner = services.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			var depMgr *usecase.DependencyManager
+			var depMgr *services.DependencyManager
 			if cfg.Sandbox.AutoInstallDeps {
-				depMgr = usecase.NewDependencyManager(cfg.Sandbox.PackageManagers)
+				depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
 			}
-			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
+			sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 		}
 
 		// Initialize tool registry for execution
-		reg := usecase.NewToolRegistry()
-		reg.Register(&usecase.AddTaskTool{})
-		reg.Register(&usecase.CompleteTaskTool{})
-		reg.Register(&usecase.LogMessageTool{})
-		reg.Register(&usecase.NoopTool{})
-		reg.Register(&usecase.ReadFileTool{})
-		reg.Register(&usecase.WriteFileTool{})
-		reg.Register(&usecase.EditFileTool{})
-		reg.Register(&usecase.ListDirectoryTool{})
-		reg.Register(&usecase.FindFilesTool{})
-		reg.Register(&usecase.GrepSearchTool{})
-		reg.Register(&usecase.RunTestsTool{Runner: sandboxRunner})
-		reg.Register(&usecase.RequestTestFixTool{})
+		reg := services.NewToolRegistry()
+		reg.Register(&services.AddTaskTool{})
+		reg.Register(&services.CompleteTaskTool{})
+		reg.Register(&services.LogMessageTool{})
+		reg.Register(&services.NoopTool{})
+		reg.Register(&services.ReadFileTool{})
+		reg.Register(&services.WriteFileTool{})
+		reg.Register(&services.EditFileTool{})
+		reg.Register(&services.ListDirectoryTool{})
+		reg.Register(&services.FindFilesTool{})
+		reg.Register(&services.GrepSearchTool{})
+		reg.Register(&services.RunTestsTool{Runner: sandboxRunner})
+		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize orchestrator components
-		gitClient := usecase.NewGitClient(".")
-		rebaseQueue := usecase.NewRebaseQueue(gitClient)
-		profilesMap := make(map[string]usecase.ProfileConfig)
+		gitClient := services.NewGitClient(".")
+		rebaseQueue := services.NewRebaseQueue(gitClient)
+		profilesMap := make(map[string]services.ProfileConfig)
 		for role, prof := range cfg.Profiles {
-			profilesMap[role] = usecase.ProfileConfig{
+			profilesMap[role] = services.ProfileConfig{
 				AllowedTools:    prof.AllowedTools,
 				AllowedCommands: prof.AllowedCommands,
 			}
 		}
-		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
-		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())
-		evaluator := usecase.NewTestValidator(sandboxRunner, false, nil, nil)
+		validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+		scheduler := services.NewScheduler(services.NewFileLockRegistry())
+		evaluator := services.NewTestValidator(sandboxRunner, false, nil, nil)
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
-		orchConfig := usecase.OrchestratorConfig{
+		orchConfig := services.OrchestratorConfig{
 			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
 			MaxRetries:       3,
 			Concurrency:      cfg.Orchestrator.Concurrency,
@@ -196,7 +196,7 @@ var startOneCmd = &cobra.Command{
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
 		}
 
-		orchestrator := usecase.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil, nil)
+		orchestrator := services.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

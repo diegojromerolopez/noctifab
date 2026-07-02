@@ -14,12 +14,12 @@ While it is **highly effective** for implementing features, fixing bugs, and ref
 
 ## 2. Arguments FOR Using Noctifab for Code Creation
 
-*   **Hands-Off Execution (Level 3/4 Autonomy):** Instead of forcing developers to copy-paste generated code, review every character, or manually run build scripts, the [Orchestrator](file:///Users/diegoj/repos/noctifab/pkg/usecase/orchestrator.go) handles the entire lifecycle—checking out branches, writing tests, implementing features, running test suites, rebasing, and raising Pull Requests.
-*   **Quality Gated by Test-Driven Development (TDD):** The orchestrator separates cognitive roles into a [TesterAgent](file:///Users/diegoj/repos/noctifab/pkg/usecase/orchestrator_helper.go#L99) and a [GeneratorAgent](file:///Users/diegoj/repos/noctifab/pkg/usecase/orchestrator_helper.go#L146). The Tester Agent writes unit and integration tests *before* the Generator Agent begins implementing code. This avoids "evaluation gaming" (where code generators write tests designed to pass buggy implementation).
-*   **Concurrently Scheduled Tasks:** Complex specifications are parsed by the Planner Agent into a Directed Acyclic Graph (DAG) using the [Scheduler](file:///Users/diegoj/repos/noctifab/pkg/usecase/scheduler.go). Independent tasks run concurrently in isolated Git worktrees, speeding up execution.
-*   **Self-Healing Debugging Loops:** If the [TestValidator](file:///Users/diegoj/repos/noctifab/pkg/usecase/test_validator.go) finds syntax, linting, or test failures, the orchestrator automatically increments retries, packages the terminal logs, and feeds them back to the Generator Agent to implement fixes.
-*   **Interactive Clarification Mailbox:** Rather than making assumptions or crashing when faced with ambiguity, the daemon logs a clarification request. The [ClarificationPoller](file:///Users/diegoj/repos/noctifab/pkg/usecase/clarification_poller.go) prompts the engineer in the terminal to answer and unblock execution.
-*   **Git-Safe Serialized Merges:** Parallel tasks are merged sequentially into the integration branch using a thread-safe [RebaseQueue](file:///Users/diegoj/repos/noctifab/pkg/usecase/rebase_queue.go), avoiding concurrent Git write conflicts or index locking errors.
+*   **Hands-Off Execution (Level 3/4 Autonomy):** Instead of forcing developers to copy-paste generated code, review every character, or manually run build scripts, the [Orchestrator](file:///Users/diegoj/repos/noctifab/pkg/services/orchestrator.go) handles the entire lifecycle—checking out branches, writing tests, implementing features, running test suites, rebasing, and raising Pull Requests.
+*   **Quality Gated by Test-Driven Development (TDD):** The orchestrator separates cognitive roles into a [TesterAgent](file:///Users/diegoj/repos/noctifab/pkg/services/orchestrator_helper.go#L99) and a [GeneratorAgent](file:///Users/diegoj/repos/noctifab/pkg/services/orchestrator_helper.go#L146). The Tester Agent writes unit and integration tests *before* the Generator Agent begins implementing code. This avoids "evaluation gaming" (where code generators write tests designed to pass buggy implementation).
+*   **Concurrently Scheduled Tasks:** Complex specifications are parsed by the Planner Agent into a Directed Acyclic Graph (DAG) using the [Scheduler](file:///Users/diegoj/repos/noctifab/pkg/services/scheduler.go). Independent tasks run concurrently in isolated Git worktrees, speeding up execution.
+*   **Self-Healing Debugging Loops:** If the [TestValidator](file:///Users/diegoj/repos/noctifab/pkg/services/test_validator.go) finds syntax, linting, or test failures, the orchestrator automatically increments retries, packages the terminal logs, and feeds them back to the Generator Agent to implement fixes.
+*   **Interactive Clarification Mailbox:** Rather than making assumptions or crashing when faced with ambiguity, the daemon logs a clarification request. The [ClarificationPoller](file:///Users/diegoj/repos/noctifab/pkg/services/clarification_poller.go) prompts the engineer in the terminal to answer and unblock execution.
+*   **Git-Safe Serialized Merges:** Parallel tasks are merged sequentially into the integration branch using a thread-safe [RebaseQueue](file:///Users/diegoj/repos/noctifab/pkg/services/rebase_queue.go), avoiding concurrent Git write conflicts or index locking errors.
 
 ---
 
@@ -28,7 +28,7 @@ While it is **highly effective** for implementing features, fixing bugs, and ref
 *   **High Token & API Credit Cost:** Running a full loop (Reader Phase $\rightarrow$ Minimal Generator $\rightarrow$ Minimal Tester $\rightarrow$ Refactor Generator $\rightarrow$ Refactor Tester $\rightarrow$ Retries) for multiple parallel tasks can consume significant LLM tokens. Daily cost limits must be configured (`--max-budget-usd`).
 *   **The Bootstrap "Cold-Start" Dependency:** `noctifab` requires a working test runner and linter to validate and gate code quality. If a project is completely empty, it has no test frameworks (e.g. Jest, PyTest, Go test) or dependencies installed. The validator commands will fail immediately, halting the daemon.
 *   **Strict Code Quality Constraints:** Code generated must pass the configured linter. For example, if Go rules are active, the linter checks that files remain under 500 lines. The LLM must be explicitly guided to modularize code, or the build gates will fail.
-*   **Sandbox Security Configuration:** In `host` sandbox mode, the agent runs commands directly on the developer's machine. Although path traversal is checked in [resolveSandboxPath](file:///Users/diegoj/repos/noctifab/pkg/usecase/production_tools.go#L105), running arbitrary tests could present risks. Setting up a `docker` sandbox mode is safer but requires warm Docker containers and increases execution overhead.
+*   **Sandbox Security Configuration:** In `host` sandbox mode, the agent runs commands directly on the developer's machine. Although path traversal is checked in [resolveSandboxPath](file:///Users/diegoj/repos/noctifab/pkg/services/production_tools.go#L105), running arbitrary tests could present risks. Setting up a `docker` sandbox mode is safer but requires warm Docker containers and increases execution overhead.
 
 ---
 
@@ -37,7 +37,7 @@ While it is **highly effective** for implementing features, fixing bugs, and ref
 The `noctifab start` command:
 1. Performs pre-flight connectivity checks.
 2. Spawns the headless background daemon ([serveCmd](file:///Users/diegoj/repos/noctifab/cmd/noctifab/cli/serve.go#L24)).
-3. Launches a foreground interactive REPL loop ([ListenerAgent](file:///Users/diegoj/repos/noctifab/pkg/usecase/listener.go#L46)) that routes operator directives.
+3. Launches a foreground interactive REPL loop ([ListenerAgent](file:///Users/diegoj/repos/noctifab/pkg/services/listener.go#L46)) that routes operator directives.
 
 ### Generating a New Project from a Completely Empty Folder
 *   **Feasibility:** **Low (out-of-the-box)**

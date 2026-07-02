@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
-	"github.com/diegojromerolopez/noctifab/pkg/usecase"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -289,12 +289,12 @@ func TestE2E_StartOneCommand(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2E_IdleTimeout_KillsHangingCommand(t *testing.T) {
-	s := usecase.NewHostSandbox([]string{"sleep"}, "", 100*time.Millisecond, nil)
+	s := services.NewHostSandbox([]string{"sleep"}, "", 100*time.Millisecond, nil)
 	ctx := context.Background()
 	_, err := s.RunCommand(ctx, t.TempDir(), "sleep 60", "")
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, usecase.ErrWatchdogIdleTimeout)
+	assert.ErrorIs(t, err, services.ErrWatchdogIdleTimeout)
 }
 
 func TestE2E_IdleTimeout_OutputResetsTimer(t *testing.T) {
@@ -303,7 +303,7 @@ func TestE2E_IdleTimeout_OutputResetsTimer(t *testing.T) {
 	err := os.WriteFile(script, []byte("#!/bin/sh\nfor i in 1 2 3 4 5; do echo \"tick $i\"; sleep 0.02; done\n"), 0755)
 	require.NoError(t, err)
 
-	s := usecase.NewHostSandbox([]string{"sh"}, "", 200*time.Millisecond, nil)
+	s := services.NewHostSandbox([]string{"sh"}, "", 200*time.Millisecond, nil)
 	ctx := context.Background()
 	out, err := s.RunCommand(ctx, tmp, "sh "+script, "")
 
@@ -317,18 +317,18 @@ func TestE2E_IdleTimeout_ReturnsPartialOutputOnKill(t *testing.T) {
 	err := os.WriteFile(script, []byte("#!/bin/sh\necho \"BEFORE\"\nsleep 10\necho \"AFTER\"\n"), 0755)
 	require.NoError(t, err)
 
-	s := usecase.NewHostSandbox([]string{"sh"}, "", 100*time.Millisecond, nil)
+	s := services.NewHostSandbox([]string{"sh"}, "", 100*time.Millisecond, nil)
 	ctx := context.Background()
 	out, err := s.RunCommand(ctx, tmp, "sh "+script, "")
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, usecase.ErrWatchdogIdleTimeout)
+	assert.ErrorIs(t, err, services.ErrWatchdogIdleTimeout)
 	assert.Contains(t, out, "BEFORE")
 	assert.NotContains(t, out, "AFTER")
 }
 
 func TestE2E_IdleTimeout_WhitelistBlocksDisallowedCommand(t *testing.T) {
-	s := usecase.NewHostSandbox([]string{"echo"}, "", 100*time.Millisecond, nil)
+	s := services.NewHostSandbox([]string{"echo"}, "", 100*time.Millisecond, nil)
 
 	ctx := context.Background()
 	_, err := s.RunCommand(ctx, t.TempDir(), "sleep 1", "")
@@ -339,7 +339,7 @@ func TestE2E_IdleTimeout_WhitelistBlocksDisallowedCommand(t *testing.T) {
 }
 
 func TestE2E_IdleTimeout_ZeroTimeoutCompletesNormally(t *testing.T) {
-	s := usecase.NewHostSandbox([]string{"echo"}, "", 0, nil)
+	s := services.NewHostSandbox([]string{"echo"}, "", 0, nil)
 
 	ctx := context.Background()
 	out, err := s.RunCommand(ctx, t.TempDir(), "echo hello world", "")

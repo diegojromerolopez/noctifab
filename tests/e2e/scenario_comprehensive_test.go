@@ -12,7 +12,7 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
-	"github.com/diegojromerolopez/noctifab/pkg/usecase"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,39 +89,39 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 	})
 
 	t.Run("Watchdog kills process exceeding max wall-clock duration", func(t *testing.T) {
-		wd := usecase.Watchdog{MaxDuration: 100 * time.Millisecond}
+		wd := services.Watchdog{MaxDuration: 100 * time.Millisecond}
 		cmd := exec.CommandContext(ctx, "sleep", "5")
 		_, err := wd.Run(ctx, cmd)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, usecase.ErrWatchdogMaxDuration)
+		assert.ErrorIs(t, err, services.ErrWatchdogMaxDuration)
 	})
 
 	t.Run("FlakyDetector quarantines non-unanimous test runs", func(t *testing.T) {
-		flaky := []usecase.TestRunResult{
+		flaky := []services.TestRunResult{
 			{RunID: 1, Passed: true, Output: "ok"},
 			{RunID: 2, Passed: false, Output: "random failure"},
 			{RunID: 3, Passed: true, Output: "ok"},
 		}
-		r := usecase.DetectFlaky(flaky)
+		r := services.DetectFlaky(flaky)
 		assert.True(t, r.Flaky)
 		assert.Equal(t, 2, r.PassedCount)
 		assert.Equal(t, 1, r.FailedCount)
 
-		stable := []usecase.TestRunResult{
+		stable := []services.TestRunResult{
 			{RunID: 1, Passed: true, Output: "ok"},
 			{RunID: 2, Passed: true, Output: "ok"},
 			{RunID: 3, Passed: true, Output: "ok"},
 		}
-		r2 := usecase.DetectFlaky(stable)
+		r2 := services.DetectFlaky(stable)
 		assert.False(t, r2.Flaky)
 
-		prompt := usecase.BuildFlakyStabilizationPrompt(flaky, "")
+		prompt := services.BuildFlakyStabilizationPrompt(flaky, "")
 		assert.Contains(t, prompt, "random failure")
 		assert.Contains(t, prompt, "time.Sleep")
 	})
 
 	t.Run("DependencyManager detects missing tool from error output", func(t *testing.T) {
-		dm := usecase.NewDependencyManager([]string{"pip", "go", "npm"})
+		dm := services.NewDependencyManager([]string{"pip", "go", "npm"})
 
 		tool, found := dm.DetectMissingTool("executable file not found: pytest")
 		assert.True(t, found)
@@ -137,18 +137,18 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 	t.Run("HotReloadManager handoff file round-trips correctly", func(t *testing.T) {
 		handoffPath := filepath.Join(t.TempDir(), "handoff.json")
 
-		state := usecase.HandoffState{NewPID: 12345, Status: usecase.HandoffActive, Message: "healthy"}
+		state := services.HandoffState{NewPID: 12345, Status: services.HandoffActive, Message: "healthy"}
 		data, _ := json.Marshal(state)
 		err := os.WriteFile(handoffPath, data, 0644)
 		require.NoError(t, err)
 
 		raw, err := os.ReadFile(handoffPath)
 		require.NoError(t, err)
-		var readBack usecase.HandoffState
+		var readBack services.HandoffState
 		err = json.Unmarshal(raw, &readBack)
 		require.NoError(t, err)
 		assert.Equal(t, 12345, readBack.NewPID)
-		assert.Equal(t, usecase.HandoffActive, readBack.Status)
+		assert.Equal(t, services.HandoffActive, readBack.Status)
 		assert.Equal(t, "healthy", readBack.Message)
 	})
 
@@ -156,7 +156,7 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 		repo, cleanup := setupRepo(t, ctx, tempDir, "disambiguate", "disambig-session")
 		defer cleanup()
 
-		gitClient := usecase.NewGitClient(filepath.Join(tempDir, "disambiguate"))
+		gitClient := services.NewGitClient(filepath.Join(tempDir, "disambiguate"))
 		llm := &mockLLMClient{
 			completeFn: func(_ context.Context, _ string) (*domain.LLMResponse, error) {
 				return &domain.LLMResponse{
@@ -166,7 +166,7 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 				}, nil
 			},
 		}
-		disambiguator := usecase.NewIntentDisambiguator(gitClient, llm)
+		disambiguator := services.NewIntentDisambiguator(gitClient, llm)
 
 		state := &domain.State{
 			ID:          "disambig-session",
@@ -194,8 +194,8 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 	})
 
 	t.Run("SAST scanner returns passed when disabled", func(t *testing.T) {
-		scanner := &usecase.SASTScanner{
-			Config: usecase.SASTConfig{Enabled: false},
+		scanner := &services.SASTScanner{
+			Config: services.SASTConfig{Enabled: false},
 		}
 		result, err := scanner.Run(ctx, "/tmp")
 		require.NoError(t, err)

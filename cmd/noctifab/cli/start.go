@@ -9,7 +9,7 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
-	"github.com/diegojromerolopez/noctifab/pkg/usecase"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/spf13/cobra"
 )
 
@@ -46,7 +46,7 @@ var startCmd = &cobra.Command{
 		}
 
 		// Check if daemon is already running.
-		if pid, err := usecase.ReadPIDFile(daemonPIDFile); err == nil {
+		if pid, err := services.ReadPIDFile(daemonPIDFile); err == nil {
 			return fmt.Errorf("noctifab daemon is already running (PID %d). Use 'noctifab stop' first", pid)
 		}
 
@@ -61,7 +61,7 @@ var startCmd = &cobra.Command{
 		}
 
 		// Wait until the daemon's HTTP API is reachable.
-		daemonClient := usecase.NewDaemonClient()
+		daemonClient := services.NewDaemonClient()
 		fmt.Print("Waiting for daemon to start")
 		deadline := time.Now().Add(daemonReadyMax)
 		for time.Now().Before(deadline) {
@@ -76,14 +76,14 @@ var startCmd = &cobra.Command{
 			return fmt.Errorf("daemon did not start within %s — check %s for details", daemonReadyMax, daemonLogFile)
 		}
 
-		pid, _ := usecase.ReadPIDFile(daemonPIDFile)
+		pid, _ := services.ReadPIDFile(daemonPIDFile)
 		fmt.Printf("noctifab daemon running (PID %d). Log: %s\n", pid, daemonLogFile)
 
 		// Start the clarification poller in the background of this REPL process.
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		poller := usecase.NewClarificationPoller(daemonClient, daemonPollFreq, os.Stdin, os.Stdout)
+		poller := services.NewClarificationPoller(daemonClient, daemonPollFreq, os.Stdin, os.Stdout)
 		poller.Start(ctx)
 
 		// Start the foreground interactive REPL (blocks until EOF or SIGINT).
@@ -91,7 +91,7 @@ var startCmd = &cobra.Command{
 			cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
 			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
 		)
-		listener := usecase.NewListenerAgent(llmClient, daemonClient, os.Stdin, os.Stdout)
+		listener := services.NewListenerAgent(llmClient, daemonClient, os.Stdin, os.Stdout)
 		listener.Start(ctx)
 
 		fmt.Println("\nnoctifab REPL exited. Daemon continues in the background.")

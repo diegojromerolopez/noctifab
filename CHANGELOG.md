@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Span Naming Convention**: Renamed all OpenTelemetry spans from `noctifab.*` prefixed names to bare Go function names (e.g., `noctifab.cycle` → `RunOnce`, `noctifab.postgres_save` → `Save`) for cleaner observability UX.
 - **OpenTelemetry Instrumentation**: Added named spans with input attributes (secrets redacted) to 9 additional functions: `SQLiteRepository.Save/Load`, `DockerSandbox.RunCommand`, `Orchestrator.FinalizeUserStory/PlanStory`, `Scheduler.GetReadyTasks`, `ListenerAgent.Start/interpretCommand/routeIntent`, `DaemonClient.IsAlive/SendStartStory/SendStartDirectory/GetStatus`, and `BumpVersion`. All sensitive keys (`api_key`, `token`, `secret`, `password`, `auth`, `credential`, `private_key`, `access_key`) are automatically redacted to `[REDACTED]` via `telemetry.Attr`/`AttrInt` helpers. Tracer configuration uses only `OTEL_*` environment variables.
+- **Package Rename**: Renamed `pkg/usecase` to `pkg/services` for idiomatic Go convention. All imports and internal references updated accordingly.
 
 ## [0.3.0] - 2026-07-01
 

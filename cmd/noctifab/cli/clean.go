@@ -11,7 +11,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
-	"github.com/diegojromerolopez/noctifab/pkg/usecase"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +33,7 @@ func runClean(cmd *cobra.Command, _ []string) error {
 
 	// When --dry-run is set we skip the daemon check entirely (safe preview).
 	if !dryRun {
-		if pid, err := usecase.ReadPIDFile(daemonPIDFile); err == nil {
+		if pid, err := services.ReadPIDFile(daemonPIDFile); err == nil {
 			fmt.Fprintf(os.Stderr,
 				"⚠ noctifab daemon is running (PID %d). Run 'noctifab stop' before clean to save state.\n", pid)
 			if !yes {
@@ -170,7 +170,7 @@ func cleanSQLiteDB(cfg *config.Config) error {
 
 func removePIDFile() {
 	if _, err := os.Stat(daemonPIDFile); err == nil {
-		if err := usecase.RemovePIDFile(daemonPIDFile); err != nil {
+		if err := services.RemovePIDFile(daemonPIDFile); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Could not remove PID file: %v\n", err)
 		} else {
 			fmt.Println("Removed PID file.")
