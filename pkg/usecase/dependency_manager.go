@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type DependencyManager struct {
@@ -57,6 +61,13 @@ func (dm *DependencyManager) IsAllowed(manager string) bool {
 }
 
 func (dm *DependencyManager) InstallTool(ctx context.Context, tool string) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.dep_install",
+		trace.WithAttributes(
+			attribute.String("tool", tool),
+			attribute.StringSlice("allowed_managers", dm.AllowedPkgManagers),
+		))
+	defer span.End()
+
 	entry, ok := toolPackageMap[tool]
 	if !ok {
 		return fmt.Errorf("unknown tool %q: no package mapping available", tool)

@@ -8,6 +8,10 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -43,6 +47,13 @@ func (c *outputCapturer) SinceLastOutput() time.Duration {
 }
 
 func (w *Watchdog) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.watchdog_run",
+		trace.WithAttributes(
+			attribute.String("max_duration", w.MaxDuration.String()),
+			attribute.String("idle_timeout", w.IdleTimeout.String()),
+		))
+	defer span.End()
+
 	capturer := &outputCapturer{}
 	cmd.Stdout = capturer
 	cmd.Stderr = capturer

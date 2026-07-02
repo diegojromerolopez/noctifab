@@ -43,7 +43,11 @@ func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Dura
 
 func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.llm_completion",
-		trace.WithAttributes(attribute.String("provider", c.Provider)))
+		trace.WithAttributes(
+			attribute.String("provider", c.Provider),
+			attribute.String("model", c.Model),
+			attribute.Int("max_retries", c.MaxRetries),
+		))
 	defer span.End()
 
 	proj := getProjectContext()

@@ -7,6 +7,10 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type SASTConfig struct {
@@ -33,6 +37,14 @@ type SASTScanner struct {
 }
 
 func (s *SASTScanner) Run(ctx context.Context, projectPath string) (*SASTResult, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.sast_scan",
+		trace.WithAttributes(
+			attribute.Bool("enabled", s.Config.Enabled),
+			attribute.StringSlice("scanners", s.Config.Scanners),
+			attribute.String("fail_on_severity", s.Config.FailOnSeverity),
+		))
+	defer span.End()
+
 	if !s.Config.Enabled {
 		return &SASTResult{Passed: true}, nil
 	}

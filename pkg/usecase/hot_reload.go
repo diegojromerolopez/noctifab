@@ -8,6 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type HandoffStatus string
@@ -33,6 +37,13 @@ type HotReloadManager struct {
 }
 
 func (hrm *HotReloadManager) Reload(ctx context.Context) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.hot_reload",
+		trace.WithAttributes(
+			attribute.String("new_binary", hrm.NewBinary),
+			attribute.String("handoff_path", hrm.HandoffPath),
+		))
+	defer span.End()
+
 	cmd := exec.CommandContext(ctx, hrm.NewBinary, "serve", "--port", "18081")
 	cmd.Dir = hrm.Workspace
 	cmd.Stdout = os.Stdout

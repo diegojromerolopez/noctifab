@@ -98,7 +98,12 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 
 // RunOnce runs a single cycle of the event loop
 func (o *Orchestrator) RunOnce(ctx context.Context) error {
-	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.cycle")
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.cycle",
+		trace.WithAttributes(
+			attribute.Int("concurrency", o.cfg.Concurrency),
+			attribute.Int("occ_max_retries", o.cfg.OCCMaxRetries),
+			attribute.String("poll_interval", o.cfg.PollInterval.String()),
+		))
 	defer span.End()
 
 	state, err := o.repo.Load(ctx)

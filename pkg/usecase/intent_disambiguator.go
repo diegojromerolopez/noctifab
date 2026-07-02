@@ -5,6 +5,9 @@ import (
 	"fmt"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type IntentDisambiguator struct {
@@ -20,6 +23,14 @@ func NewIntentDisambiguator(gitClient *GitClient, llmClient domain.LLMClient) *I
 }
 
 func (id *IntentDisambiguator) Disambiguate(ctx context.Context, clarification domain.Clarification, state *domain.State) (string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.intent_disambiguate",
+		trace.WithAttributes(
+			attribute.String("feature", state.Metadata.FeatureName),
+			attribute.String("base_branch", state.Metadata.BaseBranch),
+			attribute.Int("file_count", len(state.Files)),
+		))
+	defer span.End()
+
 	gitLog, err := id.gitClient.Run(ctx, false, "log", "--oneline", "-30")
 	if err != nil || gitLog == "" {
 		gitLog = "(no git history available)"

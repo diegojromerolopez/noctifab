@@ -8,8 +8,11 @@ import (
 	"fmt"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type PostgresRepository struct {
@@ -43,6 +46,13 @@ func (r *PostgresRepository) Close() error {
 
 // Save persists the domain State in a transaction using SELECT FOR UPDATE row locking and OCC version checking.
 func (r *PostgresRepository) Save(ctx context.Context, state *domain.State) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.postgres_save",
+		trace.WithAttributes(
+			attribute.String("state.id", state.ID),
+			attribute.Int("state.version", state.Version),
+			attribute.Int("task_count", len(state.Tasks)),
+		))
+	defer span.End()
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
 	if err != nil {
 		return err
@@ -218,6 +228,8 @@ func (r *PostgresRepository) Save(ctx context.Context, state *domain.State) erro
 
 // Load retrieves the State domain object from PostgreSQL using explicit joins.
 func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.postgres_load")
+	defer span.End()
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT 
 			s.id, s.project_path, s.version, s.build_status, s.input_source, s.input_path, s.integration_branch, s.feature_name, s.base_branch, s.project_version, s.total_tokens_used, s.total_cost_usd,

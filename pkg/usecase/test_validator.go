@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // TestValidator runs the project's tests up to 3 times to check for flakiness
@@ -39,6 +42,14 @@ func raceCommand(cmd string) string {
 // ValidateTask executes the project's tests 3 times and counts majority votes.
 // When flaky is detected and an LLM client is configured, it attempts to auto-stabilize.
 func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, task domain.Task) (bool, string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.validate_task",
+		trace.WithAttributes(
+			attribute.String("task.id", task.ID),
+			attribute.String("task.title", task.Title),
+			attribute.Bool("strict", v.Strict),
+		))
+	defer span.End()
+
 	if v.LinterCommand != "" {
 		out, err := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
 		if err != nil {

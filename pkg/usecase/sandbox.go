@@ -76,7 +76,12 @@ func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Durati
 
 func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.sandbox_command",
-		trace.WithAttributes(attribute.String("command", command)))
+		trace.WithAttributes(
+			attribute.String("command", command),
+			attribute.String("project_path", projectPath),
+			attribute.String("package", pkg),
+			attribute.Int("allowed_commands", len(s.AllowedCommands)),
+		))
 	defer span.End()
 
 	cmdStr := command
