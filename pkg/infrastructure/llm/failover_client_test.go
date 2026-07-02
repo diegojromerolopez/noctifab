@@ -3,11 +3,34 @@ package llm
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
+
+type mockBudgetStore struct {
+	mu      sync.Mutex
+	records map[string]float64
+}
+
+func (m *mockBudgetStore) GetDailyUsage(_ context.Context, date string, provider string) (float64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.records[date+"|"+provider], nil
+}
+
+func (m *mockBudgetStore) IncrementUsage(_ context.Context, date string, provider string, costUSD float64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.records[date+"|"+provider] += costUSD
+	return nil
+}
+
+func newMockBudgetStore() *mockBudgetStore {
+	return &mockBudgetStore{records: make(map[string]float64)}
+}
 
 type mockLLM struct {
 	calls int
@@ -33,7 +56,7 @@ func TestFailoverClient(t *testing.T) {
 			{Name: "model-2", Client: m2},
 		}
 
-		client := NewFailoverClient(backends, 10*time.Millisecond, 0)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, nil, 0)
 		resp, err := client.Complete(context.Background(), "hello")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -59,7 +82,7 @@ func TestFailoverClient(t *testing.T) {
 			{Name: "model-2", Client: m2},
 		}
 
-		client := NewFailoverClient(backends, 50*time.Millisecond, 0)
+		client := NewFailoverClient(backends, 50*time.Millisecond, 0, nil, 0)
 
 		// First call: m1 fails, failover to m2
 		resp, err := client.Complete(context.Background(), "hello")
@@ -111,11 +134,11 @@ func TestFailoverClient(t *testing.T) {
 			{Name: "model-1", Client: m1},
 			{Name: "model-2", Client: m2},
 		}
-
-		client := NewFailoverClient(backends, 10*time.Millisecond, 0)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, nil, 0)
 		_, err := client.Complete(context.Background(), "hello")
 		if err == nil {
 			t.Fatal("expected error, got nil")
+
 		}
 
 		if m1.calls != 1 || m2.calls != 1 {
@@ -129,7 +152,7 @@ func TestFailoverClient(t *testing.T) {
 			{Name: "model-1", Client: m1},
 		}
 
-		client := NewFailoverClient(backends, 10*time.Millisecond, 2)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 2, nil, 0)
 
 		// First call should succeed
 		resp, err := client.Complete(context.Background(), "hello")
@@ -155,4 +178,80 @@ func TestFailoverClient(t *testing.T) {
 			t.Errorf("expected ErrBudgetExhausted, got: %v", err)
 		}
 	})
+
+	t.Run("budget store blocks when daily budget exceeded", func(t *testing.T) {
+		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "m1 response"}}
+		backends := []NamedClient{
+			{Name: "model-1", Model: "gpt-4o", Client: m1},
+		}
+		store := newMockBudgetStore()
+		_ = store.IncrementUsage(context.Background(), mustToday(), "gpt-4o", 10.00)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 5.00)
+
+		_, err := client.Complete(context.Background(), "hello")
+		if err == nil {
+			t.Fatal("expected budget exhausted error, got nil")
+		}
+		if m1.calls != 0 {
+			t.Errorf("expected backend not to be called when budget exceeded, calls: %d", m1.calls)
+		}
+	})
+
+	t.Run("budget store allows calls within budget", func(t *testing.T) {
+		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "m1 response"}}
+		backends := []NamedClient{
+			{Name: "model-1", Model: "gpt-4o", Client: m1},
+		}
+		store := newMockBudgetStore()
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 100.00)
+
+		resp, err := client.Complete(context.Background(), "hello")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Reasoning != "m1 response" {
+			t.Errorf("expected m1 response, got %s", resp.Reasoning)
+		}
+	})
+
+	t.Run("budget store records usage after successful call", func(t *testing.T) {
+		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "response", Actions: []domain.LLMAction{
+			{Tool: "write_file", Args: map[string]any{"path": "test.txt"}},
+		}}}
+		backends := []NamedClient{
+			{Name: "model-1", Model: "gpt-4o", Client: m1},
+		}
+		store := newMockBudgetStore()
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 100.00)
+
+		_, err := client.Complete(context.Background(), "Write a file called test.txt with hello world in it.")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		today := mustToday()
+		usage, _ := store.GetDailyUsage(context.Background(), today, "gpt-4o")
+		if usage <= 0 {
+			t.Errorf("expected usage > 0 after successful call, got %.6f", usage)
+		}
+	})
+
+	t.Run("nil budget store skips budget tracking", func(t *testing.T) {
+		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "m1 response"}}
+		backends := []NamedClient{
+			{Name: "model-1", Model: "gpt-4o", Client: m1},
+		}
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, nil, 100.00)
+
+		resp, err := client.Complete(context.Background(), "hello")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Reasoning != "m1 response" {
+			t.Errorf("expected m1 response, got %s", resp.Reasoning)
+		}
+	})
+}
+
+func mustToday() string {
+	return time.Now().UTC().Format("2006-01-02")
 }

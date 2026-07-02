@@ -36,6 +36,8 @@ type Config struct {
 	Roles         RolesConfig              `yaml:"roles"`
 	Profiles      map[string]ProfileConfig `yaml:"profiles"`
 	Jira          JiraConfig               `yaml:"jira"`
+	Telemetry     TelemetryConfig          `yaml:"telemetry"`
+	SAST          SASTConfig               `yaml:"sast"`
 
 	Input               string   `yaml:"input"`
 	AutoCommit          bool     `yaml:"auto_commit"`
@@ -68,18 +70,49 @@ type StorageConfig struct {
 	JSONFilePath string `yaml:"json_file_path"`
 }
 
+type FailoverConfig struct {
+	Enabled      bool              `yaml:"enabled"`
+	Cooldown     Duration          `yaml:"cooldown"`
+	MaxCallLimit int               `yaml:"max_call_limit"`
+	Backends     []FailoverBackend `yaml:"backends"`
+}
+
+type FailoverBackend struct {
+	Provider   string `yaml:"provider"`
+	Model      string `yaml:"model"`
+	APIKeyEnv  string `yaml:"api_key_env"`
+	URL        string `yaml:"url"`
+	MaxRetries int    `yaml:"max_retries"`
+}
+
 type LLMConfig struct {
-	Provider           string   `yaml:"provider"`
-	Model              string   `yaml:"model"`
-	Temperature        float64  `yaml:"temperature"`
-	APIKey             string   `yaml:"api_key"`
-	APIKeyEnv          string   `yaml:"api_key_env"`
-	APIKeyValue        string   `yaml:"-"`
-	URL                string   `yaml:"url"`
-	MaxRetries         int      `yaml:"max_retries"`
-	RetryBackoff       Duration `yaml:"retry_backoff"`
-	RetryBackoffFactor float64  `yaml:"retry_backoff_factor"`
-	MaxBudgetUSD       float64  `yaml:"max_budget_usd"`
+	Provider           string         `yaml:"provider"`
+	Model              string         `yaml:"model"`
+	Temperature        float64        `yaml:"temperature"`
+	APIKey             string         `yaml:"api_key"`
+	APIKeyEnv          string         `yaml:"api_key_env"`
+	APIKeyValue        string         `yaml:"-"`
+	URL                string         `yaml:"url"`
+	MaxRetries         int            `yaml:"max_retries"`
+	RetryBackoff       Duration       `yaml:"retry_backoff"`
+	RetryBackoffFactor float64        `yaml:"retry_backoff_factor"`
+	MaxBudgetUSD       float64        `yaml:"max_budget_usd"`
+	ResetPeriod        string         `yaml:"reset_period"`
+	Failover           FailoverConfig `yaml:"failover"`
+}
+
+type PullRequestConfig struct {
+	AutoCreate bool     `yaml:"auto_create"`
+	AutoMerge  bool     `yaml:"auto_merge"`
+	AutoRebase bool     `yaml:"auto_rebase"`
+	Draft      bool     `yaml:"draft"`
+	Assignees  []string `yaml:"assignees"`
+	Labels     []string `yaml:"labels"`
+}
+
+type CIConfig struct {
+	AutoFix    bool `yaml:"auto_fix"`
+	MaxRetries int  `yaml:"max_retries"`
 }
 
 type VCSConfig struct {
@@ -94,6 +127,8 @@ type VCSConfig struct {
 	GitMutexTimeout     Duration                 `yaml:"git_mutex_timeout"`
 	GitOperationRetries int                      `yaml:"git_operation_retries"`
 	GitRetryBackoff     Duration                 `yaml:"git_retry_backoff"`
+	PullRequest         PullRequestConfig        `yaml:"pull_request"`
+	CI                  CIConfig                 `yaml:"ci"`
 }
 
 type ConventionalCommitConfig struct {
@@ -111,6 +146,8 @@ type SandboxConfig struct {
 	FormatterCommand   string   `yaml:"formatter_command"`
 	ExcludePaths       []string `yaml:"exclude_paths"`
 	AllowedCommands    []string `yaml:"allowed_commands"`
+	AutoInstallDeps    bool     `yaml:"auto_install_deps"`
+	PackageManagers    []string `yaml:"package_managers"`
 }
 
 type RoleSetting struct {
@@ -131,8 +168,21 @@ type ProfileConfig struct {
 	AllowedCommands []string `yaml:"allowed_commands"`
 }
 
+type TelemetryConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	Exporter    string `yaml:"exporter"`
+	Endpoint    string `yaml:"endpoint"`
+	ServiceName string `yaml:"service_name"`
+}
+
 type JiraConfig struct {
 	User  string `yaml:"user"`
 	Token string `yaml:"token"`
 	URL   string `yaml:"url"`
+}
+
+type SASTConfig struct {
+	Enabled        bool     `yaml:"enabled"`
+	Scanners       []string `yaml:"scanners"`
+	FailOnSeverity string   `yaml:"fail_on_severity"`
 }

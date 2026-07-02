@@ -12,7 +12,15 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+// RepairHandler defines the contract for automatic repair of hung/failed test suites.
+type RepairHandler interface {
+	AttemptRepair(ctx context.Context, state *domain.State, task domain.Task, watchdogOutput string, watchdogErr error) (*RepairResult, error)
+}
 
 type OrchestratorConfig struct {
 	PollInterval     time.Duration
@@ -25,17 +33,18 @@ type OrchestratorConfig struct {
 }
 
 type Orchestrator struct {
-	repo        domain.StateRepository
-	registry    Registry
-	llmClient   domain.LLMClient
-	validator   Validator
-	scheduler   *Scheduler
-	git         *GitClient
-	rebaseQueue *RebaseQueue
-	evaluator   *TestValidator
-	vcsClient   domain.VCSClient
-	cfg         OrchestratorConfig
-	mailbox     *CommandMailbox
+	repo           domain.StateRepository
+	registry       Registry
+	llmClient      domain.LLMClient
+	validator      Validator
+	scheduler      *Scheduler
+	git            *GitClient
+	rebaseQueue    *RebaseQueue
+	evaluator      *TestValidator
+	vcsClient      domain.VCSClient
+	cfg            OrchestratorConfig
+	mailbox        *CommandMailbox
+	watchdogRepair RepairHandler
 }
 
 func NewOrchestrator(
@@ -50,41 +59,48 @@ func NewOrchestrator(
 	vcsClient domain.VCSClient,
 	cfg OrchestratorConfig,
 	mailbox *CommandMailbox,
+	watchdogRepair RepairHandler,
 ) *Orchestrator {
 	return &Orchestrator{
-		repo:        repo,
-		registry:    reg,
-		llmClient:   client,
-		validator:   val,
-		scheduler:   sched,
-		git:         git,
-		rebaseQueue: queue,
-		evaluator:   eval,
-		vcsClient:   vcsClient,
-		cfg:         cfg,
-		mailbox:     mailbox,
+		repo:           repo,
+		registry:       reg,
+		llmClient:      client,
+		validator:      val,
+		scheduler:      sched,
+		git:            git,
+		rebaseQueue:    queue,
+		evaluator:      eval,
+		vcsClient:      vcsClient,
+		cfg:            cfg,
+		mailbox:        mailbox,
+		watchdogRepair: watchdogRepair,
 	}
 }
 
 // Start runs the polling loop
 func (o *Orchestrator) Start(ctx context.Context) error {
-	ticker := time.NewTicker(o.cfg.PollInterval)
-	defer ticker.Stop()
-
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if err := o.RunOnce(ctx); err != nil {
-				fmt.Fprintf(os.Stderr, "Orchestrator error: %v\n", err)
+		if err := o.RunOnce(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Orchestrator error: %v\n", err)
+		}
+		var wakeup <-chan struct{}
+		if o.mailbox != nil {
+			wakeup = o.mailbox.Wakeup()
+		}
+		if err := SleepWithInterrupt(ctx, o.cfg.PollInterval, wakeup); err != nil {
+			if errors.Is(err, ErrInterrupted) {
+				continue
 			}
+			return err
 		}
 	}
 }
 
 // RunOnce runs a single cycle of the event loop
 func (o *Orchestrator) RunOnce(ctx context.Context) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.cycle")
+	defer span.End()
+
 	state, err := o.repo.Load(ctx)
 	if err != nil {
 		return err
@@ -201,6 +217,10 @@ func (o *Orchestrator) markTaskFailed(ctx context.Context, taskID, reason string
 }
 
 func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.task_worker",
+		trace.WithAttributes(attribute.String("task.id", taskID)))
+	defer span.End()
+
 	// Spawns worker branch, performs checkouts, updates task PENDING -> IN_PROGRESS,
 	// runs Tester & Generator, validates tests, merges back if success, and cleans worktrees.
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
@@ -484,6 +504,26 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
 	// Run test suite validation
 	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, state, *task)
+
+	if !passed && o.watchdogRepair != nil {
+		category := CategorizeFailureLog(logMsg)
+		if category == FailureTimeout {
+			fmt.Printf("Orchestrator: Task %s detected timeout failure. Attempting repair...\n", taskID)
+			repairCtx, repairCancel := context.WithTimeout(ctx, 10*time.Minute)
+			result, repairErr := o.watchdogRepair.AttemptRepair(repairCtx, state, *task, logMsg, fmt.Errorf("test validation failed: timeout"))
+			repairCancel()
+			if repairErr == nil && result != nil && result.Success {
+				fmt.Printf("Orchestrator: Task %s repaired successfully. Re-running validation...\n", taskID)
+				passed, logMsg, _ = o.evaluator.ValidateTask(ctx, state, *task)
+			} else {
+				if repairErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Task %s repair failed: %v\n", taskID, repairErr)
+				} else {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Task %s repair exhausted %d attempts without success\n", taskID, result.Attempts)
+				}
+			}
+		}
+	}
 
 	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		var targetTask *domain.Task

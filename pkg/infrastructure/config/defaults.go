@@ -35,6 +35,13 @@ func DefaultConfig() *Config {
 			RetryBackoff:       Duration(100 * time.Millisecond),
 			RetryBackoffFactor: 2.0,
 			MaxBudgetUSD:       10.0,
+			ResetPeriod:        "daily",
+			Failover: FailoverConfig{
+				Enabled:      false,
+				Cooldown:     Duration(5 * time.Minute),
+				MaxCallLimit: 0,
+				Backends:     nil,
+			},
 		},
 		VCS: VCSConfig{
 			Provider:     "github",
@@ -49,6 +56,18 @@ func DefaultConfig() *Config {
 			GitMutexTimeout:     Duration(30 * time.Second),
 			GitOperationRetries: 3,
 			GitRetryBackoff:     Duration(500 * time.Millisecond),
+			PullRequest: PullRequestConfig{
+				AutoCreate: false,
+				AutoMerge:  false,
+				AutoRebase: false,
+				Draft:      false,
+				Assignees:  nil,
+				Labels:     nil,
+			},
+			CI: CIConfig{
+				AutoFix:    false,
+				MaxRetries: 3,
+			},
 		},
 		Sandbox: SandboxConfig{
 			Mode:               "host",
@@ -60,6 +79,8 @@ func DefaultConfig() *Config {
 			FormatterCommand:   "go fmt ./...",
 			ExcludePaths:       []string{"node_modules/", "vendor/", "bin/", "dist/", ".noctifab/"},
 			AllowedCommands:    []string{"go", "git", "npm", "python", "make"},
+			AutoInstallDeps:    false,
+			PackageManagers:    []string{"pip", "go", "brew", "curl", "npm"},
 		},
 		Roles: RolesConfig{
 			Orchestrator: RoleSetting{Profile: "orchestrator", Temperature: 0.0},
@@ -80,7 +101,18 @@ func DefaultConfig() *Config {
 		OCCBackoffBase:      Duration(50 * time.Millisecond),
 		OCCBackoffFactor:    2.0,
 		TokenUsageLimit:     0,
-		LogLevel:            "info",
+		Telemetry: TelemetryConfig{
+			Enabled:     false,
+			Exporter:    "otlp",
+			Endpoint:    "",
+			ServiceName: "noctifab",
+		},
+		SAST: SASTConfig{
+			Enabled:        false,
+			Scanners:       []string{"gosec"},
+			FailOnSeverity: "high",
+		},
+		LogLevel: "info",
 	}
 }
 

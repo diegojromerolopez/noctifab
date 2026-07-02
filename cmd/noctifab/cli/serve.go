@@ -13,6 +13,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
 	"github.com/diegojromerolopez/noctifab/pkg/usecase"
 	"github.com/spf13/cobra"
@@ -31,6 +32,15 @@ var serveCmd = &cobra.Command{
 		cfg, err := config.Load(cmd)
 		if err != nil {
 			return err
+		}
+
+		if cfg.Telemetry.Enabled {
+			tp, tpErr := telemetry.InitTracer(cfg.Telemetry.ServiceName, cfg.Telemetry.Endpoint)
+			if tpErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: telemetry init failed: %v\n", tpErr)
+			} else {
+				defer func() { _ = tp.Shutdown(context.Background()) }()
+			}
 		}
 
 		// Write PID file so "stop" and "start" can find this process.
@@ -60,7 +70,11 @@ var serveCmd = &cobra.Command{
 		if cfg.Sandbox.Mode == "docker" {
 			sandboxRunner = usecase.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second)
+			var depMgr *usecase.DependencyManager
+			if cfg.Sandbox.AutoInstallDeps {
+				depMgr = usecase.NewDependencyManager(cfg.Sandbox.PackageManagers)
+			}
+			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 		}
 
 		// Initialize tool registry.
@@ -79,10 +93,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&usecase.RequestTestFixTool{})
 
 		// Initialize LLM client.
-		llmClient := llm.NewClient(
-			cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
-			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
-		)
+		llmClient := llm.BuildFailoverClient(&cfg.LLM, nil)
 
 		// Initialize orchestrator components.
 		gitClient := usecase.NewGitClient(".")
@@ -104,7 +115,7 @@ var serveCmd = &cobra.Command{
 		}
 		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
 		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())
-		evaluator := usecase.NewTestValidator(sandboxRunner, false)
+		evaluator := usecase.NewTestValidator(sandboxRunner, false, nil, nil)
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
@@ -124,7 +135,7 @@ var serveCmd = &cobra.Command{
 
 		orchestrator := usecase.NewOrchestrator(
 			repo, reg, llmClient, validator, scheduler,
-			gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox,
+			gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox, nil,
 		)
 
 		ctx, cancel := context.WithCancel(context.Background())

@@ -11,6 +11,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type SandboxMode string
@@ -29,19 +33,52 @@ type HostSandbox struct {
 	AllowedCommands []string
 	DefaultCommand  string
 	IdleTimeout     time.Duration
+	DepMgr          *DependencyManager
 }
 
 var _ Sandbox = (*HostSandbox)(nil)
 
-func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Duration) *HostSandbox {
+// DetectProjectLanguage inspects the project directory for manifest files
+// and returns the detected programming language identifier.
+func DetectProjectLanguage(projectPath string) string {
+	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+		return "go"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
+		return "rust"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
+		return "javascript"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "requirements.txt")); err == nil {
+		return "python"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "setup.py")); err == nil {
+		return "python"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "pom.xml")); err == nil {
+		return "java"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "build.gradle")); err == nil {
+		return "java"
+	}
+	return ""
+}
+
+func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Duration, depMgr *DependencyManager) *HostSandbox {
 	return &HostSandbox{
 		AllowedCommands: allowed,
 		DefaultCommand:  defaultCmd,
 		IdleTimeout:     idleTimeout,
+		DepMgr:          depMgr,
 	}
 }
 
 func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.sandbox_command",
+		trace.WithAttributes(attribute.String("command", command)))
+	defer span.End()
+
 	cmdStr := command
 	if cmdStr == "" {
 		cmdStr = s.DefaultCommand
@@ -94,6 +131,17 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 
 	watchdog := Watchdog{IdleTimeout: s.IdleTimeout}
 	output, err := watchdog.Run(ctx, cmd)
+	if err != nil && s.DepMgr != nil {
+		if tool, found := s.DepMgr.DetectMissingTool(string(output)); found {
+			if installErr := s.DepMgr.InstallTool(ctx, tool); installErr == nil {
+				watchdog2 := Watchdog{IdleTimeout: s.IdleTimeout}
+				output2, err2 := watchdog2.Run(ctx, cmd)
+				if err2 == nil {
+					return string(output2), nil
+				}
+			}
+		}
+	}
 	if err != nil {
 		return string(output), fmt.Errorf("command execution failed: %w (output: %s)", err, string(output))
 	}

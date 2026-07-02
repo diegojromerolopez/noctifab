@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Client struct {
@@ -39,6 +42,10 @@ func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Dura
 }
 
 func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "noctifab.llm_completion",
+		trace.WithAttributes(attribute.String("provider", c.Provider)))
+	defer span.End()
+
 	proj := getProjectContext()
 
 	// Preprocess prompt to inject system instructions and schemas based on the target action type

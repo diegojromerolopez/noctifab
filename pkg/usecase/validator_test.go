@@ -106,3 +106,47 @@ func TestPolicyValidator_RoleProfiles(t *testing.T) {
 		t.Error("expected make command to be blocked for generator")
 	}
 }
+
+func TestRaceCommand_GoTest(t *testing.T) {
+	cmd := raceCommand("go test -v ./...")
+	if cmd != "go test -race -v ./..." {
+		t.Errorf("expected 'go test -race -v ./...', got %q", cmd)
+	}
+}
+
+func TestRaceCommand_NonGo(t *testing.T) {
+	cmd := raceCommand("python -m unittest discover")
+	if cmd != "python -m unittest discover" {
+		t.Errorf("expected unchanged command, got %q", cmd)
+	}
+}
+
+func TestRaceCommand_Empty(t *testing.T) {
+	cmd := raceCommand("")
+	if cmd != "" {
+		t.Errorf("expected empty, got %q", cmd)
+	}
+}
+
+func TestLastFailureOutput(t *testing.T) {
+	results := []TestRunResult{
+		{RunID: 1, Passed: true, Output: "first pass"},
+		{RunID: 2, Passed: false, Output: "first fail"},
+		{RunID: 3, Passed: false, Output: "last fail"},
+	}
+	out := lastFailureOutput(results)
+	if out != "last fail" {
+		t.Errorf("expected 'last fail', got %q", out)
+	}
+}
+
+func TestLastFailureOutput_AllPass(t *testing.T) {
+	results := []TestRunResult{
+		{RunID: 1, Passed: true, Output: "pass"},
+		{RunID: 2, Passed: true, Output: "pass"},
+	}
+	out := lastFailureOutput(results)
+	if out != "" {
+		t.Errorf("expected empty, got %q", out)
+	}
+}

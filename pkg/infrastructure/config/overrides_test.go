@@ -72,6 +72,14 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_TOKEN_USAGE_LIMIT":      "8888",
 		"NOCTIFAB_LOG_LEVEL":              "debug",
 		"NOCTIFAB_LOG_FILE":               "log-file-env",
+		"NOCTIFAB_PR_AUTO_CREATE":         "true",
+		"NOCTIFAB_PR_AUTO_MERGE":          "true",
+		"NOCTIFAB_PR_AUTO_REBASE":         "true",
+		"NOCTIFAB_PR_DRAFT":               "true",
+		"NOCTIFAB_PR_ASSIGNEES":           "user1, user2",
+		"NOCTIFAB_PR_LABELS":              "auto,bot",
+		"NOCTIFAB_CI_AUTO_FIX":            "true",
+		"NOCTIFAB_CI_MAX_RETRIES":         "5",
 	}
 
 	for k, v := range envVars {
@@ -90,12 +98,14 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"conversation-mode", "max-history-messages", "compaction-threshold",
 		"max-history-tokens", "sandbox-mode", "shutdown-grace-period", "occ-max-retries",
 		"occ-backoff-base", "occ-backoff-factor", "max-budget-usd", "token-usage-limit",
-		"log-level", "log-file",
+		"log-level", "log-file", "pr-auto-create", "pr-auto-merge", "pr-auto-rebase",
+		"pr-draft", "pr-assignees", "pr-labels", "ci-auto-fix", "ci-max-retries",
 	}
 	for _, f := range flags {
-		if f == "auto-commit" {
+		switch f {
+		case "auto-commit", "pr-auto-create", "pr-auto-merge", "pr-auto-rebase", "pr-draft", "ci-auto-fix":
 			cmd.Flags().Bool(f, false, "")
-		} else {
+		default:
 			cmd.Flags().String(f, "", "")
 		}
 	}
@@ -217,6 +227,30 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if cfg.LogFile != "log-file-env" {
 		t.Errorf("expected log-file-env, got %s", cfg.LogFile)
 	}
+	if !cfg.VCS.PullRequest.AutoCreate {
+		t.Error("expected pr-auto-create true")
+	}
+	if !cfg.VCS.PullRequest.AutoMerge {
+		t.Error("expected pr-auto-merge true")
+	}
+	if !cfg.VCS.PullRequest.AutoRebase {
+		t.Error("expected pr-auto-rebase true")
+	}
+	if !cfg.VCS.PullRequest.Draft {
+		t.Error("expected pr-draft true")
+	}
+	if len(cfg.VCS.PullRequest.Assignees) != 2 || cfg.VCS.PullRequest.Assignees[0] != "user1" {
+		t.Errorf("expected [user1 user2], got %v", cfg.VCS.PullRequest.Assignees)
+	}
+	if len(cfg.VCS.PullRequest.Labels) != 2 || cfg.VCS.PullRequest.Labels[0] != "auto" {
+		t.Errorf("expected [auto bot], got %v", cfg.VCS.PullRequest.Labels)
+	}
+	if !cfg.VCS.CI.AutoFix {
+		t.Error("expected ci-auto-fix true")
+	}
+	if cfg.VCS.CI.MaxRetries != 5 {
+		t.Errorf("expected ci-max-retries 5, got %d", cfg.VCS.CI.MaxRetries)
+	}
 
 	// Override with CLI flags
 	_ = cmd.Flags().Set("db-path", "db-path-flag")
@@ -254,6 +288,14 @@ func TestLoad_AndOverrides(t *testing.T) {
 	_ = cmd.Flags().Set("token-usage-limit", "9999")
 	_ = cmd.Flags().Set("log-level", "info")
 	_ = cmd.Flags().Set("log-file", "log-file-flag")
+	_ = cmd.Flags().Set("pr-auto-create", "false")
+	_ = cmd.Flags().Set("pr-auto-merge", "false")
+	_ = cmd.Flags().Set("pr-auto-rebase", "false")
+	_ = cmd.Flags().Set("pr-draft", "false")
+	_ = cmd.Flags().Set("pr-assignees", "flag1, flag2")
+	_ = cmd.Flags().Set("pr-labels", "flag-a,flag-b")
+	_ = cmd.Flags().Set("ci-auto-fix", "false")
+	_ = cmd.Flags().Set("ci-max-retries", "7")
 
 	cfg2, err := Load(cmd)
 	if err != nil {
@@ -361,5 +403,29 @@ func TestLoad_AndOverrides(t *testing.T) {
 	}
 	if cfg2.LogFile != "log-file-flag" {
 		t.Errorf("expected log-file-flag, got %s", cfg2.LogFile)
+	}
+	if cfg2.VCS.PullRequest.AutoCreate {
+		t.Error("expected pr-auto-create false")
+	}
+	if cfg2.VCS.PullRequest.AutoMerge {
+		t.Error("expected pr-auto-merge false")
+	}
+	if cfg2.VCS.PullRequest.AutoRebase {
+		t.Error("expected pr-auto-rebase false")
+	}
+	if cfg2.VCS.PullRequest.Draft {
+		t.Error("expected pr-draft false")
+	}
+	if len(cfg2.VCS.PullRequest.Assignees) != 2 || cfg2.VCS.PullRequest.Assignees[0] != "flag1" {
+		t.Errorf("expected [flag1 flag2], got %v", cfg2.VCS.PullRequest.Assignees)
+	}
+	if len(cfg2.VCS.PullRequest.Labels) != 2 || cfg2.VCS.PullRequest.Labels[0] != "flag-a" {
+		t.Errorf("expected [flag-a flag-b], got %v", cfg2.VCS.PullRequest.Labels)
+	}
+	if cfg2.VCS.CI.AutoFix {
+		t.Error("expected ci-auto-fix false")
+	}
+	if cfg2.VCS.CI.MaxRetries != 7 {
+		t.Errorf("expected ci-max-retries 7, got %d", cfg2.VCS.CI.MaxRetries)
 	}
 }

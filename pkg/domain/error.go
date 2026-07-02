@@ -18,11 +18,14 @@ const (
 
 // Sentinel errors for standard failure classification.
 var (
-	ErrTaskNotFound      = errors.New("task not found")
-	ErrVersionConflict   = errors.New("optimistic concurrency version conflict")
-	ErrSandboxViolation  = errors.New("sandbox boundary violation")
-	ErrBudgetExhausted   = errors.New("LLM token budget exhausted")
-	ErrMaxRetriesReached = errors.New("maximum retries exceeded")
+	ErrTaskNotFound          = errors.New("task not found")
+	ErrVersionConflict       = errors.New("optimistic concurrency version conflict")
+	ErrSandboxViolation      = errors.New("sandbox boundary violation")
+	ErrBudgetExhausted       = errors.New("LLM token budget exhausted")
+	ErrMaxRetriesReached     = errors.New("maximum retries exceeded")
+	ErrSecurityVulnerability = errors.New("SAST scan found blocking security vulnerabilities")
+	ErrSelfPatchFailed       = errors.New("self-patch build or test suite failed")
+	ErrHotReloadFailed       = errors.New("hot-reload handshake failed")
 )
 
 // DomainError groups errors for structured tracking and propagation.

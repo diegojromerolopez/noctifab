@@ -62,7 +62,7 @@ func TestOrchestrator_Initialization(t *testing.T) {
 	scheduler := NewScheduler(NewFileLockRegistry())
 	git := NewGitClient("/tmp")
 	queue := NewRebaseQueue(git)
-	evaluator := NewTestValidator(NewHostSandbox(nil, "", 0), false)
+	evaluator := NewTestValidator(NewHostSandbox(nil, "", 0, nil), false, nil, nil)
 	vcsClient := &mockVCS{}
 
 	cfg := OrchestratorConfig{
@@ -70,7 +70,7 @@ func TestOrchestrator_Initialization(t *testing.T) {
 		Concurrency:  1,
 	}
 
-	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil)
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
 	if orch == nil {
 		t.Fatal("expected orchestrator instance, got nil")
 	}
@@ -78,6 +78,75 @@ func TestOrchestrator_Initialization(t *testing.T) {
 	if orch.vcsClient != vcsClient {
 		t.Error("vcs client not wired correctly")
 	}
+}
+
+type mockRepairHandler struct {
+	attempts     int
+	ReturnResult *RepairResult
+	ReturnError  error
+}
+
+func (m *mockRepairHandler) AttemptRepair(ctx context.Context, state *domain.State, task domain.Task, watchdogOutput string, watchdogErr error) (*RepairResult, error) {
+	m.attempts++
+	return m.ReturnResult, m.ReturnError
+}
+
+func TestOrchestrator_RepairIntegration(t *testing.T) {
+	t.Run("watchdogRepair nil does not attempt repair on failure", func(t *testing.T) {
+		state := &domain.State{
+			ID: "test-session",
+			Tasks: []domain.Task{{
+				ID: "task-1", Title: "Test", Description: "A test task",
+				Status: domain.TaskInProgress, MaxRetries: 3,
+			}},
+		}
+		repo := &mockRepo{state: state}
+		reg := NewToolRegistry()
+		llmClient := &mockLLM{}
+		validator := NewPolicyValidator(nil, "main", nil)
+		scheduler := NewScheduler(NewFileLockRegistry())
+		git := NewGitClient("/tmp")
+		queue := NewRebaseQueue(git)
+		evaluator := NewTestValidator(NewHostSandbox(nil, "", 0, nil), false, nil, nil)
+		vcsClient := &mockVCS{}
+		cfg := OrchestratorConfig{PollInterval: 10 * time.Millisecond, Concurrency: 1}
+
+		orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+		if orch.watchdogRepair != nil {
+			t.Error("expected watchdogRepair to be nil")
+		}
+	})
+
+	t.Run("repair handler injected correctly", func(t *testing.T) {
+		mockRepair := &mockRepairHandler{
+			ReturnResult: &RepairResult{Success: true, Attempts: 1},
+		}
+		state := &domain.State{
+			ID: "test-session",
+			Tasks: []domain.Task{{
+				ID: "task-1", Title: "Test", Description: "A test task",
+				Status: domain.TaskInProgress, MaxRetries: 3,
+			}},
+		}
+		repo := &mockRepo{state: state}
+		reg := NewToolRegistry()
+		llmClient := &mockLLM{}
+		validator := NewPolicyValidator(nil, "main", nil)
+		scheduler := NewScheduler(NewFileLockRegistry())
+		git := NewGitClient("/tmp")
+		queue := NewRebaseQueue(git)
+		evaluator := NewTestValidator(NewHostSandbox(nil, "", 0, nil), false, nil, nil)
+		vcsClient := &mockVCS{}
+		cfg := OrchestratorConfig{PollInterval: 10 * time.Millisecond, Concurrency: 1}
+
+		orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, mockRepair)
+		if orch.watchdogRepair == nil {
+			t.Error("expected watchdogRepair to be set")
+		}
+		if _, ok := orch.watchdogRepair.(*mockRepairHandler); !ok {
+			t.Error("expected watchdogRepair to be mockRepairHandler")
+		}
+	})
 }
 
 func TestSummarizeFailureLog(t *testing.T) {

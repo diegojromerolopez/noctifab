@@ -108,7 +108,32 @@ The following flags can be passed to the root command or configured in `.noctifa
 | `--sandbox-mode` | | `host` | Sandbox isolation mode (`host` or `docker`) |
 | `--sandbox-idle-timeout` | | `30s` | Kill subprocess if no stdout/stderr output for this duration (0 = disabled) |
 | `--max-budget-usd` | | `10.00` | Daily LLM credit budget boundary in USD |
+| `--pr-auto-create` | | `false` | Automatically create a PR from the task branch |
+| `--pr-auto-merge` | | `false` | Automatically merge the PR when CI checks pass |
+| `--pr-auto-rebase` | | `false` | Automatically rebase the PR branch on base updates |
+| `--pr-draft` | | `false` | Create the PR as a draft |
+| `--pr-assignees` | | | Comma-separated list of GitHub usernames to assign to the PR |
+| `--pr-labels` | | | Comma-separated list of labels to apply to the PR |
+| `--ci-auto-fix` | | `false` | Automatically attempt to fix CI pipeline failures |
+| `--ci-max-retries` | | `3` | Max attempts to fix CI before giving up |
 | `--log-level` | | `info` | Logging verbosity: `debug`, `info`, `warn`, `error` |
+
+---
+
+## SAST Configuration
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--sast-enabled` | `false` | Enable SAST scanning before PR creation |
+| `--sast-scanners` | `gosec` | Comma-separated SAST scanners (`gosec`, `bandit`) |
+| `--sast-fail-on-severity` | `high` | Minimum severity to block the PR |
+
+## Dependency Auto-Install Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `sandbox.auto_install_deps` | `false` | Auto-install missing toolchain dependencies |
+| `sandbox.package_managers` | `["pip","go","brew","curl","npm"]` | Package managers to use for installation |
 
 ---
 

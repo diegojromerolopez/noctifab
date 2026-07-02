@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -157,6 +158,57 @@ func applyEnvOverrides(cfg *Config) {
 	if val, ok := os.LookupEnv("NOCTIFAB_LOG_FILE"); ok {
 		cfg.LogFile = val
 	}
+	if val, ok := os.LookupEnv("NOCTIFAB_PR_AUTO_CREATE"); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.PullRequest.AutoCreate = b
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_PR_AUTO_MERGE"); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.PullRequest.AutoMerge = b
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_PR_AUTO_REBASE"); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.PullRequest.AutoRebase = b
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_PR_DRAFT"); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.PullRequest.Draft = b
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_PR_ASSIGNEES"); ok {
+		cfg.VCS.PullRequest.Assignees = splitAndTrim(val)
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_PR_LABELS"); ok {
+		cfg.VCS.PullRequest.Labels = splitAndTrim(val)
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_CI_AUTO_FIX"); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.CI.AutoFix = b
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_CI_MAX_RETRIES"); ok {
+		if i, err := strconv.Atoi(val); err == nil {
+			cfg.VCS.CI.MaxRetries = i
+		}
+	}
+}
+
+func splitAndTrim(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		v := strings.TrimSpace(p)
+		if v != "" {
+			result = append(result, v)
+		}
+	}
+	return result
 }
 
 func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
@@ -304,5 +356,41 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	})
 	setIfChanged("log-file", func(val string) {
 		cfg.LogFile = val
+	})
+	setIfChanged("pr-auto-create", func(val string) {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.PullRequest.AutoCreate = b
+		}
+	})
+	setIfChanged("pr-auto-merge", func(val string) {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.PullRequest.AutoMerge = b
+		}
+	})
+	setIfChanged("pr-auto-rebase", func(val string) {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.PullRequest.AutoRebase = b
+		}
+	})
+	setIfChanged("pr-draft", func(val string) {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.PullRequest.Draft = b
+		}
+	})
+	setIfChanged("pr-assignees", func(val string) {
+		cfg.VCS.PullRequest.Assignees = splitAndTrim(val)
+	})
+	setIfChanged("pr-labels", func(val string) {
+		cfg.VCS.PullRequest.Labels = splitAndTrim(val)
+	})
+	setIfChanged("ci-auto-fix", func(val string) {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.VCS.CI.AutoFix = b
+		}
+	})
+	setIfChanged("ci-max-retries", func(val string) {
+		if i, err := strconv.Atoi(val); err == nil {
+			cfg.VCS.CI.MaxRetries = i
+		}
 	})
 }

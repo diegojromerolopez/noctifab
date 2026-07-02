@@ -25,6 +25,16 @@ The platform classifies development automation into distinct levels. `noctifab` 
 | **Level 3.5** | Selective Auto-Merge | Same as Level 3, but low-risk modules merge automatically. Human can block. |
 | **Level 4** | Full Dark Factory | Specs go in, tested code comes out fully merged. Human reviews only exceptions. |
 
+### Configuring Autonomy Level
+
+The autonomy level is controlled by the VCS `pull_request` and `ci` settings in `.noctifab/config.yaml`:
+
+| Level | `pull_request` settings | `ci` settings |
+|---|---|---|
+| **Level 3** | `auto_create: true`, `auto_merge: false` | _(optional)_ |
+| **Level 3.5** | `auto_create: true`, `auto_merge: true` | `auto_fix: true` |
+| **Level 4** | `auto_create: true`, `auto_merge: true`, `auto_rebase: true` | `auto_fix: true`, `max_retries: 3` |
+
 ---
 
 ## Core Pillars
@@ -328,6 +338,60 @@ llm:
 
 
 
+
+## Pull Request & CI Configuration
+
+In addition to the core LLM and VCS settings, `noctifab` supports automated PR management and CI pipeline integration:
+
+```yaml
+vcs:
+  pull_request:
+    auto_create: true    # Automatically create a PR from the task branch
+    auto_merge: true     # Automatically merge the PR when CI checks pass
+    auto_rebase: true    # Automatically rebase on base branch updates
+    draft: false         # Create the PR as a draft
+    assignees:           # GitHub usernames to auto-assign
+      - "user1"
+    labels:              # Labels to auto-apply to the PR
+      - "autonomous"
+  ci:
+    auto_fix: true       # Automatically fix CI pipeline failures
+    max_retries: 3       # Max CI fix attempts before giving up
+```
+
+For a full reference of all available settings and CLI flags, see the [SPEC.md](SPEC.md) and [docs/cli_usage.md](docs/cli_usage.md).
+
+### Dependency Auto-Install
+
+Set `sandbox.auto_install_deps: true` to automatically detect and install missing toolchain dependencies (e.g., `golangci-lint`, `pytest`, `cargo`). Configure supported package managers via `sandbox.package_managers`.
+
+## Security & Self-Evolution
+
+### SAST Security Gates
+
+Static Application Security Testing (SAST) can be configured to run against generated code before PR creation:
+
+```yaml
+sast:
+  enabled: true
+  scanners: ["gosec"]       # "gosec" for Go, "bandit" for Python
+  fail_on_severity: "high"  # Block on high, medium, or low severity
+```
+
+If SAST is enabled and a scanner finds issues meeting the severity threshold, the PR is blocked and the agent must fix them. See [SPEC.md](SPEC.md) for details.
+
+### Self-Patching & Hot-Reload
+
+Noctifab can patch, rebuild, and hot-reload its own binary to fix bugs or add features autonomously:
+
+1. **Self-Patching (`SelfUpdateManager`)**: Applies LLM-generated patches to a temp copy of the repo, builds, and runs the full test suite.
+2. **Hot-Reload (`HotReloadManager`)**: Swaps the running binary with zero downtime via a handoff file + health check protocol.
+
+Both features are detailed in [SPEC.md §3.10](SPEC.md).
+
+### Intent Disambiguation
+
+When the agent asks a clarification question, Noctifab can attempt to auto-answer it by analyzing git history, workspace files, and feature context — without blocking on human input. If the LLM's inferred answer is valid, the clarification is resolved automatically. Otherwise, the standard human clarification timeout applies.
 
 ## Target Scenarios & Examples
 

@@ -71,7 +71,7 @@ var startOneCmd = &cobra.Command{
 		specStr := string(specBytes)
 
 		// Initialize LLM Client
-		llmClient := llm.NewClient(cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue, cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL)
+		llmClient := llm.BuildFailoverClient(&cfg.LLM, nil)
 
 		// Resolve git-detect base branch if configured
 		if cfg.VCS.BaseBranch == "git-detect" {
@@ -148,7 +148,11 @@ var startOneCmd = &cobra.Command{
 		if cfg.Sandbox.Mode == "docker" {
 			sandboxRunner = usecase.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second)
+			var depMgr *usecase.DependencyManager
+			if cfg.Sandbox.AutoInstallDeps {
+				depMgr = usecase.NewDependencyManager(cfg.Sandbox.PackageManagers)
+			}
+			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 		}
 
 		// Initialize tool registry for execution
@@ -178,7 +182,7 @@ var startOneCmd = &cobra.Command{
 		}
 		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
 		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())
-		evaluator := usecase.NewTestValidator(sandboxRunner, false)
+		evaluator := usecase.NewTestValidator(sandboxRunner, false, nil, nil)
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
@@ -192,7 +196,7 @@ var startOneCmd = &cobra.Command{
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
 		}
 
-		orchestrator := usecase.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil)
+		orchestrator := usecase.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
