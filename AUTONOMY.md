@@ -35,18 +35,18 @@ Every task has an ID, estimated effort, acceptance criteria, file-by-file change
 | M6: Environment Healing | Phase 5 | AUT-501 | Missing toolchains auto-installed | Day 12 |
 | M7: Observability | Phase 5 | AUT-503 | OpenTelemetry spans emitted for all major operations | Day 15 |
 | M8: Security Baseline | Phase 6 | AUT-603 | SAST scanners run before PR creation; high-severity blocks merge | Day 17 |
-| M9: Self-Evolution | Phase 6 | AUT-601–602 | Daemon patches, builds, tests, and hot-reloads its own binary | Day 22 |
+| M9: Hot-Reload | Phase 6 | AUT-602 | Zero-downtime binary swap with state handoff | Day 22 |
 | M10: Intent Disambiguation | Phase 6 | AUT-604 | Ambiguous specs resolved via git context without human pause | Day 24 |
 
 ### Current State
 
 ```
-Phase 1 (Resilience):       40% — FailoverClient exists but is DEAD CODE (not wired in serve.go or start_one.go)
+Phase 1 (Resilience):       80% — BudgetStore, SleepWithInterrupt done; FailoverClient not wired in serve.go/start_one.go
 Phase 2 (Liveness):        100% — Complete and tested
-Phase 3 (Prompt Guard):      0%
-Phase 4 (Self-Repair):       0%
-Phase 5 (Self-Healing):      0%
-Phase 6 (Self-Evolution):    0%
+Phase 3 (Prompt Guard):     80% — PromptBuilder + DetectProjectLanguage done; not wired into LLM client
+Phase 4 (Self-Repair):      80% — WatchdogRepair with CategorizeFailureLog + AttemptRepair done; not wired into orchestrator
+Phase 5 (Self-Healing):     90% — DependencyManager, FlakyDetector, Telemetry tracer done; not wired into orchestrator
+Phase 6 (Self-Evolution):   75% — HotReloadManager, SASTScanner, IntentDisambiguator done; not wired into orchestrator
 ```
 
 ---
@@ -64,7 +64,7 @@ AUT-401 ────────────────────────
 AUT-501 ──> AUT-502 ──> AUT-503      │
                │                      │
                ▼                      ▼
-AUT-601 ──> AUT-602 ──> AUT-603 ──> AUT-604
+AUT-602 ──> AUT-603 ──> AUT-604
 ```
 
 **Legend**:
@@ -1409,150 +1409,14 @@ Telemetry TelemetryConfig `yaml:"telemetry"`
 ## 8. Phase 6 — Self-Evolution
 
 ### Goal
-Daemon patches its own Go binary, hot-reloads without state loss, enforces security gates, and resolves ambiguous specs from git context.
-
----
-
-### AUT-601: Self-Patching Compiler Loop
-
-| Field | Value |
-|-------|-------|
-| **Effort** | 4 days |
-| **Dependencies** | AUT-502 (flaky fix), AUT-503 (telemetry for monitoring) |
-| **Risk** | High — self-modifying code could destabilize production |
-| **Rollback** | Revert `self_update.go`; manual re-deploy from known-good commit |
-
-#### Acceptance Criteria
-
-1. `SelfUpdateManager.BuildAndTest` clones noctifab source to temp directory
-2. Applies LLM-generated `write_file` patches to `.go` files in `cmd/` and `pkg/`
-3. Builds new binary with `go build -o /tmp/noctifab-new ./cmd/noctifab`
-4. Runs `go test ./pkg/...` on the patched code
-5. If all tests pass → returns nil (binary ready at /tmp/noctifab-new)
-6. If build or test fails → rolls back temp directory, returns error
-7. Patches to `go.mod`/`go.sum` are rejected (security constraint)
-8. Patches to files outside `cmd/` and `pkg/` are rejected
-
-#### File Change Specifications
-
-**`pkg/usecase/self_update.go`** (new):
-
-```go
-package usecase
-
-import (
-    "context"
-    "fmt"
-    "os"
-    "os/exec"
-    "path/filepath"
-    "strings"
-)
-
-type SelfUpdateManager struct {
-    RepoPath   string // path to noctifab repository
-    BinaryPath string // current binary path (e.g., os.Args[0])
-    GoCmd      string // "go" (configurable for testing)
-}
-
-const selfUpdateTempDir = "/tmp/noctifab-self-update"
-
-// allowedSelfPatchPrefixes are the only directories that can be patched.
-var allowedSelfPatchPrefixes = []string{"cmd/noctifab/", "pkg/"}
-
-func (sum *SelfUpdateManager) BuildAndTest(ctx context.Context, patches []Patch) error {
-    tmpDir := filepath.Join(selfUpdateTempDir, "src")
-    defer os.RemoveAll(selfUpdateTempDir)
-
-    // 1. Copy repo to temp
-    if err := sum.copyRepo(tmpDir); err != nil {
-        return fmt.Errorf("self-update: failed to copy repo: %w", err)
-    }
-
-    // 2. Validate and apply patches
-    for _, p := range patches {
-        if err := sum.validatePatch(p); err != nil {
-            return fmt.Errorf("self-update: patch validation failed: %w", err)
-        }
-        fullPath := filepath.Join(tmpDir, p.Path)
-        if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-            return fmt.Errorf("self-update: failed to create dir for %s: %w", p.Path, err)
-        }
-        if err := os.WriteFile(fullPath, []byte(p.Content), 0644); err != nil {
-            return fmt.Errorf("self-update: failed to write %s: %w", p.Path, err)
-        }
-    }
-
-    // 3. Build
-    buildCmd := exec.CommandContext(ctx, sum.GoCmd, "build", "-o", "/tmp/noctifab-new", "./cmd/noctifab")
-    buildCmd.Dir = tmpDir
-    if output, err := buildCmd.CombinedOutput(); err != nil {
-        return fmt.Errorf("self-update: build failed: %w\nOutput: %s", err, string(output))
-    }
-
-    // 4. Test
-    testCmd := exec.CommandContext(ctx, sum.GoCmd, "test", "./pkg/...")
-    testCmd.Dir = tmpDir
-    if output, err := testCmd.CombinedOutput(); err != nil {
-        return fmt.Errorf("self-update: tests failed: %w\nOutput: %s", err, string(output))
-    }
-
-    return nil
-}
-
-type Patch struct {
-    Path    string // relative path like "pkg/usecase/watchdog.go"
-    Content string
-}
-
-func (sum *SelfUpdateManager) validatePatch(p Patch) error {
-    // Reject go.mod / go.sum changes
-    if p.Path == "go.mod" || p.Path == "go.sum" {
-        return fmt.Errorf("rejected: changes to %s require human review", p.Path)
-    }
-    // Only allow cmd/noctifab/ and pkg/ prefixes
-    allowed := false
-    for _, prefix := range allowedSelfPatchPrefixes {
-        if strings.HasPrefix(p.Path, prefix) {
-            allowed = true
-            break
-        }
-    }
-    if !allowed {
-        return fmt.Errorf("rejected: path %s is outside allowed patch directories", p.Path)
-    }
-    return nil
-}
-
-func (sum *SelfUpdateManager) copyRepo(dst string) error {
-    // Use git clone --depth=1 for speed, or cp -R for local
-    cmd := exec.Command("cp", "-R", sum.RepoPath, dst)
-    return cmd.Run()
-}
-```
-
-#### Test Specifications
-
-| Test | File | What it verifies |
-|------|------|------------------|
-| `TestValidatePatch_Allowed` | `self_update_test.go` (new) | `pkg/usecase/x.go` → nil |
-| `TestValidatePatch_GoMod` | `self_update_test.go` | `go.mod` → error |
-| `TestValidatePatch_GoSum` | `self_update_test.go` | `go.sum` → error |
-| `TestValidatePatch_OutsidePrefix` | `self_update_test.go` | `tests/x.go` → error |
-| `TestValidatePatch_Docs` | `self_update_test.go` | `docs/x.md` → error |
-| `TestBuildAndTest_Success` | `self_update_test.go` | Mock patches to valid files → nil |
-| `TestBuildAndTest_BuildFailure` | `self_update_test.go` | Syntax error patch → error, temp dir cleaned up |
-| `TestBuildAndTest_TestFailure` | `self_update_test.go` | Correct syntax but test fails → error |
-| `Edge: empty patches` | `self_update_test.go` | `[]Patch{}` → builds and tests original code |
-
----
+Daemon hot-reloads without state loss, enforces security gates, and resolves ambiguous specs from git context.
 
 ### AUT-602: Graceful Stateful Hot-Reload
 
 | Field | Value |
 |-------|-------|
 | **Effort** | 3 days |
-| **Dependencies** | AUT-601 (new binary must exist) |
+| **Dependencies** | None |
 | **Risk** | High — state handoff failure could lose in-flight tasks |
 | **Rollback** | `HotReloadManager.Reload` returns error → old binary continues; no handoff |
 
@@ -2003,7 +1867,7 @@ AUT-301 (1d) → AUT-302 (0.5d)      │
                                     │
 AUT-501 (2d) → AUT-502 (2d) → AUT-503 (3d) → M7 (Day 15)
                                               │
-                    AUT-601 (4d) → AUT-602 (3d) → AUT-603 (2d) → AUT-604 (2d) → M10 (Day 24)
+                    AUT-602 (3d) → AUT-603 (2d) → AUT-604 (2d) → M10 (Day 24)
 ```
 
 ### Milestone Schedule
@@ -2012,7 +1876,7 @@ AUT-501 (2d) → AUT-502 (2d) → AUT-503 (3d) → M7 (Day 15)
 Week 1 (Days 1-5):    M1 (Day 3), M2 (Day 4)
 Week 2 (Days 6-10):   M3 (Day 7), M4 (Day 8), M5 (Day 10)
 Week 3 (Days 11-15):  M6 (Day 12), M7 (Day 15)
-Week 4 (Days 16-20):  M8 (Day 17), M9 (Day 22)
+Week 4 (Days 16-20):  M8 (Day 17)
 Week 5 (Days 21-25):  M10 (Day 24)
 ```
 
@@ -2022,12 +1886,12 @@ Week 5 (Days 21-25):  M10 (Day 24)
 Track A (Phases 1,4): AUT-101 → AUT-102 → AUT-103 → AUT-401 → AUT-402
 Track B (Phase 3):    AUT-301 → AUT-302
 Track C (Phases 5):   AUT-501 → AUT-502 → AUT-503
-Track D (Phase 6):    AUT-601 → AUT-602 → AUT-603 → AUT-604
+Track D (Phase 6):    AUT-602 → AUT-603 → AUT-604
 ```
 
 Tracks A and B merge at AUT-402 (self-repair needs prompt infrastructure).
 Track C joins after AUT-402.
-Track D starts after AUT-503 has telemetry for monitoring self-patching.
+Track D starts after AUT-503 has telemetry for monitoring.
 
 ---
 
@@ -2137,9 +2001,9 @@ sast:
 | P1 | AUT-102, AUT-103, AUT-302, AUT-401, AUT-402, AUT-502 | 8.5 | 11.5 |
 | P2 | AUT-501 | 2 | 13.5 |
 | P3 | AUT-503, AUT-603 | 5 | 18.5 |
-| P4 | AUT-601, AUT-602, AUT-604 | 9 | 27.5 |
+| P4 | AUT-602, AUT-604 | 5 | 23.5 |
 
-**Total estimated effort: 25–28 working days**
+**Total estimated effort: 21–24 working days**
 
 ### E. Rollback Strategy
 
@@ -2147,5 +2011,5 @@ Each task has a specific rollback documented in its header. General principles:
 
 1. **Config gated**: Every new behavior is gated behind a config flag (`enabled: false` by default). Rollback is a config change.
 2. **Schema versioned**: DB migrations are additive only (CREATE TABLE IF NOT EXISTS). No destructive migrations.
-3. **Binary rollback**: Hot-reload keeps the old binary for 30s before deleting. If new binary fails health check, old binary continues.
+3. **Binary rollback**: If the new binary fails health check, the old binary continues running.
 4. **Git revert**: Each phase builds on the previous. If Phase X must be rolled back, revert commits for Phases >= X.

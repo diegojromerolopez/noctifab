@@ -380,14 +380,9 @@ sast:
 
 If SAST is enabled and a scanner finds issues meeting the severity threshold, the PR is blocked and the agent must fix them. See [SPEC.md](SPEC.md) for details.
 
-### Self-Patching & Hot-Reload
+### Hot-Reload
 
-Noctifab can patch, rebuild, and hot-reload its own binary to fix bugs or add features autonomously:
-
-1. **Self-Patching (`SelfUpdateManager`)**: Applies LLM-generated patches to a temp copy of the repo, builds, and runs the full test suite.
-2. **Hot-Reload (`HotReloadManager`)**: Swaps the running binary with zero downtime via a handoff file + health check protocol.
-
-Both features are detailed in [SPEC.md §3.10](SPEC.md).
+Noctifab can hot-reload its binary with zero downtime via a handoff file + health check protocol. See [SPEC.md §3.10](SPEC.md) for details.
 
 ### Intent Disambiguation
 

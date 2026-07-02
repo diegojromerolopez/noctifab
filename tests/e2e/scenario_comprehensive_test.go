@@ -134,23 +134,6 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 		assert.False(t, dm.IsAllowed("brew"))
 	})
 
-	t.Run("SelfUpdateManager validates patch paths correctly", func(t *testing.T) {
-		sum := &usecase.SelfUpdateManager{RepoPath: "/tmp", GoCmd: "go"}
-
-		err := sum.BuildAndTest(ctx, []usecase.Patch{
-			{Path: "go.mod", Content: "module test"},
-		})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "go.mod")
-		assert.Contains(t, err.Error(), "human review")
-
-		err = sum.BuildAndTest(ctx, []usecase.Patch{
-			{Path: "some/random/file.txt", Content: "data"},
-		})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "outside allowed")
-	})
-
 	t.Run("HotReloadManager handoff file round-trips correctly", func(t *testing.T) {
 		handoffPath := filepath.Join(t.TempDir(), "handoff.json")
 

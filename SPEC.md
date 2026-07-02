@@ -2036,46 +2036,23 @@ permissions:
 
 ---
 
-### 3.10. Self-Evolution
+### 3.10. Graceful Stateful Hot-Reload
 
-To achieve full autonomy (Level 4 Dark Factory), noctifab can patch, rebuild, and hot-reload its own binary. This allows the system to fix its own code, add new features, and recover from bugs without human intervention.
-
-#### 3.10.1. Self-Patching Compiler Loop
-
-The `SelfUpdateManager` enables noctifab to apply LLM-generated code patches to its own source, rebuild, and verify the result in an isolated temporary environment before promoting the new binary.
-
-##### Patch Application Flow
-1. **Clone:** The manager copies the noctifab repository to a temporary directory (`/tmp/noctifab-self-update/`).
-2. **Validate:** Each patch is checked against path constraints — only files under `cmd/noctifab/` and `pkg/` may be patched. Changes to `go.mod` and `go.sum` are strictly rejected.
-3. **Apply:** Validated patches are written to the corresponding paths in the temp directory.
-4. **Build:** The patched code is compiled with `go build -o /tmp/noctifab-new ./cmd/noctifab`.
-5. **Test:** The full test suite runs with `go test ./pkg/...`.
-6. **Promote:** If all tests pass, the new binary at `/tmp/noctifab-new` is ready for hot-reload.
-7. **Rollback:** If build or tests fail, the temporary directory is cleaned up and an error is returned. The running binary is never modified.
-
-##### Security Constraints
-- Only files under `cmd/noctifab/` and `pkg/` can be patched.
-- `go.mod` and `go.sum` changes are always rejected (require human review).
-- All operations occur in a temporary directory — the running binary is never modified in place.
-- The full test suite must pass before a new binary is considered ready.
-
-#### 3.10.2. Graceful Stateful Hot-Reload
-
-After a successful self-patch, the `HotReloadManager` performs a zero-downtime handoff from the old binary to the new one.
+The `HotReloadManager` performs a zero-downtime handoff from the old binary to the new one during deployment.
 
 ##### Handoff Protocol
-1. **Spawn:** The old binary starts the new binary as a child process with `--port 18081` (current port + 1).
-2. **Handoff File:** The old binary writes a `handoff.json` file with `status: handing_off` and the new PID.
-3. **Health Check:** The old binary polls `http://127.0.0.1:18081/healthz` for up to 30 seconds.
+1. **Spawn:** The parent process starts the new binary as a child process with `--port 18081` (current port + 1).
+2. **Handoff File:** The parent writes a `handoff.json` file with `status: handing_off` and the new PID.
+3. **Health Check:** The parent polls `http://127.0.0.1:18081/healthz` for up to 30 seconds.
 4. **Activation:** The new binary reads `handoff.json`, loads the state from the database, begins orchestrating on its port, and writes `status: active` to `handoff.json`.
-5. **Confirmation:** The old binary reads the `status: active` confirmation, prints a completion message, and exits with code 0.
-6. **Rollback:** If the new binary fails the health check within 30 seconds, the old binary kills the new process, marks `handoff.json` as `status: failed`, and continues running.
+5. **Confirmation:** The parent reads the `status: active` confirmation, prints a completion message, and exits with code 0.
+6. **Rollback:** If the new binary fails the health check within 30 seconds, the parent kills the new process, marks `handoff.json` as `status: failed`, and continues running.
 
 ##### Configuration
-The hot-reload feature is triggered programmatically after a successful self-patch. It uses the following runtime paths:
+The hot-reload feature uses the following runtime paths:
 - `handoff.json`: Written to `.noctifab/hot_reload.json`
 - `PID file`: Read from `.noctifab/noctifab.pid`
-- `New binary`: Path from `SelfUpdateManager.BuildAndTest` output
+- `New binary`: Path provided externally
 
 ---
 
