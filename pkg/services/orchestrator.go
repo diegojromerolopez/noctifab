@@ -30,6 +30,7 @@ type OrchestratorConfig struct {
 	OCCMaxRetries    int
 	OCCBackoffBase   time.Duration
 	OCCBackoffFactor float64
+	MaxDuration      time.Duration
 }
 
 type Orchestrator struct {
@@ -45,6 +46,7 @@ type Orchestrator struct {
 	cfg            OrchestratorConfig
 	mailbox        *CommandMailbox
 	watchdogRepair RepairHandler
+	storyStartedAt time.Time
 }
 
 func NewOrchestrator(
@@ -118,15 +120,57 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 
 	// 2. Scheduler check: find ready tasks
 	ready := o.scheduler.GetReadyTasks(state, o.cfg.Concurrency)
+
+	// 2a. Story-level wall clock enforcement. When max_duration is configured
+	// (> 0) and the story has been running longer than the limit, fail every
+	// non-finished task and mark the story as FAILED so the daemon stops
+	// spending LLM budget on a stuck story. The start time is the first cycle
+	// in which any task became ready.
+	if o.cfg.MaxDuration > 0 && len(state.Tasks) > 0 {
+		if o.storyStartedAt.IsZero() && len(ready) > 0 {
+			o.storyStartedAt = time.Now()
+		}
+		if !o.storyStartedAt.IsZero() && time.Since(o.storyStartedAt) > o.cfg.MaxDuration && state.StoryStatus == domain.StoryIdle {
+			elapsed := time.Since(o.storyStartedAt)
+			fmt.Printf("Orchestrator: story exceeded max_duration %s (elapsed %s); failing remaining tasks and aborting story.\n", o.cfg.MaxDuration, elapsed.Truncate(time.Second))
+			_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+				for i := range st.Tasks {
+					if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
+						st.Tasks[i].Status = domain.TaskFailed
+						st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_duration %s (elapsed %s)", o.cfg.MaxDuration, elapsed.Truncate(time.Second))
+						st.Tasks[i].UpdatedAt = time.Now()
+					}
+				}
+				st.BuildStatus = domain.BuildFailing
+				st.StoryStatus = domain.StoryFailed
+				return nil
+			})
+			return nil
+		}
+	}
+
 	if len(ready) == 0 {
-		// If all tasks are completed and build status is still UNKNOWN,
-		// delegate to FinalizeUserStory to bump version, push branch, and create PR.
-		if o.allTasksFinished(state) && state.BuildStatus == domain.BuildUnknown {
-			if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
-				fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
+		// Finalize exactly once: guarded by StoryStatus (not BuildStatus, which
+		// may have been set to FAILING mid-run by a failing task and could
+		// recover on retry). StoryStatus transitions Idle -> Success/Failed
+		// exactly once when all tasks are finished.
+		if o.allTasksFinished(state) && state.StoryStatus == domain.StoryIdle {
+			buildOK := o.allTasksSucceeded(state)
+			if buildOK {
+				if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
+				}
+			} else {
+				fmt.Printf("Orchestrator: one or more tasks failed test validation; marking build as FAILING and skipping release finalization.\n")
 			}
 			_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
-				st.BuildStatus = domain.BuildPassing
+				if buildOK {
+					st.BuildStatus = domain.BuildPassing
+					st.StoryStatus = domain.StorySuccess
+				} else {
+					st.BuildStatus = domain.BuildFailing
+					st.StoryStatus = domain.StoryFailed
+				}
 				return nil
 			})
 		}
@@ -553,6 +597,10 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			} else {
 				targetTask.Status = domain.TaskPending
 			}
+			// A failing validation means the build does not compile or tests do not
+			// pass. Flip the build status to FAILING immediately so the operator
+			// and the auto-merge policy see the red signal instead of UNKNOWN.
+			st.BuildStatus = domain.BuildFailing
 		}
 		targetTask.UpdatedAt = time.Now()
 

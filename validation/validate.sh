@@ -67,8 +67,8 @@ if [ -n "${OPENAI_API_KEY:-}" ]; then
   export OPENAI_API_KEY=$(echo "${OPENAI_API_KEY}" | sed -E 's/.*OPENAI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
 fi
 
-# Set dummy GITHUB_FRONTPUNCH_TOKEN if not present to pass pre-flight checks
-export GITHUB_FRONTPUNCH_TOKEN="${GITHUB_FRONTPUNCH_TOKEN:-${GITHUB_TOKEN:-dummy-token}}"
+# Set dummy GITHUB_TOKEN if not present to pass pre-flight checks
+export GITHUB_TOKEN="${GITHUB_TOKEN:-dummy-token}"
 
 # 6. Initialize noctifab
 "${NOCTIFAB_BIN}" init --vcs-clone-protocol https
@@ -76,9 +76,17 @@ export GITHUB_FRONTPUNCH_TOKEN="${GITHUB_FRONTPUNCH_TOKEN:-${GITHUB_TOKEN:-dummy
 echo "Using pre-configured config.yaml:"
 cat .noctifab/config.yaml
 
-# 7. Run noctifab start-one command for US-001
-echo "Running noctifab start-one for US-001..."
-"${NOCTIFAB_BIN}" start-one --input roadmap/US-001.md
+# 7. Run noctifab command for US-001
+MODE="${MODE:-start-one}"
+if [ "${MODE}" = "start" ]; then
+  echo "Running noctifab start for US-001..."
+  echo "start roadmap/US-001.md" | "${NOCTIFAB_BIN}" start --wait
+  # Stop the daemon after completion
+  "${NOCTIFAB_BIN}" stop 2>/dev/null || true
+else
+  echo "Running noctifab start-one for US-001..."
+  "${NOCTIFAB_BIN}" start-one --input roadmap/US-001.md
+fi
 
 # 8. Verify results
 echo "Verifying results..."

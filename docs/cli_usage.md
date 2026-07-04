@@ -48,10 +48,12 @@ noctifab validate
 
 
 ### 3. `start`
-Spawns the background daemon process (`noctifab serve`) and starts a foreground interactive REPL loop. The REPL accepts operator orders (e.g. `start roadmap/US-0001.md`) and displays/prompts for clarification answers.
+Spawns the background daemon process (`noctifab serve`) and starts a foreground interactive REPL loop. The REPL accepts operator orders (e.g. `start roadmap/US-001.md`) and displays/prompts for clarification answers.
 ```bash
 noctifab start
 ```
+
+When stdin is not a TTY (CI, `noctifab start --wait < script`), the `--wait` polling loop renders one timestamped status line per poll separated by newlines, instead of the dot-accumulating progress animation used in an interactive terminal. This keeps CI logs and `2>&1 | tee` captures readable.
 
 ### 4. `start-one`
 Plans and executes a single user story specification file end-to-end in a blocking execution loop until complete or failed, then exits.
@@ -87,6 +89,30 @@ noctifab maintenance
 
 ---
 
+## Pre-flight Checks
+
+`noctifab start` and `noctifab start-one` run a short pre-flight checklist before launching the daemon and print one line per check:
+
+```
+Running pre-flight checks...
+- Git CLI: OK
+- Database connectivity (sqlite): OK
+- LLM provider (opencode) ping: OK
+- Sandbox mode (host): OK
+Pre-flight checks passed successfully.
+```
+
+| Check | What it verifies | Failure modes |
+|---|---|---|
+| Git CLI | `git` is on `PATH` | `git` not installed |
+| Database connectivity | Storage provider opens (SQLite file writable / Postgres reachable) | missing dir, permission denied, bad DSN |
+| **LLM provider ping** | The configured provider's `/models` endpoint (or equivalent) is reachable with the configured API key | bad key (401), quota exceeded (429), network unreachable, wrong `url` override |
+| Sandbox mode | The configured `sandbox.mode` is recognized (`host`/`docker`) | unknown mode string |
+
+> **Note on "LLM provider ping".** The ping is a config/syntax sanity check, not a real model completion. A passing ping means your provider name, API key, and base URL resolve to a reachable models-listing endpoint — it does **not** guarantee that your specific `llm.model` (e.g. `glm-5.2`) is available under your plan, nor that you have completion quota. The first real model availability + quota test happens when the Planner Agent runs. If the ping fails, inspect the daemon log (`.noctifab/logs/daemon.log`) for the underlying HTTP error.
+
+---
+
 ## Global Persistent Flags
 
 The following flags can be passed to the root command or configured in `.noctifab/config.yaml`:
@@ -103,7 +129,7 @@ The following flags can be passed to the root command or configured in `.noctifa
 | `--interval` | `-t` | `5m` | Cycle loop polling duration interval |
 | `--vcs-provider` | `-p` | `github` | Version Control System target (`github`, `gitlab`) |
 | `--vcs-repo` | `-r` | | Repository identifier format: `owner/repo` |
-| `--llm-provider` | `-l` | `openai` | LLM client API provider (`openai`, `anthropic`, `gemini`, `ollama`) |
+| `--llm-provider` | `-l` | `openai` | LLM client API provider (`openai`, `anthropic`, `gemini`, `ollama`, `opencode`) |
 | `--llm-model` | `-m` | `gpt-4o` | LLM Model Identifier |
 | `--sandbox-mode` | | `host` | Sandbox isolation mode (`host` or `docker`) |
 | `--sandbox-idle-timeout` | | `30s` | Kill subprocess if no stdout/stderr output for this duration (0 = disabled) |
@@ -165,6 +191,41 @@ During startup, noctifab resolves each `secret:<KEY>` reference from `secrets.ya
 **Precedence (highest wins):** Environment variable → `secrets.yaml` → literal value in `config.yaml`
 
 For full details, supported fields, and CI/CD usage see [docs/secrets.md](secrets.md).
+
+---
+
+## LLM Provider Configurations
+
+### OpenCode Go (GLM-5.2, Kimi K2.7, DeepSeek V4, …)
+
+`noctifab` supports the [OpenCode Go](https://opencode.ai/docs/en/go/) subscription as an LLM provider. The OpenCode models are served through an OpenAI-compatible endpoint at `https://opencode.ai/zen/go/v1/chat/completions`; `noctifab` routes the `opencode` provider name through that transport.
+
+**Step 1 — Add your OpenCode API key to `.noctifab/secrets.yaml`:**
+
+```yaml
+# .noctifab/secrets.yaml
+OPENCODE_API_KEY: "sk-..."
+GITHUB_TOKEN: "github_pat_..."
+```
+
+**Step 2 — Configure the `opencode` provider in `config.yaml`:**
+
+```yaml
+llm:
+  provider: opencode
+  model: glm-5.2          # or glm-5.1, kimi-k2.7-code, kimi-k2.6, deepseek-v4-pro, …
+  temperature: 0
+  api_key: "secret:OPENCODE_API_KEY"
+  api_key_env: OPENCODE_API_KEY
+  url: ""                  # leave blank to use https://opencode.ai/zen/go/v1
+  max_retries: 5
+  retry_backoff: 100ms
+```
+
+Key points:
+- The API key resolves from `secret:OPENCODE_API_KEY` in `secrets.yaml`, or from the `OPENCODE_API_KEY` environment variable if the secrets file is absent.
+- The default base URL is `https://opencode.ai/zen/go/v1` (`/chat/completions` is appended automatically). Override `url` only if you run a custom OpenAI-compatible gateway.
+- A static model fallback hierarchy is built in for `opencode` (GLM‑5.2 → GLM‑5.1 → Kimi K2.7 Code → … → DeepSeek V4 Flash): on a transient HTTP 429/503 the client steps down to the next model in that list and retries.
 
 ---
 

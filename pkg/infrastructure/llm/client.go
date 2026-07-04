@@ -220,6 +220,8 @@ Return format:
 			apiKey = os.Getenv("OPENAI_API_KEY")
 		case "anthropic":
 			apiKey = os.Getenv("ANTHROPIC_API_KEY")
+		case "opencode":
+			apiKey = os.Getenv("OPENCODE_API_KEY")
 		}
 	}
 
@@ -247,7 +249,7 @@ Return format:
 
 		var pClient ProviderClient
 		switch strings.ToLower(c.Provider) {
-		case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
+		case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
 			pClient = NewOpenAIProviderClient(c.Provider, c.URL)
 		case "gemini":
 			pClient = NewGeminiProviderClient(c.URL)
@@ -321,7 +323,7 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 
 	var pClient ProviderClient
 	switch strings.ToLower(c.Provider) {
-	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
+	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
 		pClient = NewOpenAIProviderClient(c.Provider, c.URL)
 	case "gemini":
 		pClient = NewGeminiProviderClient(c.URL)

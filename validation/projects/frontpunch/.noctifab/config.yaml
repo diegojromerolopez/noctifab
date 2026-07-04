@@ -11,7 +11,7 @@ storage:
     json_file_path: .noctifab/data/state.json
 llm:
     provider: gemini
-    model: gemini-1.5-pro
+    model: gemini-2.5-flash
     temperature: 0
     api_key: "secret:GEMINI_API_KEY"
     api_key_env: GEMINI_API_KEY
@@ -25,8 +25,8 @@ vcs:
     repository: diegojromerolopez/frontpunch
     base_branch: main
     branch_prefix: noctifab/
-    token: "secret:GITHUB_FRONTPUNCH_TOKEN"
-    token_env: GITHUB_FRONTPUNCH_TOKEN
+    token: "secret:GITHUB_TOKEN"
+    token_env: GITHUB_TOKEN
     conventional_commits:
         enabled: true
         default_scope: core

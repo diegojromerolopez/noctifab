@@ -33,6 +33,7 @@ func getTestEnv() []string {
 		"GITHUB_TOKEN=test-token",
 		"NOCTIFAB_VCS_REPO=owner/repo",
 		"OPENAI_API_KEY=test-api-key",
+		"NOCTIFAB_E2E=true",
 	)
 }
 

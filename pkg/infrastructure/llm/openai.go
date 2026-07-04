@@ -37,6 +37,8 @@ func (o *openaiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 		baseURL = "https://api.deepseek.com/v1"
 	case "ollama":
 		baseURL = "https://ollama.com/v1"
+	case "opencode":
+		baseURL = "https://opencode.ai/zen/go/v1"
 	default:
 		baseURL = "https://api.openai.com/v1"
 	}
@@ -128,6 +130,8 @@ func (o *openaiProviderClient) GetAvailableModels(ctx context.Context, apiKey st
 		baseURL = "https://api.deepseek.com/v1"
 	case "ollama":
 		baseURL = "https://ollama.com/v1"
+	case "opencode":
+		baseURL = "https://opencode.ai/zen/go/v1"
 	default:
 		baseURL = "https://api.openai.com/v1"
 	}

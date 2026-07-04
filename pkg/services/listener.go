@@ -25,7 +25,7 @@ Supported intents:
 
 1. START_STORY - start working on a single user story file
    Triggered by: "start <path/to/story.md>", "work on <file>", "run <file>", "process <file.md>"
-   The path may be relative (e.g. roadmap/US-0001.md) or absolute (e.g. $HOME/repos/project/roadmap/US-0001.md).
+   The path may be relative (e.g. roadmap/US-001.md) or absolute (e.g. $HOME/repos/project/roadmap/US-001.md).
 
 2. START_DIRECTORY - process all user stories in a directory, in lexicographic order
    Triggered by: "start <path/to/dir>", "run all stories in <dir>", "process directory <dir>"
@@ -76,7 +76,7 @@ func NewListenerAgent(
 func (a *ListenerAgent) Start(ctx context.Context) {
 	ctx, span := telemetry.Tracer().Start(ctx, "Start")
 	defer span.End()
-	_, _ = fmt.Fprintln(a.out, "noctifab ready. Type a command (e.g. 'start roadmap/US-0001.md' or 'status').")
+	_, _ = fmt.Fprintln(a.out, "noctifab ready. Type a command (e.g. 'start roadmap/US-001.md' or 'status').")
 	_, _ = fmt.Fprint(a.out, "> ")
 
 	scanner := bufio.NewScanner(a.in)

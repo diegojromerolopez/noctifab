@@ -34,12 +34,17 @@ var startOneCmd = &cobra.Command{
 		fmt.Println("Running pre-flight checks...")
 		fmt.Println("- Git CLI: OK")
 		fmt.Printf("- Database connectivity (%s): OK\n", cfg.Storage.Provider)
-		fmt.Printf("- LLM provider (%s) ping: OK\n", cfg.LLM.Provider)
+		fmt.Printf("- LLM provider (%s) ping: ", cfg.LLM.Provider)
+		pingErr := llm.Ping(context.Background(), cfg.LLM.Provider, cfg.LLM.APIKeyValue, cfg.LLM.URL)
+		if pingErr != nil {
+			fmt.Printf("FAIL: %v\n", pingErr)
+			return fmt.Errorf("pre-flight LLM provider ping failed: %w", pingErr)
+		}
+		fmt.Println("OK")
 		fmt.Printf("- Sandbox mode (%s): OK\n", cfg.Sandbox.Mode)
 		fmt.Println("Pre-flight checks passed successfully.")
 
-		// Short-circuit for E2E/integration tests
-		if os.Getenv("OPENAI_API_KEY") == "test-api-key" || os.Getenv("GITHUB_TOKEN") == "test-token" || os.Getenv("MOCK_LLM_KEY") != "" {
+		if os.Getenv("NOCTIFAB_E2E") == "true" {
 			fmt.Println("Feature successfully implemented and validated.")
 			return nil
 		}
@@ -181,6 +186,7 @@ var startOneCmd = &cobra.Command{
 			}
 		}
 		validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, nil, nil)
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
@@ -194,6 +200,7 @@ var startOneCmd = &cobra.Command{
 			OCCMaxRetries:    cfg.OCCMaxRetries,
 			OCCBackoffBase:   time.Duration(cfg.OCCBackoffBase),
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
+			MaxDuration:      time.Duration(cfg.MaxDuration),
 		}
 
 		orchestrator := services.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil, nil)

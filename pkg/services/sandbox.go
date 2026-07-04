@@ -121,6 +121,23 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		return "", fmt.Errorf("Sandbox violation: package target '%s' is outside the workspace prefix", pkg)
 	}
 
+	// Auto-detect Cargo.toml in subdirectories for cargo test/check commands
+	if binary == "cargo" && pkg == "" {
+		if _, err := os.Stat(filepath.Join(targetDir, "Cargo.toml")); os.IsNotExist(err) {
+			entries, readErr := os.ReadDir(targetDir)
+			if readErr == nil {
+				for _, entry := range entries {
+					if entry.IsDir() {
+						if _, cargoErr := os.Stat(filepath.Join(targetDir, entry.Name(), "Cargo.toml")); cargoErr == nil {
+							targetDir = filepath.Join(targetDir, entry.Name())
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Intercept Python unittest discover for Test Suite Isolation
 	if strings.Contains(cmdStr, "unittest discover") {
 		return s.runPythonTestsIsolated(ctx, targetDir, cmdStr)

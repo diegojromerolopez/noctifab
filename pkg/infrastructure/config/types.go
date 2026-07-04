@@ -148,6 +148,7 @@ type SandboxConfig struct {
 	AllowedCommands    []string `yaml:"allowed_commands"`
 	AutoInstallDeps    bool     `yaml:"auto_install_deps"`
 	PackageManagers    []string `yaml:"package_managers"`
+	ForbiddenPatterns  []string `yaml:"forbidden_patterns"`
 }
 
 type RoleSetting struct {

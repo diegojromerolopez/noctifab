@@ -11,7 +11,7 @@ storage:
     json_file_path: .noctifab/data/state.json
 llm:
     provider: gemini
-    model: gemini-1.5-pro
+    model: gemini-2.5-flash
     temperature: 0
     api_key: "secret:GEMINI_API_KEY"
     api_key_env: GEMINI_API_KEY

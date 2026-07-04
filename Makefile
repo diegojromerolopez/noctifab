@@ -53,4 +53,4 @@ validate:
 		exit 1; \
 	fi; \
 	docker build -t noctifab-verify -f validation/Dockerfile.validation .; \
-	docker run --rm -e GEMINI_API_KEY="$$GEMINI_KEY" -e GITHUB_TOKEN="dummy-token" -e PROJECT="$(PROJECT)" noctifab-verify
+	docker run --rm -e GEMINI_API_KEY="$$GEMINI_KEY" -e GITHUB_TOKEN="dummy-token" -e PROJECT="$(PROJECT)" -e MODE="$(MODE)" noctifab-verify

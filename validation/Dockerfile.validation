@@ -4,7 +4,7 @@ WORKDIR /app
 COPY . .
 RUN go build -o bin/noctifab cmd/noctifab/main.go
 
-FROM python:3.12-alpine
+FROM alpine:3.21
 RUN apk add --no-cache git bash rust cargo
 WORKDIR /app
 

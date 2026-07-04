@@ -79,18 +79,20 @@ func (r *PostgresRepository) Save(ctx context.Context, state *domain.State) erro
 	nextVersion := state.Version + 1
 	if currentVersion == 0 {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO state (id, project_path, version, build_status, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			`INSERT INTO state (id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 			state.ID, state.ProjectPath, nextVersion, string(state.BuildStatus),
+			string(state.StoryStatus), state.StoryError,
 			state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 			state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
 			state.Metadata.TotalTokensUsed, state.Metadata.TotalCostUSD,
 		)
 	} else {
 		_, err = tx.ExecContext(ctx,
-			`UPDATE state SET project_path = $1, version = $2, build_status = $3, input_source = $4, input_path = $5, integration_branch = $6, feature_name = $7, base_branch = $8, project_version = $9, total_tokens_used = $10, total_cost_usd = $11
-			WHERE id = $12`,
+			`UPDATE state SET project_path = $1, version = $2, build_status = $3, story_status = $4, story_error = $5, input_source = $6, input_path = $7, integration_branch = $8, feature_name = $9, base_branch = $10, project_version = $11, total_tokens_used = $12, total_cost_usd = $13
+			WHERE id = $14`,
 			state.ProjectPath, nextVersion, string(state.BuildStatus),
+			string(state.StoryStatus), state.StoryError,
 			state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 			state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
 			state.Metadata.TotalTokensUsed, state.Metadata.TotalCostUSD,
@@ -232,7 +234,7 @@ func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
 	defer span.End()
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT 
-			s.id, s.project_path, s.version, s.build_status, s.input_source, s.input_path, s.integration_branch, s.feature_name, s.base_branch, s.project_version, s.total_tokens_used, s.total_cost_usd,
+			s.id, s.project_path, s.version, s.build_status, s.story_status, s.story_error, s.input_source, s.input_path, s.integration_branch, s.feature_name, s.base_branch, s.project_version, s.total_tokens_used, s.total_cost_usd,
 			t.id, t.title, t.description, t.status, t.change_type, t.assigned_to, t.depends_on, t.target_files, t.partial_changelog, t.retries, t.max_retries, t.failure_log, t.created_at, t.updated_at
 		FROM state s
 		LEFT JOIN tasks t ON s.id = t.state_id
@@ -256,8 +258,12 @@ func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
 		var createdAtNull, updatedAtNull sql.NullTime
 		var taskID sql.NullString
 
+		var storyStatusStr sql.NullString
+		var storyErrorStr sql.NullString
+
 		err := rows.Scan(
 			&state.ID, &state.ProjectPath, &state.Version, &buildStatusStr,
+			&storyStatusStr, &storyErrorStr,
 			&state.Metadata.InputSource, &state.Metadata.InputPath, &state.Metadata.IntegrationBranch,
 			&state.Metadata.FeatureName, &state.Metadata.BaseBranch, &state.Metadata.ProjectVersion,
 			&state.Metadata.TotalTokensUsed, &state.Metadata.TotalCostUSD,
@@ -270,6 +276,10 @@ func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
 		}
 		if !stateInitialized {
 			state.BuildStatus = domain.BuildStatus(buildStatusStr)
+			if storyStatusStr.Valid {
+				state.StoryStatus = domain.StoryStatus(storyStatusStr.String)
+				state.StoryError = storyErrorStr.String
+			}
 			stateInitialized = true
 		}
 

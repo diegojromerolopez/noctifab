@@ -104,6 +104,8 @@ func resolveSecrets(cfg *Config) {
 					cfg.LLM.APIKeyValue = os.Getenv("DEEPSEEK_API_KEY")
 				case "ollama":
 					cfg.LLM.APIKeyValue = os.Getenv("OLLAMA_API_KEY")
+				case "opencode":
+					cfg.LLM.APIKeyValue = os.Getenv("OPENCODE_API_KEY")
 				}
 			}
 		}
@@ -127,6 +129,7 @@ func (cfg *Config) Validate() error {
 		"huggingface": true,
 		"mistral":     true,
 		"deepseek":    true,
+		"opencode":    true,
 	}
 	if !validLLM[lp] {
 		return fmt.Errorf("invalid LLM provider: %s", cfg.LLM.Provider)

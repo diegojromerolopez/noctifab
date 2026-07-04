@@ -150,3 +150,117 @@ func TestLastFailureOutput_AllPass(t *testing.T) {
 		t.Errorf("expected empty, got %q", out)
 	}
 }
+
+func TestPolicyValidator_ForbiddenPatterns(t *testing.T) {
+	validator := NewPolicyValidator([]string{"*"}, "main", nil)
+	validator.SetForbiddenPatterns([]string{`\bunsafe\s*\{`})
+	state := &domain.State{ProjectPath: "/workspace"}
+
+	t.Run("write_file with unsafe block is blocked", func(t *testing.T) {
+		action := domain.Action{
+			Tool: "write_file",
+			Args: map[string]any{
+				"path":    "src/app/counter.rs",
+				"content": "fn main() { unsafe { std::slice::from_raw_parts(p, n) } }",
+			},
+		}
+		res, err := validator.Validate(context.Background(), action, state)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Allowed {
+			t.Errorf("expected unsafe content to be blocked; reason: %s", res.Reason)
+		}
+		if res.Reason == "" {
+			t.Error("expected a SPEC violation reason")
+		}
+	})
+
+	t.Run("write_file with safe content is allowed", func(t *testing.T) {
+		action := domain.Action{
+			Tool: "write_file",
+			Args: map[string]any{
+				"path":    "src/app/counter.rs",
+				"content": "fn main() { let v = vec![1, 2, 3]; }",
+			},
+		}
+		res, err := validator.Validate(context.Background(), action, state)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Allowed {
+			t.Errorf("expected safe content to be allowed; reason: %s", res.Reason)
+		}
+	})
+
+	t.Run("edit_file replacement_content with unsafe block is blocked", func(t *testing.T) {
+		action := domain.Action{
+			Tool: "edit_file",
+			Args: map[string]any{
+				"path":                "src/app/counter.rs",
+				"replacement_content": "unsafe { Ok(Some(slice)) }",
+			},
+		}
+		res, err := validator.Validate(context.Background(), action, state)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Allowed {
+			t.Error("expected unsafe replacement to be blocked")
+		}
+	})
+
+	t.Run("read_file is not content-checked", func(t *testing.T) {
+		action := domain.Action{
+			Tool: "read_file",
+			Args: map[string]any{
+				"path":    "src/app/counter.rs",
+				"content": "unsafe { x }",
+			},
+		}
+		res, err := validator.Validate(context.Background(), action, state)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Allowed {
+			t.Errorf("expected read_file to skip content check; reason: %s", res.Reason)
+		}
+	})
+
+	t.Run("empty forbidden patterns allows everything", func(t *testing.T) {
+		emptyValidator := NewPolicyValidator([]string{"*"}, "main", nil)
+		action := domain.Action{
+			Tool: "write_file",
+			Args: map[string]any{
+				"path":    "x.rs",
+				"content": "unsafe { dangerous() }",
+			},
+		}
+		res, err := emptyValidator.Validate(context.Background(), action, state)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Allowed {
+			t.Errorf("expected empty patterns to allow all; reason: %s", res.Reason)
+		}
+	})
+
+	t.Run("invalid regex is skipped not fatal", func(t *testing.T) {
+		badValidator := NewPolicyValidator([]string{"*"}, "main", nil)
+		badValidator.SetForbiddenPatterns([]string{"[invalid", `\bunsafe\s*\{`})
+		action := domain.Action{
+			Tool: "write_file",
+			Args: map[string]any{
+				"path":    "x.rs",
+				"content": "unsafe { x }",
+			},
+		}
+		res, err := badValidator.Validate(context.Background(), action, state)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Allowed {
+			t.Error("expected the valid pattern to still block")
+		}
+	})
+}

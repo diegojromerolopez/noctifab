@@ -68,9 +68,10 @@ Return format:
 
 	resp, err := o.llmClient.Complete(ctx, prompt)
 	if err != nil {
-		fmt.Printf("Orchestrator: Reader Phase LLM completion failed for role %s: %v. Continuing without extra context.\n", role, err)
+		fmt.Printf("Orchestrator: Task [Reader] phase failed for role %s: %v. Continuing without extra context.\n", role, err)
 		return nil
 	}
+	fmt.Printf("Orchestrator: [Reader] phase ok for role %s: actions=%d\n", role, len(resp.Actions))
 
 	var gatheredContext []string
 	for _, action := range resp.Actions {
@@ -120,26 +121,35 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	testerCtx := context.WithValue(ctx, AgentRoleKey, "tester")
 	testResp, err := o.llmClient.Complete(testerCtx, testPrompt)
 	if err == nil {
-		fmt.Printf("Orchestrator: Task %s Tester LLM reasoning: %s\n", task.ID, testResp.Reasoning)
+		fmt.Printf("Orchestrator: Task %s [Tester] write phase ok: reasoning=%q actions=%d\n", task.ID, testResp.Reasoning, len(testResp.Actions))
+		executed := 0
+		blocked := 0
 		for _, action := range testResp.Actions {
-			fmt.Printf("Orchestrator: Task %s Tester LLM action: tool=%s args=%+v\n", task.ID, action.Tool, action.Args)
+			fmt.Printf("Orchestrator: Task %s [Tester] action: tool=%s args=%+v\n", task.ID, action.Tool, action.Args)
 			domainAction := domain.Action{
 				Tool: action.Tool,
 				Args: action.Args,
 			}
 			valRes, valErr := o.validator.Validate(testerCtx, domainAction, state)
 			if valErr != nil || (valRes != nil && !valRes.Allowed) {
-				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s tester action %s validation failed\n", task.ID, action.Tool)
+				blocked++
+				reason := ""
+				if valRes != nil {
+					reason = valRes.Reason
+				}
+				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] action %s blocked: %s\n", task.ID, action.Tool, reason)
 				continue
 			}
 
 			tool, ok := o.registry.Get(action.Tool)
 			if ok {
 				_, _ = tool.Execute(testerCtx, state, action.Args)
+				executed++
 			}
 		}
+		fmt.Printf("Orchestrator: Task %s [Tester] write phase summary: %d executed, %d blocked\n", task.ID, executed, blocked)
 	} else {
-		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s Tester LLM completion failed: %v\n", task.ID, err)
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] write phase failed: %v\n", task.ID, err)
 	}
 }
 
@@ -173,27 +183,35 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	genCtx := context.WithValue(ctx, AgentRoleKey, "generator")
 	resp, err := o.llmClient.Complete(genCtx, genPrompt)
 	if err == nil {
-		fmt.Printf("Orchestrator: Task %s LLM reasoning: %s\n", task.ID, resp.Reasoning)
+		fmt.Printf("Orchestrator: Task %s [Generator] write phase ok: reasoning=%q actions=%d\n", task.ID, resp.Reasoning, len(resp.Actions))
+		executed := 0
+		blocked := 0
 		for _, action := range resp.Actions {
-			fmt.Printf("Orchestrator: Task %s LLM action: tool=%s args=%+v\n", task.ID, action.Tool, action.Args)
+			fmt.Printf("Orchestrator: Task %s [Generator] action: tool=%s args=%+v\n", task.ID, action.Tool, action.Args)
 			domainAction := domain.Action{
 				Tool: action.Tool,
 				Args: action.Args,
 			}
 			valRes, valErr := o.validator.Validate(genCtx, domainAction, state)
 			if valErr != nil || (valRes != nil && !valRes.Allowed) {
-				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s action %s validation failed\n", task.ID, action.Tool)
+				blocked++
+				reason := ""
+				if valRes != nil {
+					reason = valRes.Reason
+				}
+				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] action %s blocked: %s\n", task.ID, action.Tool, reason)
 				continue
 			}
 
 			tool, ok := o.registry.Get(action.Tool)
 			if ok {
 				_, _ = tool.Execute(genCtx, state, action.Args)
+				executed++
 			}
 
 			if action.Tool == "request_test_fix" {
 				feedback, _ := action.Args["feedback"].(string)
-				fmt.Printf("Orchestrator: Generator requested test fix: %s\n", feedback)
+				fmt.Printf("Orchestrator: Task %s [Generator] requested test fix: %s\n", task.ID, feedback)
 
 				testerPrompt := fmt.Sprintf("Fix the tests for task: %s - %s\n\nFeedback from generator agent:\n%s\n\nCorrect the test files to resolve this issue.", task.Title, task.Description, feedback)
 				o.RunTesterAgent(ctx, task, state, fileContexts, testerPrompt)
@@ -213,8 +231,9 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				}
 			}
 		}
+		fmt.Printf("Orchestrator: Task %s [Generator] write phase summary: %d executed, %d blocked\n", task.ID, executed, blocked)
 	} else {
-		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s Generator LLM completion failed: %v\n", task.ID, err)
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] write phase failed: %v\n", task.ID, err)
 	}
 }
 

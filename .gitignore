@@ -33,11 +33,15 @@ go.work.sum
 
 # Build artifacts
 /dist/
+/bin/
 
 # Validation artifacts
 /validation/projects/*/.noctifab/secrets.yaml
 /validation/projects/*/.noctifab/data/
 /validation/projects/*/.noctifab/logs/
+
+# Feedback notes (local analysis artifacts, not source)
+*_FEEDBACK.md
 
 
 

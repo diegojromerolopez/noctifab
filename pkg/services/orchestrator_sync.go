@@ -98,3 +98,19 @@ func (o *Orchestrator) allTasksFinished(state *domain.State) bool {
 	}
 	return true
 }
+
+// allTasksSucceeded reports whether every task in the state has a TaskSuccess
+// status. It is used to decide whether the story build is PASSING (all tasks
+// passed test validation) or FAILING (one or more tasks exhausted their
+// retries without a passing build).
+func (o *Orchestrator) allTasksSucceeded(state *domain.State) bool {
+	if len(state.Tasks) == 0 {
+		return false
+	}
+	for _, t := range state.Tasks {
+		if t.Status != domain.TaskSuccess {
+			return false
+		}
+	}
+	return true
+}

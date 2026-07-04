@@ -3,7 +3,9 @@ package services
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -56,9 +58,10 @@ var defaultRoleProfiles = map[string]ProfileConfig{
 
 // PolicyValidator implements Validator interface.
 type PolicyValidator struct {
-	AllowedCommands []string
-	ProtectedBranch string
-	Profiles        map[string]ProfileConfig
+	AllowedCommands   []string
+	ProtectedBranch   string
+	Profiles          map[string]ProfileConfig
+	forbiddenPatterns []*regexp.Regexp
 }
 
 var _ Validator = (*PolicyValidator)(nil)
@@ -71,10 +74,34 @@ func NewPolicyValidator(allowedCommands []string, protectedBranch string, profil
 		profiles = make(map[string]ProfileConfig)
 	}
 	return &PolicyValidator{
-		AllowedCommands: allowedCommands,
-		ProtectedBranch: protectedBranch,
-		Profiles:        profiles,
+		AllowedCommands:   allowedCommands,
+		ProtectedBranch:   protectedBranch,
+		Profiles:          profiles,
+		forbiddenPatterns: compileForbiddenPatterns(nil),
 	}
+}
+
+// SetForbiddenPatterns updates the regex patterns used to reject write_file
+// and edit_file content. Invalid regex patterns are silently skipped to
+// avoid crashing the daemon on a bad config; the linter will flag them.
+func (v *PolicyValidator) SetForbiddenPatterns(patterns []string) {
+	v.forbiddenPatterns = compileForbiddenPatterns(patterns)
+}
+
+func compileForbiddenPatterns(patterns []string) []*regexp.Regexp {
+	var compiled []*regexp.Regexp
+	for _, p := range patterns {
+		if p == "" {
+			continue
+		}
+		re, err := regexp.Compile(p)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: invalid forbidden_pattern regex %q: %v (skipping)\n", p, err)
+			continue
+		}
+		compiled = append(compiled, re)
+	}
+	return compiled
 }
 
 func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, state *domain.State) (*ValidationResult, error) {
@@ -169,6 +196,29 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 			}, nil
 		}
 
+		// Forbidden pattern content checks (write_file/edit_file only).
+		// These enforce project-specific compile/SPEC constraints such as
+		// Rust #![deny(unsafe_code)] at write time so the agent gets
+		// immediate feedback instead of at the test-validation stage.
+		if action.Tool == "write_file" || action.Tool == "edit_file" {
+			if content, ok := action.Args["content"].(string); ok && content != "" {
+				if hit := v.findForbiddenPattern(content); hit != "" {
+					return &ValidationResult{
+						Allowed: false,
+						Reason:  fmt.Sprintf("SPEC violation: file content matches forbidden pattern %q. This constraint must be respected: %s", hit, hit),
+					}, nil
+				}
+			}
+			if replacement, ok := action.Args["replacement_content"].(string); ok && replacement != "" {
+				if hit := v.findForbiddenPattern(replacement); hit != "" {
+					return &ValidationResult{
+						Allowed: false,
+						Reason:  fmt.Sprintf("SPEC violation: replacement_content matches forbidden pattern %q. This constraint must be respected.", hit),
+					}, nil
+				}
+			}
+		}
+
 	case "git_checkout", "git_push":
 		branch, _ := action.Args["branch"].(string)
 		if branch == v.ProtectedBranch || branch == "master" {
@@ -214,4 +264,17 @@ func (v *PolicyValidator) EvaluateGoals(ctx context.Context, state *domain.State
 		}
 	}
 	return true, nil
+}
+
+// findForbiddenPattern returns the first matching forbidden pattern's source
+// string, or "" if none match. Patterns are compiled at construction time and
+// applied to file content written by agents to enforce project-specific
+// compile/SPEC constraints (e.g. Rust #![deny(unsafe_code)]).
+func (v *PolicyValidator) findForbiddenPattern(content string) string {
+	for _, re := range v.forbiddenPatterns {
+		if re.MatchString(content) {
+			return re.String()
+		}
+	}
+	return ""
 }

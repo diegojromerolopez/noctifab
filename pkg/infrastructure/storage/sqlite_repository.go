@@ -95,18 +95,20 @@ func (r *SQLiteRepository) Save(ctx context.Context, state *domain.State) error 
 	nextVersion := state.Version + 1
 	if currentVersion == 0 {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO state (id, project_path, version, build_status, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO state (id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			state.ID, state.ProjectPath, nextVersion, string(state.BuildStatus),
+			string(state.StoryStatus), state.StoryError,
 			state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 			state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
 			state.Metadata.TotalTokensUsed, state.Metadata.TotalCostUSD,
 		)
 	} else {
 		_, err = tx.ExecContext(ctx,
-			`UPDATE state SET project_path = ?, version = ?, build_status = ?, input_source = ?, input_path = ?, integration_branch = ?, feature_name = ?, base_branch = ?, project_version = ?, total_tokens_used = ?, total_cost_usd = ?
+			`UPDATE state SET project_path = ?, version = ?, build_status = ?, story_status = ?, story_error = ?, input_source = ?, input_path = ?, integration_branch = ?, feature_name = ?, base_branch = ?, project_version = ?, total_tokens_used = ?, total_cost_usd = ?
 			WHERE id = ?`,
 			state.ProjectPath, nextVersion, string(state.BuildStatus),
+			string(state.StoryStatus), state.StoryError,
 			state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 			state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
 			state.Metadata.TotalTokensUsed, state.Metadata.TotalCostUSD,
@@ -247,13 +249,14 @@ func (r *SQLiteRepository) Load(ctx context.Context) (*domain.State, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "Load")
 	defer span.End()
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, project_path, version, build_status, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd
+		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd
 		FROM state LIMIT 1`)
 
 	var state domain.State
-	var buildStatusStr string
+	var buildStatusStr, storyStatusStr string
 	err := row.Scan(
 		&state.ID, &state.ProjectPath, &state.Version, &buildStatusStr,
+		&storyStatusStr, &state.StoryError,
 		&state.Metadata.InputSource, &state.Metadata.InputPath, &state.Metadata.IntegrationBranch,
 		&state.Metadata.FeatureName, &state.Metadata.BaseBranch, &state.Metadata.ProjectVersion,
 		&state.Metadata.TotalTokensUsed, &state.Metadata.TotalCostUSD,
@@ -265,6 +268,7 @@ func (r *SQLiteRepository) Load(ctx context.Context) (*domain.State, error) {
 		return nil, err
 	}
 	state.BuildStatus = domain.BuildStatus(buildStatusStr)
+	state.StoryStatus = domain.StoryStatus(storyStatusStr)
 
 	// Load Tasks
 	rows, err := r.db.QueryContext(ctx,

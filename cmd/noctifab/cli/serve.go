@@ -114,6 +114,7 @@ var serveCmd = &cobra.Command{
 			}
 		}
 		validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, nil, nil)
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
@@ -127,6 +128,7 @@ var serveCmd = &cobra.Command{
 			OCCMaxRetries:    cfg.OCCMaxRetries,
 			OCCBackoffBase:   time.Duration(cfg.OCCBackoffBase),
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
+			MaxDuration:      time.Duration(cfg.MaxDuration),
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.
@@ -227,6 +229,7 @@ func processStory(
 
 	// Create a fresh State for this story.
 	state := services.NewStateForStory(projectPath, item.Path, baseBranch, branchPrefix)
+	state.StoryStatus = domain.StoryRunning
 	if err := repo.Save(ctx, state); err != nil {
 		return fmt.Errorf("failed to save initial state: %w", err)
 	}
@@ -234,11 +237,17 @@ func processStory(
 	// Planning phase: decompose the spec into tasks.
 	logf("📋 Planning tasks from specification...\n")
 	if err := orchestrator.PlanStory(ctx, state, item.Spec); err != nil {
+		state.StoryStatus = domain.StoryFailed
+		state.StoryError = fmt.Sprintf("planning failed: %v", err)
+		_ = repo.Save(context.Background(), state)
 		return fmt.Errorf("planning failed: %w", err)
 	}
 
 	// Execution loop: run until all tasks are done or context is cancelled.
-	ticker := time.NewTicker(orchestrator.PollInterval())
+	// Use 2-second ticker for fast cycles during story execution
+	// (the configured poll_interval is used server-wide; here we need quick turnaround).
+	const storyExecFreq = 2 * time.Second
+	ticker := time.NewTicker(storyExecFreq)
 	defer ticker.Stop()
 
 	for {
@@ -258,6 +267,12 @@ func processStory(
 			if allTasksDone(current) {
 				logf("✅ All tasks finished for story: %s\n", item.Path)
 				finalErr := orchestrator.FinalizeUserStory(ctx, current)
+				current.StoryStatus = domain.StorySuccess
+				if finalErr != nil {
+					current.StoryStatus = domain.StoryFailed
+					current.StoryError = finalErr.Error()
+				}
+				_ = repo.Save(ctx, current)
 				if logFile != nil {
 					_, _ = fmt.Fprintf(logFile, "=== Story finished: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
 				}
@@ -265,6 +280,9 @@ func processStory(
 			}
 
 			if anyTaskPermanentlyFailed(current) {
+				current.StoryStatus = domain.StoryFailed
+				current.StoryError = fmt.Sprintf("story %s: one or more tasks failed permanently", item.Path)
+				_ = repo.Save(ctx, current)
 				logf("❌ Story %s has permanently failed tasks.\n", item.Path)
 				if logFile != nil {
 					_, _ = fmt.Fprintf(logFile, "=== Story FAILED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
