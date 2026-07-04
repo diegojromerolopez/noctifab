@@ -37,7 +37,7 @@ sandbox:
     timeout_seconds: 300
     grace_period_seconds: 30
     test_command: cargo test
-    linter_command: ""
+    linter_command: "cargo fmt --check && cargo clippy -- -D warnings"
     exclude_paths:
         - target/
         - .noctifab/
