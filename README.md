@@ -410,7 +410,7 @@ The `validation/` directory contains fully containerized, isolated end-to-end in
 | :--- | :--- | :--- | :--- |
 | **`frontpunch`** | Python | `US-001.md` | `frontpunch/worker.py` created/modified and test suite passes |
 | **`todo-cli`** | Python | `US-001.md` | `todo.py` created/modified and test suite passes |
-| **`wc`** | Rust | `US-001.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
+| **`wc`** | Rust | `US-002.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
 
 The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
 

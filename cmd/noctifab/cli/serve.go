@@ -93,7 +93,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM client.
-		llmClient := llm.BuildFailoverClient(&cfg.LLM, nil)
+		llmClient := llm.BuildFailoverClient(cfg, nil)
 
 		// Initialize orchestrator components.
 		gitClient := services.NewGitClient(".")

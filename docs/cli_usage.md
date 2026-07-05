@@ -227,6 +227,46 @@ Key points:
 - The default base URL is `https://opencode.ai/zen/go/v1` (`/chat/completions` is appended automatically). Override `url` only if you run a custom OpenAI-compatible gateway.
 - A static model fallback hierarchy is built in for `opencode` (GLM‑5.2 → GLM‑5.1 → Kimi K2.7 Code → … → DeepSeek V4 Flash): on a transient HTTP 429/503 the client steps down to the next model in that list and retries.
 
+### Resilient Failover Configuration (Multiple LLM Clients)
+
+`noctifab` supports configuring a list of multiple LLM clients under `llms:` in `config.yaml` to enable high-availability failover. If the primary provider experiences transient errors (such as HTTP `429` Rate Limits, HTTP `503` Service Unavailable, timeouts, or model overload errors), the client automatically switches to alternative backends in the defined order.
+
+**Step 1 — Configure multiple backends in `config.yaml`:**
+```yaml
+llms:
+  - provider: opencode
+    model: glm-5.2
+    temperature: 0
+    api_key: "secret:OPENCODE_API_KEY"
+    url: ""
+    max_retries: 5
+    retry_backoff: 100ms
+    retry_backoff_factor: 2
+    max_budget_usd: 10
+  - provider: gemini
+    model: gemini-2.5-flash
+    temperature: 0
+    api_key: "secret:GEMINI_API_KEY"
+    url: ""
+    max_retries: 5
+    retry_backoff: 100ms
+    retry_backoff_factor: 2
+    max_budget_usd: 10
+```
+
+**Step 2 — Define your API keys in `secrets.yaml`:**
+```yaml
+# .noctifab/secrets.yaml
+OPENCODE_API_KEY: "sk-..."
+GEMINI_API_KEY: "AIzaSy..."
+```
+
+**Key Points on Failover Logic:**
+- **Order of Try:** The first provider listed in the `llms:` configuration is the primary client. `noctifab` uses it for the startup pre-flight check and attempts all completions through it first.
+- **Failover Cooldown:** When a provider encounters a transient failure (HTTP `429`/`503`/overload/timeout), that backend is marked on **cooldown** (default: 5 minutes) and bypassed on subsequent calls. completions are automatically routed to the next configured backend in the list.
+- **Secrets Resolution:** All `secret:` references inside the `llms:` list are recursively resolved against `secrets.yaml` at load time, ensuring fallback credentials remain protected.
+- **Budget Monitoring:** Each backend enforces its own locally monitored daily monetary limit (`max_budget_usd`) independently.
+
 ---
 
 ## End-to-End Workflow Example

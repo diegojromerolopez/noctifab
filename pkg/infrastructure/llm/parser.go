@@ -3,36 +3,144 @@ package llm
 import (
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
+// jsonKeyRE matches a JSON key token that names a field of the LLMResponse
+// schema (reasoning, actions, tool, args). Used to distinguish a real
+// envelope from incidental `{ ... }` snippets in fenced code (Rust struct
+// literals, Go composite literals, etc). Keys must be followed by an
+// optional space and a colon to count.
+var jsonKeyRE = regexp.MustCompile(`"(reasoning|actions|tool|args|path|content)"\s*:`)
+
 // ExtractJSONBlock locates the outer JSON object of the LLM response envelope.
 //
 // It is string-literal-aware (braces inside JSON string values, such as Rust
 // `mod tests { ... }` embedded in a write_file `content` argument, are not
-// counted) and, when several top-level balanced blocks are present (e.g. the
-// model emits fenced code before the JSON envelope), it prefers the block
-// that looks like the LLM response schema (containing "reasoning" or
-// "actions" keys). This makes the parser robust to lower-tier models that
-// prepend prose/code before the JSON block.
+// counted), tolerant of fenced code blocks surrounding the JSON
+// (```{"reasoning": ...}```), and rejects blocks that look like the schema
+// (containing "reasoning"/"actions" JSON keys) so code-block braces such as
+// `CountStats { lines: 0, words: 0, bytes: 0 }` are never mistaken for a
+// JSON object. When no candidate envelope is found it returns an error
+// rather than guessing — guessing feeds junk to json.Unmarshal and produces
+// misleading parse errors (e.g. "invalid character 'l'" on a Rust struct).
 func ExtractJSONBlock(input string) (string, error) {
-	blocks := findTopLevelJSONBlocks(input)
+	cleaned := stripFencedCodeBlocks(input)
+	blocks := findTopLevelJSONBlocks(cleaned)
 	if len(blocks) == 0 {
 		return "", errors.New("error parsing response: no valid JSON object detected (no opening brace found); please return only the structured JSON block matching the schema")
 	}
-	// Prefer the last block that looks like the LLMResponse envelope. The JSON
-	// envelope is emitted after any prose/code, so scanning from the end is the
-	// most reliable heuristic when the model wraps code blocks before the JSON.
-	for i := len(blocks) - 1; i >= 0; i-- {
-		if looksLikeLLMResponseEnvelope(blocks[i]) {
-			return blocks[i], nil
+	// Prefer the last block whose top-level keys match the LLMResponse
+	// schema (reasoning / actions / tool / args / path / content).
+	preferred := []string{}
+	for _, b := range blocks {
+		if looksLikeLLMResponseEnvelope(b) {
+			preferred = append(preferred, b)
 		}
 	}
-	// Fallback: return the last balanced block so LenientUnmarshal can produce
-	// a precise parse error rather than a generic "not found" message.
-	return blocks[len(blocks)-1], nil
+	if len(preferred) == 0 {
+		return "", errors.New("error parsing response: JSON envelope not detected (found balanced blocks but none declares the expected keys; please return only the structured JSON block matching the schema)")
+	}
+	return preferred[len(preferred)-1], nil
+}
+
+// stripFencedCodeBlocks removes markdown fenced code blocks (```...```) so the
+// scanner does not pick up `{` / `}` characters embedded in fenced source
+// code. A fence is ` ``` ` optionally followed by a language tag (rust, go,
+// `json`, bash, ...) and terminated by a closing ` ``` ` line. Only
+// "fenced" code is stripped — JSON envelopes that happen to be wrapped in
+// ` ```json ` are re-exposed as the JSON text they contain.
+func stripFencedCodeBlocks(input string) string {
+	var builder strings.Builder
+	i := 0
+	n := len(input)
+	for i < n {
+		// Detect a fence opening: a line starting with ``` (after optional
+		// leading whitespace). We do a per-line scan so we keep newlines.
+		lineEnd := strings.IndexByte(input[i:], '\n')
+		var line string
+		if lineEnd == -1 {
+			line = input[i:]
+		} else {
+			line = input[i : i+lineEnd]
+		}
+		trimmed := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(trimmed, "```") {
+			// Skip the entire fenced block through its matching closing ``` .
+			start := i + lineEnd + 1
+			if lineEnd == -1 {
+				// Opening fence is the last line — nothing else to keep.
+				return builder.String()
+			}
+			// Search for a closing fence line.
+			closed := false
+			j := start
+			for j < n {
+				end := strings.IndexByte(input[j:], '\n')
+				var l string
+				if end == -1 {
+					l = input[j:]
+				} else {
+					l = input[j : j+end]
+				}
+				lt := strings.TrimLeft(l, " \t")
+				if strings.HasPrefix(lt, "```") {
+					// Found closing fence. Check if it's a `json` tagged fence
+					// we should unwrap rather than drop.
+					lang := strings.TrimSpace(strings.TrimPrefix(trimmed, "```"))
+					if lang == `` || strings.EqualFold(lang, "json") {
+						// Re-expose the inner content of this fence as
+						// un-fenced text so the JSON block scanner sees it.
+						inner := input[start:j]
+						if end != -1 {
+							// Include the closing newline.
+							inner += "\n"
+						}
+						builder.WriteString(inner)
+					}
+					if end == -1 {
+						closed = true
+						i = n
+					} else {
+						closed = true
+						i = j + end + 1
+					}
+					break
+				}
+				if end == -1 {
+					// ran out of input without closing fence — drop rest.
+					i = n
+					closed = true
+					break
+				}
+				j = j + end + 1
+			}
+			if !closed {
+				// No closing fence — never started a skip; leave the opening
+				// fence line so subsequent JSON scanning still operates on its
+				// trailing content.
+				builder.WriteString(line)
+				if lineEnd != -1 {
+					builder.WriteByte('\n')
+					i = i + lineEnd + 1
+				} else {
+					i = n
+				}
+			}
+			continue
+		}
+		builder.WriteString(line)
+		if lineEnd != -1 {
+			builder.WriteByte('\n')
+			i = i + lineEnd + 1
+		} else {
+			i = n
+		}
+	}
+	return builder.String()
 }
 
 // findTopLevelJSONBlocks scans input for every maximal top-level balanced
@@ -95,46 +203,68 @@ func scanBalancedObject(input string, start int) (int, bool) {
 }
 
 // looksLikeLLMResponseEnvelope reports whether a balanced JSON block appears
-// to be an LLMResponse envelope by checking for the presence of the
-// "reasoning" or "actions" keys. This is a cheap substring heuristic that
-// avoids a full unmarshal (the block may still contain raw newlines that
-// escapeNewlinesInJSON will normalise later in LenientUnmarshal).
+// to be the LLMResponse envelope by checking for JSON-key tokens from the
+// schema. Uses a regex that requires `"key":` so prose comments like
+// `// reasoning here` and bare struct literals like
+// `CountStats { lines: 0, words: 0 }` do not match.
 func looksLikeLLMResponseEnvelope(block string) bool {
-	return strings.Contains(block, `"reasoning"`) || strings.Contains(block, `"actions"`)
+	return jsonKeyRE.MatchString(block)
 }
 
+// escapeNewlinesInJSON escapes raw control characters (newline, carriage
+// return, tab, backspace, form-feed) that appear inside JSON string literals
+// so json.Unmarshal accepts models that emit pretty-printed code with
+// literal newlines/tabs in their write_file content payloads. Control
+// chars outside string literals are left untouched (json.Unmarshal accepts
+// them at structural positions).
 func escapeNewlinesInJSON(input string) string {
 	var builder strings.Builder
 	inString := false
-	isEscaped := false
+	escaped := false
 
 	for i := 0; i < len(input); i++ {
 		char := input[i]
 
-		if char == '"' && !isEscaped {
-			inString = !inString
-		}
-
 		if inString {
-			if char == '\n' {
+			if escaped {
+				escaped = false
+				builder.WriteByte(char)
+				continue
+			}
+			switch char {
+			case '\\':
+				escaped = true
+				builder.WriteByte(char)
+				continue
+			case '"':
+				inString = false
+				builder.WriteByte(char)
+				continue
+			case '\n':
 				builder.WriteString(`\n`)
-				isEscaped = false
 				continue
-			}
-			if char == '\r' {
+			case '\r':
 				builder.WriteString(`\r`)
-				isEscaped = false
+				continue
+			case '\t':
+				builder.WriteString(`\t`)
+				continue
+			case '\b':
+				builder.WriteString(`\b`)
+				continue
+			case '\f':
+				builder.WriteString(`\f`)
 				continue
 			}
+			builder.WriteByte(char)
+			continue
 		}
 
+		// Outside a string: track string opening.
+		if char == '"' {
+			inString = true
+		}
 		builder.WriteByte(char)
-
-		if char == '\\' {
-			isEscaped = !isEscaped
-		} else {
-			isEscaped = false
-		}
 	}
 
 	return builder.String()

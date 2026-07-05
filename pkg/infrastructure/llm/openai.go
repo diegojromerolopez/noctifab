@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -22,7 +23,56 @@ func NewOpenAIProviderClient(provider, url string) ProviderClient {
 	return &openaiProviderClient{provider: provider, url: url}
 }
 
+// osStderr returns the process stderr. Wrapped so tests can swap it without
+// importing "os" elsewhere.
+func osStderr() *os.File { return os.Stderr }
+
+// looksLikeResponseFormatRejection inspects the body of an HTTP 400 from a
+// `/chat/completions` endpoint to decide whether the failure is plausibly
+// caused by the server refusing to honour `response_format`. Conservative:
+// accepts both snake_case and camelCase variants plus the canonical OpenAI
+// wording. When in doubt, returns false (so we surface the raw 400 instead
+// of silently dropping the field on a non-typed server error).
+func looksLikeResponseFormatRejection(body string) bool {
+	low := strings.ToLower(body)
+	if strings.Contains(low, "response_format") {
+		return true
+	}
+	if strings.Contains(low, "unknown parameter") {
+		return true
+	}
+	if strings.Contains(low, "unrecognized request argument") {
+		return true
+	}
+	return false
+}
+
 func (o *openaiProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
+	url := o.resolveEndpoint()
+	headers := make(map[string]string)
+	if apiKey != "" {
+		headers["Authorization"] = "Bearer " + apiKey
+	}
+	headers["Content-Type"] = "application/json"
+
+	respBody, err := o.sendCompletion(ctx, url, headers, model, prompt, true)
+	if err == nil {
+		return respBody, nil
+	}
+	// Transparent single fallback: if a relay rejects the request because
+	// it does not understand `response_format` (HTTP 400 with a hint in the
+	// body), retry once without the field. This keeps compliant models on
+	// the strong JSON path while not breaking older vLLM / Ollama setups.
+	if he, ok := err.(*httpError); ok && he.StatusCode == http.StatusBadRequest && looksLikeResponseFormatRejection(he.Body) {
+		_, _ = fmt.Fprintln(osStderr(), "⚠ Server rejected response_format; retrying without JSON enforcement.")
+		return o.sendCompletion(ctx, url, headers, model, prompt, false)
+	}
+	return nil, err
+}
+
+// resolveEndpoint returns the chat completions URL for this provider, honouring
+// an explicit override URL when one is configured.
+func (o *openaiProviderClient) resolveEndpoint() string {
 	var baseURL string
 	switch strings.ToLower(o.provider) {
 	case "openai":
@@ -34,7 +84,7 @@ func (o *openaiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	case "mistral":
 		baseURL = "https://api.mistral.ai/v1"
 	case "deepseek":
-		baseURL = "https://api.deepseek.com/v1"
+		baseURL = "https://api.deepseek.ai/v1"
 	case "ollama":
 		baseURL = "https://ollama.com/v1"
 	case "opencode":
@@ -42,26 +92,25 @@ func (o *openaiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	default:
 		baseURL = "https://api.openai.com/v1"
 	}
-
-	var url string
 	if o.url != "" {
-		url = o.url
-	} else {
-		url = baseURL + "/chat/completions"
+		return o.url
 	}
+	return baseURL + "/chat/completions"
+}
 
-	headers := make(map[string]string)
-	if apiKey != "" {
-		headers["Authorization"] = "Bearer " + apiKey
-	}
-	headers["Content-Type"] = "application/json"
-
+// sendCompletion performs a single chat completions POST. When enforceJSON
+// is true the request advertises response_format=json_object so the assistant
+// is constrained to a JSON object.
+func (o *openaiProviderClient) sendCompletion(ctx context.Context, url string, headers map[string]string, model, prompt string, enforceJSON bool) ([]byte, error) {
 	payload := map[string]any{
 		"model": model,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
 		"temperature": 0.0,
+	}
+	if enforceJSON {
+		payload["response_format"] = map[string]string{"type": "json_object"}
 	}
 	reqBody, err := json.Marshal(payload)
 	if err != nil {
@@ -75,7 +124,6 @@ func (o *openaiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	if err != nil {
 		return nil, err
 	}
-
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

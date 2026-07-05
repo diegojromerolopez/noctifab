@@ -37,7 +37,7 @@ Place `secrets.yaml` in the same directory as `config.yaml` (i.e. `.noctifab/sec
 # .noctifab/secrets.yaml
 # This file is gitignored — never commit it.
 
-GITHUB_FRONTPUNCH_TOKEN: "github_pat_11AA4TEXQ0..."
+GITHUB_TOKEN: "github_pat_11AA4TEXQ0..."
 GEMINI_API_KEY: "AIzaSyATKC77..."
 JIRA_API_TOKEN: "your-jira-token"
 ```
@@ -56,7 +56,7 @@ llm:
 vcs:
   provider: github
   repository: owner/repo
-  token: "secret:GITHUB_FRONTPUNCH_TOKEN" # resolved from secrets.yaml
+  token: "secret:GITHUB_TOKEN" # resolved from secrets.yaml
 
 jira:
   url: "https://mycompany.atlassian.net"
@@ -90,6 +90,8 @@ The following `config.yaml` fields support `secret:` references:
 | Jira API token | `jira.token` |
 | Jira user/email | `jira.user` |
 | Jira instance URL | `jira.url` |
+| Multiple LLM client API key | `llms[].api_key` |
+| Multiple LLM client endpoint URL | `llms[].url` |
 
 ---
 
@@ -128,7 +130,7 @@ In CI pipelines, prefer environment variables rather than committing `secrets.ya
 - name: Run noctifab
   env:
     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    GITHUB_FRONTPUNCH_TOKEN: ${{ secrets.FRONTPUNCH_TOKEN }}
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   run: noctifab start-one --input roadmap/US-001.md
 ```
 

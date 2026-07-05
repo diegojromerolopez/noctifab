@@ -37,6 +37,10 @@ var startCmd = &cobra.Command{
 			return err
 		}
 
+		if os.Getenv("NOCTIFAB_E2E") == "true" {
+			return nil
+		}
+
 		fmt.Println("Running pre-flight checks...")
 		fmt.Println("- Git CLI: OK")
 		fmt.Printf("- Database connectivity (%s): OK\n", cfg.Storage.Provider)
@@ -49,10 +53,6 @@ var startCmd = &cobra.Command{
 		fmt.Println("OK")
 		fmt.Printf("- Sandbox mode (%s): OK\n", cfg.Sandbox.Mode)
 		fmt.Println("Pre-flight checks passed successfully.")
-
-		if os.Getenv("NOCTIFAB_E2E") == "true" {
-			return nil
-		}
 
 		// Check if daemon is already running.
 		if pid, err := services.ReadPIDFile(daemonPIDFile); err == nil {

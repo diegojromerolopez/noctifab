@@ -4,7 +4,7 @@ BINARY_NAME=noctifab
 DIST_DIR=dist
 GOFLAGS=-v
 
-.PHONY: all build clean test lint help validate
+.PHONY: all build clean test lint help validate validate-all validate-images
 
 # Default target
 all: build
@@ -34,23 +34,36 @@ help:
 	@echo "  clean           - Remove build artifacts (dist/ directory)"
 	@echo "  test            - Run the Go unit test suite"
 	@echo "  lint            - Run static analysis lint checks using Docker"
-	@echo "  validate        - Run autonomous E2E checks inside Docker (isolated)"
+	@echo "  validate        - Run autonomous E2E check for one project inside Docker"
+	@echo "  validate-all    - Run all validation projects in parallel inside Docker"
+	@echo "  validate-images - Build base + all per-project validation Docker images"
 
+# Which project validate-runs by default when no PROJECT is passed.
 PROJECT ?= frontpunch
 
+# Validate a single project. Uses validation/run_one.sh which builds the
+# per-project image (or reuses it), launches the container, captures the log
+# to .validation-logs/<project>.log, and writes <PROJECT>_FEEDBACK.md.
+#
+# No host LLM credentials are required: each per-project image already
+# contains `secrets.yaml` (baked in at `docker build` time from
+# `validation/projects/<project>/.noctifab/secrets.yaml`), and noctifab
+# resolves `secret:OPENCODE_API_KEY` from it at config load time. The
+# `validate.sh` harness sets a dummy `GITHUB_TOKEN` for pre-flight checks.
 validate:
-	@if [ -z "$$GEMINI_API_KEY" ]; then \
-		if [ -f "validation/projects/$(PROJECT)/.noctifab/secrets.yaml" ]; then \
-			GEMINI_KEY=$$(grep "GEMINI_API_KEY:" validation/projects/$(PROJECT)/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
-		elif [ -f "validation/projects/frontpunch/.noctifab/secrets.yaml" ]; then \
-			GEMINI_KEY=$$(grep "GEMINI_API_KEY:" validation/projects/frontpunch/.noctifab/secrets.yaml | awk -F'"' '{print $$2}'); \
-		fi; \
+	@if [ "$(SKIP_BUILD)" = "1" ]; then \
+		NOCTIFAB_SKIP_BUILD=1 ./validation/run_one.sh "$(PROJECT)"; \
 	else \
-		GEMINI_KEY=$$GEMINI_API_KEY; \
-	fi; \
-	if [ -z "$$GEMINI_KEY" ]; then \
-		echo "Error: GEMINI_API_KEY is not set."; \
-		exit 1; \
-	fi; \
-	docker build -t noctifab-verify -f validation/Dockerfile.validation .; \
-	docker run --rm -e GEMINI_API_KEY="$$GEMINI_KEY" -e GITHUB_TOKEN="dummy-token" -e PROJECT="$(PROJECT)" -e MODE="$(MODE)" noctifab-verify
+		./validation/run_one.sh "$(PROJECT)"; \
+	fi
+
+# Validate every project in validation/projects/ in parallel. Each project
+# runs in its own container, writes its own <PROJECT>_FEEDBACK.md, and exits
+# non-zero on failure; the aggregate target exits non-zero if any project
+# failed. Pass SKIP_BUILD=1 to reuse existing noctifab-validation:* images.
+validate-all:
+	@if [ "$(SKIP_BUILD)" = "1" ]; then \
+		./validation/run_all.sh --skip-build; \
+	else \
+		./validation/run_all.sh; \
+	fi

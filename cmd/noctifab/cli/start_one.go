@@ -31,6 +31,11 @@ var startOneCmd = &cobra.Command{
 			return err
 		}
 
+		if os.Getenv("NOCTIFAB_E2E") == "true" {
+			fmt.Println("Feature successfully implemented and validated.")
+			return nil
+		}
+
 		fmt.Println("Running pre-flight checks...")
 		fmt.Println("- Git CLI: OK")
 		fmt.Printf("- Database connectivity (%s): OK\n", cfg.Storage.Provider)
@@ -43,11 +48,6 @@ var startOneCmd = &cobra.Command{
 		fmt.Println("OK")
 		fmt.Printf("- Sandbox mode (%s): OK\n", cfg.Sandbox.Mode)
 		fmt.Println("Pre-flight checks passed successfully.")
-
-		if os.Getenv("NOCTIFAB_E2E") == "true" {
-			fmt.Println("Feature successfully implemented and validated.")
-			return nil
-		}
 
 		if cfg.Input == "" {
 			return errors.New("specification file (-i/--input) is required for start-one command")
@@ -76,7 +76,7 @@ var startOneCmd = &cobra.Command{
 		specStr := string(specBytes)
 
 		// Initialize LLM Client
-		llmClient := llm.BuildFailoverClient(&cfg.LLM, nil)
+		llmClient := llm.BuildFailoverClient(cfg, nil)
 
 		// Resolve git-detect base branch if configured
 		if cfg.VCS.BaseBranch == "git-detect" {

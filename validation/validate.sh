@@ -33,6 +33,22 @@ fi
 cp -R "${PROJECT_SRC}" "${TMP_DIR}"
 cd "${TMP_DIR}"
 
+# Mount the secret file from the runtime Docker secret into the workspace.
+# Images are kept free of credentials: secrets.yaml is bind-mounted into the
+# container at /run/secrets/noctifab-secrets.yaml by run_one.sh and copied
+# here so noctifab can resolve `secret:OPENCODE_API_KEY` etc. at config load
+# (pkg/infrastructure/config/secrets.go:38).
+SECRETS_SRC="/run/secrets/noctifab-secrets.yaml"
+HOST_FALLBACK="${PROJECT_SRC}/.noctifab/secrets.yaml"
+if [ -f "${SECRETS_SRC}" ]; then
+  cp "${SECRETS_SRC}" .noctifab/secrets.yaml
+elif [ -f "${HOST_FALLBACK}" ]; then
+  echo "⚠ Warning: using fallback secrets.yaml from project tree; image may contain secrets." >&2
+else
+  echo "❌ Error: no secrets.yaml found at ${SECRETS_SRC} or ${HOST_FALLBACK}." >&2
+  exit 1
+fi
+
 # 4. Initialize git repository inside the container workspace
 echo "Initializing clean git repository on branch main..."
 git init
@@ -76,28 +92,33 @@ export GITHUB_TOKEN="${GITHUB_TOKEN:-dummy-token}"
 echo "Using pre-configured config.yaml:"
 cat .noctifab/config.yaml
 
-# 7. Run noctifab command for US-001
+# 7. Run noctifab command
+STORY_PATH="roadmap/US-001.md"
+if [ "${PROJECT}" = "wc" ]; then
+  STORY_PATH="roadmap/US-002.md"
+fi
+
 MODE="${MODE:-start-one}"
 if [ "${MODE}" = "start" ]; then
-  echo "Running noctifab start for US-001..."
-  echo "start roadmap/US-001.md" | "${NOCTIFAB_BIN}" start --wait
+  echo "Running noctifab start for ${STORY_PATH}..."
+  echo "start ${STORY_PATH}" | "${NOCTIFAB_BIN}" start --wait
   # Stop the daemon after completion
   "${NOCTIFAB_BIN}" stop 2>/dev/null || true
 else
-  echo "Running noctifab start-one for US-001..."
-  "${NOCTIFAB_BIN}" start-one --input roadmap/US-001.md
+  echo "Running noctifab start-one for ${STORY_PATH}..."
+  "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
 fi
 
 # 8. Verify results
 echo "Verifying results..."
 if [ "${PROJECT}" = "frontpunch" ]; then
-  if [ ! -f "frontpunch/worker.py" ]; then
-    echo "❌ Error: frontpunch/worker.py was not created/modified!"
+  if [ ! -f "frontpunch/client.py" ]; then
+    echo "❌ Error: frontpunch/client.py was not created/modified!"
     exit 1
   fi
 elif [ "${PROJECT}" = "todo-cli" ]; then
-  if [ ! -f "todo.py" ]; then
-    echo "❌ Error: todo.py was not created/modified!"
+  if [ ! -f "cmd/todo/main.go" ] && [ ! -f "main.go" ]; then
+    echo "❌ Error: cmd/todo/main.go (or main.go) was not created/modified!"
     exit 1
   fi
 elif [ "${PROJECT}" = "wc" ]; then

@@ -31,6 +31,7 @@ type Config struct {
 	Orchestrator  OrchestratorConfig       `yaml:"orchestrator"`
 	Storage       StorageConfig            `yaml:"storage"`
 	LLM           LLMConfig                `yaml:"llm"`
+	LLMs          []LLMConfig              `yaml:"llms"`
 	VCS           VCSConfig                `yaml:"vcs"`
 	Sandbox       SandboxConfig            `yaml:"sandbox"`
 	Roles         RolesConfig              `yaml:"roles"`

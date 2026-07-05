@@ -5,7 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-05
+
+### Added
+- **Multiple LLM Client Configurations Support**: Added support for configuring a list of LLM backends under `llms:` in `config.yaml`.
+- **Dynamic Secrets Resolution for Backend list**: Updated secrets processing to recursively resolve `secret:` references for all backends in the `llms:` configurations list.
+- **Failover Client Integration**: Updated client bootstrap factory to automatically instantiate a `FailoverClient` wrapping the backend configurations in order when multiple LLMs are defined.
+
+### Fixed
+- **wc validation roadmap renumbering**: Renumbered the user stories for the `wc` validation project to be strictly sequential (`US-001.md` through `US-004.md`), updated their titles, dependencies, and internal references, and adjusted the E2E verification harness and READMEs to execute the correct story targets.
+
+## [0.4.2] - 2026-07-05
+
+### Fixed
+- **E2E Validation Configuration & Sandbox Whitelist**: Corrected `todo-cli` configuration to whitelist `go` and `git` commands, preventing sandbox violations during test execution. Re-architected `todo-cli` Dockerfile to build from `golang:alpine`.
+- **E2E Validation target path for frontpunch**: Corrected the target file validation check for `frontpunch` to check `frontpunch/client.py` (which is the actual output of US-001) instead of `frontpunch/worker.py`.
+- **Feedback Generator false positive test failures**: Refined `gen_feedback.py` to pre-process container logs by stripping out code blocks from tool call arguments and raw LLM response chunks, and ignoring system lines in `test_failures` matching, eliminating noisy false-positive test failures.
+- **Documentation cleanup**: Fixed a typo in `validation/README.md` describing `todo-cli` as implemented in Python instead of Go.
+
+## [0.4.1] - 2026-07-05
+
+### Fixed
+- **GITHUB_TOKEN Standardization**: Ensured all validation projects (`frontpunch`, `todo-cli`, `wc`) and documentation (`docs/secrets.md`) use `GITHUB_TOKEN` consistently instead of the legacy `GITHUB_FRONTPUNCH_TOKEN`.
+- **E2E/Integration Test Liveness**: Skipped the real LLM provider ping during tests/E2E runs (when `NOCTIFAB_E2E=true` is set), preventing test suites from attempting external LLM API connections and failing without credentials.
+
 ## [0.4.0] - 2026-07-03
+
+### Added
+- **Validation Project Spec/Story Quality Pass**: Reviewed and hardened the SPEC.md and roadmap user stories of all three validation projects (`wc`, `todo-cli`, `frontpunch`) so an LLM agent (GLM-5.2) can build them autonomously with minimal guessing. Per-project changes:
+  - **wc**: Pinned Rust toolchain/edition/crate name + allowed deps (clap, assert_cmd, tempfile); added a pinned DDD directory layout to SPEC §2.1; rewrote SPEC §3.3 output format with an exact `format!("{:>7} {:>7} ...")` reference formatter; added SPEC §3.4 (counting semantics for `-w`/`-c`/`-m`/`-L` including invalid-UTF-8 fallback, `\r\n` handling, no-final-newline handling) and §3.5 (exact stderr templates + exit codes 1 vs 2); fixed the wrong UTF-8 example arithmetic in §4.5 (`"Hello, 世界!\n"` = 11 chars / 15 bytes, not 13 chars); added `US-000a` (project scaffold + domain core) so US-001 fits the ~4096-token completion budget; added `depends_on`/`change_type`/`target_files` front-matter to US-001/002/003; pinned the wc sandbox `linter_command` to `cargo fmt --check && cargo clippy -- -D warnings`.
+  - **todo-cli**: Pinned the language to **Go 1.22+** (was "Go, Python, or Node.js" — a contradiction with AGENTS.md tooling); added SPEC §2.3 (DDD directory layout: `cmd/todo/`, `internal/task/`, `internal/storage/`, `internal/cli/`), §2.4 (ID auto-increment + `rm` non-reindexing + idempotent `done` semantics), §2.5 (byte-level list output format), §2.6 (exact exit codes + stderr message templates), §2.8 (explicit waiver of the AGENTS.md Postgres compose stack for this project); rewrote US-001 and US-002 with `depends_on`/`change_type`/`target_files` metadata, replaced `python3 todo.py` with the Go binary invocation form, and replaced ambiguous "table or formatted list" with byte-exact expected strings and actionable unit/integration/BDD test splits.
+  - **frontpunch**: Fixed the broken JSON in SPEC §2.3 (missing closing `}`); pinned the web framework to **FastAPI** (was "Flask or FastAPI"); pinned dependencies (`redis>=5.0,<6.0`, `fastapi`, `cryptography`, `croniter`, `click`); added SPEC §2.7 (`frontpunch.configure(...)` singleton contract + the full `frontpunch.exceptions` hierarchy); added SPEC §3.1 (DDD project layout with `pyproject.toml`, `domain/`/`application/`/`infrastructure/valkey/`/`interfaces/`); reconciled the `class` field to require a fully-qualified dotted import path (fixed US-001's bare `"log_event"` example); clarified the §3 SSA rule (`ruff RET504`) and the "no broad Exception catch" rule (worker execution envelope exemption); replaced deprecated `assertEquals` with `assertEqual` in §4.2 and pinned the coverage tooling; added `US-000` (foundation story owning scaffold, `configure`, `exceptions`, Clock/FS ports, test harness) so subsequent stories stop guessing on package layout; added `depends_on`/`change_type` to US-001.
 
 ### Added
 - **OpenCode Go LLM Provider**: Added `opencode` as a supported LLM provider, routing through OpenAI-compatible transport to the OpenCode Go subscription endpoint (`https://opencode.ai/zen/go/v1/chat/completions`). Provides access to curated open coding models including GLM-5.2, GLM-5.1, Kimi K2.7 Code, Kimi K2.6, MiniMax M3/M2.7, Qwen3.7 Max/Plus, Qwen3.6 Plus, MiMo V2.5/V2.5-Pro, DeepSeek V4 Pro/Flash. API key resolves from the `OPENCODE_API_KEY` environment variable. Includes a static model fallback hierarchy for quota/transient-error model stepping and unit tests for `Call` and `GetAvailableModels`.

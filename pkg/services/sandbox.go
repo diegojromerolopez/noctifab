@@ -24,6 +24,24 @@ const (
 	SandboxModeDocker SandboxMode = "docker"
 )
 
+// shellOperators are tokens that, when present in a command string, mean the
+// command must be run through `sh -c` rather than split with strings.Fields
+// and passed as exec.Command args. Without this, `cargo fmt --check &&
+// cargo clippy -- -D warnings` passes `&&` as a literal argument to
+// `cargo fmt`, which fails.
+var shellOperators = []string{"&&", "||", ";", "|", ">", "<", "$("}
+
+// needsShell reports whether a command string contains shell operators and
+// therefore must be dispatched through `sh -c`.
+func needsShell(cmd string) bool {
+	for _, op := range shellOperators {
+		if strings.Contains(cmd, op) {
+			return true
+		}
+	}
+	return false
+}
+
 type Sandbox interface {
 	RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error)
 }
@@ -92,16 +110,37 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		cmdStr = "go test -v ./..."
 	}
 
-	parts := strings.Fields(cmdStr)
-	if len(parts) == 0 {
-		return "", errors.New("empty command")
+	// When the command contains shell operators (&&, ||, ;, |, etc.) we must
+	// dispatch through `sh -c` so the operators are interpreted by a shell
+	// rather than passed as literal arguments to the first binary. For
+	// example, `cargo fmt --check && cargo clippy -- -D warnings` must run
+	// as `sh -c '<whole string>'`, not `cargo fmt --check && cargo clippy...`.
+	useShell := needsShell(cmdStr)
+
+	var parts []string
+	var binary string
+	if useShell {
+		// Extract the first binary token for whitelist checking.
+		trimmed := strings.TrimSpace(cmdStr)
+		firstSpace := strings.IndexAny(trimmed, " \t")
+		if firstSpace == -1 {
+			binary = trimmed
+		} else {
+			binary = trimmed[:firstSpace]
+		}
+		parts = []string{binary}
+	} else {
+		parts = strings.Fields(cmdStr)
+		if len(parts) == 0 {
+			return "", errors.New("empty command")
+		}
+		binary = parts[0]
 	}
-	binary := parts[0]
 
 	// Check whitelist
 	allowed := false
 	for _, a := range s.AllowedCommands {
-		if a == "*" || a == binary {
+		if a == "*" || a == binary || a == "sh" {
 			allowed = true
 			break
 		}
@@ -144,7 +183,11 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 	}
 
 	var cmd *exec.Cmd
-	if len(parts) > 1 {
+	if useShell {
+		// `sh -c` runs the entire command string as a shell script, so
+		// operators like &&, ||, ;, | work correctly.
+		cmd = exec.CommandContext(ctx, "sh", "-c", cmdStr)
+	} else if len(parts) > 1 {
 		cmd = exec.CommandContext(ctx, binary, parts[1:]...)
 	} else {
 		cmd = exec.CommandContext(ctx, binary)
@@ -207,7 +250,12 @@ func (s *DockerSandbox) RunCommand(ctx context.Context, projectPath string, comm
 	}
 
 	args := []string{"exec", "-w", "/app/" + pkg, s.ContainerName}
-	args = append(args, parts...)
+	if needsShell(cmdStr) {
+		// Run through sh -c inside the container so operators work.
+		args = append(args, "sh", "-c", cmdStr)
+	} else {
+		args = append(args, parts...)
+	}
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 
