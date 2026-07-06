@@ -62,17 +62,16 @@ reg.Register(&usecase.MyCustomTool{})
 
 ## Defining Permission Profiles
 
-Security and safety are enforced via authorization profiles under `.noctifab/profiles/`. When an agent executes an action, the `PolicyValidator` checks the active profile (e.g., `generator.yaml`, `default.yaml`):
+Security and safety are enforced via authorization profiles defined under the `profiles:` section of `.noctifab/config.yaml`. When an agent executes an action, the `PolicyValidator` checks the active profile for that role:
 
 ```yaml
-permissions:
-  allowed_tools:
-    - "read_file"
-    - "run_tests"
-    - "noop"
-  network:
-    allow_ai_provider: true
-    allow_external: false
+profiles:
+  generator:
+    allowed_tools:
+      - "read_file"
+      - "run_tests"
+      - "run_linter"
+      - "noop"
 ```
 
 - Wildcard `*` permissions should only be granted to the `orchestrator` role profile.

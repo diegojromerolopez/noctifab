@@ -68,15 +68,53 @@ var startOneCmd = &cobra.Command{
 			return err
 		}
 
+		// Initialize LLM Client
+		llmClient := llm.BuildFailoverClient(cfg, nil)
+
+		// Check if input is SPEC.md, or if we want to auto-generate from SPEC.md when missing
+		inputBase := filepath.Base(cfg.Input)
+		if inputBase == "SPEC.md" {
+			if _, specErr := os.Stat(cfg.Input); specErr == nil {
+				fmt.Printf("Input is SPEC.md. Spawning Product Manager Agent to generate roadmap...\n")
+				if genErr := services.GenerateRoadmap(context.Background(), ".", llmClient); genErr != nil {
+					return fmt.Errorf("failed to generate roadmap from SPEC.md: %w", genErr)
+				}
+				// Find first user story in roadmap/
+				roadmapDir := "roadmap"
+				entries, readErr := os.ReadDir(roadmapDir)
+				if readErr == nil && len(entries) > 0 {
+					var firstStory string
+					for _, entry := range entries {
+						if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+							firstStory = filepath.Join(roadmapDir, entry.Name())
+							break
+						}
+					}
+					if firstStory != "" {
+						fmt.Printf("Redirecting input to first generated story: %s\n", firstStory)
+						cfg.Input = firstStory
+					}
+				}
+			}
+		}
+
 		// Read specification
 		specBytes, err := os.ReadFile(cfg.Input)
 		if err != nil {
-			return fmt.Errorf("failed to read specification: %w", err)
+			// If input file is missing, but SPEC.md exists in the project root, generate the roadmap!
+			specPath := "SPEC.md"
+			if _, specErr := os.Stat(specPath); specErr == nil {
+				fmt.Printf("Input story %q not found, but SPEC.md exists. Spawning Product Manager Agent to generate roadmap...\n", cfg.Input)
+				if genErr := services.GenerateRoadmap(context.Background(), ".", llmClient); genErr == nil {
+					// Retry reading the story file!
+					specBytes, err = os.ReadFile(cfg.Input)
+				}
+			}
+			if err != nil {
+				return fmt.Errorf("failed to read specification: %w", err)
+			}
 		}
 		specStr := string(specBytes)
-
-		// Initialize LLM Client
-		llmClient := llm.BuildFailoverClient(cfg, nil)
 
 		// Resolve git-detect base branch if configured
 		if cfg.VCS.BaseBranch == "git-detect" {
@@ -173,6 +211,7 @@ var startOneCmd = &cobra.Command{
 		reg.Register(&services.FindFilesTool{})
 		reg.Register(&services.GrepSearchTool{})
 		reg.Register(&services.RunTestsTool{Runner: sandboxRunner})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand})
 		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize orchestrator components

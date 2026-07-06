@@ -142,7 +142,7 @@ func (c *OverrideMergeCmd) Execute(ctx context.Context, repo domain.StateReposit
 // StartDaemonServer sets up local loopback REST API bindings.
 // storyCh is the channel into which story work items are forwarded when the daemon
 // operates in server mode; pass nil when running in single-story mode.
-func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, storyCh chan<- StoryWorkItem) *http.Server {
+func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, storyCh chan<- StoryWorkItem, llmClient domain.LLMClient) *http.Server {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -240,9 +240,9 @@ func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, sto
 			return
 		}
 		if payload.Directory {
-			mailbox.Send(&StartDirectoryCmd{DirPath: payload.Path, StoryCh: storyCh})
+			mailbox.Send(&StartDirectoryCmd{DirPath: payload.Path, StoryCh: storyCh, LLMClient: llmClient})
 		} else {
-			mailbox.Send(&StartUserStoryCmd{Path: payload.Path, StoryCh: storyCh})
+			mailbox.Send(&StartUserStoryCmd{Path: payload.Path, StoryCh: storyCh, LLMClient: llmClient})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)

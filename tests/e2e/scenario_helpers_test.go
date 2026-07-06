@@ -18,6 +18,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMain(m *testing.M) {
+	if os.Getenv("NOCTIFAB_E2E") != "true" {
+		fmt.Println("Skipping tests in tests/e2e package because NOCTIFAB_E2E is not set to true")
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 func setupRepo(t *testing.T, ctx context.Context, tempDir, subDir, sessionID string) (domain.StateRepository, func()) {
 	dbProvider := os.Getenv("NOCTIFAB_STORAGE_PROVIDER")
 	if dbProvider == "postgres" {

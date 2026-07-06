@@ -12,12 +12,13 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 var tracer trace.Tracer
 
 func init() {
-	tracer = trace.NewNoopTracerProvider().Tracer("noctifab")
+	tracer = noop.NewTracerProvider().Tracer("noctifab")
 }
 
 var sensitiveAttrKeys = []string{

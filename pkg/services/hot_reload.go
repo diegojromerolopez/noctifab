@@ -82,11 +82,11 @@ func (hrm *HotReloadManager) waitForHealth(ctx context.Context, url string, time
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url)
 		if err == nil && resp.StatusCode == http.StatusOK {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil
 		}
 		if resp != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		select {
 		case <-ctx.Done():

@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os/exec"
 	"testing"
 	"time"
@@ -62,9 +61,7 @@ func TestWatchdog_IdleTimeoutExceeded(t *testing.T) {
 
 func TestWatchdog_OutputResetsIdleTimer(t *testing.T) {
 	// A command that produces output periodically should not hit idle timeout
-	script := fmt.Sprintf(
-		`for i in 1 2 3 4 5; do echo "tick $i"; sleep 0.02; done`,
-	)
+	script := `for i in 1 2 3 4 5; do echo "tick $i"; sleep 0.02; done`
 	w := Watchdog{MaxDuration: 5 * time.Second, IdleTimeout: 50 * time.Millisecond}
 	ctx := context.Background()
 	cmd := exec.CommandContext(ctx, "sh", "-c", script)

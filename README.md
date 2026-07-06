@@ -182,40 +182,33 @@ vcs:
 
 ## Security & Permission Profiles
 
-To ensure secure and controlled agent execution, `noctifab` employs a profile-based Role-Based Access Control (RBAC) and security sandboxing system. 
+To ensure secure and controlled agent execution, `noctifab` employs a profile-based Role-Based Access Control (RBAC) and security sandboxing system.
 
-Every active agent role (such as `orchestrator`, `planner`, `generator`, or `tester`) is constrained by a security profile YAML file located in `.noctifab/profiles/<profile_name>.yaml`. If no profile is explicitly defined for a role in `config.yaml`, the orchestrator looks for a profile matching the role name (e.g., `generator.yaml`), falling back to `default.yaml` if not found.
+Every active agent role (such as `orchestrator`, `planner`, `generator`, or `tester`) is constrained by a security profile. These profiles are defined under the `profiles:` section inside `.noctifab/config.yaml`. If no profile is explicitly defined for a role, the orchestrator automatically uses its built-in default profile configuration.
 
 ### Security Sandbox Policies
 
-1. **Tool Whitelisting (`allowed_tools`)**: Restricts the exact tools an agent is authorized to invoke (e.g., `read_file`, `write_file`, `edit_file`, `run_tests`). By default, dangerous system commands and Git mutation actions (`git_checkout`, `git_commit`, `git_push`, `docker_action`) are strictly reserved for the privileged `orchestrator` profile.
-2. **Command Whitelisting (`allowed_commands`)**: Restricts which shell execution binaries are allowed to run under the `run_tests` tool. For example, `tester` and `generator` profiles are restricted to language-specific runtimes (e.g., `go`, `npm`, `pytest`, `make`, `python`), preventing command injection or host shell execution escapes.
+1. **Tool Whitelisting (`allowed_tools`)**: Restricts the exact tools an agent is authorized to invoke (e.g., `read_file`, `write_file`, `edit_file`, `run_tests`, `run_linter`). By default, dangerous system commands and Git mutation actions (`git_checkout`, `git_commit`, `git_push`, `docker_action`) are strictly reserved for the privileged `orchestrator` profile.
+2. **Command Whitelisting (`allowed_commands`)**: Restricts which shell execution binaries are allowed to run under sandbox execution. For example, `tester` and `generator` profiles are restricted to language-specific runtimes (e.g., `go`, `npm`, `pytest`, `make`, `python`), preventing command injection or host shell execution escapes.
 3. **Path Jail Protection**: The validator dynamically enforces path checks preventing directory traversal attacks. Any file read or write tool parameters that resolve outside the workspace root path trigger an automatic sandbox boundary violation.
 4. **Target Path Exclusion**: Agents are forbidden from reading, writing, or accessing sensitive testing framework directories (specifically `tests/holdout` and `holdout` directories) to prevent gaming the evaluation process.
 5. **Branch Protection**: Direct git checkouts, commits, or pushes on protected base branches (like `main` or `master`) are rejected by the Policy Validator.
-6. **Network Outbound Policies**: Profiles restrict internet access to control data exfiltration. Default configurations allow connections only to the configured LLM API provider endpoint (`allow_ai_provider: true`) and block all other external outbound internet traffic (`allow_external: false`).
 
-### Example Profile (`.noctifab/profiles/generator.yaml`)
+### Example Profiles Configuration in `.noctifab/config.yaml`
 
 ```yaml
-permissions:
-  allowed_tools:
-    - "read_file"
-    - "write_file"
-    - "edit_file"
-    - "list_directory"
-    - "find_files"
-    - "grep_search"
-    - "run_tests"
-    - "noop"
-  allowed_commands:
-    - "go"
-    - "npm"
-    - "pytest"
-    - "make"
-  network:
-    allow_ai_provider: true
-    allow_external: false
+profiles:
+  generator:
+    allowed_tools:
+      - "read_file"
+      - "write_file"
+      - "edit_file"
+      - "list_directory"
+      - "find_files"
+      - "grep_search"
+      - "run_tests"
+      - "run_linter"
+      - "noop"
 ```
 
 ---

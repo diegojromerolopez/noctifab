@@ -16,14 +16,11 @@ This creates the default configuration structure in the `.noctifab/` directory:
 
 ```
 .noctifab/
-├── config.yaml          # Main YAML configuration file (safe to commit)
+├── config.yaml          # Main YAML configuration file (safe to commit, includes role profiles)
 ├── secrets.yaml         # Secret credentials — NEVER committed (gitignored)
 ├── .gitignore           # Ignores data/, secrets.yaml, logs, and lock files
 ├── data/
 │   └── noctifab.db      # SQLite local database (runtime, gitignored)
-├── profiles/
-│   ├── default.yaml     # Role permission boundaries (read-only tools, local only)
-│   └── orchestrator.yaml# Orchestrator permissions (allow all tools & external APIs)
 └── logs/                # Session and execution logs
 ```
 

@@ -90,6 +90,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.FindFilesTool{})
 		reg.Register(&services.GrepSearchTool{})
 		reg.Register(&services.RunTestsTool{Runner: sandboxRunner})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand})
 		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM client.
@@ -155,7 +156,7 @@ var serveCmd = &cobra.Command{
 		go mailbox.Start(ctx)
 
 		// Start REST HTTP server (loopback only, passes storyCh for /api/v1/stories).
-		server := services.StartDaemonServer(repo, mailbox, storyCh)
+		server := services.StartDaemonServer(repo, mailbox, storyCh, llmClient)
 		defer func() { _ = server.Close() }()
 
 		fmt.Printf("noctifab daemon started (PID %d). Listening on 127.0.0.1:18080\n", os.Getpid())

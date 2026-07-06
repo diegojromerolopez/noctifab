@@ -74,6 +74,7 @@ func TestOpenCodeProviderE2E(t *testing.T) {
 		}
 		if res == nil {
 			t.Fatal("expected non-nil LLMResponse")
+			return
 		}
 		if res.Reasoning != wantReasoning {
 			t.Errorf("reasoning: got %q, want %q", res.Reasoning, wantReasoning)

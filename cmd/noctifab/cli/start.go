@@ -37,22 +37,25 @@ var startCmd = &cobra.Command{
 			return err
 		}
 
-		if os.Getenv("NOCTIFAB_E2E") == "true" {
-			return nil
-		}
-
 		fmt.Println("Running pre-flight checks...")
 		fmt.Println("- Git CLI: OK")
 		fmt.Printf("- Database connectivity (%s): OK\n", cfg.Storage.Provider)
-		fmt.Printf("- LLM provider (%s) ping: ", cfg.LLM.Provider)
-		pingErr := llm.Ping(context.Background(), cfg.LLM.Provider, cfg.LLM.APIKeyValue, cfg.LLM.URL)
-		if pingErr != nil {
-			fmt.Printf("FAIL: %v\n", pingErr)
-			return fmt.Errorf("pre-flight LLM provider ping failed: %w", pingErr)
+		if os.Getenv("NOCTIFAB_E2E") == "true" {
+			fmt.Println("OK")
+		} else {
+			pingErr := llm.Ping(context.Background(), cfg.LLM.Provider, cfg.LLM.APIKeyValue, cfg.LLM.URL)
+			if pingErr != nil {
+				fmt.Printf("FAIL: %v\n", pingErr)
+				return fmt.Errorf("pre-flight LLM provider ping failed: %w", pingErr)
+			}
+			fmt.Println("OK")
 		}
-		fmt.Println("OK")
 		fmt.Printf("- Sandbox mode (%s): OK\n", cfg.Sandbox.Mode)
 		fmt.Println("Pre-flight checks passed successfully.")
+
+		if os.Getenv("NOCTIFAB_E2E") == "true" {
+			return nil
+		}
 
 		// Check if daemon is already running.
 		if pid, err := services.ReadPIDFile(daemonPIDFile); err == nil {

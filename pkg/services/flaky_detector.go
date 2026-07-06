@@ -66,7 +66,7 @@ func formatResults(results []TestRunResult) string {
 		if !r.Passed {
 			status = "FAIL"
 		}
-		sb.WriteString(fmt.Sprintf("Run %d: %s\n%s\n", i+1, status, r.Output))
+		_, _ = fmt.Fprintf(&sb, "Run %d: %s\n%s\n", i+1, status, r.Output)
 	}
 	return sb.String()
 }

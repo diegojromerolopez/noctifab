@@ -62,6 +62,7 @@ __pycache__/
 .noctifab/logs/
 todo.json
 *.json
+target/
 EOF
 git add .
 git commit -m "initial project structures and gitignore"
@@ -93,21 +94,31 @@ echo "Using pre-configured config.yaml:"
 cat .noctifab/config.yaml
 
 # 7. Run noctifab command
-STORY_PATH="roadmap/US-001.md"
-if [ "${PROJECT}" = "wc" ]; then
-  STORY_PATH="roadmap/US-002.md"
+MODE="${MODE:-start-one}"
+
+# Determine the sequence of stories to run for the project
+STORIES=()
+if [ "${PROJECT}" = "frontpunch" ]; then
+  STORIES=("roadmap/US-000.md" "roadmap/US-001.md")
+elif [ "${PROJECT}" = "wc" ]; then
+  STORIES=("roadmap/US-001.md" "roadmap/US-002.md")
+elif [ "${PROJECT}" = "calculator" ]; then
+  STORIES=("SPEC.md")
+else
+  STORIES=("roadmap/US-001.md")
 fi
 
-MODE="${MODE:-start-one}"
-if [ "${MODE}" = "start" ]; then
-  echo "Running noctifab start for ${STORY_PATH}..."
-  echo "start ${STORY_PATH}" | "${NOCTIFAB_BIN}" start --wait
-  # Stop the daemon after completion
-  "${NOCTIFAB_BIN}" stop 2>/dev/null || true
-else
-  echo "Running noctifab start-one for ${STORY_PATH}..."
-  "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
-fi
+for STORY_PATH in "${STORIES[@]}"; do
+  if [ "${MODE}" = "start" ]; then
+    echo "Running noctifab start for ${STORY_PATH}..."
+    echo "start ${STORY_PATH}" | "${NOCTIFAB_BIN}" start --wait
+    # Stop the daemon after completion
+    "${NOCTIFAB_BIN}" stop 2>/dev/null || true
+  else
+    echo "Running noctifab start-one for ${STORY_PATH}..."
+    "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
+  fi
+done
 
 # 8. Verify results
 echo "Verifying results..."
@@ -122,8 +133,13 @@ elif [ "${PROJECT}" = "todo-cli" ]; then
     exit 1
   fi
 elif [ "${PROJECT}" = "wc" ]; then
-  if [ ! -f "Cargo.toml" ] || [ ! -f "src/main.rs" ]; then
+  if { [ ! -f "Cargo.toml" ] || [ ! -f "src/main.rs" ]; } && { [ ! -f "wc/Cargo.toml" ] || [ ! -f "wc/src/main.rs" ]; }; then
     echo "❌ Error: Cargo.toml or src/main.rs was not created/modified!"
+    exit 1
+  fi
+elif [ "${PROJECT}" = "calculator" ]; then
+  if [ ! -f "calculator.rb" ] && [ ! -f "lib/calculator.rb" ] && [ ! -f "lib/calculator/cli.rb" ]; then
+    echo "❌ Error: calculator.rb or lib/calculator/cli.rb was not created/modified!"
     exit 1
   fi
 else

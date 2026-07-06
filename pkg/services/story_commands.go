@@ -33,6 +33,8 @@ type StartUserStoryCmd struct {
 	Path string
 	// StoryCh is the channel through which the resolved StoryWorkItem is forwarded.
 	StoryCh chan<- StoryWorkItem
+	// LLMClient is used to generate the roadmap dynamically if missing.
+	LLMClient domain.LLMClient
 }
 
 // Execute reads the user story markdown file and sends the work item to the story channel.
@@ -44,7 +46,19 @@ func (c *StartUserStoryCmd) Execute(ctx context.Context, repo domain.StateReposi
 
 	data, err := os.ReadFile(absPath)
 	if err != nil {
-		return fmt.Errorf("failed to read user story %q: %w", absPath, err)
+		// If read fails, check if SPEC.md exists in the project root
+		projectPath := filepath.Dir(filepath.Dir(absPath))
+		specPath := filepath.Join(projectPath, "SPEC.md")
+		if _, specErr := os.Stat(specPath); specErr == nil && c.LLMClient != nil {
+			fmt.Printf("Story file %q not found, but SPEC.md exists. Generating roadmap...\n", absPath)
+			if genErr := GenerateRoadmap(ctx, projectPath, c.LLMClient); genErr == nil {
+				// Retry reading the story file!
+				data, err = os.ReadFile(absPath)
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read user story %q: %w", absPath, err)
+		}
 	}
 
 	logPath, err := storyLogPath(absPath)
@@ -67,6 +81,8 @@ type StartDirectoryCmd struct {
 	DirPath string
 	// StoryCh is the channel through which StoryWorkItems are forwarded.
 	StoryCh chan<- StoryWorkItem
+	// LLMClient is used to generate the roadmap dynamically if missing.
+	LLMClient domain.LLMClient
 }
 
 // Execute walks the directory, finds all *.md files (sorted), reads each, and sends work items.
@@ -76,19 +92,42 @@ func (c *StartDirectoryCmd) Execute(ctx context.Context, repo domain.StateReposi
 		return fmt.Errorf("cannot resolve directory path %q: %w", c.DirPath, err)
 	}
 
-	var mdFiles []string
-	walkErr := filepath.WalkDir(absDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
-			mdFiles = append(mdFiles, path)
-		}
-		return nil
-	})
+	// Helper to find md files
+	findMdFiles := func() ([]string, error) {
+		var mdFiles []string
+		walkErr := filepath.WalkDir(absDir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
+				mdFiles = append(mdFiles, path)
+			}
+			return nil
+		})
+		return mdFiles, walkErr
+	}
+
+	mdFiles, walkErr := findMdFiles()
 	if walkErr != nil {
 		return fmt.Errorf("failed to scan directory %q: %w", absDir, walkErr)
 	}
+
+	// If no md files are found, but SPEC.md exists in the parent directory, generate!
+	if len(mdFiles) == 0 && c.LLMClient != nil {
+		projectPath := filepath.Dir(absDir)
+		specPath := filepath.Join(projectPath, "SPEC.md")
+		if _, specErr := os.Stat(specPath); specErr == nil {
+			fmt.Printf("No user stories found in %q, but SPEC.md exists. Generating roadmap...\n", absDir)
+			if genErr := GenerateRoadmap(ctx, projectPath, c.LLMClient); genErr == nil {
+				// Re-scan directory
+				mdFiles, walkErr = findMdFiles()
+				if walkErr != nil {
+					return fmt.Errorf("failed to scan directory %q after roadmap generation: %w", absDir, walkErr)
+				}
+			}
+		}
+	}
+
 
 	sort.Strings(mdFiles)
 

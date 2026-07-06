@@ -157,7 +157,7 @@ func (a *ListenerAgent) ruleBasedParse(input string) Intent {
 
 // routeIntent dispatches the parsed intent to the daemon via HTTP.
 func (a *ListenerAgent) routeIntent(ctx context.Context, intent Intent) {
-	ctx, span := telemetry.Tracer().Start(ctx, "routeIntent",
+	_, span := telemetry.Tracer().Start(ctx, "routeIntent",
 		trace.WithAttributes(attribute.String("intent_kind", string(intent.Kind))))
 	defer span.End()
 	switch intent.Kind {

@@ -164,7 +164,7 @@ func TestFailoverClient(t *testing.T) {
 		}
 
 		// Second call should succeed
-		resp, err = client.Complete(context.Background(), "hello again")
+		_, err = client.Complete(context.Background(), "hello again")
 		if err != nil {
 			t.Fatalf("unexpected error on second call: %v", err)
 		}

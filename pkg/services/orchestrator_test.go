@@ -73,6 +73,7 @@ func TestOrchestrator_Initialization(t *testing.T) {
 	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
 	if orch == nil {
 		t.Fatal("expected orchestrator instance, got nil")
+		return
 	}
 
 	if orch.vcsClient != vcsClient {

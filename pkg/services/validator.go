@@ -47,11 +47,11 @@ var defaultRoleProfiles = map[string]ProfileConfig{
 		AllowedCommands: []string{},
 	},
 	"tester": {
-		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
 		AllowedCommands: []string{},
 	},
 	"generator": {
-		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
 		AllowedCommands: []string{},
 	},
 }

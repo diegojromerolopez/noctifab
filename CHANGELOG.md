@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-06
+
+### Added
+- **Language-Agnostic Linter Tooling**: Implemented `RunLinterTool` (`run_linter` tool) that executes the project's configured `linter_command` inside the sandbox workspace, exposing it to both Generator and Tester agents for local formatting and style checks.
+- **Language-Agnostic System Prompts**: Generalized agent prompts in `client.go`, removing Python-specific and project-specific instructions (e.g. `pytest`, `threading`, `redis`) to comply with repository agnosticism guidelines.
+- **Instruction to Avoid Truncation Placeholders**: Added specific instructions to prompts warning agents not to include `[TRUNCATED]` placeholders in `target_content` parameters for file editing tools.
+
+### Changed
+- **Incremental Agent State Retention**: Refactored the orchestrator's task retry logic in `orchestrator_execute.go` to keep and build on top of previous worker branch commits instead of executing a hard reset (`git reset --hard HEAD~1`) on validation failures.
+
+## [0.6.0] - 2026-07-06
+
+### Added
+- **Autonomous User Story Generation from SPEC.md**: Added support for spawning a dynamic **Product Manager Agent** to decompose `SPEC.md` into detailed user stories when the `roadmap/` directory is empty or missing, or when `SPEC.md` is passed directly as the input.
+
 ## [0.5.0] - 2026-07-05
 
 ### Added

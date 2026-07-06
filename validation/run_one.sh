@@ -36,6 +36,7 @@ case "${PROJECT}" in
   frontpunch) TARGETS="frontpunch/client.py" ;;
   todo-cli)   TARGETS="cmd/todo/main.go" ;;
   wc)         TARGETS="Cargo.toml;src/main.rs" ;;
+  calculator) TARGETS="calculator.rb;lib/calculator/cli.rb" ;;
   *)          TARGETS="" ;;
 esac
 

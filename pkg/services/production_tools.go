@@ -403,6 +403,28 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	return t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
 }
 
+// RunLinterTool implements run_linter.
+type RunLinterTool struct {
+	Runner        Sandbox
+	LinterCommand string
+}
+
+func (t *RunLinterTool) Name() string { return "run_linter" }
+func (t *RunLinterTool) Description() string {
+	return "run_linter runs the project's linter check in the sandbox workspace to verify syntax and style. Args: {}"
+}
+func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
+	if t.Runner == nil {
+		return "", errors.New("no sandbox execution engine registered")
+	}
+	if t.LinterCommand == "" {
+		return "No linter command configured for this project.", nil
+	}
+	runCtx, runCancel := context.WithTimeout(ctx, 60*time.Second)
+	defer runCancel()
+	return t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")
+}
+
 // RequestTestFixTool implements request_test_fix.
 type RequestTestFixTool struct{}
 

@@ -81,7 +81,7 @@ func TestDisambiguate_NoActions(t *testing.T) {
 func TestDisambiguate_GitLogInContext(t *testing.T) {
 	dir, err := os.MkdirTemp("", "noctifab-test-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	git := NewGitClient(dir)
 	_, err = git.Run(context.Background(), true, "init")
