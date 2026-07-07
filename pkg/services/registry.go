@@ -26,6 +26,8 @@ type Registry interface {
 	Get(name string) (Tool, bool)
 	// List returns all registered tools, sorted deterministically by name.
 	List() []Tool
+	// Tools returns a map of all registered tools.
+	Tools() map[string]Tool
 }
 
 // ToolRegistry is the default concurrent-safe memory map implementation of Registry.
@@ -57,6 +59,17 @@ func (r *ToolRegistry) Get(name string) (Tool, bool) {
 	defer r.mu.RUnlock()
 	t, exists := r.tools[name]
 	return t, exists
+}
+
+// Tools returns a map of all registered tools.
+func (r *ToolRegistry) Tools() map[string]Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	res := make(map[string]Tool, len(r.tools))
+	for k, v := range r.tools {
+		res[k] = v
+	}
+	return res
 }
 
 // List returns all registered tools sorted alphabetically by name to ensure

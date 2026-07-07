@@ -57,6 +57,11 @@ func (r *SQLiteRepository) Close() error {
 	return r.db.Close()
 }
 
+// DB returns the underlying sql.DB instance.
+func (r *SQLiteRepository) DB() *sql.DB {
+	return r.db
+}
+
 // Save persists the domain State in a transaction using OCC.
 func (r *SQLiteRepository) Save(ctx context.Context, state *domain.State) error {
 	ctx, span := telemetry.Tracer().Start(ctx, "Save",

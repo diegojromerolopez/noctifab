@@ -68,8 +68,14 @@ var startOneCmd = &cobra.Command{
 			return err
 		}
 
-		// Initialize LLM Client
-		llmClient := llm.BuildFailoverClient(cfg, nil)
+		// Initialize LLM Client with database budget store.
+		var budgetStore domain.BudgetStore
+		if sqliteRepo, ok := repo.(*storage.SQLiteRepository); ok {
+			budgetStore = storage.NewSQLiteBudgetStore(sqliteRepo.DB())
+		} else if pgRepo, ok := repo.(*storage.PostgresRepository); ok {
+			budgetStore = storage.NewPostgresBudgetStore(pgRepo.DB())
+		}
+		llmClient := llm.BuildFailoverClient(cfg, budgetStore)
 
 		// Check if input is SPEC.md, or if we want to auto-generate from SPEC.md when missing
 		inputBase := filepath.Base(cfg.Input)
@@ -227,9 +233,11 @@ var startOneCmd = &cobra.Command{
 		validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
 		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
-		evaluator := services.NewTestValidator(sandboxRunner, false, nil, nil)
+		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
+
+		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools())
 
 		orchConfig := services.OrchestratorConfig{
 			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
@@ -243,7 +251,7 @@ var startOneCmd = &cobra.Command{
 			AutoCreatePR:     cfg.VCS.PullRequest.AutoCreate,
 		}
 
-		orchestrator := services.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil, nil)
+		orchestrator := services.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil, repairHandler)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

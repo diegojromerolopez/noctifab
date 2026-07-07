@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-07-08
+
+### Added
+- **Exposed Database and Tool Registry Getters**: Added public `DB()` methods to `SQLiteRepository` and `PostgresRepository`, and a `Tools()` method to `Registry`/`ToolRegistry` to support instantiating the budget and repair handlers in downstream commands.
+
+### Fixed
+- **Autonomy Wiring in CLI Commands**: Wired `SQLiteBudgetStore` / `PostgresBudgetStore` into the failover LLM client, enabled `WatchdogRepair` as the default orchestrator `repairHandler`, and configured the `TestValidator` with the LLM client and tools map to enable self-repair and flaky-test stabilization in both the `serve` and `start-one` subcommands.
+
 ## [0.8.1] - 2026-07-07
 
 ### Fixed

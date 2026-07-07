@@ -44,6 +44,11 @@ func (r *PostgresRepository) Close() error {
 	return r.db.Close()
 }
 
+// DB returns the underlying sql.DB instance.
+func (r *PostgresRepository) DB() *sql.DB {
+	return r.db
+}
+
 // Save persists the domain State in a transaction using SELECT FOR UPDATE row locking and OCC version checking.
 func (r *PostgresRepository) Save(ctx context.Context, state *domain.State) error {
 	ctx, span := telemetry.Tracer().Start(ctx, "Save",
