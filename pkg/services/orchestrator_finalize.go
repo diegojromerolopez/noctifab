@@ -70,12 +70,16 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	}
 
 	// Create pull request
-	prTitle := fmt.Sprintf("feat: %s", state.Metadata.FeatureName)
-	prBody := buildPRBody(state)
-	_, prErr := o.vcsClient.CreatePullRequest(ctx, prTitle, prBody, integrationBranch, baseBranch)
-	if prErr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ Failed to create Pull Request for story %s: %v\n", state.Metadata.FeatureName, prErr)
-		return fmt.Errorf("PR creation failed: %w", prErr)
+	if o.cfg.AutoCreatePR {
+		prTitle := fmt.Sprintf("feat: %s", state.Metadata.FeatureName)
+		prBody := buildPRBody(state)
+		_, prErr := o.vcsClient.CreatePullRequest(ctx, prTitle, prBody, integrationBranch, baseBranch)
+		if prErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Failed to create Pull Request for story %s: %v\n", state.Metadata.FeatureName, prErr)
+			return fmt.Errorf("PR creation failed: %w", prErr)
+		}
+	} else {
+		fmt.Printf("Skipping PR creation for story %s (auto_create is false)\n", state.Metadata.FeatureName)
 	}
 
 	// Prominent completion feedback to operator

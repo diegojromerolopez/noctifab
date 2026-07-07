@@ -11,6 +11,7 @@ validation/projects/*/.noctifab/secrets.yaml
 # Local runtime data and logs (per-project)
 validation/projects/*/.noctifab/data/
 validation/projects/*/.noctifab/logs/
+validation/projects/*/output/
 
 # Captured validation logs written to the host repo root
 .validation-logs/

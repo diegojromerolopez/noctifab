@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-07-07
+
+### Added
+- **Echo Validation Project**: Added the `echo` minimal validation project in Go, including `SPEC.md`, user story roadmap, and configs.
+- **Validation Workspace Bind-Mounting**: Updated validation runner and harness to automatically create and bind-mount `output/` folders (`src/`, `dist/`, `log/`, and `feedback/`) from the host under `validation/projects/<project>/output/`.
+- **Gitignore and Dockerignore Exclusions**: Excluded the outputted validation project `output/` directory from git tracking and docker build context.
+- **Conditional PR Creation**: Modified `noctifab` to make PR creation conditional on `VCS.PullRequest.AutoCreate` in `OrchestratorConfig`, allowing E2E runs to bypass PR creation and just commit changes to local Git.
+- **Validation Host Pre-Clean**: Configured validation runner (`run_one.sh`) to automatically clean and delete the target project's host `output/` directory before recreating directories and running the validation container, ensuring fresh test executions.
+- **Auto-create Configuration**: Added configuration for `pull_request.auto_create` set to `false` directly inside the echo project's `.noctifab/config.yaml` to control PR creation behavior directly.
+
 ## [0.7.0] - 2026-07-06
 
 ### Added

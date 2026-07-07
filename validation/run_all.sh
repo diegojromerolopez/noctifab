@@ -66,12 +66,13 @@ fi
 # Step 2. Launch every project's run_one.sh in parallel.
 pids=()
 for project in "${PROJECTS[@]}"; do
+  mkdir -p "${ROOT}/validation/projects/${project}/output/log"
   if [ "${SKIP_BUILD}" -eq 1 ]; then
     NOCTIFAB_SKIP_BUILD=1 "${SCRIPT_DIR}/run_one.sh" "${project}" \
-      >>"${LOG_DIR}/${project}.wrap.log" 2>&1 &
+      >>"${ROOT}/validation/projects/${project}/output/log/${project}.wrap.log" 2>&1 &
   else
     "${SCRIPT_DIR}/run_one.sh" "${project}" \
-      >>"${LOG_DIR}/${project}.wrap.log" 2>&1 &
+      >>"${ROOT}/validation/projects/${project}/output/log/${project}.wrap.log" 2>&1 &
   fi
   pids+=("$!")
   echo "[$(date +%H:%M:%S)] launched run_one.sh for ${project} (pid=$!)" | tee -a "${WRAPPER_LOG}"

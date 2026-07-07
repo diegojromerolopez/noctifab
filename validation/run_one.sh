@@ -27,7 +27,11 @@ IMAGE_TAG_OVERRIDE="${2:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${NOCTIFAB_BUILD_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
-LOG_DIR="${NOCTIFAB_LOG_DIR:-${ROOT}/.validation-logs}"
+
+# Clean up output directory from previous runs
+rm -rf "${ROOT}/validation/projects/${PROJECT}/output"
+
+LOG_DIR="${NOCTIFAB_LOG_DIR:-${ROOT}/validation/projects/${PROJECT}/output/log}"
 mkdir -p "${LOG_DIR}"
 
 # Per-project artifact file expectations. Keep these in sync with validate.sh
@@ -37,6 +41,7 @@ case "${PROJECT}" in
   todo-cli)   TARGETS="cmd/todo/main.go" ;;
   wc)         TARGETS="Cargo.toml;src/main.rs" ;;
   calculator) TARGETS="calculator.rb;lib/calculator/cli.rb" ;;
+  echo)       TARGETS="cmd/echo/main.go" ;;
   *)          TARGETS="" ;;
 esac
 
@@ -68,14 +73,22 @@ if [ ! -f "${SECRETS_FILE}" ]; then
   exit 2
 fi
 
+# Ensure host mount points exist for source code and compiled binaries
+SRC_DIR="${ROOT}/validation/projects/${PROJECT}/output/src"
+DIST_DIR="${ROOT}/validation/projects/${PROJECT}/output/dist"
+mkdir -p "${SRC_DIR}"
+mkdir -p "${DIST_DIR}"
+
 # Run with --rm so the container is cleaned up after exit; capture combined
-# stdout/stderr to the log file. The only bind-mount is the read-only
-# secrets.yaml; no -e LLM credential injection.
+# stdout/stderr to the log file. The bind-mounts include the read-only
+# secrets.yaml, and read-write source/dist folders.
 set +e
 docker run \
   --rm \
   --name "${CONTAINER}" \
   -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
+  -v "${SRC_DIR}:/app/src_mount" \
+  -v "${DIST_DIR}:/app/dist_mount" \
   -e PROJECT="${PROJECT}" \
   -e MODE="${MODE:-start-one}" \
   "${IMAGE}" >"${LOG_FILE}" 2>&1

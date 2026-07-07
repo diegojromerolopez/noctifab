@@ -113,6 +113,7 @@ func TestOrchestrator_FinalizeUserStory(t *testing.T) {
 		orch := &Orchestrator{
 			vcsClient: vcs,
 			git:       git,
+			cfg:       OrchestratorConfig{AutoCreatePR: true},
 		}
 
 		state := &domain.State{

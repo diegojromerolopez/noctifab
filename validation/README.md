@@ -7,6 +7,7 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 1. **`frontpunch`**: Checks out the base `main` branch of the frontpunch spec and executes `roadmap/US-001.md`. Validates that the Python worker infrastructure is successfully planned, written, tested, and passing.
 2. **`todo-cli`**: Checks out the base `main` branch of a clean Todo CLI project spec and executes `roadmap/US-001.md`. Validates that task addition and listing commands are planned, implemented in `cmd/todo/main.go` and `internal/task/`, tested, and validated.
 3. **`wc`**: Checks out the base `main` branch of a Rust `wc` (word count) project spec and executes `roadmap/US-002.md`. Validates that a UNIX `wc`-compatible CLI is planned and implemented in Rust following SOLID/DDD principles and memory-efficient streaming, with `Cargo.toml` and `src/main.rs` present and tests passing.
+4. **`echo`**: Checks out the base `main` branch of a Go `echo` project spec and executes `roadmap/US-001.md`. Validates that a minimal `echo`-compatible CLI is planned and implemented in Go following clean formatting and with `cmd/echo/main.go` present and tests passing.
 
 ---
 
@@ -34,6 +35,7 @@ needs on top of the shared `noctifab-validation:base` image:
 | `frontpunch`| `noctifab-validation:base`   | python3, pip, black, ruff, mypy  | `frontpunch/worker.py`                    |
 | `todo-cli`  | `noctifab-validation:base`   | go                               | `cmd/todo/main.go`                        |
 | `wc`        | `rust:1.84-alpine` (+ base)  | rustc, cargo, rustfmt, clippy    | `Cargo.toml`, `src/main.rs`               |
+| `echo`      | `noctifab-validation:base`   | go                               | `cmd/echo/main.go`                        |
 
 The base image (`Dockerfile.validation`) is a multi-stage build: a
 `golang:1.25-alpine` builder compiles the `noctifab` binary, which is then
@@ -82,7 +84,10 @@ Override the host path to mount by setting `NOCTIFAB_SECRETS_FILE`.
    - Runs `git init`, checks out branch `main`, commits the initial config,
      and sets up a local bare `origin` so `git push` works without a remote.
    - Runs `noctifab init` then `noctifab start-one` (or `noctifab start --wait`
-     when `MODE=start`) to autonomously decompose and implement `roadmap/US-001.md`.
+     when `MODE=start`) using the input spec (`SPEC.md`).
+     
+   > [!IMPORTANT]
+   > **Spec-Driven Validation Rule:** Checking in pre-written roadmap user stories (e.g. under `roadmap/`) for new validation projects is **strictly forbidden**. Validation projects must be defined and run solely based on `SPEC.md` to verify that `noctifab` is capable of autonomously decomposing specifications into user stories on the fly using its Product Manager Agent.
 5. **Validation check**: `validate.sh` asserts the target source file(s)
    were created/modified and that the test suite executed; exits non-zero
    otherwise.
@@ -134,9 +139,9 @@ make validate PROJECT=todo-cli
 ```
 
 ### 4. Output artifacts
-- `.validation-logs/<project>.log` — full combined stdout/stderr of the container.
-- `.validation-logs/<project>.wrap.log` — `run_one.sh` build/launch/exit trace.
-- `.validation-logs/run_all.<timestamp>.log` — `run_all.sh` aggregate log.
-- `<PROJECT>_FEEDBACK.md` at the repo root — structured review of the run.
-  These feedback files are git-ignored (see `.gitignore` `*_FEEDBACK.md`) as
-  they are local analysis artifacts, not source.
+- `validation/projects/<project>/log/<project>.log` — full combined stdout/stderr of the container.
+- `validation/projects/<project>/log/<project>.wrap.log` — `run_one.sh` build/launch/exit trace.
+- `validation/projects/<project>/feedback/<PROJECT>_FEEDBACK.md` — structured review of the run.
+- `.validation-logs/run_all.<timestamp>.log` — `run_all.sh` global aggregate log.
+  These feedback and log files are git-ignored (see `.gitignore`) as they are local analysis artifacts, not source.
+

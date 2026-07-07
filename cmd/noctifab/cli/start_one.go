@@ -240,6 +240,7 @@ var startOneCmd = &cobra.Command{
 			OCCBackoffBase:   time.Duration(cfg.OCCBackoffBase),
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
 			MaxDuration:      time.Duration(cfg.MaxDuration),
+			AutoCreatePR:     cfg.VCS.PullRequest.AutoCreate,
 		}
 
 		orchestrator := services.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil, nil)

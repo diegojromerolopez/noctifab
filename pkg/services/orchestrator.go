@@ -29,6 +29,7 @@ type OrchestratorConfig struct {
 	OCCBackoffBase   time.Duration
 	OCCBackoffFactor float64
 	MaxDuration      time.Duration
+	AutoCreatePR     bool
 }
 
 type Orchestrator struct {

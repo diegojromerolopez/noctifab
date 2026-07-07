@@ -363,10 +363,12 @@ def main(argv):
     cleaned = clean_log_lines(lines)
     body = render(project, targets, exit_code, cleaned)
 
-    out_path = repo_root / feedback_filename(project)
+    out_dir = repo_root / "validation" / "projects" / project / "output" / "feedback"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / feedback_filename(project)
     out_path.write_text(body, encoding="utf-8")
     verdict = "PASS" if (exit_code == 0 and not detect_artifact(cleaned, targets)[1]) else "FAIL"
-    rel = out_path
+    rel = out_path.relative_to(repo_root) if repo_root in out_path.parents else out_path
     print(f"wrote {rel} ({verdict})")
     print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] wrote {rel}")
     return 0

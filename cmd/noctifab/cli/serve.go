@@ -130,6 +130,7 @@ var serveCmd = &cobra.Command{
 			OCCBackoffBase:   time.Duration(cfg.OCCBackoffBase),
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
 			MaxDuration:      time.Duration(cfg.MaxDuration),
+			AutoCreatePR:     cfg.VCS.PullRequest.AutoCreate,
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.

@@ -102,7 +102,7 @@ if [ "${PROJECT}" = "frontpunch" ]; then
   STORIES=("roadmap/US-000.md" "roadmap/US-001.md")
 elif [ "${PROJECT}" = "wc" ]; then
   STORIES=("roadmap/US-001.md" "roadmap/US-002.md")
-elif [ "${PROJECT}" = "calculator" ]; then
+elif [ "${PROJECT}" = "calculator" ] || [ "${PROJECT}" = "echo" ]; then
   STORIES=("SPEC.md")
 else
   STORIES=("roadmap/US-001.md")
@@ -142,10 +142,49 @@ elif [ "${PROJECT}" = "calculator" ]; then
     echo "❌ Error: calculator.rb or lib/calculator/cli.rb was not created/modified!"
     exit 1
   fi
+elif [ "${PROJECT}" = "echo" ]; then
+  if [ ! -f "cmd/echo/main.go" ] && [ ! -f "main.go" ]; then
+    echo "❌ Error: cmd/echo/main.go (or main.go) was not created/modified!"
+    exit 1
+  fi
 else
   echo "⚠ Warning: No specific file check defined for project ${PROJECT}."
 fi
 
 echo "✅ Success: Noctifab executed autonomously, implemented US-001 features, and passed validation for ${PROJECT}!"
+
+# Copy the generated code to the src mount if present
+if [ -d "/app/src_mount" ]; then
+  echo "Copying generated code to src mount..."
+  rm -rf /app/src_mount/*
+  cp -a . /app/src_mount/
+fi
+
+# Locate and copy binary to dist mount if present
+if [ -d "/app/dist_mount" ]; then
+  echo "Checking and compiling binary if project generates one..."
+  rm -rf /app/dist_mount/*
+  if [ "${PROJECT}" = "todo-cli" ]; then
+    if [ -f "cmd/todo/main.go" ]; then
+      go build -o /app/dist_mount/todo ./cmd/todo
+    elif [ -f "main.go" ]; then
+      go build -o /app/dist_mount/todo main.go
+    fi
+  elif [ "${PROJECT}" = "echo" ]; then
+    if [ -f "cmd/echo/main.go" ]; then
+      go build -o /app/dist_mount/echo-cli ./cmd/echo
+    elif [ -f "main.go" ]; then
+      go build -o /app/dist_mount/echo-cli main.go
+    fi
+  elif [ "${PROJECT}" = "wc" ]; then
+    cargo build --release
+    if [ -f "target/release/wc" ]; then
+      cp target/release/wc /app/dist_mount/
+    elif [ -f "wc/target/release/wc" ]; then
+      cp wc/target/release/wc /app/dist_mount/
+    fi
+  fi
+fi
+
 cd ..
 rm -rf "${TMP_DIR}"

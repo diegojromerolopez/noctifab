@@ -39,6 +39,8 @@ go.work.sum
 /validation/projects/*/.noctifab/secrets.yaml
 /validation/projects/*/.noctifab/data/
 /validation/projects/*/.noctifab/logs/
+/validation/projects/*/output/
+.validation-logs/
 
 # Feedback notes (local analysis artifacts, not source)
 *_FEEDBACK.md
