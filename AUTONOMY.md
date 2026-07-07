@@ -241,6 +241,7 @@ import (
     "context"
     "time"
     "math"
+    "strings"
 )
 
 type BudgetRecord struct {
@@ -297,7 +298,20 @@ func (s *sqliteBudgetStore) LoadBudget(ctx context.Context, date, provider strin
     row := s.db.QueryRowContext(ctx,
         `SELECT date, provider, tokens_in, tokens_out, cost_usd, updated_at
          FROM budget WHERE date = ? AND provider = ?`, date, provider)
-    // ... scan into BudgetRecord
+    var r domain.BudgetRecord
+    var updatedAt string
+    err := row.Scan(&r.Date, &r.Provider, &r.TokensIn, &r.TokensOut, &r.CostUSD, &updatedAt)
+    if err == sql.ErrNoRows {
+        return nil, nil
+    }
+    if err != nil {
+        return nil, err
+    }
+    r.UpdatedAt, err = time.Parse(time.RFC3339, updatedAt)
+    if err != nil {
+        r.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+    }
+    return &r, nil
 }
 
 func (s *sqliteBudgetStore) SaveBudget(ctx context.Context, record *domain.BudgetRecord) error {
@@ -314,7 +328,24 @@ func (s *sqliteBudgetStore) SaveBudget(ctx context.Context, record *domain.Budge
 }
 
 func (s *sqliteBudgetStore) ListBudgets(ctx context.Context, since time.Time) ([]domain.BudgetRecord, error) {
-    // ... SELECT with WHERE updated_at >= ?
+    rows, err := s.db.QueryContext(ctx,
+        `SELECT date, provider, tokens_in, tokens_out, cost_usd, updated_at
+         FROM budget WHERE updated_at >= ?`, since)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+    var records []domain.BudgetRecord
+    for rows.Next() {
+        var r domain.BudgetRecord
+        var updatedAt string
+        if err := rows.Scan(&r.Date, &r.Provider, &r.TokensIn, &r.TokensOut, &r.CostUSD, &updatedAt); err != nil {
+            return nil, err
+        }
+        r.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+        records = append(records, r)
+    }
+    return records, nil
 }
 ```
 
@@ -348,7 +379,10 @@ Add after successful response (before `return resp, nil`):
 ```go
 if f.budgetStore != nil {
     today := time.Now().UTC().Format("2006-01-02")
-    record, _ := f.budgetStore.LoadBudget(ctx, today, backend.Name)
+    record, err := f.budgetStore.LoadBudget(ctx, today, backend.Name)
+    if err != nil && err != sql.ErrNoRows {
+        return nil, err
+    }
     if record == nil {
         record = &domain.BudgetRecord{
             Date:      today,
@@ -360,7 +394,9 @@ if f.budgetStore != nil {
     record.TokensOut += countTokens(resp.Reasoning)
     record.CostUSD = domain.CostForTokens(backend.Name, record.TokensIn, record.TokensOut)
     record.UpdatedAt = time.Now()
-    _ = f.budgetStore.SaveBudget(ctx, record)
+    if err := f.budgetStore.SaveBudget(ctx, record); err != nil {
+        return nil, err
+    }
 }
 ```
 

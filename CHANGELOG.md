@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-07-07
+
+### Fixed
+- **Makefile validation-images target**: Added the missing recipe implementation for the `validate-images` target, which builds the base validation image and all per-project Docker validation images.
+- **Budget Save Error Handling**: Changed `FailoverClient` to propagate database persistence errors returned by `IncrementUsage` during API usage logging, rather than silently swallowing them and bypassing daily budget safeguards.
+- **Spec Improvements**: Resolved a missing `"strings"` import in `AUTONOMY.md` for `CostForTokens` and fully completed the missing `sqliteBudgetStore` stubs (`LoadBudget` and `ListBudgets`) in the level-5 specifications.
+- **PostgreSQL Cleanup and Rollbacks**: Integrated `budget_usage`, `validation_criteria`, and `active_agents` tables into the `noctifab clean` CLI command's PostgreSQL drop sequence and validation allowlist, preventing orphaned tables.
+
 ## [0.8.0] - 2026-07-07
 
 ### Added

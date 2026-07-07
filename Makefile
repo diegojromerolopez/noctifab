@@ -67,3 +67,11 @@ validate-all:
 	else \
 		./validation/run_all.sh; \
 	fi
+
+# Build base + all per-project validation Docker images
+validate-images:
+	@docker build -f validation/Dockerfile.validation -t noctifab-validation:base .
+	@for proj in $$(ls validation/projects); do \
+		docker build -f validation/projects/$$proj/Dockerfile -t "noctifab-validation:$$proj" . ; \
+	done
+

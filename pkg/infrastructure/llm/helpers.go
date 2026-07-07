@@ -69,4 +69,3 @@ func resolveGeminiURL(modelInput, apiKey string) string {
 	normModel := normalizeModel(modelInput)
 	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", normModel, apiKey)
 }
-

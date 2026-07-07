@@ -128,7 +128,6 @@ func (c *StartDirectoryCmd) Execute(ctx context.Context, repo domain.StateReposi
 		}
 	}
 
-
 	sort.Strings(mdFiles)
 
 	for _, mdPath := range mdFiles {

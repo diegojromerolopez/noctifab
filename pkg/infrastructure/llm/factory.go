@@ -31,7 +31,7 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 				Client: client,
 			})
 		}
-		
+
 		// Determine failover settings. Default to 5 minutes cooldown, 0 call limit,
 		// and use the first config's max budget (or global defaults).
 		cooldown := 5 * time.Minute
@@ -40,7 +40,7 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 		}
 		maxLimit := cfg.LLM.Failover.MaxCallLimit
 		maxBudget := cfg.LLM.MaxBudgetUSD
-		
+
 		return NewFailoverClient(backends, cooldown, maxLimit, budgetStore, maxBudget)
 	}
 

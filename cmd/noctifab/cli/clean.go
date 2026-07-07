@@ -139,7 +139,18 @@ func cleanPostgres(cfg *config.Config) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	tables := []string{"actions", "clarifications", "tasks", "workspace_files", "token_usage", "state", "schema_migrations"}
+	tables := []string{
+		"actions",
+		"clarifications",
+		"tasks",
+		"workspace_files",
+		"token_usage",
+		"validation_criteria",
+		"active_agents",
+		"budget_usage",
+		"state",
+		"schema_migrations",
+	}
 	if err := validateTables(tables); err != nil {
 		return err
 	}
@@ -222,6 +233,7 @@ func validateTables(tables []string) error {
 		"schema_migrations":   true,
 		"validation_criteria": true,
 		"active_agents":       true,
+		"budget_usage":        true,
 	}
 	for _, tbl := range tables {
 		if !allowedTables[tbl] {

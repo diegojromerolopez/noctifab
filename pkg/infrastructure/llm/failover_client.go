@@ -103,7 +103,9 @@ func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.L
 
 		resp, err := backend.Client.Complete(ctx, prompt)
 		if err == nil {
-			f.recordUsage(ctx, today, backend.Model, prompt, resp)
+			if err := f.recordUsage(ctx, today, backend.Model, prompt, resp); err != nil {
+				return nil, err
+			}
 			return resp, nil
 		}
 
@@ -136,17 +138,20 @@ func (f *FailoverClient) checkBudget(ctx context.Context, date string, model str
 	return nil
 }
 
-func (f *FailoverClient) recordUsage(ctx context.Context, date string, model string, prompt string, resp *domain.LLMResponse) {
+func (f *FailoverClient) recordUsage(ctx context.Context, date string, model string, prompt string, resp *domain.LLMResponse) error {
 	if f.budgetStore == nil || f.maxBudgetUSD <= 0 {
-		return
+		return nil
 	}
 	promptTokens := len(prompt) / estTokensPerChar
 	completionTokens := estimateCompletionTokens(resp)
 	cost := domain.CostForTokens(model, promptTokens, completionTokens)
 	if cost <= 0 {
-		return
+		return nil
 	}
-	_ = f.budgetStore.IncrementUsage(ctx, date, model, cost)
+	if err := f.budgetStore.IncrementUsage(ctx, date, model, cost); err != nil {
+		return fmt.Errorf("failed to record budget usage: %w", err)
+	}
+	return nil
 }
 
 func estimateCompletionTokens(resp *domain.LLMResponse) int {

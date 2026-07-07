@@ -3,6 +3,8 @@ package llm
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,8 +13,9 @@ import (
 )
 
 type mockBudgetStore struct {
-	mu      sync.Mutex
-	records map[string]float64
+	mu           sync.Mutex
+	records      map[string]float64
+	incrementErr error
 }
 
 func (m *mockBudgetStore) GetDailyUsage(_ context.Context, date string, provider string) (float64, error) {
@@ -24,6 +27,9 @@ func (m *mockBudgetStore) GetDailyUsage(_ context.Context, date string, provider
 func (m *mockBudgetStore) IncrementUsage(_ context.Context, date string, provider string, costUSD float64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.incrementErr != nil {
+		return m.incrementErr
+	}
 	m.records[date+"|"+provider] += costUSD
 	return nil
 }
@@ -248,6 +254,24 @@ func TestFailoverClient(t *testing.T) {
 		}
 		if resp.Reasoning != "m1 response" {
 			t.Errorf("expected m1 response, got %s", resp.Reasoning)
+		}
+	})
+
+	t.Run("budget store save error fails completion", func(t *testing.T) {
+		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "m1 response"}}
+		backends := []NamedClient{
+			{Name: "model-1", Model: "gpt-4o", Client: m1},
+		}
+		store := newMockBudgetStore()
+		store.incrementErr = fmt.Errorf("DB connection lost")
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 100.00)
+
+		_, err := client.Complete(context.Background(), "hello")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "failed to record budget usage") && !strings.Contains(err.Error(), "DB connection lost") {
+			t.Errorf("expected budget save error, got: %v", err)
 		}
 	})
 }
