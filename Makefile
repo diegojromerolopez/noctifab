@@ -22,6 +22,10 @@ clean:
 test:
 	CGO_ENABLED=0 go test ./...
 
+# Run containerized E2E tests
+test-e2e:
+	docker compose -f tests/e2e/docker-compose.yml up --build --exit-code-from test-runner
+
 # Run static analysis linter as specified in AGENTS.md
 lint:
 	docker run -t --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:v2.12.2 golangci-lint run
@@ -33,6 +37,7 @@ help:
 	@echo "  build           - Compile noctifab binary to dist/ folder"
 	@echo "  clean           - Remove build artifacts (dist/ directory)"
 	@echo "  test            - Run the Go unit test suite"
+	@echo "  test-e2e        - Run the containerized E2E test suite"
 	@echo "  lint            - Run static analysis lint checks using Docker"
 	@echo "  validate        - Run autonomous E2E check for one project inside Docker"
 	@echo "  validate-all    - Run all validation projects in parallel inside Docker"
