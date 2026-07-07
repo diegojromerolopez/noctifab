@@ -8,6 +8,7 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 2. **`todo-cli`**: Checks out the base `main` branch of a clean Todo CLI project spec and executes `roadmap/US-001.md`. Validates that task addition and listing commands are planned, implemented in `cmd/todo/main.go` and `internal/task/`, tested, and validated.
 3. **`wc`**: Checks out the base `main` branch of a Rust `wc` (word count) project spec and executes `roadmap/US-002.md`. Validates that a UNIX `wc`-compatible CLI is planned and implemented in Rust following SOLID/DDD principles and memory-efficient streaming, with `Cargo.toml` and `src/main.rs` present and tests passing.
 4. **`echo`**: Checks out the base `main` branch of a Go `echo` project spec and executes `roadmap/US-001.md`. Validates that a minimal `echo`-compatible CLI is planned and implemented in Go following clean formatting and with `cmd/echo/main.go` present and tests passing.
+5. **`calculator`**: Checks out the base `main` branch of a Ruby terminal calculator project spec and executes `SPEC.md`. Validates that a terminal-based calculator is planned and implemented in Ruby following SOLID/DDD principles and RuboCop lint rules, with `calculator.rb` and `lib/calculator/cli.rb` present and RSpec tests passing.
 
 ---
 
@@ -24,7 +25,9 @@ validation/
 └── projects/
     ├── frontpunch/{Dockerfile, SPEC.md, roadmap/, .noctifab/}
     ├── todo-cli/{Dockerfile, SPEC.md, roadmap/, .noctifab/}
-    └── wc/{Dockerfile, SPEC.md, roadmap/, .noctifab/}
+    ├── wc/{Dockerfile, SPEC.md, roadmap/, .noctifab/}
+    ├── echo/{Dockerfile, SPEC.md, .noctifab/}
+    └── calculator/{Dockerfile, SPEC.md, .noctifab/}
 ```
 
 Each project owns its own `Dockerfile` that layers the language toolchain it
@@ -36,6 +39,7 @@ needs on top of the shared `noctifab-validation:base` image:
 | `todo-cli`  | `noctifab-validation:base`   | go                               | `cmd/todo/main.go`                        |
 | `wc`        | `rust:1.84-alpine` (+ base)  | rustc, cargo, rustfmt, clippy    | `Cargo.toml`, `src/main.rs`               |
 | `echo`      | `noctifab-validation:base`   | go                               | `cmd/echo/main.go`                        |
+| `calculator`| `ruby:3.2-alpine` (+ base)   | ruby, rspec, rubocop             | `calculator.rb`, `lib/calculator/cli.rb`  |
 
 The base image (`Dockerfile.validation`) is a multi-stage build: a
 `golang:1.25-alpine` builder compiles the `noctifab` binary, which is then

@@ -30,7 +30,7 @@ All functions performing I/O, database writes, git operations, or LLM network re
 The stateless agent interacts with the workspace by executing actions. To add a new capability, implement the `Tool` interface:
 
 ```go
-package usecase
+package services
 
 import (
 	"context"
@@ -55,7 +55,7 @@ func (t *MyCustomTool) Execute(ctx context.Context, state *domain.State, args ma
 After implementing the tool, register it in the initialization pipelines inside `cmd/noctifab/cli/start.go` and `cmd/noctifab/cli/run_once.go`:
 
 ```go
-reg.Register(&usecase.MyCustomTool{})
+reg.Register(&services.MyCustomTool{})
 ```
 
 ---
