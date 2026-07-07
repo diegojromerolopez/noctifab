@@ -9,17 +9,25 @@ storage:
     provider: sqlite
     conn_string: .noctifab/data/noctifab.db
     json_file_path: .noctifab/data/state.json
-llm:
-    provider: gemini
-    model: gemini-1.5-pro
-    temperature: 0
-    api_key: "secret:GEMINI_API_KEY"
-    api_key_env: GEMINI_API_KEY
-    url: ""
-    max_retries: 5
-    retry_backoff: 100ms
-    retry_backoff_factor: 2
-    max_budget_usd: 10
+llms:
+    - provider: opencode
+      model: glm-5.2
+      temperature: 0
+      api_key: "secret:OPENCODE_API_KEY"
+      url: ""
+      max_retries: 5
+      retry_backoff: 100ms
+      retry_backoff_factor: 2
+      max_budget_usd: 10
+    - provider: gemini
+      model: gemini-2.5-flash
+      temperature: 0
+      api_key: "secret:GEMINI_API_KEY"
+      url: ""
+      max_retries: 5
+      retry_backoff: 100ms
+      retry_backoff_factor: 2
+      max_budget_usd: 10
 vcs:
     provider: github
     repository: diegojromerolopez/wc
@@ -38,8 +46,7 @@ sandbox:
     timeout_seconds: 300
     grace_period_seconds: 30
     test_command: cargo test
-    linter_command: cargo clippy -- -D warnings
-    formatter_command: cargo fmt -- --check
+    linter_command: "cargo fmt --check && cargo clippy -- -D warnings"
     exclude_paths:
         - target/
         - .noctifab/
@@ -47,6 +54,8 @@ sandbox:
         - cargo
         - rustc
         - git
+    forbidden_patterns:
+        - '\bunsafe\s*\{'
 roles:
     orchestrator:
         model: ""

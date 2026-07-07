@@ -5,6 +5,126 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2026-07-08
+
+### Changed
+- **README Emoji Update**: Added 🤖🌌 emojis to the [README.md](file:///Users/diegoj/repos/noctifab/README.md) title to reflect the platform's autonomous agent and night/nocturnal software dark factory theme.
+
+## [0.8.2] - 2026-07-08
+
+### Added
+- **Exposed Database and Tool Registry Getters**: Added public `DB()` methods to `SQLiteRepository` and `PostgresRepository`, and a `Tools()` method to `Registry`/`ToolRegistry` to support instantiating the budget and repair handlers in downstream commands.
+
+### Fixed
+- **Autonomy Wiring in CLI Commands**: Wired `SQLiteBudgetStore` / `PostgresBudgetStore` into the failover LLM client, enabled `WatchdogRepair` as the default orchestrator `repairHandler`, and configured the `TestValidator` with the LLM client and tools map to enable self-repair and flaky-test stabilization in both the `serve` and `start-one` subcommands.
+
+## [0.8.1] - 2026-07-07
+
+### Fixed
+- **Makefile validation-images target**: Added the missing recipe implementation for the `validate-images` target, which builds the base validation image and all per-project Docker validation images.
+- **Budget Save Error Handling**: Changed `FailoverClient` to propagate database persistence errors returned by `IncrementUsage` during API usage logging, rather than silently swallowing them and bypassing daily budget safeguards.
+- **Spec Improvements**: Resolved a missing `"strings"` import in `AUTONOMY.md` for `CostForTokens` and fully completed the missing `sqliteBudgetStore` stubs (`LoadBudget` and `ListBudgets`) in the level-5 specifications.
+- **PostgreSQL Cleanup and Rollbacks**: Integrated `budget_usage`, `validation_criteria`, and `active_agents` tables into the `noctifab clean` CLI command's PostgreSQL drop sequence and validation allowlist, preventing orphaned tables.
+
+## [0.8.0] - 2026-07-07
+
+### Added
+- **Echo Validation Project**: Added the `echo` minimal validation project in Go, including `SPEC.md`, user story roadmap, and configs.
+- **Validation Workspace Bind-Mounting**: Updated validation runner and harness to automatically create and bind-mount `output/` folders (`src/`, `dist/`, `log/`, and `feedback/`) from the host under `validation/projects/<project>/output/`.
+- **Gitignore and Dockerignore Exclusions**: Excluded the outputted validation project `output/` directory from git tracking and docker build context.
+- **Conditional PR Creation**: Modified `noctifab` to make PR creation conditional on `VCS.PullRequest.AutoCreate` in `OrchestratorConfig`, allowing E2E runs to bypass PR creation and just commit changes to local Git.
+- **Validation Host Pre-Clean**: Configured validation runner (`run_one.sh`) to automatically clean and delete the target project's host `output/` directory before recreating directories and running the validation container, ensuring fresh test executions.
+- **Auto-create Configuration**: Added configuration for `pull_request.auto_create` set to `false` directly inside the echo project's `.noctifab/config.yaml` to control PR creation behavior directly.
+
+## [0.7.0] - 2026-07-06
+
+### Added
+- **Language-Agnostic Linter Tooling**: Implemented `RunLinterTool` (`run_linter` tool) that executes the project's configured `linter_command` inside the sandbox workspace, exposing it to both Generator and Tester agents for local formatting and style checks.
+- **Language-Agnostic System Prompts**: Generalized agent prompts in `client.go`, removing Python-specific and project-specific instructions (e.g. `pytest`, `threading`, `redis`) to comply with repository agnosticism guidelines.
+- **Instruction to Avoid Truncation Placeholders**: Added specific instructions to prompts warning agents not to include `[TRUNCATED]` placeholders in `target_content` parameters for file editing tools.
+
+### Changed
+- **Incremental Agent State Retention**: Refactored the orchestrator's task retry logic in `orchestrator_execute.go` to keep and build on top of previous worker branch commits instead of executing a hard reset (`git reset --hard HEAD~1`) on validation failures.
+
+## [0.6.0] - 2026-07-06
+
+### Added
+- **Autonomous User Story Generation from SPEC.md**: Added support for spawning a dynamic **Product Manager Agent** to decompose `SPEC.md` into detailed user stories when the `roadmap/` directory is empty or missing, or when `SPEC.md` is passed directly as the input.
+
+## [0.5.0] - 2026-07-05
+
+### Added
+- **Multiple LLM Client Configurations Support**: Added support for configuring a list of LLM backends under `llms:` in `config.yaml`.
+- **Dynamic Secrets Resolution for Backend list**: Updated secrets processing to recursively resolve `secret:` references for all backends in the `llms:` configurations list.
+- **Failover Client Integration**: Updated client bootstrap factory to automatically instantiate a `FailoverClient` wrapping the backend configurations in order when multiple LLMs are defined.
+
+### Fixed
+- **wc validation roadmap renumbering**: Renumbered the user stories for the `wc` validation project to be strictly sequential (`US-001.md` through `US-004.md`), updated their titles, dependencies, and internal references, and adjusted the E2E verification harness and READMEs to execute the correct story targets.
+
+## [0.4.2] - 2026-07-05
+
+### Fixed
+- **E2E Validation Configuration & Sandbox Whitelist**: Corrected `todo-cli` configuration to whitelist `go` and `git` commands, preventing sandbox violations during test execution. Re-architected `todo-cli` Dockerfile to build from `golang:alpine`.
+- **E2E Validation target path for frontpunch**: Corrected the target file validation check for `frontpunch` to check `frontpunch/client.py` (which is the actual output of US-001) instead of `frontpunch/worker.py`.
+- **Feedback Generator false positive test failures**: Refined `gen_feedback.py` to pre-process container logs by stripping out code blocks from tool call arguments and raw LLM response chunks, and ignoring system lines in `test_failures` matching, eliminating noisy false-positive test failures.
+- **Documentation cleanup**: Fixed a typo in `validation/README.md` describing `todo-cli` as implemented in Python instead of Go.
+
+## [0.4.1] - 2026-07-05
+
+### Fixed
+- **GITHUB_TOKEN Standardization**: Ensured all validation projects (`frontpunch`, `todo-cli`, `wc`) and documentation (`docs/secrets.md`) use `GITHUB_TOKEN` consistently instead of the legacy `GITHUB_FRONTPUNCH_TOKEN`.
+- **E2E/Integration Test Liveness**: Skipped the real LLM provider ping during tests/E2E runs (when `NOCTIFAB_E2E=true` is set), preventing test suites from attempting external LLM API connections and failing without credentials.
+
+## [0.4.0] - 2026-07-03
+
+### Added
+- **Validation Project Spec/Story Quality Pass**: Reviewed and hardened the SPEC.md and roadmap user stories of all three validation projects (`wc`, `todo-cli`, `frontpunch`) so an LLM agent (GLM-5.2) can build them autonomously with minimal guessing. Per-project changes:
+  - **wc**: Pinned Rust toolchain/edition/crate name + allowed deps (clap, assert_cmd, tempfile); added a pinned DDD directory layout to SPEC §2.1; rewrote SPEC §3.3 output format with an exact `format!("{:>7} {:>7} ...")` reference formatter; added SPEC §3.4 (counting semantics for `-w`/`-c`/`-m`/`-L` including invalid-UTF-8 fallback, `\r\n` handling, no-final-newline handling) and §3.5 (exact stderr templates + exit codes 1 vs 2); fixed the wrong UTF-8 example arithmetic in §4.5 (`"Hello, 世界!\n"` = 11 chars / 15 bytes, not 13 chars); added `US-000a` (project scaffold + domain core) so US-001 fits the ~4096-token completion budget; added `depends_on`/`change_type`/`target_files` front-matter to US-001/002/003; pinned the wc sandbox `linter_command` to `cargo fmt --check && cargo clippy -- -D warnings`.
+  - **todo-cli**: Pinned the language to **Go 1.22+** (was "Go, Python, or Node.js" — a contradiction with AGENTS.md tooling); added SPEC §2.3 (DDD directory layout: `cmd/todo/`, `internal/task/`, `internal/storage/`, `internal/cli/`), §2.4 (ID auto-increment + `rm` non-reindexing + idempotent `done` semantics), §2.5 (byte-level list output format), §2.6 (exact exit codes + stderr message templates), §2.8 (explicit waiver of the AGENTS.md Postgres compose stack for this project); rewrote US-001 and US-002 with `depends_on`/`change_type`/`target_files` metadata, replaced `python3 todo.py` with the Go binary invocation form, and replaced ambiguous "table or formatted list" with byte-exact expected strings and actionable unit/integration/BDD test splits.
+  - **frontpunch**: Fixed the broken JSON in SPEC §2.3 (missing closing `}`); pinned the web framework to **FastAPI** (was "Flask or FastAPI"); pinned dependencies (`redis>=5.0,<6.0`, `fastapi`, `cryptography`, `croniter`, `click`); added SPEC §2.7 (`frontpunch.configure(...)` singleton contract + the full `frontpunch.exceptions` hierarchy); added SPEC §3.1 (DDD project layout with `pyproject.toml`, `domain/`/`application/`/`infrastructure/valkey/`/`interfaces/`); reconciled the `class` field to require a fully-qualified dotted import path (fixed US-001's bare `"log_event"` example); clarified the §3 SSA rule (`ruff RET504`) and the "no broad Exception catch" rule (worker execution envelope exemption); replaced deprecated `assertEquals` with `assertEqual` in §4.2 and pinned the coverage tooling; added `US-000` (foundation story owning scaffold, `configure`, `exceptions`, Clock/FS ports, test harness) so subsequent stories stop guessing on package layout; added `depends_on`/`change_type` to US-001.
+
+### Added
+- **OpenCode Go LLM Provider**: Added `opencode` as a supported LLM provider, routing through OpenAI-compatible transport to the OpenCode Go subscription endpoint (`https://opencode.ai/zen/go/v1/chat/completions`). Provides access to curated open coding models including GLM-5.2, GLM-5.1, Kimi K2.7 Code, Kimi K2.6, MiniMax M3/M2.7, Qwen3.7 Max/Plus, Qwen3.6 Plus, MiMo V2.5/V2.5-Pro, DeepSeek V4 Pro/Flash. API key resolves from the `OPENCODE_API_KEY` environment variable. Includes a static model fallback hierarchy for quota/transient-error model stepping and unit tests for `Call` and `GetAvailableModels`.
+- **Forbidden Patterns Policy**: Added a configurable `sandbox.forbidden_patterns` list (Go regexes) enforced at write time on `write_file`/`edit_file` content and `edit_file` replacement_content. Any match rejects the action with a `SPEC violation` reason, giving the agent immediate feedback instead of failing later at the test-validation stage. Wired through `PolicyValidator.SetForbiddenPatterns` from `cfg.Sandbox.ForbiddenPatterns` in both `serve` and `start-one` CLI entry points. Invalid regexes are skipped (not fatal). The `wc` validation project now configures `\bunsafe\s*\{` to enforce the SPEC's `#![deny(unsafe_code)]` constraint.
+- **Build Status Gating**: The orchestrator now sets `BuildStatus = FAILING` immediately when a task fails test validation (compilation or test failure), so the operator dashboard and auto-merge policy see the red signal in real time instead of staying `UNKNOWN`. Finalization now uses `StoryStatus` (previously declared but never set) as the once-only guard: when all tasks finish, `StorySuccess`+`BuildPassing` is set only if every task succeeded; otherwise `StoryFailed`+`BuildFailing` is set and release finalization (version bump / PR) is skipped. Added `allTasksSucceeded` helper.
+- **Non-TTY Status Rendering**: The `noctifab start --wait` polling loop and the daemon-ready wait loop now detect whether stdout is a terminal (`pkg/infrastructure/tty.IsTerminal`, via `golang.org/x/term`). In a TTY the existing dot-accumulation progress animation is preserved; when stdout is not a TTY (CI logs, `--wait < script`, `2>&1 | tee`), each poll emits one timestamped status line separated by a newline instead of dots on one ever-growing physical line, keeping captured logs readable.
+- **Real Pre-flight LLM Ping**: `noctifab start` and `noctifab start-one` now perform a genuine reachability check before launching the daemon: `pkg/infrastructure/llm.Ping` constructs the provider transport for the configured provider and calls `GetAvailableModels` with a 15s timeout. On failure the pre-flight prints `FAIL: <classified reason>` and aborts startup instead of unconditionally printing `OK`. Ping errors are classified into operator-readable categories (rejected API key / 403 forbidden / 429 quota / network unreachable / generic) so the user can distinguish a bad key from a network issue without reading a raw HTTP dump. Unit tests cover success, unsupported provider, 401, 429, and timeout.
+- **Story Wall-Clock Enforcement (`max_duration`)**: The previously-declared-but-unused `max_duration` config field is now enforced. When set to a non-zero duration, the orchestrator tracks the story start time (the first cycle in which any task becomes ready) and, if the elapsed time exceeds the limit while the story is still `StoryIdle`, fails every non-finished task with a `story exceeded max_duration` failure log, sets `BuildStatus=FAILING` + `StoryStatus=StoryFailed`, and stops dispatching new work — preventing runaway LLM spend on a stuck story. A `MaxDuration=0` (the default) disables the check. Wired through `OrchestratorConfig.MaxDuration` in both `serve` and `start-one` entry points. Unit tests cover both enabled-abort and disabled-passthrough cases.
+- **Pre-flight & Provider Docs**: `docs/cli_usage.md` now documents the pre-flight checklist (Git CLI, database, LLM provider ping, sandbox mode) with a per-check failure-mode table and an explicit note that the LLM "ping" is a reachability + key check against the provider's `/models` endpoint, not a quota or model-availability guarantee. Added an "LLM Provider Configurations / OpenCode Go" section with a full `secrets.yaml` + `config.yaml` example for the `opencode` provider (GLM-5.2 etc.) and the `--llm-provider` flag description updated to include `opencode`.
+
+### Fixed
+- **LLM Response JSON Parser String-Awareness**: `ExtractJSONBlock` (`pkg/infrastructure/llm/parser.go`) previously used naive brace counting from the first `{`, which miscounted braces inside JSON string values (e.g. Rust `mod tests { ... }` embedded in a `write_file` `content` argument) and returned a truncated/invalid substring, causing deterministic `invalid character 'B' looking for beginning of object key string` failures on code-heavy Tester-role output (observed 4/4 with GLM-5.2). The parser is now string-literal-aware (honours `\"` escapes, ignores braces inside JSON strings) and, when several top-level balanced blocks are present (e.g. fenced code before the JSON envelope), prefers the block containing `"reasoning"`/`"actions"` keys. Regression tests added with a real Rust-in-content response shape.
+- **Structured Phase Log Markers**: The orchestrator now emits distinct, summary-bearing log lines for each agent phase: `[Reader] phase ok/failed`, `[Tester] write phase ok` (with reasoning + action count) / `[Tester] write phase failed`, `[Tester] write phase summary: N executed, M blocked`, `[Generator] write phase ok/failed/summary`, and blocked actions now include the validator reason instead of the bare `validation failed` string. This disambiguates the previous conflated `Tester LLM completion failed` log that did not distinguish "tests were written" from "verify turn failed".
+- **REPL EOF & Welcome-Example Consistency**: The `noctifab REPL exited.` message now reads `noctifab REPL exited. Daemon continues in background; polling status every <interval>.` so a piped-stdin EOF no longer sounds like a daemon crash. The REPL welcome string and the listener system-prompt example were changed from `roadmap/US-0001.md` (4-digit, no matching file) to `roadmap/US-001.md` (3-digit, matching the actual roadmap files in `validation/projects/`), removing a footgun for new users typing the example.
+- **Rust `unsafe` Prompt Prohibition**: The Rust project context in `pkg/infrastructure/llm/helpers.go` now injects an explicit `CRITICAL: The use of unsafe blocks is STRICTLY FORBIDDEN` instruction into both the Generator (`Instructions`) and Tester (`TestWriterInstructions`) system prompts, listing the safe idioms to use instead (`BufReader`, `str::from_utf8`, slices/iterators). This complements the write-time `forbidden_patterns` gate so the model is told the constraint upfront rather than discovering it via a rejected write.
+- **Per-Project `.noctifab/.gitignore` for Secret Safety**: The `wc`, `frontpunch`, and `todo-cli` validation projects now each ship a `.noctifab/.gitignore` excluding `secrets.yaml`, `data/`, `logs/`, `*.lock`, and `*.pid`. Previously only the noctifab repo-root `.gitignore` covered `validation/projects/*/.noctifab/secrets.yaml`, so running `noctifab init` inside one of those project directories could have staged `secrets.yaml` into git.
+
+### Changed
+- **Span Naming Convention**: Renamed all OpenTelemetry spans from `noctifab.*` prefixed names to bare Go function names (e.g., `noctifab.cycle` → `RunOnce`, `noctifab.postgres_save` → `Save`) for cleaner observability UX.
+- **OpenTelemetry Instrumentation**: Added named spans with input attributes (secrets redacted) to 9 additional functions: `SQLiteRepository.Save/Load`, `DockerSandbox.RunCommand`, `Orchestrator.FinalizeUserStory/PlanStory`, `Scheduler.GetReadyTasks`, `ListenerAgent.Start/interpretCommand/routeIntent`, `DaemonClient.IsAlive/SendStartStory/SendStartDirectory/GetStatus`, and `BumpVersion`. All sensitive keys (`api_key`, `token`, `secret`, `password`, `auth`, `credential`, `private_key`, `access_key`) are automatically redacted to `[REDACTED]` via `telemetry.Attr`/`AttrInt` helpers. Tracer configuration uses only `OTEL_*` environment variables.
+- **Package Rename**: Renamed `pkg/usecase` to `pkg/services` for idiomatic Go convention. All imports and internal references updated accordingly.
+
+## [0.3.0] - 2026-07-01
+
+### Added
+- **Level 5 Autonomy Specification**: Expanded the `AUTONOMY.md` proposal to define Level 5 (Maximum) Autonomy for `noctifab`.
+- **Level 5 Core Pillars**: Outlined requirements for environmental self-healing, closed-loop telemetry staging/production feedback, autogenous flaky test stabilization, binary self-evolution (metaprogramming), automated security/SAST auditing, and zero-clarification intent resolution.
+- **Level 5 Roadmap**: Added Phase 5 (Self-Healing & Telemetry) and Phase 6 (Self-Evolution & Security Auditing) to the implementation roadmap.
+- **Watchdog Liveness Monitor**: Added `pkg/usecase/watchdog.go` with idle output timeout detection for subprocess executions. The `Watchdog` tracks wall-clock duration and resets an idle timer on every byte of stdout/stderr output, killing the process group via `SIGKILL` when either limit is exceeded. Integrated into `HostSandbox.RunCommand`, replacing the previous goroutine-based context cancellation pattern. Sentinels `ErrWatchdogMaxDuration` and `ErrWatchdogIdleTimeout` are wrapped with `%w` so callers can distinguish hang events from normal test failures. Configured via `sandbox.idle_timeout_seconds` in `config.yaml` (default: 30s).
+- **Interruptible OCC Backoff**: Added `SleepWithInterrupt` to `CommandMailbox` with a `Wakeup()` notification channel that fires when a command is enqueued. The OCC retry loop in `Orchestrator.updateStateWithRetry` now selects on this channel instead of blocking on `time.After()`, making the daemon responsive to operator commands (abort, model switch) during database conflict backoff.
+- **LLM Call Budget Enforcement**: Added `maxCalls` parameter to `NewFailoverClient`. When set, `Complete` returns `domain.ErrBudgetExhausted` after the configured number of total calls, preventing runaway API spending when no backends are available.
+- **Unit Test Coverage**: Added 11 new tests — 6 for `Watchdog` (normal exit, max duration, idle timeout, output resets idle timer, context cancellation, no-limits mode) and 5 for `SleepWithInterrupt` (timer expiry, zero duration, cancelled context, immediate wakeup, deferred wakeup). Extended `FailoverClient` test suite with budget exhaustion coverage.
+- **Budget Persistence (AUT-102)**: Added `PostgresBudgetStore` and `SQLiteBudgetStore` implementations of the `BudgetStore` interface with UPSERT semantics. Backed by dedicated migrations (`0003_add_budget.sql`) creating the `budget_usage` table. Daily usage now survives daemon restarts across both SQLite and PostgreSQL backends.
+- **Config Types for Level 5 Features**: Extended `Config` struct with `PullRequestConfig` (`auto_create_pr`, `auto_merge`), `CIConfig` (`auto_fix`), `SASTConfig` (`enabled`, `scanners`, `fail_on_severity`), `TelemetryConfig` (`enabled`, `provider`, `endpoint`), and `FailoverConfig` (`max_calls`). All wired through CLI flags, environment variables, and config file defaults.
+- **SAST Scanner (AUT-603)**: Added `SASTScanner` supporting `gosec` and `bandit` integrations. Parses JSON output from both tools into structured `SecurityIssue` objects. Configurable severity threshold (`fail_on_severity`) blocks builds on `HIGH`/`MEDIUM`/`LOW` findings. Includes dedicated `parseGosecJSON` and `parseBanditJSON` parsers with unit tests for real-world output formats.
+- **Intent Disambiguation (AUT-604)**: Added `IntentDisambiguator` that synthesizes git history, workspace file listings, and feature context into a targeted LLM prompt, inferring answers to clarification questions without operator intervention.
+- **Flaky Test Detection & Stabilization (AUT-502)**: Added `DetectFlaky` with 3-run majority vote consensus (≥2 pass + ≥1 fail = flaky). Added `BuildFlakyStabilizationPrompt` that generates a structured remediation prompt identifying common flakiness patterns (time.Sleep, shared state, missing mutexes, network dependencies, order-dependent tests).
+- **Dependency Auto-Install (AUT-501)**: Added `DependencyManager` with `DetectMissingTool` (pattern-matches error output for `cargo`, `pytest`, `golangci-lint`, `node`, `npm`) and `InstallTool` with configurable allowed package manager whitelist.
+- **Hot-Reload & Handoff File (AUT-602)**: Added `HotReloadManager` with JSON handoff file protocol (`HandoffState` with `pending`/`handing_off`/`active`/`failed` states), health check polling on the new binary's `/healthz` endpoint, and active handoff confirmation.
+- **Watchdog Repair & Failure Categorization (AUT-401/402)**: Added `WatchdogRepair` that classifies subprocess failures into `FailureCategory` constants (`ExitCode`, `SignalKilled`, `MaxDuration`, `IdleTimeout`). Wired watchdog timeout and idle settings through HostSandbox configuration.
+- **Comprehensive E2E Scenario Test**: Added `TestScenario_ComprehensiveAutonomy` with 12 subtests covering budget persistence, OCC version conflicts, watchdog process killing, flaky detection, dependency manager detection, self-update patch validation, hot-reload handoff round-trip, intent disambiguation, SAST scanner disabled mode, cost calculation, complex state persistence through PostgreSQL, and failover budget alerts.
+- **Specification & Documentation Updates**: Updated SPEC.md with sections §3.6.8–§3.6.11 (PR, CI, SAST, Telemetry config), §3.10 (Failover), §3.9.2 (Config loading 2-phase). Updated README.md with new feature descriptions. Updated docs/cli_usage.md with new CLI flags for PR, CI, SAST, and telemetry configuration.
+
 ## [0.2.3] - 2026-07-01
 
 ### Fixed

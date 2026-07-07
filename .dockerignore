@@ -1,0 +1,35 @@
+# .dockerignore for noctifab build contexts.
+#
+# Excludes secret material from being baked into noctifab-validation:* images.
+# Secrets are mounted into the validation container at runtime (via -v bind
+# mount to /run/secrets/noctifab-secrets.yaml) and copied into the temporary
+# workspace by validate.sh. See validation/README.md § "How It Works".
+
+# Per-project secret files (git-ignored; keep out of image layers)
+validation/projects/*/.noctifab/secrets.yaml
+
+# Local runtime data and logs (per-project)
+validation/projects/*/.noctifab/data/
+validation/projects/*/.noctifab/logs/
+validation/projects/*/output/
+
+# Captured validation logs written to the host repo root
+.validation-logs/
+
+# Generic Go / build artifacts
+dist/
+bin/
+noctifab
+*.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Misc local artifacts
+.env
+*FEEDBACK.md

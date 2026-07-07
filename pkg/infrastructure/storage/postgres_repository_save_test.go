@@ -370,6 +370,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 
 		mock.ExpectExec(`INSERT INTO state`).
 			WithArgs(state.ID, state.ProjectPath, 1, string(state.BuildStatus),
+				string(state.StoryStatus), state.StoryError,
 				state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 				state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
 				state.Metadata.TotalTokensUsed, state.Metadata.TotalCostUSD).
@@ -445,6 +446,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 
 		mock.ExpectExec(`UPDATE state SET project_path = \$1`).
 			WithArgs(state.ProjectPath, 2, string(state.BuildStatus),
+				string(state.StoryStatus), state.StoryError,
 				state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 				state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
 				state.Metadata.TotalTokensUsed, state.Metadata.TotalCostUSD, state.ID).

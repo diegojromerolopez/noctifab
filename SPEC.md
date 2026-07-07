@@ -20,6 +20,12 @@ The platform classifies development automation into five distinct levels:
 
 `noctifab` is designed to run at **Level 3** and **Level 4** autonomy.
 
+| Level | Key Config Settings | Behavior |
+|---|---|---|
+| **Level 3** | `pull_request.auto_create: true`<br>`pull_request.auto_merge: false` | PRs created automatically; human must click merge. |
+| **Level 3.5** | `pull_request.auto_create: true`<br>`pull_request.auto_merge: true` (+ per-module profiles)<br>`ci.auto_fix: true` | Low-risk PRs merge automatically; human can block. CI auto-fix enabled. |
+| **Level 4** | `pull_request.auto_create: true`<br>`pull_request.auto_merge: true`<br>`pull_request.auto_rebase: true`<br>`ci.auto_fix: true`<br>`ci.max_retries: 3` | Full dark factory — specs in, tested code out fully merged. Human reviews only exceptions. |
+
 ---
 
 ## 2. Core Architecture & Design Principles
@@ -1051,7 +1057,7 @@ An example of an agent requesting the execution of test suites to verify code co
       "tool": "run_tests",
       "args": {
         "package": "pkg/usecase/middleware",
-        "command": "go test -v ./pkg/usecase/middleware"
+        "command": "go test -v ./pkg/services/middleware"
       }
     }
   ]
@@ -1596,6 +1602,119 @@ The database stores the following task states after a shutdown event halts execu
 
 > **Note:** The remaining subsections of §3 (§3.7 through §3.9) describe supporting workflows, integration pipelines, and configuration layout that build on top of the five core components defined above (State, Tool Registry, LLM Client, Validator, and Multi-Agent Orchestrator).
 
+---
+
+### 3.6.8. Dependency Auto-Install
+
+To reduce human intervention when required toolchains are missing, the sandbox can automatically detect and install missing dependencies.
+
+#### Detection & Installation Flow
+1. Before executing a command, the sandbox checks if required tools are installed on the system PATH using `exec.LookPath`.
+2. If a tool is missing and `sandbox.auto_install_deps` is `true`, the sandbox attempts to install it using the configured package managers (e.g., `brew`, `apt`, `pip`, `go install`).
+3. The list of supported package managers is configured via `sandbox.package_managers`.
+4. If the tool cannot be installed, the task is marked as failed with `ErrMissingDependency`.
+
+#### Configuration
+```yaml
+sandbox:
+  auto_install_deps: true   # Enable automatic dependency installation
+  package_managers:          # Ordered list of package manager commands
+    - "brew"
+    - "apt"
+    - "pip"
+    - "go"
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `auto_install_deps` | `false` | Enable automatic installation of missing tools |
+| `package_managers` | `["pip", "go", "brew", "curl", "npm"]` | Ordered list of package managers to attempt |
+
+#### Error Handling
+- If `auto_install_deps` is `false` and a required tool is missing, the sandbox returns `ErrMissingDependency` immediately.
+- If installation fails (binary not found, network error, permission denied), the error is propagated and the task is retried.
+- Package manager commands are subject to the same sandbox `allowed_commands` whitelist.
+
+### 3.6.9. Watchdog Liveness Monitor & Repair Integration
+
+The Watchdog Liveness Monitor wraps all sandbox command execution with two safeguards to prevent hangs and runaway processes. When a command fails, the orchestrator's repair handler categorizes the failure and attempts automatic remediation.
+
+#### Watchdog Safeguards
+1. **MaxDuration (Absolute Timeout):** The process group is killed via SIGKILL if execution exceeds the configured timeout (default: 5 minutes).
+2. **IdleTimeout (Sliding Window):** Resets on every byte of stdout/stderr output. If no output is produced for the configured duration (default: 30s), the process is killed and `ErrWatchdogIdleTimeout` is returned. This prevents silent hangs from deadlocked threads or infinite loops producing no output.
+3. **Process Group Termination:** Both timeouts use `syscall.SysProcAttr{Setpgid: true}` to kill the entire process group, ensuring child processes and background threads are terminated.
+
+#### Failure Categorization
+When a command is killed or exits with an error, the `WatchdogRepair` categorizes the failure into one of these types:
+- `FailureTimeout`: Command exceeded MaxDuration or IdleTimeout
+- `FailureSandbox`: Sandbox policy violation (path traversal, disallowed command)
+- `FailureCompile`: Build/compilation error detected in output
+- `FailureTestLogic`: Test logic failure (non-compile test failure)
+- `FailureUnknown`: Unclassifiable failure
+
+#### Repair Loop
+The orchestrator integrates `WatchdogRepair` into its task execution loop:
+1. **Diagnose:** The failure log is analyzed and categorized using `CategorizeFailureLog`.
+2. **Prompt Construction:** A diagnostic prompt is built containing the failure category, log excerpts, and retry count.
+3. **LLM Repair Attempt:** The LLM receives the diagnostic prompt and suggests a fix (code patch, config change, or retry).
+4. **Retry:** Up to `MaxRetries` attempts are made. After each failure, the repair handler feeds the previous attempt's outcome back into the next prompt.
+5. **Escalation:** If all retries are exhausted, the task is marked `TaskFailed`.
+
+#### Wiring
+The `WatchdogRepair` is injected into the `Orchestrator` via constructor (DI). If no repair handler is provided (nil), the orchestrator skips the repair step and marks the task as failed immediately — preserving backward compatibility.
+
+### 3.6.10. SAST Security Gates
+
+Static Application Security Testing (SAST) scanners run against generated code before a pull request is created or merged. This prevents the agent from introducing security vulnerabilities such as SQL injection, hardcoded credentials, or unsafe file operations.
+
+#### Scanner Configuration
+```yaml
+sast:
+  enabled: true               # Enable SAST scanning
+  scanners: ["gosec"]         # List of scanners: "gosec" (Go), "bandit" (Python)
+  fail_on_severity: "high"    # Block on: "high", "medium", or "low"
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enabled` | `false` | Enable SAST scanning before PR creation |
+| `scanners` | `["gosec"]` | SAST tools to execute |
+| `fail_on_severity` | `"high"` | Minimum severity that blocks the PR |
+
+#### Supported Scanners
+- **gosec** (Go): Inspects Go source code for security problems. Run as `gosec -fmt json ./...`.
+- **bandit** (Python): Finds common security issues in Python code. Run as `bandit -r -f json .`.
+
+#### Execution Flow
+1. After the Test Validator passes but before PR creation, the orchestrator runs configured SAST scanners on the workspace.
+2. Scanner JSON output is parsed into structured `SecurityIssue` records (scanner, severity, file, line, description).
+3. Each issue is compared against the `fail_on_severity` threshold. Issues at or above the threshold block the PR.
+4. Blocking issues are recorded as failed `ValidationCriterion` items in state, and the task is sent back to the agent for remediation.
+5. Non-blocking issues (below the threshold) are recorded as warnings but do not block execution.
+6. If a scanner binary is not installed on the system PATH, a warning is logged and execution continues without error.
+7. If SAST is disabled (`enabled: false`), the scan is skipped entirely with no effect on execution.
+
+### 3.6.11. Intent Disambiguation
+
+When the agent encounters an ambiguous design decision, it normally pauses execution and asks a clarification question to the human operator. Intent disambiguation extends this flow by enabling the orchestrator to automatically infer the answer from project context before blocking on human input.
+
+#### Disambiguation Context
+The disambiguator gathers the following context to make an informed inference:
+1. **Recent git history:** Last 30 commits (`git log --oneline -30`).
+2. **Workspace files:** List of all tracked files in the current state.
+3. **Feature metadata:** Base branch name and feature name from the state.
+4. **Project context:** The original clarification question and its related task.
+
+#### Inference Flow
+1. When a clarification is created, the `IntentDisambiguator.Disambiguate` method is called exactly once per clarification.
+2. It constructs a structured prompt containing the question, git log, files, and context.
+3. The LLM is invoked to infer the most likely intended behavior.
+4. If the LLM returns a valid answer, the clarification is auto-resolved with the inferred answer, and the action is logged in state's `LastActions`.
+5. If the LLM returns an error or empty response, the clarification remains unresolved — the human operator is still prompted.
+6. Disambiguation is only attempted once per clarification. If inference fails, the orchestrator falls back to the standard clarification timeout flow (§3.6.4.C).
+
+---
+
 ---es spawned.
 2.  **Context Cancellation:** The global context `context.WithCancel` is cancelled, propagating the cancellation signal to all active worker goroutines.
 3.  **Active Worker Grace Period:** The daemon blocks and waits for a configurable period (via `--shutdown-grace-period`, default `30s`) for running tools to complete cleanups or file saves.
@@ -1729,6 +1848,14 @@ llm:
   retry_backoff: "100ms"        # Base delay time duration for exponential backoff (e.g. retry_backoff * 2^retry)
   retry_backoff_factor: 2.0     # Multiplier factor for exponential backoff retry logic
   max_budget_usd: 10.0          # Max daily LLM credit budget boundary in USD (locally monitored & safeguarded)
+  failover:
+    enabled: false
+    cooldown: "5m"               # Cooldown duration before retrying a failed primary provider
+    max_call_limit: 0             # Maximum calls before forced failover (0 = unlimited)
+    backends:
+      - provider: "gemini"
+        model: "gemini-2.5-flash"
+        api_key_env: "GEMINI_API_KEY"
 
 vcs:
   provider: "github"            # Options: github, gitlab
@@ -1742,6 +1869,16 @@ vcs:
   git_mutex_timeout: "30s"      # Max wait timeout limit for acquiring the centralized git lock mutex
   git_operation_retries: 3      # Max retries on transient Git write / lock collisions
   git_retry_backoff: "500ms"    # Delay base between Git lock retry attempts
+  pull_request:
+    auto_create: false           # Automatically create a PR from the task branch
+    auto_merge: false            # Automatically merge the PR when CI checks pass
+    auto_rebase: false           # Automatically rebase the PR branch on base updates
+    draft: false                 # Create the PR as a draft (GitHub-only)
+    assignees: []                # GitHub usernames to auto-assign as reviewers
+    labels: []                   # Labels to auto-apply to the PR
+  ci:
+    auto_fix: false              # Automatically attempt to fix CI pipeline failures
+    max_retries: 3               # Max attempts to fix CI before giving up
 
 sandbox:
   mode: "host"                  # Options: host, docker
@@ -1769,6 +1906,13 @@ sandbox:
     - "npm"
     - "python"
     - "make"
+  auto_install_deps: false       # Automatically install missing toolchain dependencies
+  package_managers:              # Ordered list of package managers for auto-install
+    - "pip"
+    - "go"
+    - "brew"
+    - "curl"
+    - "npm"
 
 roles:
   orchestrator:
@@ -1785,6 +1929,17 @@ roles:
     model: "gemini-1.5-pro"
     temperature: 0.0
     profile: "tester"           # References .noctifab/profiles/tester.yaml
+
+telemetry:
+  enabled: false                 # Enable OpenTelemetry tracing
+  exporter: "otlp"              # Trace exporter: "otlp" or "stdout"
+  endpoint: "localhost:4318"     # OTLP collector endpoint
+  service_name: "noctifab"       # Service name for trace identification
+
+sast:
+  enabled: false                 # Enable SAST security scanning
+  scanners: ["gosec"]            # SAST scanners: "gosec" (Go), "bandit" (Python)
+  fail_on_severity: "high"       # Block PR on: "high", "medium", "low"
 ```
 
 #### 3.9.3. Profile Configuration Schema (`.noctifab/profiles/<profile_name>.yaml`)
@@ -1878,6 +2033,26 @@ permissions:
     allow_ai_provider: true
     allow_external: false
 ```
+
+---
+
+### 3.10. Graceful Stateful Hot-Reload
+
+The `HotReloadManager` performs a zero-downtime handoff from the old binary to the new one during deployment.
+
+##### Handoff Protocol
+1. **Spawn:** The parent process starts the new binary as a child process with `--port 18081` (current port + 1).
+2. **Handoff File:** The parent writes a `handoff.json` file with `status: handing_off` and the new PID.
+3. **Health Check:** The parent polls `http://127.0.0.1:18081/healthz` for up to 30 seconds.
+4. **Activation:** The new binary reads `handoff.json`, loads the state from the database, begins orchestrating on its port, and writes `status: active` to `handoff.json`.
+5. **Confirmation:** The parent reads the `status: active` confirmation, prints a completion message, and exits with code 0.
+6. **Rollback:** If the new binary fails the health check within 30 seconds, the parent kills the new process, marks `handoff.json` as `status: failed`, and continues running.
+
+##### Configuration
+The hot-reload feature uses the following runtime paths:
+- `handoff.json`: Written to `.noctifab/hot_reload.json`
+- `PID file`: Read from `.noctifab/noctifab.pid`
+- `New binary`: Path provided externally
 
 ---
 
@@ -1975,6 +2150,14 @@ The CLI configuration can be provided via flags or matching environment variable
 | `--llm-planner-temperature` | | `NOCTIFAB_LLM_PLANNER_TEMPERATURE` | `0.5` | LLM temperature override for the Planner role |
 | `--llm-generator-temperature` | | `NOCTIFAB_LLM_GENERATOR_TEMPERATURE` | `0.0` | LLM temperature override for the Generator role |
 | `--llm-tester-temperature` | | `NOCTIFAB_LLM_TESTER_TEMPERATURE` | `0.0` | LLM temperature override for the Tester role |
+| `--pr-auto-create` | | `NOCTIFAB_PR_AUTO_CREATE` | `false` | Automatically create a PR from the task branch |
+| `--pr-auto-merge` | | `NOCTIFAB_PR_AUTO_MERGE` | `false` | Automatically merge the PR when CI checks pass |
+| `--pr-auto-rebase` | | `NOCTIFAB_PR_AUTO_REBASE` | `false` | Automatically rebase the PR branch on base updates |
+| `--pr-draft` | | `NOCTIFAB_PR_DRAFT` | `false` | Create the PR as a draft |
+| `--pr-assignees` | | `NOCTIFAB_PR_ASSIGNEES` | | Comma-separated list of GitHub usernames to assign |
+| `--pr-labels` | | `NOCTIFAB_PR_LABELS` | | Comma-separated list of labels to apply to the PR |
+| `--ci-auto-fix` | | `NOCTIFAB_CI_AUTO_FIX` | `false` | Automatically attempt to fix CI pipeline failures |
+| `--ci-max-retries` | | `NOCTIFAB_CI_MAX_RETRIES` | `3` | Max attempts to fix CI before giving up |
 
 ##### Stdin Interactive Command Grammar
 

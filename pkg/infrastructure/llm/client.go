@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Client struct {
@@ -27,6 +30,51 @@ type Client struct {
 
 var _ domain.LLMClient = (*Client)(nil)
 
+// parseAndUnmarshal runs ExtractJSONBlock followed by LenientUnmarshal in
+// one step. On any failure it returns the first error encountered.
+func parseAndUnmarshal(body []byte) (*domain.LLMResponse, error) {
+	extracted, err := ExtractJSONBlock(string(body))
+	if err != nil {
+		return nil, err
+	}
+	return LenientUnmarshal(extracted)
+}
+
+// buildJSONReminderPrompt returns a single user-message prompt that re-states
+// the JSON envelope demand and includes a truncated tail of the model's
+// previous non-JSON answer. The model is asked to return ONLY the JSON
+// envelope now. The tail is capped to keep the request under typical context
+// limits while still surfacing enough context for the model to recognise its
+// mistake and self-correct in a single turn.
+const jsonReminderTailCap = 1500
+
+func buildJSONReminderPrompt(originalPrompt string, prevBody []byte) string {
+	tail := string(prevBody)
+	if len(tail) > jsonReminderTailCap {
+		tail = "...[truncated]...\n" + tail[len(tail)-jsonReminderTailCap:]
+	}
+	return fmt.Sprintf(`Your previous response did NOT contain the structured JSON envelope that this system requires. The system cannot continue without a single valid JSON object.
+
+Original task:
+%s
+
+Your previous (rejected) response:
+%s
+
+CRITICAL INSTRUCTION (overrides anything above):
+Respond with ONLY a single JSON object matching this schema. No markdown, no code fences, no prose before or after the JSON. Keys and string values must use double quotes.
+
+Schema:
+{
+  "reasoning": "your reasoning",
+  "actions": [
+    { "tool": "write_file", "args": { "path": "...", "content": "..." } }
+  ]
+}
+
+Return the JSON block now and nothing else.`, originalPrompt, tail)
+}
+
 func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Duration, url string) *Client {
 	return &Client{
 		Provider:   provider,
@@ -39,7 +87,13 @@ func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Dura
 }
 
 func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
-	proj := getProjectContext()
+	ctx, span := telemetry.Tracer().Start(ctx, "Complete",
+		trace.WithAttributes(
+			attribute.String("provider", c.Provider),
+			attribute.String("model", c.Model),
+			attribute.Int("max_retries", c.MaxRetries),
+		))
+	defer span.End()
 
 	// Preprocess prompt to inject system instructions and schemas based on the target action type
 	if strings.HasPrefix(prompt, "Decompose specification into tasks:") {
@@ -76,12 +130,12 @@ Return format:
         "description": "Task description...",
         "change_type": "FEATURE",
         "depends_on": [],
-        "target_files": ["%s"]
+        "target_files": ["main.go"]
       }
     }
   ]
 }
-`, specStr, proj.ExampleTargetFile)
+`, specStr)
 	} else if strings.HasPrefix(prompt, "Write tests for task:") || strings.HasPrefix(prompt, "Fix the tests for task:") {
 		var taskDetails string
 		if strings.HasPrefix(prompt, "Write tests for task:") {
@@ -100,40 +154,25 @@ Task Details:
 
 CRITICAL:
 1. You only have ONE single turn to complete this task. You must write/edit test files immediately in your response actions. Do NOT run read_file, find_files, grep_search, or list_directory first, as you will not get another turn.
-%s
-3. You must write tests according to the following guidelines:
-   - Happy paths MUST be verified using end-to-end (e2e) tests as much as possible. Place these under 'tests/e2e/' or similar. E2E tests guideline: do not use mocks, use mock docker services. Check the main flows.
-   - Input validations and simple edge cases MUST be verified using unit tests. Place these under 'tests/unit/' or similar. Unit tests guideline: all mock calls need to be asserted, all return values need to be checked. Do not write trivial tests or mocks.
-   - Complex edge-cases, internal validation flows, and multi-component interactions MUST be verified using integration tests. Place these under 'tests/integration/' or similar. Integration tests guideline: only mock the lowest level possible (I/O mainly), so for example if your Python package depends on an external library that does HTTP requests, mock that library only. The project code must be tested fully.
-4. For all Python test files, use the standard library 'unittest' and 'unittest.mock'. Do NOT import or use 'pytest' under any circumstance, as it is not installed in the sandbox environment.
-5. NEVER use or create the 'tests/holdout' directory under any circumstance.
-%s
-7. Do not pass multiprocessing Manager proxy objects (like ListProxy) inside a JSON payload in integration tests, as they are not JSON serializable. Instead, use a thread-safe Queue, write to a temp file, or mock a method that records the result.
-8. When asserting mock calls in unit tests, be careful to match the actual call count. For example, if a mock has a side-effect that returns a value and then raises an exception to break a loop, it is called twice, so calling assert_called_once() will fail. Use assertEqual(mock.call_count, 2) or assert_has_calls() instead.
-9. When using side-effects to break the worker's run loop in tests, do NOT raise Exception subclasses (like StopIteration or ValueError), because the worker catches all Exception types to prevent crashing. Instead, raise a BaseException type (like KeyboardInterrupt or a custom subclass of BaseException) so the exception propagates out of the loop and terminates it.
-%s
-11. Do NOT mock or patch the entire 'threading' module (e.g. @patch('frontpunch.worker.threading')), as this mocks threading.Event and threading.Thread, breaking internal synchronization in the worker. Instead, patch only the specific functions you need (e.g. @patch('frontpunch.worker.threading.current_thread')).
-12. When asserting calls on a mock method directly (e.g. mock_signal.signal.assert_has_calls), you must use call(args) rather than call.method(args) (e.g. call(SIGINT, ...) instead of call.signal(SIGINT, ...)), because mock_signal.signal is already the method itself.
-13. Do NOT use 'logging.disable(logging.CRITICAL)' in test setups if you use 'self.assertLogs' or expect logger output, as it globally disables all logging, causing 'assertLogs' to fail. Instead, mock the worker's logger or adjust the logger's level/propagate attribute individually to suppress stdout noise.
-14. Do NOT import or use external mock libraries like 'fakeredis' under any circumstance, as they are not installed in the sandbox environment. Instead, mock the Redis/Valkey client instance using unittest.mock.MagicMock or use the real client object when a server is running.
-15. When patching a module containing constants used in function calls (e.g. @patch('frontpunch.worker.signal')), any constants (like signal.SIGINT) inside the code under test will resolve to mock attributes. Your assertions must expect the mock attributes (e.g. mock_signal.SIGINT) rather than the real constants.
-16. Do NOT write tests that send real OS signals (like os.kill(pid, SIGTERM)) or block indefinitely on threading.Event objects without setting them, as they will cause the test suite to hang and fail validation due to timeouts. Always ensure any blocking mock side-effects have a reasonable timeout or are explicitly unblocked/set during the test.
-17. When testing signal registration (checking if signal.signal is called in the main thread), do NOT patch the 'threading' module at all. Since the test runs in the main thread of the test process, you can just call worker.run() directly (with an exception/mock to break the loop) and signal.signal will naturally be called, or patch only 'threading.current_thread' to return threading.main_thread() if you are simulating the main thread in other contexts.
-18. When writing the integration test's mock 'brpop' side-effect, do NOT use a long 'time.sleep(N)' to simulate blocking/empty queue, as this causes the worker thread to remain blocked when the test thread tries to join it, causing timing failures or hangs. Instead, use a threading.Event object (e.g. 'unblock_event.wait(timeout=1)') and set/signal that event immediately after calling worker._handle_shutdown() in the test, so the worker is unblocked and can terminate and join promptly.
-19. If any existing tests disable logging globally at the module level (e.g. using 'logging.disable(logging.CRITICAL)'), this persists and silences log assertions in other tests run in the same process. To prevent this, if you use 'assertLogs', you MUST call 'logging.disable(logging.NOTSET)' in your test's 'setUp' (and optionally restore it in 'tearDown') to ensure the logging system is active during your test.
-20. Do NOT modify global state or mutate global variables in unit or integration tests. Changing shared global configuration (like globally disabling logging) causes state pollution across tests and leads to validation failures. It is better to avoid testing a specific piece of code than to rely on modifying global state.
-21. When writing integration tests that connect to a Redis/Valkey server, you MUST check if the server is available in setUp() and skip the test (using self.skipTest() or unittest.skip/skipIf) if the connection fails or if the server is not running on localhost. Do NOT fail the test on connection errors, as the test environment may not have a running Redis/Valkey service.
+2. You must write tests according to the following guidelines:
+   - Happy paths MUST be verified using end-to-end (e.g., integration or functional) tests as much as possible. Check the main flows.
+   - Input validations and simple edge cases MUST be verified using unit tests. All mock/stub calls need to be asserted, and return values checked. Do not write trivial tests.
+   - Complex edge-cases, internal validation flows, and multi-component interactions MUST be verified using integration tests. Limit mocking to external I/O boundaries (e.g. databases, HTTP clients, external network connections).
+3. Do NOT modify global state or mutate shared configurations/variables in unit or integration tests, as it causes state pollution across tests.
+4. All test code written/modified MUST compile cleanly and comply with the project's formatting and linter guidelines. You should invoke run_linter and run_tests to verify correctness before calling noop.
+5. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
 
 
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
 - write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
-- edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace", "replacement_content": "new code block"}
+- edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace (must match the file content exactly; never include '[TRUNCATED]' or other placeholders)", "replacement_content": "new code block"}
 - list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
-- find_files: search for files. Args: {"pattern": "*.py"}
+- find_files: search for files. Args: {"pattern": "*"}
 - grep_search: search for a pattern in files. Args: {"query": "search_term"}
 - run_tests: run the project's tests to verify correctness. Args: {}
-- noop: call this when the tests have been successfully written. Args: {}
+- run_linter: run the project's linter check in the sandbox workspace to verify syntax and style. Args: {}
+- noop: call this when the tests have been successfully written and all verification checks (tests and linter) pass. Args: {}
 
 Return format:
 {
@@ -147,7 +186,7 @@ Return format:
     }
   ]
 }
-`, taskDetails, proj.TestWriterInstructions, proj.TestTasksInstructions1, proj.TestTasksInstructions2)
+`, taskDetails)
 	} else if strings.HasPrefix(prompt, "Execute task:") {
 		taskDetails := strings.TrimPrefix(prompt, "Execute task:")
 		prompt = fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
@@ -161,29 +200,25 @@ Task Details:
 
 CRITICAL:
 1. You only have ONE single turn to complete this task. You must write/edit files and run tests immediately in your response actions. Do NOT run read_file, find_files, grep_search, or list_directory first, as you will not get another turn.
-%s
-%s
-4. For all Python test files, use the standard library 'unittest' and 'unittest.mock'. Do NOT import or use 'pytest' under any circumstance, as it is not installed in the sandbox environment.
-5. NEVER use or create the 'tests/holdout' directory under any circumstance.
-6. CRITICAL: When executing worker tasks, the task arguments (args) in the JSON payload may be provided either as a list of positional arguments (e.g. [1, 2]) or as a dictionary of keyword arguments (e.g. {"x": 1, "y": 2}). Your implementation of the job execution method MUST dynamically check the type of the arguments and unpack them correctly (using *args for lists, and **args for dicts) to satisfy all test cases.
-7. CRITICAL: When implementing graceful shutdown using ThreadPoolExecutor, you MUST keep the 'with ThreadPoolExecutor(...) as executor' context manager pattern. Do NOT replace it with 'executor = ThreadPoolExecutor(...)' or 'try...finally' around the executor instantiation, as this breaks backward-compatibility with existing tests (e.g. TestWorkerRun) that mock and assert on the context manager enter/exit methods. You must write the graceful shutdown logic inside the 'with' block, wrapping the loop in a try...finally block if you want to explicitly call 'executor.shutdown(wait=True)' or log messages. Your implementation of the run() loop MUST NOT swallow or catch StopIteration, as existing unit tests raise StopIteration to terminate the run loop and expect it to propagate. If you use a try...except block, ensure StopIteration is re-raised.
-%s
-9. CRITICAL: Loggers must be dependency injected (either via class constructor argument or setter method). This allows tests to pass mock logging objects or custom loggers and verify log calls without relying on or modifying global logger configuration.
-10. CRITICAL: When modifying a file that already exists and contains business logic, do NOT overwrite it wholesale with 'write_file'. Instead, use 'edit_file' (or 'multi_replace_file_content') to surgically merge your changes into the existing file, preserving the original structure, functions, docstrings, and behaviors.
-11. CRITICAL: Before writing any code, always check if any dependencies or infrastructure configurations (such as Docker database services) are missing from the project manifests (e.g. 'pyproject.toml', 'requirements.txt', 'docker-compose.yml'). If a dependency or service is required by the SPEC, you MUST create or update these manifests first to include them.
-12. CRITICAL: If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' block to explain the bug and trigger a test fix by the Tester Agent.
+2. Keep classes, structs, or functions focused on a single responsibility. Implement dependency injection for external resources, loggers, and clients to make components mockable and testable.
+3. When modifying a file that already exists and contains business logic, do NOT overwrite it wholesale with 'write_file'. Instead, use 'edit_file' (or 'multi_replace_file_content') to surgically merge your changes into the existing file, preserving the original structure, functions, docstrings, and behaviors.
+4. Before writing any code, always check if any dependencies or infrastructure configurations are missing from the project manifests (e.g. Gemfile, package.json, requirements.txt, pyproject.toml). If a dependency is required by the SPEC, you MUST create or update these manifests first to include them.
+5. If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' block to explain the bug and trigger a test fix by the Tester Agent.
+6. All code implemented/modified MUST compile cleanly and comply with the project's formatting and linter guidelines. You should invoke run_linter and run_tests to verify correctness before calling noop.
+7. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
 
 
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
 - write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
-- edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace", "replacement_content": "new code block"}
+- edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace (must match the file content exactly; never include '[TRUNCATED]' or other placeholders)", "replacement_content": "new code block"}
 - list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
-- find_files: search for files. Args: {"pattern": "*.py"}
+- find_files: search for files. Args: {"pattern": "*"}
 - grep_search: search for a pattern in files. Args: {"query": "search_term"}
 - run_tests: run the project's tests to verify correctness. Args: {}
+- run_linter: run the project's linter check in the sandbox workspace to verify syntax and style. Args: {}
 - request_test_fix: call this tool if a test failure is caused by a bug in the test code itself (e.g. incorrect assertion, invalid mock) rather than the implementation. Args: {"feedback": "Detailed description of the bug in the test code and how to fix it."}
-- noop: call this when the implementation is fully complete and all tests pass. Args: {}
+- noop: call this when the implementation is fully complete, compiles cleanly, and passes all tests and linter checks. Args: {}
 
 Return format:
 {
@@ -197,7 +232,7 @@ Return format:
     }
   ]
 }
-`, taskDetails, proj.Instructions, proj.TestInstructions, proj.CliInstructions)
+`, taskDetails)
 	}
 
 	apiKey := c.APIKey
@@ -209,6 +244,8 @@ Return format:
 			apiKey = os.Getenv("OPENAI_API_KEY")
 		case "anthropic":
 			apiKey = os.Getenv("ANTHROPIC_API_KEY")
+		case "opencode":
+			apiKey = os.Getenv("OPENCODE_API_KEY")
 		}
 	}
 
@@ -236,7 +273,7 @@ Return format:
 
 		var pClient ProviderClient
 		switch strings.ToLower(c.Provider) {
-		case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
+		case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
 			pClient = NewOpenAIProviderClient(c.Provider, c.URL)
 		case "gemini":
 			pClient = NewGeminiProviderClient(c.URL)
@@ -276,11 +313,29 @@ Return format:
 		}
 
 		if err == nil {
-			extracted, err := ExtractJSONBlock(string(responseBody))
-			if err != nil {
-				return nil, err
+			resp, parseErr := parseAndUnmarshal(responseBody)
+			if parseErr == nil {
+				return resp, nil
 			}
-			return LenientUnmarshal(extracted)
+			// Defensive one-shot format-reminder retry: when the model
+			// returned a non-JSON blob (prose, code, a shell command), send
+			// a single pullback prompt that re-states the JSON envelope
+			// demand, append the offending tail, and try once more.
+			fmt.Fprintf(os.Stderr, "⚠ LLM response was not a valid JSON envelope (%v). Sending a one-shot format reminder and retrying...\n", parseErr)
+			reminderPrompt := buildJSONReminderPrompt(prompt, responseBody)
+			reminderCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			reminderBody, rErr := pClient.Call(reminderCtx, c.Model, apiKey, reminderPrompt)
+			cancel()
+			if rErr == nil {
+				resp2, pErr2 := parseAndUnmarshal(reminderBody)
+				if pErr2 == nil {
+					return resp2, nil
+				}
+				fmt.Fprintf(os.Stderr, "⚠ One-shot format reminder did not yield a parseable JSON response: %v\n", pErr2)
+				return nil, pErr2
+			}
+			fmt.Fprintf(os.Stderr, "⚠ Format reminder call failed: %v\n", rErr)
+			return nil, parseErr
 		}
 
 		isFallbackError := strings.Contains(err.Error(), "HTTP error 503") ||
@@ -310,7 +365,7 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 
 	var pClient ProviderClient
 	switch strings.ToLower(c.Provider) {
-	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama":
+	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
 		pClient = NewOpenAIProviderClient(c.Provider, c.URL)
 	case "gemini":
 		pClient = NewGeminiProviderClient(c.URL)

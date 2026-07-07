@@ -1,11 +1,25 @@
+# syntax=docker/dockerfile:1.6
+# Shared base image for noctifab validation. Contains only noctifab itself,
+# the validation projects, and the validate.sh harness. Language toolchains
+# are NOT installed here — per-project Dockerfiles layer on top of this image
+# (or mirror its build) to install the toolchain the project needs.
+#
+# Build order used by run_one.sh:
+#   1.  docker build -f validation/Dockerfile.validation -t noctifab-validation:base .
+#   2.  docker build -f validation/projects/<project>/Dockerfile -t noctifab-validation:<project> .
+#
+# Step 2 starts `FROM noctifab-validation:base` and installs the project's
+# own toolchain (Rust+rustfmt+clippy for wc, Python+ruff+black for frontpunch,
+# Go for todo-cli). Each project therefore owns its toolchain version pins.
+
 FROM golang:1.25-alpine AS go-builder
 RUN apk add --no-cache git bash build-base
 WORKDIR /app
 COPY . .
 RUN go build -o bin/noctifab cmd/noctifab/main.go
 
-FROM python:3.12-alpine
-RUN apk add --no-cache git bash rust cargo
+FROM alpine:3.21
+RUN apk add --no-cache git bash docker-cli
 WORKDIR /app
 
 # Copy the built binary
@@ -20,4 +34,3 @@ RUN chmod +x /app/validate.sh
 
 # Run the verification script directly in the container
 CMD ["/app/validate.sh"]
-

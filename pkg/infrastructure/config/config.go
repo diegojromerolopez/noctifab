@@ -33,6 +33,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		if err := yaml.Unmarshal(data, cfg); err != nil {
 			return nil, fmt.Errorf("failed to parse YAML config: %w", err)
 		}
+		if len(cfg.LLMs) > 0 {
+			cfg.LLM = cfg.LLMs[0]
+		}
 	}
 
 	// 2a. Load secrets.yaml (optional) from the same directory as config.yaml.
@@ -75,35 +78,44 @@ func resolveSecrets(cfg *Config) {
 		}
 	}
 
-	if cfg.LLM.APIKeyValue == "" {
-		if cfg.LLM.APIKey != "" {
-			cfg.LLM.APIKeyValue = cfg.LLM.APIKey
+	resolveSingleLLMSecret(&cfg.LLM)
+	for i := range cfg.LLMs {
+		resolveSingleLLMSecret(&cfg.LLMs[i])
+	}
+}
+
+func resolveSingleLLMSecret(llm *LLMConfig) {
+	if llm.APIKeyValue == "" {
+		if llm.APIKey != "" && !strings.HasPrefix(llm.APIKey, "secret:") {
+			llm.APIKeyValue = llm.APIKey
 		} else {
-			if cfg.LLM.APIKeyEnv != "" {
-				cfg.LLM.APIKeyValue = os.Getenv(cfg.LLM.APIKeyEnv)
+			if llm.APIKeyEnv != "" {
+				llm.APIKeyValue = os.Getenv(llm.APIKeyEnv)
 			}
-			if cfg.LLM.APIKeyValue == "" {
-				switch strings.ToLower(cfg.LLM.Provider) {
+			if llm.APIKeyValue == "" {
+				switch strings.ToLower(llm.Provider) {
 				case "openai":
-					cfg.LLM.APIKeyValue = os.Getenv("OPENAI_API_KEY")
+					llm.APIKeyValue = os.Getenv("OPENAI_API_KEY")
 				case "anthropic":
-					cfg.LLM.APIKeyValue = os.Getenv("ANTHROPIC_API_KEY")
+					llm.APIKeyValue = os.Getenv("ANTHROPIC_API_KEY")
 				case "gemini":
-					cfg.LLM.APIKeyValue = os.Getenv("GEMINI_API_KEY")
+					llm.APIKeyValue = os.Getenv("GEMINI_API_KEY")
 				case "hermes":
-					cfg.LLM.APIKeyValue = os.Getenv("NOUS_API_KEY")
+					llm.APIKeyValue = os.Getenv("NOUS_API_KEY")
 				case "huggingface":
 					val := os.Getenv("HF_TOKEN")
 					if val == "" {
 						val = os.Getenv("HUGGINGFACE_API_KEY")
 					}
-					cfg.LLM.APIKeyValue = val
+					llm.APIKeyValue = val
 				case "mistral":
-					cfg.LLM.APIKeyValue = os.Getenv("MISTRAL_API_KEY")
+					llm.APIKeyValue = os.Getenv("MISTRAL_API_KEY")
 				case "deepseek":
-					cfg.LLM.APIKeyValue = os.Getenv("DEEPSEEK_API_KEY")
+					llm.APIKeyValue = os.Getenv("DEEPSEEK_API_KEY")
 				case "ollama":
-					cfg.LLM.APIKeyValue = os.Getenv("OLLAMA_API_KEY")
+					llm.APIKeyValue = os.Getenv("OLLAMA_API_KEY")
+				case "opencode":
+					llm.APIKeyValue = os.Getenv("OPENCODE_API_KEY")
 				}
 			}
 		}
@@ -117,7 +129,6 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("invalid storage provider: %s", cfg.Storage.Provider)
 	}
 
-	lp := strings.ToLower(cfg.LLM.Provider)
 	validLLM := map[string]bool{
 		"openai":      true,
 		"anthropic":   true,
@@ -127,9 +138,21 @@ func (cfg *Config) Validate() error {
 		"huggingface": true,
 		"mistral":     true,
 		"deepseek":    true,
+		"opencode":    true,
 	}
-	if !validLLM[lp] {
-		return fmt.Errorf("invalid LLM provider: %s", cfg.LLM.Provider)
+
+	if len(cfg.LLMs) > 0 {
+		for _, llm := range cfg.LLMs {
+			lp := strings.ToLower(llm.Provider)
+			if !validLLM[lp] {
+				return fmt.Errorf("invalid LLM provider in llms list: %s", llm.Provider)
+			}
+		}
+	} else {
+		lp := strings.ToLower(cfg.LLM.Provider)
+		if !validLLM[lp] {
+			return fmt.Errorf("invalid LLM provider: %s", cfg.LLM.Provider)
+		}
 	}
 
 	vp := strings.ToLower(cfg.VCS.Provider)
@@ -145,8 +168,16 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("VCS token is required")
 	}
 
-	if cfg.LLM.APIKeyValue == "" && lp != "ollama" {
-		return fmt.Errorf("LLM API key is required")
+	if len(cfg.LLMs) > 0 {
+		for _, llm := range cfg.LLMs {
+			if llm.APIKeyValue == "" && strings.ToLower(llm.Provider) != "ollama" {
+				return fmt.Errorf("LLM API key is required for provider %s", llm.Provider)
+			}
+		}
+	} else {
+		if cfg.LLM.APIKeyValue == "" && strings.ToLower(cfg.LLM.Provider) != "ollama" {
+			return fmt.Errorf("LLM API key is required")
+		}
 	}
 
 	return nil

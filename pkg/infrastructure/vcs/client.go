@@ -10,6 +10,9 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Client struct {
@@ -30,6 +33,15 @@ func NewClient(provider, repository, token string) *Client {
 }
 
 func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch, baseBranch string) (string, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "CreatePullRequest",
+		trace.WithAttributes(
+			attribute.String("provider", c.Provider),
+			attribute.String("repository", c.Repository),
+			attribute.String("head_branch", headBranch),
+			attribute.String("base_branch", baseBranch),
+		))
+	defer span.End()
+
 	if c.Provider == "mock" || c.Token == "test-token" || c.Token == "" {
 		// Mock implementation for test runners/offline validation
 		return fmt.Sprintf("https://github.com/%s/pull/123", c.Repository), nil
@@ -83,6 +95,13 @@ func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch,
 }
 
 func (c *Client) MergePullRequest(ctx context.Context, prID string) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "MergePullRequest",
+		trace.WithAttributes(
+			attribute.String("provider", c.Provider),
+			attribute.String("pr_id", prID),
+		))
+	defer span.End()
+
 	if c.Provider == "mock" || c.Token == "test-token" || c.Token == "" {
 		return nil
 	}

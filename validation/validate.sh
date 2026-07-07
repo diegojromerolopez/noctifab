@@ -33,6 +33,22 @@ fi
 cp -R "${PROJECT_SRC}" "${TMP_DIR}"
 cd "${TMP_DIR}"
 
+# Mount the secret file from the runtime Docker secret into the workspace.
+# Images are kept free of credentials: secrets.yaml is bind-mounted into the
+# container at /run/secrets/noctifab-secrets.yaml by run_one.sh and copied
+# here so noctifab can resolve `secret:OPENCODE_API_KEY` etc. at config load
+# (pkg/infrastructure/config/secrets.go:38).
+SECRETS_SRC="/run/secrets/noctifab-secrets.yaml"
+HOST_FALLBACK="${PROJECT_SRC}/.noctifab/secrets.yaml"
+if [ -f "${SECRETS_SRC}" ]; then
+  cp "${SECRETS_SRC}" .noctifab/secrets.yaml
+elif [ -f "${HOST_FALLBACK}" ]; then
+  echo "⚠ Warning: using fallback secrets.yaml from project tree; image may contain secrets." >&2
+else
+  echo "❌ Error: no secrets.yaml found at ${SECRETS_SRC} or ${HOST_FALLBACK}." >&2
+  exit 1
+fi
+
 # 4. Initialize git repository inside the container workspace
 echo "Initializing clean git repository on branch main..."
 git init
@@ -46,6 +62,7 @@ __pycache__/
 .noctifab/logs/
 todo.json
 *.json
+target/
 EOF
 git add .
 git commit -m "initial project structures and gitignore"
@@ -67,8 +84,8 @@ if [ -n "${OPENAI_API_KEY:-}" ]; then
   export OPENAI_API_KEY=$(echo "${OPENAI_API_KEY}" | sed -E 's/.*OPENAI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
 fi
 
-# Set dummy GITHUB_FRONTPUNCH_TOKEN if not present to pass pre-flight checks
-export GITHUB_FRONTPUNCH_TOKEN="${GITHUB_FRONTPUNCH_TOKEN:-${GITHUB_TOKEN:-dummy-token}}"
+# Set dummy GITHUB_TOKEN if not present to pass pre-flight checks
+export GITHUB_TOKEN="${GITHUB_TOKEN:-dummy-token}"
 
 # 6. Initialize noctifab
 "${NOCTIFAB_BIN}" init --vcs-clone-protocol https
@@ -76,25 +93,58 @@ export GITHUB_FRONTPUNCH_TOKEN="${GITHUB_FRONTPUNCH_TOKEN:-${GITHUB_TOKEN:-dummy
 echo "Using pre-configured config.yaml:"
 cat .noctifab/config.yaml
 
-# 7. Run noctifab start-one command for US-001
-echo "Running noctifab start-one for US-001..."
-"${NOCTIFAB_BIN}" start-one --input roadmap/US-001.md
+# 7. Run noctifab command
+MODE="${MODE:-start-one}"
+
+# Determine the sequence of stories to run for the project
+STORIES=()
+if [ "${PROJECT}" = "frontpunch" ]; then
+  STORIES=("roadmap/US-000.md" "roadmap/US-001.md")
+elif [ "${PROJECT}" = "wc" ]; then
+  STORIES=("roadmap/US-001.md" "roadmap/US-002.md")
+elif [ "${PROJECT}" = "calculator" ] || [ "${PROJECT}" = "echo" ]; then
+  STORIES=("SPEC.md")
+else
+  STORIES=("roadmap/US-001.md")
+fi
+
+for STORY_PATH in "${STORIES[@]}"; do
+  if [ "${MODE}" = "start" ]; then
+    echo "Running noctifab start for ${STORY_PATH}..."
+    echo "start ${STORY_PATH}" | "${NOCTIFAB_BIN}" start --wait
+    # Stop the daemon after completion
+    "${NOCTIFAB_BIN}" stop 2>/dev/null || true
+  else
+    echo "Running noctifab start-one for ${STORY_PATH}..."
+    "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
+  fi
+done
 
 # 8. Verify results
 echo "Verifying results..."
 if [ "${PROJECT}" = "frontpunch" ]; then
-  if [ ! -f "frontpunch/worker.py" ]; then
-    echo "❌ Error: frontpunch/worker.py was not created/modified!"
+  if [ ! -f "frontpunch/client.py" ]; then
+    echo "❌ Error: frontpunch/client.py was not created/modified!"
     exit 1
   fi
 elif [ "${PROJECT}" = "todo-cli" ]; then
-  if [ ! -f "todo.py" ]; then
-    echo "❌ Error: todo.py was not created/modified!"
+  if [ ! -f "cmd/todo/main.go" ] && [ ! -f "main.go" ]; then
+    echo "❌ Error: cmd/todo/main.go (or main.go) was not created/modified!"
     exit 1
   fi
 elif [ "${PROJECT}" = "wc" ]; then
-  if [ ! -f "Cargo.toml" ] || [ ! -f "src/main.rs" ]; then
+  if { [ ! -f "Cargo.toml" ] || [ ! -f "src/main.rs" ]; } && { [ ! -f "wc/Cargo.toml" ] || [ ! -f "wc/src/main.rs" ]; }; then
     echo "❌ Error: Cargo.toml or src/main.rs was not created/modified!"
+    exit 1
+  fi
+elif [ "${PROJECT}" = "calculator" ]; then
+  if [ ! -f "calculator.rb" ] && [ ! -f "lib/calculator.rb" ] && [ ! -f "lib/calculator/cli.rb" ]; then
+    echo "❌ Error: calculator.rb or lib/calculator/cli.rb was not created/modified!"
+    exit 1
+  fi
+elif [ "${PROJECT}" = "echo" ]; then
+  if [ ! -f "cmd/echo/main.go" ] && [ ! -f "main.go" ]; then
+    echo "❌ Error: cmd/echo/main.go (or main.go) was not created/modified!"
     exit 1
   fi
 else
@@ -102,5 +152,39 @@ else
 fi
 
 echo "✅ Success: Noctifab executed autonomously, implemented US-001 features, and passed validation for ${PROJECT}!"
+
+# Copy the generated code to the src mount if present
+if [ -d "/app/src_mount" ]; then
+  echo "Copying generated code to src mount..."
+  rm -rf /app/src_mount/*
+  cp -a . /app/src_mount/
+fi
+
+# Locate and copy binary to dist mount if present
+if [ -d "/app/dist_mount" ]; then
+  echo "Checking and compiling binary if project generates one..."
+  rm -rf /app/dist_mount/*
+  if [ "${PROJECT}" = "todo-cli" ]; then
+    if [ -f "cmd/todo/main.go" ]; then
+      go build -o /app/dist_mount/todo ./cmd/todo
+    elif [ -f "main.go" ]; then
+      go build -o /app/dist_mount/todo main.go
+    fi
+  elif [ "${PROJECT}" = "echo" ]; then
+    if [ -f "cmd/echo/main.go" ]; then
+      go build -o /app/dist_mount/echo-cli ./cmd/echo
+    elif [ -f "main.go" ]; then
+      go build -o /app/dist_mount/echo-cli main.go
+    fi
+  elif [ "${PROJECT}" = "wc" ]; then
+    cargo build --release
+    if [ -f "target/release/wc" ]; then
+      cp target/release/wc /app/dist_mount/
+    elif [ -f "wc/target/release/wc" ]; then
+      cp wc/target/release/wc /app/dist_mount/
+    fi
+  fi
+fi
+
 cd ..
 rm -rf "${TMP_DIR}"

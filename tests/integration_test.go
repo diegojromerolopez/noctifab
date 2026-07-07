@@ -140,6 +140,8 @@ llm:
 	defer func() { _ = os.Unsetenv("MOCK_VCS_TOKEN") }()
 	_ = os.Setenv("MOCK_LLM_KEY", "mock-llm-key-val")
 	defer func() { _ = os.Unsetenv("MOCK_LLM_KEY") }()
+	_ = os.Setenv("NOCTIFAB_E2E", "true")
+	defer func() { _ = os.Unsetenv("NOCTIFAB_E2E") }()
 
 	// Set args to override config path and point to our temp config
 	configFlag := filepath.Join(noctifabDir, "config.yaml")

@@ -22,6 +22,7 @@ To maintain modularity and high context compatibility, the following guidelines 
     *   **Dependency Injection (DI):** Do not hardcode dependencies. Provide all objects, configurations, and clients through constructors. Code must be built in a way that is easy to test (utilizing dependency injection to make components highly mockable and isolated).
     *   **SOLID:** Keep classes/structs focused on a single responsibility.
     *   **Domain-Driven Design (DDD):** Align packaging boundaries to domain logic (e.g., domain entities, value objects, and service interfaces), not technical categories.
+    *   **Project & Language Agnosticism:** Noctifab MUST NOT HAVE validation project-specific or language-specific code in its codebase. Noctifab is a dark factory agent; do not add specific instructions, context helpers, or code rules for particular validation projects or programming languages.
 3.  **Testing Strategy:**
     *   All code must be **100% unit tested**. Every Go package must be accompanied by unit tests.
     *   After making any change to the codebase, you **must** run the test suite to verify correctness.
@@ -60,3 +61,41 @@ To maintain modularity and high context compatibility, the following guidelines 
 *   The orchestrator loads, updates, validates, and saves the system state.
 *   The LLM agent only operates on the state snapshot provided to it at each step.
 *   **Do not rely on the LLM's conversation history** to track what has happened previously. Always inspect the current State struct representation (e.g., in JSON file databases, local configurations, or databases) to determine the next task.
+
+---
+
+## 4. Running Validation Projects (Local E2E Matrix)
+
+To run a fully containerized, isolated, end-to-end (E2E) integration check of `noctifab` implementing features autonomously inside a target project:
+
+1. **Credentials Setup**:
+   Create a `secrets.yaml` file on the host at `validation/projects/<project>/.noctifab/secrets.yaml` containing the necessary LLM API keys:
+   ```yaml
+   OPENCODE_API_KEY: "your-key"
+   GITHUB_TOKEN: "your-token"
+   ```
+   *Note: This file is excluded from the build context by `.dockerignore` and `.gitignore` to prevent secret leakage, and is safely mounted at runtime.*
+
+2. **Executing the Validation Harness**:
+   - Run a single validation project:
+     ```bash
+     make validate PROJECT=<project>
+     ```
+   - Run all validation projects in parallel:
+     ```bash
+     make validate-all
+     ```
+   - Reuse existing docker images (skipping the rebuild phase):
+     ```bash
+     make validate PROJECT=<project> SKIP_BUILD=1
+     ```
+
+3. **Output Artifacts**:
+   All outputs from the validation run are written directly to the target validation project's output path:
+   - **Logs**: Captured container console output (`<project>.log`) and wrapper output (`<project>.wrap.log`) are stored in `validation/projects/<project>/output/log/`.
+   - **Feedback**: A structured Markdown report (`<PROJECT>_FEEDBACK.md`) summarizing the run is saved under `validation/projects/<project>/output/feedback/`.
+   - **Source Code & Binaries**: The generated codebase and compiled executables are placed in `validation/projects/<project>/output/src/` and `validation/projects/<project>/output/dist/` respectively.
+
+4. **Spec-Driven Validation Rule**:
+   Pre-creating or checking in static roadmap user stories (e.g. under `roadmap/`) for validation projects is **strictly forbidden**. Validation projects must be defined and run solely based on `SPEC.md` to verify that `noctifab` is capable of autonomously decomposing specifications into user stories on the fly using its Product Manager Agent.
+

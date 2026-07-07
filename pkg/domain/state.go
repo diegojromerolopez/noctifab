@@ -94,6 +94,16 @@ type StateMetadata struct {
 	TotalCostUSD      string `json:"total_cost_usd,omitempty"` // Estimated LLM API cost in USD
 }
 
+// StoryStatus tracks the lifecycle of a user story being processed by the daemon.
+type StoryStatus string
+
+const (
+	StoryIdle    StoryStatus = ""
+	StoryRunning StoryStatus = "RUNNING"
+	StorySuccess StoryStatus = "SUCCESS"
+	StoryFailed  StoryStatus = "FAILED"
+)
+
 // State represents the complete system database state record.
 type State struct {
 	ID                 string                `json:"id"`
@@ -107,4 +117,6 @@ type State struct {
 	BuildStatus        BuildStatus           `json:"build_status"`
 	LastActions        []Action              `json:"last_actions"`
 	Metadata           StateMetadata         `json:"metadata"`
+	StoryStatus        StoryStatus           `json:"story_status"`
+	StoryError         string                `json:"story_error,omitempty"`
 }

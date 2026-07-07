@@ -13,8 +13,9 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
-	"github.com/diegojromerolopez/noctifab/pkg/usecase"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/spf13/cobra"
 )
 
@@ -33,12 +34,21 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 
+		if cfg.Telemetry.Enabled {
+			tp, tpErr := telemetry.InitTracer(cfg.Telemetry.ServiceName, cfg.Telemetry.Endpoint)
+			if tpErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: telemetry init failed: %v\n", tpErr)
+			} else {
+				defer func() { _ = tp.Shutdown(context.Background()) }()
+			}
+		}
+
 		// Write PID file so "stop" and "start" can find this process.
 		pidPath := ".noctifab/noctifab.pid"
-		if err := usecase.WritePIDFile(pidPath); err != nil {
+		if err := services.WritePIDFile(pidPath); err != nil {
 			return fmt.Errorf("failed to write PID file: %w", err)
 		}
-		defer func() { _ = usecase.RemovePIDFile(pidPath) }()
+		defer func() { _ = services.RemovePIDFile(pidPath) }()
 
 		// Initialize repository.
 		var repo domain.StateRepository
@@ -56,36 +66,44 @@ var serveCmd = &cobra.Command{
 		}
 
 		// Initialize sandbox runner.
-		var sandboxRunner usecase.Sandbox
+		var sandboxRunner services.Sandbox
 		if cfg.Sandbox.Mode == "docker" {
-			sandboxRunner = usecase.NewDockerSandbox("noctifab-sandbox")
+			sandboxRunner = services.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			sandboxRunner = usecase.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand)
+			var depMgr *services.DependencyManager
+			if cfg.Sandbox.AutoInstallDeps {
+				depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
+			}
+			sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 		}
 
 		// Initialize tool registry.
-		reg := usecase.NewToolRegistry()
-		reg.Register(&usecase.AddTaskTool{})
-		reg.Register(&usecase.CompleteTaskTool{})
-		reg.Register(&usecase.LogMessageTool{})
-		reg.Register(&usecase.NoopTool{})
-		reg.Register(&usecase.ReadFileTool{})
-		reg.Register(&usecase.WriteFileTool{})
-		reg.Register(&usecase.EditFileTool{})
-		reg.Register(&usecase.ListDirectoryTool{})
-		reg.Register(&usecase.FindFilesTool{})
-		reg.Register(&usecase.GrepSearchTool{})
-		reg.Register(&usecase.RunTestsTool{Runner: sandboxRunner})
-		reg.Register(&usecase.RequestTestFixTool{})
+		reg := services.NewToolRegistry()
+		reg.Register(&services.AddTaskTool{})
+		reg.Register(&services.CompleteTaskTool{})
+		reg.Register(&services.LogMessageTool{})
+		reg.Register(&services.NoopTool{})
+		reg.Register(&services.ReadFileTool{})
+		reg.Register(&services.WriteFileTool{})
+		reg.Register(&services.EditFileTool{})
+		reg.Register(&services.ListDirectoryTool{})
+		reg.Register(&services.FindFilesTool{})
+		reg.Register(&services.GrepSearchTool{})
+		reg.Register(&services.RunTestsTool{Runner: sandboxRunner})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand})
+		reg.Register(&services.RequestTestFixTool{})
 
-		// Initialize LLM client.
-		llmClient := llm.NewClient(
-			cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
-			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
-		)
+		// Initialize LLM client with database budget store.
+		var budgetStore domain.BudgetStore
+		if sqliteRepo, ok := repo.(*storage.SQLiteRepository); ok {
+			budgetStore = storage.NewSQLiteBudgetStore(sqliteRepo.DB())
+		} else if pgRepo, ok := repo.(*storage.PostgresRepository); ok {
+			budgetStore = storage.NewPostgresBudgetStore(pgRepo.DB())
+		}
+		llmClient := llm.BuildFailoverClient(cfg, budgetStore)
 
 		// Initialize orchestrator components.
-		gitClient := usecase.NewGitClient(".")
+		gitClient := services.NewGitClient(".")
 		if cfg.VCS.BaseBranch == "git-detect" {
 			detected, err := gitClient.Run(context.Background(), false, "rev-parse", "--abbrev-ref", "HEAD")
 			if err == nil {
@@ -94,21 +112,24 @@ var serveCmd = &cobra.Command{
 				cfg.VCS.BaseBranch = "main" // fallback
 			}
 		}
-		rebaseQueue := usecase.NewRebaseQueue(gitClient)
-		profilesMap := make(map[string]usecase.ProfileConfig)
+		rebaseQueue := services.NewRebaseQueue(gitClient)
+		profilesMap := make(map[string]services.ProfileConfig)
 		for role, prof := range cfg.Profiles {
-			profilesMap[role] = usecase.ProfileConfig{
+			profilesMap[role] = services.ProfileConfig{
 				AllowedTools:    prof.AllowedTools,
 				AllowedCommands: prof.AllowedCommands,
 			}
 		}
-		validator := usecase.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
-		scheduler := usecase.NewScheduler(usecase.NewFileLockRegistry())
-		evaluator := usecase.NewTestValidator(sandboxRunner, false)
+		validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
+		scheduler := services.NewScheduler(services.NewFileLockRegistry())
+		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
-		orchConfig := usecase.OrchestratorConfig{
+		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools())
+
+		orchConfig := services.OrchestratorConfig{
 			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
 			MaxRetries:       3,
 			Concurrency:      cfg.Orchestrator.Concurrency,
@@ -116,16 +137,18 @@ var serveCmd = &cobra.Command{
 			OCCMaxRetries:    cfg.OCCMaxRetries,
 			OCCBackoffBase:   time.Duration(cfg.OCCBackoffBase),
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
+			MaxDuration:      time.Duration(cfg.MaxDuration),
+			AutoCreatePR:     cfg.VCS.PullRequest.AutoCreate,
 		}
 
-		orchestrator := usecase.NewOrchestrator(
-			repo, reg, llmClient, validator, scheduler,
-			gitClient, rebaseQueue, evaluator, vcsClient, orchConfig,
-		)
-
 		// Story queue: the mailbox sends stories here; the server loop processes them.
-		storyCh := make(chan usecase.StoryWorkItem, 32)
-		mailbox := usecase.NewCommandMailbox(repo)
+		storyCh := make(chan services.StoryWorkItem, 32)
+		mailbox := services.NewCommandMailbox(repo)
+
+		orchestrator := services.NewOrchestrator(
+			repo, reg, llmClient, validator, scheduler,
+			gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox, repairHandler,
+		)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -142,7 +165,7 @@ var serveCmd = &cobra.Command{
 		go mailbox.Start(ctx)
 
 		// Start REST HTTP server (loopback only, passes storyCh for /api/v1/stories).
-		server := usecase.StartDaemonServer(repo, mailbox, storyCh)
+		server := services.StartDaemonServer(repo, mailbox, storyCh, llmClient)
 		defer func() { _ = server.Close() }()
 
 		fmt.Printf("noctifab daemon started (PID %d). Listening on 127.0.0.1:18080\n", os.Getpid())
@@ -157,9 +180,9 @@ var serveCmd = &cobra.Command{
 // then writes a per-story completion entry and loops back.
 func runServerLoop(
 	ctx context.Context,
-	orchestrator *usecase.Orchestrator,
+	orchestrator *services.Orchestrator,
 	repo domain.StateRepository,
-	storyCh <-chan usecase.StoryWorkItem,
+	storyCh <-chan services.StoryWorkItem,
 	baseBranch, branchPrefix string,
 ) error {
 	cwd, err := os.Getwd()
@@ -173,7 +196,7 @@ func runServerLoop(
 			// Graceful shutdown: mark any in-progress tasks as INTERRUPTED.
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer shutdownCancel()
-			interruptCmd := &usecase.MarkStoryInterruptedCmd{}
+			interruptCmd := &services.MarkStoryInterruptedCmd{}
 			_ = interruptCmd.Execute(shutdownCtx, repo)
 			fmt.Fprintln(os.Stderr, "noctifab daemon: state saved. Goodbye.")
 			return nil
@@ -190,9 +213,9 @@ func runServerLoop(
 // All orchestrator output is written to both stdout and the per-story log file.
 func processStory(
 	ctx context.Context,
-	orchestrator *usecase.Orchestrator,
+	orchestrator *services.Orchestrator,
 	repo domain.StateRepository,
-	item usecase.StoryWorkItem,
+	item services.StoryWorkItem,
 	projectPath, baseBranch, branchPrefix string,
 ) error {
 	// Open per-story log file (.noctifab/logs/roadmap/<story>.log).
@@ -215,7 +238,8 @@ func processStory(
 	logf("▶ Starting story: %s\n", item.Path)
 
 	// Create a fresh State for this story.
-	state := usecase.NewStateForStory(projectPath, item.Path, baseBranch, branchPrefix)
+	state := services.NewStateForStory(projectPath, item.Path, baseBranch, branchPrefix)
+	state.StoryStatus = domain.StoryRunning
 	if err := repo.Save(ctx, state); err != nil {
 		return fmt.Errorf("failed to save initial state: %w", err)
 	}
@@ -223,11 +247,17 @@ func processStory(
 	// Planning phase: decompose the spec into tasks.
 	logf("📋 Planning tasks from specification...\n")
 	if err := orchestrator.PlanStory(ctx, state, item.Spec); err != nil {
+		state.StoryStatus = domain.StoryFailed
+		state.StoryError = fmt.Sprintf("planning failed: %v", err)
+		_ = repo.Save(context.Background(), state)
 		return fmt.Errorf("planning failed: %w", err)
 	}
 
 	// Execution loop: run until all tasks are done or context is cancelled.
-	ticker := time.NewTicker(orchestrator.PollInterval())
+	// Use 2-second ticker for fast cycles during story execution
+	// (the configured poll_interval is used server-wide; here we need quick turnaround).
+	const storyExecFreq = 2 * time.Second
+	ticker := time.NewTicker(storyExecFreq)
 	defer ticker.Stop()
 
 	for {
@@ -247,6 +277,12 @@ func processStory(
 			if allTasksDone(current) {
 				logf("✅ All tasks finished for story: %s\n", item.Path)
 				finalErr := orchestrator.FinalizeUserStory(ctx, current)
+				current.StoryStatus = domain.StorySuccess
+				if finalErr != nil {
+					current.StoryStatus = domain.StoryFailed
+					current.StoryError = finalErr.Error()
+				}
+				_ = repo.Save(ctx, current)
 				if logFile != nil {
 					_, _ = fmt.Fprintf(logFile, "=== Story finished: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
 				}
@@ -254,6 +290,9 @@ func processStory(
 			}
 
 			if anyTaskPermanentlyFailed(current) {
+				current.StoryStatus = domain.StoryFailed
+				current.StoryError = fmt.Sprintf("story %s: one or more tasks failed permanently", item.Path)
+				_ = repo.Save(ctx, current)
 				logf("❌ Story %s has permanently failed tasks.\n", item.Path)
 				if logFile != nil {
 					_, _ = fmt.Fprintf(logFile, "=== Story FAILED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))

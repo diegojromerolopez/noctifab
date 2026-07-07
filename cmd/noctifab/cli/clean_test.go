@@ -17,7 +17,7 @@ func TestValidateTables(t *testing.T) {
 	}{
 		{
 			name:    "all valid tables",
-			tables:  []string{"actions", "clarifications", "tasks", "state", "schema_migrations"},
+			tables:  []string{"actions", "clarifications", "tasks", "state", "schema_migrations", "validation_criteria", "active_agents", "budget_usage"},
 			wantErr: false,
 		},
 		{

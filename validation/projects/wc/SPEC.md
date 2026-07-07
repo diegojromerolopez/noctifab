@@ -5,6 +5,14 @@ The goal of this project is to implement a command-line interface (CLI) applicat
 
 To ensure high maintainability, safety, and suitability for E2E validation, the codebase must adhere strictly to SOLID principles, Domain-Driven Design (DDD) patterns, and memory-efficient streaming.
 
+### 1.1. Toolchain & Project Metadata
+- Rust edition 2021; MSRV 1.74.
+- Crate name: `wc` (binary name `wc`). Integration tests MUST invoke the built binary via `assert_cmd::Command::cargo_bin("wc")`, never the system `wc`.
+- `Cargo.toml` is a workspace-root single crate (no workspaces).
+- Allowed external crates: `clap` (v4, derive) for CLI parsing; `assert_cmd`, `predicates`, `tempfile` for tests only. No other dependencies.
+- Lint: `cargo fmt --check` and `cargo clippy -- -D warnings` must pass.
+- NOTE: This SPEC scopes only the `wc` Rust target. The repository-root AGENTS.md applies to the noctifab Go host and its BDD rules do NOT transfer here. Tests are plain Rust `#[test]` tests under `tests/`.
+
 ---
 
 ## 2. Architecture & Code Constraints
@@ -14,6 +22,25 @@ The Rust project must be structured into separate layers:
 1.  **Domain Layer:** Pure Rust (no external system dependencies). Defines core domain models like `CountStats` (representing counts of lines, words, chars, bytes, max-line-length), and the traits/interfaces for counting (e.g. `CountStrategy`).
 2.  **Application Layer:** Contains orchestrating use cases, such as `CountUseCase` that coordinates reading from multiple sources, calculating stats, and accumulating totals. It depends on traits, utilizing Dependency Injection (DI).
 3.  **Infrastructure Layer:** Implements concrete adapters, such as command-line argument parsing, file reading adapters, stdout printers, and stdin access.
+
+Pinned directory layout (every file path in user stories MUST be interpreted against this tree):
+```
+src/
+  lib.rs               // declares #![deny(unsafe_code)]
+  main.rs              // thin entry; delegates to application
+  domain/
+    count_stats.rs     // struct CountStats { lines, words, chars, bytes, max_line_len }
+    count_strategy.rs  // trait CountStrategy { fn count(&mut self, &mut dyn Read); fn result(self) -> CountStats; }
+  application/
+    count_usecase.rs   // struct CountUseCase<R: Read>; orchestrates
+    aggregate.rs       // total aggregation (Sum / Max)
+  infrastructure/
+    cli.rs             // clap Parser
+    readers.rs         // file/stdin adapters
+    output.rs          // formatter + printer
+tests/
+  integration_*.rs     // integration tests (assert_cmd + tempfile)
+```
 
 **SOLID Rules:**
 *   **SRP:** Separate parsing, input reading, core counting algorithms, and output formatting.
@@ -38,16 +65,33 @@ The compiled binary should support the following options:
 *   `-c` / `--bytes`: Count the number of bytes.
 *   `-m` / `--chars`: Count the number of valid UTF-8 characters.
 *   `-L` / `--max-line-length`: Count the UTF-8 character length of the longest line (excluding the trailing `'\n'`).
+*   Short flags may be bundled (e.g. `-lw` == `-l -w`). Long flags do not accept `=`-syntax. `--` terminates option parsing.
 
 ### 3.2. Default Behavior
 *   If no options are specified, default to `-l`, `-w`, and `-c` (newline, word, and byte counts).
 *   If multiple files are provided, process them sequentially, print the counts for each, and output a final `total` row with accumulated counts (for `-L`, the `total` is the maximum line length found among all files).
+*   Do NOT print a `total` row when only one input source (file or stdin) was processed. The `total` row is printed only when ≥2 input sources are processed.
 
 ### 3.3. Output Format
-*   Counts must be printed in the order: lines, words, chars, bytes, max-line-length (depending on which flags are active).
-*   To match standard UNIX `wc`, counts should be formatted right-aligned in columns of width 8.
-*   If a filename is provided, it is appended to the counts, separated by a space.
-*   If reading from stdin or `-`, no filename is printed.
+*   Counts are printed in the canonical order **lines, words, chars, bytes, max-line-length**, filtered to the active flags, **independent of the order in which flags were passed on the command line**.
+*   Each count column is formatted with Rust `format!("{:>7}", n)` (7-wide, right-aligned, space-padded). Columns are separated by a single space.
+*   If a filename is shown, it is preceded by a single space and printed verbatim as given on the command line.
+*   If reading from stdin or `-`, no filename is printed (and no trailing space).
+*   Reference formatter: `format!("{:>7} {:>7} {:>7} {}", lines, words, bytes, name)` (omit unused columns and the `name` segment as appropriate).
+
+### 3.4. Counting Semantics
+*   "Whitespace" for `-w` means Rust `char::is_whitespace` (Unicode). A "word" is a maximal run of non-whitespace characters.
+*   `-c` counts all bytes read, including a trailing newline.
+*   `-m` counts Unicode codepoints decoded from valid UTF-8. Invalid byte sequences are counted one codepoint per byte and continue (do not abort, do not error). Matches GNU `wc` `mbrtowc` fallback.
+*   `-L` is the length, in characters (Unicode codepoints), of the longest line, excluding the terminating `'\n'`. A trailing `'\r'` (as in `\r\n`) IS counted toward the line length. A final line without a newline IS considered toward the maximum. Empty input → max = 0.
+*   `-l` counts `'\n'` bytes; a final line without `'\n'` is not counted.
+
+### 3.5. Errors & Exit Codes
+*   Missing/unreadable file: write to stderr exactly `wc: <name>: <os error display>\n`, continue processing remaining inputs, omit the failed input from stdout and from `total`, exit code **1**.
+*   Invalid CLI option: write to stderr exactly `wc: invalid option -- '<char>'\nTry 'wc --help' for more information.\n` and exit immediately with code **2**.
+*   Mid-stream I/O error: same template as missing file, exit 1.
+*   All error messages use the literal program name `wc` (not `argv[0]`).
+*   Directory input is out of scope for v1: treat as a missing/unreadable file using the OS error returned by `File::open` (e.g. "Is a directory").
 
 ---
 
@@ -94,14 +138,14 @@ Output:
 ```
 
 ### 4.5. UTF-8 Character Counting
-Given `unicode.txt` containing `Hello, 世界!` (13 characters, 15 bytes):
+Given `unicode.txt` whose exact contents are the UTF-8 bytes of `Hello, 世界!` followed by a single trailing `\n`. Breakdown: `Hello, ` = 7 chars / 7 bytes; `世` = 1 char / 3 bytes; `界` = 1 char / 3 bytes; `!` = 1 char / 1 byte; `\n` = 1 char / 1 byte. Totals: **11 characters, 15 bytes**.
 Command:
 ```bash
 wc -c -m unicode.txt
 ```
-Output:
+Output (canonical order: chars then bytes):
 ```
-      13       15 unicode.txt
+      11       15 unicode.txt
 ```
 
 ### 4.6. Multi-file Processing

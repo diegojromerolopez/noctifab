@@ -7,18 +7,24 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
-	"github.com/diegojromerolopez/noctifab/pkg/usecase"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/tty"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/spf13/cobra"
 )
 
 const (
-	daemonPIDFile  = ".noctifab/noctifab.pid"
-	daemonLogFile  = ".noctifab/logs/daemon.log"
-	daemonReadyMax = 10 * time.Second
-	daemonPollFreq = 3 * time.Second
+	daemonPIDFile     = ".noctifab/noctifab.pid"
+	daemonLogFile     = ".noctifab/logs/daemon.log"
+	daemonReadyMax    = 10 * time.Second
+	daemonPollFreq    = 3 * time.Second
+	daemonWaitTimeout = 90 * time.Minute
+	daemonWaitFreq    = 5 * time.Second
 )
+
+var waitForCompletion bool
 
 var startCmd = &cobra.Command{
 	Use:           "start",
@@ -34,19 +40,25 @@ var startCmd = &cobra.Command{
 		fmt.Println("Running pre-flight checks...")
 		fmt.Println("- Git CLI: OK")
 		fmt.Printf("- Database connectivity (%s): OK\n", cfg.Storage.Provider)
-		fmt.Printf("- LLM provider (%s) ping: OK\n", cfg.LLM.Provider)
+		if os.Getenv("NOCTIFAB_E2E") == "true" {
+			fmt.Println("OK")
+		} else {
+			pingErr := llm.Ping(context.Background(), cfg.LLM.Provider, cfg.LLM.APIKeyValue, cfg.LLM.URL)
+			if pingErr != nil {
+				fmt.Printf("FAIL: %v\n", pingErr)
+				return fmt.Errorf("pre-flight LLM provider ping failed: %w", pingErr)
+			}
+			fmt.Println("OK")
+		}
 		fmt.Printf("- Sandbox mode (%s): OK\n", cfg.Sandbox.Mode)
 		fmt.Println("Pre-flight checks passed successfully.")
 
-		// Short-circuit for E2E tests.
-		if os.Getenv("OPENAI_API_KEY") == "test-api-key" ||
-			os.Getenv("GITHUB_TOKEN") == "test-token" ||
-			os.Getenv("MOCK_LLM_KEY") != "" {
+		if os.Getenv("NOCTIFAB_E2E") == "true" {
 			return nil
 		}
 
 		// Check if daemon is already running.
-		if pid, err := usecase.ReadPIDFile(daemonPIDFile); err == nil {
+		if pid, err := services.ReadPIDFile(daemonPIDFile); err == nil {
 			return fmt.Errorf("noctifab daemon is already running (PID %d). Use 'noctifab stop' first", pid)
 		}
 
@@ -61,29 +73,40 @@ var startCmd = &cobra.Command{
 		}
 
 		// Wait until the daemon's HTTP API is reachable.
-		daemonClient := usecase.NewDaemonClient()
-		fmt.Print("Waiting for daemon to start")
+		daemonClient := services.NewDaemonClient()
+		interactive := tty.IsTerminal(os.Stdout)
+		if interactive {
+			fmt.Print("Waiting for daemon to start")
+		} else {
+			fmt.Println("Waiting for daemon to start...")
+		}
 		deadline := time.Now().Add(daemonReadyMax)
 		for time.Now().Before(deadline) {
 			if daemonClient.IsAlive() {
-				fmt.Println(" ✅")
+				if interactive {
+					fmt.Println(" ✅")
+				} else {
+					fmt.Println("Daemon reachable.")
+				}
 				break
 			}
-			fmt.Print(".")
+			if interactive {
+				fmt.Print(".")
+			}
 			time.Sleep(500 * time.Millisecond)
 		}
 		if !daemonClient.IsAlive() {
 			return fmt.Errorf("daemon did not start within %s — check %s for details", daemonReadyMax, daemonLogFile)
 		}
 
-		pid, _ := usecase.ReadPIDFile(daemonPIDFile)
+		pid, _ := services.ReadPIDFile(daemonPIDFile)
 		fmt.Printf("noctifab daemon running (PID %d). Log: %s\n", pid, daemonLogFile)
 
 		// Start the clarification poller in the background of this REPL process.
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		poller := usecase.NewClarificationPoller(daemonClient, daemonPollFreq, os.Stdin, os.Stdout)
+		poller := services.NewClarificationPoller(daemonClient, daemonPollFreq, os.Stdin, os.Stdout)
 		poller.Start(ctx)
 
 		// Start the foreground interactive REPL (blocks until EOF or SIGINT).
@@ -91,10 +114,87 @@ var startCmd = &cobra.Command{
 			cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
 			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
 		)
-		listener := usecase.NewListenerAgent(llmClient, daemonClient, os.Stdin, os.Stdout)
+		listener := services.NewListenerAgent(llmClient, daemonClient, os.Stdin, os.Stdout)
 		listener.Start(ctx)
 
-		fmt.Println("\nnoctifab REPL exited. Daemon continues in the background.")
+		fmt.Println("\nnoctifab REPL exited. Daemon continues in background; polling status every " + daemonWaitFreq.String() + ".")
+
+		if waitForCompletion {
+			fmt.Println("Waiting for story completion...")
+			deadline := time.Now().Add(daemonWaitTimeout)
+			lastLog := time.Now()
+			for time.Now().Before(deadline) {
+				state, err := daemonClient.GetStatus()
+				if err == nil {
+					if state.StoryStatus != "" && state.StoryStatus != domain.StoryRunning {
+						if state.StoryStatus == domain.StorySuccess {
+							fmt.Println(" Story completed successfully!")
+						} else {
+							fmt.Printf(" Story failed: %s\n", state.StoryError)
+						}
+						return nil
+					}
+					if len(state.Tasks) > 0 {
+						if time.Since(lastLog) > 30*time.Second {
+							running := 0
+							done := 0
+							for _, t := range state.Tasks {
+								if t.Status == domain.TaskSuccess || t.Status == domain.TaskFailed {
+									done++
+								} else {
+									running++
+								}
+							}
+							if interactive {
+								fmt.Printf("\n  Story: %s | Build: %s | Tasks: %d running, %d done", state.Metadata.FeatureName, state.BuildStatus, running, done)
+							} else {
+								fmt.Printf("  [%s] Story: %s | Build: %s | Tasks: %d running, %d done\n", time.Now().Format("15:04:05"), state.Metadata.FeatureName, state.BuildStatus, running, done)
+							}
+							lastLog = time.Now()
+						}
+						allDone := true
+						for _, t := range state.Tasks {
+							if t.Status != domain.TaskSuccess && t.Status != domain.TaskFailed {
+								allDone = false
+								break
+							}
+						}
+						if allDone {
+							fmt.Println("\n All tasks completed!")
+							return nil
+						}
+					} else if time.Since(lastLog) > 30*time.Second {
+						if state.StoryStatus == "" {
+							if interactive {
+								fmt.Print("\n  (queued, waiting for daemon to start processing)")
+							} else {
+								fmt.Printf("  [%s] (queued, waiting for daemon to start processing)\n", time.Now().Format("15:04:05"))
+							}
+						} else {
+							if interactive {
+								fmt.Printf("\n  Status: %s", state.StoryStatus)
+							} else {
+								fmt.Printf("  [%s] Status: %s\n", time.Now().Format("15:04:05"), state.StoryStatus)
+							}
+						}
+						lastLog = time.Now()
+					}
+				} else if time.Since(lastLog) > 30*time.Second {
+					if interactive {
+						fmt.Printf("\n  Status check error: %v", err)
+					} else {
+						fmt.Printf("  [%s] Status check error: %v\n", time.Now().Format("15:04:05"), err)
+					}
+					lastLog = time.Now()
+				}
+				if interactive {
+					fmt.Print(".")
+				}
+				time.Sleep(daemonWaitFreq)
+			}
+			return fmt.Errorf("timed out waiting for story completion after %s", daemonWaitTimeout)
+		}
+
 		fmt.Printf("  Stop daemon : noctifab stop\n")
 		fmt.Printf("  View log   : tail -f %s\n", daemonLogFile)
 		return nil
@@ -151,5 +251,6 @@ func spawnDaemon(parentCmd *cobra.Command) error {
 }
 
 func init() {
+	startCmd.Flags().BoolVar(&waitForCompletion, "wait", false, "wait for daemon story completion before exiting")
 	RootCmd.AddCommand(startCmd)
 }

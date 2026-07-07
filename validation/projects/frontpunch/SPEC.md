@@ -47,7 +47,7 @@ frontpunch worker --queues default,critical --concurrency 5 --redis-url redis://
 
 *   **Concurrency:** Spawns a pool of `N` worker threads (or processes) to handle incoming jobs concurrently.
 *   **Polling:** Efficiently blocks or polls Redis for tasks matching the specified queues (prioritized from left to right).
-*   **Graceful Shutdown:** On receipt of `SIGTERM` or `SIGINT`, stops accepting new tasks, allows active tasks to complete within a grace period (e.g. 10 seconds), and pushes uncompleted tasks back onto the Redis queue before exiting.
+*   **Graceful Shutdown:** On receipt of `SIGTERM` or `SIGINT`, stops accepting new tasks, allows active tasks to complete within a grace period (default 10 seconds, configurable via `--shutdown-timeout`), then moves any in-flight tasks still held in the per-thread `frontpunch:processing:<worker_id>:<thread_id>` lists back to their original `frontpunch:queue:{queue_name}` list via `LPUSH` before exiting. The `frontpunch:processing:*` list model is introduced by US-020 (Super Fetch); prior to US-020 the worker uses `BRPOP` directly on `frontpunch:queue:*` and shutdown simply discards in-flight tasks (or relies on US-020 recovery).
 
 ### 2.3. Queueing Protocol (Redis Data Structures)
 *   **Active Queues:** Stored using Redis Lists. Clients `LPUSH` serialized JSON job payloads, and workers pull them using `BRPOP`.
@@ -63,18 +63,20 @@ frontpunch worker --queues default,critical --concurrency 5 --redis-url redis://
       "enqueued_at": 1782086400,
       "retry_count": 0,
       "max_retries": 5
+    }
     ```
+    The `class` field MUST be a fully-qualified dotted import path resolvable by `importlib.import_module(class_path)` on the worker. Bare function names are not permitted.
 
 ### 2.4. Error Handling and Automatic Retries
 *   If a job raises an unhandled exception during execution, the worker must catch it.
 *   If `retry_count < max_retries`, schedule the job for retry with exponential backoff:
-    $$\text{delay} = 15 + (\text{retry\_count} \times 10) + (\text{retry\_count}^4) \text{ seconds}$$
-    Increment the `retry_count` and insert the job into the `frontpunch:scheduled` ZSET.
+    `delay_seconds = 15 + (retry_count * 10) + (retry_count ** 4)`
+    Increment the `retry_count` and insert the job into the `frontpunch:scheduled` ZSET. Comparison is `retry_count >= max_retries` (i.e., once `retry_count` equals `max_retries`, the job goes to the dead list, not retried again).
 *   If retries are exhausted, move the job to the dead-letter list (`frontpunch:dead`).
 
 ### 2.5. Web Dashboard (Monitoring API)
-The daemon or package must expose a simple HTTP dashboard/API (e.g. via Flask or FastAPI) to inspect queues:
-*   `GET /stats`: Returns total processed, failed, currently active, and dead job counts.
+The daemon or package must expose a simple HTTP dashboard/API via **FastAPI** (sync routes via `@app.get`; no async handlers required) to inspect queues:
+*   `GET /stats`: Returns total processed, failed, currently active, and dead job counts. Live counters are stored as Redis strings `frontpunch:stats:processed` and `frontpunch:stats:failed`, incremented via `INCR` on each success/failure event. `active` is the sum of all `frontpunch:processing:*` list lengths. `dead` is `LLEN frontpunch:dead`.
 *   `GET /queues`: Returns active queues and their current lengths.
 *   `POST /queues/dead/retry`: Retries a specific job currently in the dead list.
 *   `GET /workers`: Returns all active worker processes and their current execution details.
@@ -95,8 +97,8 @@ To maintain complete feature-parity with the full Sidekiq ecosystem (including P
     *   If queues are specified as `critical: 3` and `default: 1`, the worker must pool the queues such that, statistically, `critical` jobs are picked for processing 3 times more often than `default` jobs.
 
 3.  **Process Registry & Heartbeats:**
-    *   Every active worker process must write a periodic heartbeat hash to Redis/Valkey (e.g., `frontpunch:processes:<host>:<pid>`) with a TTL of 60 seconds.
-    *   The heartbeat must include the worker's host name, process ID (PID), startup timestamp, concurrency limit, and the set of currently executing job payloads.
+    *   Every active worker process must write a periodic heartbeat hash to Redis/Valkey (e.g., `frontpunch:processes:<host>:<pid>`) with a TTL of 60 seconds. Hostnames containing characters not valid in Redis keys are sanitized (replace `_` and other invalid chars with `-`).
+    *   The heartbeat hash fields are: `host` (string), `pid` (int), `started_at` (ISO timestamp), `updated_at` (ISO timestamp), `concurrency` (int), `active_jobs` (JSON array of `{jid, queue}` pairs — only jid + queue, never full payloads, to avoid leaking sensitive data and bloating the hash), and `quiet` (boolean, set by US-015 SIGTSTP handler).
     *   This registry must be queried by the HTTP dashboard API (`GET /workers`) to show live orchestration status.
 
 4.  **Batches & Workflows (Pro feature):**
@@ -155,11 +157,33 @@ To maintain complete feature-parity with the full Sidekiq ecosystem (including P
     *   Upon receiving a `SIGTSTP` signal, the worker daemon must enter "Quiet Mode"—it stops fetching any new jobs from Redis/Valkey queues but continues executing active threads.
     *   When the active threads drop to `0`, the process can be safely restarted or terminated via `SIGTERM` without requiring job recovery steps.
 
+### 2.7. Global Configuration & Exception Hierarchy
+
+**`frontpunch.configure(...)`:**
+- Signature: `frontpunch.configure(redis_url: str | None = None, encryption_key: str | None = None, dashboard_token: str | None = None) -> None`.
+- Initializes the process-wide singleton client used by `.delay()` / `frontpunch.enqueue`.
+- Calling `.delay()` or any enqueue API before `configure()` raises `frontpunch.exceptions.NotConfigured`.
+- Decorators may be applied before `configure`; the client is only resolved at first enqueue (not at decoration time).
+
+**`frontpunch.exceptions` module** (`frontpunch/exceptions.py`, owned by US-000):
+- `FrontpunchError` (base, subclasses `Exception`)
+- `ConnectionError` (Valkey/Redis connection failures)
+- `NotConfigured` (calling enqueue APIs before `frontpunch.configure`)
+- `RateLimitExceeded` (US-012)
+- `DecryptionError` (US-014)
+- `SerializationError` (subclass of `TypeError`; non-serializable args)
+- `PauseError` (US-017)
+
 ---
 
 ## 3. Technical Constraints
 *   **Language:** Python 3.10+.
-*   **Dependencies:** `redis-py` (for Valkey/Redis connection), lightweight web library (e.g. `FastAPI` or `Flask` for the dashboard).
+*   **Dependencies:**
+    *   `redis>=5.0,<6.0` (supports Valkey and Redis)
+    *   `fastapi>=0.110,<0.120` and `uvicorn[standard]>=0.27` for the dashboard (web framework is **FastAPI** — see §2.5)
+    *   `cryptography>=42.0` for US-014 (encryption)
+    *   `croniter>=2.0` for US-013 (cron)
+    *   `click>=8.1` for the CLI
 *   **Storage Backend:** Valkey (preferred for licensing reasons) or Redis (Valkey is a compatible drop-in replacement).
 *   **Coding Standards:**
     *   All code must comply with `black` (configured with a line length of 120 characters), `mypy` (static type checking), and `ruff` (linting).
@@ -167,11 +191,19 @@ To maintain complete feature-parity with the full Sidekiq ecosystem (including P
 *   **Architectural Guidelines:**
     *   Code must strictly adhere to the SOLID design principles.
     *   Special emphasis must be placed on **Dependency Injection (DI)**: dependencies (such as the Valkey/Redis client, clock provider, task runner, and HTTP client) must be explicitly provided through class/function constructors instead of being instantiated inline.
-    *   Follow the Domain-Driven Design (DDD) approach.
+    *   Follow the Domain-Driven Design (DDD) approach. Project layout (see §2.7).
 *   **Implementation Rules:**
-    *   Use Static Single-Assignment (SSA) form (assign variables exactly once) unless inside a loop.
+    *   Variables must not be re-assigned after their first definition unless inside a loop or `try/except` recovery path. Verify with `ruff` rule `RET504` and code review.
     *   All HTTP requests must have a maximum timeout specified.
-    *   Do not catch `Exception` broadly. Only catch particular, specific exceptions.
+    *   Do not catch `Exception` broadly **at module boundaries**. The worker's execution envelope (US-004) is the single allowed exception: it catches `Exception` to drive retry logic but re-raises `KeyboardInterrupt` and `SystemExit`.
+
+### 3.1. Project Layout
+The repository root MUST contain `pyproject.toml` (PEP 621, hatchling backend), `frontpunch/` (package), `tests/unit/`, `tests/integration/`, `tests/e2e/`, and `tests/e2e/docker-compose.yml` (E2E compose file exposing Valkey on `localhost:6379/0`; E2E tests connect via the `VALKEY_URL` env var). Package layout follows DDD:
+- `frontpunch/domain/` — entities (`Job`, `Batch`, `CronEntry`), value objects (`JobPayload`, `BackoffStrategy`), repository ports (`JobRepository`, `ProcessRegistry`, `StatsRepository`).
+- `frontpunch/application/` — use cases (`EnqueueJob`, `ExecuteJob`, `RetryJob`, `RecoverOrphans`).
+- `frontpunch/infrastructure/valkey/` — `ValkeyJobRepository`, `ValkeyProcessRegistry`, `LuaScripts`, `ValkeyConnection`.
+- `frontpunch/interfaces/` — `cli/` (`worker`, `swarm` commands), `http/` (`dashboard`), `client/` (`task`, `enqueue`, `Batch`).
+All file paths in user stories (e.g. `frontpunch/client.py`) MUST be interpreted as facade modules re-exporting from the DDD tree above.
 
 ---
 
@@ -186,13 +218,14 @@ Tests must be organized into the following three directories:
 ### 4.2. Testing Guidelines
 *   **Test Runner:** Use Python's standard `unittest` library. **Do not use pytest.**
 *   **Unit Tests:**
-    *   100% test coverage is required for all source files.
-    *   All unit tests must assert mock calls via `self.assertEquals` with `mock.call_args_list` compared to a list of expected `call` objects.
+    *   100% test coverage is required for all source files, enforced via `coverage run --source=frontpunch -m unittest discover -s tests && coverage report --fail-under=100`. The sandbox `test_command` in `.noctifab/config.yaml` MUST be set to this command.
+    *   All unit tests must assert mock calls via `self.assertEqual` (note: not the deprecated `assertEquals`) with `mock.call_args_list` compared to a list of expected `call` objects.
 *   **Integration Tests:**
     *   Only external, third-party I/O dependencies (like Redis connection sockets) may be mocked.
 *   **End-to-End (E2E) Tests:**
     *   Nothing in the codebase is allowed to be mocked.
-    *   Docker-based container services must be spun up to respond to actual Redis and network/HTTP requests of the project.
+    *   Docker-based container services must be spun up to respond to actual Redis and network/HTTP requests of the project. E2E services are defined in `tests/e2e/docker-compose.yml` exposing Valkey on `localhost:6379/0`; E2E tests connect to `redis://valkey:6379/0` via the `VALKEY_URL` environment variable.
+    *   E2E tests live in `tests/e2e/` and are excluded from the `--fail-under=100` gate via `[tool.coverage.run] source = ['frontpunch']` and `omit = ['tests/*']`.
 
 ### 4.3. Expected Tests
 *   **Unit Tests:**

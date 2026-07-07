@@ -1,4 +1,4 @@
-# noctifab
+# 🤖🌌 noctifab
 
 [![CI Build Status](https://github.com/diegojromerolopez/noctifab/actions/workflows/ci.yml/badge.svg)](https://github.com/diegojromerolopez/noctifab/actions)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/diegojromerolopez/noctifab)](https://github.com/diegojromerolopez/noctifab)
@@ -24,6 +24,16 @@ The platform classifies development automation into distinct levels. `noctifab` 
 | **Level 3** | Spec-Driven (Gated) | AI generates code autonomously from specifications. Continuous test suites gate quality. Human clicks merge. |
 | **Level 3.5** | Selective Auto-Merge | Same as Level 3, but low-risk modules merge automatically. Human can block. |
 | **Level 4** | Full Dark Factory | Specs go in, tested code comes out fully merged. Human reviews only exceptions. |
+
+### Configuring Autonomy Level
+
+The autonomy level is controlled by the VCS `pull_request` and `ci` settings in `.noctifab/config.yaml`:
+
+| Level | `pull_request` settings | `ci` settings |
+|---|---|---|
+| **Level 3** | `auto_create: true`, `auto_merge: false` | _(optional)_ |
+| **Level 3.5** | `auto_create: true`, `auto_merge: true` | `auto_fix: true` |
+| **Level 4** | `auto_create: true`, `auto_merge: true`, `auto_rebase: true` | `auto_fix: true`, `max_retries: 3` |
 
 ---
 
@@ -172,40 +182,33 @@ vcs:
 
 ## Security & Permission Profiles
 
-To ensure secure and controlled agent execution, `noctifab` employs a profile-based Role-Based Access Control (RBAC) and security sandboxing system. 
+To ensure secure and controlled agent execution, `noctifab` employs a profile-based Role-Based Access Control (RBAC) and security sandboxing system.
 
-Every active agent role (such as `orchestrator`, `planner`, `generator`, or `tester`) is constrained by a security profile YAML file located in `.noctifab/profiles/<profile_name>.yaml`. If no profile is explicitly defined for a role in `config.yaml`, the orchestrator looks for a profile matching the role name (e.g., `generator.yaml`), falling back to `default.yaml` if not found.
+Every active agent role (such as `orchestrator`, `planner`, `generator`, or `tester`) is constrained by a security profile. These profiles are defined under the `profiles:` section inside `.noctifab/config.yaml`. If no profile is explicitly defined for a role, the orchestrator automatically uses its built-in default profile configuration.
 
 ### Security Sandbox Policies
 
-1. **Tool Whitelisting (`allowed_tools`)**: Restricts the exact tools an agent is authorized to invoke (e.g., `read_file`, `write_file`, `edit_file`, `run_tests`). By default, dangerous system commands and Git mutation actions (`git_checkout`, `git_commit`, `git_push`, `docker_action`) are strictly reserved for the privileged `orchestrator` profile.
-2. **Command Whitelisting (`allowed_commands`)**: Restricts which shell execution binaries are allowed to run under the `run_tests` tool. For example, `tester` and `generator` profiles are restricted to language-specific runtimes (e.g., `go`, `npm`, `pytest`, `make`, `python`), preventing command injection or host shell execution escapes.
+1. **Tool Whitelisting (`allowed_tools`)**: Restricts the exact tools an agent is authorized to invoke (e.g., `read_file`, `write_file`, `edit_file`, `run_tests`, `run_linter`). By default, dangerous system commands and Git mutation actions (`git_checkout`, `git_commit`, `git_push`, `docker_action`) are strictly reserved for the privileged `orchestrator` profile.
+2. **Command Whitelisting (`allowed_commands`)**: Restricts which shell execution binaries are allowed to run under sandbox execution. For example, `tester` and `generator` profiles are restricted to language-specific runtimes (e.g., `go`, `npm`, `pytest`, `make`, `python`), preventing command injection or host shell execution escapes.
 3. **Path Jail Protection**: The validator dynamically enforces path checks preventing directory traversal attacks. Any file read or write tool parameters that resolve outside the workspace root path trigger an automatic sandbox boundary violation.
 4. **Target Path Exclusion**: Agents are forbidden from reading, writing, or accessing sensitive testing framework directories (specifically `tests/holdout` and `holdout` directories) to prevent gaming the evaluation process.
 5. **Branch Protection**: Direct git checkouts, commits, or pushes on protected base branches (like `main` or `master`) are rejected by the Policy Validator.
-6. **Network Outbound Policies**: Profiles restrict internet access to control data exfiltration. Default configurations allow connections only to the configured LLM API provider endpoint (`allow_ai_provider: true`) and block all other external outbound internet traffic (`allow_external: false`).
 
-### Example Profile (`.noctifab/profiles/generator.yaml`)
+### Example Profiles Configuration in `.noctifab/config.yaml`
 
 ```yaml
-permissions:
-  allowed_tools:
-    - "read_file"
-    - "write_file"
-    - "edit_file"
-    - "list_directory"
-    - "find_files"
-    - "grep_search"
-    - "run_tests"
-    - "noop"
-  allowed_commands:
-    - "go"
-    - "npm"
-    - "pytest"
-    - "make"
-  network:
-    allow_ai_provider: true
-    allow_external: false
+profiles:
+  generator:
+    allowed_tools:
+      - "read_file"
+      - "write_file"
+      - "edit_file"
+      - "list_directory"
+      - "find_files"
+      - "grep_search"
+      - "run_tests"
+      - "run_linter"
+      - "noop"
 ```
 
 ---
@@ -329,6 +332,55 @@ llm:
 
 
 
+## Pull Request & CI Configuration
+
+In addition to the core LLM and VCS settings, `noctifab` supports automated PR management and CI pipeline integration:
+
+```yaml
+vcs:
+  pull_request:
+    auto_create: true    # Automatically create a PR from the task branch
+    auto_merge: true     # Automatically merge the PR when CI checks pass
+    auto_rebase: true    # Automatically rebase on base branch updates
+    draft: false         # Create the PR as a draft
+    assignees:           # GitHub usernames to auto-assign
+      - "user1"
+    labels:              # Labels to auto-apply to the PR
+      - "autonomous"
+  ci:
+    auto_fix: true       # Automatically fix CI pipeline failures
+    max_retries: 3       # Max CI fix attempts before giving up
+```
+
+For a full reference of all available settings and CLI flags, see the [SPEC.md](SPEC.md) and [docs/cli_usage.md](docs/cli_usage.md).
+
+### Dependency Auto-Install
+
+Set `sandbox.auto_install_deps: true` to automatically detect and install missing toolchain dependencies (e.g., `golangci-lint`, `pytest`, `cargo`). Configure supported package managers via `sandbox.package_managers`.
+
+## Security & Self-Evolution
+
+### SAST Security Gates
+
+Static Application Security Testing (SAST) can be configured to run against generated code before PR creation:
+
+```yaml
+sast:
+  enabled: true
+  scanners: ["gosec"]       # "gosec" for Go, "bandit" for Python
+  fail_on_severity: "high"  # Block on high, medium, or low severity
+```
+
+If SAST is enabled and a scanner finds issues meeting the severity threshold, the PR is blocked and the agent must fix them. See [SPEC.md](SPEC.md) for details.
+
+### Hot-Reload
+
+Noctifab can hot-reload its binary with zero downtime via a handoff file + health check protocol. See [SPEC.md §3.10](SPEC.md) for details.
+
+### Intent Disambiguation
+
+When the agent asks a clarification question, Noctifab can attempt to auto-answer it by analyzing git history, workspace files, and feature context — without blocking on human input. If the LLM's inferred answer is valid, the clarification is resolved automatically. Otherwise, the standard human clarification timeout applies.
+
 ## Target Scenarios & Examples
 
 `noctifab` contains pre-configured example targets in the `examples/` folder to validate autonomous software implementation capabilities:
@@ -350,8 +402,10 @@ The `validation/` directory contains fully containerized, isolated end-to-end in
 | Project | Language | User Story | What is Checked |
 | :--- | :--- | :--- | :--- |
 | **`frontpunch`** | Python | `US-001.md` | `frontpunch/worker.py` created/modified and test suite passes |
-| **`todo-cli`** | Python | `US-001.md` | `todo.py` created/modified and test suite passes |
-| **`wc`** | Rust | `US-001.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
+| **`todo-cli`** | Go | `US-001.md` | `cmd/todo/main.go` (or `main.go`) created/modified and test suite passes |
+| **`wc`** | Rust | `US-002.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
+| **`calculator`** | Ruby | `SPEC.md` | `calculator.rb` (or under `lib/`) created/modified and test suite passes |
+| **`echo`** | Go | `SPEC.md` | `cmd/echo/main.go` (or `main.go`) created/modified and test suite passes |
 
 The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
 

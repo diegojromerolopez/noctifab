@@ -16,10 +16,10 @@ func TestResolveGeminiURL(t *testing.T) {
 		wantURL    string
 	}{
 		{
-			name:       "empty model input maps to gemini-2.5-pro",
+			name:       "empty model input maps to gemini-2.5-flash",
 			modelInput: "",
 			apiKey:     "testkey",
-			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=testkey",
+			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=testkey",
 		},
 		{
 			name:       "gemini-1.5-pro remains gemini-1.5-pro",

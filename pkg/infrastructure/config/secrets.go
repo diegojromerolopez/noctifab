@@ -51,4 +51,9 @@ func applySecretsToConfig(cfg *Config, secrets map[string]string) {
 	cfg.Jira.Token = resolveSecretRef(cfg.Jira.Token, secrets)
 	cfg.Jira.User = resolveSecretRef(cfg.Jira.User, secrets)
 	cfg.Jira.URL = resolveSecretRef(cfg.Jira.URL, secrets)
+
+	for i := range cfg.LLMs {
+		cfg.LLMs[i].APIKey = resolveSecretRef(cfg.LLMs[i].APIKey, secrets)
+		cfg.LLMs[i].URL = resolveSecretRef(cfg.LLMs[i].URL, secrets)
+	}
 }
