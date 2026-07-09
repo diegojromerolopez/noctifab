@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
@@ -24,6 +25,54 @@ func ValidatePlannedTasks(tasks []domain.Task) error {
 		}
 	}
 	return nil
+}
+
+func (o *Orchestrator) registerAgentStart(ctx context.Context, role string, taskID string) {
+	agentID := fmt.Sprintf("agent-%s-%s", role, taskID)
+	name := fmt.Sprintf("%s-%s", role, taskID)
+	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+		found := false
+		for i := range st.ActiveAgents {
+			if st.ActiveAgents[i].ID == agentID {
+				st.ActiveAgents[i].Status = domain.AgentWorking
+				st.ActiveAgents[i].TaskID = taskID
+				st.ActiveAgents[i].StartedAt = time.Now()
+				st.ActiveAgents[i].CompletedAt = time.Time{}
+				found = true
+				break
+			}
+		}
+		if !found {
+			st.ActiveAgents = append(st.ActiveAgents, domain.Agent{
+				ID:        agentID,
+				Name:      name,
+				Role:      domain.AgentRole(strings.ToUpper(role)),
+				Status:    domain.AgentWorking,
+				TaskID:    taskID,
+				StartedAt: time.Now(),
+			})
+		}
+		return nil
+	})
+}
+
+func (o *Orchestrator) registerAgentComplete(ctx context.Context, role string, taskID string, err error) {
+	agentID := fmt.Sprintf("agent-%s-%s", role, taskID)
+	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+		for i := range st.ActiveAgents {
+			if st.ActiveAgents[i].ID == agentID {
+				st.ActiveAgents[i].Status = domain.AgentCompleted
+				st.ActiveAgents[i].CompletedAt = time.Now()
+				if err != nil {
+					st.ActiveAgents[i].LastError = err.Error()
+				} else {
+					st.ActiveAgents[i].LastError = ""
+				}
+				break
+			}
+		}
+		return nil
+	})
 }
 
 // RunReaderPhase runs the pre-step to collect workspace context before execution
@@ -120,7 +169,9 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	}
 
 	testerCtx := context.WithValue(ctx, AgentRoleKey, "tester")
+	o.registerAgentStart(ctx, "tester", task.ID)
 	testResp, err := o.llmClient.Complete(testerCtx, testPrompt)
+	o.registerAgentComplete(ctx, "tester", task.ID, err)
 	if err == nil {
 		fmt.Printf("Orchestrator: Task %s [Tester] write phase ok: reasoning=%q actions=%d\n", task.ID, testResp.Reasoning, len(testResp.Actions))
 		executed := 0
@@ -182,7 +233,9 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	}
 
 	genCtx := context.WithValue(ctx, AgentRoleKey, "generator")
+	o.registerAgentStart(ctx, "generator", task.ID)
 	resp, err := o.llmClient.Complete(genCtx, genPrompt)
+	o.registerAgentComplete(ctx, "generator", task.ID, err)
 	if err == nil {
 		fmt.Printf("Orchestrator: Task %s [Generator] write phase ok: reasoning=%q actions=%d\n", task.ID, resp.Reasoning, len(resp.Actions))
 		executed := 0

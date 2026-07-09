@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-07-08
+
+### Added
+- **Interactive Validation Flag**: Added `-i` option support to `run_one.sh` and `INTERACTIVE=1` argument inside `Makefile` to launch the validation Docker container interactively with a TTY attached and without standard output redirection.
+- **macOS Docker Mount Sync Fix**: Configured `run_one.sh` to preserve directory nodes (cleaning file contents instead of deleting output directories) and added a filesystem synchronization pause to eliminate macOS Docker Desktop FUSE mount race conditions.
+- **Docker Runner curl and Build Dependencies**: Installed `curl` in `Dockerfile.validation` and all project runner Dockerfiles, and added `build-base` to the `wc` Dockerfile to support linking Rust proc-macros like `clap_derive` on Alpine.
+- **Rust Toolchain Upgrade**: Upgraded `wc` Dockerfile toolchain base to `rust:alpine` (Rust 1.85+) to support Cargo Edition 2024 dependencies.
+- **Harness Logging Redirection**: Redirected all setup messages and configuration yaml dumps inside `validate.sh` to standard error (`>&2`) to prevent terminal stdout pollution and screen corruption prior to TUI rendering.
+
+## [0.9.0] - 2026-07-08
+
+### Added
+- **Interactive TUI Dashboard**: Implemented `noctifab dashboard` providing real-time tracking of multiple user stories and tasks with visual progress bars.
+- **Story Control REST APIs**: Added endpoints (`POST /api/v1/pause`, `POST /api/v1/resume`, `POST /api/v1/cancel`) to pause, resume, or cancel active story orchestrations.
+- **Daemon Pause/Cancel Integration**: Wired daemon worker cycle ticker in `serve.go` to suspend cycles when paused and safely interrupt tasks, revert branches, and clear locks when cancelled.
+- **SQLite and PostgreSQL LoadAll and LoadByID**: Added custom repository methods with database connection pool starvation safety.
+- **Milestone Progress Tracking**: Orchestrator task execution updates task completion percentages (25%, 50%, 75%, 100%) and updates working agents in active agents registry.
+
 ## [0.8.3] - 2026-07-08
 
 ### Changed

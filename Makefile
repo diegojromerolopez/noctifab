@@ -56,10 +56,15 @@ PROJECT ?= frontpunch
 # resolves `secret:OPENCODE_API_KEY` from it at config load time. The
 # `validate.sh` harness sets a dummy `GITHUB_TOKEN` for pre-flight checks.
 validate:
-	@if [ "$(SKIP_BUILD)" = "1" ]; then \
-		NOCTIFAB_SKIP_BUILD=1 ./validation/run_one.sh "$(PROJECT)"; \
+	@if [ "$(INTERACTIVE)" = "1" ]; then \
+		INTERACTIVE_FLAG="-i"; \
 	else \
-		./validation/run_one.sh "$(PROJECT)"; \
+		INTERACTIVE_FLAG=""; \
+	fi; \
+	if [ "$(SKIP_BUILD)" = "1" ]; then \
+		NOCTIFAB_SKIP_BUILD=1 ./validation/run_one.sh $$INTERACTIVE_FLAG "$(PROJECT)"; \
+	else \
+		./validation/run_one.sh $$INTERACTIVE_FLAG "$(PROJECT)"; \
 	fi
 
 # Validate every project in validation/projects/ in parallel. Each project

@@ -265,11 +265,44 @@ func processStory(
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			current, loadErr := repo.Load(ctx)
+			if loadErr != nil {
+				logf("⚠ Load error: %v\n", loadErr)
+				continue
+			}
+
+			if current.StoryStatus == domain.StoryPaused {
+				continue
+			}
+
+			if current.StoryStatus == domain.StoryCancelled {
+				logf("❌ Story %s: execution cancelled by user.\n", item.Path)
+				// Revert running tasks to interrupted status
+				for i := range current.Tasks {
+					if current.Tasks[i].Status == domain.TaskInProgress || current.Tasks[i].Status == domain.TaskPending {
+						current.Tasks[i].Status = domain.TaskInterrupted
+						current.Tasks[i].UpdatedAt = time.Now()
+					}
+				}
+				current.StoryError = "cancelled by user"
+				_ = repo.Save(ctx, current)
+
+				// Checkout back to base integration branch
+				gitClient := services.NewGitClient(current.ProjectPath)
+				_, _ = gitClient.Run(ctx, true, "checkout", baseBranch)
+
+				if logFile != nil {
+					_, _ = fmt.Fprintf(logFile, "=== Story CANCELLED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
+				}
+				return fmt.Errorf("story %s: cancelled by user", item.Path)
+			}
+
 			if err := orchestrator.RunOnce(ctx); err != nil {
 				logf("⚠ Orchestrator error: %v\n", err)
 			}
 
-			current, loadErr := repo.Load(ctx)
+			// Reload state to check completion status
+			current, loadErr = repo.Load(ctx)
 			if loadErr != nil {
 				return loadErr
 			}

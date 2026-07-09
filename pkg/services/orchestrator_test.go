@@ -32,6 +32,14 @@ func (m *mockRepo) Load(ctx context.Context) (*domain.State, error) {
 	return m.state, nil
 }
 
+func (m *mockRepo) LoadByID(ctx context.Context, id string) (*domain.State, error) {
+	return m.state, nil
+}
+
+func (m *mockRepo) LoadAll(ctx context.Context) ([]*domain.State, error) {
+	return []*domain.State{m.state}, nil
+}
+
 func (m *mockRepo) Save(ctx context.Context, s *domain.State) error {
 	m.state = s
 	return nil

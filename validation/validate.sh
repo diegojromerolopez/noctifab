@@ -3,25 +3,25 @@ set -euo pipefail
 
 # 1. Resolve or compile the noctifab binary
 if command -v noctifab >/dev/null 2>&1; then
-  echo "Using existing noctifab binary from PATH..."
+  echo "Using existing noctifab binary from PATH..." >&2
   NOCTIFAB_BIN="$(command -v noctifab)"
 elif [ -f "/usr/local/bin/noctifab" ]; then
-  echo "Using existing noctifab binary at /usr/local/bin/noctifab..."
+  echo "Using existing noctifab binary at /usr/local/bin/noctifab..." >&2
   NOCTIFAB_BIN="/usr/local/bin/noctifab"
 else
-  echo "Compiling noctifab binary..."
+  echo "Compiling noctifab binary..." >&2
   go build -o bin/noctifab cmd/noctifab/main.go
   NOCTIFAB_BIN="$(pwd)/bin/noctifab"
 fi
 
 # 2. Setup a temporary directory
 TMP_DIR="$(pwd)/tmp_verify_autonomy"
-echo "Setting up temporary workspace at ${TMP_DIR}..."
+echo "Setting up temporary workspace at ${TMP_DIR}..." >&2
 rm -rf "${TMP_DIR}"
 
 # 3. Copy the project copy into the workspace
 PROJECT="${PROJECT:-frontpunch}"
-echo "Validating project: ${PROJECT}..."
+echo "Validating project: ${PROJECT}..." >&2
 PROJECT_SRC="/app/projects/${PROJECT}"
 if [ ! -d "${PROJECT_SRC}" ]; then
   PROJECT_SRC="$(pwd)/validation/projects/${PROJECT}"
@@ -50,7 +50,7 @@ else
 fi
 
 # 4. Initialize git repository inside the container workspace
-echo "Initializing clean git repository on branch main..."
+echo "Initializing clean git repository on branch main..." >&2
 git init
 git checkout -b main
 git config user.name "Noctifab Tester"
@@ -68,7 +68,7 @@ git add .
 git commit -m "initial project structures and gitignore"
 
 # Set up a local "origin" bare repository inside the workspace to allow git pushes
-echo "Setting up local git origin remote..."
+echo "Setting up local git origin remote..." >&2
 ORIGIN_DIR="$(pwd)/../origin.git"
 rm -rf "${ORIGIN_DIR}"
 git init --bare "${ORIGIN_DIR}"
@@ -90,8 +90,11 @@ export GITHUB_TOKEN="${GITHUB_TOKEN:-dummy-token}"
 # 6. Initialize noctifab
 "${NOCTIFAB_BIN}" init --vcs-clone-protocol https
 
-echo "Using pre-configured config.yaml:"
-cat .noctifab/config.yaml
+mkdir -p .noctifab/logs
+{
+  echo "Using pre-configured config.yaml:"
+  cat .noctifab/config.yaml
+} > .noctifab/logs/setup.log
 
 # 7. Run noctifab command
 MODE="${MODE:-start-one}"
@@ -109,14 +112,36 @@ else
 fi
 
 for STORY_PATH in "${STORIES[@]}"; do
-  if [ "${MODE}" = "start" ]; then
-    echo "Running noctifab start for ${STORY_PATH}..."
-    echo "start ${STORY_PATH}" | "${NOCTIFAB_BIN}" start --wait
-    # Stop the daemon after completion
-    "${NOCTIFAB_BIN}" stop 2>/dev/null || true
+  if [ "${NOCTIFAB_INTERACTIVE:-}" = "1" ]; then
+    echo "Starting noctifab serve in interactive dashboard mode for ${STORY_PATH}..." >&2
+    "${NOCTIFAB_BIN}" serve >/dev/null 2>&1 &
+    SERVE_PID=$!
+    # Wait for daemon to respond to health checks
+    until curl -s http://127.0.0.1:18080/healthz >/dev/null; do
+      sleep 0.1
+    done
+    # Submit the story to the daemon
+    curl -s -X POST -H "Content-Type: application/json" -d "{\"path\":\"${STORY_PATH}\"}" http://127.0.0.1:18080/api/v1/stories >/dev/null
+    # Run interactive dashboard in-place
+    if ! "${NOCTIFAB_BIN}" dashboard; then
+      echo "❌ Error: validation aborted or dashboard failed." >&2
+      kill "${SERVE_PID}" 2>/dev/null || true
+      wait "${SERVE_PID}" 2>/dev/null || true
+      exit 1
+    fi
+    # Cleanup daemon
+    kill "${SERVE_PID}" 2>/dev/null || true
+    wait "${SERVE_PID}" 2>/dev/null || true
   else
-    echo "Running noctifab start-one for ${STORY_PATH}..."
-    "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
+    if [ "${MODE}" = "start" ]; then
+      echo "Running noctifab start for ${STORY_PATH}..." >&2
+      echo "start ${STORY_PATH}" | "${NOCTIFAB_BIN}" start --wait
+      # Stop the daemon after completion
+      "${NOCTIFAB_BIN}" stop 2>/dev/null || true
+    else
+      echo "Running noctifab start-one for ${STORY_PATH}..." >&2
+      "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
+    fi
   fi
 done
 

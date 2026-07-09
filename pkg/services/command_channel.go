@@ -249,6 +249,120 @@ func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, sto
 		_, _ = w.Write([]byte(`{"status":"accepted"}`))
 	})
 
+	// GET /api/v1/status — list status of all user stories
+	mux.HandleFunc("/api/v1/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		states, err := repo.LoadAll(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(states)
+	})
+
+	// POST /api/v1/pause — pause the active user story
+	mux.HandleFunc("/api/v1/pause", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var err error
+		var state *domain.State
+		for i := 0; i < 5; i++ {
+			state, err = repo.Load(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			state.StoryStatus = domain.StoryPaused
+			err = repo.Save(r.Context(), state)
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, domain.ErrVersionConflict) {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"paused"}`))
+	})
+
+	// POST /api/v1/resume — resume the paused user story
+	mux.HandleFunc("/api/v1/resume", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var err error
+		var state *domain.State
+		for i := 0; i < 5; i++ {
+			state, err = repo.Load(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			state.StoryStatus = domain.StoryRunning
+			err = repo.Save(r.Context(), state)
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, domain.ErrVersionConflict) {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"resumed"}`))
+	})
+
+	// POST /api/v1/cancel — cancel the active user story
+	mux.HandleFunc("/api/v1/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var err error
+		var state *domain.State
+		for i := 0; i < 5; i++ {
+			state, err = repo.Load(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			state.StoryStatus = domain.StoryCancelled
+			err = repo.Save(r.Context(), state)
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, domain.ErrVersionConflict) {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"cancelled"}`))
+	})
+
 	// POST /api/v1/tasks — add a manual task
 	mux.HandleFunc("/api/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

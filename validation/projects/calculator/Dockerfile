@@ -8,7 +8,7 @@ FROM noctifab-validation:base AS noctifab-artifacts
 FROM ruby:3.2-alpine
 
 # Install build dependencies, git, bash, docker-cli
-RUN apk add --no-cache git bash docker-cli build-base
+RUN apk add --no-cache git bash docker-cli build-base curl
 
 # Pre-install rubocop and rspec gems so they are cached/available in the image
 RUN gem install rspec rubocop

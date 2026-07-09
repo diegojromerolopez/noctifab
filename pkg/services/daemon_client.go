@@ -154,3 +154,84 @@ func (c *DaemonClient) postJSON(path string, payload any) error {
 	}
 	return nil
 }
+
+// GetStatusAll fetches the state of all user stories from the daemon.
+func (c *DaemonClient) GetStatusAll(ctx context.Context) ([]*domain.State, error) {
+	_, span := telemetry.Tracer().Start(ctx, "GetStatusAll")
+	defer span.End()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/api/v1/status", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch all status: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("daemon returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var states []*domain.State
+	if err := json.NewDecoder(resp.Body).Decode(&states); err != nil {
+		return nil, fmt.Errorf("failed to decode states: %w", err)
+	}
+	return states, nil
+}
+
+// PauseStory pauses the currently running user story.
+func (c *DaemonClient) PauseStory(ctx context.Context) error {
+	_, span := telemetry.Tracer().Start(ctx, "PauseStory")
+	defer span.End()
+	return c.postJSONWithContext(ctx, "/api/v1/pause", nil)
+}
+
+// ResumeStory resumes the paused user story.
+func (c *DaemonClient) ResumeStory(ctx context.Context) error {
+	_, span := telemetry.Tracer().Start(ctx, "ResumeStory")
+	defer span.End()
+	return c.postJSONWithContext(ctx, "/api/v1/resume", nil)
+}
+
+// CancelStory cancels the currently running user story.
+func (c *DaemonClient) CancelStory(ctx context.Context) error {
+	_, span := telemetry.Tracer().Start(ctx, "CancelStory")
+	defer span.End()
+	return c.postJSONWithContext(ctx, "/api/v1/cancel", nil)
+}
+
+// postJSONWithContext is a helper that POSTs a JSON body with a context.
+func (c *DaemonClient) postJSONWithContext(ctx context.Context, path string, payload any) error {
+	var bodyReader io.Reader
+	if payload != nil {
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request: %w", err)
+		}
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bodyReader)
+	if err != nil {
+		return err
+	}
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request to daemon failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("daemon returned %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}

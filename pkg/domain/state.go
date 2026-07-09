@@ -98,10 +98,12 @@ type StateMetadata struct {
 type StoryStatus string
 
 const (
-	StoryIdle    StoryStatus = ""
-	StoryRunning StoryStatus = "RUNNING"
-	StorySuccess StoryStatus = "SUCCESS"
-	StoryFailed  StoryStatus = "FAILED"
+	StoryIdle      StoryStatus = ""
+	StoryRunning   StoryStatus = "RUNNING"
+	StorySuccess   StoryStatus = "SUCCESS"
+	StoryFailed    StoryStatus = "FAILED"
+	StoryPaused    StoryStatus = "PAUSED"
+	StoryCancelled StoryStatus = "CANCELLED"
 )
 
 // State represents the complete system database state record.

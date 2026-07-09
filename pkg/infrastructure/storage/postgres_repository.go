@@ -128,10 +128,10 @@ func (r *PostgresRepository) Save(ctx context.Context, state *domain.State) erro
 		}
 
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 			task.ID, state.ID, task.Title, task.Description, string(task.Status), string(task.ChangeType),
-			task.AssignedTo, dependsOnJSON, targetFilesJSON, partialChangelogJSON,
+			task.AssignedTo, task.Progress, dependsOnJSON, targetFilesJSON, partialChangelogJSON,
 			task.Retries, task.MaxRetries, task.FailureLog, task.CreatedAt, task.UpdatedAt,
 		)
 		if err != nil {
@@ -233,225 +233,24 @@ func (r *PostgresRepository) Save(ctx context.Context, state *domain.State) erro
 	return nil
 }
 
-// Load retrieves the State domain object from PostgreSQL using explicit joins.
+// Load retrieves the State domain object from PostgreSQL.
 func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "Load")
 	defer span.End()
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT 
-			s.id, s.project_path, s.version, s.build_status, s.story_status, s.story_error, s.input_source, s.input_path, s.integration_branch, s.feature_name, s.base_branch, s.project_version, s.total_tokens_used, s.total_cost_usd,
-			t.id, t.title, t.description, t.status, t.change_type, t.assigned_to, t.depends_on, t.target_files, t.partial_changelog, t.retries, t.max_retries, t.failure_log, t.created_at, t.updated_at
-		FROM state s
-		LEFT JOIN tasks t ON s.id = t.state_id
-		LIMIT 1000`)
+	row := r.db.QueryRowContext(ctx,
+		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd
+		FROM state
+		ORDER BY CASE WHEN story_status = 'RUNNING' THEN 0 ELSE 1 END, id DESC
+		LIMIT 1`)
+
+	state, err := r.scanPostgresStateRow(ctx, row)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 
-	var state domain.State
-	state.Tasks = []domain.Task{}
-	var buildStatusStr string
-	stateInitialized := false
-
-	for rows.Next() {
-		var task domain.Task
-		var statusStr, changeTypeStr, dependsOnStr, targetFilesStr, partialChangelogStr sql.NullString
-		var titleStr, descStr, assignedToStr sql.NullString
-		var retriesNull, maxRetriesNull sql.NullInt64
-		var failureLogNull sql.NullString
-		var createdAtNull, updatedAtNull sql.NullTime
-		var taskID sql.NullString
-
-		var storyStatusStr sql.NullString
-		var storyErrorStr sql.NullString
-
-		err := rows.Scan(
-			&state.ID, &state.ProjectPath, &state.Version, &buildStatusStr,
-			&storyStatusStr, &storyErrorStr,
-			&state.Metadata.InputSource, &state.Metadata.InputPath, &state.Metadata.IntegrationBranch,
-			&state.Metadata.FeatureName, &state.Metadata.BaseBranch, &state.Metadata.ProjectVersion,
-			&state.Metadata.TotalTokensUsed, &state.Metadata.TotalCostUSD,
-			&taskID, &titleStr, &descStr, &statusStr, &changeTypeStr, &assignedToStr,
-			&dependsOnStr, &targetFilesStr, &partialChangelogStr, &retriesNull, &maxRetriesNull,
-			&failureLogNull, &createdAtNull, &updatedAtNull,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if !stateInitialized {
-			state.BuildStatus = domain.BuildStatus(buildStatusStr)
-			if storyStatusStr.Valid {
-				state.StoryStatus = domain.StoryStatus(storyStatusStr.String)
-				state.StoryError = storyErrorStr.String
-			}
-			stateInitialized = true
-		}
-
-		if taskID.Valid {
-			task.ID = taskID.String
-			task.Title = titleStr.String
-			task.Description = descStr.String
-			task.AssignedTo = assignedToStr.String
-			task.Status = domain.TaskStatus(statusStr.String)
-			task.ChangeType = domain.ChangeType(changeTypeStr.String)
-			task.Retries = int(retriesNull.Int64)
-			task.MaxRetries = int(maxRetriesNull.Int64)
-			if failureLogNull.Valid {
-				task.FailureLog = failureLogNull.String
-			}
-			task.CreatedAt = createdAtNull.Time
-			task.UpdatedAt = updatedAtNull.Time
-
-			if dependsOnStr.Valid && dependsOnStr.String != "" {
-				if err := json.Unmarshal([]byte(dependsOnStr.String), &task.DependsOn); err != nil {
-					return nil, err
-				}
-			}
-			if targetFilesStr.Valid && targetFilesStr.String != "" {
-				if err := json.Unmarshal([]byte(targetFilesStr.String), &task.TargetFiles); err != nil {
-					return nil, err
-				}
-			}
-			if partialChangelogStr.Valid && partialChangelogStr.String != "" {
-				if err := json.Unmarshal([]byte(partialChangelogStr.String), &task.PartialChangelog); err != nil {
-					return nil, err
-				}
-			}
-			state.Tasks = append(state.Tasks, task)
-		}
-	}
-
-	if !stateInitialized {
-		return nil, sql.ErrNoRows
-	}
-
-	// Load Clarifications using a JOIN
-	rowsCl, err := r.db.QueryContext(ctx,
-		`SELECT c.question, c.answer, c.resolved, c.asked_at
-		FROM state s
-		JOIN clarifications c ON s.id = c.state_id
-		WHERE s.id = $1`, state.ID)
-	if err != nil {
+	if err := r.loadPostgresStateRelations(ctx, state); err != nil {
 		return nil, err
 	}
-	defer func() { _ = rowsCl.Close() }()
-	state.Clarifications = []domain.Clarification{}
-	for rowsCl.Next() {
-		var clar domain.Clarification
-		var resolvedInt int
-		err := rowsCl.Scan(&clar.Question, &clar.Answer, &resolvedInt, &clar.AskedAt)
-		if err != nil {
-			return nil, err
-		}
-		clar.Resolved = resolvedInt != 0
-		state.Clarifications = append(state.Clarifications, clar)
-	}
 
-	// Load Actions using a JOIN
-	rowsAc, err := r.db.QueryContext(ctx,
-		`SELECT a.timestamp, a.tool, a.args, a.reasoning, a.result, a.success
-		FROM state s
-		JOIN actions a ON s.id = a.state_id
-		WHERE s.id = $1`, state.ID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rowsAc.Close() }()
-	state.LastActions = []domain.Action{}
-	for rowsAc.Next() {
-		var act domain.Action
-		var argsJSON []byte
-		var successInt int
-		err := rowsAc.Scan(&act.Timestamp, &act.Tool, &argsJSON, &act.Reasoning, &act.Result, &successInt)
-		if err != nil {
-			return nil, err
-		}
-		act.Success = successInt != 0
-		if len(argsJSON) > 0 {
-			if err := json.Unmarshal(argsJSON, &act.Args); err != nil {
-				return nil, err
-			}
-		}
-		state.LastActions = append(state.LastActions, act)
-	}
-
-	// Load Files using a JOIN
-	rowsFi, err := r.db.QueryContext(ctx,
-		`SELECT wf.path, wf.size, wf.last_modified
-		FROM state s
-		JOIN workspace_files wf ON s.id = wf.state_id
-		WHERE s.id = $1`, state.ID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rowsFi.Close() }()
-	state.Files = []domain.FileInfo{}
-	for rowsFi.Next() {
-		var file domain.FileInfo
-		err := rowsFi.Scan(&file.Path, &file.Size, &file.LastModified)
-		if err != nil {
-			return nil, err
-		}
-		state.Files = append(state.Files, file)
-	}
-
-	// Load Validation Criteria using a JOIN
-	rowsVc, err := r.db.QueryContext(ctx,
-		`SELECT vc.id, vc.type, vc.expression, vc.description, vc.passed, vc.error_log
-		FROM state s
-		JOIN validation_criteria vc ON s.id = vc.state_id
-		WHERE s.id = $1`, state.ID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rowsVc.Close() }()
-	state.ValidationCriteria = []domain.ValidationCriterion{}
-	for rowsVc.Next() {
-		var crit domain.ValidationCriterion
-		var typeStr string
-		var passedInt int
-		err := rowsVc.Scan(&crit.ID, &typeStr, &crit.Expression, &crit.Description, &passedInt, &crit.ErrorLog)
-		if err != nil {
-			return nil, err
-		}
-		crit.Type = domain.ValidationType(typeStr)
-		crit.Passed = passedInt != 0
-		state.ValidationCriteria = append(state.ValidationCriteria, crit)
-	}
-
-	// Load Active Agents using a JOIN
-	rowsAa, err := r.db.QueryContext(ctx,
-		`SELECT aa.id, aa.name, aa.role, aa.status, aa.task_id, aa.started_at, aa.completed_at, aa.tokens_used, aa.last_error
-		FROM state s
-		JOIN active_agents aa ON s.id = aa.state_id
-		WHERE s.id = $1`, state.ID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rowsAa.Close() }()
-	state.ActiveAgents = []domain.Agent{}
-	for rowsAa.Next() {
-		var agent domain.Agent
-		var roleStr, statusStr string
-		var startedAtNull, completedAtNull sql.NullTime
-		err := rowsAa.Scan(
-			&agent.ID, &agent.Name, &roleStr, &statusStr, &agent.TaskID,
-			&startedAtNull, &completedAtNull, &agent.TokensUsed, &agent.LastError,
-		)
-		if err != nil {
-			return nil, err
-		}
-		agent.Role = domain.AgentRole(roleStr)
-		agent.Status = domain.AgentStatus(statusStr)
-		if startedAtNull.Valid {
-			agent.StartedAt = startedAtNull.Time
-		}
-		if completedAtNull.Valid {
-			agent.CompletedAt = completedAtNull.Time
-		}
-		state.ActiveAgents = append(state.ActiveAgents, agent)
-	}
-
-	return &state, nil
+	return state, nil
 }

@@ -19,7 +19,7 @@ COPY . .
 RUN go build -o bin/noctifab cmd/noctifab/main.go
 
 FROM alpine:3.21
-RUN apk add --no-cache git bash docker-cli
+RUN apk add --no-cache git bash docker-cli curl
 WORKDIR /app
 
 # Copy the built binary

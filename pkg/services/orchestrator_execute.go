@@ -59,6 +59,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		for i := range st.Tasks {
 			if st.Tasks[i].ID == taskID {
 				st.Tasks[i].Status = domain.TaskInProgress
+				st.Tasks[i].Progress = 10
 				st.Tasks[i].UpdatedAt = time.Now()
 				return nil
 			}
@@ -152,8 +153,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	if task.Retries == 0 {
 		// 1. Run Generator Agent (role "generator") to implement minimal functionality
 		minimalGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFocus on creating the minimal implementation/functionality to fulfill the task requirements. The tests will be written in a later phase.", task.Title, task.Description)
+		o.updateTaskProgress(ctx, taskID, 25)
 		o.RunGeneratorAgent(ctx, *task, state, fileContexts, "", minimalGenPrompt)
-
+ 
 		// Stage and commit minimal implementation
 		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
@@ -167,11 +169,12 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				}
 			}
 		}
-
+ 
 		// 2. Run Test Writer Agent (role "tester") to write tests against the minimal implementation
 		testerPrompt := fmt.Sprintf("Write tests for task: %s - %s\n\nThe minimal implementation has already been created. Write tests to verify this implementation, including unit and integration tests as specified in the guidelines.", task.Title, task.Description)
+		o.updateTaskProgress(ctx, taskID, 50)
 		o.RunTesterAgent(ctx, *task, state, fileContexts, testerPrompt)
-
+ 
 		// Stage and commit tests
 		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
@@ -185,7 +188,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				}
 			}
 		}
-
+ 
 		// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
 		recentTestsContext := ""
 		diffOut, diffErr := o.git.Run(ctx, false, "show", "--name-only", "--format=", "HEAD")
@@ -206,11 +209,12 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				recentTestsContext = "\n\nWritten tests context:\n" + strings.Join(testFileContexts, "\n\n")
 			}
 		}
-
+ 
 		// 3a. Run Generator Agent (role "generator") to refactor/improve the implementation and tests to pass
 		refactorGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nRefactor the implementation to make the code better and prepare it to pass all tests. You may update both the implementation files and the test files if needed.", task.Title, task.Description)
+		o.updateTaskProgress(ctx, taskID, 75)
 		o.RunGeneratorAgent(ctx, *task, state, fileContexts, recentTestsContext, refactorGenPrompt)
-
+ 
 		// Stage and commit refactoring changes
 		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
@@ -224,11 +228,11 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				}
 			}
 		}
-
+ 
 		// 3b. Run Test Writer Agent (role "tester") to refactor/improve/align the tests
 		refactorTestPrompt := fmt.Sprintf("Write/Refactor tests for task: %s - %s\n\nThe implementation has been refactored/improved. Refactor the tests to align them with the updated code, improve coverage, and ensure they are correct.", task.Title, task.Description)
 		o.RunTesterAgent(ctx, *task, state, fileContexts, refactorTestPrompt)
-
+ 
 		// Stage and commit refactored tests
 		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
@@ -245,11 +249,12 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	} else {
 		// Retries loop: Generator always runs first, followed by Tester, then Validator
-
+ 
 		// 1. Run Generator Agent to fix/refactor implementation
 		fixGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nRefactor and fix the implementation to resolve the previous failures.", task.Title, task.Description)
+		o.updateTaskProgress(ctx, taskID, 40)
 		o.RunGeneratorAgent(ctx, *task, state, fileContexts, "", fixGenPrompt)
-
+ 
 		// Stage and commit fixes
 		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
@@ -263,11 +268,12 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				}
 			}
 		}
-
+ 
 		// 2. Run Test Writer Agent to fix/refactor tests to align with updated implementation
 		fixTestPrompt := fmt.Sprintf("Write/Refactor tests for task: %s - %s\n\nRefactor and fix the tests to resolve the previous failures and align them with the updated code.", task.Title, task.Description)
+		o.updateTaskProgress(ctx, taskID, 70)
 		o.RunTesterAgent(ctx, *task, state, fileContexts, fixTestPrompt)
-
+ 
 		// Stage and commit test fixes
 		statusOut, _ = o.git.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
@@ -321,10 +327,12 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 		if passed {
 			targetTask.Status = domain.TaskSuccess
+			targetTask.Progress = 100
 			targetTask.FailureLog = ""
 		} else {
 			targetTask.Retries++
 			targetTask.FailureLog = logMsg
+			targetTask.Progress = 0
 			if targetTask.Retries >= targetTask.MaxRetries {
 				targetTask.Status = domain.TaskFailed
 			} else {
@@ -397,7 +405,7 @@ func collectTargetFilesRecursively(task domain.Task, tasks []domain.Task) []stri
 	}
 
 	visit(task)
-
+ 
 	// Deduplicate
 	uniqueFiles := make([]string, 0, len(files))
 	seen := make(map[string]bool)
@@ -409,4 +417,17 @@ func collectTargetFilesRecursively(task domain.Task, tasks []domain.Task) []stri
 	}
 	sort.Strings(uniqueFiles)
 	return uniqueFiles
+}
+
+func (o *Orchestrator) updateTaskProgress(ctx context.Context, taskID string, progress int) {
+	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+		for i := range st.Tasks {
+			if st.Tasks[i].ID == taskID {
+				st.Tasks[i].Progress = progress
+				st.Tasks[i].UpdatedAt = time.Now()
+				return nil
+			}
+		}
+		return fmt.Errorf("task %s not found in state", taskID)
+	})
 }
