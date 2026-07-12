@@ -206,7 +206,13 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 		targetJoined := strings.Join(targetSlice, "\n")
 
 		if !strings.Contains(targetJoined, edit.TargetContent) {
-			return "", fmt.Errorf("TargetContent not found in specified range %d-%d", edit.StartLine, edit.EndLine)
+			return "", fmt.Errorf(
+				"edit_file failed: target_content not found in file (range %d-%d). "+
+					"The file content may have changed since you last read it. "+
+					"Call read_file first to get the current content, then retry edit_file with the exact matching target_content, "+
+					"or use write_file to overwrite the entire file with the corrected content.",
+				edit.StartLine, edit.EndLine,
+			)
 		}
 
 		replacedJoined := strings.Replace(targetJoined, edit.TargetContent, edit.ReplacementContent, 1)
