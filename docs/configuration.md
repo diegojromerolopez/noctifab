@@ -293,3 +293,154 @@ sast:
 - **`enabled`** (Boolean): Turn on security scanner checking.
 - **`scanners`** (List of Strings): Executable scanners to run (e.g. `gosec` for Go, `bandit` for Python).
 - **`fail_on_severity`** (String): Minimum scan vulnerability level that blocks integration merges. Options: `high`, `medium`, `low`.
+
+---
+
+## Full Configuration Example (`.noctifab/config.yaml`)
+
+Below is a complete, annotated example configuration demonstrating all options in a typical spec-driven (Level 3.5) setup:
+
+```yaml
+config_version: "1.0"
+input: "./roadmap/US-001.md"
+auto_commit: true
+max_actions: 100
+max_duration: "45m"
+conversation_mode: "compaction"
+max_history_messages: 20
+compaction_threshold: 25
+max_history_tokens: 32768
+shutdown_grace_period: "30s"
+occ_max_retries: 5
+occ_backoff_base: "50ms"
+occ_backoff_factor: 2.0
+token_usage_limit: 0
+log_level: "info"
+log_file: "./.noctifab/logs/noctifab.log"
+
+orchestrator:
+  max_tools_per_response: 5
+  concurrency: 3
+  poll_interval: "10s"
+  max_clarification_wait: "30m"
+  clarification_timeout_action: "abort"
+
+storage:
+  provider: "sqlite"
+  conn_string: "./.noctifab/data/noctifab.db"
+
+llm:
+  provider: "opencode"
+  model: "opencode-v1"
+  temperature: 0.0
+  api_key: "secret:OPENCODE_API_KEY"
+  max_retries: 5
+  retry_backoff: "100ms"
+  retry_backoff_factor: 2.0
+  max_budget_usd: 10.0
+  reset_period: "daily"
+  failover:
+    enabled: true
+    cooldown: "5m"
+    max_call_limit: 10
+    backends:
+      - provider: "openai"
+        model: "gpt-4o"
+        api_key_env: "OPENAI_API_KEY"
+
+vcs:
+  provider: "github"
+  repository: "owner/repo"
+  base_branch: "main"
+  branch_prefix: "noctifab/feature-"
+  token: "secret:GITHUB_TOKEN"
+  git_mutex_timeout: "5m"
+  git_operation_retries: 3
+  git_retry_backoff: "1s"
+  pull_request:
+    auto_create: true
+    auto_merge: true
+    auto_rebase: true
+    draft: false
+    assignees:
+      - "dev-user"
+    labels:
+      - "autonomous"
+      - "noctifab"
+  ci:
+    auto_fix: true
+    max_retries: 3
+
+sandbox:
+  mode: "docker"
+  timeout_seconds: 300
+  idle_timeout_seconds: 30
+  grace_period_seconds: 10
+  test_command: "cargo test"
+  linter_command: "cargo clippy -- -D warnings"
+  formatter_command: "cargo fmt --check"
+  exclude_paths:
+    - "target/"
+    - ".noctifab/"
+  allowed_commands:
+    - "cargo"
+    - "rustc"
+    - "git"
+
+roles:
+  orchestrator:
+    profile: "orchestrator"
+    temperature: 0.0
+  planner:
+    profile: "planner"
+    temperature: 0.5
+  generator:
+    profile: "generator"
+    temperature: 0.0
+  tester:
+    profile: "tester"
+    temperature: 0.0
+
+profiles:
+  generator:
+    allowed_tools:
+      - "read_file"
+      - "write_file"
+      - "edit_file"
+      - "list_directory"
+      - "find_files"
+      - "grep_search"
+      - "run_tests"
+      - "run_linter"
+      - "request_test_fix"
+      - "noop"
+  tester:
+    allowed_tools:
+      - "read_file"
+      - "write_file"
+      - "edit_file"
+      - "list_directory"
+      - "find_files"
+      - "grep_search"
+      - "run_tests"
+      - "run_linter"
+      - "noop"
+
+jira:
+  url: "https://mycompany.atlassian.net"
+  user: "secret:JIRA_USER"
+  token: "secret:JIRA_API_TOKEN"
+
+telemetry:
+  enabled: false
+  exporter: "otlp"
+  endpoint: "http://localhost:4317"
+  service_name: "noctifab"
+
+sast:
+  enabled: true
+  scanners:
+    - "gosec"
+  fail_on_severity: "high"
+```
+
