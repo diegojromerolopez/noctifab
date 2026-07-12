@@ -77,6 +77,10 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	branchName := fmt.Sprintf("noctifab/task-%s-worker", taskID)
 	var statusOut, stagedOut string
 
+	// Ensure working directory is clean of any leftovers from previous failed repair/execution attempts
+	_, _ = o.git.Run(ctx, true, "reset", "--hard")
+	_, _ = o.git.Run(ctx, true, "clean", "-fd")
+
 	// Ensure integration branch exists
 	isFreshStart := true
 	for _, t := range state.Tasks {

@@ -23,6 +23,9 @@ func preprocessPrompt(prompt string) string {
 	if strings.HasPrefix(prompt, "Execute task:") {
 		return buildGeneratorPrompt(strings.TrimPrefix(prompt, "Execute task:"))
 	}
+	if strings.HasPrefix(prompt, "Repair task: ") {
+		return buildRepairPrompt(strings.TrimPrefix(prompt, "Repair task: "))
+	}
 	return prompt
 }
 
@@ -180,4 +183,45 @@ Return format:
   ]
 }
 `, taskDetails, antiStallingGenerator)
+}
+
+func buildRepairPrompt(details string) string {
+	return fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\""); never use single quotes (') for JSON strings or keys.
+
+You are acting as the Repair Agent.
+Your task is to fix the compilation error, linter offense, test failure, or watchdog timeout that is currently preventing the validation suite from passing.
+
+Task Details & Failure Context:
+%s
+
+CRITICAL:
+1. You may receive multiple turns. If the error is still present, you will be given the new failure output and another turn. Fix the issue immediately by editing or writing the necessary files.
+2. All code written/modified MUST compile cleanly and comply with the project's formatting and linter guidelines.
+3. Apply aggressive self-healing: fix any errors directly. Do not hesitate to overwrite or rewrite files to make them compile/validate correctly.
+
+You may use the following tools:
+- read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
+- write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+- edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace (must match the file content exactly; never include '[TRUNCATED]' or other placeholders)", "replacement_content": "new code block"}
+- list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
+- find_files: search for files. Args: {"pattern": "*"}
+- grep_search: search for a pattern in files. Args: {"query": "search_term"}
+- run_tests: run the project's tests to verify correctness. Args: {}
+- run_linter: run the project's linter check in the sandbox workspace to verify syntax and style. Args: {}
+- noop: call this when the failure is resolved. Args: {}
+
+Return format:
+{
+  "reasoning": "Detailed technical rationale explaining your next step",
+  "actions": [
+    {
+      "tool": "tool_name",
+      "args": {
+         "arg_name": "value"
+      }
+    }
+  ]
+}
+`, details)
 }

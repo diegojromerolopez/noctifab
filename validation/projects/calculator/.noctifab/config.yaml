@@ -47,6 +47,7 @@ sandbox:
     grace_period_seconds: 30
     test_command: "rspec spec/"
     linter_command: "rubocop"
+    formatter_command: "rubocop -a"
     exclude_paths:
         - vendor/
         - bin/

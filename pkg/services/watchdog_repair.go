@@ -170,7 +170,7 @@ func (wr *WatchdogRepair) AttemptRepair(
 	watchdogErr error,
 ) (*RepairResult, error) {
 	category := CategorizeFailureLog(watchdogOutput)
-	diagPrompt := buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput, category)
+	diagPrompt := "Repair task: " + buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput, category)
 
 	for attempt := 0; attempt < wr.maxRetries; attempt++ {
 		resp, err := wr.llmClient.Complete(ctx, diagPrompt)
@@ -180,6 +180,7 @@ func (wr *WatchdogRepair) AttemptRepair(
 
 		for _, action := range resp.Actions {
 			if tool, ok := wr.tools[action.Tool]; ok {
+				fmt.Printf("Orchestrator: Repair action: tool=%s args=%v\n", action.Tool, action.Args)
 				if _, err := tool.Execute(ctx, state, action.Args); err != nil {
 					fmt.Fprintf(os.Stderr, "Repair tool %s failed: %v\n", action.Tool, err)
 				}

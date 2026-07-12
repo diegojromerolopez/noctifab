@@ -49,6 +49,7 @@ sandbox:
     grace_period_seconds: 30
     test_command: go test -v ./...
     linter_command: "go vet ./..."
+    formatter_command: "go fmt ./..."
     exclude_paths:
         - node_modules/
         - vendor/
