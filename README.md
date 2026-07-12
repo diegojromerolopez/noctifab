@@ -102,6 +102,23 @@ The core engine runs a continuous polling event loop that drives all development
    - If tests fail, the task is marked as `PENDING` to be retried (or `FAILED` if retry limit is reached).
    - In all cases, the ephemeral worktree is pruned to maintain a clean workspace.
 
+---
+
+## Self-Healing & Anti-Stalling Resiliency
+
+`noctifab` is designed with robust self-healing mechanisms at both the agent and orchestrator levels to maximize autonomous progress and prevent execution stalls:
+
+1. **Intra-Turn Iterative Self-Healing**: Generator and Tester agents execute in a multi-turn feedback loop (up to **5 turns** per task). If verification tools like `run_tests` or `run_linter` fail, the orchestrator appends the compiler, syntax, or test outputs back into the prompt context. The agent receives this output as direct feedback to repair the code dynamically in the next turn before finalizing its work.
+2. **Watchdog Self-Repair (Inter-Turn)**: If a completed task fails the final verification gate, the orchestrator intercepts the failure and invokes a dedicated `WatchdogRepair` handler. It supports three distinct repair contexts:
+   - **Timeout**: Fixes infinite loops, deadlock hangs, and thread leaks.
+   - **Compile**: Solves syntax issues, missing imports, and compile failures.
+   - **Test Logic**: Fixes assertion value mismatches and incorrect test expectations.
+   The handler attempts up to **3 consecutive repairs** automatically.
+3. **Safety Circuit Breakers**:
+   - **`max_actions`**: Root config value (default: `100`) that sets a ceiling on the total task execution loops. If the system exceeds this limit, the orchestrator aborts the story to protect the LLM token budget from infinite loops.
+   - **`max_duration`**: Story-level wall-clock timeout.
+   - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
+
 ### Autonomous Agent Roles & Relationship
 To prevent "evaluation gaming" (where code generators approve their own buggy code), `noctifab` partitions cognitive execution into three isolated, specialized agent roles:
 1. **Planner Agent**: Decomposes a raw feature specification (Markdown/text file) into a topological task graph (DAG). Uses a reasoning-focused model configuration.

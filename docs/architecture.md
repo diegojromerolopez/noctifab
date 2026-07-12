@@ -79,3 +79,26 @@ A thread-safe channel queue that manages Git rebases and branch merges. When mul
 Runs a lightweight REST API server binding loopback commands. If an agent raises a clarification question, a human operator or external CI/CD runner can POST answers directly to `/api/v1/clarifications/:id/resolve` to safely unblock execution.
 
 The mailbox exposes a **Wakeup channel** that fires whenever a command is enqueued. The orchestrator's OCC backoff loop (`updateStateWithRetry`) selects on this channel via `SleepWithInterrupt`, allowing operator commands (abort, model switch) to interrupt exponential backoff immediately instead of blocking for the full duration.
+
+---
+
+## Self-Healing & Anti-Stalling Resiliency
+
+To prevent execution stalls and guarantee progress under validation failures, `noctifab` implements self-healing at two distinct layers:
+
+### 1. Multi-Turn Agent Loop (Intra-Turn Healing)
+During the **Execute Phase**, Generator and Tester agents are not restricted to a single-turn completion. If they execute verification tools like `run_tests` or `run_linter` and encounter failures (compilation errors, test assertion failures, or policy violations), the orchestrator automatically captures the error output, appends it to the prompt context, and completes the LLM again in a loop of up to **5 turns**. This allows agents to fix formatting, syntax, and logic bugs immediately within a single run.
+
+### 2. General Watchdog Repair (Inter-Turn Healing)
+If a task completes its execution phase but fails the final test suite evaluation, the orchestrator intercepts the failure logs and invokes the `WatchdogRepair` handler. It supports three failure categories:
+- **Timeout**: Triggered when a test run hangs and is terminated by the liveness watchdog. The prompt focuses on resolving infinite loops, unjoined threads, and deadlocks.
+- **Compile**: Triggered when compilation fails. The prompt focuses on resolving syntax errors, type mismatches, and import problems.
+- **Test Logic**: Triggered when assertions fail. The prompt focuses on resolving incorrect test expectations or fixing logic implementations.
+
+The repair handler makes up to **3 repair attempts** autonomously to self-heal the codebase.
+
+### 3. Safety Circuit Breakers
+- **`max_actions`**: Specifies a global limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
+- **`max_duration`**: Specifies a story-level wall-clock timeout.
+- **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
+
