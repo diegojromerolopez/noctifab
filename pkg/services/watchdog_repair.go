@@ -140,6 +140,7 @@ type WatchdogRepair struct {
 	maxRetries int
 	sandbox    Sandbox
 	tools      map[string]Tool
+	evaluator  *TestValidator
 }
 
 type RepairResult struct {
@@ -150,13 +151,14 @@ type RepairResult struct {
 	FailureLog string
 }
 
-func NewWatchdogRepair(llmClient domain.LLMClient, sandbox Sandbox, tools map[string]Tool) *WatchdogRepair {
+func NewWatchdogRepair(llmClient domain.LLMClient, sandbox Sandbox, tools map[string]Tool, evaluator *TestValidator) *WatchdogRepair {
 	maxRetries := 3
 	return &WatchdogRepair{
 		llmClient:  llmClient,
 		maxRetries: maxRetries,
 		sandbox:    sandbox,
 		tools:      tools,
+		evaluator:  evaluator,
 	}
 }
 
@@ -184,8 +186,23 @@ func (wr *WatchdogRepair) AttemptRepair(
 			}
 		}
 
-		testOutput, testErr := wr.sandbox.RunCommand(ctx, state.ProjectPath, "", "")
-		if testErr == nil {
+		var passed bool
+		var testOutput string
+		var testErr error
+		if wr.evaluator != nil {
+			var err error
+			passed, testOutput, err = wr.evaluator.ValidateTask(ctx, state, task)
+			if err != nil {
+				testErr = err
+			} else if !passed {
+				testErr = fmt.Errorf("validation failed: %s", category)
+			}
+		} else {
+			testOutput, testErr = wr.sandbox.RunCommand(ctx, state.ProjectPath, "", "")
+			passed = testErr == nil
+		}
+
+		if passed {
 			return &RepairResult{
 				Success:   true,
 				Output:    testOutput,

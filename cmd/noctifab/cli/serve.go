@@ -135,7 +135,7 @@ var serveCmd = &cobra.Command{
 		}
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
-		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools())
+		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
 
 		orchConfig := services.OrchestratorConfig{
 			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
