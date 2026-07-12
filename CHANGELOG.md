@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-07-12
+
+### Fixed
+- **`edit_file` Directive Error Message**: When `target_content` is not found in a file, the error message now explicitly instructs the agent to call `read_file` first, then retry `edit_file` with the correct target or fall back to `write_file`. This breaks the retry loop where agents exhausted all turns repeating the same mismatched `edit_file` call.
+
 ## [0.10.0] - 2026-07-12
 
 ### Added
