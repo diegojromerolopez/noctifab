@@ -382,7 +382,8 @@ func (t *GrepSearchTool) Execute(ctx context.Context, state *domain.State, args 
 
 // RunTestsTool implements run_tests by delegating execution to the active Sandbox engine.
 type RunTestsTool struct {
-	Runner Sandbox
+	Runner  Sandbox
+	Timeout time.Duration
 }
 
 func (t *RunTestsTool) Name() string { return "run_tests" }
@@ -397,8 +398,11 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 		return "", errors.New("no sandbox execution engine registered")
 	}
 
-	// Delegate to the sandbox with a 60-second timeout
-	runCtx, runCancel := context.WithTimeout(ctx, 60*time.Second)
+	timeout := t.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
 	return t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
 }
@@ -407,6 +411,7 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 type RunLinterTool struct {
 	Runner        Sandbox
 	LinterCommand string
+	Timeout       time.Duration
 }
 
 func (t *RunLinterTool) Name() string { return "run_linter" }
@@ -420,7 +425,11 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 	if t.LinterCommand == "" {
 		return "No linter command configured for this project.", nil
 	}
-	runCtx, runCancel := context.WithTimeout(ctx, 60*time.Second)
+	timeout := t.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
 	return t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")
 }

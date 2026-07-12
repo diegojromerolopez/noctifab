@@ -89,8 +89,12 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.ListDirectoryTool{})
 		reg.Register(&services.FindFilesTool{})
 		reg.Register(&services.GrepSearchTool{})
-		reg.Register(&services.RunTestsTool{Runner: sandboxRunner})
-		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand})
+		runTimeout := 5 * time.Minute
+		if cfg.Sandbox.TimeoutSeconds > 0 {
+			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
+		}
+		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand, Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM client with database budget store.
@@ -124,7 +128,11 @@ var serveCmd = &cobra.Command{
 		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
+		if cfg.Sandbox.TimeoutSeconds > 0 {
+			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
+		}
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
 		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools())

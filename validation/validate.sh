@@ -111,28 +111,31 @@ else
   STORIES=("roadmap/US-001.md")
 fi
 
-for STORY_PATH in "${STORIES[@]}"; do
-  if [ "${NOCTIFAB_INTERACTIVE:-}" = "1" ]; then
-    echo "Starting noctifab serve in interactive dashboard mode for ${STORY_PATH}..." >&2
-    "${NOCTIFAB_BIN}" serve >/dev/null 2>&1 &
-    SERVE_PID=$!
-    # Wait for daemon to respond to health checks
-    until curl -s http://127.0.0.1:18080/healthz >/dev/null; do
-      sleep 0.1
-    done
-    # Submit the story to the daemon
+if [ "${NOCTIFAB_INTERACTIVE:-}" = "1" ]; then
+  echo "Starting noctifab serve in interactive dashboard mode..." >&2
+  "${NOCTIFAB_BIN}" serve >/dev/null 2>&1 &
+  SERVE_PID=$!
+  # Wait for daemon to respond to health checks
+  until curl -s http://127.0.0.1:18080/healthz >/dev/null; do
+    sleep 0.1
+  done
+  # Submit all stories before launching the dashboard
+  for STORY_PATH in "${STORIES[@]}"; do
+    echo "Submitting story: ${STORY_PATH}..." >&2
     curl -s -X POST -H "Content-Type: application/json" -d "{\"path\":\"${STORY_PATH}\"}" http://127.0.0.1:18080/api/v1/stories >/dev/null
-    # Run interactive dashboard in-place
-    if ! "${NOCTIFAB_BIN}" dashboard; then
-      echo "❌ Error: validation aborted or dashboard failed." >&2
-      kill "${SERVE_PID}" 2>/dev/null || true
-      wait "${SERVE_PID}" 2>/dev/null || true
-      exit 1
-    fi
-    # Cleanup daemon
+  done
+  # Run interactive dashboard — exits automatically when all stories finish
+  if ! "${NOCTIFAB_BIN}" dashboard; then
+    echo "❌ Error: validation aborted or dashboard failed." >&2
     kill "${SERVE_PID}" 2>/dev/null || true
     wait "${SERVE_PID}" 2>/dev/null || true
-  else
+    exit 1
+  fi
+  # Cleanup daemon
+  kill "${SERVE_PID}" 2>/dev/null || true
+  wait "${SERVE_PID}" 2>/dev/null || true
+else
+  for STORY_PATH in "${STORIES[@]}"; do
     if [ "${MODE}" = "start" ]; then
       echo "Running noctifab start for ${STORY_PATH}..." >&2
       echo "start ${STORY_PATH}" | "${NOCTIFAB_BIN}" start --wait
@@ -142,8 +145,9 @@ for STORY_PATH in "${STORIES[@]}"; do
       echo "Running noctifab start-one for ${STORY_PATH}..." >&2
       "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
     fi
-  fi
-done
+  done
+fi
+
 
 # 8. Verify results
 echo "Verifying results..."

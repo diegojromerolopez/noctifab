@@ -15,11 +15,13 @@ import (
 // TestValidator runs the project's tests up to 3 times to check for flakiness
 // and optionally auto-stabilizes flaky tests via an LLM client.
 type TestValidator struct {
-	Runner        Sandbox
-	Strict        bool
-	LinterCommand string
-	LLMClient     domain.LLMClient
-	Tools         map[string]Tool
+	Runner           Sandbox
+	Strict           bool
+	FormatterCommand string
+	LinterCommand    string
+	LLMClient        domain.LLMClient
+	Tools            map[string]Tool
+	RunTimeout       time.Duration
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
@@ -29,6 +31,7 @@ func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, t
 		LinterCommand: "",
 		LLMClient:     llmClient,
 		Tools:         tools,
+		RunTimeout:    5 * time.Minute,
 	}
 }
 
@@ -49,6 +52,13 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 			attribute.Bool("strict", v.Strict),
 		))
 	defer span.End()
+
+	if v.FormatterCommand != "" {
+		// Auto-fix formatting before running the read-only linter check.
+		// Errors here are non-fatal; the subsequent linter run will surface
+		// any persistent problem with a precise diff.
+		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
+	}
 
 	if v.LinterCommand != "" {
 		out, err := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
@@ -96,7 +106,11 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n int) []TestRunResult {
 	results := make([]TestRunResult, n)
 	for i := 0; i < n; i++ {
-		runCtx, runCancel := context.WithTimeout(ctx, 60*time.Second)
+		timeout := v.RunTimeout
+		if timeout <= 0 {
+			timeout = 5 * time.Minute
+		}
+		runCtx, runCancel := context.WithTimeout(ctx, timeout)
 		out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
 		runCancel()
 

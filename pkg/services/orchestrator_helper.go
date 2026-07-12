@@ -170,13 +170,29 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 
 	testerCtx := context.WithValue(ctx, AgentRoleKey, "tester")
 	o.registerAgentStart(ctx, "tester", task.ID)
-	testResp, err := o.llmClient.Complete(testerCtx, testPrompt)
-	o.registerAgentComplete(ctx, "tester", task.ID, err)
-	if err == nil {
-		fmt.Printf("Orchestrator: Task %s [Tester] write phase ok: reasoning=%q actions=%d\n", task.ID, testResp.Reasoning, len(testResp.Actions))
+
+	currentPrompt := testPrompt
+	maxTurns := 5
+	var lastErr error
+
+	for turn := 0; turn < maxTurns; turn++ {
+		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
+		if err != nil {
+			lastErr = err
+			break
+		}
+
+		fmt.Printf("Orchestrator: Task %s [Tester] write phase ok (turn %d): reasoning=%q actions=%d\n", task.ID, turn, testResp.Reasoning, len(testResp.Actions))
 		executed := 0
 		blocked := 0
+		var failedToolOutputs []string
+		hasNoop := false
+
 		for _, action := range testResp.Actions {
+			if action.Tool == "noop" {
+				hasNoop = true
+				continue
+			}
 			fmt.Printf("Orchestrator: Task %s [Tester] action: tool=%s args=%+v\n", task.ID, action.Tool, action.Args)
 			domainAction := domain.Action{
 				Tool: action.Tool,
@@ -190,19 +206,35 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 					reason = valRes.Reason
 				}
 				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] action %s blocked: %s\n", task.ID, action.Tool, reason)
+				failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Action blocked by policy: %s", reason))
 				continue
 			}
 
 			tool, ok := o.registry.Get(action.Tool)
 			if ok {
-				_, _ = tool.Execute(testerCtx, state, action.Args)
-				executed++
+				out, execErr := tool.Execute(testerCtx, state, action.Args)
+				if execErr != nil {
+					failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
+				} else {
+					executed++
+				}
 			}
 		}
-		fmt.Printf("Orchestrator: Task %s [Tester] write phase summary: %d executed, %d blocked\n", task.ID, executed, blocked)
-	} else {
-		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] write phase failed: %v\n", task.ID, err)
+
+		fmt.Printf("Orchestrator: Task %s [Tester] write phase summary (turn %d): %d executed, %d blocked, %d errors\n", task.ID, turn, executed, blocked, len(failedToolOutputs))
+
+		if hasNoop || len(failedToolOutputs) == 0 {
+			break
+		}
+
+		// Append errors to currentPrompt for the next turn
+		currentPrompt = fmt.Sprintf("%s\n\nPREVIOUS TURN ERRORS (turn %d/%d):\n%s\n\nFix these errors immediately. You have %d turns remaining.",
+			testPrompt, turn+1, maxTurns,
+			strings.Join(failedToolOutputs, "\n---\n"),
+			maxTurns-turn-1)
 	}
+
+	o.registerAgentComplete(ctx, "tester", task.ID, lastErr)
 }
 
 // RunGeneratorAgent runs the generator agent to implement task functionality
@@ -234,13 +266,29 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 
 	genCtx := context.WithValue(ctx, AgentRoleKey, "generator")
 	o.registerAgentStart(ctx, "generator", task.ID)
-	resp, err := o.llmClient.Complete(genCtx, genPrompt)
-	o.registerAgentComplete(ctx, "generator", task.ID, err)
-	if err == nil {
-		fmt.Printf("Orchestrator: Task %s [Generator] write phase ok: reasoning=%q actions=%d\n", task.ID, resp.Reasoning, len(resp.Actions))
+
+	currentPrompt := genPrompt
+	maxTurns := 5
+	var lastErr error
+
+	for turn := 0; turn < maxTurns; turn++ {
+		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
+		if err != nil {
+			lastErr = err
+			break
+		}
+
+		fmt.Printf("Orchestrator: Task %s [Generator] write phase ok (turn %d): reasoning=%q actions=%d\n", task.ID, turn, resp.Reasoning, len(resp.Actions))
 		executed := 0
 		blocked := 0
+		var failedToolOutputs []string
+		hasNoop := false
+
 		for _, action := range resp.Actions {
+			if action.Tool == "noop" {
+				hasNoop = true
+				continue
+			}
 			fmt.Printf("Orchestrator: Task %s [Generator] action: tool=%s args=%+v\n", task.ID, action.Tool, action.Args)
 			domainAction := domain.Action{
 				Tool: action.Tool,
@@ -254,13 +302,18 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					reason = valRes.Reason
 				}
 				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] action %s blocked: %s\n", task.ID, action.Tool, reason)
+				failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Action blocked by policy: %s", reason))
 				continue
 			}
 
 			tool, ok := o.registry.Get(action.Tool)
 			if ok {
-				_, _ = tool.Execute(genCtx, state, action.Args)
-				executed++
+				out, execErr := tool.Execute(genCtx, state, action.Args)
+				if execErr != nil {
+					failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
+				} else {
+					executed++
+				}
 			}
 
 			if action.Tool == "request_test_fix" {
@@ -285,10 +338,21 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				}
 			}
 		}
-		fmt.Printf("Orchestrator: Task %s [Generator] write phase summary: %d executed, %d blocked\n", task.ID, executed, blocked)
-	} else {
-		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] write phase failed: %v\n", task.ID, err)
+
+		fmt.Printf("Orchestrator: Task %s [Generator] write phase summary (turn %d): %d executed, %d blocked, %d errors\n", task.ID, turn, executed, blocked, len(failedToolOutputs))
+
+		if hasNoop || len(failedToolOutputs) == 0 {
+			break
+		}
+
+		// Append errors to currentPrompt for the next turn
+		currentPrompt = fmt.Sprintf("%s\n\nPREVIOUS TURN ERRORS (turn %d/%d):\n%s\n\nFix these errors immediately. You have %d turns remaining.",
+			genPrompt, turn+1, maxTurns,
+			strings.Join(failedToolOutputs, "\n---\n"),
+			maxTurns-turn-1)
 	}
+
+	o.registerAgentComplete(ctx, "generator", task.ID, lastErr)
 }
 
 func summarizeFailureLog(log string) string {

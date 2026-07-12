@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -30,6 +31,7 @@ type OrchestratorConfig struct {
 	OCCBackoffFactor float64
 	MaxDuration      time.Duration
 	AutoCreatePR     bool
+	MaxActions       int
 }
 
 type Orchestrator struct {
@@ -46,6 +48,7 @@ type Orchestrator struct {
 	mailbox        *CommandMailbox
 	watchdogRepair RepairHandler
 	storyStartedAt time.Time
+	totalActions   int64
 }
 
 func NewOrchestrator(
@@ -120,7 +123,26 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 	// 2. Scheduler check: find ready tasks
 	ready := o.scheduler.GetReadyTasks(state, o.cfg.Concurrency)
 
-	// 2a. Story-level wall clock enforcement. When max_duration is configured
+	// 2a. Global max_actions enforcement.
+	currentActions := atomic.LoadInt64(&o.totalActions)
+	if o.cfg.MaxActions > 0 && int(currentActions) >= o.cfg.MaxActions && state.StoryStatus == domain.StoryIdle {
+		fmt.Printf("Orchestrator: story exceeded max_actions ceiling %d (executed %d); failing remaining tasks and aborting story.\n", o.cfg.MaxActions, currentActions)
+		_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+			for i := range st.Tasks {
+				if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
+					st.Tasks[i].Status = domain.TaskFailed
+					st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_actions ceiling %d (executed %d)", st.Tasks[i].MaxRetries, currentActions)
+					st.Tasks[i].UpdatedAt = time.Now()
+				}
+			}
+			st.BuildStatus = domain.BuildFailing
+			st.StoryStatus = domain.StoryFailed
+			return nil
+		})
+		return nil
+	}
+
+	// 2b. Story-level wall clock enforcement. When max_duration is configured
 	// (> 0) and the story has been running longer than the limit, fail every
 	// non-finished task and mark the story as FAILED so the daemon stops
 	// spending LLM budget on a stuck story. The start time is the first cycle

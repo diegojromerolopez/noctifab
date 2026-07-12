@@ -240,7 +240,12 @@ func renderDashboard(states []*domain.State) string {
 		return sb.String()
 	}
 
-	primary := states[0]
+	// Deduplicate: per FeatureName keep only the most advanced state.
+	// "More advanced" = non-idle > idle, and more tasks > fewer tasks.
+	// This guards against orphan stub rows that may exist in the DB.
+	deduped := deduplicateStates(states)
+
+	primary := deduped[0]
 	sb.WriteString("NOCTIFAB TERMINAL DASHBOARD - SYSTEM PORT\r\n")
 	fmt.Fprintf(&sb, "Path: %s\r\n", primary.ProjectPath)
 	fmt.Fprintf(&sb, "Global Status: %s %s\r\n", primary.StoryStatus, statusEmoji(primary.StoryStatus))
@@ -248,7 +253,7 @@ func renderDashboard(states []*domain.State) string {
 	fmt.Fprintf(&sb, "Tokens Used: %d\r\n\r\n", primary.Metadata.TotalTokensUsed)
 
 	sb.WriteString("ACTIVE USER STORIES:\r\n")
-	for _, st := range states {
+	for _, st := range deduped {
 		totalProgress := 0
 		if len(st.Tasks) > 0 {
 			for _, t := range st.Tasks {
@@ -292,6 +297,44 @@ func renderDashboard(states []*domain.State) string {
 	sb.WriteString("[q] Quit | [p] Pause/Resume | [x] Cancel")
 
 	return sb.String()
+}
+
+// deduplicateStates collapses multiple state rows that share the same
+// FeatureName into a single entry. When duplicates exist, the most
+// "advanced" state is kept: any non-idle state beats an idle one; among
+// non-idle states the one with more tasks wins (i.e. the planner row).
+func deduplicateStates(states []*domain.State) []*domain.State {
+	seen := make(map[string]*domain.State, len(states))
+	// Preserve original order for the first occurrence of each name.
+	order := make([]string, 0, len(states))
+	for _, st := range states {
+		key := st.Metadata.FeatureName
+		if key == "" {
+			key = st.ID // fallback: keep unnamed rows under their own key
+		}
+		existing, ok := seen[key]
+		if !ok {
+			seen[key] = st
+			order = append(order, key)
+			continue
+		}
+		// Prefer any non-idle state over an idle one.
+		existingIdle := existing.StoryStatus == domain.StoryIdle || existing.StoryStatus == ""
+		newIdle := st.StoryStatus == domain.StoryIdle || st.StoryStatus == ""
+		if existingIdle && !newIdle {
+			seen[key] = st
+			continue
+		}
+		// Among equally-idle states, prefer the one with more tasks.
+		if len(st.Tasks) > len(existing.Tasks) {
+			seen[key] = st
+		}
+	}
+	result := make([]*domain.State, 0, len(order))
+	for _, key := range order {
+		result = append(result, seen[key])
+	}
+	return result
 }
 
 func init() {

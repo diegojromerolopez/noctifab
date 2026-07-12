@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-12
+
+### Added
+- **Multi-Turn Agent Loop**: Added iterative code-generation and validation loop (up to 5 turns) for Generator and Tester agents to immediately resolve compile, test, or lint errors using inline tool execution feedback.
+- **Configurable Tool/Test Execution Timeouts**: Made `RunTestsTool` and `RunLinterTool` timeouts configurable via `sandbox.timeout_seconds` configuration to prevent premature timeouts on long test suites.
+- **General Watchdog Repair**: Expanded the `WatchdogRepair` handler to trigger for compilation and test logic failures in addition to execution timeouts, providing self-healing capability for all validation issues.
+- **Global Action Ceiling Enforcement**: Wired the `max_actions` setting to act as a global story execution circuit breaker in the orchestrator, preventing infinite task cycles.
+
 ## [0.9.1] - 2026-07-08
 
 ### Added

@@ -34,7 +34,7 @@ func TestCategorizeFailureLog_Timeout(t *testing.T) {
 func TestBuildDiagnosticPrompt_IncludesFields(t *testing.T) {
 	err := errors.New("command killed: idle timeout")
 	output := "test output here"
-	prompt := buildDiagnosticPrompt("My Task", "Do the thing", err, output)
+	prompt := buildDiagnosticPrompt("My Task", "Do the thing", err, output, FailureTimeout)
 
 	for _, s := range []string{"My Task", "Do the thing", "idle timeout", "test output here"} {
 		if !strings.Contains(prompt, s) {
@@ -48,7 +48,7 @@ func TestBuildRetryPrompt_AppendsContext(t *testing.T) {
 	testOut := "test run 1 output"
 	testErr := errors.New("exit status 1")
 
-	prompt := buildRetryPrompt(prev, testOut, testErr)
+	prompt := buildRetryPrompt(prev, testOut, testErr, FailureTimeout)
 	for _, s := range []string{prev, testOut, "exit status 1", "The fix attempt was made"} {
 		if !strings.Contains(prompt, s) {
 			t.Errorf("expected retry prompt to contain %q", s)
@@ -77,7 +77,7 @@ func TestFailureCategory_String(t *testing.T) {
 }
 
 func TestBuildDiagnosticPrompt_EmptyFields(t *testing.T) {
-	prompt := buildDiagnosticPrompt("", "", nil, "")
+	prompt := buildDiagnosticPrompt("", "", nil, "", FailureTimeout)
 	if prompt == "" {
 		t.Error("expected non-empty prompt even with empty fields")
 	}

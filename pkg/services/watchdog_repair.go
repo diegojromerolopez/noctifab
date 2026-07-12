@@ -50,8 +50,10 @@ func CategorizeFailureLog(log string) FailureCategory {
 	}
 }
 
-func buildDiagnosticPrompt(title, description string, watchdogErr error, output string) string {
-	return fmt.Sprintf(`The test suite hung and was forcefully terminated by the watchdog.
+func buildDiagnosticPrompt(title, description string, watchdogErr error, output string, category FailureCategory) string {
+	switch category {
+	case FailureTimeout:
+		return fmt.Sprintf(`The test suite hung and was forcefully terminated by the watchdog.
 
 Task: %s - %s
 
@@ -69,20 +71,68 @@ This usually indicates:
 Analyze the output above and fix the issue. Rewrite any files that need changes.
 Focus on making the code terminate correctly.
 `, title, description, watchdogErr, output)
-}
 
-func buildRetryPrompt(prevPrompt, testOutput string, testErr error) string {
-	return fmt.Sprintf(`%s
+	case FailureCompile:
+		return fmt.Sprintf(`The compilation failed with error(s).
 
-The fix attempt was made but tests still failed or hung:
+Task: %s - %s
 
-Test output:
+Compilation error: %v
+
+Compilation output:
 %s
 
-Test error: %v
+Analyze the compilation error(s) above and fix the issues in the code or tests immediately. Rewrite any files that need changes.
+`, title, description, watchdogErr, output)
 
-Please try a different approach to fix the hang/deadlock.
-`, prevPrompt, testOutput, testErr)
+	case FailureTestLogic:
+		return fmt.Sprintf(`The test suite execution failed with assertion or logic errors.
+
+Task: %s - %s
+
+Test validation error: %v
+
+Test runner output:
+%s
+
+Analyze the test failure(s) above and fix the implementation or tests immediately. Rewrite any files that need changes.
+`, title, description, watchdogErr, output)
+
+	default:
+		return fmt.Sprintf(`The test suite validation failed.
+
+Task: %s - %s
+
+Validation error: %v
+
+Output:
+%s
+
+Analyze the output and fix the implementation or tests immediately. Rewrite any files that need changes.
+`, title, description, watchdogErr, output)
+	}
+}
+
+func buildRetryPrompt(prevPrompt, testOutput string, testErr error, category FailureCategory) string {
+	msg := "fix the hang/deadlock"
+	if category == FailureCompile {
+		msg = "resolve the compilation error(s)"
+	} else if category == FailureTestLogic {
+		msg = "resolve the test failure(s)"
+	} else if category != FailureTimeout {
+		msg = "resolve the test validation failure(s)"
+	}
+	return fmt.Sprintf(`%s
+
+The fix attempt was made but validation still failed:
+
+Output:
+%s
+
+Error: %v
+
+Please try a different approach to %s.
+`, prevPrompt, testOutput, testErr, msg)
 }
 
 type WatchdogRepair struct {
@@ -117,7 +167,8 @@ func (wr *WatchdogRepair) AttemptRepair(
 	watchdogOutput string,
 	watchdogErr error,
 ) (*RepairResult, error) {
-	diagPrompt := buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput)
+	category := CategorizeFailureLog(watchdogOutput)
+	diagPrompt := buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput, category)
 
 	for attempt := 0; attempt < wr.maxRetries; attempt++ {
 		resp, err := wr.llmClient.Complete(ctx, diagPrompt)
@@ -143,12 +194,12 @@ func (wr *WatchdogRepair) AttemptRepair(
 			}, nil
 		}
 
-		diagPrompt = buildRetryPrompt(diagPrompt, testOutput, testErr)
+		diagPrompt = buildRetryPrompt(diagPrompt, testOutput, testErr, category)
 	}
 
 	return &RepairResult{
 		Success:    false,
 		Attempts:   wr.maxRetries,
-		FailureLog: "all repair attempts failed to resolve the hang/deadlock",
+		FailureLog: fmt.Sprintf("all repair attempts failed to resolve the %s failure", category),
 	}, nil
 }

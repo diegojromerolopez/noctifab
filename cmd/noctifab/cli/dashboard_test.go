@@ -30,18 +30,18 @@ func TestDashboard_RenderDashboard(t *testing.T) {
 			},
 			Tasks: []domain.Task{
 				{
-					ID:          "task-1",
-					Title:       "Write dashboard test",
-					Status:      domain.TaskSuccess,
-					Progress:    100,
-					AssignedTo:  "generator",
+					ID:         "task-1",
+					Title:      "Write dashboard test",
+					Status:     domain.TaskSuccess,
+					Progress:   100,
+					AssignedTo: "generator",
 				},
 				{
-					ID:          "task-2",
-					Title:       "Fix bugs",
-					Status:      domain.TaskInProgress,
-					Progress:    50,
-					AssignedTo:  "generator",
+					ID:         "task-2",
+					Title:      "Fix bugs",
+					Status:     domain.TaskInProgress,
+					Progress:   50,
+					AssignedTo: "generator",
 				},
 			},
 			LastActions: []domain.Action{
