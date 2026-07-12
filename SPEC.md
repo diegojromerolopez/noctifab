@@ -1655,10 +1655,21 @@ When a command is killed or exits with an error, the `WatchdogRepair` categorize
 #### Repair Loop
 The orchestrator integrates `WatchdogRepair` into its task execution loop:
 1. **Diagnose:** The failure log is analyzed and categorized using `CategorizeFailureLog`.
-2. **Prompt Construction:** A diagnostic prompt is built containing the failure category, log excerpts, and retry count.
+2. **Prompt Construction:** A diagnostic prompt is built containing the failure category, log excerpts, and retry count. The prompt is tailored dynamically to the failure category (Timeout, Compile, or TestLogic).
 3. **LLM Repair Attempt:** The LLM receives the diagnostic prompt and suggests a fix (code patch, config change, or retry).
-4. **Retry:** Up to `MaxRetries` attempts are made. After each failure, the repair handler feeds the previous attempt's outcome back into the next prompt.
-5. **Escalation:** If all retries are exhausted, the task is marked `TaskFailed`.
+4. **Validation:** For all failure categories except `FailureSandbox` (which is blocked immediately for security), the repair handler invokes the sandbox to execute the repairs.
+5. **Retry:** Up to 3 attempts are made. After each failure, the repair handler feeds the previous attempt's outcome back into the next prompt.
+6. **Escalation:** If all retries are exhausted, the task is marked `TaskFailed`.
+
+#### Multi-Turn Agent Loop
+To resolve syntax, lint, and test execution errors immediately without triggering an orchestrator retry, Generator and Tester agents operate in a multi-turn feedback loop of up to 5 turns per task:
+- **Intra-Turn Verification:** If `run_tests` or `run_linter` fails during an agent's turn, the orchestrator appends the error output directly back into the LLM context.
+- **Self-Healing Prompt Mandate:** Agents must prioritize fixing verification errors in subsequent turns before calling `noop`.
+
+#### Safety Circuit Breakers
+- **`max_actions`**: Specifies a global limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
+- **`max_duration`**: Specifies a story-level wall-clock timeout.
+- **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature timeouts on large project test suites.
 
 #### Wiring
 The `WatchdogRepair` is injected into the `Orchestrator` via constructor (DI). If no repair handler is provided (nil), the orchestrator skips the repair step and marks the task as failed immediately — preserving backward compatibility.
