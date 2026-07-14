@@ -84,8 +84,12 @@ func NewOrchestrator(
 // Start runs the polling loop
 func (o *Orchestrator) Start(ctx context.Context) error {
 	for {
-		if err := o.RunOnce(ctx); err != nil {
+		hasWork, err := o.RunOnce(ctx)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator error: %v\n", err)
+		}
+		if hasWork && err == nil {
+			continue
 		}
 		var wakeup <-chan struct{}
 		if o.mailbox != nil {
@@ -100,8 +104,9 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	}
 }
 
-// RunOnce runs a single cycle of the event loop
-func (o *Orchestrator) RunOnce(ctx context.Context) error {
+// RunOnce runs a single cycle of the event loop.
+// Returns a boolean indicating if any ready tasks were executed in this cycle, and any error.
+func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "RunOnce",
 		trace.WithAttributes(
 			attribute.Int("concurrency", o.cfg.Concurrency),
@@ -112,12 +117,12 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 
 	state, err := o.repo.Load(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// 1. Observe Phase: File indexing and sync
 	if err := o.syncWorkspaceFiles(ctx, state); err != nil {
-		return err
+		return false, err
 	}
 
 	// 2. Scheduler check: find ready tasks
@@ -139,7 +144,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 			st.StoryStatus = domain.StoryFailed
 			return nil
 		})
-		return nil
+		return false, nil
 	}
 
 	// 2b. Story-level wall clock enforcement. When max_duration is configured
@@ -166,7 +171,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 				st.StoryStatus = domain.StoryFailed
 				return nil
 			})
-			return nil
+			return false, nil
 		}
 	}
 
@@ -195,7 +200,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 				return nil
 			})
 		}
-		return nil
+		return false, nil
 	}
 
 	fmt.Printf("Orchestrator: Found %d ready task(s) to execute in this cycle\n", len(ready))
@@ -211,7 +216,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 	}
 
 	wg.Wait()
-	return nil
+	return true, nil
 }
 
 func (o *Orchestrator) updateStateWithRetry(ctx context.Context, updateFn func(state *domain.State) error) error {

@@ -45,7 +45,7 @@ noctifab validate
 
 
 ### 3. `start`
-Spawns the background daemon process (`noctifab serve`) and starts a foreground interactive REPL loop. The REPL accepts operator orders (e.g. `start roadmap/US-001.md`) and displays/prompts for clarification answers.
+Spawns the background daemon process (`noctifab serve`) and starts a foreground interactive REPL loop. The REPL accepts operator orders (e.g. `start roadmap/US-001.md` or a directory path like `start roadmap/` to execute all stories in lexicographical order) and displays/prompts for clarification answers.
 ```bash
 noctifab start
 ```

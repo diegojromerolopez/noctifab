@@ -100,6 +100,7 @@ type LLMConfig struct {
 	MaxBudgetUSD       float64        `yaml:"max_budget_usd"`
 	ResetPeriod        string         `yaml:"reset_period"`
 	Failover           FailoverConfig `yaml:"failover"`
+	MaxTimeout         Duration       `yaml:"max_timeout"`
 }
 
 type PullRequestConfig struct {

@@ -102,6 +102,17 @@ The E2E test suite validates the orchestration loop end-to-end under mock scenar
   make test-e2e
   ```
 
+### 4. Running Validation Projects (Local E2E Matrix)
+To validate the system implementing features autonomously within isolated target directories, run a validation project container:
+```bash
+make validate PROJECT=wc
+```
+To run all validation projects in parallel:
+```bash
+make validate-all
+```
+*Note: These E2E validation runs utilize host compiler and package manager mount caching (Go and Cargo) to speed up iterations and support near-instantaneous incremental testing.*
+
 ---
 
 ## Formatting and Linting

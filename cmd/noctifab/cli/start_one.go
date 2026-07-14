@@ -212,6 +212,7 @@ var startOneCmd = &cobra.Command{
 		reg.Register(&services.NoopTool{})
 		reg.Register(&services.ReadFileTool{})
 		reg.Register(&services.WriteFileTool{})
+		reg.Register(&services.DeleteFileTool{})
 		reg.Register(&services.EditFileTool{})
 		reg.Register(&services.ListDirectoryTool{})
 		reg.Register(&services.FindFilesTool{})
@@ -249,7 +250,7 @@ var startOneCmd = &cobra.Command{
 
 		orchConfig := services.OrchestratorConfig{
 			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
-			MaxRetries:       3,
+			MaxRetries:       10,
 			Concurrency:      cfg.Orchestrator.Concurrency,
 			MaxBudgetUSD:     cfg.LLM.MaxBudgetUSD,
 			OCCMaxRetries:    cfg.OCCMaxRetries,
@@ -275,7 +276,7 @@ var startOneCmd = &cobra.Command{
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-ticker.C:
-				if err := orchestrator.RunOnce(ctx); err != nil {
+				if _, err := orchestrator.RunOnce(ctx); err != nil {
 					fmt.Fprintf(os.Stderr, "Orchestrator error: %v\n", err)
 				}
 

@@ -25,6 +25,9 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 				b.Provider, b.Model, b.APIKeyValue,
 				b.MaxRetries, time.Duration(b.RetryBackoff), b.URL,
 			)
+			if b.MaxTimeout > 0 {
+				client.Timeout = time.Duration(b.MaxTimeout)
+			}
 			backends = append(backends, NamedClient{
 				Name:   b.Provider + "/" + b.Model,
 				Model:  b.Model,
@@ -50,6 +53,9 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 		for _, b := range cfg.LLM.Failover.Backends {
 			apiKey := os.Getenv(b.APIKeyEnv)
 			client := NewClient(b.Provider, b.Model, apiKey, b.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), b.URL)
+			if cfg.LLM.MaxTimeout > 0 {
+				client.Timeout = time.Duration(cfg.LLM.MaxTimeout)
+			}
 			backends = append(backends, NamedClient{
 				Name:   b.Provider + "/" + b.Model,
 				Model:  b.Model,
@@ -59,9 +65,12 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 		return NewFailoverClient(backends, time.Duration(cfg.LLM.Failover.Cooldown), cfg.LLM.Failover.MaxCallLimit, budgetStore, cfg.LLM.MaxBudgetUSD)
 	}
 
-	// 3. Fall back to a single client
-	return NewClient(
+	client := NewClient(
 		cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
 		cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
 	)
+	if cfg.LLM.MaxTimeout > 0 {
+		client.Timeout = time.Duration(cfg.LLM.MaxTimeout)
+	}
+	return client
 }

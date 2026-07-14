@@ -13,12 +13,13 @@ import (
 )
 
 type geminiProviderClient struct {
-	url string
+	url     string
+	timeout time.Duration
 }
 
 // NewGeminiProviderClient creates a ProviderClient for Gemini API.
-func NewGeminiProviderClient(url string) ProviderClient {
-	return &geminiProviderClient{url: url}
+func NewGeminiProviderClient(url string, timeout time.Duration) ProviderClient {
+	return &geminiProviderClient{url: url, timeout: timeout}
 }
 
 func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
@@ -50,7 +51,12 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 		return nil, err
 	}
 
-	postCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	timeout := g.timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+
+	postCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
@@ -63,7 +69,7 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	}
 
 	client := &http.Client{
-		Timeout: 10 * time.Minute,
+		Timeout: timeout,
 		Transport: &http.Transport{
 			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 		},
@@ -91,10 +97,22 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	if !ok || len(candidates) == 0 {
 		return nil, fmt.Errorf("unexpected Gemini response: %s", string(respBody))
 	}
-	candidate := candidates[0].(map[string]any)
-	content := candidate["content"].(map[string]any)
-	parts := content["parts"].([]any)
-	part := parts[0].(map[string]any)
+	candidate, ok := candidates[0].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected Gemini response: candidate is not a map")
+	}
+	content, ok := candidate["content"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected Gemini response: content is not a map")
+	}
+	parts, ok := content["parts"].([]any)
+	if !ok || len(parts) == 0 {
+		return nil, fmt.Errorf("unexpected Gemini response: parts list is missing or empty")
+	}
+	part, ok := parts[0].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected Gemini response: part is not a map")
+	}
 	text, _ := part["text"].(string)
 	return []byte(text), nil
 }

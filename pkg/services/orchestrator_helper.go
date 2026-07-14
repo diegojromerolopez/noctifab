@@ -77,6 +77,34 @@ func (o *Orchestrator) registerAgentComplete(ctx context.Context, role string, t
 
 // RunReaderPhase runs the pre-step to collect workspace context before execution
 func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task domain.Task, state *domain.State) []string {
+	var gatheredContext []string
+
+	// Heuristic Context Loading: automatically read target files if they exist to save an LLM turn
+	if len(task.TargetFiles) > 0 {
+		rfTool, ok := o.registry.Get("read_file")
+		if ok {
+			for _, tf := range task.TargetFiles {
+				if tf == "" {
+					continue
+				}
+				args := map[string]any{"path": tf}
+				out, err := rfTool.Execute(ctx, state, args)
+				if err == nil && out != "" {
+					summary := out
+					if len(summary) > 2000 {
+						summary = summary[:2000] + "\n... [TRUNCATED] ..."
+					}
+					gatheredContext = append(gatheredContext, fmt.Sprintf("Inspection result of automatically reading target file %q:\n```\n%s\n```", tf, summary))
+				}
+			}
+		}
+		// If we successfully gathered context heuristically, skip the LLM call entirely
+		if len(gatheredContext) > 0 {
+			fmt.Printf("Orchestrator: [Reader] role %s using heuristically loaded context for %d target file(s), skipping LLM call\n", role, len(gatheredContext))
+			return gatheredContext
+		}
+	}
+
 	var availableFilesMsg string
 	if files, err := o.git.Run(ctx, false, "ls-files"); err == nil {
 		availableFilesMsg = fmt.Sprintf("\nBelow is a list of all existing files in the repository:\n%s\n", strings.TrimSpace(files))
@@ -123,7 +151,6 @@ Return format:
 	}
 	fmt.Printf("Orchestrator: [Reader] phase ok for role %s: actions=%d\n", role, len(resp.Actions))
 
-	var gatheredContext []string
 	for _, action := range resp.Actions {
 		if action.Tool == "noop" {
 			continue
@@ -133,8 +160,11 @@ Return format:
 		}
 		tool, ok := o.registry.Get(action.Tool)
 		if ok {
+			fmt.Printf("Orchestrator: [Reader] role %s executing tool: %s with args: %+v\n", role, action.Tool, action.Args)
 			out, err := tool.Execute(ctx, state, action.Args)
-			if err == nil {
+			if err != nil {
+				fmt.Printf("Orchestrator: [Reader] role %s tool %s failed: %v\n", role, action.Tool, err)
+			} else {
 				summary := out
 				if len(summary) > 2000 {
 					summary = summary[:2000] + "\n... [TRUNCATED] ..."
@@ -160,7 +190,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 		promptContext = append(promptContext, fmt.Sprintf("Inspection context gathered:\n%s", strings.Join(readerContexts, "\n\n")))
 	}
 	if task.Retries > 0 && task.FailureLog != "" {
-		warning := "WARNING: The previous implementation/refactoring changes have been reset to the clean base commit state (minimal implementation + tests). You must re-apply all your changes from previous tries along with your new fixes. Do not assume your previous modifications persist in the files."
+		warning := "WARNING: The previous implementation/refactoring changes from the failed attempt have been preserved in the workspace files. You must inspect the existing code/tests, identify the bugs, and modify the files to fix the failures."
 		summary := summarizeFailureLog(task.FailureLog)
 		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the tests to address these specific errors.", warning, summary))
 	}
@@ -174,6 +204,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	currentPrompt := testPrompt
 	maxTurns := 5
 	var lastErr error
+	runTestsCalled := false
 
 	for turn := 0; turn < maxTurns; turn++ {
 		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
@@ -182,16 +213,19 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 			break
 		}
 
-		fmt.Printf("Orchestrator: Task %s [Tester] write phase ok (turn %d): reasoning=%q actions=%d\n", task.ID, turn, testResp.Reasoning, len(testResp.Actions))
 		executed := 0
 		blocked := 0
 		var failedToolOutputs []string
+		var turnToolOutputs []string
 		hasNoop := false
 
 		for _, action := range testResp.Actions {
 			if action.Tool == "noop" {
 				hasNoop = true
 				continue
+			}
+			if action.Tool == "run_tests" {
+				runTestsCalled = true
 			}
 			fmt.Printf("Orchestrator: Task %s [Tester] action: tool=%s args=%+v\n", task.ID, action.Tool, action.Args)
 			domainAction := domain.Action{
@@ -207,6 +241,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				}
 				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] action %s blocked: %s\n", task.ID, action.Tool, reason)
 				failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Action blocked by policy: %s", reason))
+				turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s blocked by policy: %s", action.Tool, reason))
 				continue
 			}
 
@@ -215,22 +250,30 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				out, execErr := tool.Execute(testerCtx, state, action.Args)
 				if execErr != nil {
 					failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 				} else {
 					executed++
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
 				}
 			}
 		}
 
+		if (hasNoop || len(testResp.Actions) == 0) && !runTestsCalled {
+			errMsg := "Error: You returned no actions or noop, but you have not executed 'run_tests' at least once in this task. To verify that the workspace compiles and any existing tests pass, you MUST execute the 'run_tests' tool now."
+			failedToolOutputs = append(failedToolOutputs, errMsg)
+			turnToolOutputs = append(turnToolOutputs, errMsg)
+		}
+
 		fmt.Printf("Orchestrator: Task %s [Tester] write phase summary (turn %d): %d executed, %d blocked, %d errors\n", task.ID, turn, executed, blocked, len(failedToolOutputs))
 
-		if hasNoop || len(failedToolOutputs) == 0 {
+		if hasNoop && len(failedToolOutputs) == 0 {
 			break
 		}
 
-		// Append errors to currentPrompt for the next turn
-		currentPrompt = fmt.Sprintf("%s\n\nPREVIOUS TURN ERRORS (turn %d/%d):\n%s\n\nFix these errors immediately. You have %d turns remaining.",
+		// Append errors and tool outputs to currentPrompt for the next turn
+		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.",
 			testPrompt, turn+1, maxTurns,
-			strings.Join(failedToolOutputs, "\n---\n"),
+			strings.Join(turnToolOutputs, "\n---\n"),
 			maxTurns-turn-1)
 	}
 
@@ -255,7 +298,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	}
 	// Add previous failure context if retrying (Requirement 7)
 	if task.Retries > 0 && task.FailureLog != "" {
-		warning := "WARNING: The previous implementation/refactoring changes have been reset to the clean base commit state (minimal implementation + tests). You must re-apply all your changes from previous tries along with your new fixes. Do not assume your previous modifications persist in the files."
+		warning := "WARNING: The previous implementation/refactoring changes from the failed attempt have been preserved in the workspace files. You must inspect the existing code/tests, identify the bugs, and modify the files to fix the failures."
 		summary := summarizeFailureLog(task.FailureLog)
 		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the code to address these specific errors.", warning, summary))
 	}
@@ -270,6 +313,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	currentPrompt := genPrompt
 	maxTurns := 5
 	var lastErr error
+	runTestsCalled := false
 
 	for turn := 0; turn < maxTurns; turn++ {
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
@@ -278,16 +322,19 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			break
 		}
 
-		fmt.Printf("Orchestrator: Task %s [Generator] write phase ok (turn %d): reasoning=%q actions=%d\n", task.ID, turn, resp.Reasoning, len(resp.Actions))
 		executed := 0
 		blocked := 0
 		var failedToolOutputs []string
+		var turnToolOutputs []string
 		hasNoop := false
 
 		for _, action := range resp.Actions {
 			if action.Tool == "noop" {
 				hasNoop = true
 				continue
+			}
+			if action.Tool == "run_tests" {
+				runTestsCalled = true
 			}
 			fmt.Printf("Orchestrator: Task %s [Generator] action: tool=%s args=%+v\n", task.ID, action.Tool, action.Args)
 			domainAction := domain.Action{
@@ -303,6 +350,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				}
 				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] action %s blocked: %s\n", task.ID, action.Tool, reason)
 				failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Action blocked by policy: %s", reason))
+				turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s blocked by policy: %s", action.Tool, reason))
 				continue
 			}
 
@@ -311,8 +359,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				out, execErr := tool.Execute(genCtx, state, action.Args)
 				if execErr != nil {
 					failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 				} else {
 					executed++
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
 				}
 			}
 
@@ -339,16 +389,22 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			}
 		}
 
+		if (hasNoop || len(resp.Actions) == 0) && !runTestsCalled {
+			errMsg := "Error: You returned no actions or noop, but you have not executed 'run_tests' at least once in this task. To verify that the workspace compiles and any existing tests pass, you MUST execute the 'run_tests' tool now."
+			failedToolOutputs = append(failedToolOutputs, errMsg)
+			turnToolOutputs = append(turnToolOutputs, errMsg)
+		}
+
 		fmt.Printf("Orchestrator: Task %s [Generator] write phase summary (turn %d): %d executed, %d blocked, %d errors\n", task.ID, turn, executed, blocked, len(failedToolOutputs))
 
-		if hasNoop || len(failedToolOutputs) == 0 {
+		if hasNoop && len(failedToolOutputs) == 0 {
 			break
 		}
 
-		// Append errors to currentPrompt for the next turn
-		currentPrompt = fmt.Sprintf("%s\n\nPREVIOUS TURN ERRORS (turn %d/%d):\n%s\n\nFix these errors immediately. You have %d turns remaining.",
+		// Append errors and tool outputs to currentPrompt for the next turn
+		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.",
 			genPrompt, turn+1, maxTurns,
-			strings.Join(failedToolOutputs, "\n---\n"),
+			strings.Join(turnToolOutputs, "\n---\n"),
 			maxTurns-turn-1)
 	}
 

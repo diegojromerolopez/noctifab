@@ -97,6 +97,27 @@ SRC_DIR="${ROOT}/validation/projects/${PROJECT}/output/src"
 DIST_DIR="${ROOT}/validation/projects/${PROJECT}/output/dist"
 mkdir -p "${SRC_DIR}"
 mkdir -p "${DIST_DIR}"
+
+# Prepare cache directories on host to speed up compiler and package manager resolution
+CACHE_ARGS=()
+if [ -n "${HOME:-}" ] && [ -d "${HOME}" ]; then
+  # Go Cache mounts
+  mkdir -p "${HOME}/go/pkg/mod" "${HOME}/.cache/go-build"
+  CACHE_ARGS+=(
+    -v "${HOME}/go/pkg/mod:/go/pkg/mod"
+    -v "${HOME}/.cache/go-build:/root/.cache/go-build"
+  )
+  
+  # Cargo Cache mounts (for Rust projects)
+  if [ "${PROJECT}" = "wc" ]; then
+    mkdir -p "${HOME}/.cargo/registry" "${HOME}/.cargo/git"
+    CACHE_ARGS+=(
+      -v "${HOME}/.cargo/registry:/usr/local/cargo/registry"
+      -v "${HOME}/.cargo/git:/usr/local/cargo/git"
+    )
+  fi
+fi
+
 # Add brief sleep to guarantee Docker Desktop filesystem mount synchronization
 sleep 1
 
@@ -110,6 +131,7 @@ if [ "${INTERACTIVE}" = "1" ]; then
     -it \
     --rm \
     --name "${CONTAINER}" \
+    "${CACHE_ARGS[@]}" \
     -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
     -v "${SRC_DIR}:/app/src_mount" \
     -v "${DIST_DIR}:/app/dist_mount" \
@@ -122,6 +144,7 @@ else
   docker run \
     --rm \
     --name "${CONTAINER}" \
+    "${CACHE_ARGS[@]}" \
     -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
     -v "${SRC_DIR}:/app/src_mount" \
     -v "${DIST_DIR}:/app/dist_mount" \

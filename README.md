@@ -167,7 +167,9 @@ This compiles the binary to `./dist/noctifab`.
 - **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles.
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
 
-- **`start`**: Spawns the background daemon process (`noctifab serve`) and launches a foreground interactive REPL loop to accept operator orders (e.g. `start roadmap/US-0001.md`) and display clarification prompts.
+- **`start`**: Spawns the background daemon process (`noctifab serve`) and launches a foreground interactive REPL loop to accept operator orders (e.g. `start roadmap/US-0001.md` or a directory path like `start roadmap/` to execute all stories in lexicographical order) and display clarification prompts. The background daemon exposes a REST API (port `18080` by default):
+  - `POST /api/v1/stories`: Enqueues stories. Accepts a JSON payload containing `{"path": "<file-or-folder>"}`. If a folder path is provided, it automatically enqueues all markdown files in the folder in lexicographical order.
+  - `POST /api/v1/clarifications/:id/resolve`: Submits operator answers to clarify ambiguous specifications.
 - **`start-one`**: Plans and executes a single specification end-to-end, running task workers and test validation in a blocking loop until complete, then exits.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
 - **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
@@ -413,6 +415,13 @@ When the agent asks a clarification question, Noctifab can attempt to auto-answe
 ## E2E Autonomy Validation
 
 The `validation/` directory contains fully containerized, isolated end-to-end integration checks that run `noctifab` autonomously against real project specs — with **zero human intervention** — and verify that the correct source files are produced and all tests pass.
+
+### Near-Instantaneous Iterations (Speedup Measures)
+To optimize validation container runs for near-instantaneous development feedback loops, the platform includes:
+- **Warm Compiler Caching:** Persistent mounts for Go modules/build caches and Cargo registries directly from the host.
+- **Heuristic Context Preloading:** Bypasses context-gathering LLM calls for existing repository files, speeding up task initialization.
+- **Zero-Delay Task Handoff:** Skips the polling delay sleep interval once a task completes, immediately scheduling the next task.
+
 
 ### Available Validation Projects
 

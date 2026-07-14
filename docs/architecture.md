@@ -76,7 +76,7 @@ Configured via `sandbox.idle_timeout_seconds` in `config.yaml` (default: 30s).
 A thread-safe channel queue that manages Git rebases and branch merges. When multiple tasks complete in parallel, the rebase queue serializes merges into the target branch to avoid merge conflicts and race conditions.
 
 ### 6. Command Mailbox (`pkg/services/command_channel.go`)
-Runs a lightweight REST API server binding loopback commands. If an agent raises a clarification question, a human operator or external CI/CD runner can POST answers directly to `/api/v1/clarifications/:id/resolve` to safely unblock execution.
+Runs a lightweight REST API server binding loopback commands. The REST API exposes the `/api/v1/stories` endpoint to enqueue user stories (allowing either a file path or a directory path to enqueue all stories in lexicographical order), and `/api/v1/clarifications/:id/resolve` to POST answers to clarification questions.
 
 The mailbox exposes a **Wakeup channel** that fires whenever a command is enqueued. The orchestrator's OCC backoff loop (`updateStateWithRetry`) selects on this channel via `SleepWithInterrupt`, allowing operator commands (abort, model switch) to interrupt exponential backoff immediately instead of blocking for the full duration.
 
@@ -101,4 +101,20 @@ The repair handler makes up to **3 repair attempts** autonomously to self-heal t
 - **`max_actions`**: Specifies a global limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
 - **`max_duration`**: Specifies a story-level wall-clock timeout.
 - **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
+
+---
+
+## Development Performance Speedups
+
+To support near-instantaneous development feedback loops, `noctifab` implements three latency optimization strategies:
+
+1. **Warm Compiler Caching (E2E Sandbox Caching):**
+   When executing validation tasks in Docker containers, the host mounts persistent compiler caches (e.g. `/go/pkg/mod` and `~/.cache/go-build` for Go; `.cargo/registry` and target mounts for Rust) directly into the containers. This prevents re-downloading packages and enables fast incremental compilations.
+
+2. **Heuristic Context Preloading:**
+   The context-gathering Reader phase is bypassed entirely if the files that a task plans to modify already exist in the repository. Instead of calling a heavy LLM to plan which files to inspect, the orchestrator automatically reads these target files using its local tools and loads their content directly into the context, shaving off critical seconds.
+
+3. **Zero-Delay Task Handoff:**
+   Whenever a scheduler loop run makes progress (i.e., a task completes or state is updated), the orchestrator immediately invokes the next schedule check without sleeping for `poll_interval`. Tasks are chained sequentially with no idle latency.
+
 

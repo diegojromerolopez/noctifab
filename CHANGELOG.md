@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-07-15
+
+### Fixed
+- **Increased Task and Watchdog Max Retries**: Increased default `max_retries` for tasks and `watchdog_repair` from 3 to 10 in `bootstrap_tools.go`, `watchdog_repair.go`, `start_one.go`, and `serve.go` to provide agents sufficient turns to align test assertions and correct subtle linter/compiler issues before failing validation permanently.
+
+## [0.11.0] - 2026-07-13
+
+### Added
+- **Directory User Stories Support in start/serve**: Extended the `/api/v1/stories` REST API endpoint and the interactive REPL listener command parser to automatically detect and support folder paths. If the passed path is a folder, `noctifab` automatically resolves and enqueues all markdown files in lexicographical order as user stories.
+- **Directory Stories support in validate.sh**: Updated the validation harness `validate.sh` to configure `roadmap` folders for the `wc`, `frontpunch`, and `todo-cli` validation projects, expanding them sequentially on the Bash side for `start-one` runs to execute the full sequence of stories.
+
 ## [0.10.1] - 2026-07-12
 
 ### Fixed

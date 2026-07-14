@@ -26,6 +26,7 @@ type Client struct {
 	MaxRetries int
 	Backoff    time.Duration
 	URL        string
+	Timeout    time.Duration
 }
 
 var _ domain.LLMClient = (*Client)(nil)
@@ -83,6 +84,7 @@ func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Dura
 		MaxRetries: maxRetries,
 		Backoff:    backoff,
 		URL:        url,
+		Timeout:    5 * time.Second,
 	}
 }
 
@@ -137,11 +139,11 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		var pClient ProviderClient
 		switch strings.ToLower(c.Provider) {
 		case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
-			pClient = NewOpenAIProviderClient(c.Provider, c.URL)
+			pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout)
 		case "gemini":
-			pClient = NewGeminiProviderClient(c.URL)
+			pClient = NewGeminiProviderClient(c.URL, c.Timeout)
 		case "anthropic":
-			pClient = NewAnthropicProviderClient(c.URL)
+			pClient = NewAnthropicProviderClient(c.URL, c.Timeout)
 		default:
 			return nil, fmt.Errorf("unsupported LLM provider: %s", c.Provider)
 		}
@@ -229,11 +231,11 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 	var pClient ProviderClient
 	switch strings.ToLower(c.Provider) {
 	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
-		pClient = NewOpenAIProviderClient(c.Provider, c.URL)
+		pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout)
 	case "gemini":
-		pClient = NewGeminiProviderClient(c.URL)
+		pClient = NewGeminiProviderClient(c.URL, c.Timeout)
 	case "anthropic":
-		pClient = NewAnthropicProviderClient(c.URL)
+		pClient = NewAnthropicProviderClient(c.URL, c.Timeout)
 	default:
 		return ""
 	}

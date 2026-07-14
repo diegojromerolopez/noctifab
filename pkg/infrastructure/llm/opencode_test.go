@@ -43,7 +43,7 @@ func TestOpenCodeProviderClient_Call(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewOpenAIProviderClient("opencode", server.URL)
+		client := NewOpenAIProviderClient("opencode", server.URL, 0)
 		res, err := client.Call(context.Background(), "glm-5.2", "test-key", "hello")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -60,7 +60,7 @@ func TestOpenCodeProviderClient_Call(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewOpenAIProviderClient("opencode", server.URL)
+		client := NewOpenAIProviderClient("opencode", server.URL, 0)
 		_, err := client.Call(context.Background(), "glm-5.2", "test-key", "hello")
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -91,7 +91,7 @@ func TestOpenCodeProviderClient_GetAvailableModels(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIProviderClient("opencode", server.URL)
+	client := NewOpenAIProviderClient("opencode", server.URL, 0)
 	models, err := client.GetAvailableModels(context.Background(), "test-key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

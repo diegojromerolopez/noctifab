@@ -12,12 +12,13 @@ import (
 )
 
 type anthropicProviderClient struct {
-	url string
+	url     string
+	timeout time.Duration
 }
 
 // NewAnthropicProviderClient creates a ProviderClient for Anthropic (Claude) API.
-func NewAnthropicProviderClient(url string) ProviderClient {
-	return &anthropicProviderClient{url: url}
+func NewAnthropicProviderClient(url string, timeout time.Duration) ProviderClient {
+	return &anthropicProviderClient{url: url, timeout: timeout}
 }
 
 func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
@@ -46,7 +47,12 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		return nil, err
 	}
 
-	postCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	timeout := a.timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+
+	postCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
@@ -59,7 +65,7 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	}
 
 	client := &http.Client{
-		Timeout: 10 * time.Minute,
+		Timeout: timeout,
 		Transport: &http.Transport{
 			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 		},

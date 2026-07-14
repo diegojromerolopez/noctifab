@@ -42,6 +42,7 @@ func DefaultConfig() *Config {
 				MaxCallLimit: 0,
 				Backends:     nil,
 			},
+			MaxTimeout: Duration(60 * time.Second),
 		},
 		VCS: VCSConfig{
 			Provider:     "github",

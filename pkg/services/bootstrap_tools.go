@@ -52,7 +52,7 @@ func (t *AddTaskTool) Execute(ctx context.Context, state *domain.State, args map
 		id = "task-" + uuid.New().String()[:8]
 	}
 
-	maxRetriesVal := 3
+	maxRetriesVal := 10
 	if mrRaw, ok := args["max_retries"]; ok {
 		switch v := mrRaw.(type) {
 		case float64:

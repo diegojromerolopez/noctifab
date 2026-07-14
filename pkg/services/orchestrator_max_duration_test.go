@@ -40,7 +40,7 @@ func TestRunOnce_MaxDurationExceeded(t *testing.T) {
 	// Pre-seed the start time so the very next RunOnce is past the limit.
 	orch.storyStartedAt = time.Now().Add(-1 * time.Hour)
 
-	if err := orch.RunOnce(context.Background()); err != nil {
+	if _, err := orch.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce returned error: %v", err)
 	}
 
@@ -95,7 +95,7 @@ func TestRunOnce_MaxDurationZero_Disabled(t *testing.T) {
 	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
 	orch.storyStartedAt = time.Now().Add(-1 * time.Hour)
 
-	_ = orch.RunOnce(context.Background())
+	_, _ = orch.RunOnce(context.Background())
 
 	// Story should NOT have been aborted by max_duration (it's disabled).
 	// The InProgress task will yield 0 ready tasks; finalization runs because

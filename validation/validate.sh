@@ -101,14 +101,12 @@ MODE="${MODE:-start-one}"
 
 # Determine the sequence of stories to run for the project
 STORIES=()
-if [ "${PROJECT}" = "frontpunch" ]; then
-  STORIES=("roadmap/US-000.md" "roadmap/US-001.md")
-elif [ "${PROJECT}" = "wc" ]; then
-  STORIES=("roadmap/US-001.md" "roadmap/US-002.md")
+if [ "${PROJECT}" = "frontpunch" ] || [ "${PROJECT}" = "wc" ] || [ "${PROJECT}" = "todo-cli" ]; then
+  STORIES=("roadmap")
 elif [ "${PROJECT}" = "calculator" ] || [ "${PROJECT}" = "echo" ]; then
   STORIES=("SPEC.md")
 else
-  STORIES=("roadmap/US-001.md")
+  STORIES=("roadmap")
 fi
 
 if [ "${NOCTIFAB_INTERACTIVE:-}" = "1" ]; then
@@ -142,8 +140,15 @@ else
       # Stop the daemon after completion
       "${NOCTIFAB_BIN}" stop 2>/dev/null || true
     else
-      echo "Running noctifab start-one for ${STORY_PATH}..." >&2
-      "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
+      if [ -d "${STORY_PATH}" ]; then
+        for RESOLVED_STORY in $(find "${STORY_PATH}" -maxdepth 1 -name "*.md" | sort); do
+          echo "Running noctifab start-one for ${RESOLVED_STORY}..." >&2
+          "${NOCTIFAB_BIN}" start-one --input "${RESOLVED_STORY}"
+        done
+      else
+        echo "Running noctifab start-one for ${STORY_PATH}..." >&2
+        "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
+      fi
     fi
   done
 fi

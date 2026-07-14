@@ -210,7 +210,7 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 				"edit_file failed: target_content not found in file (range %d-%d). "+
 					"The file content may have changed since you last read it. "+
 					"Call read_file first to get the current content, then retry edit_file with the exact matching target_content, "+
-					"or use write_file to overwrite the entire file with the corrected content.",
+					"or use write_file to overwrite the entire file with the corrected content",
 				edit.StartLine, edit.EndLine,
 			)
 		}

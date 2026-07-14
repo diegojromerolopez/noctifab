@@ -16,11 +16,12 @@ import (
 type openaiProviderClient struct {
 	provider string
 	url      string
+	timeout  time.Duration
 }
 
 // NewOpenAIProviderClient creates a ProviderClient for OpenAI and OpenAI-compatible APIs.
-func NewOpenAIProviderClient(provider, url string) ProviderClient {
-	return &openaiProviderClient{provider: provider, url: url}
+func NewOpenAIProviderClient(provider, url string, timeout time.Duration) ProviderClient {
+	return &openaiProviderClient{provider: provider, url: url, timeout: timeout}
 }
 
 // osStderr returns the process stderr. Wrapped so tests can swap it without
@@ -117,7 +118,12 @@ func (o *openaiProviderClient) sendCompletion(ctx context.Context, url string, h
 		return nil, err
 	}
 
-	postCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	timeout := o.timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+
+	postCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
@@ -129,7 +135,7 @@ func (o *openaiProviderClient) sendCompletion(ctx context.Context, url string, h
 	}
 
 	client := &http.Client{
-		Timeout: 10 * time.Minute,
+		Timeout: timeout,
 		Transport: &http.Transport{
 			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 		},

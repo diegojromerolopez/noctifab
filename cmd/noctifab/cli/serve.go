@@ -85,6 +85,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.NoopTool{})
 		reg.Register(&services.ReadFileTool{})
 		reg.Register(&services.WriteFileTool{})
+		reg.Register(&services.DeleteFileTool{})
 		reg.Register(&services.EditFileTool{})
 		reg.Register(&services.ListDirectoryTool{})
 		reg.Register(&services.FindFilesTool{})
@@ -139,7 +140,7 @@ var serveCmd = &cobra.Command{
 
 		orchConfig := services.OrchestratorConfig{
 			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
-			MaxRetries:       3,
+			MaxRetries:       10,
 			Concurrency:      cfg.Orchestrator.Concurrency,
 			MaxBudgetUSD:     cfg.LLM.MaxBudgetUSD,
 			OCCMaxRetries:    cfg.OCCMaxRetries,
@@ -305,7 +306,7 @@ func processStory(
 				return fmt.Errorf("story %s: cancelled by user", item.Path)
 			}
 
-			if err := orchestrator.RunOnce(ctx); err != nil {
+			if _, err := orchestrator.RunOnce(ctx); err != nil {
 				logf("⚠ Orchestrator error: %v\n", err)
 			}
 

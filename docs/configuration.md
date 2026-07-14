@@ -44,7 +44,7 @@ orchestrator:
 
 - **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls the orchestrator allows the LLM to propose in a single completion response.
 - **`concurrency`** (Integer): Max parallel agent workers to schedule and execute concurrently in the topological task graph.
-- **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.
+- **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses. Note that if any task makes execution progress during a cycle, the orchestrator bypasses this sleep interval entirely to execute the next scheduler check immediately (zero-delay handoff).
 - **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve an ambiguous task clarification.
 - **`clarification_timeout_action`** (String): Action to take if a clarification times out. Options: `abort` (fails the task) or `proceed` (continues execution using model defaults).
 
@@ -101,6 +101,7 @@ llm:
 - **`retry_backoff`** (Duration): Starting wait time before retrying a failed API call.
 - **`retry_backoff_factor`** (Float): Exponential factor multiplied by the backoff time for each retry.
 - **`max_budget_usd`** (Float): Absolute financial budget cap enforced per day/period to prevent runaway LLM costs.
+- **`max_timeout`** (Duration): Maximum timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines while preventing hung connections.
 - **`reset_period`** (String): The timeframe to enforce the budget cap (e.g. `daily`, `monthly`).
 - **`failover`**: Failover parameters:
   - **`enabled`** (Boolean): Auto-route failed calls to alternate providers when true.

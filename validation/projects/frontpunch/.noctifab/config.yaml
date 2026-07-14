@@ -19,6 +19,7 @@ llms:
       retry_backoff: 100ms
       retry_backoff_factor: 2
       max_budget_usd: 10
+      max_timeout: 60s
     - provider: gemini
       model: gemini-2.5-flash
       temperature: 0
@@ -28,6 +29,7 @@ llms:
       retry_backoff: 100ms
       retry_backoff_factor: 2
       max_budget_usd: 10
+      max_timeout: 60s
 vcs:
     provider: github
     repository: diegojromerolopez/frontpunch

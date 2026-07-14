@@ -73,8 +73,10 @@ Return format:
 const antiStallingTester = `
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
+- A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
 - If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
 - If run_linter fails, apply the suggested fixes immediately and re-run.
+- If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
 - If edit_file fails because target_content does not match, fall back to write_file with the complete corrected file content.
 - If you are unsure how to fix an error, DELETE the broken file and rewrite it from scratch using a simpler, more conservative approach.
 - If a linter reports a cop or rule has been renamed or removed, update the linter config file to use the correct current name, then re-run immediately.
@@ -85,8 +87,10 @@ ANTI-STALLING MANDATE:
 const antiStallingGenerator = `
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
+- A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
 - If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
 - If run_linter fails, apply the suggested fixes immediately and re-run.
+- If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
 - If edit_file fails because target_content does not match, fall back to write_file with the complete corrected file content.
 - If you are unsure how to fix an error, DELETE the broken file and rewrite it from scratch using a simpler, more conservative approach.
 - If a dependency is missing (cargo, npm, pip), check the project manifest files first and add any missing dependencies.
@@ -110,10 +114,12 @@ CRITICAL:
 2. You must write tests according to the following guidelines:
    - Happy paths MUST be verified using end-to-end (e.g., integration or functional) tests as much as possible. Check the main flows.
    - Input validations and simple edge cases MUST be verified using unit tests. All mock/stub calls need to be asserted, and return values checked. Do not write trivial tests.
+   - Scaffold or environment verification tests MUST be flexible and allow project growth. Never assert exact file content matching or exact string equality on configuration/manifest files (such as `+"`"+`go.mod`+"`"+`, `+"`"+`Makefile`+"`"+`, `+"`"+`package.json`+"`"+`, or gemfiles) that will naturally change as new features/dependencies are added in subsequent tasks.
    - Complex edge-cases, internal validation flows, and multi-component interactions MUST be verified using integration tests. Limit mocking to external I/O boundaries (e.g. databases, HTTP clients, external network connections).
 3. Do NOT modify global state or mutate shared configurations/variables in unit or integration tests, as it causes state pollution across tests.
 4. All test code written/modified MUST compile cleanly and comply with the project's formatting and linter guidelines. You MUST invoke run_tests to verify correctness before calling noop.
-5. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
+5. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
+6. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
 %s
 
 You may use the following tools:
@@ -159,7 +165,8 @@ CRITICAL:
 4. Before writing any code, always check if any dependencies or infrastructure configurations are missing from the project manifests (e.g. Gemfile, package.json, requirements.txt, pyproject.toml, Cargo.toml). If a dependency is required by the SPEC, you MUST create or update these manifests first to include them.
 5. If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' block to explain the bug and trigger a test fix by the Tester Agent.
 6. All code implemented/modified MUST compile cleanly and comply with the project's formatting and linter guidelines. You MUST invoke run_tests to verify correctness before calling noop.
-7. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
+7. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
+8. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
 %s
 
 You may use the following tools:
@@ -203,6 +210,7 @@ CRITICAL:
 1. You may receive multiple turns. If the error is still present, you will be given the new failure output and another turn. Fix the issue immediately by editing or writing the necessary files.
 2. All code written/modified MUST compile cleanly and comply with the project's formatting and linter guidelines.
 3. Apply aggressive self-healing: fix any errors directly. Do not hesitate to overwrite or rewrite files to make them compile/validate correctly.
+4. If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
 
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}

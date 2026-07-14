@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -239,7 +240,13 @@ func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, sto
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if payload.Directory {
+		isDir := payload.Directory
+		if !isDir && payload.Path != "" {
+			if fi, err := os.Stat(payload.Path); err == nil && fi.IsDir() {
+				isDir = true
+			}
+		}
+		if isDir {
 			mailbox.Send(&StartDirectoryCmd{DirPath: payload.Path, StoryCh: storyCh, LLMClient: llmClient})
 		} else {
 			mailbox.Send(&StartUserStoryCmd{Path: payload.Path, StoryCh: storyCh, LLMClient: llmClient})

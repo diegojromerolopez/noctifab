@@ -52,6 +52,8 @@ To maintain modularity and high context compatibility, the following guidelines 
 6.  **Branching & Commit Guidelines:**
     *   **No Commits on Main**: Never create commits directly on the `main` branch. Always create a new branch with the changes.
     *   **CHANGELOG Updates**: Every commit must contain the corresponding changes documented in `CHANGELOG.md`, incrementing the version accordingly: minor version bump for features, and patch version bump for bug fixes.
+7.  **Resilience to Scaffold Errors:**
+    *   A bad scaffold or failing scaffold verification test must not stop development. It is mandatory for agents to continue making progress on implementing core business requirements even if there are scaffolding or setup errors. It is better to have an imperfect/partial solution that fulfills core requirements than to stall.
 
 ---
 
