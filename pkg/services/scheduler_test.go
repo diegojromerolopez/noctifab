@@ -55,3 +55,27 @@ func TestScheduler_ClarificationBlocking(t *testing.T) {
 		}
 	})
 }
+
+func TestScheduler_FuzzyDependencyMatching(t *testing.T) {
+	t.Run("resolves dependency with minor naming variations", func(t *testing.T) {
+		// task-B depends on "Implement JSON Repository"
+		// but the actual task title is "Implement JSON Repository and Unit Test"
+		state := &domain.State{
+			Tasks: []domain.Task{
+				{ID: "task-A", Title: "Implement JSON Repository and Unit Test", Status: domain.TaskSuccess},
+				{ID: "task-B", Title: "Implement CLI Add Command Logic", Status: domain.TaskPending, DependsOn: []string{"Implement JSON Repository"}},
+			},
+		}
+
+		scheduler := NewScheduler(NewFileLockRegistry())
+		ready := scheduler.GetReadyTasks(state, 3)
+
+		if len(ready) != 1 {
+			t.Fatalf("expected exactly 1 ready task (task-B), got %d", len(ready))
+		}
+
+		if ready[0].ID != "task-B" {
+			t.Errorf("expected ready task to be task-B, got %s", ready[0].ID)
+		}
+	})
+}
