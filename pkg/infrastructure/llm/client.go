@@ -207,12 +207,16 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			strings.Contains(err.Error(), "503 Service Unavailable") ||
 			strings.Contains(err.Error(), "HTTP error 429") ||
 			strings.Contains(err.Error(), "429 Too Many Requests") ||
-			strings.Contains(err.Error(), "RESOURCE_EXHAUSTED")
+			strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") ||
+			strings.Contains(err.Error(), "HTTP error 404") ||
+			strings.Contains(err.Error(), "404 Not Found") ||
+			strings.Contains(strings.ToLower(err.Error()), "not found") ||
+			strings.Contains(err.Error(), "NOT_FOUND")
 
 		if isFallbackError {
 			nextModel := c.getNextLowerModel(ctx, apiKey)
 			if nextModel != "" {
-				fmt.Fprintf(os.Stderr, "⚠ Model %s returned transient/quota error. Falling back to lower model: %s...\n", c.Model, nextModel)
+				fmt.Fprintf(os.Stderr, "⚠ Model %s returned transient/quota/availability error. Falling back to lower model: %s...\n", c.Model, nextModel)
 				c.Model = nextModel
 				continue
 			}
