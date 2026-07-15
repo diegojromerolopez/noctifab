@@ -77,21 +77,21 @@ func TestGetNextLowerModel(t *testing.T) {
 			wantModel:    "gemini-2.5-flash",
 		},
 		{
-			name:         "gemini-1.5-pro is not in hierarchy and returns empty",
+			name:         "gemini-1.5-pro falls back to gemini-1.5-flash",
 			provider:     "gemini",
 			currentModel: "gemini-1.5-pro",
-			wantModel:    "",
+			wantModel:    "gemini-1.5-flash",
 		},
 		{
-			name:         "gemini-2.5-flash falls back to gemini-2.0-flash",
+			name:         "gemini-2.5-flash falls back to gemini-1.5-pro",
 			provider:     "gemini",
 			currentModel: "gemini-2.5-flash",
-			wantModel:    "gemini-2.0-flash",
+			wantModel:    "gemini-1.5-pro",
 		},
 		{
-			name:         "gemini-2.0-flash-lite is lowest and returns empty",
+			name:         "gemini-1.5-flash is lowest and returns empty",
 			provider:     "gemini",
-			currentModel: "gemini-2.0-flash-lite",
+			currentModel: "gemini-1.5-flash",
 			wantModel:    "",
 		},
 		{
