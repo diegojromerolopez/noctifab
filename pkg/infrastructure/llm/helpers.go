@@ -14,8 +14,9 @@ var modelHierarchy = map[string][]string{
 		"gemini-3-flash-preview",
 		"gemini-2.5-pro",
 		"gemini-2.5-flash",
-		"gemini-1.5-pro",
-		"gemini-1.5-flash",
+		"gemini-pro-latest",
+		"gemini-flash-latest",
+		"gemini-flash-lite-latest",
 	},
 	"openai": {
 		"gpt-4o",
