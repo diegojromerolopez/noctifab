@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -16,10 +18,10 @@ func TestResolveGeminiURL(t *testing.T) {
 		wantURL    string
 	}{
 		{
-			name:       "empty model input maps to gemini-2.5-flash",
+			name:       "empty model input maps to empty path",
 			modelInput: "",
 			apiKey:     "testkey",
-			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=testkey",
+			wantURL:    "https://generativelanguage.googleapis.com/v1beta/models/:generateContent?key=testkey",
 		},
 		{
 			name:       "gemini-1.5-pro remains gemini-1.5-pro",
@@ -58,6 +60,32 @@ func TestResolveGeminiURL(t *testing.T) {
 }
 
 func TestGetNextLowerModel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/models") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"models": [
+					{"name": "models/gemini-3.5-pro", "displayName": "Gemini 3.5 Pro", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-3.5-flash", "displayName": "Gemini 3.5 Flash", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-3.5-flash-lite", "displayName": "Gemini 3.5 Flash Lite", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-3.1-pro-preview", "displayName": "Gemini 3.1 Pro Preview", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-3.1-flash-lite", "displayName": "Gemini 3.1 Flash Lite", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-3-pro-preview", "displayName": "Gemini 3 Pro Preview", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-3-flash-preview", "displayName": "Gemini 3 Flash Preview", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-2.5-pro", "displayName": "Gemini 2.5 Pro", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-2.5-flash", "displayName": "Gemini 2.5 Flash", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-pro-latest", "displayName": "Gemini Pro Latest", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-flash-latest", "displayName": "Gemini Flash Latest", "supportedGenerationMethods": ["generateContent"]},
+					{"name": "models/gemini-flash-lite-latest", "displayName": "Gemini Flash-Lite Latest", "supportedGenerationMethods": ["generateContent"]}
+				]
+			}`))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
 	tests := []struct {
 		name         string
 		provider     string
@@ -159,6 +187,9 @@ func TestGetNextLowerModel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &Client{Provider: tt.provider, Model: tt.currentModel}
+			if strings.ToLower(tt.provider) == "gemini" {
+				c.URL = server.URL
+			}
 			got := c.getNextLowerModel(context.Background(), "mockkey")
 			if got != tt.wantModel {
 				t.Errorf("getNextLowerModel(%q, %q) = %q; want %q", tt.provider, tt.currentModel, got, tt.wantModel)
@@ -279,6 +310,81 @@ func TestParseRetryDelay(t *testing.T) {
 		_, ok := parseRetryDelay(err)
 		if ok {
 			t.Fatal("expected ok=false when no retry hint present anywhere")
+		}
+	})
+}
+
+func TestDynamicGeminiModelSelection(t *testing.T) {
+	t.Run("parseGeminiModel valid names", func(t *testing.T) {
+		cases := []struct {
+			name        string
+			wantVersion float64
+			wantTier    string
+			wantRank    int
+		}{
+			{"models/gemini-2.5-pro", 2.5, "pro", 4},
+			{"gemini-3.5-flash-lite", 3.5, "flash-lite", 2},
+			{"models/gemini-2.0-flash-lite-001", 2.0, "flash-lite", 2},
+			{"gemini-pro-latest", 1.5, "pro", 4},
+			{"models/gemini-flash-latest", 1.5, "flash", 3},
+			{"gemini-3-pro-preview", 3.0, "pro", 4},
+			{"models/gemini-3-flash-preview", 3.0, "flash", 3},
+			{"nano-banana-pro", 1.5, "nano", 1},
+		}
+
+		for _, tc := range cases {
+			info, ok := parseGeminiModel(tc.name)
+			if !ok {
+				t.Fatalf("failed to parse valid model: %s", tc.name)
+			}
+			if info.Version != tc.wantVersion {
+				t.Errorf("parseGeminiModel(%q) Version = %v; want %v", tc.name, info.Version, tc.wantVersion)
+			}
+			if info.Tier != tc.wantTier {
+				t.Errorf("parseGeminiModel(%q) Tier = %q; want %q", tc.name, info.Tier, tc.wantTier)
+			}
+			if info.Rank != tc.wantRank {
+				t.Errorf("parseGeminiModel(%q) Rank = %d; want %d", tc.name, info.Rank, tc.wantRank)
+			}
+		}
+	})
+
+	t.Run("parseGeminiModel invalid names", func(t *testing.T) {
+		cases := []string{
+			"gemma-4-26b-a4b-it",
+			"models/imagen-4.0-generate-001",
+			"aqa",
+		}
+		for _, name := range cases {
+			if _, ok := parseGeminiModel(name); ok {
+				t.Errorf("expected parse failure for invalid name: %s", name)
+			}
+		}
+	})
+
+	t.Run("sortGeminiModels priority", func(t *testing.T) {
+		models := []*GeminiModelInfo{
+			{Name: "gemini-2.5-pro", Version: 2.5, Tier: "pro", Rank: 4},
+			{Name: "gemini-3.5-flash", Version: 3.5, Tier: "flash", Rank: 3},
+			{Name: "gemini-3.5-pro", Version: 3.5, Tier: "pro", Rank: 4},
+			{Name: "gemini-pro-latest", Version: 1.5, Tier: "pro", Rank: 4},
+			{Name: "gemini-3.0-pro", Version: 3.0, Tier: "pro", Rank: 4},
+		}
+
+		sortGeminiModels(models)
+
+		expectedOrder := []string{
+			"gemini-3.5-pro",
+			"gemini-3.5-flash",
+			"gemini-3.0-pro",
+			"gemini-2.5-pro",
+			"gemini-pro-latest",
+		}
+
+		for i, m := range models {
+			if m.Name != expectedOrder[i] {
+				t.Errorf("at index %d got model %s; want %s", i, m.Name, expectedOrder[i])
+			}
 		}
 	})
 }

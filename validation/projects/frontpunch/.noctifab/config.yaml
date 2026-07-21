@@ -1,7 +1,7 @@
 config_version: "1.0"
 orchestrator:
     max_tools_per_response: 5
-    concurrency: 1
+    concurrency: 4
     poll_interval: 5m0s
     max_clarification_wait: 30m0s
     clarification_timeout_action: abort

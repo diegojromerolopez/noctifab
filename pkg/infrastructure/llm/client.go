@@ -203,20 +203,25 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			return nil, parseErr
 		}
 
-		isFallbackError := strings.Contains(err.Error(), "HTTP error 503") ||
-			strings.Contains(err.Error(), "503 Service Unavailable") ||
-			strings.Contains(err.Error(), "HTTP error 429") ||
-			strings.Contains(err.Error(), "429 Too Many Requests") ||
-			strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") ||
-			strings.Contains(err.Error(), "HTTP error 404") ||
-			strings.Contains(err.Error(), "404 Not Found") ||
-			strings.Contains(strings.ToLower(err.Error()), "not found") ||
-			strings.Contains(err.Error(), "NOT_FOUND")
+		shouldFallback := false
+		if strings.ToLower(c.Provider) == "gemini" {
+			shouldFallback = true
+		} else {
+			shouldFallback = strings.Contains(err.Error(), "HTTP error 503") ||
+				strings.Contains(err.Error(), "503 Service Unavailable") ||
+				strings.Contains(err.Error(), "HTTP error 429") ||
+				strings.Contains(err.Error(), "429 Too Many Requests") ||
+				strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") ||
+				strings.Contains(err.Error(), "HTTP error 404") ||
+				strings.Contains(err.Error(), "404 Not Found") ||
+				strings.Contains(strings.ToLower(err.Error()), "not found") ||
+				strings.Contains(err.Error(), "NOT_FOUND")
+		}
 
-		if isFallbackError {
+		if shouldFallback {
 			nextModel := c.getNextLowerModel(ctx, apiKey)
 			if nextModel != "" {
-				fmt.Fprintf(os.Stderr, "⚠ Model %s returned transient/quota/availability error. Falling back to lower model: %s...\n", c.Model, nextModel)
+				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to lower model: %s...\n", c.Model, err, nextModel)
 				c.Model = nextModel
 				continue
 			}
@@ -227,6 +232,58 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 }
 
 func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
+	if strings.ToLower(c.Provider) == "gemini" {
+		pClient := NewGeminiProviderClient(c.URL, c.Timeout)
+		available, err := pClient.GetAvailableModels(ctx, apiKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Warning: failed to query available models from %s: %v.\n", c.Provider, err)
+			return ""
+		}
+
+		var parsedModels []*GeminiModelInfo
+		for _, m := range available {
+			if info, ok := parseGeminiModel(m); ok {
+				parsedModels = append(parsedModels, info)
+			}
+		}
+
+		if len(parsedModels) == 0 {
+			return ""
+		}
+
+		sortGeminiModels(parsedModels)
+
+		currentInfo, _ := parseGeminiModel(c.Model)
+
+		var nextModel string
+		foundCurrent := false
+		for i, m := range parsedModels {
+			normM := strings.TrimPrefix(strings.ToLower(m.Name), "models/")
+			normCurrent := strings.TrimPrefix(strings.ToLower(c.Model), "models/")
+			if normM == normCurrent {
+				foundCurrent = true
+				if i+1 < len(parsedModels) {
+					nextModel = parsedModels[i+1].Name
+				}
+				break
+			}
+		}
+
+		if !foundCurrent && currentInfo != nil {
+			for _, m := range parsedModels {
+				if m.Version < currentInfo.Version {
+					nextModel = m.Name
+					break
+				} else if m.Version == currentInfo.Version && m.Rank < currentInfo.Rank {
+					nextModel = m.Name
+					break
+				}
+			}
+		}
+
+		return nextModel
+	}
+
 	list, ok := modelHierarchy[strings.ToLower(c.Provider)]
 	if !ok || len(list) <= 1 {
 		return ""
@@ -236,8 +293,6 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 	switch strings.ToLower(c.Provider) {
 	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
 		pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout)
-	case "gemini":
-		pClient = NewGeminiProviderClient(c.URL, c.Timeout)
 	case "anthropic":
 		pClient = NewAnthropicProviderClient(c.URL, c.Timeout)
 	default:

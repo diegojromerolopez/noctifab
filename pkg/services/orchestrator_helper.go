@@ -254,6 +254,9 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				} else {
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
+					if action.Tool == "write_file" || action.Tool == "edit_file" {
+						o.runFormatterIfConfigured(testerCtx, state)
+					}
 				}
 			}
 		}
@@ -263,7 +266,6 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 			failedToolOutputs = append(failedToolOutputs, errMsg)
 			turnToolOutputs = append(turnToolOutputs, errMsg)
 		}
-
 		fmt.Printf("Orchestrator: Task %s [Tester] write phase summary (turn %d): %d executed, %d blocked, %d errors\n", task.ID, turn, executed, blocked, len(failedToolOutputs))
 
 		if hasNoop && len(failedToolOutputs) == 0 {
@@ -363,6 +365,9 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				} else {
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
+					if action.Tool == "write_file" || action.Tool == "edit_file" {
+						o.runFormatterIfConfigured(genCtx, state)
+					}
 				}
 			}
 
@@ -437,4 +442,11 @@ func summarizeFailureLog(log string) string {
 	}
 
 	return strings.Join(importantLines, "\n")
+}
+
+func (o *Orchestrator) runFormatterIfConfigured(ctx context.Context, state *domain.State) {
+	if o.evaluator != nil && o.evaluator.FormatterCommand != "" {
+		fmt.Printf("Orchestrator: Running formatter command: %s\n", o.evaluator.FormatterCommand)
+		_, _ = o.evaluator.Runner.RunCommand(ctx, state.ProjectPath, o.evaluator.FormatterCommand, "")
+	}
 }

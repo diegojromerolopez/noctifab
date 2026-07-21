@@ -195,6 +195,9 @@ func (wr *WatchdogRepair) AttemptRepair(
 					toolOutputs = append(toolOutputs, fmt.Sprintf("Action: tool=%s args=%v failed: %v\nOutput: %s", action.Tool, action.Args, err, out))
 				} else {
 					toolOutputs = append(toolOutputs, fmt.Sprintf("Action: tool=%s args=%v succeeded.\nOutput: %s", action.Tool, action.Args, out))
+					if action.Tool == "write_file" || action.Tool == "edit_file" {
+						wr.runFormatterIfConfigured(ctx, state)
+					}
 				}
 			} else {
 				toolOutputs = append(toolOutputs, fmt.Sprintf("Action: unknown tool %s", action.Tool))
@@ -237,4 +240,11 @@ func (wr *WatchdogRepair) AttemptRepair(
 		Attempts:   wr.maxRetries,
 		FailureLog: fmt.Sprintf("all repair attempts failed to resolve the %s failure", category),
 	}, nil
+}
+
+func (wr *WatchdogRepair) runFormatterIfConfigured(ctx context.Context, state *domain.State) {
+	if wr.evaluator != nil && wr.evaluator.FormatterCommand != "" {
+		fmt.Printf("Orchestrator: Running formatter command (repair): %s\n", wr.evaluator.FormatterCommand)
+		_, _ = wr.sandbox.RunCommand(ctx, state.ProjectPath, wr.evaluator.FormatterCommand, "")
+	}
 }

@@ -11,7 +11,7 @@ FROM ruby:3.2-alpine
 RUN apk add --no-cache git bash docker-cli build-base curl
 
 # Pre-install rubocop, rspec, and rubocop-rspec gems so they are cached/available in the image
-RUN gem install rspec rubocop rubocop-rspec
+RUN gem install rspec rubocop rubocop-rspec rake
 
 # Copy noctifab binary, validation projects, and the validate.sh harness
 COPY --from=noctifab-artifacts /usr/local/bin/noctifab /usr/local/bin/noctifab

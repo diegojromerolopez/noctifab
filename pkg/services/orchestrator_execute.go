@@ -303,29 +303,6 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	// Run test suite validation
 	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, state, *task)
 
-	if !passed && o.watchdogRepair != nil {
-		category := CategorizeFailureLog(logMsg)
-		if category != FailureSandbox {
-			fmt.Printf("Orchestrator: Task %s detected %s failure. Attempting repair...\n", taskID, category)
-			repairCtx, repairCancel := context.WithTimeout(ctx, 10*time.Minute)
-			result, repairErr := o.watchdogRepair.AttemptRepair(repairCtx, state, *task, logMsg, fmt.Errorf("test validation failed: %s", category))
-			repairCancel()
-			if repairErr == nil && result != nil && result.Success {
-				fmt.Printf("Orchestrator: Task %s repaired successfully. Re-running validation...\n", taskID)
-				passed, logMsg, _ = o.evaluator.ValidateTask(ctx, state, *task)
-			} else {
-				if repairErr != nil {
-					fmt.Fprintf(os.Stderr, "Orchestrator: Task %s repair failed: %v\n", taskID, repairErr)
-				} else {
-					fmt.Fprintf(os.Stderr, "Orchestrator: Task %s repair exhausted %d attempts without success\n", taskID, result.Attempts)
-					if result.Output != "" {
-						logMsg = result.Output
-					}
-				}
-			}
-		}
-	}
-
 	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		var targetTask *domain.Task
 		for i := range st.Tasks {

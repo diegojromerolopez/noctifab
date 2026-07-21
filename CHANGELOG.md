@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-07-15
+
+### Fixed
+- **Avoid Introspection in Scaffold/Environment Testing**: Updated the Tester Agent's system prompt instructions to explicitly forbid checking package installations, environment variables, or library configurations using API introspection/reflection (e.g., asserting internal RSpec config hashes). Instead, instruct verifying installations through basic smoke/sanity tests (e.g., executing a dummy test file).
+
+## [0.12.0] - 2026-07-15
+
+### Added
+- **Resilient Gemini Model Fallback Strategy**: Implemented dynamic `models.list` querying on Gemini API failures (any error). The client parses, groups, and sorts the returned active models descending by `Version` (e.g. 3.5, 3.1, 3.0, 2.5, 2.0, 1.5, 1.0) and `Tier Rank` (`pro`: 4, `flash`: 3, `flash-lite`: 2, `nano`: 1). It automatically falls back to the immediate lower model in the active hierarchy, providing robust and self-healing LLM resolution.
+
 ## [0.11.1] - 2026-07-15
 
 ### Fixed
