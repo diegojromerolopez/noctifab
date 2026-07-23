@@ -55,7 +55,7 @@ func resolveSandboxPath(projectPath, targetPath string) (string, error) {
 	}
 	parts := strings.Split(rel, string(filepath.Separator))
 	for _, part := range parts {
-		if part == ".noctifab" {
+		if part == ".noctifab" || part == ".git" {
 			return "", fmt.Errorf("Sandbox violation: path '%s' targets blacklisted configuration directory", targetPath)
 		}
 	}
@@ -235,8 +235,26 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	return "Edits applied successfully", nil
 }
 
+func isPathExcluded(rel string, excludePaths []string) bool {
+	parts := strings.Split(rel, string(filepath.Separator))
+	for _, part := range parts {
+		if part == ".noctifab" || part == ".git" {
+			return true
+		}
+		for _, exp := range excludePaths {
+			cleanExp := strings.Trim(exp, "/")
+			if cleanExp != "" && part == cleanExp {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ListDirectoryTool implements list_directory.
-type ListDirectoryTool struct{}
+type ListDirectoryTool struct {
+	ExcludePaths []string
+}
 
 func (t *ListDirectoryTool) Name() string { return "list_directory" }
 func (t *ListDirectoryTool) Description() string {
@@ -259,6 +277,22 @@ func (t *ListDirectoryTool) Execute(ctx context.Context, state *domain.State, ar
 
 	var sb strings.Builder
 	for _, entry := range entries {
+		name := entry.Name()
+		if name == ".noctifab" || name == ".git" {
+			continue
+		}
+		ignored := false
+		for _, exp := range t.ExcludePaths {
+			cleanExp := strings.Trim(exp, "/")
+			if cleanExp != "" && name == cleanExp {
+				ignored = true
+				break
+			}
+		}
+		if ignored {
+			continue
+		}
+
 		info, err := entry.Info()
 		if err != nil {
 			continue
@@ -267,13 +301,15 @@ func (t *ListDirectoryTool) Execute(ctx context.Context, state *domain.State, ar
 		if entry.IsDir() {
 			typeStr = "D"
 		}
-		fmt.Fprintf(&sb, "%s\t%d\t%s\n", typeStr, info.Size(), entry.Name())
+		fmt.Fprintf(&sb, "%s\t%d\t%s\n", typeStr, info.Size(), name)
 	}
 	return sb.String(), nil
 }
 
 // FindFilesTool implements find_files.
-type FindFilesTool struct{}
+type FindFilesTool struct {
+	ExcludePaths []string
+}
 
 func (t *FindFilesTool) Name() string { return "find_files" }
 func (t *FindFilesTool) Description() string {
@@ -297,15 +333,12 @@ func (t *FindFilesTool) Execute(ctx context.Context, state *domain.State, args m
 		if rel == "." || rel == ".." {
 			return nil
 		}
-		// Ignore hidden/excluded paths
-		parts := strings.Split(rel, string(filepath.Separator))
-		for _, part := range parts {
-			if part == ".noctifab" || part == ".git" || part == "node_modules" || part == "vendor" {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
+		// Ignore hidden/excluded paths using isPathExcluded
+		if isPathExcluded(rel, t.ExcludePaths) {
+			if d.IsDir() {
+				return filepath.SkipDir
 			}
+			return nil
 		}
 
 		matchedName, _ := filepath.Match(pattern, d.Name())
@@ -323,7 +356,9 @@ func (t *FindFilesTool) Execute(ctx context.Context, state *domain.State, args m
 }
 
 // GrepSearchTool implements grep_search.
-type GrepSearchTool struct{}
+type GrepSearchTool struct {
+	ExcludePaths []string
+}
 
 func (t *GrepSearchTool) Name() string { return "grep_search" }
 func (t *GrepSearchTool) Description() string {
@@ -356,11 +391,8 @@ func (t *GrepSearchTool) Execute(ctx context.Context, state *domain.State, args 
 		}
 		if d.IsDir() {
 			rel, _ := filepath.Rel(state.ProjectPath, fPath)
-			parts := strings.Split(rel, string(filepath.Separator))
-			for _, part := range parts {
-				if part == ".noctifab" || part == ".git" || part == "node_modules" || part == "vendor" {
-					return filepath.SkipDir
-				}
+			if isPathExcluded(rel, t.ExcludePaths) {
+				return filepath.SkipDir
 			}
 			return nil
 		}

@@ -87,9 +87,9 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.WriteFileTool{})
 		reg.Register(&services.DeleteFileTool{})
 		reg.Register(&services.EditFileTool{})
-		reg.Register(&services.ListDirectoryTool{})
-		reg.Register(&services.FindFilesTool{})
-		reg.Register(&services.GrepSearchTool{})
+		reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+		reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+		reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
 		runTimeout := 5 * time.Minute
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
@@ -126,6 +126,7 @@ var serveCmd = &cobra.Command{
 			}
 		}
 		validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+		validator.ExcludePaths = cfg.Sandbox.ExcludePaths
 		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
@@ -148,6 +149,7 @@ var serveCmd = &cobra.Command{
 			OCCBackoffFactor: cfg.OCCBackoffFactor,
 			MaxDuration:      time.Duration(cfg.MaxDuration),
 			AutoCreatePR:     cfg.VCS.PullRequest.AutoCreate,
+			ExcludePaths:     cfg.Sandbox.ExcludePaths,
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.

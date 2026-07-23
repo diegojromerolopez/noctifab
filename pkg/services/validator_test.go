@@ -264,3 +264,40 @@ func TestPolicyValidator_ForbiddenPatterns(t *testing.T) {
 		}
 	})
 }
+
+func TestPolicyValidator_ExcludePaths(t *testing.T) {
+	validator := NewPolicyValidator([]string{"*"}, "main", nil)
+	validator.ExcludePaths = []string{"node_modules", "secret_dir/"}
+	state := &domain.State{
+		ProjectPath: "/workspace",
+	}
+
+	tests := []struct {
+		name    string
+		path    string
+		allowed bool
+	}{
+		{"normal file", "src/main.go", true},
+		{"always blacklisted .noctifab", ".noctifab/config.yaml", false},
+		{"always blacklisted .git", ".git/config", false},
+		{"configured exclude path directly", "node_modules", false},
+		{"configured exclude path file", "node_modules/pkg/index.js", false},
+		{"configured exclude path segment with trailing slash", "secret_dir/key.txt", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			action := domain.Action{
+				Tool: "read_file",
+				Args: map[string]any{"path": tc.path},
+			}
+			res, err := validator.Validate(context.Background(), action, state)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if res.Allowed != tc.allowed {
+				t.Errorf("expected allowed=%t, got allowed=%t (reason: %s)", tc.allowed, res.Allowed, res.Reason)
+			}
+		})
+	}
+}

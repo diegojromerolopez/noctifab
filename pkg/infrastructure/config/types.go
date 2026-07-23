@@ -122,6 +122,7 @@ type VCSConfig struct {
 	Repository          string                   `yaml:"repository"`
 	BaseBranch          string                   `yaml:"base_branch"`
 	BranchPrefix        string                   `yaml:"branch_prefix"`
+	UseWorktrees        bool                     `yaml:"use_worktrees"`
 	Token               string                   `yaml:"token"`
 	TokenEnv            string                   `yaml:"token_env"`
 	TokenValue          string                   `yaml:"-"`

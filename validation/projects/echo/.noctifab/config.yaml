@@ -35,6 +35,7 @@ vcs:
     repository: diegojromerolopez/echo
     base_branch: main
     branch_prefix: noctifab/
+    use_worktrees: true
     token: "secret:GITHUB_TOKEN"
     token_env: GITHUB_TOKEN
     conventional_commits:
@@ -58,6 +59,7 @@ sandbox:
         - bin/
         - dist/
         - .noctifab/
+        - .git/
     allowed_commands:
         - go
         - git

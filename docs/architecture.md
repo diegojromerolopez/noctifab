@@ -76,7 +76,7 @@ Configured via `sandbox.idle_timeout_seconds` in `config.yaml` (default: 30s).
 A thread-safe channel queue that manages Git rebases and branch merges. When multiple tasks complete in parallel, the rebase queue serializes merges into the target branch to avoid merge conflicts and race conditions.
 
 ### 6. Command Mailbox (`pkg/services/command_channel.go`)
-Runs a lightweight REST API server binding loopback commands. The REST API exposes the `/api/v1/stories` endpoint to enqueue user stories (allowing either a file path or a directory path to enqueue all stories in lexicographical order), and `/api/v1/clarifications/:id/resolve` to POST answers to clarification questions.
+Runs a lightweight REST API server binding loopback commands on `127.0.0.1:18080`. The REST API exposes endpoints to manage stories, pause/resume/cancel cycles, resolve clarifications, and inject manual tasks. See [docs/api.md](api.md) for the complete endpoint reference.
 
 The mailbox exposes a **Wakeup channel** that fires whenever a command is enqueued. The orchestrator's OCC backoff loop (`updateStateWithRetry`) selects on this channel via `SleepWithInterrupt`, allowing operator commands (abort, model switch) to interrupt exponential backoff immediately instead of blocking for the full duration.
 

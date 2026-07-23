@@ -49,6 +49,7 @@ func DefaultConfig() *Config {
 			Repository:   "",
 			BaseBranch:   "master",
 			BranchPrefix: "noctifab/",
+			UseWorktrees: true,
 			TokenEnv:     "GITHUB_TOKEN",
 			ConventionalCommits: ConventionalCommitConfig{
 				Enabled:      true,
@@ -78,7 +79,7 @@ func DefaultConfig() *Config {
 			TestCommand:        "go test -v ./...",
 			LinterCommand:      "golangci-lint run",
 			FormatterCommand:   "go fmt ./...",
-			ExcludePaths:       []string{"node_modules/", "vendor/", "bin/", "dist/", ".noctifab/"},
+			ExcludePaths:       []string{".noctifab"},
 			AllowedCommands:    []string{"go", "git", "npm", "python", "make"},
 			AutoInstallDeps:    false,
 			PackageManagers:    []string{"pip", "go", "brew", "curl", "npm"},

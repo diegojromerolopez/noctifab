@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,7 @@ type OrchestratorConfig struct {
 	PollInterval     time.Duration
 	MaxRetries       int
 	Concurrency      int
+	UseWorktrees     bool
 	MaxBudgetUSD     float64
 	OCCMaxRetries    int
 	OCCBackoffBase   time.Duration
@@ -32,23 +34,26 @@ type OrchestratorConfig struct {
 	MaxDuration      time.Duration
 	AutoCreatePR     bool
 	MaxActions       int
+	ExcludePaths     []string
 }
 
 type Orchestrator struct {
-	repo           domain.StateRepository
-	registry       Registry
-	llmClient      domain.LLMClient
-	validator      Validator
-	scheduler      *Scheduler
-	git            *GitClient
-	rebaseQueue    *RebaseQueue
-	evaluator      *TestValidator
-	vcsClient      domain.VCSClient
-	cfg            OrchestratorConfig
-	mailbox        *CommandMailbox
-	watchdogRepair RepairHandler
-	storyStartedAt time.Time
-	totalActions   int64
+	repo              domain.StateRepository
+	registry          Registry
+	llmClient         domain.LLMClient
+	validator         Validator
+	scheduler         *Scheduler
+	git               *GitClient
+	rebaseQueue       *RebaseQueue
+	evaluator         *TestValidator
+	vcsClient         domain.VCSClient
+	cfg               OrchestratorConfig
+	mailbox           *CommandMailbox
+	watchdogRepair    RepairHandler
+	storyStartedAt    time.Time
+	totalActions      int64
+	taskCompletedChan chan struct{}
+	lastWorkspaceSync time.Time
 }
 
 func NewOrchestrator(
@@ -66,18 +71,19 @@ func NewOrchestrator(
 	watchdogRepair RepairHandler,
 ) *Orchestrator {
 	return &Orchestrator{
-		repo:           repo,
-		registry:       reg,
-		llmClient:      client,
-		validator:      val,
-		scheduler:      sched,
-		git:            git,
-		rebaseQueue:    queue,
-		evaluator:      eval,
-		vcsClient:      vcsClient,
-		cfg:            cfg,
-		mailbox:        mailbox,
-		watchdogRepair: watchdogRepair,
+		repo:              repo,
+		registry:          reg,
+		llmClient:         client,
+		validator:         val,
+		scheduler:         sched,
+		git:               git,
+		rebaseQueue:       queue,
+		evaluator:         eval,
+		vcsClient:         vcsClient,
+		cfg:               cfg,
+		mailbox:           mailbox,
+		watchdogRepair:    watchdogRepair,
+		taskCompletedChan: make(chan struct{}, 100),
 	}
 }
 
@@ -95,7 +101,29 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 		if o.mailbox != nil {
 			wakeup = o.mailbox.Wakeup()
 		}
-		if err := SleepWithInterrupt(ctx, o.cfg.PollInterval, wakeup); err != nil {
+
+		combinedWakeup := make(chan struct{}, 1)
+		sleepCtx, cancelSleep := context.WithCancel(ctx)
+		go func() {
+			defer cancelSleep()
+			select {
+			case <-wakeup:
+				select {
+				case combinedWakeup <- struct{}{}:
+				default:
+				}
+			case <-o.taskCompletedChan:
+				select {
+				case combinedWakeup <- struct{}{}:
+				default:
+				}
+			case <-sleepCtx.Done():
+			}
+		}()
+
+		err = SleepWithInterrupt(sleepCtx, o.cfg.PollInterval, combinedWakeup)
+		cancelSleep()
+		if err != nil {
 			if errors.Is(err, ErrInterrupted) {
 				continue
 			}
@@ -257,6 +285,8 @@ func (o *Orchestrator) updateStateWithRetry(ctx context.Context, updateFn func(s
 		}
 
 		sleepDur := time.Duration(float64(backoff) * math.Pow(factor, float64(attempt)))
+		jitter := 0.5 + rand.Float64()
+		sleepDur = time.Duration(float64(sleepDur) * jitter)
 
 		var wakeup <-chan struct{}
 		if o.mailbox != nil {

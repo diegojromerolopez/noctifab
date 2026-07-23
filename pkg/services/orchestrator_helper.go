@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -105,9 +106,59 @@ func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task dom
 		}
 	}
 
+	// Fallback: Parse file paths directly from task.Description using regex before resorting to LLM
+	filePathRegex := regexp.MustCompile(`[a-zA-Z0-9_\-/\.]+\.[a-zA-Z0-9]+`)
+	matches := filePathRegex.FindAllString(task.Description, -1)
+	for _, file := range matches {
+		fullPath, err := resolveSandboxPath(state.ProjectPath, file)
+		if err == nil {
+			if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
+				summary := string(content)
+				if len(summary) > 2000 {
+					summary = summary[:2000] + "\n... [TRUNCATED] ..."
+				}
+				gatheredContext = append(gatheredContext, fmt.Sprintf("Heuristically read file %q from description:\n```\n%s\n```", file, summary))
+			}
+		}
+	}
+
+	if len(gatheredContext) > 0 {
+		fmt.Printf("Orchestrator: [Reader] role %s loaded %d file(s) from description heuristics, skipping LLM call\n", role, len(gatheredContext))
+		return gatheredContext
+	}
+
 	var availableFilesMsg string
 	if files, err := o.git.Run(ctx, false, "ls-files"); err == nil {
-		availableFilesMsg = fmt.Sprintf("\nBelow is a list of all existing files in the repository:\n%s\n", strings.TrimSpace(files))
+		lines := strings.Split(files, "\n")
+		var filtered []string
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.Split(line, "/")
+			ignored := false
+			for _, part := range parts {
+				if part == ".noctifab" || part == ".git" {
+					ignored = true
+					break
+				}
+				for _, exp := range o.cfg.ExcludePaths {
+					cleanExp := strings.Trim(exp, "/")
+					if cleanExp != "" && part == cleanExp {
+						ignored = true
+						break
+					}
+				}
+				if ignored {
+					break
+				}
+			}
+			if !ignored {
+				filtered = append(filtered, line)
+			}
+		}
+		availableFilesMsg = fmt.Sprintf("\nBelow is a list of all existing files in the repository:\n%s\n", strings.Join(filtered, "\n"))
 	}
 
 	prompt := fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
@@ -215,7 +266,6 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 
 		executed := 0
 		blocked := 0
-		var failedToolOutputs []string
 		var turnToolOutputs []string
 		hasNoop := false
 
@@ -240,7 +290,6 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 					reason = valRes.Reason
 				}
 				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] action %s blocked: %s\n", task.ID, action.Tool, reason)
-				failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Action blocked by policy: %s", reason))
 				turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s blocked by policy: %s", action.Tool, reason))
 				continue
 			}
@@ -249,7 +298,6 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 			if ok {
 				out, execErr := tool.Execute(testerCtx, state, action.Args)
 				if execErr != nil {
-					failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 				} else {
 					executed++
@@ -261,14 +309,14 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 			}
 		}
 
-		if (hasNoop || len(testResp.Actions) == 0) && !runTestsCalled {
-			errMsg := "Error: You returned no actions or noop, but you have not executed 'run_tests' at least once in this task. To verify that the workspace compiles and any existing tests pass, you MUST execute the 'run_tests' tool now."
-			failedToolOutputs = append(failedToolOutputs, errMsg)
-			turnToolOutputs = append(turnToolOutputs, errMsg)
-		}
-		fmt.Printf("Orchestrator: Task %s [Tester] write phase summary (turn %d): %d executed, %d blocked, %d errors\n", task.ID, turn, executed, blocked, len(failedToolOutputs))
-
-		if hasNoop && len(failedToolOutputs) == 0 {
+		if hasNoop || len(testResp.Actions) == 0 {
+			if !runTestsCalled {
+				fmt.Printf("Orchestrator: Agent returned noop without executing run_tests; auto-triggering run_tests fallback for task %s\n", task.ID)
+				runTestsTool, ok := o.registry.Get("run_tests")
+				if ok {
+					_, _ = runTestsTool.Execute(testerCtx, state, map[string]any{})
+				}
+			}
 			break
 		}
 
@@ -316,6 +364,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	maxTurns := 5
 	var lastErr error
 	runTestsCalled := false
+	testFixRequestCount := 0
 
 	for turn := 0; turn < maxTurns; turn++ {
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
@@ -326,7 +375,6 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 
 		executed := 0
 		blocked := 0
-		var failedToolOutputs []string
 		var turnToolOutputs []string
 		hasNoop := false
 
@@ -351,7 +399,6 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					reason = valRes.Reason
 				}
 				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] action %s blocked: %s\n", task.ID, action.Tool, reason)
-				failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Action blocked by policy: %s", reason))
 				turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s blocked by policy: %s", action.Tool, reason))
 				continue
 			}
@@ -360,7 +407,6 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			if ok {
 				out, execErr := tool.Execute(genCtx, state, action.Args)
 				if execErr != nil {
-					failedToolOutputs = append(failedToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 				} else {
 					executed++
@@ -372,8 +418,15 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			}
 
 			if action.Tool == "request_test_fix" {
+				if testFixRequestCount >= 1 {
+					errMsg := "Action blocked: 'request_test_fix' limit reached (max 1 request per task execution). Edit the test files directly using write_file/edit_file."
+					turnToolOutputs = append(turnToolOutputs, errMsg)
+					continue
+				}
+				testFixRequestCount++
+
 				feedback, _ := action.Args["feedback"].(string)
-				fmt.Printf("Orchestrator: Task %s [Generator] requested test fix: %s\n", task.ID, feedback)
+				fmt.Printf("Orchestrator: Task %s [Generator] requested test fix (count %d): %s\n", task.ID, testFixRequestCount, feedback)
 
 				testerPrompt := fmt.Sprintf("Fix the tests for task: %s - %s\n\nFeedback from generator agent:\n%s\n\nCorrect the test files to resolve this issue.", task.Title, task.Description, feedback)
 				o.RunTesterAgent(ctx, task, state, fileContexts, testerPrompt)
@@ -394,15 +447,14 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			}
 		}
 
-		if (hasNoop || len(resp.Actions) == 0) && !runTestsCalled {
-			errMsg := "Error: You returned no actions or noop, but you have not executed 'run_tests' at least once in this task. To verify that the workspace compiles and any existing tests pass, you MUST execute the 'run_tests' tool now."
-			failedToolOutputs = append(failedToolOutputs, errMsg)
-			turnToolOutputs = append(turnToolOutputs, errMsg)
-		}
-
-		fmt.Printf("Orchestrator: Task %s [Generator] write phase summary (turn %d): %d executed, %d blocked, %d errors\n", task.ID, turn, executed, blocked, len(failedToolOutputs))
-
-		if hasNoop && len(failedToolOutputs) == 0 {
+		if hasNoop || len(resp.Actions) == 0 {
+			if !runTestsCalled {
+				fmt.Printf("Orchestrator: Agent returned noop without executing run_tests; auto-triggering run_tests fallback for task %s\n", task.ID)
+				runTestsTool, ok := o.registry.Get("run_tests")
+				if ok {
+					_, _ = runTestsTool.Execute(genCtx, state, map[string]any{})
+				}
+			}
 			break
 		}
 

@@ -62,6 +62,13 @@ func (p *ClarificationPoller) checkAndPrompt(ctx context.Context) {
 	}
 
 	for _, c := range clarifications {
+		if !c.Resolved && !c.AskedAt.IsZero() && time.Since(c.AskedAt) > 30*time.Minute {
+			autoAnswer := "[Auto-Resolved on Timeout: Proceeding with default assumption]"
+			_, _ = fmt.Fprintf(p.out, "\n⏱ Clarification %s timed out after 30m. Auto-resolving with default answer.\n", c.ID)
+			_ = p.client.ResolveClarification(c.ID, autoAnswer)
+			continue
+		}
+
 		p.mu.Lock()
 		alreadySeen := p.seenIDs[c.ID]
 		p.mu.Unlock()

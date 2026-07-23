@@ -35,7 +35,11 @@ func CategorizeFailureLog(log string) FailureCategory {
 		strings.Contains(lower, "max wall-clock duration exceeded"),
 		strings.Contains(lower, "command killed"):
 		return FailureTimeout
-	case strings.Contains(lower, "sandbox violation"):
+	case strings.Contains(lower, "sandbox violation") ||
+		strings.Contains(lower, "sandbox toolchain") ||
+		strings.Contains(lower, "toolchain binary") ||
+		strings.Contains(lower, "compiler not found") ||
+		strings.Contains(lower, "gcc not found"):
 		return FailureSandbox
 	case strings.Contains(lower, "compile error"),
 		strings.Contains(lower, "syntax error"),

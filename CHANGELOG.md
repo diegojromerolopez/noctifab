@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-07-23
+
+### Changed
+- **Reference Test Guidelines**: Updated `AGENTS.md` to explicitly link to `TESTS.md` for test suite execution and strategy details.
+- **Removed Autonomy Roadmap**: Deleted `AUTONOMY.md` after verifying all autonomous software factory objectives (budget tracking, OCC, failover, watchdogs, flaky tests, hot-reload, SAST, dependency management, and intent disambiguation) are fully implemented and tested.
+- **Documented Hidden/Undocumented Features**:
+  * Documented the `noctifab dashboard` command and its interactive keyboard shortcuts in `docs/cli_usage.md`.
+  * Created `docs/api.md` containing detailed descriptions of all loopback REST API endpoints (pause, resume, cancel, status, manual tasks, override-merge).
+- **Added Config Examples**: Created `docs/configuration_examples.md` containing complete configuration templates for Python, Node.js, Go, and resilient multi-provider enterprise environments.
+
 ## [0.12.1] - 2026-07-15
 
 ### Fixed

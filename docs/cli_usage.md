@@ -58,13 +58,24 @@ Plans and executes a single user story specification file end-to-end in a blocki
 noctifab start-one --input ./feature-spec.md
 ```
 
-### 5. `stop`
+### 5. `dashboard`
+Launches the interactive real-time Terminal User Interface (TUI) progress dashboard to monitor active story and task orchestrations.
+```bash
+noctifab dashboard
+```
+* **Interactive Keyboard Shortcuts**:
+  * `q`: Quit the dashboard (returns an error if active runs exist, otherwise clean exit).
+  * `p`: Prompt to Pause/Resume execution of the active story.
+  * `x`: Prompt to Cancel execution of the active story.
+* **CI/CD Non-Interactive Mode**: If stdin is not a terminal, the dashboard automatically falls back to dumping a plain-text status summary to stdout every 5 seconds, auto-exiting when all active stories have finished.
+
+### 6. `stop`
 Gracefully stops the background daemon process and saves state.
 ```bash
 noctifab stop
 ```
 
-### 6. `clean`
+### 7. `clean`
 Wipes all noctifab state (deletes database, PID, and story/daemon logs).
 
 ```bash
@@ -78,7 +89,7 @@ noctifab clean --dry-run # preview what would be deleted without deleting
 | `--yes` | `-y` | Skip the `Are you sure? [y/N]` prompt |
 | `--dry-run` | | Print what would be removed without deleting anything |
 
-### 7. `maintenance`
+### 8. `maintenance`
 Performs cleanup actions: prunes fully merged task branches from the local directory, cleans orphaned worktrees, and executes state database schema migrations.
 ```bash
 noctifab maintenance

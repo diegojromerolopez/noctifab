@@ -8,6 +8,7 @@ Welcome, agent. This document outlines the rules, architecture, and coding const
 
 Before planning or executing any task in this codebase, you **must** read and understand:
 *   [SPEC.md](/SPEC.md) - The technical specification of the project.
+*   [TESTS.md](/TESTS.md) - The testing strategy, structures, and verification specifications.
 
 ---
 
@@ -26,7 +27,7 @@ To maintain modularity and high context compatibility, the following guidelines 
 3.  **Testing Strategy:**
     *   All code must be **100% unit tested**. Every Go package must be accompanied by unit tests.
     *   After making any change to the codebase, you **must** run the test suite to verify correctness.
-    *   Tests must reside in files ending with `_test.go` in the same directory as the target logic.
+    *   Tests must reside in files ending with `_test.go` in the same directory as the target logic. Detailed testing context and architecture details are documented in [TESTS.md](/TESTS.md).
     *   When writing new features, ensure corresponding unit tests are implemented concurrently.
     *   **How to Run Unit & Local Integration Tests:**
         *   Run all unit and in-process CLI integration tests locally:

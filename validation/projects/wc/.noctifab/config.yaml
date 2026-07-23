@@ -35,6 +35,7 @@ vcs:
     repository: diegojromerolopez/wc
     base_branch: main
     branch_prefix: noctifab/
+    use_worktrees: true
     token: "secret:GITHUB_TOKEN"
     token_env: GITHUB_TOKEN
     conventional_commits:
@@ -53,6 +54,7 @@ sandbox:
     exclude_paths:
         - target/
         - .noctifab/
+        - .git/
     allowed_commands:
         - cargo
         - rustc
