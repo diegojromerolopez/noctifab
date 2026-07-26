@@ -29,24 +29,65 @@ These settings are defined at the root level of the configuration file.
 
 ---
 
-## Orchestrator Settings (`orchestrator`)
+## Agent Settings (`agents`)
 
-Configures the concurrency, polling, and human-in-the-loop limits.
+Configures multi-agent team concurrency, turn iterations, architecture mode, and audit/release panels. Setting `number: 0` disables any agent type.
 
 ```yaml
-orchestrator:
+agents:
+  architecture: code_first_verification_loop
   max_tools_per_response: 5
-  concurrency: 3
-  poll_interval: 5m
-  max_clarification_wait: 30m
-  clarification_timeout_action: abort
+
+  architect:
+    number: 1
+    iterations: 2
+
+  generators:
+    number: 3
+    iterations: 5
+
+  testers:
+    number: 2
+    iterations: 3
+
+  qa:
+    number: 1
+    iterations: 2
+
+  security:
+    number: 1
+    iterations: 2
+
+  performance:
+    number: 1
+    iterations: 2
+
+  docs:
+    number: 1
+    iterations: 2
+
+  devops:
+    number: 1
+    iterations: 2
+
+poll_interval: 5m
+max_clarification_wait: 30m
+clarification_timeout_action: abort
 ```
 
-- **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls the orchestrator allows the LLM to propose in a single completion response.
-- **`concurrency`** (Integer): Max parallel agent workers to schedule and execute concurrently in the topological task graph.
-- **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses. Note that if any task makes execution progress during a cycle, the orchestrator bypasses this sleep interval entirely to execute the next scheduler check immediately (zero-delay handoff).
-- **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve an ambiguous task clarification.
-- **`clarification_timeout_action`** (String): Action to take if a clarification times out. Options: `abort` (fails the task) or `proceed` (continues execution using model defaults).
+- **`architecture`** (String): Execution loop architecture mode. Options: `code_first_verification_loop` (default: TDD verification loop with separate Generator and Tester turns) or `single_pass_execution` (Fast-path single pass co-generating code and tests in 1 turn).
+- **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls allowed per agent response turn.
+- **`architect`**: Configures Software Architect agents validating domain boundaries before story planning (`number: 1`, `iterations: 2`).
+- **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 5`).
+- **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 3`).
+- **`qa`**: Configures QA Auditor agents auditing code & test quality by feature domain (`number: 1`, `iterations: 2`).
+- **`security`**: Configures Security Auditor agents running SAST scanners & auditing code vulnerabilities (`number: 1`, `iterations: 2`).
+- **`performance`**: Configures Performance & Benchmark agents running profilers & leak detection (`number: 1`, `iterations: 2`).
+- **`docs`**: Configures Documentation agents maintaining OpenAPI specs, READMEs & docstrings (`number: 1`, `iterations: 2`).
+- **`devops`**: Configures DevOps & Release agents generating Dockerfiles, Makefiles & CI workflows (`number: 1`, `iterations: 2`).
+- **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.
+- **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve a task clarification.
+- **`clarification_timeout_action`** (String): Action to take if a clarification times out (`abort` or `continue`).
 
 ---
 
@@ -82,6 +123,9 @@ llm:
   retry_backoff_factor: 2.0
   max_budget_usd: 10.0
   reset_period: daily
+  max_timeout: 60s
+  idle_timeout: 15s
+  streaming: true
   failover:
     enabled: false
     cooldown: 5m
@@ -101,7 +145,9 @@ llm:
 - **`retry_backoff`** (Duration): Starting wait time before retrying a failed API call.
 - **`retry_backoff_factor`** (Float): Exponential factor multiplied by the backoff time for each retry.
 - **`max_budget_usd`** (Float): Absolute financial budget cap enforced per day/period to prevent runaway LLM costs.
-- **`max_timeout`** (Duration): Maximum timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines while preventing hung connections.
+- **`max_timeout`** (Duration): Maximum overall completion timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines.
+- **`idle_timeout`** (Duration): Maximum stream/socket inactivity timeout allowed for LLM API calls (e.g. `15s`). Defaults to `15s` to cancel and fail over stalled stream connections without truncating active long responses.
+- **`streaming`** (Boolean): Enable or disable HTTP Server-Sent Events (SSE) token streaming (e.g. `true`). Defaults to `true` to stream completion tokens in real time and enforce sliding socket idle timeouts.
 - **`reset_period`** (String): The timeframe to enforce the budget cap (e.g. `daily`, `monthly`).
 - **`failover`**: Failover parameters:
   - **`enabled`** (Boolean): Auto-route failed calls to alternate providers when true.
@@ -270,12 +316,16 @@ telemetry:
   exporter: otlp
   endpoint: ""
   service_name: noctifab
+  metrics:
+    enabled: true
 ```
 
 - **`enabled`** (Boolean): Enable OTel collection.
 - **`exporter`** (String): Connection format protocols (e.g. `otlp`, `stdout`).
 - **`endpoint`** (String): Host URL of the OpenTelemetry collector or Jaeger endpoint.
 - **`service_name`** (String): Service metadata name tag.
+- **`metrics`**:
+  - **`enabled`** (Boolean): Enable or disable performance & speed metrics instrumentation (tracking Time To First Commit, phase latencies, LLM wait duration, tokens/sec, and sandbox build times). Default: `true`.
 
 ---
 
@@ -294,6 +344,24 @@ sast:
 - **`enabled`** (Boolean): Turn on security scanner checking.
 - **`scanners`** (List of Strings): Executable scanners to run (e.g. `gosec` for Go, `bandit` for Python).
 - **`fail_on_severity`** (String): Minimum scan vulnerability level that blocks integration merges. Options: `high`, `medium`, `low`.
+
+---
+
+## Context Slicing Settings (`context`)
+
+Controls how target workspace source files are formatted and sliced for agent prompts.
+
+```yaml
+context:
+  mode: full
+  diff_window_lines: 15
+```
+
+- **`mode`** (String): Context formatting strategy. Options:
+  - `full`: Sends complete source file contents (default).
+  - `diff_window`: Extracts modified git diff lines and error stack traces (+/- context lines).
+  - `tree_sitter`: Universal AST parsing extracting class/struct definitions and function signatures.
+- **`diff_window_lines`** (Integer): Number of context lines surrounding diff modifications in `diff_window` mode (default: `15`).
 
 ---
 

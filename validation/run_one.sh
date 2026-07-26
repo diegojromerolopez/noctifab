@@ -54,6 +54,7 @@ case "${PROJECT}" in
   wc)         TARGETS="Cargo.toml;src/main.rs" ;;
   calculator) TARGETS="calculator.rb;lib/calculator/cli.rb" ;;
   echo)       TARGETS="cmd/echo/main.go" ;;
+  fortune)    TARGETS="main.c;Makefile" ;;
   *)          TARGETS="" ;;
 esac
 

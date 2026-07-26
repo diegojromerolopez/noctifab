@@ -1,10 +1,34 @@
 config_version: "1.0"
-orchestrator:
-    max_tools_per_response: 5
-    concurrency: 4
-    poll_interval: 5m0s
-    max_clarification_wait: 30m0s
-    clarification_timeout_action: abort
+agents:
+    architecture: code_first_verification_loop
+    max_tools_per_response: 10
+    architect:
+        number: 1
+        iterations: 2
+    generators:
+        number: 4
+        iterations: 5
+    testers:
+        number: 2
+        iterations: 3
+    qa:
+        number: 1
+        iterations: 2
+    security:
+        number: 1
+        iterations: 2
+    performance:
+        number: 1
+        iterations: 2
+    docs:
+        number: 1
+        iterations: 2
+    devops:
+        number: 1
+        iterations: 2
+poll_interval: 5m0s
+max_clarification_wait: 30m0s
+clarification_timeout_action: abort
 storage:
     provider: sqlite
     conn_string: .noctifab/data/noctifab.db
@@ -20,6 +44,8 @@ llms:
       retry_backoff_factor: 2
       max_budget_usd: 10
       max_timeout: 60s
+      idle_timeout: 15s
+      streaming: true
     - provider: gemini
       model: gemini-2.5-flash
       temperature: 0
@@ -30,6 +56,8 @@ llms:
       retry_backoff_factor: 2
       max_budget_usd: 10
       max_timeout: 60s
+      idle_timeout: 15s
+      streaming: true
 vcs:
     provider: github
     repository: diegojromerolopez/frontpunch
@@ -101,3 +129,15 @@ occ_backoff_factor: 2
 token_usage_limit: 0
 log_level: info
 log_file: ""
+telemetry:
+    enabled: false
+    exporter: otlp
+    endpoint: ""
+    service_name: noctifab
+    metrics:
+        enabled: true
+context:
+    mode: full
+    diff_window_lines: 15
+
+

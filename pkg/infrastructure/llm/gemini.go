@@ -13,13 +13,15 @@ import (
 )
 
 type geminiProviderClient struct {
-	url     string
-	timeout time.Duration
+	url         string
+	timeout     time.Duration
+	idleTimeout time.Duration
+	streaming   bool
 }
 
 // NewGeminiProviderClient creates a ProviderClient for Gemini API.
-func NewGeminiProviderClient(url string, timeout time.Duration) ProviderClient {
-	return &geminiProviderClient{url: url, timeout: timeout}
+func NewGeminiProviderClient(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+	return &geminiProviderClient{url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
 }
 
 func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {

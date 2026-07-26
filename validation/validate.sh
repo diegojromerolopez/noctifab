@@ -181,6 +181,11 @@ elif [ "${PROJECT}" = "echo" ]; then
     echo "❌ Error: cmd/echo/main.go (or main.go) was not created/modified!"
     exit 1
   fi
+elif [ "${PROJECT}" = "fortune" ]; then
+  if [ ! -f "main.c" ] && [ ! -f "Makefile" ]; then
+    echo "❌ Error: main.c or Makefile was not created/modified!"
+    exit 1
+  fi
 else
   echo "⚠ Warning: No specific file check defined for project ${PROJECT}."
 fi
@@ -216,6 +221,13 @@ if [ -d "/app/dist_mount" ]; then
       cp target/release/wc /app/dist_mount/
     elif [ -f "wc/target/release/wc" ]; then
       cp wc/target/release/wc /app/dist_mount/
+    fi
+  elif [ "${PROJECT}" = "fortune" ]; then
+    if [ -f "Makefile" ]; then
+      make build || true
+    fi
+    if [ -f "fortune" ]; then
+      cp fortune /app/dist_mount/
     fi
   fi
 fi

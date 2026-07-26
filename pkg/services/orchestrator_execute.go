@@ -194,7 +194,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	if task.Retries == 0 {
+	if strings.EqualFold(o.cfg.Architecture, "single_pass_execution") {
+		o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
+	} else if task.Retries == 0 {
 		// 1. Run Generator Agent (role "generator") to implement minimal functionality
 		minimalGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFocus on creating the minimal implementation/functionality to fulfill the task requirements. The tests will be written in a later phase.", task.Title, task.Description)
 		o.updateTaskProgress(ctx, taskID, 25)
@@ -401,6 +403,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	if passed {
 		fmt.Printf("Orchestrator: Task %s completed successfully!\n", taskID)
+		o.metricsCollector.RecordCommit()
 		// Merge back sequentially into integrationBranch using RebaseQueue
 		_ = o.rebaseQueue.Push(ctx, branchName, integrationBranch)
 
@@ -412,6 +415,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
 		}
 	} else {
+		o.metricsCollector.RecordRetry()
 		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s failed test validation. Retrying or marking FAILED. Failure log:\n%s\n", taskID, logMsg)
 		if !o.cfg.UseWorktrees {
 			if permanentlyFailed {
@@ -426,6 +430,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			}
 		}
 	}
+
+	metricsPath := filepath.Join(state.ProjectPath, ".noctifab", "data", "metrics.json")
+	_ = o.metricsCollector.ExportJSON(metricsPath)
 
 	o.scheduler.ReleaseLocks(taskID)
 

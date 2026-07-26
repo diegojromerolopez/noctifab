@@ -29,12 +29,12 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_AGENTS_COUNT"); ok {
 		if i, err := strconv.Atoi(val); err == nil {
-			cfg.Orchestrator.Concurrency = i
+			cfg.Agents.Generators.Number = i
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_INTERVAL"); ok {
 		if d, err := time.ParseDuration(val); err == nil {
-			cfg.Orchestrator.PollInterval = Duration(d)
+			cfg.PollInterval = Duration(d)
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_VCS_PROVIDER"); ok {
@@ -88,7 +88,7 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_MAX_TOOLS_PER_RESPONSE"); ok {
 		if i, err := strconv.Atoi(val); err == nil {
-			cfg.Orchestrator.MaxToolsPerResponse = i
+			cfg.Agents.MaxToolsPerResponse = i
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_MAX_ACTIONS"); ok {
@@ -237,12 +237,12 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	})
 	setIfChanged("agents", func(val string) {
 		if i, err := strconv.Atoi(val); err == nil {
-			cfg.Orchestrator.Concurrency = i
+			cfg.Agents.Generators.Number = i
 		}
 	})
 	setIfChanged("interval", func(val string) {
 		if d, err := time.ParseDuration(val); err == nil {
-			cfg.Orchestrator.PollInterval = Duration(d)
+			cfg.PollInterval = Duration(d)
 		}
 	})
 	setIfChanged("vcs-provider", func(val string) {
@@ -287,7 +287,7 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	})
 	setIfChanged("max-tools-per-response", func(val string) {
 		if i, err := strconv.Atoi(val); err == nil {
-			cfg.Orchestrator.MaxToolsPerResponse = i
+			cfg.Agents.MaxToolsPerResponse = i
 		}
 	})
 	setIfChanged("max-actions", func(val string) {

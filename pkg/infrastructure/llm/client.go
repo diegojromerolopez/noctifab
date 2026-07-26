@@ -20,13 +20,15 @@ import (
 )
 
 type Client struct {
-	Provider   string
-	Model      string
-	APIKey     string
-	MaxRetries int
-	Backoff    time.Duration
-	URL        string
-	Timeout    time.Duration
+	Provider    string
+	Model       string
+	APIKey      string
+	MaxRetries  int
+	Backoff     time.Duration
+	URL         string
+	Timeout     time.Duration
+	IdleTimeout time.Duration
+	Streaming   bool
 }
 
 var _ domain.LLMClient = (*Client)(nil)
@@ -78,13 +80,15 @@ Return the JSON block now and nothing else.`, originalPrompt, tail)
 
 func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Duration, url string) *Client {
 	return &Client{
-		Provider:   provider,
-		Model:      model,
-		APIKey:     apiKey,
-		MaxRetries: maxRetries,
-		Backoff:    backoff,
-		URL:        url,
-		Timeout:    5 * time.Second,
+		Provider:    provider,
+		Model:       model,
+		APIKey:      apiKey,
+		MaxRetries:  maxRetries,
+		Backoff:     backoff,
+		URL:         url,
+		Timeout:     5 * time.Second,
+		IdleTimeout: 15 * time.Second,
+		Streaming:   true,
 	}
 }
 
@@ -139,11 +143,11 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		var pClient ProviderClient
 		switch strings.ToLower(c.Provider) {
 		case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
-			pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout)
+			pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 		case "gemini":
-			pClient = NewGeminiProviderClient(c.URL, c.Timeout)
+			pClient = NewGeminiProviderClient(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 		case "anthropic":
-			pClient = NewAnthropicProviderClient(c.URL, c.Timeout)
+			pClient = NewAnthropicProviderClient(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 		default:
 			return nil, fmt.Errorf("unsupported LLM provider: %s", c.Provider)
 		}
@@ -233,7 +237,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 
 func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 	if strings.ToLower(c.Provider) == "gemini" {
-		pClient := NewGeminiProviderClient(c.URL, c.Timeout)
+		pClient := NewGeminiProviderClient(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 		available, err := pClient.GetAvailableModels(ctx, apiKey)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Warning: failed to query available models from %s: %v.\n", c.Provider, err)
@@ -292,9 +296,9 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 	var pClient ProviderClient
 	switch strings.ToLower(c.Provider) {
 	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
-		pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout)
+		pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 	case "anthropic":
-		pClient = NewAnthropicProviderClient(c.URL, c.Timeout)
+		pClient = NewAnthropicProviderClient(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 	default:
 		return ""
 	}

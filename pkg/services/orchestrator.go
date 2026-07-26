@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -23,18 +24,38 @@ type RepairHandler interface {
 }
 
 type OrchestratorConfig struct {
-	PollInterval     time.Duration
-	MaxRetries       int
-	Concurrency      int
-	UseWorktrees     bool
-	MaxBudgetUSD     float64
-	OCCMaxRetries    int
-	OCCBackoffBase   time.Duration
-	OCCBackoffFactor float64
-	MaxDuration      time.Duration
-	AutoCreatePR     bool
-	MaxActions       int
-	ExcludePaths     []string
+	Architecture          string
+	ArchitectNumber       int
+	ArchitectIterations   int
+	GeneratorsNumber      int
+	GeneratorsIterations  int
+	TestersNumber         int
+	TestersIterations     int
+	QAAgentsNumber        int
+	QAAgentsIterations    int
+	SecurityNumber        int
+	SecurityIterations    int
+	PerformanceNumber     int
+	PerformanceIterations int
+	DocsNumber            int
+	DocsIterations        int
+	DevOpsNumber          int
+	DevOpsIterations      int
+	PollInterval          time.Duration
+	MaxRetries            int
+	Concurrency           int
+	UseWorktrees          bool
+	MaxBudgetUSD          float64
+	OCCMaxRetries         int
+	OCCBackoffBase        time.Duration
+	OCCBackoffFactor      float64
+	MaxDuration           time.Duration
+	AutoCreatePR          bool
+	MaxActions            int
+	ExcludePaths          []string
+	MetricsEnabled        bool
+	MetricsOutputPath     string
+	Context               config.ContextConfig
 }
 
 type Orchestrator struct {
@@ -50,6 +71,7 @@ type Orchestrator struct {
 	cfg               OrchestratorConfig
 	mailbox           *CommandMailbox
 	watchdogRepair    RepairHandler
+	metricsCollector  *MetricsCollector
 	storyStartedAt    time.Time
 	totalActions      int64
 	taskCompletedChan chan struct{}
@@ -83,7 +105,23 @@ func NewOrchestrator(
 		cfg:               cfg,
 		mailbox:           mailbox,
 		watchdogRepair:    watchdogRepair,
+		metricsCollector:  NewMetricsCollector(cfg.MetricsEnabled),
 		taskCompletedChan: make(chan struct{}, 100),
+	}
+}
+
+// Metrics returns the MetricsCollector instance associated with the Orchestrator.
+func (o *Orchestrator) Metrics() *MetricsCollector {
+	if o == nil {
+		return nil
+	}
+	return o.metricsCollector
+}
+
+// SetMetricsCollector updates the MetricsCollector instance on the Orchestrator.
+func (o *Orchestrator) SetMetricsCollector(mc *MetricsCollector) {
+	if o != nil {
+		o.metricsCollector = mc
 	}
 }
 

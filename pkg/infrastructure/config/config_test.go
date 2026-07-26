@@ -71,7 +71,7 @@ func TestLoad_BadValues(t *testing.T) {
 	_ = os.Setenv("NOCTIFAB_AGENTS_COUNT", "invalid-int")
 	cfg = &Config{}
 	applyEnvOverrides(cfg)
-	if cfg.Orchestrator.Concurrency != 0 {
+	if cfg.Agents.Generators.Number != 0 {
 		t.Error("expected Concurrency to remain 0 on invalid env value")
 	}
 	_ = os.Unsetenv("NOCTIFAB_AGENTS_COUNT")
@@ -80,7 +80,7 @@ func TestLoad_BadValues(t *testing.T) {
 	_ = os.Setenv("NOCTIFAB_INTERVAL", "invalid-duration")
 	cfg = &Config{}
 	applyEnvOverrides(cfg)
-	if time.Duration(cfg.Orchestrator.PollInterval) != 0 {
+	if time.Duration(cfg.PollInterval) != 0 {
 		t.Error("expected PollInterval to remain 0 on invalid env value")
 	}
 	_ = os.Unsetenv("NOCTIFAB_INTERVAL")
@@ -113,10 +113,10 @@ func TestLoad_BadFlags(t *testing.T) {
 	if cfg.AutoCommit {
 		t.Error("expected AutoCommit to remain false on invalid flag value")
 	}
-	if cfg.Orchestrator.Concurrency != 0 {
+	if cfg.Agents.Generators.Number != 0 {
 		t.Error("expected Concurrency to remain 0 on invalid flag value")
 	}
-	if time.Duration(cfg.Orchestrator.PollInterval) != 0 {
+	if time.Duration(cfg.PollInterval) != 0 {
 		t.Error("expected PollInterval to remain 0 on invalid flag value")
 	}
 	if cfg.OCCBackoffFactor != 0.0 {
@@ -328,5 +328,166 @@ llm:
 	}
 	if cfg.LLM.APIKeyValue != "resolved-api-key" {
 		t.Errorf("LLM.APIKeyValue: expected resolved-api-key, got %q", cfg.LLM.APIKeyValue)
+	}
+}
+
+func TestOrchestratorArchitectureConfig(t *testing.T) {
+	def := DefaultConfig()
+	if def.Agents.Architecture != "code_first_verification_loop" {
+		t.Errorf("expected default Architecture to be code_first_verification_loop, got %q", def.Agents.Architecture)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "noctifab-arch-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	configYaml := `
+config_version: "1.0"
+agents:
+  architecture: "single_pass_execution"
+vcs:
+  repository: "myorg/myrepo"
+  token: "secret:MY_VCS_TOKEN"
+llm:
+  provider: "openai"
+  api_key: "secret:MY_API_KEY"
+`
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configYaml), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	secretsYaml := "MY_VCS_TOKEN: \"resolved-vcs-token\"\nMY_API_KEY: \"resolved-api-key\"\n"
+	secretsPath := filepath.Join(tmpDir, "secrets.yaml")
+	if err := os.WriteFile(secretsPath, []byte(secretsYaml), 0600); err != nil {
+		t.Fatalf("failed to write secrets: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("config", configPath, "")
+	_ = cmd.Flags().Set("config", configPath)
+
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.Agents.Architecture != "single_pass_execution" {
+		t.Errorf("expected Architecture to be single_pass_execution, got %q", cfg.Agents.Architecture)
+	}
+}
+
+func TestAgentRolesConfig(t *testing.T) {
+	def := DefaultConfig()
+	if def.Agents.Architect.Number != 1 || def.Agents.Architect.Iterations != 2 {
+		t.Errorf("unexpected Architect defaults: %+v", def.Agents.Architect)
+	}
+	if def.Agents.QA.Number != 1 || def.Agents.QA.Iterations != 2 {
+		t.Errorf("unexpected QA defaults: %+v", def.Agents.QA)
+	}
+	if def.Agents.Security.Number != 1 || def.Agents.Security.Iterations != 2 {
+		t.Errorf("unexpected Security defaults: %+v", def.Agents.Security)
+	}
+	if def.Agents.Performance.Number != 1 || def.Agents.Performance.Iterations != 2 {
+		t.Errorf("unexpected Performance defaults: %+v", def.Agents.Performance)
+	}
+	if def.Agents.Docs.Number != 1 || def.Agents.Docs.Iterations != 2 {
+		t.Errorf("unexpected Docs defaults: %+v", def.Agents.Docs)
+	}
+	if def.Agents.DevOps.Number != 1 || def.Agents.DevOps.Iterations != 2 {
+		t.Errorf("unexpected DevOps defaults: %+v", def.Agents.DevOps)
+	}
+
+	tmpDir := t.TempDir()
+
+	configYaml := `
+config_version: "1.0"
+agents:
+  architecture: "single_pass_execution"
+  architect:
+    number: 1
+    iterations: 2
+  generators:
+    number: 4
+    iterations: 6
+  testers:
+    number: 3
+    iterations: 4
+  qa:
+    number: 2
+    iterations: 2
+  security:
+    number: 1
+    iterations: 2
+  performance:
+    number: 1
+    iterations: 2
+  docs:
+    number: 1
+    iterations: 2
+  devops:
+    number: 1
+    iterations: 2
+vcs:
+  repository: "myorg/myrepo"
+  token: "secret:MY_VCS_TOKEN"
+llm:
+  provider: "openai"
+  api_key: "secret:MY_API_KEY"
+`
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configYaml), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	secretsYaml := "MY_VCS_TOKEN: \"resolved-vcs-token\"\nMY_API_KEY: \"resolved-api-key\"\n"
+	secretsPath := filepath.Join(tmpDir, "secrets.yaml")
+	if err := os.WriteFile(secretsPath, []byte(secretsYaml), 0600); err != nil {
+		t.Fatalf("failed to write secrets: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("config", configPath, "")
+	_ = cmd.Flags().Set("config", configPath)
+
+	cfg, err := Load(cmd)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.Agents.Architect.Number != 1 || cfg.Agents.Architect.Iterations != 2 {
+		t.Errorf("expected Agents.Architect number=1, iterations=2, got %+v", cfg.Agents.Architect)
+	}
+	if cfg.Agents.Generators.Number != 4 {
+		t.Errorf("expected Agents.Generators.Number to be 4, got %d", cfg.Agents.Generators.Number)
+	}
+	if cfg.Agents.Generators.Iterations != 6 {
+		t.Errorf("expected Agents.Generators.Iterations to be 6, got %d", cfg.Agents.Generators.Iterations)
+	}
+	if cfg.Agents.Testers.Number != 3 {
+		t.Errorf("expected Agents.Testers.Number to be 3, got %d", cfg.Agents.Testers.Number)
+	}
+	if cfg.Agents.Testers.Iterations != 4 {
+		t.Errorf("expected Agents.Testers.Iterations to be 4, got %d", cfg.Agents.Testers.Iterations)
+	}
+	if cfg.Agents.QA.Number != 2 {
+		t.Errorf("expected Agents.QA.Number to be 2, got %d", cfg.Agents.QA.Number)
+	}
+	if cfg.Agents.QA.Iterations != 2 {
+		t.Errorf("expected Agents.QA.Iterations to be 2, got %d", cfg.Agents.QA.Iterations)
+	}
+	if cfg.Agents.Security.Number != 1 || cfg.Agents.Security.Iterations != 2 {
+		t.Errorf("expected Agents.Security number=1, iterations=2, got %+v", cfg.Agents.Security)
+	}
+	if cfg.Agents.Performance.Number != 1 || cfg.Agents.Performance.Iterations != 2 {
+		t.Errorf("expected Agents.Performance number=1, iterations=2, got %+v", cfg.Agents.Performance)
+	}
+	if cfg.Agents.Docs.Number != 1 || cfg.Agents.Docs.Iterations != 2 {
+		t.Errorf("expected Agents.Docs number=1, iterations=2, got %+v", cfg.Agents.Docs)
+	}
+	if cfg.Agents.DevOps.Number != 1 || def.Agents.DevOps.Iterations != 2 {
+		t.Errorf("expected Agents.DevOps number=1, iterations=2, got %+v", cfg.Agents.DevOps)
 	}
 }

@@ -117,4 +117,70 @@ To support near-instantaneous development feedback loops, `noctifab` implements 
 3. **Zero-Delay Task Handoff:**
    Whenever a scheduler loop run makes progress (i.e., a task completes or state is updated), the orchestrator immediately invokes the next schedule check without sleeping for `poll_interval`. Tasks are chained sequentially with no idle latency.
 
+4. **In-Memory Diagnostic Result Caching (`TaskDiagnosticCache`):**
+   During intra-turn multi-turn agent loops (`RunTesterAgent` and `RunGeneratorAgent`), the orchestrator instantiates an in-memory `TaskDiagnosticCache` that caches the execution results of read-only verification tools (`run_tests` and `run_linter`). Whenever an agent executes file-mutating actions (`write_file`, `edit_file`, `multi_replace_file_content`, `delete_file`), an internal `isDirty` boolean flag stored in RAM inside the cache struct is set to `true`, invalidating the cache. If an agent calls `run_tests` or `run_linter` again without modifying workspace files (`isDirty == false`), the orchestrator returns the cached result instantly (`0ms`), eliminating redundant subprocess executions.
+
+---
+
+## Orchestrator Execution Architecture Modes
+
+The orchestrator supports two distinct execution architecture modes configured via `orchestrator.architecture` in `.noctifab/config.yaml`:
+
+### 1. `code_first_verification_loop` (Default)
+The **Code-First Verification Loop** separates implementation scaffolding from test characterization:
+1. **Minimal Implementation Pass (Generator Agent)**: Scaffolds core types, function signatures, and minimal implementation logic first.
+2. **Test Characterization Pass (Tester Agent)**: Inspects the created code signatures and writes comprehensive unit and integration tests against them.
+3. **Refactor & Fulfill Pass (Generator Agent)**: Refactors and expands the implementation to satisfy all tests.
+
+This mode prevents LLMs from hallucinating non-existent package signatures or writing incompatible test mocks.
+
+### 2. `single_pass_execution`
+The **Single-Pass Execution** mode optimizes for maximum generation speed and minimum token latency:
+* A single Generator agent pass creates both the source code implementation and corresponding tests together in one turn.
+* Eliminates multi-pass turn delays for straightforward user stories and micro-specifications.
+
+### 3. Specialized Multi-Agent Audit & Release Panel
+
+Configured via `agents:` in `.noctifab/config.yaml`:
+```yaml
+agents:
+  architecture: code_first_verification_loop
+
+  architect:
+    number: 1      # Pre-flight architecture pass (default: 1)
+    iterations: 2
+  generators:
+    number: 3      # Parallel Generator agents (default: 3)
+    iterations: 5
+  testers:
+    number: 2      # Parallel Tester agents (default: 2)
+    iterations: 3
+  qa:
+    number: 1      # QA Auditor agents (default: 1)
+    iterations: 2
+  security:
+    number: 1      # Security & SAST auditor agents (default: 1)
+    iterations: 2
+  performance:
+    number: 1      # Benchmark & profiler agents (default: 1)
+    iterations: 2
+  docs:
+    number: 1      # OpenAPI & docstring agents (default: 1)
+    iterations: 2
+  devops:
+    number: 1      # Dockerfile & CI pipeline agents (default: 1)
+    iterations: 2
+```
+
+#### Chronological Parallelization Pipeline
+- **Stage 1 (Pre-Flight):** `architect` runs on `SPEC.md` before story planning to validate domain boundaries and package layout.
+- **Stage 2 (Planning):** `planner` decomposes `SPEC.md` into the topological DAG task dependency graph.
+- **Stage 3 (Task Workers):** `testers` and `generators` execute concurrently in parallel Git Worktree sandboxes (`concurrency = generators.number`).
+- **Stage 4 (Parallel Audits):** `qa`, `security`, and `performance` run **in parallel background goroutines** on completed feature branches:
+  - `qa` catches tautological tests (`assert(true)`) and fragile mocks.
+  - `security` runs SAST scanners (`gosec`, `semgrep`) & checks memory safety.
+  - `performance` runs benchmark suites & memory leak profiling.
+- **Stage 5 (Release Assets):** `docs` (maintaining OpenAPI specs & docstrings) and `devops` (generating Dockerfiles & CI workflows) run right before final Git branch merge and PR creation.
+
+
 

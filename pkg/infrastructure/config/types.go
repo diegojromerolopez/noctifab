@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -28,7 +29,7 @@ func (d Duration) MarshalYAML() (interface{}, error) {
 
 type Config struct {
 	ConfigVersion string                   `yaml:"config_version"`
-	Orchestrator  OrchestratorConfig       `yaml:"orchestrator"`
+	Agents        AgentsConfig             `yaml:"agents"`
 	Storage       StorageConfig            `yaml:"storage"`
 	LLM           LLMConfig                `yaml:"llm"`
 	LLMs          []LLMConfig              `yaml:"llms"`
@@ -39,6 +40,11 @@ type Config struct {
 	Jira          JiraConfig               `yaml:"jira"`
 	Telemetry     TelemetryConfig          `yaml:"telemetry"`
 	SAST          SASTConfig               `yaml:"sast"`
+	Context       ContextConfig            `yaml:"context"`
+
+	PollInterval               Duration `yaml:"poll_interval"`
+	MaxClarificationWait       Duration `yaml:"max_clarification_wait"`
+	ClarificationTimeoutAction string   `yaml:"clarification_timeout_action"`
 
 	Input               string   `yaml:"input"`
 	AutoCommit          bool     `yaml:"auto_commit"`
@@ -57,12 +63,22 @@ type Config struct {
 	LogFile             string   `yaml:"log_file"`
 }
 
-type OrchestratorConfig struct {
-	MaxToolsPerResponse        int      `yaml:"max_tools_per_response"`
-	Concurrency                int      `yaml:"concurrency"`
-	PollInterval               Duration `yaml:"poll_interval"`
-	MaxClarificationWait       Duration `yaml:"max_clarification_wait"`
-	ClarificationTimeoutAction string   `yaml:"clarification_timeout_action"`
+type AgentsConfig struct {
+	Architecture        string          `yaml:"architecture"`
+	MaxToolsPerResponse int             `yaml:"max_tools_per_response"`
+	Architect           AgentRoleConfig `yaml:"architect"`
+	Generators          AgentRoleConfig `yaml:"generators"`
+	Testers             AgentRoleConfig `yaml:"testers"`
+	QA                  AgentRoleConfig `yaml:"qa"`
+	Security            AgentRoleConfig `yaml:"security"`
+	Performance         AgentRoleConfig `yaml:"performance"`
+	Docs                AgentRoleConfig `yaml:"docs"`
+	DevOps              AgentRoleConfig `yaml:"devops"`
+}
+
+type AgentRoleConfig struct {
+	Number     int `yaml:"number"`
+	Iterations int `yaml:"iterations"`
 }
 
 type StorageConfig struct {
@@ -79,11 +95,13 @@ type FailoverConfig struct {
 }
 
 type FailoverBackend struct {
-	Provider   string `yaml:"provider"`
-	Model      string `yaml:"model"`
-	APIKeyEnv  string `yaml:"api_key_env"`
-	URL        string `yaml:"url"`
-	MaxRetries int    `yaml:"max_retries"`
+	Provider    string   `yaml:"provider"`
+	Model       string   `yaml:"model"`
+	APIKeyEnv   string   `yaml:"api_key_env"`
+	URL         string   `yaml:"url"`
+	MaxRetries  int      `yaml:"max_retries"`
+	IdleTimeout Duration `yaml:"idle_timeout"`
+	Streaming   *bool    `yaml:"streaming"`
 }
 
 type LLMConfig struct {
@@ -101,6 +119,8 @@ type LLMConfig struct {
 	ResetPeriod        string         `yaml:"reset_period"`
 	Failover           FailoverConfig `yaml:"failover"`
 	MaxTimeout         Duration       `yaml:"max_timeout"`
+	IdleTimeout        Duration       `yaml:"idle_timeout"`
+	Streaming          *bool          `yaml:"streaming"`
 }
 
 type PullRequestConfig struct {
@@ -172,11 +192,23 @@ type ProfileConfig struct {
 	AllowedCommands []string `yaml:"allowed_commands"`
 }
 
+type MetricsConfig struct {
+	Enabled *bool `yaml:"enabled"`
+}
+
+func (m MetricsConfig) IsEnabled() bool {
+	if m.Enabled == nil {
+		return true
+	}
+	return *m.Enabled
+}
+
 type TelemetryConfig struct {
-	Enabled     bool   `yaml:"enabled"`
-	Exporter    string `yaml:"exporter"`
-	Endpoint    string `yaml:"endpoint"`
-	ServiceName string `yaml:"service_name"`
+	Enabled     bool          `yaml:"enabled"`
+	Exporter    string        `yaml:"exporter"`
+	Endpoint    string        `yaml:"endpoint"`
+	ServiceName string        `yaml:"service_name"`
+	Metrics     MetricsConfig `yaml:"metrics"`
 }
 
 type JiraConfig struct {
@@ -189,4 +221,28 @@ type SASTConfig struct {
 	Enabled        bool     `yaml:"enabled"`
 	Scanners       []string `yaml:"scanners"`
 	FailOnSeverity string   `yaml:"fail_on_severity"`
+}
+
+type ContextMode string
+
+const (
+	ContextModeFull       ContextMode = "full"
+	ContextModeDiffWindow ContextMode = "diff_window"
+	ContextModeTreeSitter ContextMode = "tree_sitter"
+)
+
+type ContextConfig struct {
+	Mode            string `yaml:"mode"`
+	DiffWindowLines int    `yaml:"diff_window_lines"`
+}
+
+func (c ContextConfig) GetMode() ContextMode {
+	switch ContextMode(strings.ToLower(strings.TrimSpace(c.Mode))) {
+	case ContextModeDiffWindow:
+		return ContextModeDiffWindow
+	case ContextModeTreeSitter:
+		return ContextModeTreeSitter
+	default:
+		return ContextModeFull
+	}
 }

@@ -104,6 +104,19 @@ var startOneCmd = &cobra.Command{
 			}
 		}
 
+		// If input is a directory (e.g., "roadmap"), resolve it to the first story file inside
+		if fi, statErr := os.Stat(cfg.Input); statErr == nil && fi.IsDir() {
+			entries, readErr := os.ReadDir(cfg.Input)
+			if readErr == nil {
+				for _, entry := range entries {
+					if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+						cfg.Input = filepath.Join(cfg.Input, entry.Name())
+						break
+					}
+				}
+			}
+		}
+
 		// Read specification
 		specBytes, err := os.ReadFile(cfg.Input)
 		if err != nil {
@@ -111,10 +124,21 @@ var startOneCmd = &cobra.Command{
 			specPath := "SPEC.md"
 			if _, specErr := os.Stat(specPath); specErr == nil {
 				fmt.Printf("Input story %q not found, but SPEC.md exists. Spawning Product Manager Agent to generate roadmap...\n", cfg.Input)
-				if genErr := services.GenerateRoadmap(context.Background(), ".", llmClient); genErr == nil {
-					// Retry reading the story file!
-					specBytes, err = os.ReadFile(cfg.Input)
+				if genErr := services.GenerateRoadmap(context.Background(), ".", llmClient); genErr != nil {
+					return fmt.Errorf("failed to generate roadmap from SPEC.md: %w", genErr)
 				}
+				// Check if roadmap directory was created and pick first story
+				roadmapDir := "roadmap"
+				if entries, readErr := os.ReadDir(roadmapDir); readErr == nil {
+					for _, entry := range entries {
+						if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+							cfg.Input = filepath.Join(roadmapDir, entry.Name())
+							break
+						}
+					}
+				}
+				// Retry reading the story file!
+				specBytes, err = os.ReadFile(cfg.Input)
 			}
 			if err != nil {
 				return fmt.Errorf("failed to read specification: %w", err)
@@ -249,15 +273,32 @@ var startOneCmd = &cobra.Command{
 		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
 
 		orchConfig := services.OrchestratorConfig{
-			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
-			MaxRetries:       10,
-			Concurrency:      cfg.Orchestrator.Concurrency,
-			MaxBudgetUSD:     cfg.LLM.MaxBudgetUSD,
-			OCCMaxRetries:    cfg.OCCMaxRetries,
-			OCCBackoffBase:   time.Duration(cfg.OCCBackoffBase),
-			OCCBackoffFactor: cfg.OCCBackoffFactor,
-			MaxDuration:      time.Duration(cfg.MaxDuration),
-			AutoCreatePR:     cfg.VCS.PullRequest.AutoCreate,
+			Architecture:          cfg.Agents.Architecture,
+			ArchitectNumber:       cfg.Agents.Architect.Number,
+			ArchitectIterations:   cfg.Agents.Architect.Iterations,
+			GeneratorsNumber:      cfg.Agents.Generators.Number,
+			GeneratorsIterations:  cfg.Agents.Generators.Iterations,
+			TestersNumber:         cfg.Agents.Testers.Number,
+			TestersIterations:     cfg.Agents.Testers.Iterations,
+			QAAgentsNumber:        cfg.Agents.QA.Number,
+			QAAgentsIterations:    cfg.Agents.QA.Iterations,
+			SecurityNumber:        cfg.Agents.Security.Number,
+			SecurityIterations:    cfg.Agents.Security.Iterations,
+			PerformanceNumber:     cfg.Agents.Performance.Number,
+			PerformanceIterations: cfg.Agents.Performance.Iterations,
+			DocsNumber:            cfg.Agents.Docs.Number,
+			DocsIterations:        cfg.Agents.Docs.Iterations,
+			DevOpsNumber:          cfg.Agents.DevOps.Number,
+			DevOpsIterations:      cfg.Agents.DevOps.Iterations,
+			PollInterval:          time.Duration(cfg.PollInterval),
+			MaxRetries:            10,
+			Concurrency:           cfg.Agents.Generators.Number,
+			MaxBudgetUSD:          cfg.LLM.MaxBudgetUSD,
+			OCCMaxRetries:         cfg.OCCMaxRetries,
+			OCCBackoffBase:        time.Duration(cfg.OCCBackoffBase),
+			OCCBackoffFactor:      cfg.OCCBackoffFactor,
+			MaxDuration:           time.Duration(cfg.MaxDuration),
+			AutoCreatePR:          cfg.VCS.PullRequest.AutoCreate,
 		}
 
 		orchestrator := services.NewOrchestrator(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, nil, repairHandler)

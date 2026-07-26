@@ -80,6 +80,8 @@ func (o *Orchestrator) registerAgentComplete(ctx context.Context, role string, t
 func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task domain.Task, state *domain.State) []string {
 	var gatheredContext []string
 
+	slicer := NewContextSlicer(o.cfg.Context)
+
 	// Heuristic Context Loading: automatically read target files if they exist to save an LLM turn
 	if len(task.TargetFiles) > 0 {
 		rfTool, ok := o.registry.Get("read_file")
@@ -91,11 +93,8 @@ func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task dom
 				args := map[string]any{"path": tf}
 				out, err := rfTool.Execute(ctx, state, args)
 				if err == nil && out != "" {
-					summary := out
-					if len(summary) > 2000 {
-						summary = summary[:2000] + "\n... [TRUNCATED] ..."
-					}
-					gatheredContext = append(gatheredContext, fmt.Sprintf("Inspection result of automatically reading target file %q:\n```\n%s\n```", tf, summary))
+					slicedCtx := slicer.SliceFileContext(tf, out, "")
+					gatheredContext = append(gatheredContext, slicedCtx)
 				}
 			}
 		}
@@ -256,6 +255,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	maxTurns := 5
 	var lastErr error
 	runTestsCalled := false
+	diagCache := NewTaskDiagnosticCache()
 
 	for turn := 0; turn < maxTurns; turn++ {
 		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
@@ -294,9 +294,21 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				continue
 			}
 
+			if cachedOut, cachedErr, hasCache := diagCache.TryGetCachedResult(action.Tool); hasCache {
+				fmt.Printf("Orchestrator: Task %s [Tester] diagnostic action %s served from cache\n", task.ID, action.Tool)
+				if cachedErr != nil {
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, cachedErr, cachedOut))
+				} else {
+					executed++
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, cachedOut))
+				}
+				continue
+			}
+
 			tool, ok := o.registry.Get(action.Tool)
 			if ok {
 				out, execErr := tool.Execute(testerCtx, state, action.Args)
+				diagCache.OnToolExecuted(action.Tool, out, execErr)
 				if execErr != nil {
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 				} else {
@@ -365,6 +377,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	var lastErr error
 	runTestsCalled := false
 	testFixRequestCount := 0
+	diagCache := NewTaskDiagnosticCache()
 
 	for turn := 0; turn < maxTurns; turn++ {
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
@@ -403,9 +416,21 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				continue
 			}
 
+			if cachedOut, cachedErr, hasCache := diagCache.TryGetCachedResult(action.Tool); hasCache {
+				fmt.Printf("Orchestrator: Task %s [Generator] diagnostic action %s served from cache\n", task.ID, action.Tool)
+				if cachedErr != nil {
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, cachedErr, cachedOut))
+				} else {
+					executed++
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, cachedOut))
+				}
+				continue
+			}
+
 			tool, ok := o.registry.Get(action.Tool)
 			if ok {
 				out, execErr := tool.Execute(genCtx, state, action.Args)
+				diagCache.OnToolExecuted(action.Tool, out, execErr)
 				if execErr != nil {
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 				} else {

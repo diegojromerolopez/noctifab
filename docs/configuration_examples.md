@@ -16,6 +16,34 @@ storage:
   provider: "sqlite"
   conn_string: "./.noctifab/data/noctifab.db"
 
+agents:
+  architecture: "code_first_verification_loop" # Options: code_first_verification_loop (default), single_pass_execution
+  architect:
+    number: 1      # Pre-flight architecture pass (default: 1)
+    iterations: 2
+  generators:
+    number: 3      # Number of parallel Generator agents (default: 3)
+    iterations: 5  # Maximum turns per task (default: 5)
+  testers:
+    number: 2      # Number of parallel Tester agents (default: 2)
+    iterations: 3  # Maximum turns per task (default: 3)
+  qa:
+    number: 1      # QA Auditor agents auditing code/tests (default: 1)
+    iterations: 2  # Maximum QA refactor review iterations per feature (default: 2)
+  security:
+    number: 1      # SAST & security auditor agents (default: 1)
+    iterations: 2
+  performance:
+    number: 1      # Profiling & benchmark agents (default: 1)
+    iterations: 2
+  docs:
+    number: 1      # OpenAPI & docstring generator agents (default: 1)
+    iterations: 2
+  devops:
+    number: 1      # Dockerfile & CI pipeline release agents (default: 1)
+    iterations: 2
+poll_interval: "5m0s"
+
 llm:
   provider: "openai"
   model: "gpt-4o"
@@ -23,6 +51,9 @@ llm:
   api_key: "secret:OPENAI_API_KEY"
   max_retries: 3
   retry_backoff: "100ms"
+  max_timeout: "60s"
+  idle_timeout: "15s"
+  streaming: true
 
 vcs:
   provider: "github"
@@ -191,4 +222,17 @@ sandbox:
     - "go"
     - "make"
     - "git"
+
+# Performance Metrics & Telemetry
+telemetry:
+  enabled: false                   # OpenTelemetry tracing (default: false)
+  exporter: "otlp"
+  metrics:
+    enabled: true                  # Performance & Speed Metrics Instrumentation (default: true)
+
+# Context Slicing & AST Symbol Indexing
+context:
+  mode: "tree_sitter"              # Options: "full" (default), "diff_window", "tree_sitter"
+  diff_window_lines: 15
 ```
+

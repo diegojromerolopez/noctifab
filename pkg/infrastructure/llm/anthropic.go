@@ -12,13 +12,15 @@ import (
 )
 
 type anthropicProviderClient struct {
-	url     string
-	timeout time.Duration
+	url         string
+	timeout     time.Duration
+	idleTimeout time.Duration
+	streaming   bool
 }
 
 // NewAnthropicProviderClient creates a ProviderClient for Anthropic (Claude) API.
-func NewAnthropicProviderClient(url string, timeout time.Duration) ProviderClient {
-	return &anthropicProviderClient{url: url, timeout: timeout}
+func NewAnthropicProviderClient(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+	return &anthropicProviderClient{url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
 }
 
 func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {

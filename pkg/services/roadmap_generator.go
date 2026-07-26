@@ -19,50 +19,55 @@ func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.L
 	}
 
 	prompt := fmt.Sprintf("Generate detailed user stories from specification:\n\n%s", string(specBytes))
-	resp, err := llmClient.Complete(ctx, prompt)
-	if err != nil {
-		return fmt.Errorf("failed to complete LLM call for roadmap generation: %w", err)
-	}
+	var lastErr error
 
-	roadmapDir := filepath.Join(projectPath, "roadmap")
-	if err := os.MkdirAll(roadmapDir, 0755); err != nil {
-		return fmt.Errorf("failed to create roadmap directory %q: %w", roadmapDir, err)
-	}
-
-	// Process the actions (which should be "create_story")
-	storiesCount := 0
-	for _, action := range resp.Actions {
-		if action.Tool == "create_story" {
-			filename, _ := action.Args["filename"].(string)
-			content, _ := action.Args["content"].(string)
-			if filename == "" || content == "" {
-				continue
-			}
-
-			// Clean and resolve path
-			cleaned := filepath.Clean(filename)
-			var targetPath string
-			if filepath.IsAbs(cleaned) {
-				targetPath = cleaned
-			} else {
-				targetPath = filepath.Join(projectPath, cleaned)
-			}
-
-			// Ensure parent dir exists
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-				return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)
-			}
-
-			if err := os.WriteFile(targetPath, []byte(content), 0644); err != nil {
-				return fmt.Errorf("failed to write story file %q: %w", targetPath, err)
-			}
-			storiesCount++
+	for attempt := 0; attempt < 3; attempt++ {
+		resp, err := llmClient.Complete(ctx, prompt)
+		if err != nil {
+			lastErr = err
+			continue
 		}
+
+		roadmapDir := filepath.Join(projectPath, "roadmap")
+		if err := os.MkdirAll(roadmapDir, 0755); err != nil {
+			return fmt.Errorf("failed to create roadmap directory %q: %w", roadmapDir, err)
+		}
+
+		storiesCount := 0
+		for _, action := range resp.Actions {
+			if action.Tool == "create_story" {
+				filename, _ := action.Args["filename"].(string)
+				content, _ := action.Args["content"].(string)
+				if filename == "" || content == "" {
+					continue
+				}
+
+				// Clean and resolve path
+				cleaned := filepath.Clean(filename)
+				var targetPath string
+				if filepath.IsAbs(cleaned) {
+					targetPath = cleaned
+				} else {
+					targetPath = filepath.Join(projectPath, cleaned)
+				}
+
+				// Ensure parent dir exists
+				if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+					return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)
+				}
+
+				if err := os.WriteFile(targetPath, []byte(content), 0644); err != nil {
+					return fmt.Errorf("failed to write story file %q: %w", targetPath, err)
+				}
+				storiesCount++
+			}
+		}
+
+		if storiesCount > 0 {
+			return nil
+		}
+		lastErr = fmt.Errorf("LLM did not return any valid create_story actions")
 	}
 
-	if storiesCount == 0 {
-		return fmt.Errorf("LLM did not return any valid create_story actions")
-	}
-
-	return nil
+	return fmt.Errorf("roadmap generation failed: %w", lastErr)
 }

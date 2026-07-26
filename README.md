@@ -127,6 +127,50 @@ To prevent "evaluation gaming" (where code generators approve their own buggy co
 
 **Inter-Agent Relationship**: The Generator Agent and Tester Agent are coordinated sequentially by the orchestrator. The Generator Agent implements the functionality, while the Tester Agent writes the tests. By keeping these roles separate and preventing the Generator from writing its own test suite from scratch without verification, `noctifab` ensures that tests act as an objective quality gate. If the Generator Agent discovers a bug in the test definitions, it can request test modifications using the orchestrator's inter-agent communication channel (`request_test_fix`).
 
+### Agent Architecture Modes & Team Configuration (`agents:`)
+
+`noctifab` supports unified multi-agent team configuration under the **`agents:`** section in `.noctifab/config.yaml`. Setting `number: 0` disables any agent type.
+
+```yaml
+agents:
+  architecture: "code_first_verification_loop" # Options: code_first_verification_loop (default), single_pass_execution
+
+  architect:
+    number: 1      # Software Architect pre-flight agents (default: 1)
+    iterations: 2
+
+  generators:
+    number: 3      # Number of parallel Generator agents (default: 3)
+    iterations: 5  # Maximum LLM repair turns per task (default: 5)
+
+  testers:
+    number: 2      # Number of parallel Tester agents (default: 2)
+    iterations: 3  # Maximum LLM turns per task (default: 3)
+
+  qa:
+    number: 1      # QA Auditor agents auditing code/tests (default: 1)
+    iterations: 2  # Maximum QA refactor review iterations per feature (default: 2)
+
+  security:
+    number: 1      # SAST & security auditor agents (default: 1)
+    iterations: 2
+
+  performance:
+    number: 1      # Benchmark & memory leak profiler agents (default: 1)
+    iterations: 2
+
+  docs:
+    number: 1      # OpenAPI & docstrings generator agents (default: 1)
+    iterations: 2
+
+  devops:
+    number: 1      # Dockerfile & CI pipeline release agents (default: 1)
+    iterations: 2
+```
+
+1. **`code_first_verification_loop`** (Default): Separates Generator code implementation from Tester test writing, enforcing independent TDD verification.
+2. **`single_pass_execution`**: Fast-path execution where a single Generator Agent pass co-generates implementation code and tests in one turn.
+3. **Multi-Agent Quality & Release Panel**: Parallel specialized agents (`qa`, `security`, `performance`, `docs`, `devops`) audit, optimize, document, and containerize features autonomously.
 
 ---
 
@@ -230,6 +274,20 @@ profiles:
       - "noop"
 ```
 
+### Context Slicing & AST Indexing (`context.mode`)
+
+Control how workspace source files are formatted into LLM prompt contexts to optimize speed and token consumption:
+
+* **`full`** (default): Sends complete source file contents. Maximum context, best for small projects.
+* **`diff_window`**: Extracts modified git diff lines and error stack traces (+/- 15 context lines), cutting token usage by ~80%.
+* **`tree_sitter`**: Uses universal AST parsing to extract function signatures, struct/class definitions, and symbol maps.
+
+```yaml
+context:
+  mode: "full"            # Options: "full" (default), "diff_window", "tree_sitter"
+  diff_window_lines: 15   # Surrounding context lines for diff_window mode
+```
+
 ---
 
 ## LLM Providers
@@ -254,6 +312,9 @@ llm:
   provider: gemini
   model: gemini-2.5-pro          # fallback chain: → gemini-2.5-flash
   api_key: "secret:GEMINI_API_KEY"
+  max_timeout: 60s               # Overall request hard timeout
+  idle_timeout: 15s              # Socket stream inactivity timeout before failover
+  streaming: true                # Enable HTTP SSE token streaming (default: true)
 ```
 
 ```yaml

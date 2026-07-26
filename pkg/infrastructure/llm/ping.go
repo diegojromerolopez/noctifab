@@ -39,11 +39,11 @@ func Ping(ctx context.Context, provider, apiKey, url string) error {
 func newProviderClientForPing(provider, url string) (ProviderClient, error) {
 	switch strings.ToLower(provider) {
 	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
-		return NewOpenAIProviderClient(provider, url, 15*time.Second), nil
+		return NewOpenAIProviderClient(provider, url, 15*time.Second, 15*time.Second, false), nil
 	case "gemini":
-		return NewGeminiProviderClient(url, 15*time.Second), nil
+		return NewGeminiProviderClient(url, 15*time.Second, 15*time.Second, false), nil
 	case "anthropic":
-		return NewAnthropicProviderClient(url, 15*time.Second), nil
+		return NewAnthropicProviderClient(url, 15*time.Second, 15*time.Second, false), nil
 	default:
 		return nil, fmt.Errorf("unsupported LLM provider: %s", provider)
 	}

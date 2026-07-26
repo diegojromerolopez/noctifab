@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-07-26
+
+### Added
+- **Performance & Speed Metrics Instrumentation (`telemetry.metrics.enabled`)**: Added thread-safe performance and speed metrics collector (`MetricsCollector`) to track Time To First Commit (TTFC), per-phase execution latencies (`Reader`, `Planner`, `Generator`, `Tester`, `Validator`), LLM API wait duration, token output throughput (tokens/sec), sandbox build times, and retry counts, exported to `.noctifab/data/metrics.json`.
+- **Context Slicing & AST Symbol Indexing (`context.mode`)**: Added configurable context slicing service (`ContextSlicer`) supporting `full` (default, full source files), `diff_window` (git diff line windows and test stack traces), and `tree_sitter` (universal AST symbol map parsing) modes in `.noctifab/config.yaml`.
+- **Anti-Stalling & Diagnostic Tool Caching**: Added `TaskDiagnosticCache` to deduplicate read-only diagnostic tool executions within agent turns, single-pass code generation capability (`orchestrator_execute_single_pass.go`), deterministic auto-formatter pre-pass before linter check retries, and resilient retry logic for roadmap generation.
+- **Validation Project Matrix Updates**: Added `fortune` project spec & configuration, and enabled performance metrics / context slicing configurations across all 6 validation target projects (`calculator` set to `mode: tree_sitter`; `echo`, `fortune`, `frontpunch`, `todo-cli`, `wc` set to `mode: full`).
+- **Dark Factory Architecture Review**: Added `DARK_FACTORY_REVIEW.md` document outlining optimizations for speed, architectural completeness, and reliability.
+- **Documentation Updates**: Updated `README.md`, `docs/architecture.md`, `docs/configuration.md`, and `docs/configuration_examples.md` with metrics, streaming, and context slicing configurations and architectural details.
+
+## [0.13.0] - 2026-07-26
+
+### Added
+- **HTTP SSE Streaming Transport (`llm.streaming`)**: Added configurable Server-Sent Events (SSE) token streaming transport across OpenAI-compatible, Gemini, and Anthropic LLM provider clients, controlled by the `llm.streaming` configuration boolean (defaulting to `true`).
+- **Sliding Idle Socket Timeout**: Integrated sliding socket inactivity timer (`readSSEResponse`) that resets on every chunk arrival and triggers instant provider failover if 0 tokens are received for 15 consecutive seconds (`llm.idle_timeout`).
+- **Documentation Updates**: Updated `docs/configuration.md` and `docs/architecture.md` with `streaming` configuration details and SSE streaming architecture breakdown.
+
+## [0.12.3] - 2026-07-24
+
+### Added
+- **LLM Idle Timeout Configuration (`llm.idle_timeout`)**: Added configurable stream and socket inactivity timeout `idle_timeout` (defaulting to `15s`) in `LLMConfig` and `FailoverBackend` structs. Automatically triggers client failover when zero response bytes are received for 15 seconds continuously without truncating active long responses.
+- **Validation Project Configurations**: Added `idle_timeout: 15s` to all 6 target validation project configurations (`calculator`, `echo`, `fortune`, `frontpunch`, `todo-cli`, `wc`).
+- **Documentation Updates**: Updated `README.md`, `docs/configuration.md`, and `docs/configuration_examples.md` with `idle_timeout` settings and descriptions.
+
 ## [0.12.2] - 2026-07-23
 
 ### Changed

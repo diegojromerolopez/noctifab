@@ -103,3 +103,58 @@ func TestWriteDefaultConfig(t *testing.T) {
 		t.Error("expected error writing to directory path")
 	}
 }
+
+func TestMetricsConfig_IsEnabled(t *testing.T) {
+	t.Run("default nil is enabled", func(t *testing.T) {
+		mc := MetricsConfig{Enabled: nil}
+		if !mc.IsEnabled() {
+			t.Errorf("expected default (nil) MetricsConfig to be enabled")
+		}
+	})
+
+	t.Run("explicitly enabled", func(t *testing.T) {
+		val := true
+		mc := MetricsConfig{Enabled: &val}
+		if !mc.IsEnabled() {
+			t.Errorf("expected MetricsConfig to be enabled")
+		}
+	})
+
+	t.Run("explicitly disabled", func(t *testing.T) {
+		val := false
+		mc := MetricsConfig{Enabled: &val}
+		if mc.IsEnabled() {
+			t.Errorf("expected MetricsConfig to be disabled")
+		}
+	})
+}
+
+func TestContextConfig_GetMode(t *testing.T) {
+	t.Run("default empty is full", func(t *testing.T) {
+		cc := ContextConfig{}
+		if cc.GetMode() != ContextModeFull {
+			t.Errorf("expected ContextModeFull, got %v", cc.GetMode())
+		}
+	})
+
+	t.Run("diff_window mode", func(t *testing.T) {
+		cc := ContextConfig{Mode: "diff_window"}
+		if cc.GetMode() != ContextModeDiffWindow {
+			t.Errorf("expected ContextModeDiffWindow, got %v", cc.GetMode())
+		}
+	})
+
+	t.Run("tree_sitter mode", func(t *testing.T) {
+		cc := ContextConfig{Mode: "tree_sitter"}
+		if cc.GetMode() != ContextModeTreeSitter {
+			t.Errorf("expected ContextModeTreeSitter, got %v", cc.GetMode())
+		}
+	})
+
+	t.Run("invalid mode falls back to full", func(t *testing.T) {
+		cc := ContextConfig{Mode: "unknown_mode"}
+		if cc.GetMode() != ContextModeFull {
+			t.Errorf("expected fallback to ContextModeFull, got %v", cc.GetMode())
+		}
+	})
+}

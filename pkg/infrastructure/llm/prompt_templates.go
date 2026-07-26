@@ -49,7 +49,8 @@ You may only use the 'add_task' tool to define the tasks.
 
 CRITICAL:
 1. You must always specify 'target_files' for each task to inform downstream generator agents of which files they need to work on.
-2. The planned tasks must include enough detail so generator agents have all the instructions they need.
+2. TASK COHESION: Never create orphan interface-only tasks. Interface/domain model definitions and their primary implementation (or functional in-memory mock) MUST be grouped together in the same task so test validation passes cleanly without orphan mocks.
+3. The planned tasks must include enough detail so generator agents have all the instructions they need.
 
 Return format:
 {

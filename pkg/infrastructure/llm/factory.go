@@ -28,6 +28,14 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 			if b.MaxTimeout > 0 {
 				client.Timeout = time.Duration(b.MaxTimeout)
 			}
+			if b.IdleTimeout > 0 {
+				client.IdleTimeout = time.Duration(b.IdleTimeout)
+			}
+			if b.Streaming != nil {
+				client.Streaming = *b.Streaming
+			} else if cfg.LLM.Streaming != nil {
+				client.Streaming = *cfg.LLM.Streaming
+			}
 			backends = append(backends, NamedClient{
 				Name:   b.Provider + "/" + b.Model,
 				Model:  b.Model,
@@ -56,6 +64,16 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 			if cfg.LLM.MaxTimeout > 0 {
 				client.Timeout = time.Duration(cfg.LLM.MaxTimeout)
 			}
+			if b.IdleTimeout > 0 {
+				client.IdleTimeout = time.Duration(b.IdleTimeout)
+			} else if cfg.LLM.IdleTimeout > 0 {
+				client.IdleTimeout = time.Duration(cfg.LLM.IdleTimeout)
+			}
+			if b.Streaming != nil {
+				client.Streaming = *b.Streaming
+			} else if cfg.LLM.Streaming != nil {
+				client.Streaming = *cfg.LLM.Streaming
+			}
 			backends = append(backends, NamedClient{
 				Name:   b.Provider + "/" + b.Model,
 				Model:  b.Model,
@@ -71,6 +89,12 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 	)
 	if cfg.LLM.MaxTimeout > 0 {
 		client.Timeout = time.Duration(cfg.LLM.MaxTimeout)
+	}
+	if cfg.LLM.IdleTimeout > 0 {
+		client.IdleTimeout = time.Duration(cfg.LLM.IdleTimeout)
+	}
+	if cfg.LLM.Streaming != nil {
+		client.Streaming = *cfg.LLM.Streaming
 	}
 	return client
 }

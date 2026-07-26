@@ -43,7 +43,7 @@ func TestGeminiProviderClient_Call(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewGeminiProviderClient(server.URL, 0)
+		client := NewGeminiProviderClient(server.URL, 0, 0, false)
 		res, err := client.Call(context.Background(), "gemini-2.5-pro", "test-key", "hello")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -60,7 +60,7 @@ func TestGeminiProviderClient_Call(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewGeminiProviderClient(server.URL, 0)
+		client := NewGeminiProviderClient(server.URL, 0, 0, false)
 		_, err := client.Call(context.Background(), "gemini-2.5-pro", "test-key", "hello")
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -93,7 +93,7 @@ func TestGeminiProviderClient_GetAvailableModels(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewGeminiProviderClient(server.URL, 0)
+		client := NewGeminiProviderClient(server.URL, 0, 0, false)
 		models, err := client.GetAvailableModels(context.Background(), "test-key")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

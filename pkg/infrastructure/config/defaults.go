@@ -13,13 +13,45 @@ import (
 func DefaultConfig() *Config {
 	return &Config{
 		ConfigVersion: "1.0",
-		Orchestrator: OrchestratorConfig{
-			MaxToolsPerResponse:        5,
-			Concurrency:                3,
-			PollInterval:               Duration(5 * time.Minute),
-			MaxClarificationWait:       Duration(30 * time.Minute),
-			ClarificationTimeoutAction: "abort",
+		Agents: AgentsConfig{
+			Architecture:        "code_first_verification_loop",
+			MaxToolsPerResponse: 5,
+			Architect: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Generators: AgentRoleConfig{
+				Number:     3,
+				Iterations: 5,
+			},
+			Testers: AgentRoleConfig{
+				Number:     2,
+				Iterations: 3,
+			},
+			QA: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Security: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Performance: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Docs: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			DevOps: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
 		},
+		PollInterval:               Duration(5 * time.Minute),
+		MaxClarificationWait:       Duration(30 * time.Minute),
+		ClarificationTimeoutAction: "abort",
 		Storage: StorageConfig{
 			Provider:     "sqlite",
 			ConnString:   ".noctifab/data/noctifab.db",
@@ -42,7 +74,9 @@ func DefaultConfig() *Config {
 				MaxCallLimit: 0,
 				Backends:     nil,
 			},
-			MaxTimeout: Duration(60 * time.Second),
+			MaxTimeout:  Duration(60 * time.Second),
+			IdleTimeout: Duration(15 * time.Second),
+			Streaming:   boolPtr(true),
 		},
 		VCS: VCSConfig{
 			Provider:     "github",
@@ -108,11 +142,18 @@ func DefaultConfig() *Config {
 			Exporter:    "otlp",
 			Endpoint:    "",
 			ServiceName: "noctifab",
+			Metrics: MetricsConfig{
+				Enabled: boolPtr(true),
+			},
 		},
 		SAST: SASTConfig{
 			Enabled:        false,
 			Scanners:       []string{"gosec"},
 			FailOnSeverity: "high",
+		},
+		Context: ContextConfig{
+			Mode:            "full",
+			DiffWindowLines: 15,
 		},
 		LogLevel: "info",
 	}
@@ -136,4 +177,8 @@ func WriteDefaultConfig(path string) error {
 	}
 
 	return nil
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }

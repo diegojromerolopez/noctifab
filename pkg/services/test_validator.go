@@ -54,14 +54,22 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	defer span.End()
 
 	if v.FormatterCommand != "" {
-		// Auto-fix formatting before running the read-only linter check.
-		// Errors here are non-fatal; the subsequent linter run will surface
-		// any persistent problem with a precise diff.
+		// Deterministic Auto-Formatter Pre-Pass:
+		// Automatically run auto-fix formatter before linter evaluation.
 		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
 	}
 
 	if v.LinterCommand != "" {
 		out, err := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
+		if err != nil && v.FormatterCommand != "" {
+			// Try auto-formatting once more to resolve formatting/style linter offenses automatically
+			_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
+			outRetry, errRetry := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
+			if errRetry == nil {
+				out = outRetry
+				err = nil
+			}
+		}
 		if err != nil {
 			return false, fmt.Sprintf("Linter validation failed. Command: %s. Output:\n%s", v.LinterCommand, out), nil
 		}
