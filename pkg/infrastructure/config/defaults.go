@@ -48,6 +48,9 @@ func DefaultConfig() *Config {
 				Number:     1,
 				Iterations: 2,
 			},
+			WorkspaceCache: WorkspaceCacheConfig{
+				Enabled: boolPtr(true),
+			},
 		},
 		PollInterval:               Duration(5 * time.Minute),
 		MaxClarificationWait:       Duration(30 * time.Minute),

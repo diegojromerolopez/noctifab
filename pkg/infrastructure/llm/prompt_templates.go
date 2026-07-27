@@ -82,6 +82,7 @@ ANTI-STALLING MANDATE:
 - If you are unsure how to fix an error, DELETE the broken file and rewrite it from scratch using a simpler, more conservative approach.
 - If a linter reports a cop or rule has been renamed or removed, update the linter config file to use the correct current name, then re-run immediately.
 - If test/spec files trigger linter block-length or complexity violations, configure the linter to exclude those metrics for test/spec paths (e.g. in .rubocop.yml, eslint overrides, etc.) rather than endlessly restructuring the test file.
+- When writing Makefiles or build scripts, test execution targets MUST compile and link all implementation source files alongside test files so all symbol references resolve.
 - NEVER give up. NEVER say "I cannot fix this." Always try something.
 - You MUST call run_tests at least once before calling noop to verify your work compiles and tests pass.`
 
@@ -97,6 +98,7 @@ ANTI-STALLING MANDATE:
 - If a dependency is missing (cargo, npm, pip), check the project manifest files first and add any missing dependencies.
 - If a linter reports a cop or rule has been renamed or removed, update the linter config file to use the correct current name, then re-run immediately.
 - After creating or modifying any linter configuration file (e.g. .rubocop.yml, .eslintrc, pyproject.toml), ALWAYS run the linter immediately to verify the config itself is valid.
+- When writing Makefiles or build scripts, test execution targets MUST compile and link all implementation source files alongside test files so all symbol references resolve.
 - NEVER give up. NEVER say "I cannot fix this." Always try something.
 - You MUST call run_tests at least once before calling noop to verify your work compiles and tests pass.`
 

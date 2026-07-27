@@ -288,6 +288,18 @@ context:
   diff_window_lines: 15   # Surrounding context lines for diff_window mode
 ```
 
+### Workspace Inspection Caching (`agents.workspace_cache.enabled`)
+
+Optimize multi-turn agent turns by deduplicating read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent's execution loop:
+
+```yaml
+agents:
+  workspace_cache:
+    enabled: true        # In-memory caching of workspace filesystem reads until a file write occurs (default: true)
+```
+
+---
+
 ---
 
 ## LLM Providers

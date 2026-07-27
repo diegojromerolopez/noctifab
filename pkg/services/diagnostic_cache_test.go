@@ -6,7 +6,7 @@ import (
 )
 
 func TestTaskDiagnosticCache_RunTestsCaching(t *testing.T) {
-	cache := NewTaskDiagnosticCache()
+	cache := NewTaskDiagnosticCache(true)
 
 	// Initial check should be cache miss
 	_, _, ok := cache.TryGetCachedResult("run_tests")
@@ -15,7 +15,7 @@ func TestTaskDiagnosticCache_RunTestsCaching(t *testing.T) {
 	}
 
 	// Record test run
-	cache.OnToolExecuted("run_tests", "PASS: 5 tests passed", nil)
+	cache.OnToolExecuted("run_tests", nil, "PASS: 5 tests passed", nil)
 
 	// Next check without mutations should be a cache hit
 	out, err, ok := cache.TryGetCachedResult("run_tests")
@@ -30,7 +30,7 @@ func TestTaskDiagnosticCache_RunTestsCaching(t *testing.T) {
 	}
 
 	// Mutate workspace via edit_file
-	cache.OnToolExecuted("edit_file", "File updated", nil)
+	cache.OnToolExecuted("edit_file", map[string]any{"path": "file.go"}, "File updated", nil)
 
 	// Check after mutation should be a cache miss
 	_, _, ok = cache.TryGetCachedResult("run_tests")
@@ -40,9 +40,9 @@ func TestTaskDiagnosticCache_RunTestsCaching(t *testing.T) {
 }
 
 func TestTaskDiagnosticCache_RunLinterCaching(t *testing.T) {
-	cache := NewTaskDiagnosticCache()
+	cache := NewTaskDiagnosticCache(true)
 
-	cache.OnToolExecuted("run_linter", "No lint errors found", nil)
+	cache.OnToolExecuted("run_linter", nil, "No lint errors found", nil)
 
 	out, err, ok := cache.TryGetCachedResult("run_linter")
 	if !ok {
@@ -53,28 +53,60 @@ func TestTaskDiagnosticCache_RunLinterCaching(t *testing.T) {
 	}
 
 	// Delete file mutation
-	cache.OnToolExecuted("delete_file", "File removed", nil)
+	cache.OnToolExecuted("delete_file", map[string]any{"path": "file.go"}, "File removed", nil)
 
 	_, _, ok = cache.TryGetCachedResult("run_linter")
 	if ok {
 		t.Fatalf("expected cache miss after delete_file, got hit")
 	}
+
+	// Test error failure caching
+	cache.OnToolExecuted("run_linter", nil, "linter failed", errors.New("exit code 1"))
+	out, err, ok = cache.TryGetCachedResult("run_linter")
+	if !ok || err == nil {
+		t.Fatalf("expected cached linter error, got out=%q err=%v ok=%v", out, err, ok)
+	}
 }
 
-func TestTaskDiagnosticCache_ErrorResultCaching(t *testing.T) {
-	cache := NewTaskDiagnosticCache()
+func TestTaskDiagnosticCache_InspectionCaching(t *testing.T) {
+	cache := NewTaskDiagnosticCache(true)
+	args := map[string]any{"path": "src"}
 
-	testErr := errors.New("command failed with exit code 1")
-	cache.OnToolExecuted("run_tests", "FAIL: 1 test failed", testErr)
+	// Initial check miss
+	_, _, ok := cache.TryGetCachedInspection("list_directory", args)
+	if ok {
+		t.Fatalf("expected cache miss on fresh cache, got hit")
+	}
 
-	out, err, ok := cache.TryGetCachedResult("run_tests")
+	// Record list_directory result
+	cache.OnToolExecuted("list_directory", args, "src/main.c\nsrc/quote.c", nil)
+
+	// Next check should be hit
+	out, err, ok := cache.TryGetCachedInspection("list_directory", args)
 	if !ok {
-		t.Fatalf("expected cache hit for failing test run, got miss")
+		t.Fatalf("expected cache hit for list_directory, got miss")
 	}
-	if err != testErr {
-		t.Fatalf("expected cached error %v, got %v", testErr, err)
+	if err != nil || out == "" {
+		t.Fatalf("unexpected cached result: out=%q err=%v", out, err)
 	}
-	if out == "" {
-		t.Fatalf("expected non-empty output for failed run")
+
+	// Mutate workspace via write_file
+	cache.OnToolExecuted("write_file", map[string]any{"path": "src/new.c"}, "file written", nil)
+
+	// Check after mutation should be a cache miss
+	_, _, ok = cache.TryGetCachedInspection("list_directory", args)
+	if ok {
+		t.Fatalf("expected cache miss after write_file mutation, got hit")
+	}
+}
+
+func TestTaskDiagnosticCache_Disabled(t *testing.T) {
+	cache := NewTaskDiagnosticCache(false)
+	args := map[string]any{"path": "src"}
+
+	cache.OnToolExecuted("list_directory", args, "src/main.c", nil)
+	_, _, ok := cache.TryGetCachedInspection("list_directory", args)
+	if ok {
+		t.Fatalf("expected cache miss when cache is disabled, got hit")
 	}
 }

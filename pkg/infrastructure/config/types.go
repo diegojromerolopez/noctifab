@@ -64,16 +64,17 @@ type Config struct {
 }
 
 type AgentsConfig struct {
-	Architecture        string          `yaml:"architecture"`
-	MaxToolsPerResponse int             `yaml:"max_tools_per_response"`
-	Architect           AgentRoleConfig `yaml:"architect"`
-	Generators          AgentRoleConfig `yaml:"generators"`
-	Testers             AgentRoleConfig `yaml:"testers"`
-	QA                  AgentRoleConfig `yaml:"qa"`
-	Security            AgentRoleConfig `yaml:"security"`
-	Performance         AgentRoleConfig `yaml:"performance"`
-	Docs                AgentRoleConfig `yaml:"docs"`
-	DevOps              AgentRoleConfig `yaml:"devops"`
+	Architecture        string               `yaml:"architecture"`
+	MaxToolsPerResponse int                  `yaml:"max_tools_per_response"`
+	Architect           AgentRoleConfig      `yaml:"architect"`
+	Generators          AgentRoleConfig      `yaml:"generators"`
+	Testers             AgentRoleConfig      `yaml:"testers"`
+	QA                  AgentRoleConfig      `yaml:"qa"`
+	Security            AgentRoleConfig      `yaml:"security"`
+	Performance         AgentRoleConfig      `yaml:"performance"`
+	Docs                AgentRoleConfig      `yaml:"docs"`
+	DevOps              AgentRoleConfig      `yaml:"devops"`
+	WorkspaceCache      WorkspaceCacheConfig `yaml:"workspace_cache"`
 }
 
 type AgentRoleConfig struct {
@@ -245,4 +246,15 @@ func (c ContextConfig) GetMode() ContextMode {
 	default:
 		return ContextModeFull
 	}
+}
+
+type WorkspaceCacheConfig struct {
+	Enabled *bool `yaml:"enabled"`
+}
+
+func (w WorkspaceCacheConfig) IsEnabled() bool {
+	if w.Enabled == nil {
+		return true // Default: true
+	}
+	return *w.Enabled
 }

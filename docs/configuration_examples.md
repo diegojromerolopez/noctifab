@@ -42,6 +42,8 @@ agents:
   devops:
     number: 1      # Dockerfile & CI pipeline release agents (default: 1)
     iterations: 2
+  workspace_cache:
+    enabled: true  # In-memory caching of workspace filesystem reads until mutation (default: true)
 poll_interval: "5m0s"
 
 llm:

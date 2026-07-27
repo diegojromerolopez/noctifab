@@ -365,6 +365,20 @@ context:
 
 ---
 
+## Workspace Inspection Caching Settings (`agents.workspace_cache`)
+
+Controls in-memory deduplication of read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent task execution loop. The cache is automatically invalidated when any file mutation (`write_file`, `edit_file`, `delete_file`) occurs.
+
+```yaml
+agents:
+  workspace_cache:
+    enabled: true
+```
+
+- **`enabled`** (Boolean): Enable in-memory workspace inspection and diagnostic tool caching (default: `true`).
+
+---
+
 ## Full Configuration Example (`.noctifab/config.yaml`)
 
 Below is a complete, annotated example configuration demonstrating all options in a typical spec-driven (Level 3.5) setup:

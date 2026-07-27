@@ -158,3 +158,28 @@ func TestContextConfig_GetMode(t *testing.T) {
 		}
 	})
 }
+
+func TestWorkspaceCacheConfig_IsEnabled(t *testing.T) {
+	t.Run("default nil is enabled", func(t *testing.T) {
+		wc := WorkspaceCacheConfig{Enabled: nil}
+		if !wc.IsEnabled() {
+			t.Errorf("expected default nil WorkspaceCacheConfig to be enabled")
+		}
+	})
+
+	t.Run("explicitly enabled", func(t *testing.T) {
+		val := true
+		wc := WorkspaceCacheConfig{Enabled: &val}
+		if !wc.IsEnabled() {
+			t.Errorf("expected WorkspaceCacheConfig to be enabled")
+		}
+	})
+
+	t.Run("explicitly disabled", func(t *testing.T) {
+		val := false
+		wc := WorkspaceCacheConfig{Enabled: &val}
+		if wc.IsEnabled() {
+			t.Errorf("expected WorkspaceCacheConfig to be disabled")
+		}
+	})
+}

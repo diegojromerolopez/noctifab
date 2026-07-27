@@ -5,15 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-07-27
+
+### Added
+- **Context Slicing & AST Symbol Indexing (`context.mode`)**: Added configurable context slicing service (`ContextSlicer`) supporting `full` (default, full source files), `diff_window` (git diff line windows and test stack traces), and `tree_sitter` (universal AST symbol map parsing) modes in `.noctifab/config.yaml`.
+- **Workspace Inspection Caching (`agents.workspace_cache.enabled`)**: Added in-memory workspace inspection tool caching (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic tool caching (`run_tests`, `run_linter`) in `TaskDiagnosticCache`, automatically invalidated when file mutations occur (`write_file`, `edit_file`, `delete_file`), controlled by `agents.workspace_cache.enabled` (defaulting to `true`).
+- **Build Script Symbol Linking Directive**: Added prompt directive to universal anti-stalling mandates instructing agents to link all implementation source files alongside test files in Makefiles and build scripts.
+- **Validation Project Matrix Updates**: Added `fortune` project spec & configuration, and enabled performance metrics, workspace inspection caching, and context slicing configurations across all 6 validation target projects (`calculator` set to `mode: tree_sitter`; `echo`, `fortune`, `frontpunch`, `todo-cli`, `wc` set to `mode: full`).
+- **Documentation Updates**: Updated `README.md`, `docs/architecture.md`, `docs/configuration.md`, and `docs/configuration_examples.md` with metrics, streaming, workspace caching, and context slicing configurations and architectural details.
+
 ## [0.14.0] - 2026-07-26
 
 ### Added
 - **Performance & Speed Metrics Instrumentation (`telemetry.metrics.enabled`)**: Added thread-safe performance and speed metrics collector (`MetricsCollector`) to track Time To First Commit (TTFC), per-phase execution latencies (`Reader`, `Planner`, `Generator`, `Tester`, `Validator`), LLM API wait duration, token output throughput (tokens/sec), sandbox build times, and retry counts, exported to `.noctifab/data/metrics.json`.
-- **Context Slicing & AST Symbol Indexing (`context.mode`)**: Added configurable context slicing service (`ContextSlicer`) supporting `full` (default, full source files), `diff_window` (git diff line windows and test stack traces), and `tree_sitter` (universal AST symbol map parsing) modes in `.noctifab/config.yaml`.
-- **Anti-Stalling & Diagnostic Tool Caching**: Added `TaskDiagnosticCache` to deduplicate read-only diagnostic tool executions within agent turns, single-pass code generation capability (`orchestrator_execute_single_pass.go`), deterministic auto-formatter pre-pass before linter check retries, and resilient retry logic for roadmap generation.
-- **Validation Project Matrix Updates**: Added `fortune` project spec & configuration, and enabled performance metrics / context slicing configurations across all 6 validation target projects (`calculator` set to `mode: tree_sitter`; `echo`, `fortune`, `frontpunch`, `todo-cli`, `wc` set to `mode: full`).
 - **Dark Factory Architecture Review**: Added `DARK_FACTORY_REVIEW.md` document outlining optimizations for speed, architectural completeness, and reliability.
-- **Documentation Updates**: Updated `README.md`, `docs/architecture.md`, `docs/configuration.md`, and `docs/configuration_examples.md` with metrics, streaming, and context slicing configurations and architectural details.
 
 ## [0.13.0] - 2026-07-26
 

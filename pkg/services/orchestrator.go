@@ -56,6 +56,7 @@ type OrchestratorConfig struct {
 	MetricsEnabled        bool
 	MetricsOutputPath     string
 	Context               config.ContextConfig
+	WorkspaceCache        config.WorkspaceCacheConfig
 }
 
 type Orchestrator struct {

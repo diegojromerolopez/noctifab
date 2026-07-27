@@ -23,6 +23,8 @@ agents:
     docs:
         number: 1
         iterations: 2
+    workspace_cache:
+        enabled: true
     devops:
         number: 1
         iterations: 2
