@@ -83,11 +83,10 @@ Task: %s - %s
 
 Compilation error: %v
 
-Compilation output:
 %s
 
-Analyze the compilation error(s) above and fix the issues in the code or tests immediately. Rewrite any files that need changes.
-`, title, description, watchdogErr, output)
+Analyze the structured compilation errors above and fix the target files at the specified line numbers immediately.
+`, title, description, watchdogErr, FormatStructuredErrorFeedback(output))
 
 	case FailureTestLogic:
 		return fmt.Sprintf(`The test suite execution failed with assertion or logic errors.
@@ -96,11 +95,10 @@ Task: %s - %s
 
 Test validation error: %v
 
-Test runner output:
 %s
 
-Analyze the test failure(s) above and fix the implementation or tests immediately. Rewrite any files that need changes.
-`, title, description, watchdogErr, output)
+Analyze the structured test failure(s) above and fix the target implementation or tests immediately.
+`, title, description, watchdogErr, FormatStructuredErrorFeedback(output))
 
 	default:
 		return fmt.Sprintf(`The test suite validation failed.
@@ -227,6 +225,7 @@ func (wr *WatchdogRepair) AttemptRepair(
 		}
 
 		if passed {
+			fmt.Printf("🛠️  [Watchdog Repair Success] Task %s (%s) repaired successfully on attempt %d/%d!\n", task.ID, task.Title, attempt+1, wr.maxRetries)
 			return &RepairResult{
 				Success:   true,
 				Output:    testOutput,
@@ -237,6 +236,8 @@ func (wr *WatchdogRepair) AttemptRepair(
 
 		diagPrompt = buildRetryPrompt(diagPrompt, testOutput, testErr, category, toolOutputs)
 	}
+
+	fmt.Printf("❌ [Watchdog Repair Exhausted] Task %s (%s) failed repair after %d attempts (category: %s)\n", task.ID, task.Title, wr.maxRetries, category.String())
 
 	return &RepairResult{
 		Success:    false,

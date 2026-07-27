@@ -104,6 +104,7 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 	// Rebase onto base
 	_, err = q.git.Run(ctx, true, "rebase", base)
 	if err != nil {
+		fmt.Printf("⚠️  [Git Rebase Conflict] Branch %q encountered conflict with %q. Aborting rebase...\n", branch, base)
 		// Conflict occurred! Abort rebase
 		_, _ = q.git.Run(ctx, true, "rebase", "--abort")
 		_, _ = q.git.Run(ctx, true, "checkout", base) // revert to safe base
@@ -122,6 +123,8 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 	if err != nil {
 		return fmt.Errorf("failed to merge branch into base: %w", err)
 	}
+
+	fmt.Printf("🔀 [Git Integration Merged] Branch %q merged cleanly into %q\n", branch, base)
 
 	// Pop stash if we stashed
 	if stashed {

@@ -103,7 +103,7 @@ MODE="${MODE:-start-one}"
 STORIES=()
 if [ "${PROJECT}" = "frontpunch" ] || [ "${PROJECT}" = "wc" ] || [ "${PROJECT}" = "todo-cli" ]; then
   STORIES=("roadmap")
-elif [ "${PROJECT}" = "calculator" ] || [ "${PROJECT}" = "echo" ]; then
+elif [ "${PROJECT}" = "calculator" ] || [ "${PROJECT}" = "echo" ] || [ "${PROJECT}" = "fortune" ]; then
   STORIES=("SPEC.md")
 else
   STORIES=("roadmap")

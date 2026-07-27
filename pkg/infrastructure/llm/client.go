@@ -104,17 +104,20 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 	// Preprocess prompt to inject system instructions and schemas based on the target action type
 	prompt = preprocessPrompt(prompt)
 
+	spec, _ := GetProviderSpec(c.Provider)
+
 	apiKey := c.APIKey
 	if apiKey == "" {
-		switch c.Provider {
-		case "gemini":
-			apiKey = os.Getenv("GEMINI_API_KEY")
-		case "openai":
-			apiKey = os.Getenv("OPENAI_API_KEY")
-		case "anthropic":
-			apiKey = os.Getenv("ANTHROPIC_API_KEY")
-		case "opencode":
-			apiKey = os.Getenv("OPENCODE_API_KEY")
+		if spec != nil {
+			for _, envKey := range spec.EnvKeys {
+				if val := os.Getenv(envKey); val != "" {
+					apiKey = val
+					break
+				}
+			}
+		}
+		if apiKey == "" {
+			apiKey = os.Getenv("NOCTIFAB_LLM_API_KEY")
 		}
 	}
 
@@ -141,15 +144,10 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		}
 
 		var pClient ProviderClient
-		switch strings.ToLower(c.Provider) {
-		case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
+		if spec != nil && spec.NewClientFunc != nil {
+			pClient = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
+		} else {
 			pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-		case "gemini":
-			pClient = NewGeminiProviderClient(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-		case "anthropic":
-			pClient = NewAnthropicProviderClient(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-		default:
-			return nil, fmt.Errorf("unsupported LLM provider: %s", c.Provider)
 		}
 
 		for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -207,20 +205,8 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			return nil, parseErr
 		}
 
-		shouldFallback := false
-		if strings.ToLower(c.Provider) == "gemini" {
-			shouldFallback = true
-		} else {
-			shouldFallback = strings.Contains(err.Error(), "HTTP error 503") ||
-				strings.Contains(err.Error(), "503 Service Unavailable") ||
-				strings.Contains(err.Error(), "HTTP error 429") ||
-				strings.Contains(err.Error(), "429 Too Many Requests") ||
-				strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") ||
-				strings.Contains(err.Error(), "HTTP error 404") ||
-				strings.Contains(err.Error(), "404 Not Found") ||
-				strings.Contains(strings.ToLower(err.Error()), "not found") ||
-				strings.Contains(err.Error(), "NOT_FOUND")
-		}
+		// Unconditionally attempt model fallback across all LLM providers when an error response is returned
+		shouldFallback := true
 
 		if shouldFallback {
 			nextModel := c.getNextLowerModel(ctx, apiKey)
@@ -236,7 +222,9 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 }
 
 func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
-	if strings.ToLower(c.Provider) == "gemini" {
+	provider := strings.ToLower(c.Provider)
+
+	if provider == "gemini" {
 		pClient := NewGeminiProviderClient(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 		available, err := pClient.GetAvailableModels(ctx, apiKey)
 		if err != nil {
@@ -288,61 +276,37 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 		return nextModel
 	}
 
-	list, ok := modelHierarchy[strings.ToLower(c.Provider)]
-	if !ok || len(list) <= 1 {
-		return ""
-	}
-
 	var pClient ProviderClient
-	switch strings.ToLower(c.Provider) {
-	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
+	spec, _ := GetProviderSpec(provider)
+	if spec != nil && spec.NewClientFunc != nil {
+		pClient = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
+	} else {
 		pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-	case "anthropic":
-		pClient = NewAnthropicProviderClient(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-	default:
-		return ""
 	}
 
 	available, err := pClient.GetAvailableModels(ctx, apiKey)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "⚠ Warning: failed to query available models from %s: %v. Using static fallback hierarchy.\n", c.Provider, err)
-		available = list
+	if err != nil || len(available) == 0 {
+		fmt.Fprintf(os.Stderr, "⚠ Warning: failed to query available models from %s API endpoint: %v\n", c.Provider, err)
+		return ""
 	}
 
-	var filteredHierarchy []string
-	for _, rankedModel := range list {
-		rankedNorm := strings.TrimPrefix(strings.ToLower(rankedModel), "models/")
-		isAvailable := false
-		for _, availModel := range available {
-			availNorm := strings.TrimPrefix(strings.ToLower(availModel), "models/")
-			if rankedNorm == availNorm {
-				isAvailable = true
-				break
-			}
-		}
-		if isAvailable {
-			filteredHierarchy = append(filteredHierarchy, rankedModel)
+	var parsedModels []*ProviderModelInfo
+	parser := parseOpenAIModel
+	if spec != nil && spec.ParseModelFunc != nil {
+		parser = spec.ParseModelFunc
+	}
+	for _, m := range available {
+		if info, parsed := parser(m); parsed && info != nil {
+			parsedModels = append(parsedModels, info)
 		}
 	}
 
-	if len(filteredHierarchy) == 0 {
-		filteredHierarchy = list
-	}
-
-	normCurrent := strings.TrimPrefix(strings.ToLower(normalizeModel(c.Model)), "models/")
-
-	idx := -1
-	for i, m := range filteredHierarchy {
-		normM := strings.TrimPrefix(strings.ToLower(m), "models/")
-		if normCurrent == normM {
-			idx = i
-			break
+	if len(parsedModels) > 1 {
+		if next := selectLowerModelFromParsed(c.Model, parsedModels); next != "" {
+			return next
 		}
 	}
 
-	if idx != -1 && idx+1 < len(filteredHierarchy) {
-		return filteredHierarchy[idx+1]
-	}
 	return ""
 }
 

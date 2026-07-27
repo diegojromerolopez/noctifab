@@ -24,6 +24,13 @@ var RootCmd = &cobra.Command{
 	Long:          "A dark factory platform for GitHub, GitLab, and BitBucket that coordinates autonomous agents.",
 	SilenceErrors: true,
 	SilenceUsage:  true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		interactive, _ := cmd.Flags().GetBool("interactive")
+		if interactive {
+			return dashboardCmd.RunE(cmd, args)
+		}
+		return cmd.Help()
+	},
 }
 
 func Execute() {
@@ -47,7 +54,8 @@ func init() {
 	RootCmd.PersistentFlags().String("db-path", "", "Path to the local SQLite database file")
 	RootCmd.PersistentFlags().String("storage-provider", "sqlite", "Storage backend provider: sqlite, postgres, mysql, json")
 	RootCmd.PersistentFlags().String("storage-conn", "", "Connection string or filepath for the storage database")
-	RootCmd.PersistentFlags().StringP("input", "i", "", "Path, issue URL to fetch the feature specification")
+	RootCmd.PersistentFlags().String("input", "", "Path, issue URL to fetch the feature specification")
+	RootCmd.PersistentFlags().BoolP("interactive", "i", false, "Launch in live interactive TUI dashboard mode")
 	RootCmd.PersistentFlags().Bool("auto-commit", false, "Enable automatic branch creation, conventional commit, version bump, and PR creation")
 	RootCmd.PersistentFlags().IntP("agents", "a", 3, "Maximum number of parallel workers/agents to spawn")
 	RootCmd.PersistentFlags().StringP("interval", "t", "5m", "Cycle loop polling duration interval")

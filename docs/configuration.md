@@ -135,11 +135,11 @@ llm:
         api_key_env: GEMINI_API_KEY
 ```
 
-- **`provider`** (String): LLM provider client runtime implementation. Options: `openai`, `anthropic`, `gemini`, `ollama`, `hermes`, `huggingface`, `mistral`, `deepseek`, `opencode`.
-- **`model`** (String): Specific model identifier (e.g. `claude-3-5-sonnet-latest`).
+- **`provider`** (String): LLM provider client runtime implementation. Options: `openai`, `anthropic`, `gemini`, `opencode`, `kimi`, `moonshot`, `groq`, `openrouter`, `qwen`, `dashscope`, `together`, `llama`, `meta`, `huggingface`, `mistral`, `deepseek`, `hermes`, `ollama`.
+- **`model`** (String): Specific model identifier (e.g. `claude-3-5-sonnet-latest`, `gpt-4o`, `kimi-k3`, `qwen-max`, `llama-3.1-405b`).
 - **`temperature`** (Float): Creativity/determinism slider (typically `0.0` for code generation stability).
 - **`api_key`** (String): API authentication key value. Must use `secret:<KEY>` syntax to load safely from `secrets.yaml`.
-- **`api_key_env`** (String): Name of the environment variable containing the API key. Used as a fallback if `api_key` is not specified.
+- **`api_key_env`** (String): Name of the environment variable containing the API key (e.g. `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENCODE_API_KEY`, `KIMI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `DASHSCOPE_API_KEY`, `TOGETHER_API_KEY`, `LLAMA_API_KEY`, `HUGGINGFACE_API_KEY`). Used as a fallback if `api_key` is not specified.
 - **`url`** (String): Custom API endpoint URL override (required for self-hosted gateways or local `ollama` endpoints).
 - **`max_retries`** (Integer): Number of retries on transient connection or model overload failures.
 - **`retry_backoff`** (Duration): Starting wait time before retrying a failed API call.
@@ -154,6 +154,33 @@ llm:
   - **`cooldown`** (Duration): Time to temporarily quarantine a failed backend model.
   - **`max_call_limit`** (Integer): Maximum consecutive failover API calls allowed.
   - **`backends`** (List): Alternate backends definition list (containing `provider`, `model`, `api_key_env`, `url`, `max_retries`).
+
+---
+
+### Dynamic Model Fallback & Provider-Specific Capacity Ranking
+
+One of `noctifab`'s core resilience features is its **Dynamic Model Fallback Engine**. When an LLM request fails due to rate limits (HTTP 429), quota limits (HTTP 401/402), or transient server errors (HTTP 5xx), `noctifab` automatically:
+1. Queries the provider's API endpoint (`GET /models` or `/v1/models`) **live** to fetch currently available models.
+2. Evaluates models using **custom provider-specific capacity ranking algorithms** to sort them by capability.
+3. Automatically switches to the next lower model in capability without failing the task loop or losing progress.
+
+#### Provider Capacity Ranking Formulas & Hierarchy
+
+| Provider (`llm.provider`) | Custom Parser | Ranking Formula & Hierarchy |
+|---|---|---|
+| **Anthropic** | `parseAnthropicModel` | `(Version * 10) + TierScore`<br>`opus` (400) > `sonnet` (300) > `haiku` (200).<br>*Order*: `claude-3-opus` (430) > `claude-3-7-sonnet` (337) > `claude-3-5-sonnet` (335) > `claude-3-5-haiku` (235) > `claude-3-haiku` (230). |
+| **OpenAI** | `parseOpenAIModel` | `TierScore + (Version * 10) + (Date / 1,000,000)`<br>`o3`/`o1` reasoning (60) > `gpt-4o`/`sol` flagship (50) > `gpt-4-turbo`/`gpt-4`/`terra` (40) > `o3-mini`/`o1-mini` (30) > `gpt-4o-mini`/`luna` (20) > `gpt-3.5-turbo` (10). |
+| **Gemini** | `parseGeminiModel` | `int(Version * 100) + TierScore`<br>`pro` (40) > `flash` (30) > `flash-lite` (20) > `nano` (10).<br>*Order*: `gemini-2.5-pro` (290) > `gemini-2.5-flash` (280) > `gemini-1.5-pro` (190) > `gemini-1.5-flash` (180). |
+| **Kimi (Moonshot AI)** | `parseKimiModel` | `TierScore + ContextWindowBonus`<br>`k3` (50) > `k2.7`/`k2.7-code` (40) > `k2.6` (30) > `k2.5` (20) > `k2`/`v1` (10).<br>*Context bonus*: `128k` (+3) > `32k` (+2) > `8k` (+1). |
+| **Meta Llama** | `parseLlamaModel` | `SizeScore + int(Version * 10)`<br>`405b` (500) > `90b`/`70b`/`72b` (400) > `34b`/`32b`/`27b`/`14b`/`13b` (300) > `11b`/`8b`/`7b` (200) > `3b`/`1b` (100). |
+| **Qwen (DashScope)** | `parseQwenModel` | `TierScore + int(Version * 10)`<br>`qwen-max` / `qwen3-coder-max` (40) > `qwen-plus` / `qwen3-coder-plus` (30) > `qwen-turbo` (20) > `standard` (10). |
+| **Mistral** | `parseMistralModel` | `mistral-large` / `codestral` (40) > `mistral-medium` (30) > `mistral-small` (20) > `open-mistral-7b` / `micro` (10). |
+| **DeepSeek** | `parseDeepSeekModel` | `deepseek-r1` / `deepseek-v3` / `deepseek-coder` (30) > `deepseek-chat` (20) > `deepseek-flash` / `distill` (10). |
+| **Nous Hermes** | `parseHermesModel` | `hermes-3-llama-3.1-405b` (30) > `hermes-3-llama-3.1-70b` (20) > `hermes-3-llama-3.1-8b` (10). |
+| **Ollama / HuggingFace / Fireworks / SambaNova** | `parseOllamaModel`, `parseHuggingFaceModel` | `SizeScore + int(Version * 10)`<br>`405b` (500) > `70b`/`72b` (400) > `34b`/`32b`/`14b`/`13b` (300) > `8b`/`7b` (200) > `3b`/`1b` (100). |
+| **xAI (Grok)** | `parseXAIModel` | `TierScore + int(Version * 5)`<br>`grok-3` (60) > `grok-2` (40) > `grok-3-mini` (30) > `mini`/`beta` (20). |
+| **Perplexity AI** | `parsePerplexityModel` | `sonar-deep-research` (50) > `sonar-reasoning-pro` (40) > `sonar-reasoning` (30) > `sonar-pro` (20) > `sonar` (10). |
+| **Cohere** | `parseCohereModel` | `command-r-plus` (40) > `command-r` (30) > `command-light` (20). |
 
 ---
 

@@ -60,136 +60,167 @@ func TestResolveGeminiURL(t *testing.T) {
 }
 
 func TestGetNextLowerModel(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/models") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{
-				"models": [
-					{"name": "models/gemini-3.5-pro", "displayName": "Gemini 3.5 Pro", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-3.5-flash", "displayName": "Gemini 3.5 Flash", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-3.5-flash-lite", "displayName": "Gemini 3.5 Flash Lite", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-3.1-pro-preview", "displayName": "Gemini 3.1 Pro Preview", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-3.1-flash-lite", "displayName": "Gemini 3.1 Flash Lite", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-3-pro-preview", "displayName": "Gemini 3 Pro Preview", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-3-flash-preview", "displayName": "Gemini 3 Flash Preview", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-2.5-pro", "displayName": "Gemini 2.5 Pro", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-2.5-flash", "displayName": "Gemini 2.5 Flash", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-pro-latest", "displayName": "Gemini Pro Latest", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-flash-latest", "displayName": "Gemini Flash Latest", "supportedGenerationMethods": ["generateContent"]},
-					{"name": "models/gemini-flash-lite-latest", "displayName": "Gemini Flash-Lite Latest", "supportedGenerationMethods": ["generateContent"]}
-				]
-			}`))
-		} else {
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer server.Close()
-
 	tests := []struct {
 		name         string
 		provider     string
 		currentModel string
 		wantModel    string
+		apiModels    []string
 	}{
 		{
 			name:         "gemini-2.5-pro falls back to gemini-2.5-flash",
 			provider:     "gemini",
 			currentModel: "gemini-2.5-pro",
 			wantModel:    "gemini-2.5-flash",
+			apiModels:    []string{"models/gemini-2.5-pro", "models/gemini-2.5-flash"},
 		},
 		{
 			name:         "models/gemini-2.5-pro falls back to gemini-2.5-flash",
 			provider:     "Gemini",
 			currentModel: "models/gemini-2.5-pro",
 			wantModel:    "gemini-2.5-flash",
+			apiModels:    []string{"models/gemini-2.5-pro", "models/gemini-2.5-flash"},
 		},
 		{
 			name:         "gemini-pro-latest falls back to gemini-flash-latest",
 			provider:     "gemini",
 			currentModel: "gemini-pro-latest",
 			wantModel:    "gemini-flash-latest",
+			apiModels:    []string{"models/gemini-pro-latest", "models/gemini-flash-latest"},
 		},
 		{
 			name:         "gemini-2.5-flash falls back to gemini-pro-latest",
 			provider:     "gemini",
 			currentModel: "gemini-2.5-flash",
 			wantModel:    "gemini-pro-latest",
+			apiModels:    []string{"models/gemini-2.5-pro", "models/gemini-2.5-flash", "models/gemini-pro-latest", "models/gemini-flash-latest"},
 		},
 		{
 			name:         "gemini-flash-lite-latest is lowest and returns empty",
 			provider:     "gemini",
 			currentModel: "gemini-flash-lite-latest",
 			wantModel:    "",
+			apiModels:    []string{"models/gemini-flash-lite-latest"},
 		},
 		{
 			name:         "openai gpt-4o falls back to gpt-4o-mini",
 			provider:     "openai",
 			currentModel: "gpt-4o",
 			wantModel:    "gpt-4o-mini",
+			apiModels:    []string{"gpt-4o", "gpt-4o-mini"},
 		},
 		{
 			name:         "openai gpt-4o-mini is lowest and returns empty",
 			provider:     "openai",
 			currentModel: "gpt-4o-mini",
 			wantModel:    "",
+			apiModels:    []string{"gpt-4o-mini"},
 		},
 		{
 			name:         "mistral-large falls back to mistral-medium",
 			provider:     "mistral",
 			currentModel: "mistral-large-latest",
 			wantModel:    "mistral-medium-latest",
+			apiModels:    []string{"mistral-large-latest", "mistral-medium-latest"},
 		},
 		{
 			name:         "mistral-small falls back to open-mistral-7b",
 			provider:     "mistral",
 			currentModel: "mistral-small-latest",
 			wantModel:    "open-mistral-7b",
+			apiModels:    []string{"mistral-small-latest", "open-mistral-7b"},
 		},
 		{
 			name:         "deepseek-coder falls back to deepseek-chat",
 			provider:     "deepseek",
 			currentModel: "deepseek-coder",
 			wantModel:    "deepseek-chat",
+			apiModels:    []string{"deepseek-coder", "deepseek-chat"},
 		},
 		{
 			name:         "deepseek-chat is lowest and returns empty",
 			provider:     "deepseek",
 			currentModel: "deepseek-chat",
 			wantModel:    "",
+			apiModels:    []string{"deepseek-chat"},
 		},
 		{
 			name:         "hermes 405b falls back to hermes 70b",
 			provider:     "hermes",
 			currentModel: "hermes-3-llama-3.1-405b",
 			wantModel:    "hermes-3-llama-3.1-70b",
+			apiModels:    []string{"hermes-3-llama-3.1-405b", "hermes-3-llama-3.1-70b"},
 		},
 		{
-			name:         "anthropic claude-sonnet falls back to claude-haiku",
-			provider:     "anthropic",
-			currentModel: "claude-3-5-sonnet-latest",
-			wantModel:    "claude-3-5-haiku-latest",
+			name:         "opencode glm-5.2 falls back to glm-5.1",
+			provider:     "opencode",
+			currentModel: "glm-5.2",
+			wantModel:    "glm-5.1",
+			apiModels:    []string{"glm-5.2", "glm-5.1"},
 		},
 		{
-			name:         "anthropic claude-haiku is lowest and returns empty",
-			provider:     "anthropic",
-			currentModel: "claude-3-5-haiku-latest",
+			name:         "opencode deepseek-v4-flash is lowest and returns empty",
+			provider:     "opencode",
+			currentModel: "deepseek-v4-flash",
 			wantModel:    "",
+			apiModels:    []string{"deepseek-v4-flash"},
+		},
+		{
+			name:         "kimi-k3 falls back to kimi-k2.7",
+			provider:     "kimi",
+			currentModel: "kimi-k3",
+			wantModel:    "kimi-k2.7",
+			apiModels:    []string{"kimi-k3", "kimi-k2.7"},
+		},
+		{
+			name:         "qwen-max falls back to qwen-plus",
+			provider:     "qwen",
+			currentModel: "qwen-max",
+			wantModel:    "qwen-plus",
+			apiModels:    []string{"qwen-max", "qwen-plus"},
+		},
+		{
+			name:         "llama-3.1-405b falls back to llama-3.3-70b",
+			provider:     "llama",
+			currentModel: "llama-3.1-405b",
+			wantModel:    "llama-3.3-70b",
+			apiModels:    []string{"llama-3.1-405b", "llama-3.3-70b"},
 		},
 		{
 			name:         "unknown provider returns empty",
 			provider:     "unknown",
 			currentModel: "gpt-4o",
 			wantModel:    "",
+			apiModels:    nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Client{Provider: tt.provider, Model: tt.currentModel}
-			if strings.ToLower(tt.provider) == "gemini" {
-				c.URL = server.URL
-			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, "/models") {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					if strings.ToLower(tt.provider) == "gemini" {
+						var geminiModels []string
+						for _, m := range tt.apiModels {
+							geminiModels = append(geminiModels, fmt.Sprintf(`{"name": "%s", "displayName": "%s", "supportedGenerationMethods": ["generateContent"]}`, m, m))
+						}
+						_, _ = fmt.Fprintf(w, `{"models": [%s]}`, strings.Join(geminiModels, ","))
+					} else {
+						var dataModels []string
+						for _, m := range tt.apiModels {
+							dataModels = append(dataModels, fmt.Sprintf(`{"id": "%s"}`, m))
+						}
+						_, _ = fmt.Fprintf(w, `{"data": [%s]}`, strings.Join(dataModels, ","))
+					}
+				} else {
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+
+			c := &Client{Provider: tt.provider, Model: tt.currentModel, URL: server.URL}
 			got := c.getNextLowerModel(context.Background(), "mockkey")
 			if got != tt.wantModel {
 				t.Errorf("getNextLowerModel(%q, %q) = %q; want %q", tt.provider, tt.currentModel, got, tt.wantModel)

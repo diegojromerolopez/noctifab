@@ -102,6 +102,11 @@ var startCmd = &cobra.Command{
 		pid, _ := services.ReadPIDFile(daemonPIDFile)
 		fmt.Printf("noctifab daemon running (PID %d). Log: %s\n", pid, daemonLogFile)
 
+		interactiveFlag, _ := cmd.Flags().GetBool("interactive")
+		if interactiveFlag {
+			return dashboardCmd.RunE(cmd, args)
+		}
+
 		// Start the clarification poller in the background of this REPL process.
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

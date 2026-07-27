@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -71,8 +70,9 @@ func TestDashboard_RenderDashboard(t *testing.T) {
 		assert.Contains(t, out, "🔄 Fix bugs (50%)")
 
 		// Part 4: Interactive Footer assertions
-		assert.True(t, strings.Contains(out, "⏳") || strings.Contains(out, "⌛"), "output should contain an hourglass animation frame")
-		assert.Contains(t, out, "[q] Quit | [p] Pause/Resume | [x] Cancel")
+		assert.Contains(t, out, "Quit")
+		assert.Contains(t, out, "Pause/Resume")
+		assert.Contains(t, out, "Cancel")
 	})
 
 	t.Run("when story status is SUCCESS, all tasks are shown with their final status", func(t *testing.T) {
@@ -131,6 +131,52 @@ func TestDashboard_RenderDashboard(t *testing.T) {
 		// Last non-blank line of the log is the actual diff content (+), not the header
 		assert.Contains(t, out, "❌ Build binary (0%) — +")
 		assert.NotContains(t, out, "Linter validation failed")
+	})
+
+	t.Run("when active agents and actions log exist, it renders agent visibility and completed work", func(t *testing.T) {
+		now := time.Now()
+		state := &domain.State{
+			ID:          "state-active-agents",
+			ProjectPath: "/Users/dev/project",
+			StoryStatus: domain.StoryRunning,
+			ActiveAgents: []domain.Agent{
+				{
+					ID:        "agent-gen-1",
+					Name:      "generator-task-1",
+					Role:      domain.AgentRoleGenerator,
+					Status:    domain.AgentWorking,
+					TaskID:    "task-1",
+					StartedAt: now,
+				},
+			},
+			LastActions: []domain.Action{
+				{
+					Timestamp: now,
+					Tool:      "write_file",
+					Success:   true,
+					Result:    "Created main.go",
+				},
+			},
+			Tasks: []domain.Task{
+				{
+					ID:       "task-1",
+					Title:    "Write core application",
+					Status:   domain.TaskInProgress,
+					Progress: 50,
+				},
+			},
+		}
+
+		out := renderDashboard([]*domain.State{state})
+
+		assert.Contains(t, out, "ACTIVE AGENT WORKERS:")
+		assert.Contains(t, out, "GENERATOR")
+		assert.Contains(t, out, "generator-task-1")
+		assert.Contains(t, out, "RECENT COMPLETED ACTIONS LOG (WHAT'S BEEN DONE):")
+		assert.Contains(t, out, "write_file")
+		assert.Contains(t, out, "Created main.go")
+		assert.Contains(t, out, "New Order/Prompt")
+		assert.Contains(t, out, "Resolve Clarifications")
 	})
 }
 

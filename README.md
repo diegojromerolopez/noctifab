@@ -13,6 +13,28 @@ Designed as a **Dark Factory Platform** for GitHub and GitLab, it is compiled as
 
 ---
 
+## ⚡ 1-Line Quickstart Installer
+
+Install `noctifab` instantly on macOS or Linux:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/diegojromerolopez/noctifab/main/scripts/install.sh | sh
+```
+
+Launch the autonomous loop in any project with a `SPEC.md`:
+
+```bash
+noctifab start-one --spec SPEC.md
+```
+
+Launch the real-time TUI progress control dashboard:
+
+```bash
+noctifab dashboard
+```
+
+---
+
 ## Autonomy Matrix
 
 The platform classifies development automation into distinct levels. `noctifab` is built to run at **Level 3** and **Level 4** autonomy:
@@ -109,12 +131,13 @@ The core engine runs a continuous polling event loop that drives all development
 `noctifab` is designed with robust self-healing mechanisms at both the agent and orchestrator levels to maximize autonomous progress and prevent execution stalls:
 
 1. **Intra-Turn Iterative Self-Healing**: Generator and Tester agents execute in a multi-turn feedback loop (up to **5 turns** per task). If verification tools like `run_tests` or `run_linter` fail, the orchestrator appends the compiler, syntax, or test outputs back into the prompt context. The agent receives this output as direct feedback to repair the code dynamically in the next turn before finalizing its work.
-2. **Watchdog Self-Repair (Inter-Turn)**: If a completed task fails the final verification gate, the orchestrator intercepts the failure and invokes a dedicated `WatchdogRepair` handler. It supports three distinct repair contexts:
+2. **Dynamic Model Fallback Engine (Zero-Stall Resilience)**: If the configured LLM returns an error (rate limits HTTP 429, authentication/quota failure HTTP 401/402, or server error HTTP 5xx), `noctifab` automatically queries the provider's API endpoint (`GET /models` or `/v1/models`) **live** to discover accessible models. It applies custom provider-specific capacity ranking algorithms (`parse<Provider>Model`) to select and transparently fall back to the next highest-capacity model from that provider without interrupting dark factory execution.
+3. **Watchdog Self-Repair (Inter-Turn)**: If a completed task fails the final verification gate, the orchestrator intercepts the failure and invokes a dedicated `WatchdogRepair` handler. It supports three distinct repair contexts:
    - **Timeout**: Fixes infinite loops, deadlock hangs, and thread leaks.
    - **Compile**: Solves syntax issues, missing imports, and compile failures.
    - **Test Logic**: Fixes assertion value mismatches and incorrect test expectations.
    The handler attempts up to **3 consecutive repairs** automatically.
-3. **Safety Circuit Breakers**:
+4. **Safety Circuit Breakers**:
    - **`max_actions`**: Root config value (default: `100`) that sets a ceiling on the total task execution loops. If the system exceeds this limit, the orchestrator aborts the story to protect the LLM token budget from infinite loops.
    - **`max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
@@ -206,6 +229,25 @@ This compiles the binary to `./dist/noctifab`.
 
 ---
 
+## Interactive Mode
+
+`noctifab` provides an interactive REPL shell allowing operators to issue commands, enqueue feature story specifications, monitor dark factory execution in real time, and resolve clarification prompts on the fly.
+
+![Interactive Mode](assets/interactive-mode.png)
+
+To launch the interactive session:
+
+```bash
+noctifab start
+```
+
+Key features of Interactive Mode:
+- **Story Dispatching**: Enqueue individual user stories (`start roadmap/US-0001.md`) or an entire folder of specifications (`start roadmap/`).
+- **Real-Time Monitoring**: Observe autonomous DAG task progress, generator/tester execution turns, and quality gate results.
+- **Clarification Resolution**: Answer disambiguation questions raised by Planner/Generator agents to unblock autonomous execution.
+
+---
+
 ## Command Reference
 
 - **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles.
@@ -240,6 +282,33 @@ vcs:
 ```
 
 `noctifab init` automatically adds `secrets.yaml` to `.noctifab/.gitignore`. For full details, supported fields, CI/CD patterns, and the security checklist see **[docs/secrets.md](docs/secrets.md)**.
+
+### Supported LLM Providers & API Keys
+
+`noctifab` supports all major cloud and open-weights LLM providers with automatic model hierarchy fallback. Provide your API key via `secrets.yaml` or environment variables:
+
+| Provider | `provider` Key | Environment Variable(s) | Base URL |
+|---|---|---|---|
+| **OpenAI** | `openai` | `OPENAI_API_KEY` | `https://api.openai.com/v1` |
+| **Anthropic** | `anthropic` | `ANTHROPIC_API_KEY` | `https://api.anthropic.com/v1` |
+| **Gemini** | `gemini` | `GEMINI_API_KEY` | `https://generativelanguage.googleapis.com/v1beta` |
+| **OpenCode** | `opencode` | `OPENCODE_API_KEY` | `https://opencode.ai/api/v1` |
+| **Kimi (Moonshot AI)** | `kimi`, `moonshot` | `KIMI_API_KEY`, `MOONSHOT_API_KEY` | `https://api.moonshot.ai/v1` |
+| **Groq** | `groq` | `GROQ_API_KEY` | `https://api.groq.com/openai/v1` |
+| **OpenRouter** | `openrouter` | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` |
+| **Qwen (DashScope)** | `qwen`, `dashscope` | `DASHSCOPE_API_KEY`, `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| **Together AI** | `together` | `TOGETHER_API_KEY` | `https://api.together.xyz/v1` |
+| **Meta (Llama)** | `llama`, `meta` | `LLAMA_API_KEY`, `META_API_KEY` | `https://api.together.xyz/v1` |
+| **HuggingFace** | `huggingface` | `HUGGINGFACE_API_KEY`, `HF_TOKEN` | `https://api-inference.huggingface.co/v1` |
+| **Mistral** | `mistral` | `MISTRAL_API_KEY` | `https://api.mistral.ai/v1` |
+| **DeepSeek** | `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` |
+| **Nous Hermes** | `hermes` | `HERMES_API_KEY` | `https://api.together.xyz/v1` |
+| **Ollama (Local)** | `ollama` | `OLLAMA_API_KEY` *(optional)* | `https://ollama.com/v1` |
+| **xAI (Grok)** | `xai`, `grok` | `XAI_API_KEY`, `GROK_API_KEY` | `https://api.x.ai/v1` |
+| **Perplexity AI** | `perplexity` | `PERPLEXITY_API_KEY` | `https://api.perplexity.ai` |
+| **Fireworks AI** | `fireworks` | `FIREWORKS_API_KEY` | `https://api.fireworks.ai/inference/v1` |
+| **SambaNova** | `sambanova` | `SAMBANOVA_API_KEY` | `https://api.sambanova.ai/v1` |
+| **Cohere** | `cohere` | `COHERE_API_KEY`, `CO_API_KEY` | `https://api.cohere.com/v2` |
 
 ---
 

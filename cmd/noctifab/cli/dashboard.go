@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
+	"os/exec"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,10 +19,10 @@ var dashboardCmd = &cobra.Command{
 	Use:   "dashboard",
 	Short: "Launch the real-time terminal user interface progress dashboard",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client := services.NewDaemonClient()
-		if !client.IsAlive() {
-			return fmt.Errorf("noctifab daemon is not running. Please run 'noctifab serve' first")
+		if err := ensureDaemonRunning(); err != nil {
+			return fmt.Errorf("noctifab daemon is not running and could not be auto-started: %w", err)
 		}
+		client := services.NewDaemonClient()
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -184,6 +184,30 @@ var dashboardCmd = &cobra.Command{
 				promptActive = false
 				mu.Unlock()
 			}
+
+			if char == 'n' || char == 'N' || char == 'a' || char == 'A' {
+				mu.Lock()
+				promptActive = true
+				mu.Unlock()
+
+				_ = HandleNewOrderPrompt(ctx, client, fd, oldState)
+
+				mu.Lock()
+				promptActive = false
+				mu.Unlock()
+			}
+
+			if char == 'c' || char == 'C' {
+				mu.Lock()
+				promptActive = true
+				mu.Unlock()
+
+				_ = HandleClarificationPrompt(ctx, client, fd, oldState)
+
+				mu.Lock()
+				promptActive = false
+				mu.Unlock()
+			}
 		}
 
 		return nil
@@ -231,72 +255,7 @@ func taskEmoji(status domain.TaskStatus) string {
 }
 
 func renderDashboard(states []*domain.State) string {
-	var sb strings.Builder
-	// Double-buffering: cursor reset and screen clear
-	sb.WriteString("\033[H\033[J")
-
-	if len(states) == 0 {
-		sb.WriteString("No active user stories found in the daemon.")
-		return sb.String()
-	}
-
-	// Deduplicate: per FeatureName keep only the most advanced state.
-	// "More advanced" = non-idle > idle, and more tasks > fewer tasks.
-	// This guards against orphan stub rows that may exist in the DB.
-	deduped := deduplicateStates(states)
-
-	primary := deduped[0]
-	sb.WriteString("NOCTIFAB TERMINAL DASHBOARD - SYSTEM PORT\r\n")
-	fmt.Fprintf(&sb, "Path: %s\r\n", primary.ProjectPath)
-	fmt.Fprintf(&sb, "Global Status: %s %s\r\n", primary.StoryStatus, statusEmoji(primary.StoryStatus))
-	fmt.Fprintf(&sb, "Cost: $%s\r\n", primary.Metadata.TotalCostUSD)
-	fmt.Fprintf(&sb, "Tokens Used: %d\r\n\r\n", primary.Metadata.TotalTokensUsed)
-
-	sb.WriteString("ACTIVE USER STORIES:\r\n")
-	for _, st := range deduped {
-		totalProgress := 0
-		if len(st.Tasks) > 0 {
-			for _, t := range st.Tasks {
-				totalProgress += t.Progress
-			}
-			totalProgress = totalProgress / len(st.Tasks)
-		}
-
-		// Progress bar (10 blocks)
-		barLen := totalProgress / 10
-		var barRunes []rune
-		for i := 0; i < 10; i++ {
-			if i < barLen {
-				barRunes = append(barRunes, '█')
-			} else {
-				barRunes = append(barRunes, '░')
-			}
-		}
-
-		fmt.Fprintf(&sb, "• Story: %s | Status: %s | Progress: [%s] %d%%\r\n", st.Metadata.FeatureName, st.StoryStatus, string(barRunes), totalProgress)
-
-		for _, t := range st.Tasks {
-			emoji := taskEmoji(t.Status)
-			if t.Status == domain.TaskFailed && t.FailureLog != "" {
-				// Show the last non-blank line: the header is always first,
-				// the actual error or diff line is at the tail of the log.
-				reason := ""
-				for _, line := range strings.Split(t.FailureLog, "\n") {
-					if trimmed := strings.TrimSpace(line); trimmed != "" {
-						reason = trimmed
-					}
-				}
-				fmt.Fprintf(&sb, "  %s %s (%d%%) — %s\r\n", emoji, t.Title, t.Progress, reason)
-			} else {
-				fmt.Fprintf(&sb, "  %s %s (%d%%)\r\n", emoji, t.Title, t.Progress)
-			}
-		}
-		sb.WriteString("\r\n")
-	}
-
-	sb.WriteString("[q] Quit | [p] Pause/Resume | [x] Cancel")
-
-	return sb.String()
+	return renderEnhancedDashboard(states)
 }
 
 // deduplicateStates collapses multiple state rows that share the same
@@ -339,4 +298,37 @@ func deduplicateStates(states []*domain.State) []*domain.State {
 
 func init() {
 	RootCmd.AddCommand(dashboardCmd)
+}
+
+func ensureDaemonRunning() error {
+	client := services.NewDaemonClient()
+	if client.IsAlive() {
+		return nil
+	}
+
+	execPath, err := os.Executable()
+	if err != nil {
+		execPath = "noctifab"
+	}
+
+	cmd := exec.Command(execPath, "serve")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("could not launch daemon process: %w", err)
+	}
+
+	// Wait up to 3 seconds for daemon to respond to health checks
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if client.IsAlive() {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if !client.IsAlive() {
+		return fmt.Errorf("daemon started (PID %d) but health check timed out", cmd.Process.Pid)
+	}
+	return nil
 }

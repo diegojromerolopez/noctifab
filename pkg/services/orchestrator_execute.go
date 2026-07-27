@@ -359,10 +359,11 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			targetTask.Status = domain.TaskSuccess
 			targetTask.Progress = 100
 			targetTask.FailureLog = ""
+			fmt.Printf("✅ [3x Consensus Passed] Task %s (%s) passed 3x test validation\n", taskID, task.Title)
 		} else {
 			category := CategorizeFailureLog(logMsg)
 			if category == FailureSandbox {
-				fmt.Printf("Orchestrator: Fast aborting task %s due to unrecoverable sandbox failure: %s\n", taskID, logMsg)
+				fmt.Printf("❌ [Unrecoverable Environment Failure] Task %s fast aborting: %s\n", taskID, logMsg)
 				targetTask.Status = domain.TaskFailed
 				targetTask.FailureLog = fmt.Sprintf("Unrecoverable environment error (%s): %s", category.String(), logMsg)
 				targetTask.Progress = 0
@@ -372,9 +373,11 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				targetTask.FailureLog = logMsg
 				targetTask.Progress = 0
 				if targetTask.Retries >= targetTask.MaxRetries {
+					fmt.Printf("❌ [Task Failed Permanently] Task %s (%s) reached max retries (%d/%d)\n", taskID, task.Title, targetTask.Retries, targetTask.MaxRetries)
 					targetTask.Status = domain.TaskFailed
 					permanentlyFailed = true
 				} else {
+					fmt.Printf("⚠️  [Task Retry] Task %s (%s) validation failed (attempt %d/%d). Re-queueing...\n", taskID, task.Title, targetTask.Retries, targetTask.MaxRetries)
 					targetTask.Status = domain.TaskPending
 				}
 			}

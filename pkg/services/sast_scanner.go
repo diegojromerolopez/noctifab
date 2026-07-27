@@ -76,6 +76,12 @@ func (s *SASTScanner) Run(ctx context.Context, projectPath string) (*SASTResult,
 		}
 	}
 
+	statusStr := "PASSED"
+	if blocked {
+		statusStr = "FAILED"
+	}
+	fmt.Printf("🛡️  [SAST Scan Outcome] project=%q findings=%d status=%s\n", projectPath, len(allIssues), statusStr)
+
 	return &SASTResult{
 		Passed: !blocked,
 		Issues: allIssues,

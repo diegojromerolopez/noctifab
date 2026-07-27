@@ -73,47 +73,6 @@ func sortGeminiModels(models []*GeminiModelInfo) {
 	})
 }
 
-var modelHierarchy = map[string][]string{
-	"openai": {
-		"gpt-4o",
-		"gpt-4o-mini",
-	},
-	"mistral": {
-		"mistral-large-latest",
-		"mistral-medium-latest",
-		"mistral-small-latest",
-		"open-mistral-7b",
-	},
-	"deepseek": {
-		"deepseek-coder",
-		"deepseek-chat",
-	},
-	"hermes": {
-		"hermes-3-llama-3.1-405b",
-		"hermes-3-llama-3.1-70b",
-		"hermes-3-llama-3.1-8b",
-	},
-	"anthropic": {
-		"claude-3-5-sonnet-latest",
-		"claude-3-5-haiku-latest",
-	},
-	"opencode": {
-		"glm-5.2",
-		"glm-5.1",
-		"kimi-k2.7-code",
-		"kimi-k2.6",
-		"qwen3.7-max",
-		"qwen3.7-plus",
-		"minimax-m3",
-		"minimax-m2.7",
-		"qwen3.6-plus",
-		"mimo-v2.5-pro",
-		"deepseek-v4-pro",
-		"mimo-v2.5",
-		"deepseek-v4-flash",
-	},
-}
-
 func normalizeModel(model string) string {
 	return strings.TrimPrefix(strings.ToLower(model), "models/")
 }

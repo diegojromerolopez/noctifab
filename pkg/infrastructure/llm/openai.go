@@ -13,17 +13,72 @@ import (
 	"time"
 )
 
-type openaiProviderClient struct {
+func init() {
+	RegisterProvider(&ProviderSpec{
+		Name:           "openai",
+		BaseURL:        "https://api.openai.com/v1",
+		EnvKeys:        []string{"OPENAI_API_KEY"},
+		ParseModelFunc: parseOpenAIModel,
+		Protocol:       "openai",
+		NewClientFunc: func(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+			return NewOpenAIClient(url, timeout, idleTimeout, streaming)
+		},
+	})
+}
+
+var parseOpenAIModel = NewModelParser(ParserConfig{
+	DefaultVersion:    4.0,
+	VersionRegexp:     `gpt-([0-9]+(?:\.[0-9]+)?)`,
+	VersionMultiplier: 5,
+	Tiers: []KeywordTier{
+		{Keywords: []string{"o3-mini", "o1-mini"}, Score: 35, TierName: "compact-reasoning"},
+		{Keywords: []string{"o3", "o1"}, Score: 60, TierName: "reasoning"},
+		{Keywords: []string{"gpt-4o-mini", "mini", "luna"}, Score: 20, TierName: "compact"},
+		{Keywords: []string{"sol", "gpt-4o"}, Score: 50, TierName: "flagship"},
+		{Keywords: []string{"terra", "gpt-4"}, Score: 40, TierName: "pro"},
+		{Keywords: []string{"gpt-3.5"}, Score: 10, TierName: "lite"},
+	},
+})
+
+type baseOpenAIClient struct {
 	provider    string
+	baseURL     string
 	url         string
 	timeout     time.Duration
 	idleTimeout time.Duration
 	streaming   bool
 }
 
+func newBaseOpenAIClient(provider, baseURL, url string, timeout, idleTimeout time.Duration, streaming bool) *baseOpenAIClient {
+	return &baseOpenAIClient{
+		provider:    provider,
+		baseURL:     baseURL,
+		url:         url,
+		timeout:     timeout,
+		idleTimeout: idleTimeout,
+		streaming:   streaming,
+	}
+}
+
+type OpenAIClient struct {
+	*baseOpenAIClient
+}
+
+func NewOpenAIClient(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+	return &OpenAIClient{
+		baseOpenAIClient: newBaseOpenAIClient("openai", "https://api.openai.com/v1", url, timeout, idleTimeout, streaming),
+	}
+}
+
 // NewOpenAIProviderClient creates a ProviderClient for OpenAI and OpenAI-compatible APIs.
 func NewOpenAIProviderClient(provider, url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
-	return &openaiProviderClient{provider: provider, url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
+	baseURL := "https://api.openai.com/v1"
+	if spec, ok := GetProviderSpec(provider); ok {
+		baseURL = spec.BaseURL
+	}
+	return &OpenAIClient{
+		baseOpenAIClient: newBaseOpenAIClient(provider, baseURL, url, timeout, idleTimeout, streaming),
+	}
 }
 
 // osStderr returns the process stderr. Wrapped so tests can swap it without
@@ -50,7 +105,7 @@ func looksLikeResponseFormatRejection(body string) bool {
 	return false
 }
 
-func (o *openaiProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
+func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
 	url := o.resolveEndpoint()
 	headers := make(map[string]string)
 	if apiKey != "" {
@@ -73,27 +128,19 @@ func (o *openaiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	return nil, err
 }
 
+func resolveProviderBaseURL(provider string) string {
+	if spec, ok := GetProviderSpec(provider); ok {
+		return spec.BaseURL
+	}
+	return "https://api.openai.com/v1"
+}
+
 // resolveEndpoint returns the chat completions URL for this provider, honouring
 // an explicit override URL when one is configured.
-func (o *openaiProviderClient) resolveEndpoint() string {
-	var baseURL string
-	switch strings.ToLower(o.provider) {
-	case "openai":
-		baseURL = "https://api.openai.com/v1"
-	case "hermes":
-		baseURL = "https://inference-api.nousresearch.com/v1"
-	case "huggingface":
-		baseURL = "https://api-inference.huggingface.co/v1"
-	case "mistral":
-		baseURL = "https://api.mistral.ai/v1"
-	case "deepseek":
-		baseURL = "https://api.deepseek.ai/v1"
-	case "ollama":
-		baseURL = "https://ollama.com/v1"
-	case "opencode":
-		baseURL = "https://opencode.ai/zen/go/v1"
-	default:
-		baseURL = "https://api.openai.com/v1"
+func (o *baseOpenAIClient) resolveEndpoint() string {
+	baseURL := o.baseURL
+	if baseURL == "" {
+		baseURL = resolveProviderBaseURL(o.provider)
 	}
 	if o.url != "" {
 		return o.url
@@ -104,7 +151,7 @@ func (o *openaiProviderClient) resolveEndpoint() string {
 // sendCompletion performs a single chat completions POST. When enforceJSON
 // is true the request advertises response_format=json_object so the assistant
 // is constrained to a JSON object.
-func (o *openaiProviderClient) sendCompletion(ctx context.Context, url string, headers map[string]string, model, prompt string, enforceJSON bool) ([]byte, error) {
+func (o *baseOpenAIClient) sendCompletion(ctx context.Context, url string, headers map[string]string, model, prompt string, enforceJSON bool) ([]byte, error) {
 	if o.streaming {
 		respBody, err := o.sendCompletionStreaming(ctx, url, headers, model, prompt, enforceJSON)
 		if err == nil {
@@ -179,7 +226,7 @@ func (o *openaiProviderClient) sendCompletion(ctx context.Context, url string, h
 	return []byte(content), nil
 }
 
-func (o *openaiProviderClient) sendCompletionStreaming(ctx context.Context, url string, headers map[string]string, model, prompt string, enforceJSON bool) ([]byte, error) {
+func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, url string, headers map[string]string, model, prompt string, enforceJSON bool) ([]byte, error) {
 	payload := map[string]any{
 		"model": model,
 		"messages": []map[string]string{
@@ -291,25 +338,10 @@ func (o *openaiProviderClient) sendCompletionStreaming(ctx context.Context, url 
 	return []byte(sb.String()), nil
 }
 
-func (o *openaiProviderClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {
-	var baseURL string
-	switch strings.ToLower(o.provider) {
-	case "openai":
-		baseURL = "https://api.openai.com/v1"
-	case "hermes":
-		baseURL = "https://inference-api.nousresearch.com/v1"
-	case "huggingface":
-		baseURL = "https://api-inference.huggingface.co/v1"
-	case "mistral":
-		baseURL = "https://api.mistral.ai/v1"
-	case "deepseek":
-		baseURL = "https://api.deepseek.com/v1"
-	case "ollama":
-		baseURL = "https://ollama.com/v1"
-	case "opencode":
-		baseURL = "https://opencode.ai/zen/go/v1"
-	default:
-		baseURL = "https://api.openai.com/v1"
+func (o *baseOpenAIClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {
+	baseURL := o.baseURL
+	if baseURL == "" {
+		baseURL = resolveProviderBaseURL(o.provider)
 	}
 
 	var url string

@@ -105,6 +105,8 @@ func buildPRBody(state *domain.State) string {
 
 // printStoryCompletionBanner prints a clearly visible terminal banner when a user story finishes.
 func printStoryCompletionBanner(state *domain.State) {
+	fmt.Printf("🏁 [Story Completed Successfully] feature=%q branch=%q tokens=%d cost=$%s\n",
+		state.Metadata.FeatureName, state.Metadata.IntegrationBranch, state.Metadata.TotalTokensUsed, state.Metadata.TotalCostUSD)
 	banner := fmt.Sprintf(`
 ╔══════════════════════════════════════════════════════════════╗
 ║  ✅ USER STORY COMPLETE                                      ║

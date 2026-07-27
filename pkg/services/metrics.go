@@ -98,6 +98,7 @@ func (m *MetricsCollector) RecordLLMCall(duration time.Duration, tokens int) {
 	m.llmWaitDurationMs += duration.Milliseconds()
 	if tokens > 0 {
 		m.totalTokensGenerated += int64(tokens)
+		fmt.Printf("💰 [Token Telemetry] Turn LLM tokens=%d (cumulative tokens=%d, total calls=%d)\n", tokens, m.totalTokensGenerated, m.llmCalls)
 	}
 }
 

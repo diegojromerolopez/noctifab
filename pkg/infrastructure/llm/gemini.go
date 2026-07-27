@@ -12,6 +12,18 @@ import (
 	"time"
 )
 
+func init() {
+	RegisterProvider(&ProviderSpec{
+		Name:     "gemini",
+		BaseURL:  "https://generativelanguage.googleapis.com/v1beta",
+		EnvKeys:  []string{"GEMINI_API_KEY"},
+		Protocol: "gemini",
+		NewClientFunc: func(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+			return NewGeminiProviderClient(url, timeout, idleTimeout, streaming)
+		},
+	})
+}
+
 type geminiProviderClient struct {
 	url         string
 	timeout     time.Duration

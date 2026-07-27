@@ -319,7 +319,10 @@ func (o *Orchestrator) updateStateWithRetry(ctx context.Context, updateFn func(s
 			return err
 		}
 
+		fmt.Printf("⚠️  [OCC Conflict] DB version conflict detected on state update (attempt %d/%d). Retrying...\n", attempt+1, maxRetries)
+
 		if attempt == maxRetries {
+			fmt.Printf("❌ [OCC Conflict Exhausted] State update failed after %d retries: %v\n", maxRetries, err)
 			return fmt.Errorf("state update failed after %d retries due to OCC conflict: %w", maxRetries, err)
 		}
 

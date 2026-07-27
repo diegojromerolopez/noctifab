@@ -110,6 +110,7 @@ func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.L
 		}
 
 		lastErr = err
+		fmt.Printf("⚠️  [LLM Failover Warning] Backend %s (model %s) failed: %v. Switching to next backend candidate...\n", backend.Name, backend.Model, err)
 
 		if isTransientError(err) {
 			f.mu.Lock()
@@ -119,8 +120,10 @@ func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.L
 	}
 
 	if lastErr != nil {
+		fmt.Printf("❌ [LLM Failover Exhausted] All %d backends failed. Last error: %v\n", len(backends), lastErr)
 		return nil, fmt.Errorf("all LLM backends failed. Last error: %w", lastErr)
 	}
+	fmt.Printf("❌ [LLM Failover Exhausted] No LLM backends available\n")
 	return nil, fmt.Errorf("no LLM backends available")
 }
 

@@ -11,6 +11,30 @@ import (
 	"time"
 )
 
+func init() {
+	RegisterProvider(&ProviderSpec{
+		Name:           "anthropic",
+		BaseURL:        "https://api.anthropic.com/v1",
+		EnvKeys:        []string{"ANTHROPIC_API_KEY"},
+		ParseModelFunc: parseAnthropicModel,
+		Protocol:       "anthropic",
+		NewClientFunc: func(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+			return NewAnthropicProviderClient(url, timeout, idleTimeout, streaming)
+		},
+	})
+}
+
+var parseAnthropicModel = NewModelParser(ParserConfig{
+	RequiredPrefix: "claude",
+	DefaultVersion: 3.0,
+	VersionRegexp:  `claude-([0-9]+(?:[\.-][0-9]+)?)`,
+	Tiers: []KeywordTier{
+		{Keywords: []string{"opus"}, Score: 400, TierName: "opus"},
+		{Keywords: []string{"sonnet"}, Score: 300, TierName: "sonnet"},
+		{Keywords: []string{"haiku"}, Score: 200, TierName: "haiku"},
+	},
+})
+
 type anthropicProviderClient struct {
 	url         string
 	timeout     time.Duration

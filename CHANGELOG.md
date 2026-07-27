@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-07-27
+
+### Added
+- **Dedicated Provider Files (Go Struct Embedding Composition)**: Refactored LLM provider infrastructure into dedicated per-provider Go files (`mistral.go`, `moonshot.go`, `deepseek.go`, `qwen.go`, `llama.go`, `xai.go`, `perplexity.go`, `cohere.go`, `opencode.go`, `ollama.go`, `huggingface.go`, `fireworks.go`, `sambanova.go`, `hermes.go`, `groq.go`, `openrouter.go`, `together.go`). Each file is self-contained: it defines a typed client struct embedding `*baseOpenAIClient`, a declarative `NewModelParser`-based capacity parser, and its `ProviderSpec` registration in `init()`.
+- **`baseOpenAIClient` Composition Base**: Extracted `baseOpenAIClient` as a reusable composition base in `openai.go` exposing the full OpenAI HTTP wire protocol (`Call`, `GetAvailableModels`, `sendCompletion`, `sendCompletionStreaming`, `resolveEndpoint`). All OpenAI-compatible provider structs embed `*baseOpenAIClient` to inherit all methods without code duplication.
+- **`NewClientFunc` in `ProviderSpec`**: Added `NewClientFunc` field to `ProviderSpec` in `provider_registry.go`, enabling `client.go` to instantiate provider clients via a single zero-switch call: `spec.NewClientFunc(url, timeout, idleTimeout, streaming)`.
+- **`NewModelParser` Declarative Composition Engine**: Moved `NewModelParser`, `ParserConfig`, `KeywordTier`, `ModelParser`, and `StandardSizeWeights` into `provider_registry.go` for shared access across all provider files. Each provider now defines its model capacity parser in 5-10 declarative lines instead of verbose procedural functions.
+- **Interactive Mode & Asset Directory**: Created the `assets/` directory for repository media and added an Interactive Mode overview section with screenshot references to `README.md`.
+
+### Changed
+- **Eliminated `provider_parsers.go`**: Removed the monolithic 400+ line file containing all procedural `parse<Provider>Model` functions. Parser logic is now co-located with each provider's own file.
+- **Zero `switch` Statements in Core Dispatch**: `client.go` no longer contains any protocol `switch` blocks for client creation; dispatch is fully data-driven through `ProviderSpec.NewClientFunc`.
+
 ## [0.15.0] - 2026-07-27
 
 ### Added
