@@ -15,10 +15,15 @@ import (
 	"golang.org/x/term"
 )
 
+var dashboardStartTime time.Time
+
 var dashboardCmd = &cobra.Command{
 	Use:   "dashboard",
 	Short: "Launch the real-time terminal user interface progress dashboard",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if dashboardStartTime.IsZero() {
+			dashboardStartTime = time.Now()
+		}
 		if err := ensureDaemonRunning(); err != nil {
 			return fmt.Errorf("noctifab daemon is not running and could not be auto-started: %w", err)
 		}

@@ -59,6 +59,7 @@ func TestDashboard_RenderDashboard(t *testing.T) {
 		assert.Contains(t, out, "NOCTIFAB TERMINAL DASHBOARD")
 		assert.Contains(t, out, "/Users/dev/project")
 		assert.Contains(t, out, "Global Status: RUNNING")
+		assert.Contains(t, out, "Elapsed Time:")
 		assert.Contains(t, out, "Cost: $0.015")
 		assert.Contains(t, out, "Tokens Used: 500")
 

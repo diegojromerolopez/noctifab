@@ -55,6 +55,10 @@ func renderEnhancedDashboard(states []*domain.State) string {
 		buildBadge = colorRed + "FAILING" + colorReset
 	}
 	fmt.Fprintf(&sb, "Build Health: %s | 3x Consensus: %sPASS (2/3)%s\r\n", buildBadge, colorGreen, colorReset)
+	elapsed := computeTotalElapsed(states, dashboardStartTime)
+	if elapsed > 0 {
+		fmt.Fprintf(&sb, "Elapsed Time: %s%s%s\r\n", colorCyan, formatDuration(elapsed), colorReset)
+	}
 	fmt.Fprintf(&sb, "Cost: $%s\r\n", primary.Metadata.TotalCostUSD)
 	fmt.Fprintf(&sb, "Tokens Used: %d\r\n\r\n", primary.Metadata.TotalTokensUsed)
 
@@ -171,15 +175,56 @@ func renderEnhancedDashboard(states []*domain.State) string {
 	// 6. Interactive Controls & Live Refresh Footer
 	nowStr := time.Now().Format("15:04:05")
 	sb.WriteString(colorGray + "------------------------------------------------------------------------------------" + colorReset + "\r\n")
+	footerExtra := ""
+	if elapsed > 0 {
+		footerExtra = " | Elapsed: " + formatDuration(elapsed)
+	}
 	sb.WriteString(colorBold + "Controls: " + colorReset +
 		"[" + colorGreen + "q" + colorReset + "] Quit | " +
 		"[" + colorYellow + "p" + colorReset + "] Pause/Resume | " +
 		"[" + colorRed + "x" + colorReset + "] Cancel | " +
 		"[" + colorCyan + "n" + colorReset + "] New Order/Prompt | " +
 		"[" + colorPurple + "c" + colorReset + "] Resolve Clarifications " +
-		colorGray + "| Refreshed: " + nowStr + colorReset)
+		colorGray + "| Refreshed: " + nowStr + footerExtra + colorReset)
 
 	return sb.String()
+}
+
+func computeTotalElapsed(states []*domain.State, startTime time.Time) time.Duration {
+	earliest := startTime
+	for _, st := range states {
+		for _, ag := range st.ActiveAgents {
+			if !ag.StartedAt.IsZero() && (earliest.IsZero() || ag.StartedAt.Before(earliest)) {
+				earliest = ag.StartedAt
+			}
+		}
+		for _, act := range st.LastActions {
+			if !act.Timestamp.IsZero() && (earliest.IsZero() || act.Timestamp.Before(earliest)) {
+				earliest = act.Timestamp
+			}
+		}
+	}
+	if earliest.IsZero() {
+		return 0
+	}
+	return time.Since(earliest)
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Truncate(time.Second)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+
+	if h > 0 {
+		return fmt.Sprintf("%02dh %02dm %02ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%02dm %02ds", m, s)
+	}
+	return fmt.Sprintf("%02ds", s)
 }
 
 func extractFailureTailReason(log string) string {

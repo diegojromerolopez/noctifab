@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`NewClientFunc` in `ProviderSpec`**: Added `NewClientFunc` field to `ProviderSpec` in `provider_registry.go`, enabling `client.go` to instantiate provider clients via a single zero-switch call: `spec.NewClientFunc(url, timeout, idleTimeout, streaming)`.
 - **`NewModelParser` Declarative Composition Engine**: Moved `NewModelParser`, `ParserConfig`, `KeywordTier`, `ModelParser`, and `StandardSizeWeights` into `provider_registry.go` for shared access across all provider files. Each provider now defines its model capacity parser in 5-10 declarative lines instead of verbose procedural functions.
 - **Interactive Mode & Asset Directory**: Created the `assets/` directory for repository media and added an Interactive Mode overview section with screenshot references to `README.md`.
+- **Interactive Dashboard Total Elapsed Time Metric**: Added total execution elapsed time calculation (`computeTotalElapsed`, `formatDuration`) to the interactive TUI dashboard header telemetry panel and control footer.
 
 ### Changed
 - **Eliminated `provider_parsers.go`**: Removed the monolithic 400+ line file containing all procedural `parse<Provider>Model` functions. Parser logic is now co-located with each provider's own file.
