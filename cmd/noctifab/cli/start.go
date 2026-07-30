@@ -312,118 +312,124 @@ var startCmd = &cobra.Command{
 
 		// Execute all enqueued user stories sequentially
 		for _, currentStoryFile := range storyFiles {
-			cfg.Input = currentStoryFile
-			fmt.Printf("\n==================================================\n")
-			fmt.Printf("🚀 Executing User Story: %s\n", currentStoryFile)
-			fmt.Printf("==================================================\n")
+			err := func(currentStoryFile string) error {
+				cfg.Input = currentStoryFile
+				fmt.Printf("\n==================================================\n")
+				fmt.Printf("🚀 Executing User Story: %s\n", currentStoryFile)
+				fmt.Printf("==================================================\n")
 
-			specBytes, err := os.ReadFile(currentStoryFile)
-			if err != nil {
-				return fmt.Errorf("failed to read story file %s: %w", currentStoryFile, err)
-			}
-			specStr := string(specBytes)
-
-			state, err := repo.Load(context.Background())
-			if err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					cwd, getwdErr := os.Getwd()
-					if getwdErr != nil {
-						cwd = "."
-					}
-					featName := filepath.Base(cfg.Input)
-					featNameClean := strings.TrimSuffix(featName, filepath.Ext(featName))
-					integrationBranch := cfg.VCS.BranchPrefix + "feature-" + featNameClean
-					if cfg.VCS.BranchPrefix == "" {
-						integrationBranch = "noctifab/feature-" + featNameClean
-					}
-					state = &domain.State{
-						ID:          uuid.New().String(),
-						ProjectPath: cwd,
-						Version:     0,
-						BuildStatus: domain.BuildUnknown,
-						Metadata: domain.StateMetadata{
-							InputSource:       "markdown",
-							InputPath:         cfg.Input,
-							FeatureName:       featName,
-							BaseBranch:        cfg.VCS.BaseBranch,
-							IntegrationBranch: integrationBranch,
-							TotalCostUSD:      "0.00000",
-						},
-					}
-				} else {
-					return err
+				specBytes, err := os.ReadFile(currentStoryFile)
+				if err != nil {
+					return fmt.Errorf("failed to read story file %s: %w", currentStoryFile, err)
 				}
-			}
+				specStr := string(specBytes)
 
-			// Clean up state tasks if completing previous run
-			state.Tasks = nil
-			state.StoryStatus = domain.StoryRunning
-			state.StoryError = ""
-			if err := repo.Save(context.Background(), state); err != nil {
-				return fmt.Errorf("failed to save initial state: %w", err)
-			}
-
-			orchestrator := services.NewOrchestrator(
-				repo, reg, llmClient, validator, scheduler,
-				gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox, repairHandler,
-			)
-
-			if cfg.Unblocker.Enabled {
-				unblocker := services.NewUnblockerAgent(
-					repo,
-					llmClient,
-					mailbox,
-					time.Duration(cfg.Unblocker.PollInterval),
-					cfg.Unblocker.MaxRetries,
-					time.Duration(cfg.Unblocker.StallThreshold),
-					time.Duration(cfg.Unblocker.ConflictThreshold),
-					cfg.Unblocker.LLMAssessment,
-				)
-				orchestrator.SetUnblocker(unblocker)
-				unblockerCtx, cancelUnblocker := context.WithCancel(context.Background())
-				defer cancelUnblocker()
-				unblocker.Start(unblockerCtx)
-			}
-
-			fmt.Println("Decomposing specification into task DAG...")
-			if err := orchestrator.PlanStory(context.Background(), state, specStr); err != nil {
-				return fmt.Errorf("failed to plan specification: %w", err)
-			}
-
-			// Run orchestrator loop
-			ticker := time.NewTicker(2 * time.Second)
-			defer ticker.Stop()
-
-			storyDone := false
-			for !storyDone {
-				select {
-				case <-context.Background().Done():
-					return context.Background().Err()
-				case <-ticker.C:
-					if _, err := orchestrator.RunOnce(context.Background()); err != nil {
-						fmt.Fprintf(os.Stderr, "Orchestrator error: %v\n", err)
-					}
-
-					st, err := repo.Load(context.Background())
-					if err != nil {
+				state, err := repo.Load(context.Background())
+				if err != nil {
+					if errors.Is(err, sql.ErrNoRows) {
+						cwd, getwdErr := os.Getwd()
+						if getwdErr != nil {
+							cwd = "."
+						}
+						featName := filepath.Base(cfg.Input)
+						featNameClean := strings.TrimSuffix(featName, filepath.Ext(featName))
+						integrationBranch := cfg.VCS.BranchPrefix + "feature-" + featNameClean
+						if cfg.VCS.BranchPrefix == "" {
+							integrationBranch = "noctifab/feature-" + featNameClean
+						}
+						state = &domain.State{
+							ID:          uuid.New().String(),
+							ProjectPath: cwd,
+							Version:     0,
+							BuildStatus: domain.BuildUnknown,
+							Metadata: domain.StateMetadata{
+								InputSource:       "markdown",
+								InputPath:         cfg.Input,
+								FeatureName:       featName,
+								BaseBranch:        cfg.VCS.BaseBranch,
+								IntegrationBranch: integrationBranch,
+								TotalCostUSD:      "0.00000",
+							},
+						}
+					} else {
 						return err
 					}
+				}
 
-					if allTasksFinished(st) {
-						anyFailed := false
-						for _, t := range st.Tasks {
-							if t.Status == domain.TaskFailed {
-								anyFailed = true
-								break
+				// Clean up state tasks if completing previous run
+				state.Tasks = nil
+				state.StoryStatus = domain.StoryRunning
+				state.StoryError = ""
+				if err := repo.Save(context.Background(), state); err != nil {
+					return fmt.Errorf("failed to save initial state: %w", err)
+				}
+
+				orchestrator := services.NewOrchestrator(
+					repo, reg, llmClient, validator, scheduler,
+					gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox, repairHandler,
+				)
+
+				if cfg.Unblocker.Enabled {
+					unblocker := services.NewUnblockerAgent(
+						repo,
+						llmClient,
+						mailbox,
+						time.Duration(cfg.Unblocker.PollInterval),
+						cfg.Unblocker.MaxRetries,
+						time.Duration(cfg.Unblocker.StallThreshold),
+						time.Duration(cfg.Unblocker.ConflictThreshold),
+						cfg.Unblocker.LLMAssessment,
+					)
+					orchestrator.SetUnblocker(unblocker)
+					unblockerCtx, cancelUnblocker := context.WithCancel(context.Background())
+					defer cancelUnblocker()
+					unblocker.Start(unblockerCtx)
+				}
+
+				fmt.Println("Decomposing specification into task DAG...")
+				if err := orchestrator.PlanStory(context.Background(), state, specStr); err != nil {
+					return fmt.Errorf("failed to plan specification: %w", err)
+				}
+
+				// Run orchestrator loop
+				ticker := time.NewTicker(2 * time.Second)
+				defer ticker.Stop()
+
+				storyDone := false
+				for !storyDone {
+					select {
+					case <-context.Background().Done():
+						return context.Background().Err()
+					case <-ticker.C:
+						if _, err := orchestrator.RunOnce(context.Background()); err != nil {
+							fmt.Fprintf(os.Stderr, "Orchestrator error: %v\n", err)
+						}
+
+						st, err := repo.Load(context.Background())
+						if err != nil {
+							return err
+						}
+
+						if allTasksFinished(st) {
+							anyFailed := false
+							for _, t := range st.Tasks {
+								if t.Status == domain.TaskFailed {
+									anyFailed = true
+									break
+								}
 							}
+							if anyFailed {
+								return fmt.Errorf("execution failed: one or more tasks in %s failed validation permanently", currentStoryFile)
+							}
+							fmt.Printf("User story %s successfully implemented and validated!\n", currentStoryFile)
+							storyDone = true
 						}
-						if anyFailed {
-							return fmt.Errorf("execution failed: one or more tasks in %s failed validation permanently", currentStoryFile)
-						}
-						fmt.Printf("User story %s successfully implemented and validated!\n", currentStoryFile)
-						storyDone = true
 					}
 				}
+				return nil
+			}(currentStoryFile)
+			if err != nil {
+				return err
 			}
 		}
 

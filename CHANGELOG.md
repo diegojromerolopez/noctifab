@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.4] - 2026-07-31
+
+### Fixed
+- **Unblocker Goroutine Leak in Story Loop**: Wrapped per-story execution in an anonymous function scope in `cmd/noctifab/cli/start.go` so `defer cancelUnblocker()` and `defer ticker.Stop()` execute at the end of each story iteration, preventing accumulating background unblocker goroutines during multi-story runs.
+
+### Changed
+- **CLI `-i` Flag Shorthand Documentation**: Documented breaking change in `cmd/noctifab/cli/root.go` where the persistent `-i` shorthand was reassigned from `--input` to `--interactive` (and `start-one` was merged into `start`).
+
 ## [0.18.3] - 2026-07-30
 
 ### Removed
