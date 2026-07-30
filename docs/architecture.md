@@ -82,6 +82,27 @@ The mailbox exposes a **Wakeup channel** that fires whenever a command is enqueu
 
 ---
 
+## Multi-Agent Roles & Team Pipeline
+
+Noctifab organizes execution into 12 specialized agent roles:
+
+| Role Key | Agent Name | Domain Scope & Responsibility |
+| :--- | :--- | :--- |
+| **`orchestrator`** | Orchestrator Agent | Coordinates state persistence, VCS branch rebasing, task assignment, and PR creation. |
+| **`product_manager`** | Product Manager Agent | Analyzes `SPEC.md` and existing user stories in `roadmap/`. Generates new User Stories or audits and enriches existing ones with explicit Definitions of Done (DoD), language-agnostic interface contracts, I/O formatting invariants, error prefixes, exit codes, and comprehensive edge-case scenario matrices before task planning starts. |
+| **`planner`** | Task Planner Agent | Decomposes User Stories into a Directed Acyclic Graph (DAG) of executable technical tasks. |
+| **`architect`** | Software Architect Agent | Audits package boundaries, system design, and cross-cutting architectural constraints. |
+| **`generators`** | Generator Agent | Writes production source code and initial feature logic in task branches. |
+| **`testers`** | Tester Agent | Independently writes black-box test suites (unit, integration, e2e) against public contracts. |
+| **`qa`** | QA Auditor Agent | Audits code/test quality by domain and executes refactoring passes. |
+| **`security`** | Security Auditor Agent | Executes SAST scanning and security vulnerability audits. |
+| **`performance`** | Performance Agent | Runs profilers, benchmark suites, and memory leak detection. |
+| **`docs`** | Documentation Agent | Maintains OpenAPI specs, README documentation, and inline code docstrings. |
+| **`devops`** | DevOps Release Agent | Generates Dockerfiles, Makefiles, and CI/CD release pipeline workflows. |
+| **`unblocker`** | Unblocker Daemon Agent | Continuously monitors execution pipelines for stalls, deadlocks, and task re-queueing. |
+
+---
+
 ## Self-Healing & Anti-Stalling Resiliency
 
 To prevent execution stalls and guarantee progress under validation failures, `noctifab` implements self-healing at two distinct layers:
@@ -262,6 +283,30 @@ When a provider adopts a completely new naming convention (e.g., changing from `
 - **`max_duration`**: Specifies a story-level wall-clock timeout.
 - **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
 
+### 5. Unblocker Agent (Cross-Agent Stall Recovery)
+
+The **Unblocker Agent** (`pkg/services/unblocker.go`) is an autonomous daemon goroutine that runs on an independent timer alongside the orchestrator's task-dispatch loop. Unlike the Watchdog (which guards individual command execution) and WatchdogRepair (which heals test failures after completion), the Unblocker operates at the **pipeline level** — it periodically scans `ActiveAgents` and `Tasks` in the shared state to detect situations where the entire pipeline has stalled.
+
+**When it fires:** Every `unblocker.poll_interval` (default: `30s`). Configurable per run via `config.yaml` or `--unblocker-poll-interval`.
+
+**What it detects:**
+
+| Stall Reason | Signal | Threshold |
+|---|---|---|
+| `frozen_progress` | Task `IN_PROGRESS` with `UpdatedAt` stale | > `stall_threshold` (default: 5m) |
+| `orphaned_task` | Task `IN_PROGRESS` but no `WORKING` agent assigned | > `stall_threshold / 2` |
+| `agent_inconsistency` | Agent `WORKING` but its task is not `IN_PROGRESS` | Immediate (any age) |
+| `conflict_blocked` | Task `CONFLICT_BLOCKED` unresolved | > `conflict_threshold` (default: 15m) |
+
+**How it recovers:**
+
+1. **LLM Assessment** (when `unblocker.llm_assessment: true`, the default): Builds a structured prompt from the detected stalls and current pipeline state, calls the LLM, and parses the returned JSON action list.
+2. **Heuristic Fallback** (when `llm_assessment: false` or LLM call fails): Applies deterministic rules — resets frozen recoverable tasks to `PENDING`, permanently fails tasks that have exhausted retries.
+
+**Command dispatch:** All corrective actions are injected via the `CommandMailbox`, ensuring consistency with the OCC state model. Three new command types are available: `ResetTaskCmd`, `FailTaskCmd`, and `LogUnblockerActionCmd`.
+
+See [docs/unblocker_agent.md](unblocker_agent.md) for the full developer reference.
+
 ---
 
 ## Development Performance Speedups
@@ -284,27 +329,31 @@ To support near-instantaneous development feedback loops, `noctifab` implements 
 
 ## Orchestrator Execution Architecture Modes
 
-The orchestrator supports two distinct execution architecture modes configured via `orchestrator.architecture` in `.noctifab/config.yaml`:
+The orchestrator supports three distinct execution architecture modes configured via `agents.architecture` in `.noctifab/config.yaml`:
 
-### 1. `code_first_verification_loop` (Default)
-The **Code-First Verification Loop** separates implementation scaffolding from test characterization:
+### 1. `code_first` (Default, legacy alias `code_first_verification_loop`)
+The **Code-First Verification Loop** separates implementation from test verification:
 1. **Minimal Implementation Pass (Generator Agent)**: Scaffolds core types, function signatures, and minimal implementation logic first.
 2. **Test Characterization Pass (Tester Agent)**: Inspects the created code signatures and writes comprehensive unit and integration tests against them.
 3. **Refactor & Fulfill Pass (Generator Agent)**: Refactors and expands the implementation to satisfy all tests.
 
-This mode prevents LLMs from hallucinating non-existent package signatures or writing incompatible test mocks.
-
-### 2. `single_pass_execution`
+### 2. `single_pass` (Legacy alias `single_pass_execution`)
 The **Single-Pass Execution** mode optimizes for maximum generation speed and minimum token latency:
 * A single Generator agent pass creates both the source code implementation and corresponding tests together in one turn.
 * Eliminates multi-pass turn delays for straightforward user stories and micro-specifications.
 
-### 3. Specialized Multi-Agent Audit & Release Panel
+### 3. `breadth_first` (Legacy alias `breadth_first_generation`, `bfg`)
+The **Breadth-First Generation** mode optimizes for rapid end-to-end prototype delivery across all user stories:
+* **Pass 1 (Broad Foundation / ~80% Feature Coverage)**: Generator and Tester implement core happy-path functionality across all tasks first, explicitly deferring cosmetic formatting, linter nitpicks, and obscure corner cases.
+* **Benevolent Judges (QA, Security, DevOps)**: Evaluates candidates based on functional happy paths and enforces the non-negotiable **Zero Regressions** rule.
+* **Iterative Refinement (Passes 2..N)**: Progressive passes expand edge-case coverage, error handling, linter compliance, and performance hardening.
+
+### 4. Specialized Multi-Agent Audit & Release Panel
 
 Configured via `agents:` in `.noctifab/config.yaml`:
 ```yaml
 agents:
-  architecture: code_first_verification_loop
+  architecture: code_first
 
   architect:
     number: 1      # Pre-flight architecture pass (default: 1)

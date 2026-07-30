@@ -46,8 +46,8 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		err = repo.Save(ctx, state)
 		require.NoError(t, err)
 
-		// Low budget limit of $0.01 ($0.0375 is required for Planner)
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 0.01)
+		// Low token limit of 100 (2500 required for Planner)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100)
 		assert.ErrorIs(t, err, domain.ErrBudgetExhausted)
 
 		// Assert no tasks were planned because budget was exceeded pre-flight

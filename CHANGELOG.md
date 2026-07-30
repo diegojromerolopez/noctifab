@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-07-30
+
+### Added
+- **Breadth-First Generation (`breadth_first`) Architecture**: Implemented a new execution architecture mode ([BREATH_FIRST_GENERATION.md](file:///Users/diegoj/repos/noctifab/BREATH_FIRST_GENERATION.md)) where Generator and Tester agents focus on delivering ~80% core happy-path functionality across all tasks first. Non-critical linter nitpicks, formatting guidelines, and obscure corner cases are deferred to subsequent refinement passes under Benevolent Judge evaluation.
+- **Benevolent Judge Zero-Regression Enforcement**: Integrated Zero-Regression checks in `executeTaskBreadthFirst` ([pkg/services/orchestrator_execute_breadth_first.go](file:///Users/diegoj/repos/noctifab/pkg/services/orchestrator_execute_breadth_first.go)) to ensure iterative refinements never degrade previously validated happy-path features.
+- **Short Architecture Names & Normalization**: Added support for concise architecture names (`code_first`, `single_pass`, `breadth_first`) and acronyms (`cfv`, `spe`, `bfg`) in `agents.architecture` via `NormalizeArchitecture` ([pkg/infrastructure/config/config.go](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/config/config.go#L280)) while maintaining full backward compatibility for legacy strings (`code_first_verification_loop`, `single_pass_execution`, `breadth_first_generation`).
+
+## [0.17.1] - 2026-07-30
+
+### Added
+- **Product Manager Definition of Done (DoD) Mandate**: Injected a language-agnostic Definition of Done & Interface Contract rule into `buildProductManagerPrompt` ([pkg/infrastructure/llm/prompt_templates.go](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/prompt_templates.go#L48)). Generated User Stories (`roadmap/US-xxx.md`) are now required to specify explicit public API signatures, binary executable paths, I/O formatting invariants, error prefixes, exit codes, number precision representations, and zero-failure test pass criteria before downstream task planning starts.
+
+### Fixed
+- **Per-Tool Formatter Execution Overhead Removed**: Removed synchronous `runFormatterIfConfigured` calls after every single `write_file` and `edit_file` execution in `orchestrator_helper.go`. Code formatting is now executed only during explicit linter passes, eliminating ~180 blocking RuboCop subprocess boots per run.
+- **Top-Level `workspace_cache` Configuration**: Relocated `workspace_cache` from `agents.workspace_cache` to root-level `workspace_cache:` in `.noctifab/config.yaml` and `Config` struct (with fallback for backward compatibility).
+
+## [0.17.0] - 2026-07-29
+
+### Added
+- **Verification vs. Validation Engineering Strategy**: Decoupled task execution into two distinct stages: *Verification* (building minimal working code that compiles and passes basic functional checks) and *Validation* (iteratively refactoring and hardening code under test safety rails).
+- **Black-Box Testing Mandate**: Updated Tester Agent prompts to strictly mandate black-box testing against public API contracts, return values, and CLI/system outputs. Tests are explicitly forbidden from asserting or depending on internal module structures, private struct fields, or method layouts.
+- **Generator Pre-Submission Self-Verification**: Updated Generator Agent prompts to require running `run_tests` in-session before returning `noop`, fixing build/syntax errors in-place to avoid 30–45s Orchestrator task failure/re-queueing cycles.
+- **Product Manager Roadmap Consolidation**: Added Product Manager prompt handling (`buildProductManagerPrompt`) enforcing single-story generation (`roadmap/US-001.md`) for standalone utilities or specifications under 500 LOC to prevent multi-story over-decomposition overhead.
+- **GNU Makefile & C Scaffolding Best Practices**: Injected standard GNU Makefile multi-directory wildcard patterns (`SRCS = $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))`) and non-empty compilation unit stubs into system prompts.
+
+## [0.16.1] - 2026-07-29
+
+### Fixed
+- **Unblocker Agent Wiring**: Wired up `UnblockerAgent` initialization in `cmd/noctifab/cli/start.go` and `cmd/noctifab/cli/serve.go`. The autonomous unblocker daemon now starts automatically alongside the orchestrator loop whenever `unblocker.enabled` is active in `.noctifab/config.yaml`.
+
+
 ## [0.16.0] - 2026-07-27
 
 ### Added

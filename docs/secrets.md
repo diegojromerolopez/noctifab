@@ -136,10 +136,10 @@ If `secrets.yaml` does not exist, noctifab proceeds normally — no error is rai
 
 ```bash
 # Via standard provider environment variables
-GEMINI_API_KEY="AIzaSy..." GITHUB_TOKEN="github_pat_..." noctifab start-one --input roadmap/US-001.md
+GEMINI_API_KEY="AIzaSy..." GITHUB_TOKEN="github_pat_..." noctifab start SPEC.md
 
 # Via explicit noctifab environment overrides
-NOCTIFAB_LLM_API_KEY="AIzaSy..." NOCTIFAB_VCS_TOKEN="github_pat_..." noctifab start-one --input roadmap/US-001.md
+NOCTIFAB_LLM_API_KEY="AIzaSy..." NOCTIFAB_VCS_TOKEN="github_pat_..." noctifab start SPEC.md
 ```
 
 ---
@@ -168,7 +168,7 @@ In CI pipelines, prefer environment variables rather than committing `secrets.ya
   env:
     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  run: noctifab start-one --input roadmap/US-001.md
+  run: noctifab start SPEC.md
 ```
 
 ---

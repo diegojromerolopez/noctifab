@@ -199,7 +199,7 @@ func (r *SQLiteRepository) Save(ctx context.Context, state *domain.State) error 
 	}
 	for _, file := range state.Files {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO workspace_files (path, state_id, size, last_modified)
+			`INSERT OR REPLACE INTO workspace_files (path, state_id, size, last_modified)
 			VALUES (?, ?, ?, ?)`,
 			file.Path, state.ID, file.Size, file.LastModified,
 		)

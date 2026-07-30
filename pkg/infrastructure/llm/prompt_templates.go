@@ -8,6 +8,9 @@ import (
 // preprocessPrompt injects system instructions and structured JSON schemas
 // based on the target action type prefix of the raw prompt string.
 func preprocessPrompt(prompt string) string {
+	if strings.HasPrefix(prompt, "Generate detailed user stories from specification:") {
+		return buildProductManagerPrompt(strings.TrimPrefix(prompt, "Generate detailed user stories from specification:"))
+	}
 	if strings.HasPrefix(prompt, "Decompose specification into tasks:") {
 		return buildPlannerPrompt(strings.TrimPrefix(prompt, "Decompose specification into tasks:"))
 	}
@@ -27,6 +30,54 @@ func preprocessPrompt(prompt string) string {
 		return buildRepairPrompt(strings.TrimPrefix(prompt, "Repair task: "))
 	}
 	return prompt
+}
+
+func buildProductManagerPrompt(specStr string) string {
+	return fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes.
+
+You are acting as the Product Manager Agent.
+Your task is to convert the specification into user story files under roadmap/, OR audit and refine any existing user stories to ensure complete, unambiguous specifications with explicit Definitions of Done.
+
+INPUT CONTEXT:
+%s
+
+REFINEMENT & AUDIT MANDATE:
+If existing user story files are provided in the prompt:
+1. Inspect each existing user story against the specification and requirements.
+2. If an existing user story is vague or lacks an explicit Definition of Done (DoD), edge case matrix, error handling rules, or interface contracts, REWRITE and ENRICH it with complete DoD criteria, edge cases, error prefixes, exit codes, and formatting rules.
+3. Emit 'create_story' tool actions with the target filename and the updated markdown content.
+
+ROADMAP CONSOLIDATION RULE:
+For standalone applications, CLI utilities, or specifications expected to be under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/US-001.md") containing all specification requirements. Do NOT over-decompose concise specifications into multiple user stories.
+
+DEFINITION OF DONE (DoD) & CONTRACT MANDATE:
+Every user story content generated or refined MUST include an explicit, language-agnostic "Definition of Done (DoD)" section containing:
+1. Public Interface & Entry Point Contracts: Specify exact public API method/module signatures AND binary executable paths (if a CLI application or utility).
+2. Standard I/O & Output Formatting Invariants: Specify exact stdout/stderr output strings, error message prefixes (e.g. "Error: ..."), exit status codes (0 for success, non-zero for error), and interactive REPL prompt characters.
+3. Explicit Data Representation & Number Formats: Specify number precision (integer vs float output representations), edge case boundaries, and empty input behaviors.
+4. Comprehensive Scenario & Edge Case Matrix: Include input validation edge cases, boundary values, error conditions, and unexpected input handling scenarios.
+5. Verification Criteria: Mandate zero-failure test suite execution and zero linter error requirements.
+
+You may only use the 'create_story' tool.
+'create_story' tool arguments:
+- filename: Relative filepath (e.g. "roadmap/US-001.md")
+- content: Complete markdown user story with title, requirements, definition of done (DoD), validation criteria, depends_on: [], and change_type: "new"
+
+Return format:
+{
+  "reasoning": "Rationale for user story creation",
+  "actions": [
+    {
+      "tool": "create_story",
+      "args": {
+        "filename": "roadmap/US-001.md",
+        "content": "# User Story 001...\n"
+      }
+    }
+  ]
+}
+`, specStr)
 }
 
 func buildPlannerPrompt(specStr string) string {
@@ -75,6 +126,7 @@ const antiStallingTester = `
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
 - A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
+- BLACK-BOX TESTING & DEPENDENCY INJECTION MANDATE: Write tests that verify observable behaviors, public API contracts, return values, and CLI/system outputs. Injected dependencies (databases, HTTP clients, external services) should be mocked at their interface boundaries. NEVER write tests that depend on internal implementation details, private struct fields, or specific unexported module layouts. Decoupled tests allow generator agents to iterate and refactor freely.
 - If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
 - If run_linter fails, apply the suggested fixes immediately and re-run.
 - If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
@@ -89,8 +141,13 @@ ANTI-STALLING MANDATE:
 const antiStallingGenerator = `
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
+- FUNCTIONAL CORRECTNESS FIRST: Focus on writing the simplest working implementation that satisfies all tests. Code does NOT need to be perfect on the first pass. Make it work first—it can be refactored and optimized once tests are passing.
+- GENERATOR SELF-VERIFICATION: You MUST run 'run_tests' inside your turn sequence before calling 'noop'. If compilation or tests fail, fix the errors immediately in the active turn session to prevent task failure retries.
 - A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
-- If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
+- C & MAKEFILE GUIDELINES:
+  * When writing Makefiles for C/C++ projects with multiple source directories, use 'SRCS = $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))' to safely expand source files without passing raw directory names to GCC.
+  * Ensure all C source (.c) files contain a valid, non-empty compilation unit (e.g. valid stub functions or typedefs) so GCC '-Wall -Wextra -Werror -pedantic -std=c17' does not fail on empty translation units.
+- If run_tests fails, READ the error output carefully, target the failing source or Makefile immediately, and fix the issue in the SAME response. Do NOT call noop after a failed test run.
 - If run_linter fails, apply the suggested fixes immediately and re-run.
 - If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
 - If edit_file fails because target_content does not match, fall back to write_file with the complete corrected file content.
@@ -164,13 +221,14 @@ Task Details:
 
 CRITICAL:
 1. You may receive multiple turns. If run_tests or run_linter fails, you will get the error output and another turn to fix it. Write/edit files and run tests immediately.
-2. Keep classes, structs, or functions focused on a single responsibility. Implement dependency injection for external resources, loggers, and clients to make components mockable and testable.
-3. When modifying a file that already exists and contains business logic, do NOT overwrite it wholesale with 'write_file'. Instead, use 'edit_file' (or 'multi_replace_file_content') to surgically merge your changes into the existing file, preserving the original structure, functions, docstrings, and behaviors.
-4. Before writing any code, always check if any dependencies or infrastructure configurations are missing from the project manifests (e.g. Gemfile, package.json, requirements.txt, pyproject.toml, Cargo.toml). If a dependency is required by the SPEC, you MUST create or update these manifests first to include them.
-5. If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' block to explain the bug and trigger a test fix by the Tester Agent.
-6. All code implemented/modified MUST compile cleanly and comply with the project's formatting and linter guidelines. You MUST invoke run_tests to verify correctness before calling noop.
-7. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
-8. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
+2. FUNCTIONAL CORRECTNESS FIRST: Prioritize a clean, functional implementation that makes all tests pass. Do not over-engineer or aim for perfection on the initial pass. Refactoring can happen once tests are passing.
+3. Keep classes, structs, or functions focused on a single responsibility. Implement dependency injection for external resources, loggers, and clients to make components mockable and testable.
+4. When modifying a file that already exists and contains business logic, do NOT overwrite it wholesale with 'write_file'. Instead, use 'edit_file' (or 'multi_replace_file_content') to surgically merge your changes into the existing file, preserving the original structure, functions, docstrings, and behaviors.
+5. Before writing any code, always check if any dependencies or infrastructure configurations are missing from the project manifests (e.g. Gemfile, package.json, requirements.txt, pyproject.toml, Cargo.toml). If a dependency is required by the SPEC, you MUST create or update these manifests first to include them.
+6. If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' block to explain the bug and trigger a test fix by the Tester Agent.
+7. All code implemented/modified MUST compile cleanly and comply with the project's formatting and linter guidelines. You MUST invoke run_tests to verify correctness before calling noop.
+8. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
+9. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
 %s
 
 You may use the following tools:
@@ -211,10 +269,11 @@ Task Details & Failure Context:
 %s
 
 CRITICAL:
-1. You may receive multiple turns. If the error is still present, you will be given the new failure output and another turn. Fix the issue immediately by editing or writing the necessary files.
-2. All code written/modified MUST compile cleanly and comply with the project's formatting and linter guidelines.
-3. Apply aggressive self-healing: fix any errors directly. Do not hesitate to overwrite or rewrite files to make them compile/validate correctly.
-4. If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
+1. TARGET FAILING FILES IMMEDIATELY: Read the failure output carefully and directly edit the failing file (e.g. Makefile or broken source file) indicated in the error trace. Avoid exploratory directory browsing when the failing path is already provided.
+2. You may receive multiple turns. If the error is still present, you will be given the new failure output and another turn. Fix the issue immediately by editing or writing the necessary files.
+3. All code written/modified MUST compile cleanly and comply with the project's formatting and linter guidelines.
+4. Apply aggressive self-healing: fix any errors directly. Do not hesitate to overwrite or rewrite files to make them compile/validate correctly.
+5. If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
 
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}

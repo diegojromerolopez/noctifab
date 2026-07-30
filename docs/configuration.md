@@ -35,8 +35,20 @@ Configures multi-agent team concurrency, turn iterations, architecture mode, and
 
 ```yaml
 agents:
-  architecture: code_first_verification_loop
+  architecture: code_first
   max_tools_per_response: 5
+
+  orchestrator:
+    number: 1
+    iterations: 2
+
+  product_manager:
+    number: 1
+    iterations: 2
+
+  planner:
+    number: 1
+    iterations: 2
 
   architect:
     number: 1
@@ -70,14 +82,24 @@ agents:
     number: 1
     iterations: 2
 
+  unblocker:
+    number: 1
+    iterations: 2
+
+workspace_cache:
+  enabled: true
+
 poll_interval: 5m
 max_clarification_wait: 30m
 clarification_timeout_action: abort
 ```
 
-- **`architecture`** (String): Execution loop architecture mode. Options: `code_first_verification_loop` (default: TDD verification loop with separate Generator and Tester turns) or `single_pass_execution` (Fast-path single pass co-generating code and tests in 1 turn).
+- **`architecture`** (String): Execution loop architecture mode. Options: `code_first` (default: Generator implements code first, followed by independent Tester verification turns), `single_pass` (Fast-path single pass co-generating code and tests in 1 turn), or `breadth_first` (Iterative ~80% happy-path generation across all stories first, followed by benevolent judges refining edge cases). Legacy aliases (`code_first_verification_loop`, `single_pass_execution`, `breadth_first_generation`, `cfv`, `spe`, `bfg`) are fully supported.
 - **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls allowed per agent response turn.
-- **`architect`**: Configures Software Architect agents validating domain boundaries before story planning (`number: 1`, `iterations: 2`).
+- **`orchestrator`**: Configures Orchestrator agents managing task lifecycle and state synchronization (`number: 1`, `iterations: 2`).
+- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories (`roadmap/US-xxx.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`).
+- **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs (`number: 1`, `iterations: 2`).
+- **`architect`**: Configures Software Architect agents validating domain boundaries and package structures (`number: 1`, `iterations: 2`).
 - **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 5`).
 - **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 3`).
 - **`qa`**: Configures QA Auditor agents auditing code & test quality by feature domain (`number: 1`, `iterations: 2`).
@@ -85,6 +107,7 @@ clarification_timeout_action: abort
 - **`performance`**: Configures Performance & Benchmark agents running profilers & leak detection (`number: 1`, `iterations: 2`).
 - **`docs`**: Configures Documentation agents maintaining OpenAPI specs, READMEs & docstrings (`number: 1`, `iterations: 2`).
 - **`devops`**: Configures DevOps & Release agents generating Dockerfiles, Makefiles & CI workflows (`number: 1`, `iterations: 2`).
+- **`unblocker`**: Configures Unblocker agents monitoring pipelines for stalls and re-dispatching tasks (`number: 1`, `iterations: 2`).
 - **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.
 - **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve a task clarification.
 - **`clarification_timeout_action`** (String): Action to take if a clarification times out (`abort` or `continue`).
@@ -108,43 +131,80 @@ storage:
 
 ---
 
-## LLM Configurations (`llm` and `llms`)
+## LLM Configurations (`llm` and `roles`)
 
-Defines primary LLM connections and resilient failover hierarchies. You can define a single `llm` block or a list under `llms`.
+Defines named LLM provider registries, global default failover priorities, and per-agent model routing.
 
 ```yaml
 llm:
-  provider: openai
-  model: gpt-4o
-  temperature: 0.0
-  api_key: "secret:OPENAI_API_KEY"
-  max_retries: 5
-  retry_backoff: 100ms
-  retry_backoff_factor: 2.0
-  max_budget_usd: 10.0
-  reset_period: daily
-  max_timeout: 60s
-  idle_timeout: 15s
-  streaming: true
-  failover:
-    enabled: false
-    cooldown: 5m
-    backends:
-      - provider: gemini
-        model: gemini-2.5-flash
-        api_key_env: GEMINI_API_KEY
+  # Global Default Failover Priority Chain
+  priority:
+    - "openai-primary"
+    - "anthropic-backup"
+    - "deepseek-coder"
+
+  # Named LLM Provider Registry
+  providers:
+    - name: "openai-primary"
+      provider: "openai"
+      api_key: "secret:OPENAI_API_KEY"
+      max_retries: 5
+      retry_backoff: 100ms
+      max_timeout: 60s
+
+    - name: "anthropic-backup"
+      provider: "anthropic"
+      api_key_env: "ANTHROPIC_API_KEY"
+      model: "claude-3-5-sonnet-latest"
+      max_retries: 3
+
+    - name: "deepseek-coder"
+      provider: "deepseek"
+      api_key_env: "DEEPSEEK_API_KEY"
+      model: "deepseek-coder"
+      url: "https://api.deepseek.com"
+
+# Per-Agent Priority Overrides directly inside agents:
+agents:
+  generators:
+    number: 4
+    iterations: 5
+    providers:
+      - name: "deepseek-coder"
+      - name: "openai-primary"
+
+  testers:
+    number: 2
+    iterations: 3
+    providers:
+      - name: "openai-primary"
+      - name: "anthropic-backup"
+
+  qa:
+    number: 1
+    iterations: 2
+    providers:
+      - name: "anthropic-backup"
+      - name: "openai-primary"
+        model: "gpt-4o-mini"
+
+  unblocker:
+    temperature: 0.0
+    providers:
+      - name: "openai-primary"
+        model: "gpt-4o-mini"
+      - name: "anthropic-backup"
 ```
 
-- **`provider`** (String): LLM provider client runtime implementation. Options: `openai`, `anthropic`, `gemini`, `opencode`, `kimi`, `moonshot`, `groq`, `openrouter`, `qwen`, `dashscope`, `together`, `llama`, `meta`, `huggingface`, `mistral`, `deepseek`, `hermes`, `ollama`.
-- **`model`** (String): Specific model identifier (e.g. `claude-3-5-sonnet-latest`, `gpt-4o`, `kimi-k3`, `qwen-max`, `llama-3.1-405b`).
-- **`temperature`** (Float): Creativity/determinism slider (typically `0.0` for code generation stability).
-- **`api_key`** (String): API authentication key value. Must use `secret:<KEY>` syntax to load safely from `secrets.yaml`.
-- **`api_key_env`** (String): Name of the environment variable containing the API key (e.g. `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENCODE_API_KEY`, `KIMI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `DASHSCOPE_API_KEY`, `TOGETHER_API_KEY`, `LLAMA_API_KEY`, `HUGGINGFACE_API_KEY`). Used as a fallback if `api_key` is not specified.
-- **`url`** (String): Custom API endpoint URL override (required for self-hosted gateways or local `ollama` endpoints).
-- **`max_retries`** (Integer): Number of retries on transient connection or model overload failures.
-- **`retry_backoff`** (Duration): Starting wait time before retrying a failed API call.
-- **`retry_backoff_factor`** (Float): Exponential factor multiplied by the backoff time for each retry.
-- **`max_budget_usd`** (Float): Absolute financial budget cap enforced per day/period to prevent runaway LLM costs.
+- **`llm.priority`** (List of Strings): Global ordered provider failover sequence. If an agent role does not define a custom `providers` list, it automatically inherits this global priority list.
+- **`llm.providers`** (List of Provider Specs): Named provider registry.
+  - **`name`** (String): Unique identifier for the provider (e.g. `openai-primary`, `anthropic-backup`, `ollama-local`).
+  - **`provider`** (String): LLM provider client backend. Options: `openai`, `anthropic`, `gemini`, `opencode`, `kimi`, `moonshot`, `groq`, `openrouter`, `qwen`, `dashscope`, `together`, `llama`, `meta`, `huggingface`, `mistral`, `deepseek`, `hermes`, `ollama`, `xai`, `perplexity`, `fireworks`, `sambanova`, `cohere`, `cerebras`, `nvidia`, `ai21`, `upstage`.
+  - **`model`** (String): Optional fixed model override (e.g. `claude-3-5-sonnet-latest`, `gpt-4o-mini`). Omit for dynamic capacity auto-selection.
+  - **`api_key`** / **`api_key_env`** (String): API authentication key value or environment variable name.
+  - **`url`** (String): Endpoint URL override (required for self-hosted models or `ollama`).
+  - **`max_retries`** / **`retry_backoff`** / **`max_timeout`**: Resilient retries and timeout constraints.
+- **`roles.<agent>.providers`** (List of Agent Provider Refs): Role-specific provider priority list. Allows configuring different model priorities per agent role (`architect`, `planner`, `generator`, `tester`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`).
 - **`max_timeout`** (Duration): Maximum overall completion timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines.
 - **`idle_timeout`** (Duration): Maximum stream/socket inactivity timeout allowed for LLM API calls (e.g. `15s`). Defaults to `15s` to cancel and fail over stalled stream connections without truncating active long responses.
 - **`streaming`** (Boolean): Enable or disable HTTP Server-Sent Events (SSE) token streaming (e.g. `true`). Defaults to `true` to stream completion tokens in real time and enforce sliding socket idle timeouts.
@@ -371,6 +431,31 @@ sast:
 - **`enabled`** (Boolean): Turn on security scanner checking.
 - **`scanners`** (List of Strings): Executable scanners to run (e.g. `gosec` for Go, `bandit` for Python).
 - **`fail_on_severity`** (String): Minimum scan vulnerability level that blocks integration merges. Options: `high`, `medium`, `low`.
+
+---
+
+## Unblocker Agent Settings (`unblocker`)
+
+Controls the autonomous **Unblocker Agent** — a background goroutine that periodically scans the pipeline for stalled or blocked tasks and injects corrective interventions.
+
+```yaml
+unblocker:
+  enabled: true
+  poll_interval: "30s"
+  max_retries: 3
+  stall_threshold: "5m"
+  conflict_threshold: "15m"
+  llm_assessment: true
+```
+
+- **`enabled`** (Boolean): Activate the unblocker goroutine (default: `true`). When `false`, no stall scanning is performed.
+- **`poll_interval`** (Duration): How often the unblocker wakes up to scan the pipeline for stalls (default: `30s`). Configurable via `--unblocker-poll-interval` or `NOCTIFAB_UNBLOCKER_POLL_INTERVAL`.
+- **`max_retries`** (Integer): Maximum number of unblock/reset attempts allowed for a single task before the unblocker permanently marks it as `FAILED` (default: `3`). Configurable via `--unblocker-max-retries` or `NOCTIFAB_UNBLOCKER_MAX_RETRIES`.
+- **`stall_threshold`** (Duration): How long a task must be frozen `IN_PROGRESS` with no progress update before it is classified as stalled (default: `5m`).
+- **`conflict_threshold`** (Duration): How long a `CONFLICT_BLOCKED` task waits before the unblocker intervenes (default: `15m`).
+- **`llm_assessment`** (Boolean): When `true` (default), the unblocker calls the LLM to diagnose each stall and choose the corrective action. When `false`, deterministic heuristics are applied instead (no LLM call, lower token cost).
+
+See [unblocker_agent.md](unblocker_agent.md) for a full developer reference including the stall detection algorithm, command dispatch, and tuning guidelines.
 
 ---
 

@@ -38,6 +38,62 @@ This document covers all supported LLM providers, their configuration options, e
 
 ---
 
+## Named Provider Registries & Per-Agent Model Routing
+
+`noctifab` supports declaring a named registry of LLM providers (`llm.providers`), setting a global failover priority list (`llm.priority`), and overriding provider priority chains per agent role (`roles.<agent>.providers`).
+
+### Configuration Syntax
+
+```yaml
+llm:
+  # Global Default Failover Priority Chain
+  priority:
+    - "openai-primary"
+    - "anthropic-backup"
+    - "deepseek-coder"
+
+  # Named Provider Registry
+  providers:
+    - name: "openai-primary"
+      provider: "openai"
+      api_key_env: "OPENAI_API_KEY"
+
+    - name: "anthropic-backup"
+      provider: "anthropic"
+      api_key_env: "ANTHROPIC_API_KEY"
+      model: "claude-3-5-sonnet-latest"
+
+    - name: "deepseek-coder"
+      provider: "deepseek"
+      api_key_env: "DEEPSEEK_API_KEY"
+      model: "deepseek-coder"
+
+# Per-Agent Priority Overrides directly inside agents:
+agents:
+  generators:
+    number: 4
+    iterations: 5
+    providers:
+      - name: "deepseek-coder"
+      - name: "openai-primary"
+
+  testers:
+    number: 2
+    iterations: 3
+    providers:
+      - name: "openai-primary"
+      - name: "anthropic-backup"
+
+  qa:
+    number: 1
+    iterations: 2
+    providers:
+      - name: "anthropic-backup"
+      - name: "openai-primary"
+```
+
+---
+
 ## Provider Details & Config Examples
 
 ---

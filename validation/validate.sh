@@ -77,12 +77,13 @@ git push -u origin main
 
 
 # 5. Sanitize credentials in environment
-if [ -n "${GEMINI_API_KEY:-}" ]; then
-  export GEMINI_API_KEY=$(echo "${GEMINI_API_KEY}" | sed -E 's/.*GEMINI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
-fi
-if [ -n "${OPENAI_API_KEY:-}" ]; then
-  export OPENAI_API_KEY=$(echo "${OPENAI_API_KEY}" | sed -E 's/.*OPENAI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
-fi
+for KEY in OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY OPENCODE_API_KEY KIMI_API_KEY MOONSHOT_API_KEY GROQ_API_KEY OPENROUTER_API_KEY QWEN_API_KEY DASHSCOPE_API_KEY TOGETHER_API_KEY LLAMA_API_KEY HUGGINGFACE_API_KEY HF_TOKEN MISTRAL_API_KEY DEEPSEEK_API_KEY HERMES_API_KEY OLLAMA_API_KEY XAI_API_KEY PERPLEXITY_API_KEY FIREWORKS_API_KEY SAMBANOVA_API_KEY COHERE_API_KEY CEREBRAS_API_KEY NVIDIA_API_KEY AI21_API_KEY UPSTAGE_API_KEY GITHUB_TOKEN; do
+  VAR_VAL="${!KEY:-}"
+  if [ -n "${VAR_VAL}" ]; then
+    CLEANED=$(echo "${VAR_VAL}" | sed -E 's/.*'"${KEY}"':[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
+    export "${KEY}"="${CLEANED}"
+  fi
+done
 
 # Set dummy GITHUB_TOKEN if not present to pass pre-flight checks
 export GITHUB_TOKEN="${GITHUB_TOKEN:-dummy-token}"
@@ -97,61 +98,15 @@ mkdir -p .noctifab/logs
 } > .noctifab/logs/setup.log
 
 # 7. Run noctifab command
-MODE="${MODE:-start-one}"
+MODE="${MODE:-start}"
 
-# Determine the sequence of stories to run for the project
-STORIES=()
-if [ "${PROJECT}" = "frontpunch" ] || [ "${PROJECT}" = "wc" ] || [ "${PROJECT}" = "todo-cli" ]; then
-  STORIES=("roadmap")
-elif [ "${PROJECT}" = "calculator" ] || [ "${PROJECT}" = "echo" ] || [ "${PROJECT}" = "fortune" ]; then
-  STORIES=("SPEC.md")
-else
-  STORIES=("roadmap")
-fi
-
+INTERACTIVE_FLAG=""
 if [ "${NOCTIFAB_INTERACTIVE:-}" = "1" ]; then
-  echo "Starting noctifab serve in interactive dashboard mode..." >&2
-  "${NOCTIFAB_BIN}" serve >/dev/null 2>&1 &
-  SERVE_PID=$!
-  # Wait for daemon to respond to health checks
-  until curl -s http://127.0.0.1:18080/healthz >/dev/null; do
-    sleep 0.1
-  done
-  # Submit all stories before launching the dashboard
-  for STORY_PATH in "${STORIES[@]}"; do
-    echo "Submitting story: ${STORY_PATH}..." >&2
-    curl -s -X POST -H "Content-Type: application/json" -d "{\"path\":\"${STORY_PATH}\"}" http://127.0.0.1:18080/api/v1/stories >/dev/null
-  done
-  # Run interactive dashboard — exits automatically when all stories finish
-  if ! "${NOCTIFAB_BIN}" dashboard; then
-    echo "❌ Error: validation aborted or dashboard failed." >&2
-    kill "${SERVE_PID}" 2>/dev/null || true
-    wait "${SERVE_PID}" 2>/dev/null || true
-    exit 1
-  fi
-  # Cleanup daemon
-  kill "${SERVE_PID}" 2>/dev/null || true
-  wait "${SERVE_PID}" 2>/dev/null || true
-else
-  for STORY_PATH in "${STORIES[@]}"; do
-    if [ "${MODE}" = "start" ]; then
-      echo "Running noctifab start for ${STORY_PATH}..." >&2
-      echo "start ${STORY_PATH}" | "${NOCTIFAB_BIN}" start --wait
-      # Stop the daemon after completion
-      "${NOCTIFAB_BIN}" stop 2>/dev/null || true
-    else
-      if [ -d "${STORY_PATH}" ]; then
-        for RESOLVED_STORY in $(find "${STORY_PATH}" -maxdepth 1 -name "*.md" | sort); do
-          echo "Running noctifab start-one for ${RESOLVED_STORY}..." >&2
-          "${NOCTIFAB_BIN}" start-one --input "${RESOLVED_STORY}"
-        done
-      else
-        echo "Running noctifab start-one for ${STORY_PATH}..." >&2
-        "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
-      fi
-    fi
-  done
+  INTERACTIVE_FLAG="-i"
 fi
+
+echo "Running noctifab start..." >&2
+"${NOCTIFAB_BIN}" start . ${INTERACTIVE_FLAG}
 
 
 # 8. Verify results

@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-// GenerateRoadmap reads SPEC.md from projectPath, invokes the Product Manager Agent to generate
-// a roadmap of user stories, and writes the markdown files to projectPath/roadmap/.
+// GenerateRoadmap reads SPEC.md from projectPath and any existing user stories under roadmap/,
+// invokes the Product Manager Agent to generate or audit/refine user stories with explicit Definitions of Done,
+// and saves the updated markdown files to projectPath/roadmap/.
 func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.LLMClient) error {
 	specPath := filepath.Join(projectPath, "SPEC.md")
 	specBytes, err := os.ReadFile(specPath)
@@ -18,7 +20,22 @@ func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.L
 		return fmt.Errorf("SPEC.md not found in project path %q: %w", projectPath, err)
 	}
 
-	prompt := fmt.Sprintf("Generate detailed user stories from specification:\n\n%s", string(specBytes))
+	roadmapDir := filepath.Join(projectPath, "roadmap")
+	var existingStories []string
+	if matches, err := filepath.Glob(filepath.Join(roadmapDir, "*.md")); err == nil && len(matches) > 0 {
+		for _, match := range matches {
+			rel, _ := filepath.Rel(projectPath, match)
+			content, _ := os.ReadFile(match)
+			existingStories = append(existingStories, fmt.Sprintf("=== File: %s ===\n%s\n", rel, string(content)))
+		}
+	}
+
+	var prompt string
+	if len(existingStories) > 0 {
+		prompt = fmt.Sprintf("Audit and refine existing user stories to ensure complete Definition of Done (DoD), edge cases, and interface contracts:\n\nSpecification:\n%s\n\nExisting User Stories:\n%s", string(specBytes), strings.Join(existingStories, "\n"))
+	} else {
+		prompt = fmt.Sprintf("Generate detailed user stories from specification:\n\n%s", string(specBytes))
+	}
 	var lastErr error
 
 	for attempt := 0; attempt < 3; attempt++ {

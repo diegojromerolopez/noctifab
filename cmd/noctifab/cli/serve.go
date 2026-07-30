@@ -160,13 +160,13 @@ var serveCmd = &cobra.Command{
 			PollInterval:          time.Duration(cfg.PollInterval),
 			MaxRetries:            10,
 			Concurrency:           cfg.Agents.Generators.Number,
-			MaxBudgetUSD:          cfg.LLM.MaxBudgetUSD,
 			OCCMaxRetries:         cfg.OCCMaxRetries,
 			OCCBackoffBase:        time.Duration(cfg.OCCBackoffBase),
 			OCCBackoffFactor:      cfg.OCCBackoffFactor,
 			MaxDuration:           time.Duration(cfg.MaxDuration),
 			AutoCreatePR:          cfg.VCS.PullRequest.AutoCreate,
 			ExcludePaths:          cfg.Sandbox.ExcludePaths,
+			WorkspaceCache:        cfg.GetWorkspaceCache(),
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.
@@ -179,6 +179,21 @@ var serveCmd = &cobra.Command{
 		)
 
 		ctx, cancel := context.WithCancel(context.Background())
+
+		if cfg.Unblocker.Enabled {
+			unblocker := services.NewUnblockerAgent(
+				repo,
+				llmClient,
+				mailbox,
+				time.Duration(cfg.Unblocker.PollInterval),
+				cfg.Unblocker.MaxRetries,
+				time.Duration(cfg.Unblocker.StallThreshold),
+				time.Duration(cfg.Unblocker.ConflictThreshold),
+				cfg.Unblocker.LLMAssessment,
+			)
+			orchestrator.SetUnblocker(unblocker)
+			unblocker.Start(ctx)
+		}
 
 		// Graceful shutdown on SIGTERM / SIGINT.
 		sigCh := make(chan os.Signal, 1)

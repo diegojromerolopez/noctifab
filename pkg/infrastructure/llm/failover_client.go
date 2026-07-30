@@ -25,7 +25,7 @@ type NamedClient struct {
 }
 
 // FailoverClient implements domain.LLMClient with fallback providers, cooldown tracking,
-// monetary budget enforcement (via BudgetStore), and optional call-count budget.
+// token usage tracking (via BudgetStore), and optional call-count limit.
 type FailoverClient struct {
 	mu            sync.RWMutex
 	backends      []NamedClient
@@ -34,7 +34,7 @@ type FailoverClient struct {
 	maxCallBudget int
 	callCount     int
 	budgetStore   domain.BudgetStore
-	maxBudgetUSD  float64
+	tokenLimit    int64
 }
 
 var _ domain.LLMClient = (*FailoverClient)(nil)
@@ -42,8 +42,8 @@ var _ domain.LLMClient = (*FailoverClient)(nil)
 // NewFailoverClient creates a new FailoverClient.
 // cooldownDuration sets how long a backend is skipped after a transient error.
 // maxCalls limits the total number of Complete calls across all backends (0 = unlimited).
-// budgetStore persists monetary usage; when nil or maxBudgetUSD<=0, budget tracking is skipped.
-func NewFailoverClient(backends []NamedClient, cooldownDuration time.Duration, maxCalls int, budgetStore domain.BudgetStore, maxBudgetUSD float64) *FailoverClient {
+// budgetStore persists token usage; when nil or tokenLimit<=0, limit check is skipped.
+func NewFailoverClient(backends []NamedClient, cooldownDuration time.Duration, maxCalls int, budgetStore domain.BudgetStore, tokenLimit int64) *FailoverClient {
 	if cooldownDuration <= 0 {
 		cooldownDuration = 5 * time.Minute
 	}
@@ -53,13 +53,12 @@ func NewFailoverClient(backends []NamedClient, cooldownDuration time.Duration, m
 		duration:      cooldownDuration,
 		maxCallBudget: maxCalls,
 		budgetStore:   budgetStore,
-		maxBudgetUSD:  maxBudgetUSD,
+		tokenLimit:    tokenLimit,
 	}
 }
 
 // Complete iterates through backends in order, skipping those on cooldown.
-// Before each call it checks the monetary budget; after a successful call it
-// records estimated token cost.
+// Before each call it checks token usage; after a successful call it records token usage.
 func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "Complete",
 		trace.WithAttributes(
@@ -128,31 +127,31 @@ func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.L
 }
 
 func (f *FailoverClient) checkBudget(ctx context.Context, date string, model string) error {
-	if f.budgetStore == nil || f.maxBudgetUSD <= 0 {
+	if f.budgetStore == nil || f.tokenLimit <= 0 {
 		return nil
 	}
 	used, err := f.budgetStore.GetDailyUsage(ctx, date, model)
 	if err != nil {
-		return fmt.Errorf("budget check: %w", err)
+		return fmt.Errorf("token usage check: %w", err)
 	}
-	if used >= f.maxBudgetUSD {
-		return fmt.Errorf("%w: daily budget $%.2f exhausted for %s", domain.ErrBudgetExhausted, f.maxBudgetUSD, model)
+	if used >= f.tokenLimit {
+		return fmt.Errorf("%w: daily token limit %d exhausted for %s", domain.ErrBudgetExhausted, f.tokenLimit, model)
 	}
 	return nil
 }
 
 func (f *FailoverClient) recordUsage(ctx context.Context, date string, model string, prompt string, resp *domain.LLMResponse) error {
-	if f.budgetStore == nil || f.maxBudgetUSD <= 0 {
+	if f.budgetStore == nil {
 		return nil
 	}
-	promptTokens := len(prompt) / estTokensPerChar
-	completionTokens := estimateCompletionTokens(resp)
-	cost := domain.CostForTokens(model, promptTokens, completionTokens)
-	if cost <= 0 {
+	promptTokens := int64(len(prompt) / estTokensPerChar)
+	completionTokens := int64(estimateCompletionTokens(resp))
+	totalTokens := promptTokens + completionTokens
+	if totalTokens <= 0 {
 		return nil
 	}
-	if err := f.budgetStore.IncrementUsage(ctx, date, model, cost); err != nil {
-		return fmt.Errorf("failed to record budget usage: %w", err)
+	if err := f.budgetStore.IncrementUsage(ctx, date, model, totalTokens); err != nil {
+		return fmt.Errorf("failed to record token usage: %w", err)
 	}
 	return nil
 }

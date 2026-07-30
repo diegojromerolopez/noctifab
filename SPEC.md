@@ -1717,24 +1717,25 @@ The disambiguator gathers the following context to make an informed inference:
 4. **Project context:** The original clarification question and its related task.
 
 #### Inference Flow
-1. When a clarification is created, the `IntentDisambiguator.Disambiguate` method is called exactly once per clarification.
-2. It constructs a structured prompt containing the question, git log, files, and context.
-3. The LLM is invoked to infer the most likely intended behavior.
-4. If the LLM returns a valid answer, the clarification is auto-resolved with the inferred answer, and the action is logged in state's `LastActions`.
-5. If the LLM returns an error or empty response, the clarification remains unresolved — the human operator is still prompted.
-6. Disambiguation is only attempted once per clarification. If inference fails, the orchestrator falls back to the standard clarification timeout flow (§3.6.4.C).
+### 3.6.12. Unblocker Agent
+
+The **Unblocker Agent** (`pkg/services/unblocker.go`) is an autonomous background daemon goroutine that periodically scans the shared system state for stalled or blocked tasks and agents, diagnoses the root cause using the LLM (or deterministic heuristics), and injects corrective interventions via the `CommandMailbox`.
+
+#### Architecture & Lifecycle
+1. **Independent Goroutine:** Spawned alongside the main orchestrator polling loop inside `Orchestrator.Start(ctx)`. Runs on an independent ticker (`unblocker.poll_interval`, default `30s`).
+2. **Read-Only Snapshot:** Loads a read-only copy of `*domain.State` from `StateRepository`.
+3. **Stall Detection (`detectStalledTasks`):** Evaluates four stall conditions:
+   - `frozen_progress`: Task `IN_PROGRESS` with no progress/update for > `stall_threshold` (default `5m`).
+   - `orphaned_task`: Task `IN_PROGRESS` with no active `WORKING` agent assigned for > `stall_threshold / 2`.
+   - `conflict_blocked`: Task `CONFLICT_BLOCKED` for > `conflict_threshold` (default `15m`).
+   - `agent_inconsistency`: Agent `WORKING` but assigned task is not `IN_PROGRESS`.
+4. **LLM Assessment vs Heuristic Fallback:** When `llm_assessment: true` (default), constructs a diagnostic prompt (`buildUnblockerPrompt`) and requests a JSON action response. If disabled or LLM fails, applies deterministic recovery rules.
+5. **Mailbox Dispatch:** Corrective commands (`ResetTaskCmd`, `FailTaskCmd`, `LogUnblockerActionCmd`, `ClearInconsistentAgentCmd`) are sent to `CommandMailbox` to maintain OCC state safety and trigger immediate orchestrator wakeup.
 
 ---
 
----es spawned.
-2.  **Context Cancellation:** The global context `context.WithCancel` is cancelled, propagating the cancellation signal to all active worker goroutines.
-3.  **Active Worker Grace Period:** The daemon blocks and waits for a configurable period (via `--shutdown-grace-period`, default `30s`) for running tools to complete cleanups or file saves.
-4.  **Save Interrupted State:** Any workers that do not complete within the grace period are terminated. The orchestrator marks their respective tasks as `INTERRUPTED` (value `INTERRUPTED` in the TaskStatus enum) in the state, releases their git worktree locks, and saves the final consolidated `State` back to the SQLite/PostgreSQL database repository.
-
-> **Note:** The remaining subsections of §3 (§3.7 through §3.9) describe supporting workflows, integration pipelines, and configuration layout that build on top of the five core components defined above (State, Tool Registry, LLM Client, Validator, and Multi-Agent Orchestrator).
-
 ### 3.7. Specification Ingestion & External Clients
-To support dynamic task generation from multiple workflow sources, `noctifab` abstracts the feature specification retrieval through an ingestion layer. The `--input` flag (available on `noctifab start-one` and `noctifab start`) parses `<source>` to determine the appropriate adapter to execute:
+To support dynamic task generation from multiple workflow sources, `noctifab` abstracts the feature specification retrieval through an ingestion layer. The `--input` flag (available on `noctifab start`) parses `<source>` to determine the appropriate adapter to execute:
 
 ```
                   ┌──────────────────────────────┐
@@ -1774,7 +1775,7 @@ To support dynamic task generation from multiple workflow sources, `noctifab` ab
 ### 3.8. Automatic Commits, Centralized Versioning, & Pull Requests
 When the automated commit setting is enabled (via CLI flag `--auto-commit` or environment variable `NOCTIFAB_AUTO_COMMIT=true`), the orchestrator automatically manages the integration pipeline: branch creation, centralized version bumping, changelog updates, and pull request creation.
 
-*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start` and `noctifab start-one`). These commands manage the integration pipeline: branch creation, conventional commits, version bumping, and PR creation. The `--auto-commit` flag has no effect on read-only commands such as `noctifab validate` or `noctifab maintenance`.
+*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start`). These commands manage the integration pipeline: branch creation, conventional commits, version bumping, and PR creation. The `--auto-commit` flag has no effect on read-only commands such as `noctifab validate` or `noctifab maintenance`.
 
 #### 3.8.1. Branch Naming Policy
 The branch created by the worker agent is dynamically named using the configured `branch_prefix` (configured under `vcs:` in `.noctifab/config.yaml`):
@@ -1951,6 +1952,14 @@ sast:
   enabled: false                 # Enable SAST security scanning
   scanners: ["gosec"]            # SAST scanners: "gosec" (Go), "bandit" (Python)
   fail_on_severity: "high"       # Block PR on: "high", "medium", "low"
+
+unblocker:
+  enabled: true                  # Enable background unblocker goroutine (default: true)
+  poll_interval: "30s"           # Unblocker waking frequency (default: 30s)
+  max_retries: 3                 # Max unblock/reset attempts per task (default: 3)
+  stall_threshold: "5m"          # Frozen IN_PROGRESS task trigger threshold (default: 5m)
+  conflict_threshold: "15m"      # CONFLICT_BLOCKED task trigger threshold (default: 15m)
+  llm_assessment: true           # Use LLM for stall diagnosis (false = heuristic-only)
 ```
 
 #### 3.9.3. Profile Configuration Schema (`.noctifab/profiles/<profile_name>.yaml`)

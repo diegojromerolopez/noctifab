@@ -258,7 +258,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	maxTurns := 5
 	var lastErr error
 	runTestsCalled := false
-	diagCache := NewTaskDiagnosticCache(o.cfg.WorkspaceCache.IsEnabled())
+	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
 
 	for turn := 0; turn < maxTurns; turn++ {
 		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
@@ -326,12 +326,10 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				fmt.Printf("🛠️  [Tool Executed] task=%s role=TESTER tool=%s success=%t\n", task.ID, action.Tool, execErr == nil)
 				if execErr != nil {
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
+					hasNoop = false
 				} else {
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
-					if action.Tool == "write_file" || action.Tool == "edit_file" {
-						o.runFormatterIfConfigured(testerCtx, state)
-					}
 				}
 			}
 		}
@@ -341,10 +339,17 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				fmt.Printf("Orchestrator: Agent returned noop without executing run_tests; auto-triggering run_tests fallback for task %s\n", task.ID)
 				runTestsTool, ok := o.registry.Get("run_tests")
 				if ok {
-					_, _ = runTestsTool.Execute(testerCtx, state, map[string]any{})
+					out, execErr := runTestsTool.Execute(testerCtx, state, map[string]any{})
+					if execErr != nil {
+						fmt.Printf("Orchestrator: Auto-triggered run_tests failed for task %s: %v. Rejecting noop.\n", task.ID, execErr)
+						turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Action 'noop' rejected: auto-triggered run_tests failed: %v\nOutput:\n%s", execErr, out))
+						hasNoop = false
+					}
 				}
 			}
-			break
+			if hasNoop {
+				break
+			}
 		}
 
 		// Append errors and tool outputs to currentPrompt for the next turn
@@ -392,7 +397,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	var lastErr error
 	runTestsCalled := false
 	testFixRequestCount := 0
-	diagCache := NewTaskDiagnosticCache(o.cfg.WorkspaceCache.IsEnabled())
+	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
 
 	for turn := 0; turn < maxTurns; turn++ {
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
@@ -460,12 +465,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				fmt.Printf("🛠️  [Tool Executed] task=%s role=GENERATOR tool=%s success=%t\n", task.ID, action.Tool, execErr == nil)
 				if execErr != nil {
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
+					hasNoop = false
 				} else {
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
-					if action.Tool == "write_file" || action.Tool == "edit_file" {
-						o.runFormatterIfConfigured(genCtx, state)
-					}
 				}
 			}
 
@@ -504,10 +507,17 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				fmt.Printf("Orchestrator: Agent returned noop without executing run_tests; auto-triggering run_tests fallback for task %s\n", task.ID)
 				runTestsTool, ok := o.registry.Get("run_tests")
 				if ok {
-					_, _ = runTestsTool.Execute(genCtx, state, map[string]any{})
+					out, execErr := runTestsTool.Execute(genCtx, state, map[string]any{})
+					if execErr != nil {
+						fmt.Printf("Orchestrator: Auto-triggered run_tests failed for task %s: %v. Rejecting noop.\n", task.ID, execErr)
+						turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Action 'noop' rejected: auto-triggered run_tests failed: %v\nOutput:\n%s", execErr, out))
+						hasNoop = false
+					}
 				}
 			}
-			break
+			if hasNoop {
+				break
+			}
 		}
 
 		// Append errors and tool outputs to currentPrompt for the next turn
@@ -546,11 +556,4 @@ func summarizeFailureLog(log string) string {
 	}
 
 	return strings.Join(importantLines, "\n")
-}
-
-func (o *Orchestrator) runFormatterIfConfigured(ctx context.Context, state *domain.State) {
-	if o.evaluator != nil && o.evaluator.FormatterCommand != "" {
-		fmt.Printf("Orchestrator: Running formatter command: %s\n", o.evaluator.FormatterCommand)
-		_, _ = o.evaluator.Runner.RunCommand(ctx, state.ProjectPath, o.evaluator.FormatterCommand, "")
-	}
 }

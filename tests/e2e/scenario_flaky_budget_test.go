@@ -159,10 +159,8 @@ func TestScenario_BudgetExceededMidExecution(t *testing.T) {
 			}, nil
 		}
 
-		// Low budget limit of $0.03.
-		// First task will run: consumes 800 tokens = 800 * 0.000015 = $0.012 cost.
-		// Second task will try to run: needs 1600 tokens = $0.024. $0.012 + $0.024 = $0.036 > $0.03 limit.
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 0.03)
+		// Low token limit of 2000.
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 2000)
 		assert.ErrorIs(t, err, domain.ErrBudgetExhausted)
 
 		finalState, err := repo.Load(ctx)

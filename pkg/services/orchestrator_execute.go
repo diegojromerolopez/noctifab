@@ -194,8 +194,11 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	if strings.EqualFold(o.cfg.Architecture, "single_pass_execution") {
+	arch := strings.ToLower(strings.TrimSpace(o.cfg.Architecture))
+	if arch == "single_pass" || arch == "single_pass_execution" || arch == "spe" {
 		o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
+	} else if arch == "breadth_first" || arch == "breadth_first_generation" || arch == "bfg" || arch == "big" {
+		o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
 	} else if task.Retries == 0 {
 		// 1. Run Generator Agent (role "generator") to implement minimal functionality
 		minimalGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFocus on creating the minimal implementation/functionality to fulfill the task requirements. The tests will be written in a later phase.", task.Title, task.Description)

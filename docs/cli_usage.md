@@ -37,25 +37,26 @@ noctifab init [flags]
 ```
 - **Security Check**: If the target directory contains existing project files but does not have a `.noctifab` directory, the command will warn the developer and abort with exit code `4` to prevent unintended code overwrites.
 
+### 1. `init`
+Initializes a Noctifab project workspace in the target directory (defaults to `.`). Automatically creates `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, SQLite database, and a `SPEC.md` template if missing.
+```bash
+noctifab init [target_dir]
+```
+
 ### 2. `validate`
 Loads and validates the current configurations, state, and directory constraints, ensuring that security policies, LLM keys, and local sandbox folders are correctly aligned.
 ```bash
 noctifab validate
 ```
 
-
 ### 3. `start`
-Spawns the background daemon process (`noctifab serve`) and starts a foreground interactive REPL loop. The REPL accepts operator orders (e.g. `start roadmap/US-001.md` or a directory path like `start roadmap/` to execute all stories in lexicographical order) and displays/prompts for clarification answers.
+Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-i` / `--interactive` to launch the live TUI dashboard interface.
 ```bash
-noctifab start
-```
+# Run in current directory
+noctifab start -i
 
-When stdin is not a TTY (CI, `noctifab start --wait < script`), the `--wait` polling loop renders one timestamped status line per poll separated by newlines, instead of the dot-accumulating progress animation used in an interactive terminal. This keeps CI logs and `2>&1 | tee` captures readable.
-
-### 4. `start-one`
-Plans and executes a single user story specification file end-to-end in a blocking execution loop until complete or failed, then exits.
-```bash
-noctifab start-one --input ./feature-spec.md
+# Run on a target project folder
+noctifab start /path/to/my-project -i
 ```
 
 ### 5. `dashboard`

@@ -17,7 +17,16 @@ storage:
   conn_string: "./.noctifab/data/noctifab.db"
 
 agents:
-  architecture: "code_first_verification_loop" # Options: code_first_verification_loop (default), single_pass_execution
+  architecture: "code_first" # Options: code_first (default), single_pass, breadth_first
+  orchestrator:
+    number: 1      # Task orchestration & state sync
+    iterations: 2
+  product_manager:
+    number: 1      # Spec hardening & user story generation
+    iterations: 2
+  planner:
+    number: 1      # Task DAG decomposition
+    iterations: 2
   architect:
     number: 1      # Pre-flight architecture pass (default: 1)
     iterations: 2
@@ -42,8 +51,12 @@ agents:
   devops:
     number: 1      # Dockerfile & CI pipeline release agents (default: 1)
     iterations: 2
-  workspace_cache:
-    enabled: true  # In-memory caching of workspace filesystem reads until mutation (default: true)
+  unblocker:
+    number: 1      # Stall detection & task re-dispatch (default: 1)
+    iterations: 2
+
+workspace_cache:
+  enabled: true    # In-memory caching of workspace filesystem reads until mutation (default: true)
 poll_interval: "5m0s"
 
 llm:
@@ -237,4 +250,186 @@ context:
   mode: "tree_sitter"              # Options: "full" (default), "diff_window", "tree_sitter"
   diff_window_lines: 15
 ```
+
+---
+
+## 5. Multi-Provider Named Registry & Per-Agent Routing
+
+Configure a multi-vendor LLM pool (`llm.providers`) with global default failover (`llm.priority`) and distinct model/provider routing per agent role (`roles.<agent>.providers`).
+
+### 5.1. Multi-Model Peer Review Pipeline (Generate with DeepSeek, Test with GPT-4o, Audit with Claude Sonnet)
+Assigning different models to generate code, write tests, and review code prevents self-confirmation bias and maximizes model specialization:
+- **Generators (`roles.generator`):** `deepseek-coder` for fast, syntax-accurate code implementation.
+- **Testers (`roles.tester`):** `openai-primary` (`gpt-4o`) for thorough unit test creation and boundary condition assertions.
+- **QA & Security (`roles.qa`, `roles.security`):** `anthropic-backup` (`claude-3-5-sonnet-latest`) acting as a staff engineer for deep code reviews, refactoring audits, and SAST vulnerability analysis.
+- **Orchestrator, Docs & Unblocker (`roles.orchestrator`, `roles.docs`, `roles.unblocker`):** `openai-primary` (`gpt-4o-mini`) for ultra-fast, low-cost state loop checks and diagnostics.
+
+```yaml
+config_version: "1.0"
+log_level: "info"
+
+# 1. Named LLM Provider Registry & Global Failover
+llm:
+  priority:
+    - "openai-primary"
+    - "anthropic-backup"
+    - "deepseek-coder"
+
+  providers:
+    - name: "openai-primary"
+      provider: "openai"
+      api_key_env: "OPENAI_API_KEY"
+      max_retries: 5
+      retry_backoff: "100ms"
+      max_timeout: "60s"
+
+    - name: "anthropic-backup"
+      provider: "anthropic"
+      api_key_env: "ANTHROPIC_API_KEY"
+      model: "claude-3-5-sonnet-latest"
+      max_retries: 3
+
+    - name: "deepseek-coder"
+      provider: "deepseek"
+      api_key_env: "DEEPSEEK_API_KEY"
+      model: "deepseek-coder"
+      url: "https://api.deepseek.com"
+
+# 2. Per-Agent Role Overrides directly inside agents:
+agents:
+  orchestrator:
+    providers:
+      - name: "openai-primary"
+        model: "gpt-4o-mini" # Fast state loop checks
+
+  planner:
+    providers:
+      - name: "anthropic-backup" # Claude Sonnet for architectural planning
+      - name: "openai-primary"   # Fallback to OpenAI if Anthropic is degraded
+
+  generators:
+    number: 4
+    iterations: 5
+    providers:
+      - name: "deepseek-coder"   # DeepSeek Coder for code generation
+      - name: "openai-primary"
+      - name: "anthropic-backup"
+
+  testers:
+    number: 2
+    iterations: 3
+    providers:
+      - name: "openai-primary"
+      - name: "anthropic-backup"
+
+  qa:
+    number: 1
+    iterations: 2
+    providers:
+      - name: "anthropic-backup" # Audit code quality with Sonnet
+      - name: "openai-primary"
+
+  security:
+    number: 1
+    iterations: 2
+    providers:
+      - name: "anthropic-backup" # Vulnerability analysis with Sonnet
+      - name: "openai-primary"
+
+  docs:
+    temperature: 0.2
+    providers:
+      - name: "openai-primary"
+        model: "gpt-4o-mini" # Docstrings & OpenAPI generation
+
+  unblocker:
+    temperature: 0.0
+    providers:
+      - name: "openai-primary"
+        model: "gpt-4o-mini" # Quick diagnostic checks
+      - name: "anthropic-backup" # Escalate if diagnostic stalls
+```
+
+### 5.2. Local-First Privacy Setup (Ollama Default + Cloud Planning)
+- **Local Workers:** Generators, Testers, QA, Security, Docs, DevOps, and Orchestrator run locally on Ollama (`llama3.1:70b` / `qwen2.5-coder`).
+- **Cloud Escalation:** Only `planner` uses cloud Claude Sonnet for story decomposition.
+
+```yaml
+config_version: "1.0"
+
+llm:
+  priority:
+    - "ollama-local"
+
+  providers:
+    - name: "ollama-local"
+      provider: "ollama"
+      url: "http://localhost:11434"
+
+    - name: "anthropic-cloud"
+      provider: "anthropic"
+      api_key_env: "ANTHROPIC_API_KEY"
+      model: "claude-3-5-sonnet-latest"
+
+roles:
+  planner:
+    providers:
+      - name: "anthropic-cloud" # Cloud planning
+      - name: "ollama-local"    # Local fallback if offline
+```
+
+### 5.3. Version-Agnostic Dynamic Model Fallback per Role
+Omit hardcoded model version strings entirely (`model: ""`). Bind `generator` to OpenAI, `tester` to DeepSeek Coder, and `qa` to Anthropic Claude. At runtime, `noctifab` queries `/models` to auto-discover the highest capacity flagship model for each provider and steps down through lower-ranked tiers automatically if rate limits occur.
+
+```yaml
+config_version: "1.0"
+
+llm:
+  priority:
+    - "openai-provider"
+    - "anthropic-provider"
+    - "deepseek-provider"
+
+  providers:
+    - name: "openai-provider"
+      provider: "openai"
+      api_key_env: "OPENAI_API_KEY"
+      # model omitted -> auto-discovers flagship model (gpt-4o -> gpt-4o-mini)
+
+    - name: "anthropic-provider"
+      provider: "anthropic"
+      api_key_env: "ANTHROPIC_API_KEY"
+      # model omitted -> auto-discovers flagship model (opus -> sonnet -> haiku)
+
+    - name: "deepseek-provider"
+      provider: "deepseek"
+      api_key_env: "DEEPSEEK_API_KEY"
+      # model omitted -> auto-discovers flagship coder model
+
+roles:
+  # STEP 1: Code Generation with OpenAI (Dynamic version selection & step-down)
+  generator:
+    temperature: 0.0
+    providers:
+      - name: "openai-provider"
+
+  # STEP 2: Test Creation with DeepSeek Coder (Dynamic version selection)
+  tester:
+    temperature: 0.0
+    providers:
+      - name: "deepseek-provider"
+
+  # STEP 3: Code Audit & Review with Anthropic Claude (Dynamic version selection)
+  qa:
+    temperature: 0.0
+    providers:
+      - name: "anthropic-provider"
+
+  security:
+    temperature: 0.0
+    providers:
+      - name: "anthropic-provider"
+```
+
+
 

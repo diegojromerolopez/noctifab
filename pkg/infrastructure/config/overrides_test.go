@@ -68,7 +68,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_OCC_MAX_RETRIES":        "12",
 		"NOCTIFAB_OCC_BACKOFF_BASE":       "99ms",
 		"NOCTIFAB_OCC_BACKOFF_FACTOR":     "3.14",
-		"NOCTIFAB_MAX_BUDGET_USD":         "99.9",
 		"NOCTIFAB_TOKEN_USAGE_LIMIT":      "8888",
 		"NOCTIFAB_LOG_LEVEL":              "debug",
 		"NOCTIFAB_LOG_FILE":               "log-file-env",
@@ -214,9 +213,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	}
 	if cfg.OCCBackoffFactor != 3.14 {
 		t.Errorf("expected 3.14, got %f", cfg.OCCBackoffFactor)
-	}
-	if cfg.LLM.MaxBudgetUSD != 99.9 {
-		t.Errorf("expected 99.9, got %f", cfg.LLM.MaxBudgetUSD)
 	}
 	if cfg.TokenUsageLimit != 8888 {
 		t.Errorf("expected 8888, got %d", cfg.TokenUsageLimit)
@@ -391,9 +387,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	}
 	if cfg2.OCCBackoffFactor != 4.0 {
 		t.Errorf("expected 4.0, got %f", cfg2.OCCBackoffFactor)
-	}
-	if cfg2.LLM.MaxBudgetUSD != 150.0 {
-		t.Errorf("expected 150.0, got %f", cfg2.LLM.MaxBudgetUSD)
 	}
 	if cfg2.TokenUsageLimit != 9999 {
 		t.Errorf("expected 9999, got %d", cfg2.TokenUsageLimit)

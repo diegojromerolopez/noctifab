@@ -14,8 +14,16 @@ func DefaultConfig() *Config {
 	return &Config{
 		ConfigVersion: "1.0",
 		Agents: AgentsConfig{
-			Architecture:        "code_first_verification_loop",
+			Architecture:        "code_first",
 			MaxToolsPerResponse: 5,
+			ProductManager: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Planner: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
 			Architect: AgentRoleConfig{
 				Number:     1,
 				Iterations: 2,
@@ -48,9 +56,9 @@ func DefaultConfig() *Config {
 				Number:     1,
 				Iterations: 2,
 			},
-			WorkspaceCache: WorkspaceCacheConfig{
-				Enabled: boolPtr(true),
-			},
+		},
+		WorkspaceCache: WorkspaceCacheConfig{
+			Enabled: boolPtr(true),
 		},
 		PollInterval:               Duration(5 * time.Minute),
 		MaxClarificationWait:       Duration(30 * time.Minute),
@@ -69,7 +77,6 @@ func DefaultConfig() *Config {
 			MaxRetries:         5,
 			RetryBackoff:       Duration(100 * time.Millisecond),
 			RetryBackoffFactor: 2.0,
-			MaxBudgetUSD:       10.0,
 			ResetPeriod:        "daily",
 			Failover: FailoverConfig{
 				Enabled:      false,
@@ -83,7 +90,7 @@ func DefaultConfig() *Config {
 		},
 		VCS: VCSConfig{
 			Provider:     "github",
-			Repository:   "",
+			Repository:   "local/repo",
 			BaseBranch:   "master",
 			BranchPrefix: "noctifab/",
 			UseWorktrees: true,
@@ -153,6 +160,14 @@ func DefaultConfig() *Config {
 			Enabled:        false,
 			Scanners:       []string{"gosec"},
 			FailOnSeverity: "high",
+		},
+		Unblocker: UnblockerConfig{
+			Enabled:           true,
+			PollInterval:      Duration(30 * time.Second),
+			MaxRetries:        3,
+			StallThreshold:    Duration(5 * time.Minute),
+			ConflictThreshold: Duration(15 * time.Minute),
+			LLMAssessment:     true,
 		},
 		Context: ContextConfig{
 			Mode:            "full",

@@ -11,13 +11,18 @@ import (
 // BuildFailoverClient constructs the appropriate LLM client based on config.
 // If failover is disabled (default), returns a plain *Client.
 // If failover is enabled, returns a *FailoverClient wrapping all backends.
-// When budgetStore is non-nil, the returned client enforces MaxBudgetUSD.
+// When budgetStore is non-nil, the returned client enforces TokenUsageLimit.
 func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) domain.LLMClient {
 	if cfg == nil {
 		return nil
 	}
 
-	// 1. If the new multiple-LLM client configuration list is provided, use it
+	// 0. If named providers or global priority list is configured, use the per-agent ResilientLLMRouter
+	if len(cfg.LLM.Providers) > 0 || len(cfg.LLM.Priority) > 0 {
+		return NewResilientLLMRouter(cfg, budgetStore)
+	}
+
+	// 1. If the legacy multiple-LLM client configuration list is provided, use it
 	if len(cfg.LLMs) > 0 {
 		backends := make([]NamedClient, 0, len(cfg.LLMs))
 		for _, b := range cfg.LLMs {
@@ -43,16 +48,14 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 			})
 		}
 
-		// Determine failover settings. Default to 5 minutes cooldown, 0 call limit,
-		// and use the first config's max budget (or global defaults).
+		// Determine failover settings. Default to 5 minutes cooldown and 0 call limit.
 		cooldown := 5 * time.Minute
 		if cfg.LLM.Failover.Cooldown > 0 {
 			cooldown = time.Duration(cfg.LLM.Failover.Cooldown)
 		}
 		maxLimit := cfg.LLM.Failover.MaxCallLimit
-		maxBudget := cfg.LLM.MaxBudgetUSD
 
-		return NewFailoverClient(backends, cooldown, maxLimit, budgetStore, maxBudget)
+		return NewFailoverClient(backends, cooldown, maxLimit, budgetStore, cfg.TokenUsageLimit)
 	}
 
 	// 2. Fall back to the legacy config.LLM failover if enabled
@@ -80,7 +83,7 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 				Client: client,
 			})
 		}
-		return NewFailoverClient(backends, time.Duration(cfg.LLM.Failover.Cooldown), cfg.LLM.Failover.MaxCallLimit, budgetStore, cfg.LLM.MaxBudgetUSD)
+		return NewFailoverClient(backends, time.Duration(cfg.LLM.Failover.Cooldown), cfg.LLM.Failover.MaxCallLimit, budgetStore, cfg.TokenUsageLimit)
 	}
 
 	client := NewClient(

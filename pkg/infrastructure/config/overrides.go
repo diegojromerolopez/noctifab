@@ -142,11 +142,6 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.OCCBackoffFactor = f
 		}
 	}
-	if val, ok := os.LookupEnv("NOCTIFAB_MAX_BUDGET_USD"); ok {
-		if f, err := strconv.ParseFloat(val, 64); err == nil {
-			cfg.LLM.MaxBudgetUSD = f
-		}
-	}
 	if val, ok := os.LookupEnv("NOCTIFAB_TOKEN_USAGE_LIMIT"); ok {
 		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
 			cfg.TokenUsageLimit = i
@@ -192,6 +187,36 @@ func applyEnvOverrides(cfg *Config) {
 	if val, ok := os.LookupEnv("NOCTIFAB_CI_MAX_RETRIES"); ok {
 		if i, err := strconv.Atoi(val); err == nil {
 			cfg.VCS.CI.MaxRetries = i
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_UNBLOCKER_ENABLED"); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.Unblocker.Enabled = b
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_UNBLOCKER_POLL_INTERVAL"); ok {
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.Unblocker.PollInterval = Duration(d)
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_UNBLOCKER_MAX_RETRIES"); ok {
+		if i, err := strconv.Atoi(val); err == nil {
+			cfg.Unblocker.MaxRetries = i
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_UNBLOCKER_STALL_THRESHOLD"); ok {
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.Unblocker.StallThreshold = Duration(d)
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_UNBLOCKER_CONFLICT_THRESHOLD"); ok {
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.Unblocker.ConflictThreshold = Duration(d)
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_UNBLOCKER_LLM_ASSESSMENT"); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.Unblocker.LLMAssessment = b
 		}
 	}
 }
@@ -341,11 +366,6 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 			cfg.OCCBackoffFactor = f
 		}
 	})
-	setIfChanged("max-budget-usd", func(val string) {
-		if f, err := strconv.ParseFloat(val, 64); err == nil {
-			cfg.LLM.MaxBudgetUSD = f
-		}
-	})
 	setIfChanged("token-usage-limit", func(val string) {
 		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
 			cfg.TokenUsageLimit = i
@@ -391,6 +411,36 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	setIfChanged("ci-max-retries", func(val string) {
 		if i, err := strconv.Atoi(val); err == nil {
 			cfg.VCS.CI.MaxRetries = i
+		}
+	})
+	setIfChanged("unblocker-enabled", func(val string) {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.Unblocker.Enabled = b
+		}
+	})
+	setIfChanged("unblocker-poll-interval", func(val string) {
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.Unblocker.PollInterval = Duration(d)
+		}
+	})
+	setIfChanged("unblocker-max-retries", func(val string) {
+		if i, err := strconv.Atoi(val); err == nil {
+			cfg.Unblocker.MaxRetries = i
+		}
+	})
+	setIfChanged("unblocker-stall-threshold", func(val string) {
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.Unblocker.StallThreshold = Duration(d)
+		}
+	})
+	setIfChanged("unblocker-conflict-threshold", func(val string) {
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.Unblocker.ConflictThreshold = Duration(d)
+		}
+	})
+	setIfChanged("unblocker-llm-assessment", func(val string) {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.Unblocker.LLMAssessment = b
 		}
 	})
 }

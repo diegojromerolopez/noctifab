@@ -135,6 +135,9 @@ llm:
 	if err := os.WriteFile(filepath.Join(noctifabDir, "config.yaml"), []byte(validYaml), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "SPEC.md"), []byte("# Test Spec"), 0644); err != nil {
+		t.Fatalf("failed to write spec file: %v", err)
+	}
 
 	_ = os.Setenv("MOCK_VCS_TOKEN", "mock-vcs-token-val")
 	defer func() { _ = os.Unsetenv("MOCK_VCS_TOKEN") }()
@@ -146,11 +149,11 @@ llm:
 	// Set args to override config path and point to our temp config
 	configFlag := filepath.Join(noctifabDir, "config.yaml")
 
-	subcommands := []string{"start", "validate", "maintenance", "start-one", "stop"}
+	subcommands := []string{"start", "validate", "maintenance", "stop"}
 
 	for _, sub := range subcommands {
 		t.Run("Command "+sub, func(t *testing.T) {
-			cli.RootCmd.SetArgs([]string{sub, "--config", configFlag})
+			cli.RootCmd.SetArgs([]string{sub, tmpDir, "--config", configFlag})
 			err := cli.RootCmd.Execute()
 			if err != nil {
 				t.Fatalf("expected subcommand %s to succeed, got: %v", sub, err)

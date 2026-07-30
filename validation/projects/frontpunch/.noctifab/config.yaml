@@ -1,7 +1,16 @@
 config_version: "1.0"
 agents:
-    architecture: code_first_verification_loop
+    architecture: code_first
     max_tools_per_response: 10
+    orchestrator:
+        number: 1
+        iterations: 2
+    product_manager:
+        number: 1
+        iterations: 2
+    planner:
+        number: 1
+        iterations: 2
     architect:
         number: 1
         iterations: 2
@@ -23,11 +32,14 @@ agents:
     docs:
         number: 1
         iterations: 2
-    workspace_cache:
-        enabled: true
     devops:
         number: 1
         iterations: 2
+    unblocker:
+        number: 1
+        iterations: 2
+workspace_cache:
+    enabled: true
 poll_interval: 5m0s
 max_clarification_wait: 30m0s
 clarification_timeout_action: abort
@@ -35,31 +47,29 @@ storage:
     provider: sqlite
     conn_string: .noctifab/data/noctifab.db
     json_file_path: .noctifab/data/state.json
-llms:
-    - provider: opencode
-      model: glm-5.2
-      temperature: 0
-      api_key: "secret:OPENCODE_API_KEY"
-      url: ""
-      max_retries: 5
-      retry_backoff: 100ms
-      retry_backoff_factor: 2
-      max_budget_usd: 10
-      max_timeout: 60s
-      idle_timeout: 15s
-      streaming: true
-    - provider: gemini
-      model: gemini-2.5-flash
-      temperature: 0
-      api_key: "secret:GEMINI_API_KEY"
-      url: ""
-      max_retries: 5
-      retry_backoff: 100ms
-      retry_backoff_factor: 2
-      max_budget_usd: 10
-      max_timeout: 60s
-      idle_timeout: 15s
-      streaming: true
+llm:
+    priority:
+        - opencode-primary
+        - gemini-primary
+    providers:
+        - name: opencode-primary
+          provider: opencode
+          model: glm-5.2
+          api_key_env: OPENCODE_API_KEY
+          max_retries: 5
+          retry_backoff: 100ms
+          max_timeout: 60s
+          idle_timeout: 15s
+          streaming: true
+        - name: gemini-primary
+          provider: gemini
+          model: gemini-2.5-flash
+          api_key_env: GEMINI_API_KEY
+          max_retries: 5
+          retry_backoff: 100ms
+          max_timeout: 60s
+          idle_timeout: 15s
+          streaming: true
 vcs:
     provider: github
     repository: diegojromerolopez/frontpunch
@@ -95,23 +105,6 @@ sandbox:
         - ruff
         - black
         - mypy
-roles:
-    orchestrator:
-        model: ""
-        temperature: 0
-        profile: orchestrator
-    planner:
-        model: ""
-        temperature: 0.5
-        profile: planner
-    generator:
-        model: ""
-        temperature: 0
-        profile: generator
-    tester:
-        model: ""
-        temperature: 0
-        profile: tester
 jira:
     user: ""
     token: ""

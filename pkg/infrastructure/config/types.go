@@ -28,19 +28,21 @@ func (d Duration) MarshalYAML() (interface{}, error) {
 }
 
 type Config struct {
-	ConfigVersion string                   `yaml:"config_version"`
-	Agents        AgentsConfig             `yaml:"agents"`
-	Storage       StorageConfig            `yaml:"storage"`
-	LLM           LLMConfig                `yaml:"llm"`
-	LLMs          []LLMConfig              `yaml:"llms"`
-	VCS           VCSConfig                `yaml:"vcs"`
-	Sandbox       SandboxConfig            `yaml:"sandbox"`
-	Roles         RolesConfig              `yaml:"roles"`
-	Profiles      map[string]ProfileConfig `yaml:"profiles"`
-	Jira          JiraConfig               `yaml:"jira"`
-	Telemetry     TelemetryConfig          `yaml:"telemetry"`
-	SAST          SASTConfig               `yaml:"sast"`
-	Context       ContextConfig            `yaml:"context"`
+	ConfigVersion  string                   `yaml:"config_version"`
+	Agents         AgentsConfig             `yaml:"agents"`
+	Storage        StorageConfig            `yaml:"storage"`
+	LLM            LLMConfig                `yaml:"llm"`
+	LLMs           []LLMConfig              `yaml:"llms"`
+	VCS            VCSConfig                `yaml:"vcs"`
+	Sandbox        SandboxConfig            `yaml:"sandbox"`
+	Roles          RolesConfig              `yaml:"roles"`
+	Profiles       map[string]ProfileConfig `yaml:"profiles"`
+	Jira           JiraConfig               `yaml:"jira"`
+	Telemetry      TelemetryConfig          `yaml:"telemetry"`
+	SAST           SASTConfig               `yaml:"sast"`
+	Unblocker      UnblockerConfig          `yaml:"unblocker"`
+	Context        ContextConfig            `yaml:"context"`
+	WorkspaceCache WorkspaceCacheConfig     `yaml:"workspace_cache"`
 
 	PollInterval               Duration `yaml:"poll_interval"`
 	MaxClarificationWait       Duration `yaml:"max_clarification_wait"`
@@ -66,6 +68,9 @@ type Config struct {
 type AgentsConfig struct {
 	Architecture        string               `yaml:"architecture"`
 	MaxToolsPerResponse int                  `yaml:"max_tools_per_response"`
+	Orchestrator        AgentRoleConfig      `yaml:"orchestrator"`
+	ProductManager      AgentRoleConfig      `yaml:"product_manager"`
+	Planner             AgentRoleConfig      `yaml:"planner"`
 	Architect           AgentRoleConfig      `yaml:"architect"`
 	Generators          AgentRoleConfig      `yaml:"generators"`
 	Testers             AgentRoleConfig      `yaml:"testers"`
@@ -74,12 +79,17 @@ type AgentsConfig struct {
 	Performance         AgentRoleConfig      `yaml:"performance"`
 	Docs                AgentRoleConfig      `yaml:"docs"`
 	DevOps              AgentRoleConfig      `yaml:"devops"`
+	Unblocker           AgentRoleConfig      `yaml:"unblocker"`
 	WorkspaceCache      WorkspaceCacheConfig `yaml:"workspace_cache"`
 }
 
 type AgentRoleConfig struct {
-	Number     int `yaml:"number"`
-	Iterations int `yaml:"iterations"`
+	Number      int                `yaml:"number"`
+	Iterations  int                `yaml:"iterations"`
+	Model       string             `yaml:"model,omitempty"`
+	Temperature float64            `yaml:"temperature,omitempty"`
+	Profile     string             `yaml:"profile,omitempty"`
+	Providers   []AgentProviderRef `yaml:"providers,omitempty"`
 }
 
 type StorageConfig struct {
@@ -105,7 +115,25 @@ type FailoverBackend struct {
 	Streaming   *bool    `yaml:"streaming"`
 }
 
+type ProviderSpec struct {
+	Name               string   `yaml:"name"`
+	Provider           string   `yaml:"provider"`
+	Model              string   `yaml:"model,omitempty"`
+	APIKey             string   `yaml:"api_key,omitempty"`
+	APIKeyEnv          string   `yaml:"api_key_env,omitempty"`
+	APIKeyValue        string   `yaml:"-"`
+	URL                string   `yaml:"url,omitempty"`
+	MaxRetries         int      `yaml:"max_retries,omitempty"`
+	RetryBackoff       Duration `yaml:"retry_backoff,omitempty"`
+	RetryBackoffFactor float64  `yaml:"retry_backoff_factor,omitempty"`
+	MaxTimeout         Duration `yaml:"max_timeout,omitempty"`
+	IdleTimeout        Duration `yaml:"idle_timeout,omitempty"`
+	Streaming          *bool    `yaml:"streaming,omitempty"`
+}
+
 type LLMConfig struct {
+	Priority           []string       `yaml:"priority,omitempty"`
+	Providers          []ProviderSpec `yaml:"providers,omitempty"`
 	Provider           string         `yaml:"provider"`
 	Model              string         `yaml:"model"`
 	Temperature        float64        `yaml:"temperature"`
@@ -116,7 +144,6 @@ type LLMConfig struct {
 	MaxRetries         int            `yaml:"max_retries"`
 	RetryBackoff       Duration       `yaml:"retry_backoff"`
 	RetryBackoffFactor float64        `yaml:"retry_backoff_factor"`
-	MaxBudgetUSD       float64        `yaml:"max_budget_usd"`
 	ResetPeriod        string         `yaml:"reset_period"`
 	Failover           FailoverConfig `yaml:"failover"`
 	MaxTimeout         Duration       `yaml:"max_timeout"`
@@ -175,17 +202,32 @@ type SandboxConfig struct {
 	ForbiddenPatterns  []string `yaml:"forbidden_patterns"`
 }
 
+type AgentProviderRef struct {
+	Name     string   `yaml:"name,omitempty"`
+	Provider string   `yaml:"provider,omitempty"`
+	Model    string   `yaml:"model,omitempty"`
+	Models   []string `yaml:"models,omitempty"`
+}
+
 type RoleSetting struct {
-	Model       string  `yaml:"model"`
-	Temperature float64 `yaml:"temperature"`
-	Profile     string  `yaml:"profile"`
+	Model       string             `yaml:"model,omitempty"`
+	Temperature float64            `yaml:"temperature"`
+	Profile     string             `yaml:"profile,omitempty"`
+	Providers   []AgentProviderRef `yaml:"providers,omitempty"`
 }
 
 type RolesConfig struct {
 	Orchestrator RoleSetting `yaml:"orchestrator"`
 	Planner      RoleSetting `yaml:"planner"`
+	Architect    RoleSetting `yaml:"architect"`
 	Generator    RoleSetting `yaml:"generator"`
 	Tester       RoleSetting `yaml:"tester"`
+	QA           RoleSetting `yaml:"qa"`
+	Security     RoleSetting `yaml:"security"`
+	Performance  RoleSetting `yaml:"performance"`
+	Docs         RoleSetting `yaml:"docs"`
+	DevOps       RoleSetting `yaml:"devops"`
+	Unblocker    RoleSetting `yaml:"unblocker"`
 }
 
 type ProfileConfig struct {
@@ -224,6 +266,27 @@ type SASTConfig struct {
 	FailOnSeverity string   `yaml:"fail_on_severity"`
 }
 
+// UnblockerConfig controls the autonomous unblocker agent that periodically
+// scans for stalled or blocked tasks/agents and injects corrective interventions.
+type UnblockerConfig struct {
+	// Enabled activates the unblocker goroutine (default: true).
+	Enabled bool `yaml:"enabled"`
+	// PollInterval defines how often the unblocker wakes up to scan for stalls (default: 30s).
+	PollInterval Duration `yaml:"poll_interval"`
+	// MaxRetries defines the maximum number of unblock/reset attempts before permanently failing a task (default: 3).
+	MaxRetries int `yaml:"max_retries"`
+	// StallThreshold is how long a task must be frozen IN_PROGRESS before being
+	// considered stalled (default: 5m).
+	StallThreshold Duration `yaml:"stall_threshold"`
+	// ConflictThreshold is how long a CONFLICT_BLOCKED task waits before the
+	// unblocker intervenes (default: 15m).
+	ConflictThreshold Duration `yaml:"conflict_threshold"`
+	// LLMAssessment enables LLM-based root-cause diagnosis of stalls. When false,
+	// the unblocker applies heuristic-only corrections without calling the LLM
+	// (cheaper, but less precise) (default: true).
+	LLMAssessment bool `yaml:"llm_assessment"`
+}
+
 type ContextMode string
 
 const (
@@ -250,6 +313,16 @@ func (c ContextConfig) GetMode() ContextMode {
 
 type WorkspaceCacheConfig struct {
 	Enabled *bool `yaml:"enabled"`
+}
+
+func (c *Config) GetWorkspaceCache() WorkspaceCacheConfig {
+	if c.WorkspaceCache.Enabled != nil {
+		return c.WorkspaceCache
+	}
+	if c.Agents.WorkspaceCache.Enabled != nil {
+		return c.Agents.WorkspaceCache
+	}
+	return c.WorkspaceCache
 }
 
 func (w WorkspaceCacheConfig) IsEnabled() bool {

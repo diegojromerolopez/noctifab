@@ -269,7 +269,7 @@ func TestE2E_StartOneCommand(t *testing.T) {
 	err := cmdInit.Run()
 	require.NoError(t, err)
 
-	cmdStartOne := exec.Command(bin, "start-one")
+	cmdStartOne := exec.Command(bin, "start")
 	cmdStartOne.Dir = tempDir
 	cmdStartOne.Env = getTestEnv()
 
@@ -278,7 +278,7 @@ func TestE2E_StartOneCommand(t *testing.T) {
 	cmdStartOne.Stderr = &stderr
 
 	err = cmdStartOne.Run()
-	require.NoError(t, err, "start-one failed: %s", stderr.String())
+	require.NoError(t, err, "start failed: %s", stderr.String())
 	assert.Contains(t, stdout.String(), "Feature successfully implemented and validated.")
 }
 

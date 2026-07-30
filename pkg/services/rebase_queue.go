@@ -75,13 +75,23 @@ func (q *RebaseQueue) Start(ctx context.Context) {
 
 func (q *RebaseQueue) Push(ctx context.Context, branch, base string) error {
 	res := make(chan error, 1)
-	q.jobs <- RebaseJob{
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("rebase queue send cancelled: %w", ctx.Err())
+	case q.jobs <- RebaseJob{
 		Ctx:    ctx,
 		Branch: branch,
 		Base:   base,
 		Result: res,
+	}:
 	}
-	return <-res
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("rebase queue cancelled or timed out waiting for rebase result on branch %s: %w", branch, ctx.Err())
+	case err := <-res:
+		return err
+	}
 }
 
 func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) error {

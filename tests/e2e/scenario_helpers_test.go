@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -57,8 +56,8 @@ func setupRepo(t *testing.T, ctx context.Context, tempDir, subDir, sessionID str
 	return repo, func() { _ = repo.Close() }
 }
 
-func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, client *mockLLMClient, workspace string, maxBudgetUSD float64) error {
-	const pricingRate = 0.000015
+func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, client *mockLLMClient, workspace string, tokenLimit int64) error {
+	var currentTokens int64
 
 	state, err := repo.Load(context.Background())
 	if err != nil {
@@ -157,16 +156,13 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 		}
 		state.Files = files
 
-		// Pre-flight cost estimation & budget check
-		var currentCost float64
-		if state.Metadata.TotalCostUSD != "" {
-			currentCost, _ = strconv.ParseFloat(state.Metadata.TotalCostUSD, 64)
-		}
+		// Pre-flight token limit check
+		currentTokens = int64(state.Metadata.TotalTokensUsed)
 
 		if len(state.Tasks) == 0 {
-			// Estimate cost for Planner call (1500 input + 1000 output)
-			estCost := float64(2500) * pricingRate
-			if currentCost+estCost > maxBudgetUSD {
+			// Estimate tokens for Planner call
+			estTokens := int64(2500)
+			if tokenLimit > 0 && currentTokens+estTokens > tokenLimit {
 				return domain.ErrBudgetExhausted
 			}
 
@@ -179,7 +175,6 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 			}
 
 			state.Metadata.TotalTokensUsed += 1500
-			state.Metadata.TotalCostUSD = fmt.Sprintf("%.4f", currentCost+(float64(1500)*pricingRate))
 
 			askedClarification := false
 			for _, act := range resp.Actions {
@@ -298,9 +293,9 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 		}
 
 		if readyTask != nil {
-			// Estimate cost for Generator (800 input + 800 output)
-			estCost := float64(1600) * pricingRate
-			if currentCost+estCost > maxBudgetUSD {
+			// Estimate tokens for Generator
+			estTokens := int64(1600)
+			if tokenLimit > 0 && currentTokens+estTokens > tokenLimit {
 				return domain.ErrBudgetExhausted
 			}
 
@@ -323,7 +318,6 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 			}
 
 			state.Metadata.TotalTokensUsed += 800
-			state.Metadata.TotalCostUSD = fmt.Sprintf("%.4f", currentCost+(float64(800)*pricingRate))
 
 			for _, act := range resp.Actions {
 				if act.Tool == "write_file" {
@@ -440,9 +434,6 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 					}
 
 					state.Metadata.TotalTokensUsed += 800
-					if currentCost, parseErr := strconv.ParseFloat(state.Metadata.TotalCostUSD, 64); parseErr == nil {
-						state.Metadata.TotalCostUSD = fmt.Sprintf("%.4f", currentCost+(float64(800)*pricingRate))
-					}
 
 					// Apply conflict resolution write_file actions
 					for _, act := range resp.Actions {

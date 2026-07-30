@@ -45,7 +45,6 @@ type OrchestratorConfig struct {
 	MaxRetries            int
 	Concurrency           int
 	UseWorktrees          bool
-	MaxBudgetUSD          float64
 	OCCMaxRetries         int
 	OCCBackoffBase        time.Duration
 	OCCBackoffFactor      float64
@@ -57,6 +56,10 @@ type OrchestratorConfig struct {
 	MetricsOutputPath     string
 	Context               config.ContextConfig
 	WorkspaceCache        config.WorkspaceCacheConfig
+}
+
+func (c OrchestratorConfig) GetWorkspaceCache() config.WorkspaceCacheConfig {
+	return c.WorkspaceCache
 }
 
 type Orchestrator struct {
@@ -73,6 +76,7 @@ type Orchestrator struct {
 	mailbox           *CommandMailbox
 	watchdogRepair    RepairHandler
 	metricsCollector  *MetricsCollector
+	unblocker         *UnblockerAgent
 	storyStartedAt    time.Time
 	totalActions      int64
 	taskCompletedChan chan struct{}
@@ -126,8 +130,20 @@ func (o *Orchestrator) SetMetricsCollector(mc *MetricsCollector) {
 	}
 }
 
+// SetUnblocker attaches an UnblockerAgent to the Orchestrator. It must be called
+// before Start so the goroutine is launched alongside the main polling loop.
+func (o *Orchestrator) SetUnblocker(u *UnblockerAgent) {
+	if o != nil {
+		o.unblocker = u
+	}
+}
+
 // Start runs the polling loop
 func (o *Orchestrator) Start(ctx context.Context) error {
+	// Start unblocker goroutine alongside the main polling loop (nil-safe).
+	if o.unblocker != nil {
+		o.unblocker.Start(ctx)
+	}
 	for {
 		hasWork, err := o.RunOnce(ctx)
 		if err != nil {

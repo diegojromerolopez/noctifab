@@ -21,16 +21,16 @@ Install `noctifab` instantly on macOS or Linux:
 curl -sSL https://raw.githubusercontent.com/diegojromerolopez/noctifab/main/scripts/install.sh | sh
 ```
 
-Launch the autonomous loop in any project with a `SPEC.md`:
+Initialize a project workspace (creates `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template):
 
 ```bash
-noctifab start-one --spec SPEC.md
+noctifab init [my-project-dir]
 ```
 
-Launch the real-time TUI progress control dashboard:
+Launch the dark factory loop in any project with a `SPEC.md` (add `-i` for interactive TUI dashboard):
 
 ```bash
-noctifab dashboard
+noctifab start [my-project-dir] -i
 ```
 
 ---
@@ -63,8 +63,9 @@ The autonomy level is controlled by the VCS `pull_request` and `ci` settings in 
 
 1. **Stateless Agent, Stateful Orchestrator**: The AI agents have no memory of previous runs or actions. Instead, the orchestrator compiles and tracks system state (tasks, file indices, action logs, and clarifications) in a local database (SQLite/PostgreSQL) and feeds it to the agent at each step.
 2. **Topological Task Scheduling**: Decomposes complex feature specifications into a Directed Acyclic Graph (DAG) of task models, running independent tasks concurrently.
-3. **Test-Driven Quality Gates**: Employs a multi-stage sequential execution cycle between the generator and test-writer agents. The Test Validator executes the test suite 3 times, requiring a majority vote consensus (at least 2/3 passing runs) to approve changes, preventing regression and flaky builds.
-4. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers, restricted by role-based authorization profiles.
+3. **Verification First, Validation Second**: Decouples execution into two distinct lifecycle stages: *Verification* (achieving a minimal working solution that compiles and passes basic functional checks) and *Validation* (leveraging black-box test safety rails to iteratively refactor, optimize, and harden code to full specification compliance).
+4. **Test-Driven Quality Gates**: Employs a multi-stage sequential execution cycle between the generator and test-writer agents. The Test Validator executes the test suite 3 times, requiring a majority vote consensus (at least 2/3 passing runs) to approve changes, preventing regression and flaky builds.
+5. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers, restricted by role-based authorization profiles.
 
 ---
 
@@ -82,16 +83,16 @@ graph TD
         Orchestrator -->|Decide| Scheduler["Task Scheduler"]
         Scheduler -->|Dispatch task branch| Worktree["Git Worktree Sandbox"]
         
-        Worktree -->|1. Minimal code| GenMinimal["Generator Agent (Minimal)"]
+        Worktree -->|1. Verification: Make it Work| GenMinimal["Generator Agent (Minimal Functional Code)"]
         GenMinimal -->|Commit| Worktree
         
-        Worktree -->|2. Write tests| TesterWrite["Tester Agent (Tests)"]
+        Worktree -->|2. Black-Box Tests| TesterWrite["Tester Agent (Behavioral Tests)"]
         TesterWrite -->|Commit| Worktree
         
-        Worktree -->|3. Refactor implementation| GenRefactor["Generator Agent (Refactor)"]
+        Worktree -->|3. Validation: Refactor & Harden| GenRefactor["Generator Agent (Refactor & Polish)"]
         GenRefactor -->|Commit| Worktree
         
-        Worktree -->|4. Refactor tests| TesterRefactor["Tester Agent (Align Tests)"]
+        Worktree -->|4. Test Alignment| TesterRefactor["Tester Agent (Align Tests)"]
         TesterRefactor -->|Commit| Worktree
         
         Worktree -->|Validate| Val["Test Validator (3x consensus)"]
@@ -105,16 +106,23 @@ graph TD
     Retry -->|Update State| StateDB
 ```
 
+### The Verification vs. Validation Principle
+
+`noctifab` structures development around two complementary phases:
+- **Verification Stage ("Make It Work First")**: The Generator Agent focuses on functional correctness. It builds the simplest working implementation that compiles, links, and satisfies basic sanity checks. The goal is to reach a green baseline quickly without getting stalled by over-engineering or premature optimization.
+- **Validation Stage ("Make It Clean & Robust Under Test Safety Nets")**: Once tests are written (asserting public contracts, API signatures, and CLI outputs—*never* private implementation details), the agent leverages these tests as a safety net. It iteratively refactors, cleans up, and hardens the code against edge cases and specification requirements.
+
 ### The Orchestrator Loop (Observe -> Decide -> Validate -> Execute -> Save)
 The core engine runs a continuous polling event loop that drives all development tasks:
 1. **Observe (State Sync)**: The orchestrator scans the filesystem to index files, build metadata, and check the task database. It ensures a consistent, up-to-date representation of the workspace. During startup, it automatically executes database migrations inside transactions.
 2. **Decide (Task Scheduling)**: It analyzes the Directed Acyclic Graph (DAG) of tasks. Ready tasks (those whose dependencies have succeeded) are selected and dispatched concurrently up to the configured limit.
 3. **Execute (Agent Dispatch)**: For each ready task, the orchestrator sets up an ephemeral git worktree/sandbox environment and executes a multi-stage, sequential coordination flow:
    - **Initial Flow (Retries = 0)**:
-     1. *Minimal Implementation*: Dispatches the **Generator Agent** to implement the bare-minimum logic for the task.
-     2. *Test Writing*: Dispatches the **Tester Agent** to write unit and integration tests verifying the minimal implementation based on the task specification.
-     3. *Refactoring & Implementation*: Dispatches the **Generator Agent** to refactor and expand the code to pass the written tests (the agent is provided with the test files as context).
+     1. *Verification (Minimal Functional Code)*: Dispatches the **Generator Agent** to implement the bare-minimum logic required for the task to compile and run.
+     2. *Black-Box Test Writing*: Dispatches the **Tester Agent** to write unit and integration tests verifying observable behaviors, return contracts, and CLI/API outputs.
+     3. *Validation (Refactoring & Hardening)*: Dispatches the **Generator Agent** to refactor, optimize, and expand the implementation under the safety net of the passing tests.
      4. *Test Alignment*: Dispatches the **Tester Agent** to refine, clean, and align the test suite to match the final implementation structure.
+
    - **Retry Flow (Retries > 0)**:
      1. *Fix Implementation*: Dispatches the **Generator Agent** to address validation failures and refactor the code.
      2. *Fix Tests*: Dispatches the **Tester Agent** to fix or refactor tests to align with the updated code.
@@ -156,7 +164,19 @@ To prevent "evaluation gaming" (where code generators approve their own buggy co
 
 ```yaml
 agents:
-  architecture: "code_first_verification_loop" # Options: code_first_verification_loop (default), single_pass_execution
+  architecture: "code_first" # Options: code_first (default), single_pass, breadth_first
+
+  orchestrator:
+    number: 1      # Task orchestration & state sync (default: 1)
+    iterations: 2
+
+  product_manager:
+    number: 1      # Spec hardening & user story generation (default: 1)
+    iterations: 2
+
+  planner:
+    number: 1      # Task DAG decomposition (default: 1)
+    iterations: 2
 
   architect:
     number: 1      # Software Architect pre-flight agents (default: 1)
@@ -189,11 +209,16 @@ agents:
   devops:
     number: 1      # Dockerfile & CI pipeline release agents (default: 1)
     iterations: 2
+
+  unblocker:
+    number: 1      # Autonomous pipeline stall detection & task re-dispatch (default: 1)
+    iterations: 2
 ```
 
-1. **`code_first_verification_loop`** (Default): Separates Generator code implementation from Tester test writing, enforcing independent TDD verification.
-2. **`single_pass_execution`**: Fast-path execution where a single Generator Agent pass co-generates implementation code and tests in one turn.
-3. **Multi-Agent Quality & Release Panel**: Parallel specialized agents (`qa`, `security`, `performance`, `docs`, `devops`) audit, optimize, document, and containerize features autonomously.
+1. **`code_first`** (Default): Generator implements code first, followed by independent Tester verification turns.
+2. **`single_pass`**: Fast-path execution where a single Generator Agent pass co-generates implementation code and tests in one turn.
+3. **`breadth_first`**: Iterative ~80% happy-path generation across all stories first, followed by benevolent judges refining edge cases and enforcing zero regressions.
+4. **Multi-Agent Quality & Release Panel**: Specialized agents (`product_manager`, `planner`, `architect`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`) refine specs, design DAGs, audit code quality, document, and heal pipeline stalls autonomously.
 
 ---
 
@@ -220,11 +245,8 @@ This compiles the binary to `./dist/noctifab`.
 # 2. Validate configurations
 ./dist/noctifab validate
 
-# 3. Start the background daemon and interactive REPL
-./dist/noctifab start
-
-# Alternatively, run planning and execution end-to-end for a single story specification
-./dist/noctifab start-one --input ./examples/markdown-to-html/spec.md
+# 3. Start planning and autonomous execution for a target directory
+./dist/noctifab start ./my-project
 ```
 
 ---
@@ -252,11 +274,7 @@ Key features of Interactive Mode:
 
 - **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles.
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
-
-- **`start`**: Spawns the background daemon process (`noctifab serve`) and launches a foreground interactive REPL loop to accept operator orders (e.g. `start roadmap/US-0001.md` or a directory path like `start roadmap/` to execute all stories in lexicographical order) and display clarification prompts. The background daemon exposes a REST API (port `18080` by default):
-  - `POST /api/v1/stories`: Enqueues stories. Accepts a JSON payload containing `{"path": "<file-or-folder>"}`. If a folder path is provided, it automatically enqueues all markdown files in the folder in lexicographical order.
-  - `POST /api/v1/clarifications/:id/resolve`: Submits operator answers to clarify ambiguous specifications.
-- **`start-one`**: Plans and executes a single specification end-to-end, running task workers and test validation in a blocking loop until complete, then exits.
+- **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Ensures `SPEC.md` and `.noctifab` configuration are initialized. Auto-generates `roadmap/` from `SPEC.md` if no user stories exist, and executes all user stories sequentially.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
 - **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
@@ -368,6 +386,77 @@ agents:
 ```
 
 ---
+
+---
+
+## LLM Multi-Provider Prioritization & Per-Agent Routing
+
+`noctifab` supports declaring a named registry of LLM providers (`llm.providers`), setting a global failover priority list (`llm.priority`), and overriding provider priority chains per agent role (`roles.<agent>.providers`).
+
+### 🌟 Multi-Model Peer Review (Generate with Model A, Test with Model B, Audit with Model C)
+
+Assigning specialized AI models to different execution phases is an essential best practice for autonomous development:
+1. **Eliminate Confirmation Bias:** If the same model writes code, writes unit tests, and reviews its own PR, it will repeat its own logical blind spots. Multi-model routing creates an independent peer-review pipeline.
+2. **Model Specialization:** Use fast syntax models for code generation, reasoning heavyweights for test design, and premier analytical models for code review and security audits.
+
+```yaml
+config_version: "1.0"
+
+# 1. Named LLM Provider Registry & Global Failover
+llm:
+  priority:
+    - "deepseek-coder"
+    - "openai-primary"
+    - "anthropic-reviewer"
+
+  providers:
+    - name: "deepseek-coder"
+      provider: "deepseek"
+      api_key_env: "DEEPSEEK_API_KEY"
+      model: "deepseek-coder"
+
+    - name: "openai-primary"
+      provider: "openai"
+      api_key_env: "OPENAI_API_KEY"
+      model: "gpt-4o"
+
+    - name: "anthropic-reviewer"
+      provider: "anthropic"
+      api_key_env: "ANTHROPIC_API_KEY"
+      model: "claude-3-5-sonnet-latest"
+
+# 2. Assign Specialized Models per Agent Phase directly inside agents:
+agents:
+  generators:
+    number: 4
+    iterations: 5
+    providers:
+      - name: "deepseek-coder"
+      - name: "openai-primary"
+
+  testers:
+    number: 2
+    iterations: 3
+    providers:
+      - name: "openai-primary"
+      - name: "anthropic-reviewer"
+
+  qa:
+    number: 1
+    iterations: 2
+    providers:
+      - name: "anthropic-reviewer"
+      - name: "openai-primary"
+
+  security:
+    number: 1
+    iterations: 2
+    providers:
+      - name: "anthropic-reviewer"
+```
+
+> [!TIP]
+> **Dynamic Version-Agnostic Mode:** You can omit specific model version strings (`model: ""`) from both providers and roles! `noctifab` will query each provider's `/models` API endpoint at runtime, automatically route to the highest-capacity flagship model for that provider (e.g. `openai` $\rightarrow$ flagship, `anthropic` $\rightarrow$ flagship, `deepseek` $\rightarrow$ flagship coder), and step down through lower model tiers if rate limits occur.
 
 ---
 

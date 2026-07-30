@@ -19,7 +19,7 @@
 #   NOCTIFAB_BUILD_DIR       (optional) – repo root; defaults to script parent/..
 #   NOCTIFAB_LOG_DIR         (optional) – log dir; defaults to "$root/.validation-logs"
 #   NOCTIFAB_SKIP_BUILD      (optional) – "1" to skip per-project image build
-#   MODE                     (optional) – validate.sh MODE (start|start-one)
+#   MODE                     (optional) – validate.sh MODE (start)
 set -euo pipefail
 
 INTERACTIVE=0
@@ -137,7 +137,7 @@ if [ "${INTERACTIVE}" = "1" ]; then
     -v "${SRC_DIR}:/app/src_mount" \
     -v "${DIST_DIR}:/app/dist_mount" \
     -e PROJECT="${PROJECT}" \
-    -e MODE="${MODE:-start-one}" \
+    -e MODE="${MODE:-start}" \
     -e NOCTIFAB_INTERACTIVE="${INTERACTIVE}" \
     "${IMAGE}"
   EXIT_CODE=$?
@@ -150,7 +150,7 @@ else
     -v "${SRC_DIR}:/app/src_mount" \
     -v "${DIST_DIR}:/app/dist_mount" \
     -e PROJECT="${PROJECT}" \
-    -e MODE="${MODE:-start-one}" \
+    -e MODE="${MODE:-start}" \
     -e NOCTIFAB_INTERACTIVE="${INTERACTIVE}" \
     "${IMAGE}" >"${LOG_FILE}" 2>&1
   EXIT_CODE=$?
