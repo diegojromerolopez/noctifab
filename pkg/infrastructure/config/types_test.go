@@ -86,8 +86,12 @@ func TestWriteDefaultConfig(t *testing.T) {
 		t.Errorf("expected config_version 1.0, got %s", cfg.ConfigVersion)
 	}
 
-	// Test write failure due to dir creation error
-	invalidPath := filepath.Join("/nonexistent-dir-12345/foo/bar", "config.yaml")
+	// Test write failure due to dir creation error (parent is a regular file)
+	regularFilePath := filepath.Join(tmpDir, "regular-file.txt")
+	if err := os.WriteFile(regularFilePath, []byte("test"), 0644); err != nil {
+		t.Fatalf("failed to create regular file: %v", err)
+	}
+	invalidPath := filepath.Join(regularFilePath, "foo", "bar", "config.yaml")
 	err = WriteDefaultConfig(invalidPath)
 	if err == nil {
 		t.Error("expected error writing to invalid path")

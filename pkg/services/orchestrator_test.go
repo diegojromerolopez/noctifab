@@ -2,7 +2,9 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,38 +13,67 @@ import (
 )
 
 type mockVCS struct {
+	mu         sync.Mutex
 	prCalls    int
 	mergeCalls int
 }
 
 func (m *mockVCS) CreatePullRequest(ctx context.Context, title, body, headBranch, baseBranch string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.prCalls++
 	return "https://github.com/owner/repo/pull/1", nil
 }
 
 func (m *mockVCS) MergePullRequest(ctx context.Context, prID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.mergeCalls++
 	return nil
 }
 
 type mockRepo struct {
+	mu    sync.Mutex
 	state *domain.State
 }
 
+func (m *mockRepo) cloneState(s *domain.State) *domain.State {
+	if s == nil {
+		return nil
+	}
+	bytes, err := json.Marshal(s)
+	if err != nil {
+		return s
+	}
+	var copyState domain.State
+	if err := json.Unmarshal(bytes, &copyState); err != nil {
+		return s
+	}
+	return &copyState
+}
+
 func (m *mockRepo) Load(ctx context.Context) (*domain.State, error) {
-	return m.state, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cloneState(m.state), nil
 }
 
 func (m *mockRepo) LoadByID(ctx context.Context, id string) (*domain.State, error) {
-	return m.state, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cloneState(m.state), nil
 }
 
 func (m *mockRepo) LoadAll(ctx context.Context) ([]*domain.State, error) {
-	return []*domain.State{m.state}, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []*domain.State{m.cloneState(m.state)}, nil
 }
 
 func (m *mockRepo) Save(ctx context.Context, s *domain.State) error {
-	m.state = s
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.state = m.cloneState(s)
 	return nil
 }
 
@@ -196,22 +227,25 @@ func TestSummarizeFailureLog(t *testing.T) {
 
 type mockConflictRepo struct {
 	mockRepo
+	cMu       sync.Mutex
 	saveCount int
 	failSaves int
 }
 
 func (m *mockConflictRepo) Load(ctx context.Context) (*domain.State, error) {
-	st := *m.state
-	return &st, nil
+	m.cMu.Lock()
+	defer m.cMu.Unlock()
+	return m.mockRepo.Load(ctx)
 }
 
 func (m *mockConflictRepo) Save(ctx context.Context, s *domain.State) error {
+	m.cMu.Lock()
+	defer m.cMu.Unlock()
 	m.saveCount++
 	if m.saveCount <= m.failSaves {
 		return domain.ErrVersionConflict
 	}
-	m.state = s
-	return nil
+	return m.mockRepo.Save(ctx, s)
 }
 
 func TestOrchestrator_InstantWakeupOnTaskCompletion(t *testing.T) {

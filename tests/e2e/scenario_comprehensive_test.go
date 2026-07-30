@@ -49,7 +49,7 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 
 		usage, err = budgetStore.GetDailyUsage(ctx, "2026-07-01", "gpt-4o")
 		require.NoError(t, err)
-		assert.Equal(t, 0.0, usage)
+		assert.Equal(t, int64(0), usage)
 	})
 
 	t.Run("OCC version conflict detection blocks stale saves", func(t *testing.T) {

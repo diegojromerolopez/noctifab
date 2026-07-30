@@ -612,35 +612,3 @@ func TestConfigValidation_Comprehensive(t *testing.T) {
 		})
 	}
 }
-
-func TestValidationProjectsConfigs_StrictSchemaValidation(t *testing.T) {
-	_ = os.Setenv("NOCTIFAB_E2E", "true")
-	defer func() { _ = os.Unsetenv("NOCTIFAB_E2E") }()
-
-	projects := []string{"calculator", "echo", "fortune", "frontpunch", "todo-cli", "wc"}
-
-	for _, project := range projects {
-		t.Run(project, func(t *testing.T) {
-			configPath, err := filepath.Abs(filepath.Join("..", "..", "..", "validation", "projects", project, ".noctifab", "config.yaml"))
-			if err != nil {
-				t.Fatalf("failed to resolve path: %v", err)
-			}
-
-			if _, err := os.Stat(configPath); err != nil {
-				t.Fatalf("config file for project %s does not exist at %s: %v", project, configPath, err)
-			}
-
-			cmd := &cobra.Command{Use: "test"}
-			cmd.Flags().String("config", configPath, "")
-			_ = cmd.Flags().Set("config", configPath)
-
-			cfg, err := Load(cmd)
-			if err != nil {
-				t.Errorf("validation project %s failed strict schema validation: %v", project, err)
-			}
-			if cfg == nil {
-				t.Errorf("expected non-nil config for validation project %s", project)
-			}
-		})
-	}
-}

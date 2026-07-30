@@ -48,7 +48,7 @@ func TestSAST_NonexistentScanner(t *testing.T) {
 }
 
 func TestSAST_GosecNotInstalled(t *testing.T) {
-	gosecErr := exec.Command("gosec").Run()
+	_, gosecErr := exec.LookPath("gosec")
 	if gosecErr == nil {
 		t.Skip("gosec is installed on this system; test requires it to be absent")
 	}
