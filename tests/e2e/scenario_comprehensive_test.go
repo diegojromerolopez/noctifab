@@ -295,5 +295,8 @@ func openBudgetDB(t *testing.T) *sql.DB {
 	}
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
+	if err := db.Ping(); err != nil {
+		t.Skipf("Skipping Postgres budget test (db unreachable): %v", err)
+	}
 	return db
 }

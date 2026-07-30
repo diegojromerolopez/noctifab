@@ -112,7 +112,7 @@ func TestScenario_ParallelConflictResolution(t *testing.T) {
 			return &domain.LLMResponse{}, nil
 		}
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		finalState, err := repo.Load(ctx)
@@ -196,7 +196,7 @@ func TestScenario_NonDestructiveRefactor(t *testing.T) {
 			}, nil
 		}
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		// Verify changes were non-destructive

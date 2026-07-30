@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 
@@ -72,7 +71,7 @@ func TestScenario_FlakyQuarantine(t *testing.T) {
 			}, nil
 		}
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		finalState, err := repo.Load(ctx)
@@ -182,9 +181,7 @@ func TestScenario_BudgetExceededMidExecution(t *testing.T) {
 		assert.Equal(t, domain.TaskSuccess, task1.Status)
 		assert.Equal(t, domain.TaskPending, task2.Status)
 
-		// Verify cost registered is $0.012
-		costVal, err := strconv.ParseFloat(finalState.Metadata.TotalCostUSD, 64)
-		require.NoError(t, err)
-		assert.InDelta(t, 0.012, costVal, 0.0001)
+		// Verify total tokens registered is 800
+		assert.Equal(t, int64(800), finalState.Metadata.TotalTokensUsed)
 	})
 }

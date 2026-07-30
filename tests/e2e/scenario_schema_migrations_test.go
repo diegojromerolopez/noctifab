@@ -76,7 +76,7 @@ func TestScenario_SchemaMigration(t *testing.T) {
 			}, nil
 		}
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		finalState, err := repo.Load(ctx)
@@ -143,7 +143,7 @@ func TestScenario_ShutdownResumption(t *testing.T) {
 			}, nil
 		}
 
-		err = runSimulatedOrchestrator(cancelCtx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(cancelCtx, repo, client, workspace, 100000)
 		assert.ErrorIs(t, err, context.Canceled)
 
 		midState, err := repo.Load(ctx)
@@ -176,7 +176,7 @@ func TestScenario_ShutdownResumption(t *testing.T) {
 			}, nil
 		}
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		finalState, err := repo.Load(ctx)

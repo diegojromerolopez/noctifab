@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.2] - 2026-07-30
+
+### Fixed
+- **E2E Test Parameter Alignment**: Updated `tokenLimit` parameters and token usage assertions across E2E scenario tests (`tests/e2e/`), added non-template `SPEC.md` and user story stubs for `TestE2E_StartCommand` / `TestE2E_StartOneCommand`, and added local `dist/noctifab` binary resolution fallback when running outside containers.
+- **Environment Override Safety in Unit Tests**: Cleared `NOCTIFAB_E2E` environment overrides in `pkg/infrastructure/config/config_test.go` subtests to guarantee deterministic validation checks.
+
+### Removed
+- **Cleaned Up Plan & Feedback Docs**: Removed temporary review and feedback markdown files (`DARK_FACTORY_REVIEW.md`, `FORTUNE_FEEDBACK.md`, `UX.md`).
+
 ## [0.18.1] - 2026-07-30
 
 ### Changed

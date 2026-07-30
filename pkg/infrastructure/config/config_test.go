@@ -247,6 +247,8 @@ func TestValidate(t *testing.T) {
 	})
 
 	t.Run("Missing VCS repository", func(t *testing.T) {
+		t.Setenv("NOCTIFAB_E2E", "")
+		t.Setenv("NOCTIFAB_VCS_REPO", "")
 		cfg := baseCfg()
 		cfg.VCS.Repository = ""
 		if err := cfg.Validate(); err == nil {
@@ -255,6 +257,9 @@ func TestValidate(t *testing.T) {
 	})
 
 	t.Run("Missing VCS token", func(t *testing.T) {
+		t.Setenv("NOCTIFAB_E2E", "")
+		t.Setenv("GITHUB_TOKEN", "")
+		t.Setenv("NOCTIFAB_VCS_TOKEN", "")
 		cfg := baseCfg()
 		cfg.VCS.TokenValue = ""
 		if err := cfg.Validate(); err == nil {
