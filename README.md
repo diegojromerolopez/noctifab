@@ -217,7 +217,7 @@ agents:
 
 1. **`code_first` (`cfv`)** (Default): Generator implements code first, followed by independent Tester verification turns.
 2. **`single_pass` (`spe`)**: Fast-path execution where a single Generator Agent pass co-generates implementation code and tests in one turn.
-3. **`breadth_first` (`bfg`)**: Iterative ~80% happy-path generation across all user stories first, followed by benevolent judges refining edge cases and enforcing zero regressions. See [BREATH_FIRST_GENERATION.md](file:///Users/diegoj/repos/noctifab/BREATH_FIRST_GENERATION.md) for full specification.
+3. **`breadth_first` (`bfg`)**: Iterative ~80% happy-path generation across all user stories first, followed by benevolent judges refining edge cases and enforcing zero regressions.
 4. **Multi-Agent Quality & Release Panel**: Specialized agents (`product_manager`, `planner`, `architect`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`) refine specs with explicit Definition of Done (DoD) API contracts, design DAGs, audit code quality, document, and heal pipeline stalls autonomously.
 
 ---

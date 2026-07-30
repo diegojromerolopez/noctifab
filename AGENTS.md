@@ -9,7 +9,6 @@ Welcome, agent. This document outlines the rules, architecture, and coding const
 Before planning or executing any task in this codebase, you **must** read and understand:
 *   [SPEC.md](/SPEC.md) - The technical specification of the project.
 *   [TESTS.md](/TESTS.md) - The testing strategy, structures, and verification specifications.
-*   [BREATH_FIRST_GENERATION.md](/BREATH_FIRST_GENERATION.md) - Specification for Breadth-First Generation architecture mode (~80% happy-path coverage across user stories first, followed by Benevolent Judge zero-regression refinement).
 
 ---
 
