@@ -9,6 +9,7 @@ Welcome, agent. This document outlines the rules, architecture, and coding const
 Before planning or executing any task in this codebase, you **must** read and understand:
 *   [SPEC.md](/SPEC.md) - The technical specification of the project.
 *   [TESTS.md](/TESTS.md) - The testing strategy, structures, and verification specifications.
+*   [BREATH_FIRST_GENERATION.md](/BREATH_FIRST_GENERATION.md) - Specification for Breadth-First Generation architecture mode (~80% happy-path coverage across user stories first, followed by Benevolent Judge zero-regression refinement).
 
 ---
 
@@ -23,6 +24,9 @@ To maintain modularity and high context compatibility, the following guidelines 
     *   **Dependency Injection (DI):** Do not hardcode dependencies. Provide all objects, configurations, and clients through constructors. Code must be built in a way that is easy to test (utilizing dependency injection to make components highly mockable and isolated).
     *   **SOLID:** Keep classes/structs focused on a single responsibility.
     *   **Domain-Driven Design (DDD):** Align packaging boundaries to domain logic (e.g., domain entities, value objects, and service interfaces), not technical categories.
+    *   **Provider Struct Composition (LLM Infrastructure):** All LLM provider clients must reside in dedicated per-provider source files (`pkg/infrastructure/llm/<provider>.go`). OpenAI-compatible providers must embed `*baseOpenAIClient` and use the declarative `NewModelParser` engine. Core dispatching in `client.go` must be data-driven via `ProviderSpec.NewClientFunc` with zero protocol `switch` statements.
+    *   **Verification vs. Validation Engineering Strategy:** Task execution is divided into two distinct stages: *Verification* (building minimal working functionality that compiles and satisfies baseline checks) and *Validation* (black-box behavioral testing against public contracts, CLI outputs, and API signatures). Tests must never assert internal module implementation details.
+    *   **Product Manager Definition of Done (DoD) Mandate:** Generated user stories (`roadmap/US-xxx.md`) must specify explicit public API signatures, binary executable paths, I/O formatting invariants, error prefixes, exit codes, number precision representations, and zero-failure test pass criteria before downstream task planning starts.
     *   **Project & Language Agnosticism:** Noctifab MUST NOT HAVE validation project-specific or language-specific code in its codebase. Noctifab is a dark factory agent; do not add specific instructions, context helpers, or code rules for particular validation projects or programming languages.
 3.  **Testing Strategy:**
     *   All code must be **100% unit tested**. Every Go package must be accompanied by unit tests.

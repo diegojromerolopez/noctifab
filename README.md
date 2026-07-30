@@ -164,7 +164,7 @@ To prevent "evaluation gaming" (where code generators approve their own buggy co
 
 ```yaml
 agents:
-  architecture: "code_first" # Options: code_first (default), single_pass, breadth_first
+  architecture: "code_first" # Options: code_first (cfv), single_pass (spe), breadth_first (bfg)
 
   orchestrator:
     number: 1      # Task orchestration & state sync (default: 1)
@@ -215,10 +215,10 @@ agents:
     iterations: 2
 ```
 
-1. **`code_first`** (Default): Generator implements code first, followed by independent Tester verification turns.
-2. **`single_pass`**: Fast-path execution where a single Generator Agent pass co-generates implementation code and tests in one turn.
-3. **`breadth_first`**: Iterative ~80% happy-path generation across all stories first, followed by benevolent judges refining edge cases and enforcing zero regressions.
-4. **Multi-Agent Quality & Release Panel**: Specialized agents (`product_manager`, `planner`, `architect`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`) refine specs, design DAGs, audit code quality, document, and heal pipeline stalls autonomously.
+1. **`code_first` (`cfv`)** (Default): Generator implements code first, followed by independent Tester verification turns.
+2. **`single_pass` (`spe`)**: Fast-path execution where a single Generator Agent pass co-generates implementation code and tests in one turn.
+3. **`breadth_first` (`bfg`)**: Iterative ~80% happy-path generation across all user stories first, followed by benevolent judges refining edge cases and enforcing zero regressions. See [BREATH_FIRST_GENERATION.md](file:///Users/diegoj/repos/noctifab/BREATH_FIRST_GENERATION.md) for full specification.
+4. **Multi-Agent Quality & Release Panel**: Specialized agents (`product_manager`, `planner`, `architect`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`) refine specs with explicit Definition of Done (DoD) API contracts, design DAGs, audit code quality, document, and heal pipeline stalls autonomously.
 
 ---
 
@@ -375,14 +375,13 @@ context:
   diff_window_lines: 15   # Surrounding context lines for diff_window mode
 ```
 
-### Workspace Inspection Caching (`agents.workspace_cache.enabled`)
+### Workspace Inspection Caching (`workspace_cache.enabled`)
 
-Optimize multi-turn agent turns by deduplicating read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent's execution loop:
+Optimize multi-turn agent turns by deduplicating read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent's execution loop (top-level key `workspace_cache:`, with backward-compatible fallback for `agents.workspace_cache`):
 
 ```yaml
-agents:
-  workspace_cache:
-    enabled: true        # In-memory caching of workspace filesystem reads until a file write occurs (default: true)
+workspace_cache:
+  enabled: true        # In-memory caching of workspace filesystem reads until a file write occurs (default: true)
 ```
 
 ---

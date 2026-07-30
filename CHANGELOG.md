@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1] - 2026-07-30
+
+### Changed
+- **Documentation Alignment (`AGENTS.md` & `README.md`)**: Synced development guidelines in `AGENTS.md` and user documentation in `README.md` to reference `BREATH_FIRST_GENERATION.md`, document LLM Provider Struct Embedding composition rules, detail Verification vs. Validation testing strategy, incorporate the Product Manager Definition of Done (DoD) mandate, add short architecture names (`cfv`, `spe`, `bfg`), and standardize top-level `workspace_cache:` configuration syntax.
+
 ## [0.18.0] - 2026-07-30
 
 ### Added
