@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.10] - 2026-07-31
+
+### Fixed
+- **E2E Simulation Harness & Linter Verification Fixes**: Fixed unused functions in `tests/e2e/scenario_test_utils.go` (`scanWorkspaceFiles` and `resolveDependencies`) by wiring workspace scanning and DAG dependency validation into `runSimulatedOrchestrator`. Fixed E2E test failures in `TestScenario_DjangoCRUD`, `TestScenario_UpstreamFailurePruning`, `TestScenario_BudgetExceededMidExecution`, `TestScenario_ShutdownResumption`, and `TestScenario_ContextCompaction` by wrapping `domain.ErrBudgetExhausted`, processing LLM clarification and task creation actions, logging graceful shutdown actions, allowing retries for views template generation, and pruning downstream tasks upon upstream failures.
+
 ## [0.18.9] - 2026-07-31
 
 ### Fixed

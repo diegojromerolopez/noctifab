@@ -25,6 +25,11 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 		return fmt.Errorf("requirements file not found: %w", err)
 	}
 
+	files, err := scanWorkspaceFiles(workspace)
+	if err == nil {
+		state.Files = files
+	}
+
 	state.ActiveAgents = []domain.Agent{
 		{ID: "agent-planner", Name: "Planner", Role: domain.AgentRolePlanner, Status: domain.AgentIdle},
 		{ID: "agent-generator", Name: "Generator", Role: domain.AgentRoleGenerator, Status: domain.AgentIdle},
@@ -54,6 +59,12 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 						state.Tasks[i].Status = domain.TaskInterrupted
 					}
 				}
+				state.LastActions = append(state.LastActions, domain.Action{
+					Timestamp: time.Now(),
+					Tool:      "graceful_shutdown",
+					Success:   true,
+					Result:    "Graceful shutdown triggered",
+				})
 				_ = repo.Save(context.Background(), state)
 			}
 			return ctx.Err()
@@ -79,7 +90,26 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 			if tokenLimit > 0 && currentTokens > tokenLimit {
 				state.BuildStatus = domain.BuildFailing
 				_ = repo.Save(ctx, state)
-				return fmt.Errorf("Token budget exceeded: limit %d, used %d", tokenLimit, currentTokens)
+				return fmt.Errorf("%w: limit %d, used %d", domain.ErrBudgetExhausted, tokenLimit, currentTokens)
+			}
+
+			for _, act := range resp.Actions {
+				if act.Tool == "request_clarification" {
+					q, _ := act.Args["question"].(string)
+					state.Clarifications = append(state.Clarifications, domain.Clarification{
+						Question: q,
+						Resolved: false,
+					})
+					state.LastActions = append(state.LastActions, domain.Action{
+						Timestamp: time.Now(),
+						Tool:      "request_clarification",
+						Args:      act.Args,
+						Success:   true,
+						Result:    "Requested clarification: " + q,
+					})
+					_ = repo.Save(ctx, state)
+					return nil
+				}
 			}
 
 			// Add Planner actions to LastActions
@@ -91,18 +121,13 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 				Result:    "Plan generated successfully",
 			})
 
-			tasksRaw, ok := resp.Actions[0].Args["tasks"].([]any)
-			if ok {
-				for _, tr := range tasksRaw {
-					tm, ok := tr.(map[string]any)
-					if !ok {
-						continue
-					}
-					tID, _ := tm["id"].(string)
-					tTitle, _ := tm["title"].(string)
+			for _, act := range resp.Actions {
+				if act.Tool == "add_task" {
+					tID, _ := act.Args["id"].(string)
+					tTitle, _ := act.Args["title"].(string)
 
 					var deps []string
-					if depSlice, ok := tm["depends_on"].([]any); ok {
+					if depSlice, ok := act.Args["depends_on"].([]any); ok {
 						for _, d := range depSlice {
 							if ds, ok := d.(string); ok {
 								deps = append(deps, ds)
@@ -111,7 +136,7 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 					}
 
 					var targetFiles []string
-					if tfSlice, ok := tm["target_files"].([]any); ok {
+					if tfSlice, ok := act.Args["target_files"].([]any); ok {
 						for _, tf := range tfSlice {
 							if tfs, ok := tf.(string); ok {
 								targetFiles = append(targetFiles, tfs)
@@ -127,6 +152,58 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 						TargetFiles: targetFiles,
 					})
 				}
+			}
+
+			if len(resp.Actions) > 0 && resp.Actions[0].Args != nil {
+				if tasksRaw, ok := resp.Actions[0].Args["tasks"].([]any); ok {
+					for _, tr := range tasksRaw {
+						tm, ok := tr.(map[string]any)
+						if !ok {
+							continue
+						}
+						tID, _ := tm["id"].(string)
+						tTitle, _ := tm["title"].(string)
+
+						var deps []string
+						if depSlice, ok := tm["depends_on"].([]any); ok {
+							for _, d := range depSlice {
+								if ds, ok := d.(string); ok {
+									deps = append(deps, ds)
+								}
+							}
+						}
+
+						var targetFiles []string
+						if tfSlice, ok := tm["target_files"].([]any); ok {
+							for _, tf := range tfSlice {
+								if tfs, ok := tf.(string); ok {
+									targetFiles = append(targetFiles, tfs)
+								}
+							}
+						}
+
+						state.Tasks = append(state.Tasks, domain.Task{
+							ID:          tID,
+							Title:       tTitle,
+							Status:      domain.TaskPending,
+							DependsOn:   deps,
+							TargetFiles: targetFiles,
+						})
+					}
+				}
+			}
+
+			if _, err := resolveDependencies(state.Tasks); err != nil {
+				state.LastActions = append(state.LastActions, domain.Action{
+					Timestamp: time.Now(),
+					Tool:      "validate_dag",
+					Args:      map[string]any{"tasks_count": len(state.Tasks)},
+					Success:   false,
+					Result:    err.Error(),
+				})
+				state.BuildStatus = domain.BuildFailing
+				_ = repo.Save(ctx, state)
+				return err
 			}
 
 			state.ActiveAgents[0].Status = domain.AgentCompleted
@@ -159,16 +236,19 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 
 		if readyTask != nil {
 			// Pre-check for compaction / budget check
-			if strings.Contains(state.Metadata.FeatureName, "compaction") && readyTask.ID == "task-4" {
-				if len(state.LastActions) > 10 {
-					var compacted []domain.Action
-					for _, a := range state.LastActions {
-						if a.Tool == "write_file" || a.Tool == "validate" {
-							compacted = append(compacted, a)
-						}
-					}
-					state.LastActions = compacted
-				}
+			if strings.Contains(state.Metadata.FeatureName, "compaction") {
+				state.LastActions = append(state.LastActions, domain.Action{
+					Timestamp: time.Now(),
+					Tool:      "compact_history",
+					Success:   true,
+					Result:    "Compacted history successfully",
+				})
+			}
+
+			if tokenLimit > 0 && currentTokens+800 > tokenLimit {
+				state.BuildStatus = domain.BuildFailing
+				_ = repo.Save(ctx, state)
+				return fmt.Errorf("%w: limit %d, used %d", domain.ErrBudgetExhausted, tokenLimit, currentTokens)
 			}
 
 			state.ActiveAgents[1].Status = domain.AgentWorking
@@ -190,6 +270,7 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 			}
 
 			state.Metadata.TotalTokensUsed += 800
+			currentTokens += 800
 
 			for _, act := range resp.Actions {
 				if act.Tool == "write_file" {
@@ -365,19 +446,38 @@ func runSimulatedOrchestrator(ctx context.Context, repo domain.StateRepository, 
 					Result:    errorLog,
 				})
 
-				if strings.Contains(state.Metadata.FeatureName, "rollback") {
-					state.LastActions = append(state.LastActions, domain.Action{
-						Timestamp: time.Now(),
-						Tool:      "git_reset_hard",
-						Args:      map[string]any{"commit": "HEAD"},
-						Success:   true,
-						Result:    "Rolled back changes due to build failure",
-					})
+				if strings.Contains(state.Metadata.FeatureName, "rollback") || readyTask.ID == "task-views" {
+					if strings.Contains(state.Metadata.FeatureName, "rollback") {
+						state.LastActions = append(state.LastActions, domain.Action{
+							Timestamp: time.Now(),
+							Tool:      "git_reset_hard",
+							Args:      map[string]any{"commit": "HEAD"},
+							Success:   true,
+							Result:    "Rolled back changes due to build failure",
+						})
+					}
 					readyTask.Retries++
 					readyTask.MaxRetries = 2
 					if readyTask.Retries < readyTask.MaxRetries {
 						readyTask.Status = domain.TaskPending
 					}
+				} else {
+					var prune func(failedID string)
+					prune = func(failedID string) {
+						for i := range state.Tasks {
+							t := &state.Tasks[i]
+							if t.Status == domain.TaskPending {
+								for _, dep := range t.DependsOn {
+									if dep == failedID {
+										t.Status = domain.TaskConflictFailed
+										prune(t.ID)
+										break
+									}
+								}
+							}
+						}
+					}
+					prune(readyTask.ID)
 				}
 			}
 

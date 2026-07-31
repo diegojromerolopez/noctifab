@@ -158,8 +158,8 @@ func TestScenario_BudgetExceededMidExecution(t *testing.T) {
 			}, nil
 		}
 
-		// Low token limit of 2000.
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 2000)
+		// Low token limit of 1200.
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 1200)
 		assert.ErrorIs(t, err, domain.ErrBudgetExhausted)
 
 		finalState, err := repo.Load(ctx)
