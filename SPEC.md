@@ -41,7 +41,7 @@ To ensure maintainability, scalability, and clarity for both human developers an
 *   **Instructive Linter Mandate:** Static analysis checks used in the development loop must print *instructive actions* instead of mere descriptions. For example, instead of *"Service depends on Controller"*, the output must read *"Service class imports from Controller package. Move the shared types to domain/model package instead"*. This drastically increases the agent's first-try correction rate.
 *   **Developer Documentation Guidelines:** A `.readthedocs.yaml` configuration file must be present at the root, and a `docs/` folder must contain Markdown documentation detailing project usage, setup instructions, and guides on how developers can extend the orchestration framework.
 *   **Repository Standards and Documentation:** The repository must maintain a `VERSION` file at the root containing the current semver release, a `CHANGELOG.md` detailing change history conforming to the "Keep a Changelog" standard, and a comprehensive `README.md` at the root. The `README.md` must include project status badges, links to the Read the Docs page, a description of the project, basic CLI usage instructions, license information, and collaboration guidelines.
-*   **Industry Coding Standards:** When modifying or writing code, AI agents must strictly follow the most popular and established standards of the target language and platform (e.g. Go Code Review Comments for Go, standard libraries, and standard formatting conventions), unless explicitly instructed otherwise.
+*   **Industry Coding Standards:** When modifying or writing code, AI agents must strictly follow the most popular and established standards of the target language and platform (e.g. Go Code Review Comments for Go, standard libraries, and standard formatting conventions), unless explicitly instructed otherwise. For Ruby projects, the generated code must pass all RuboCop styling, quality, and linting checks.
 *   **Encapsulation & Package Boundaries:** Struct types are exported to allow type assertions and interface compliance, but their internal fields remain unexported to enforce encapsulation. All access goes through constructors and public methods. Tests use the public API (black-box testing) wherever possible.
 *   **Context Propagation:** All functions performing I/O or calling external APIs accept `context.Context` as their first parameter. Context is never stored in structs — it is passed through the call chain from the orchestrator loop down to tool execution and LLM client calls. Timeouts, trace spans, and cancellation propagate strictly through context.
 *   **Database Selection & Performance:** PostgreSQL is the recommended database for production use to guarantee maximum transaction throughput, concurrency, and connection stability. SQLite is supported strictly as a zero-setup local development database; its inherent write-locking and performance limitations are acceptable and expected in single-developer/testing environments.
@@ -1655,10 +1655,21 @@ When a command is killed or exits with an error, the `WatchdogRepair` categorize
 #### Repair Loop
 The orchestrator integrates `WatchdogRepair` into its task execution loop:
 1. **Diagnose:** The failure log is analyzed and categorized using `CategorizeFailureLog`.
-2. **Prompt Construction:** A diagnostic prompt is built containing the failure category, log excerpts, and retry count.
+2. **Prompt Construction:** A diagnostic prompt is built containing the failure category, log excerpts, and retry count. The prompt is tailored dynamically to the failure category (Timeout, Compile, or TestLogic).
 3. **LLM Repair Attempt:** The LLM receives the diagnostic prompt and suggests a fix (code patch, config change, or retry).
-4. **Retry:** Up to `MaxRetries` attempts are made. After each failure, the repair handler feeds the previous attempt's outcome back into the next prompt.
-5. **Escalation:** If all retries are exhausted, the task is marked `TaskFailed`.
+4. **Validation:** For all failure categories except `FailureSandbox` (which is blocked immediately for security), the repair handler invokes the sandbox to execute the repairs.
+5. **Retry:** Up to 3 attempts are made. After each failure, the repair handler feeds the previous attempt's outcome back into the next prompt.
+6. **Escalation:** If all retries are exhausted, the task is marked `TaskFailed`.
+
+#### Multi-Turn Agent Loop
+To resolve syntax, lint, and test execution errors immediately without triggering an orchestrator retry, Generator and Tester agents operate in a multi-turn feedback loop of up to 5 turns per task:
+- **Intra-Turn Verification:** If `run_tests` or `run_linter` fails during an agent's turn, the orchestrator appends the error output directly back into the LLM context.
+- **Self-Healing Prompt Mandate:** Agents must prioritize fixing verification errors in subsequent turns before calling `noop`.
+
+#### Safety Circuit Breakers
+- **`max_actions`**: Specifies a global limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
+- **`max_duration`**: Specifies a story-level wall-clock timeout.
+- **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature timeouts on large project test suites.
 
 #### Wiring
 The `WatchdogRepair` is injected into the `Orchestrator` via constructor (DI). If no repair handler is provided (nil), the orchestrator skips the repair step and marks the task as failed immediately — preserving backward compatibility.
@@ -1706,24 +1717,25 @@ The disambiguator gathers the following context to make an informed inference:
 4. **Project context:** The original clarification question and its related task.
 
 #### Inference Flow
-1. When a clarification is created, the `IntentDisambiguator.Disambiguate` method is called exactly once per clarification.
-2. It constructs a structured prompt containing the question, git log, files, and context.
-3. The LLM is invoked to infer the most likely intended behavior.
-4. If the LLM returns a valid answer, the clarification is auto-resolved with the inferred answer, and the action is logged in state's `LastActions`.
-5. If the LLM returns an error or empty response, the clarification remains unresolved — the human operator is still prompted.
-6. Disambiguation is only attempted once per clarification. If inference fails, the orchestrator falls back to the standard clarification timeout flow (§3.6.4.C).
+### 3.6.12. Unblocker Agent
+
+The **Unblocker Agent** (`pkg/services/unblocker.go`) is an autonomous background daemon goroutine that periodically scans the shared system state for stalled or blocked tasks and agents, diagnoses the root cause using the LLM (or deterministic heuristics), and injects corrective interventions via the `CommandMailbox`.
+
+#### Architecture & Lifecycle
+1. **Independent Goroutine:** Spawned alongside the main orchestrator polling loop inside `Orchestrator.Start(ctx)`. Runs on an independent ticker (`unblocker.poll_interval`, default `30s`).
+2. **Read-Only Snapshot:** Loads a read-only copy of `*domain.State` from `StateRepository`.
+3. **Stall Detection (`detectStalledTasks`):** Evaluates four stall conditions:
+   - `frozen_progress`: Task `IN_PROGRESS` with no progress/update for > `stall_threshold` (default `5m`).
+   - `orphaned_task`: Task `IN_PROGRESS` with no active `WORKING` agent assigned for > `stall_threshold / 2`.
+   - `conflict_blocked`: Task `CONFLICT_BLOCKED` for > `conflict_threshold` (default `15m`).
+   - `agent_inconsistency`: Agent `WORKING` but assigned task is not `IN_PROGRESS`.
+4. **LLM Assessment vs Heuristic Fallback:** When `llm_assessment: true` (default), constructs a diagnostic prompt (`buildUnblockerPrompt`) and requests a JSON action response. If disabled or LLM fails, applies deterministic recovery rules.
+5. **Mailbox Dispatch:** Corrective commands (`ResetTaskCmd`, `FailTaskCmd`, `LogUnblockerActionCmd`, `ClearInconsistentAgentCmd`) are sent to `CommandMailbox` to maintain OCC state safety and trigger immediate orchestrator wakeup.
 
 ---
 
----es spawned.
-2.  **Context Cancellation:** The global context `context.WithCancel` is cancelled, propagating the cancellation signal to all active worker goroutines.
-3.  **Active Worker Grace Period:** The daemon blocks and waits for a configurable period (via `--shutdown-grace-period`, default `30s`) for running tools to complete cleanups or file saves.
-4.  **Save Interrupted State:** Any workers that do not complete within the grace period are terminated. The orchestrator marks their respective tasks as `INTERRUPTED` (value `INTERRUPTED` in the TaskStatus enum) in the state, releases their git worktree locks, and saves the final consolidated `State` back to the SQLite/PostgreSQL database repository.
-
-> **Note:** The remaining subsections of §3 (§3.7 through §3.9) describe supporting workflows, integration pipelines, and configuration layout that build on top of the five core components defined above (State, Tool Registry, LLM Client, Validator, and Multi-Agent Orchestrator).
-
 ### 3.7. Specification Ingestion & External Clients
-To support dynamic task generation from multiple workflow sources, `noctifab` abstracts the feature specification retrieval through an ingestion layer. The `--input` flag (available on `noctifab start-one` and `noctifab start`) parses `<source>` to determine the appropriate adapter to execute:
+To support dynamic task generation from multiple workflow sources, `noctifab` abstracts the feature specification retrieval through an ingestion layer. The `--input` flag (available on `noctifab start`) parses `<source>` to determine the appropriate adapter to execute:
 
 ```
                   ┌──────────────────────────────┐
@@ -1763,7 +1775,7 @@ To support dynamic task generation from multiple workflow sources, `noctifab` ab
 ### 3.8. Automatic Commits, Centralized Versioning, & Pull Requests
 When the automated commit setting is enabled (via CLI flag `--auto-commit` or environment variable `NOCTIFAB_AUTO_COMMIT=true`), the orchestrator automatically manages the integration pipeline: branch creation, centralized version bumping, changelog updates, and pull request creation.
 
-*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start` and `noctifab start-one`). These commands manage the integration pipeline: branch creation, conventional commits, version bumping, and PR creation. The `--auto-commit` flag has no effect on read-only commands such as `noctifab validate` or `noctifab maintenance`.
+*   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start`). These commands manage the integration pipeline: branch creation, conventional commits, version bumping, and PR creation. The `--auto-commit` flag has no effect on read-only commands such as `noctifab validate` or `noctifab maintenance`.
 
 #### 3.8.1. Branch Naming Policy
 The branch created by the worker agent is dynamically named using the configured `branch_prefix` (configured under `vcs:` in `.noctifab/config.yaml`):
@@ -1940,6 +1952,14 @@ sast:
   enabled: false                 # Enable SAST security scanning
   scanners: ["gosec"]            # SAST scanners: "gosec" (Go), "bandit" (Python)
   fail_on_severity: "high"       # Block PR on: "high", "medium", "low"
+
+unblocker:
+  enabled: true                  # Enable background unblocker goroutine (default: true)
+  poll_interval: "30s"           # Unblocker waking frequency (default: 30s)
+  max_retries: 3                 # Max unblock/reset attempts per task (default: 3)
+  stall_threshold: "5m"          # Frozen IN_PROGRESS task trigger threshold (default: 5m)
+  conflict_threshold: "15m"      # CONFLICT_BLOCKED task trigger threshold (default: 15m)
+  llm_assessment: true           # Use LLM for stall diagnosis (false = heuristic-only)
 ```
 
 #### 3.9.3. Profile Configuration Schema (`.noctifab/profiles/<profile_name>.yaml`)

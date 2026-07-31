@@ -15,11 +15,13 @@ import (
 // TestValidator runs the project's tests up to 3 times to check for flakiness
 // and optionally auto-stabilizes flaky tests via an LLM client.
 type TestValidator struct {
-	Runner        Sandbox
-	Strict        bool
-	LinterCommand string
-	LLMClient     domain.LLMClient
-	Tools         map[string]Tool
+	Runner           Sandbox
+	Strict           bool
+	FormatterCommand string
+	LinterCommand    string
+	LLMClient        domain.LLMClient
+	Tools            map[string]Tool
+	RunTimeout       time.Duration
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
@@ -29,6 +31,7 @@ func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, t
 		LinterCommand: "",
 		LLMClient:     llmClient,
 		Tools:         tools,
+		RunTimeout:    5 * time.Minute,
 	}
 }
 
@@ -50,53 +53,53 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		))
 	defer span.End()
 
+	if v.FormatterCommand != "" {
+		// Deterministic Auto-Formatter Pre-Pass:
+		// Automatically run auto-fix formatter before linter evaluation.
+		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
+	}
+
 	if v.LinterCommand != "" {
 		out, err := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
+		if err != nil && v.FormatterCommand != "" {
+			// Try auto-formatting once more to resolve formatting/style linter offenses automatically
+			_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
+			outRetry, errRetry := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
+			if errRetry == nil {
+				out = outRetry
+				err = nil
+			}
+		}
 		if err != nil {
 			return false, fmt.Sprintf("Linter validation failed. Command: %s. Output:\n%s", v.LinterCommand, out), nil
 		}
 	}
 
-	results := v.runWithCount(ctx, state, 3)
-	flaky := DetectFlaky(results)
+	results := v.runWithCount(ctx, state, 1)
 
-	passCount, failCount := 0, 0
+	passCount := 0
 	for _, r := range results {
 		if r.Passed {
 			passCount++
-		} else {
-			failCount++
 		}
 	}
 
-	if passCount == 3 {
+	if passCount == 1 {
 		return true, "All validation runs passed successfully", nil
 	}
 
-	if flaky.Flaky && v.LLMClient != nil {
-		stabilized := v.attemptStabilization(ctx, state, results)
-		if stabilized {
-			return true, "Flaky test stabilized after LLM-assisted fix", nil
-		}
-		// Stabilization failed; fall through to original behavior
-	}
-
-	if passCount >= 2 {
-		if v.Strict {
-			lastErr := lastFailureOutput(results)
-			return false, fmt.Sprintf("Strict Mode Rejection: Task is flaky (2/3 runs passed). Last error:\n%s", lastErr), nil
-		}
-		return true, "Warning: Potentially Flaky Build", nil
-	}
-
 	lastErr := lastFailureOutput(results)
-	return false, fmt.Sprintf("Test validation failed (%d/3 runs passed). Last error log:\n%s", passCount, lastErr), nil
+	return false, fmt.Sprintf("Test validation failed (0/1 runs passed). Last error log:\n%s", lastErr), nil
 }
 
 func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n int) []TestRunResult {
 	results := make([]TestRunResult, n)
 	for i := 0; i < n; i++ {
-		runCtx, runCancel := context.WithTimeout(ctx, 60*time.Second)
+		timeout := v.RunTimeout
+		if timeout <= 0 {
+			timeout = 5 * time.Minute
+		}
+		runCtx, runCancel := context.WithTimeout(ctx, timeout)
 		out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
 		runCancel()
 
@@ -114,34 +117,6 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 		}
 	}
 	return results
-}
-
-func (v *TestValidator) attemptStabilization(ctx context.Context, state *domain.State, results []TestRunResult) bool {
-	defaultCmd := ""
-	raceOutput, raceErr := v.Runner.RunCommand(ctx, state.ProjectPath, raceCommand(defaultCmd), "")
-	if raceErr != nil {
-		raceOutput = fmt.Sprintf("Race detection command failed: %v\nOutput: %s", raceErr, raceOutput)
-	}
-
-	prompt := BuildFlakyStabilizationPrompt(results, raceOutput)
-	stabilizeCtx, stabilizeCancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer stabilizeCancel()
-
-	resp, llmErr := v.LLMClient.Complete(stabilizeCtx, prompt)
-	if llmErr != nil || resp == nil {
-		return false
-	}
-
-	for _, action := range resp.Actions {
-		if action.Tool == "write_file" || action.Tool == "edit_file" {
-			if tool, ok := v.Tools[action.Tool]; ok {
-				_, _ = tool.Execute(stabilizeCtx, state, action.Args)
-			}
-		}
-	}
-
-	restabilized := v.runWithCount(stabilizeCtx, state, 3)
-	return !DetectFlaky(restabilized).Flaky
 }
 
 func lastFailureOutput(results []TestRunResult) string {

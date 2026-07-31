@@ -35,7 +35,11 @@ func CategorizeFailureLog(log string) FailureCategory {
 		strings.Contains(lower, "max wall-clock duration exceeded"),
 		strings.Contains(lower, "command killed"):
 		return FailureTimeout
-	case strings.Contains(lower, "sandbox violation"):
+	case strings.Contains(lower, "sandbox violation") ||
+		strings.Contains(lower, "sandbox toolchain") ||
+		strings.Contains(lower, "toolchain binary") ||
+		strings.Contains(lower, "compiler not found") ||
+		strings.Contains(lower, "gcc not found"):
 		return FailureSandbox
 	case strings.Contains(lower, "compile error"),
 		strings.Contains(lower, "syntax error"),
@@ -50,8 +54,10 @@ func CategorizeFailureLog(log string) FailureCategory {
 	}
 }
 
-func buildDiagnosticPrompt(title, description string, watchdogErr error, output string) string {
-	return fmt.Sprintf(`The test suite hung and was forcefully terminated by the watchdog.
+func buildDiagnosticPrompt(title, description string, watchdogErr error, output string, category FailureCategory) string {
+	switch category {
+	case FailureTimeout:
+		return fmt.Sprintf(`The test suite hung and was forcefully terminated by the watchdog.
 
 Task: %s - %s
 
@@ -69,20 +75,72 @@ This usually indicates:
 Analyze the output above and fix the issue. Rewrite any files that need changes.
 Focus on making the code terminate correctly.
 `, title, description, watchdogErr, output)
-}
 
-func buildRetryPrompt(prevPrompt, testOutput string, testErr error) string {
-	return fmt.Sprintf(`%s
+	case FailureCompile:
+		return fmt.Sprintf(`The compilation failed with error(s).
 
-The fix attempt was made but tests still failed or hung:
+Task: %s - %s
 
-Test output:
+Compilation error: %v
+
 %s
 
-Test error: %v
+Analyze the structured compilation errors above and fix the target files at the specified line numbers immediately.
+`, title, description, watchdogErr, FormatStructuredErrorFeedback(output))
 
-Please try a different approach to fix the hang/deadlock.
-`, prevPrompt, testOutput, testErr)
+	case FailureTestLogic:
+		return fmt.Sprintf(`The test suite execution failed with assertion or logic errors.
+
+Task: %s - %s
+
+Test validation error: %v
+
+%s
+
+Analyze the structured test failure(s) above and fix the target implementation or tests immediately.
+`, title, description, watchdogErr, FormatStructuredErrorFeedback(output))
+
+	default:
+		return fmt.Sprintf(`The test suite validation failed.
+
+Task: %s - %s
+
+Validation error: %v
+
+Output:
+%s
+
+Analyze the output and fix the implementation or tests immediately. Rewrite any files that need changes.
+`, title, description, watchdogErr, output)
+	}
+}
+
+func buildRetryPrompt(prevPrompt, testOutput string, testErr error, category FailureCategory, toolOutputs []string) string {
+	msg := "fix the hang/deadlock"
+	if category == FailureCompile {
+		msg = "resolve the compilation error(s)"
+	} else if category == FailureTestLogic {
+		msg = "resolve the test failure(s)"
+	} else if category != FailureTimeout {
+		msg = "resolve the test validation failure(s)"
+	}
+
+	var toolOutputsBlock string
+	if len(toolOutputs) > 0 {
+		toolOutputsBlock = fmt.Sprintf("\n\nResults of tools executed in the previous attempt:\n%s", strings.Join(toolOutputs, "\n---\n"))
+	}
+
+	return fmt.Sprintf(`%s%s
+
+The fix attempt was made but validation still failed:
+
+Output:
+%s
+
+Error: %v
+
+Please try a different approach to %s.
+`, prevPrompt, toolOutputsBlock, testOutput, testErr, msg)
 }
 
 type WatchdogRepair struct {
@@ -90,6 +148,7 @@ type WatchdogRepair struct {
 	maxRetries int
 	sandbox    Sandbox
 	tools      map[string]Tool
+	evaluator  *TestValidator
 }
 
 type RepairResult struct {
@@ -100,13 +159,14 @@ type RepairResult struct {
 	FailureLog string
 }
 
-func NewWatchdogRepair(llmClient domain.LLMClient, sandbox Sandbox, tools map[string]Tool) *WatchdogRepair {
-	maxRetries := 3
+func NewWatchdogRepair(llmClient domain.LLMClient, sandbox Sandbox, tools map[string]Tool, evaluator *TestValidator) *WatchdogRepair {
+	maxRetries := 10
 	return &WatchdogRepair{
 		llmClient:  llmClient,
 		maxRetries: maxRetries,
 		sandbox:    sandbox,
 		tools:      tools,
+		evaluator:  evaluator,
 	}
 }
 
@@ -117,24 +177,55 @@ func (wr *WatchdogRepair) AttemptRepair(
 	watchdogOutput string,
 	watchdogErr error,
 ) (*RepairResult, error) {
-	diagPrompt := buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput)
+	category := CategorizeFailureLog(watchdogOutput)
+	diagPrompt := "Repair task: " + buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput, category)
 
+	var lastTestOutput string
 	for attempt := 0; attempt < wr.maxRetries; attempt++ {
 		resp, err := wr.llmClient.Complete(ctx, diagPrompt)
 		if err != nil {
 			return nil, fmt.Errorf("repair LLM call failed: %w", err)
 		}
 
+		var toolOutputs []string
 		for _, action := range resp.Actions {
 			if tool, ok := wr.tools[action.Tool]; ok {
-				if _, err := tool.Execute(ctx, state, action.Args); err != nil {
+				fmt.Printf("Orchestrator: Repair action: tool=%s args=%v\n", action.Tool, action.Args)
+				out, err := tool.Execute(ctx, state, action.Args)
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "Repair tool %s failed: %v\n", action.Tool, err)
+					toolOutputs = append(toolOutputs, fmt.Sprintf("Action: tool=%s args=%v failed: %v\nOutput: %s", action.Tool, action.Args, err, out))
+				} else {
+					toolOutputs = append(toolOutputs, fmt.Sprintf("Action: tool=%s args=%v succeeded.\nOutput: %s", action.Tool, action.Args, out))
+					if action.Tool == "write_file" || action.Tool == "edit_file" {
+						wr.runFormatterIfConfigured(ctx, state)
+					}
 				}
+			} else {
+				toolOutputs = append(toolOutputs, fmt.Sprintf("Action: unknown tool %s", action.Tool))
 			}
 		}
 
-		testOutput, testErr := wr.sandbox.RunCommand(ctx, state.ProjectPath, "", "")
-		if testErr == nil {
+		var passed bool
+		var testOutput string
+		var testErr error
+		if wr.evaluator != nil {
+			var err error
+			passed, testOutput, err = wr.evaluator.ValidateTask(ctx, state, task)
+			lastTestOutput = testOutput
+			if err != nil {
+				testErr = err
+			} else if !passed {
+				testErr = fmt.Errorf("validation failed: %s", category)
+			}
+		} else {
+			testOutput, testErr = wr.sandbox.RunCommand(ctx, state.ProjectPath, "", "")
+			passed = testErr == nil
+			lastTestOutput = testOutput
+		}
+
+		if passed {
+			fmt.Printf("🛠️  [Watchdog Repair Success] Task %s (%s) repaired successfully on attempt %d/%d!\n", task.ID, task.Title, attempt+1, wr.maxRetries)
 			return &RepairResult{
 				Success:   true,
 				Output:    testOutput,
@@ -143,12 +234,22 @@ func (wr *WatchdogRepair) AttemptRepair(
 			}, nil
 		}
 
-		diagPrompt = buildRetryPrompt(diagPrompt, testOutput, testErr)
+		diagPrompt = buildRetryPrompt(diagPrompt, testOutput, testErr, category, toolOutputs)
 	}
+
+	fmt.Printf("❌ [Watchdog Repair Exhausted] Task %s (%s) failed repair after %d attempts (category: %s)\n", task.ID, task.Title, wr.maxRetries, category.String())
 
 	return &RepairResult{
 		Success:    false,
+		Output:     lastTestOutput,
 		Attempts:   wr.maxRetries,
-		FailureLog: "all repair attempts failed to resolve the hang/deadlock",
+		FailureLog: fmt.Sprintf("all repair attempts failed to resolve the %s failure", category),
 	}, nil
+}
+
+func (wr *WatchdogRepair) runFormatterIfConfigured(ctx context.Context, state *domain.State) {
+	if wr.evaluator != nil && wr.evaluator.FormatterCommand != "" {
+		fmt.Printf("Orchestrator: Running formatter command (repair): %s\n", wr.evaluator.FormatterCommand)
+		_, _ = wr.sandbox.RunCommand(ctx, state.ProjectPath, wr.evaluator.FormatterCommand, "")
+	}
 }

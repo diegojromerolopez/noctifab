@@ -11,13 +11,40 @@ import (
 	"time"
 )
 
+func init() {
+	RegisterProvider(&ProviderSpec{
+		Name:           "anthropic",
+		BaseURL:        "https://api.anthropic.com/v1",
+		EnvKeys:        []string{"ANTHROPIC_API_KEY"},
+		ParseModelFunc: parseAnthropicModel,
+		Protocol:       "anthropic",
+		NewClientFunc: func(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+			return NewAnthropicProviderClient(url, timeout, idleTimeout, streaming)
+		},
+	})
+}
+
+var parseAnthropicModel = NewModelParser(ParserConfig{
+	RequiredPrefix: "claude",
+	DefaultVersion: 3.0,
+	VersionRegexp:  `claude-([0-9]+(?:[\.-][0-9]+)?)`,
+	Tiers: []KeywordTier{
+		{Keywords: []string{"opus"}, Score: 400, TierName: "opus"},
+		{Keywords: []string{"sonnet"}, Score: 300, TierName: "sonnet"},
+		{Keywords: []string{"haiku"}, Score: 200, TierName: "haiku"},
+	},
+})
+
 type anthropicProviderClient struct {
-	url string
+	url         string
+	timeout     time.Duration
+	idleTimeout time.Duration
+	streaming   bool
 }
 
 // NewAnthropicProviderClient creates a ProviderClient for Anthropic (Claude) API.
-func NewAnthropicProviderClient(url string) ProviderClient {
-	return &anthropicProviderClient{url: url}
+func NewAnthropicProviderClient(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+	return &anthropicProviderClient{url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
 }
 
 func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
@@ -46,7 +73,12 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		return nil, err
 	}
 
-	postCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	timeout := a.timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+
+	postCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
@@ -59,7 +91,7 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	}
 
 	client := &http.Client{
-		Timeout: 10 * time.Minute,
+		Timeout: timeout,
 		Transport: &http.Transport{
 			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 		},

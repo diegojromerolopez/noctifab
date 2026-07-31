@@ -102,6 +102,17 @@ The E2E test suite validates the orchestration loop end-to-end under mock scenar
   make test-e2e
   ```
 
+### 4. Running Validation Projects (Local E2E Matrix)
+To validate the system implementing features autonomously within isolated target directories, run a validation project container:
+```bash
+make validate PROJECT=wc
+```
+To run all validation projects in parallel:
+```bash
+make validate-all
+```
+*Note: These E2E validation runs utilize host compiler and package manager mount caching (Go and Cargo) to speed up iterations and support near-instantaneous incremental testing.*
+
 ---
 
 ## Formatting and Linting
@@ -112,3 +123,218 @@ Before pushing code or submitting pull requests, ensure that:
    ```bash
    docker run -t --rm -v $(pwd):/app -w /app golangci/golangci-lint:v2.12.2 golangci-lint run
    ```
+
+---
+
+## Adding a New LLM Provider
+
+All LLM provider infrastructure lives in `pkg/infrastructure/llm/`. The package uses a **Provider Registry** architecture with **Go struct embedding** for composition:
+
+- `provider_registry.go` — defines `ProviderSpec`, `RegisterProvider`, `GetProviderSpec`, and the `NewModelParser` declarative composition engine.
+- `openai.go` — defines `baseOpenAIClient`, the reusable OpenAI wire-protocol base that all OpenAI-compatible providers embed.
+- One dedicated `.go` file per provider (e.g. `mistral.go`, `moonshot.go`).
+
+There are two patterns depending on whether your provider speaks the **OpenAI-compatible API** or a **custom API**.
+
+---
+
+### Pattern A — OpenAI-Compatible Provider
+
+Use this pattern when the provider exposes a `/v1/chat/completions` and `/v1/models` API compatible with the OpenAI protocol (e.g. Mistral, DeepSeek, Groq, Together AI, xAI Grok).
+
+**Create `pkg/infrastructure/llm/myprovider.go`:**
+
+```go
+package llm
+
+import "time"
+
+// MyProviderClient wraps baseOpenAIClient to inherit the full OpenAI
+// wire protocol (Call, GetAvailableModels, etc.) via Go struct embedding.
+type MyProviderClient struct {
+    *baseOpenAIClient
+}
+
+// NewMyProviderClient creates an OpenAI-compatible client for MyProvider.
+func NewMyProviderClient(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+    return &MyProviderClient{
+        baseOpenAIClient: newBaseOpenAIClient(
+            "myprovider",
+            "https://api.myprovider.com/v1", // base URL
+            url,
+            timeout,
+            idleTimeout,
+            streaming,
+        ),
+    }
+}
+
+func init() {
+    RegisterProvider(&ProviderSpec{
+        Name:           "myprovider",
+        BaseURL:        "https://api.myprovider.com/v1",
+        EnvKeys:        []string{"MYPROVIDER_API_KEY"},   // checked in order; first non-empty wins
+        ParseModelFunc: parseMyProviderModel,
+        Protocol:       "openai",
+        NewClientFunc:  NewMyProviderClient,
+    })
+}
+
+// parseMyProviderModel ranks models by capacity tier.
+// Adapt the tiers and keywords to the actual model names your provider uses.
+var parseMyProviderModel = NewModelParser(ParserConfig{
+    RequiredPrefix: "myprovider",         // only parse models whose name contains this prefix (optional)
+    DefaultVersion: 1.0,
+    VersionRegexp:  `([0-9]+\.[0-9]+)`,   // extract version number from model name (optional)
+    Tiers: []KeywordTier{
+        {Keywords: []string{"ultra", "max"}, Score: 50, TierName: "ultra"},
+        {Keywords: []string{"pro", "large"}, Score: 30, TierName: "pro"},
+        {Keywords: []string{"mini", "lite"}, Score: 10, TierName: "lite"},
+    },
+    // Use StandardSizeWeights if the provider names models by parameter count (e.g. 70b, 8b):
+    // SizeWeights: StandardSizeWeights,
+})
+```
+
+**That's it.** No other files need to be modified. The `init()` function registers the provider into the global registry. `client.go` will automatically use `spec.NewClientFunc` to instantiate the client and `spec.EnvKeys` to resolve the API key.
+
+**Add the API key** to `docs/secrets.md` and `docs/configuration.md`.
+
+---
+
+### Pattern B — Custom API Provider
+
+Use this pattern when the provider uses a **different wire protocol** from OpenAI (e.g. Anthropic uses `X-Api-Key` headers and its own request/response envelope; Gemini uses query-param keys and a different JSON schema).
+
+**Step 1 — Implement `ProviderClient`**
+
+The interface defined in `provider.go` is:
+```go
+type ProviderClient interface {
+    Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error)
+    GetAvailableModels(ctx context.Context, apiKey string) ([]string, error)
+}
+```
+
+**Create `pkg/infrastructure/llm/myprovider.go`:**
+
+```go
+package llm
+
+import (
+    "bytes"
+    "context"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "time"
+)
+
+type myProviderClient struct {
+    url         string
+    timeout     time.Duration
+    idleTimeout time.Duration
+    streaming   bool
+}
+
+func NewMyProviderClient(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+    return &myProviderClient{url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
+}
+
+func (c *myProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
+    endpoint := "https://api.myprovider.com/v1/generate"
+    if c.url != "" {
+        endpoint = c.url
+    }
+
+    payload, _ := json.Marshal(map[string]any{
+        "model":  model,
+        "prompt": prompt,
+    })
+
+    req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(payload))
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("Authorization", "Bearer "+apiKey)
+    req.Header.Set("Content-Type", "application/json")
+
+    timeout := c.timeout
+    if timeout <= 0 {
+        timeout = 10 * time.Minute
+    }
+    httpClient := &http.Client{Timeout: timeout}
+    resp, err := httpClient.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(body))
+    }
+
+    // Parse the provider-specific response envelope and return the text content.
+    var result struct {
+        Output string `json:"output"`
+    }
+    if err := json.Unmarshal(body, &result); err != nil {
+        return nil, err
+    }
+    return []byte(result.Output), nil
+}
+
+func (c *myProviderClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {
+    // Query the provider's model list endpoint. Return model name strings.
+    // If the provider has no models endpoint, return a hardcoded sentinel — but
+    // NOTE: do NOT return a hardcoded static list of model names; always query live.
+    return nil, fmt.Errorf("myprovider: model listing not supported")
+}
+
+func init() {
+    RegisterProvider(&ProviderSpec{
+        Name:          "myprovider",
+        BaseURL:       "https://api.myprovider.com/v1",
+        EnvKeys:       []string{"MYPROVIDER_API_KEY"},
+        Protocol:      "myprovider", // any unique string; NOT "openai"
+        NewClientFunc: NewMyProviderClient,
+        ParseModelFunc: NewModelParser(ParserConfig{
+            DefaultVersion: 1.0,
+            Tiers: []KeywordTier{
+                {Keywords: []string{"large"}, Score: 30, TierName: "large"},
+                {Keywords: []string{"small"}, Score: 10, TierName: "small"},
+            },
+        }),
+    })
+}
+```
+
+**Step 2 — Write unit tests** in `myprovider_test.go` covering `Call` (use `httptest.NewServer` to mock the endpoint), `GetAvailableModels`, and the `ParseModelFunc`.
+
+**Step 3 — Add credentials** to `docs/secrets.md` and `docs/configuration.md`.
+
+---
+
+### Model Capacity Ranking (`ParseModelFunc`)
+
+The `ParseModelFunc` is used by the **Dynamic Model Fallback Engine** to rank models by capacity so it can automatically retry with a lower-capability model when the primary model fails. Always define it.
+
+`NewModelParser(ParserConfig{...})` accepts the following fields:
+
+| Field | Purpose | Example |
+|---|---|---|
+| `RequiredPrefix` | Only parse models whose lowercased name contains this string | `"claude"`, `"grok"` |
+| `DefaultVersion` | Fallback version if `VersionRegexp` doesn't match | `3.0` |
+| `VersionRegexp` | Regex to extract a version number from the model name | `` `claude-([0-9]+(?:\.[0-9]+)?)` `` |
+| `VersionMultiplier` | Multiplier applied to extracted version in rank calculation | `5` (default: `10`) |
+| `Tiers` | Ordered list of keyword→score mappings for named model tiers | `{Keywords: []string{"opus"}, Score: 400, TierName: "opus"}` |
+| `SizeWeights` | Map of parameter size suffixes to scores for open-weights models | `StandardSizeWeights` (405b→500, 70b→400, 8b→200…) |
+| `ContextBonus` | Add a small bonus rank for long-context variants (128k, 32k, 8k) | `true` |
+
+Final rank = `baseScore + version * VersionMultiplier + contextBonus`.
+Higher rank = higher capacity = tried first; lower rank = fallback.

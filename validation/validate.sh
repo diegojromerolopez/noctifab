@@ -3,25 +3,25 @@ set -euo pipefail
 
 # 1. Resolve or compile the noctifab binary
 if command -v noctifab >/dev/null 2>&1; then
-  echo "Using existing noctifab binary from PATH..."
+  echo "Using existing noctifab binary from PATH..." >&2
   NOCTIFAB_BIN="$(command -v noctifab)"
 elif [ -f "/usr/local/bin/noctifab" ]; then
-  echo "Using existing noctifab binary at /usr/local/bin/noctifab..."
+  echo "Using existing noctifab binary at /usr/local/bin/noctifab..." >&2
   NOCTIFAB_BIN="/usr/local/bin/noctifab"
 else
-  echo "Compiling noctifab binary..."
+  echo "Compiling noctifab binary..." >&2
   go build -o bin/noctifab cmd/noctifab/main.go
   NOCTIFAB_BIN="$(pwd)/bin/noctifab"
 fi
 
 # 2. Setup a temporary directory
 TMP_DIR="$(pwd)/tmp_verify_autonomy"
-echo "Setting up temporary workspace at ${TMP_DIR}..."
+echo "Setting up temporary workspace at ${TMP_DIR}..." >&2
 rm -rf "${TMP_DIR}"
 
 # 3. Copy the project copy into the workspace
 PROJECT="${PROJECT:-frontpunch}"
-echo "Validating project: ${PROJECT}..."
+echo "Validating project: ${PROJECT}..." >&2
 PROJECT_SRC="/app/projects/${PROJECT}"
 if [ ! -d "${PROJECT_SRC}" ]; then
   PROJECT_SRC="$(pwd)/validation/projects/${PROJECT}"
@@ -50,7 +50,7 @@ else
 fi
 
 # 4. Initialize git repository inside the container workspace
-echo "Initializing clean git repository on branch main..."
+echo "Initializing clean git repository on branch main..." >&2
 git init
 git checkout -b main
 git config user.name "Noctifab Tester"
@@ -68,7 +68,7 @@ git add .
 git commit -m "initial project structures and gitignore"
 
 # Set up a local "origin" bare repository inside the workspace to allow git pushes
-echo "Setting up local git origin remote..."
+echo "Setting up local git origin remote..." >&2
 ORIGIN_DIR="$(pwd)/../origin.git"
 rm -rf "${ORIGIN_DIR}"
 git init --bare "${ORIGIN_DIR}"
@@ -77,12 +77,13 @@ git push -u origin main
 
 
 # 5. Sanitize credentials in environment
-if [ -n "${GEMINI_API_KEY:-}" ]; then
-  export GEMINI_API_KEY=$(echo "${GEMINI_API_KEY}" | sed -E 's/.*GEMINI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
-fi
-if [ -n "${OPENAI_API_KEY:-}" ]; then
-  export OPENAI_API_KEY=$(echo "${OPENAI_API_KEY}" | sed -E 's/.*OPENAI_API_KEY:[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
-fi
+for KEY in OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY OPENCODE_API_KEY KIMI_API_KEY MOONSHOT_API_KEY GROQ_API_KEY OPENROUTER_API_KEY QWEN_API_KEY DASHSCOPE_API_KEY TOGETHER_API_KEY LLAMA_API_KEY HUGGINGFACE_API_KEY HF_TOKEN MISTRAL_API_KEY DEEPSEEK_API_KEY HERMES_API_KEY OLLAMA_API_KEY XAI_API_KEY PERPLEXITY_API_KEY FIREWORKS_API_KEY SAMBANOVA_API_KEY COHERE_API_KEY CEREBRAS_API_KEY NVIDIA_API_KEY AI21_API_KEY UPSTAGE_API_KEY GITHUB_TOKEN; do
+  VAR_VAL="${!KEY:-}"
+  if [ -n "${VAR_VAL}" ]; then
+    CLEANED=$(echo "${VAR_VAL}" | sed -E 's/.*'"${KEY}"':[[:space:]]*"?([^"]*)"?/\1/' | tr -d '"')
+    export "${KEY}"="${CLEANED}"
+  fi
+done
 
 # Set dummy GITHUB_TOKEN if not present to pass pre-flight checks
 export GITHUB_TOKEN="${GITHUB_TOKEN:-dummy-token}"
@@ -90,35 +91,23 @@ export GITHUB_TOKEN="${GITHUB_TOKEN:-dummy-token}"
 # 6. Initialize noctifab
 "${NOCTIFAB_BIN}" init --vcs-clone-protocol https
 
-echo "Using pre-configured config.yaml:"
-cat .noctifab/config.yaml
+mkdir -p .noctifab/logs
+{
+  echo "Using pre-configured config.yaml:"
+  cat .noctifab/config.yaml
+} > .noctifab/logs/setup.log
 
 # 7. Run noctifab command
-MODE="${MODE:-start-one}"
+MODE="${MODE:-start}"
 
-# Determine the sequence of stories to run for the project
-STORIES=()
-if [ "${PROJECT}" = "frontpunch" ]; then
-  STORIES=("roadmap/US-000.md" "roadmap/US-001.md")
-elif [ "${PROJECT}" = "wc" ]; then
-  STORIES=("roadmap/US-001.md" "roadmap/US-002.md")
-elif [ "${PROJECT}" = "calculator" ] || [ "${PROJECT}" = "echo" ]; then
-  STORIES=("SPEC.md")
-else
-  STORIES=("roadmap/US-001.md")
+INTERACTIVE_FLAG=""
+if [ "${NOCTIFAB_INTERACTIVE:-}" = "1" ]; then
+  INTERACTIVE_FLAG="-i"
 fi
 
-for STORY_PATH in "${STORIES[@]}"; do
-  if [ "${MODE}" = "start" ]; then
-    echo "Running noctifab start for ${STORY_PATH}..."
-    echo "start ${STORY_PATH}" | "${NOCTIFAB_BIN}" start --wait
-    # Stop the daemon after completion
-    "${NOCTIFAB_BIN}" stop 2>/dev/null || true
-  else
-    echo "Running noctifab start-one for ${STORY_PATH}..."
-    "${NOCTIFAB_BIN}" start-one --input "${STORY_PATH}"
-  fi
-done
+echo "Running noctifab start..." >&2
+"${NOCTIFAB_BIN}" start . ${INTERACTIVE_FLAG}
+
 
 # 8. Verify results
 echo "Verifying results..."
@@ -145,6 +134,11 @@ elif [ "${PROJECT}" = "calculator" ]; then
 elif [ "${PROJECT}" = "echo" ]; then
   if [ ! -f "cmd/echo/main.go" ] && [ ! -f "main.go" ]; then
     echo "❌ Error: cmd/echo/main.go (or main.go) was not created/modified!"
+    exit 1
+  fi
+elif [ "${PROJECT}" = "fortune" ]; then
+  if [ ! -f "main.c" ] && [ ! -f "Makefile" ]; then
+    echo "❌ Error: main.c or Makefile was not created/modified!"
     exit 1
   fi
 else
@@ -182,6 +176,13 @@ if [ -d "/app/dist_mount" ]; then
       cp target/release/wc /app/dist_mount/
     elif [ -f "wc/target/release/wc" ]; then
       cp wc/target/release/wc /app/dist_mount/
+    fi
+  elif [ "${PROJECT}" = "fortune" ]; then
+    if [ -f "Makefile" ]; then
+      make build || true
+    fi
+    if [ -f "fortune" ]; then
+      cp fortune /app/dist_mount/
     fi
   fi
 fi

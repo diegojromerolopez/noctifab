@@ -68,7 +68,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_OCC_MAX_RETRIES":        "12",
 		"NOCTIFAB_OCC_BACKOFF_BASE":       "99ms",
 		"NOCTIFAB_OCC_BACKOFF_FACTOR":     "3.14",
-		"NOCTIFAB_MAX_BUDGET_USD":         "99.9",
 		"NOCTIFAB_TOKEN_USAGE_LIMIT":      "8888",
 		"NOCTIFAB_LOG_LEVEL":              "debug",
 		"NOCTIFAB_LOG_FILE":               "log-file-env",
@@ -128,11 +127,11 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if !cfg.AutoCommit {
 		t.Error("expected auto commit true")
 	}
-	if cfg.Orchestrator.Concurrency != 9 {
-		t.Errorf("expected concurrency 9, got %d", cfg.Orchestrator.Concurrency)
+	if cfg.Agents.Generators.Number != 9 {
+		t.Errorf("expected concurrency 9, got %d", cfg.Agents.Generators.Number)
 	}
-	if time.Duration(cfg.Orchestrator.PollInterval) != 12*time.Minute {
-		t.Errorf("expected 12m, got %v", time.Duration(cfg.Orchestrator.PollInterval))
+	if time.Duration(cfg.PollInterval) != 12*time.Minute {
+		t.Errorf("expected 12m, got %v", time.Duration(cfg.PollInterval))
 	}
 	if cfg.VCS.Provider != "github" {
 		t.Errorf("expected github, got %s", cfg.VCS.Provider)
@@ -179,8 +178,8 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if time.Duration(cfg.LLM.RetryBackoff) != 150*time.Millisecond {
 		t.Errorf("expected 150ms, got %v", time.Duration(cfg.LLM.RetryBackoff))
 	}
-	if cfg.Orchestrator.MaxToolsPerResponse != 6 {
-		t.Errorf("expected 6, got %d", cfg.Orchestrator.MaxToolsPerResponse)
+	if cfg.Agents.MaxToolsPerResponse != 6 {
+		t.Errorf("expected 6, got %d", cfg.Agents.MaxToolsPerResponse)
 	}
 	if cfg.MaxActions != 150 {
 		t.Errorf("expected 150, got %d", cfg.MaxActions)
@@ -214,9 +213,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	}
 	if cfg.OCCBackoffFactor != 3.14 {
 		t.Errorf("expected 3.14, got %f", cfg.OCCBackoffFactor)
-	}
-	if cfg.LLM.MaxBudgetUSD != 99.9 {
-		t.Errorf("expected 99.9, got %f", cfg.LLM.MaxBudgetUSD)
 	}
 	if cfg.TokenUsageLimit != 8888 {
 		t.Errorf("expected 8888, got %d", cfg.TokenUsageLimit)
@@ -314,11 +310,11 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if cfg2.AutoCommit {
 		t.Error("expected auto commit false")
 	}
-	if cfg2.Orchestrator.Concurrency != 11 {
-		t.Errorf("expected concurrency 11, got %d", cfg2.Orchestrator.Concurrency)
+	if cfg2.Agents.Generators.Number != 11 {
+		t.Errorf("expected concurrency 11, got %d", cfg2.Agents.Generators.Number)
 	}
-	if time.Duration(cfg2.Orchestrator.PollInterval) != 15*time.Minute {
-		t.Errorf("expected 15m, got %v", time.Duration(cfg2.Orchestrator.PollInterval))
+	if time.Duration(cfg2.PollInterval) != 15*time.Minute {
+		t.Errorf("expected 15m, got %v", time.Duration(cfg2.PollInterval))
 	}
 	if cfg2.VCS.Provider != "gitlab" {
 		t.Errorf("expected gitlab, got %s", cfg2.VCS.Provider)
@@ -356,8 +352,8 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if time.Duration(cfg2.LLM.RetryBackoff) != 250*time.Millisecond {
 		t.Errorf("expected 250ms, got %v", time.Duration(cfg2.LLM.RetryBackoff))
 	}
-	if cfg2.Orchestrator.MaxToolsPerResponse != 12 {
-		t.Errorf("expected 12, got %d", cfg2.Orchestrator.MaxToolsPerResponse)
+	if cfg2.Agents.MaxToolsPerResponse != 12 {
+		t.Errorf("expected 12, got %d", cfg2.Agents.MaxToolsPerResponse)
 	}
 	if cfg2.MaxActions != 250 {
 		t.Errorf("expected 250, got %d", cfg2.MaxActions)
@@ -391,9 +387,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	}
 	if cfg2.OCCBackoffFactor != 4.0 {
 		t.Errorf("expected 4.0, got %f", cfg2.OCCBackoffFactor)
-	}
-	if cfg2.LLM.MaxBudgetUSD != 150.0 {
-		t.Errorf("expected 150.0, got %f", cfg2.LLM.MaxBudgetUSD)
 	}
 	if cfg2.TokenUsageLimit != 9999 {
 		t.Errorf("expected 9999, got %d", cfg2.TokenUsageLimit)

@@ -146,6 +146,7 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		}
 	}
 	if !allowed {
+		fmt.Printf("⚠️  [Sandbox Violation] Command %q binary %q is not in allowed whitelist\n", cmdStr, binary)
 		return "", fmt.Errorf("Sandbox violation: command '%s' is not in the whitelist of allowed commands", binary)
 	}
 
@@ -157,6 +158,7 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 	// Verify targetDir path jail prefix
 	cleanProj := filepath.Clean(projectPath)
 	if !strings.HasPrefix(targetDir, cleanProj) {
+		fmt.Printf("⚠️  [Sandbox Jail Violation] Package target %q is outside workspace prefix %q\n", targetDir, cleanProj)
 		return "", fmt.Errorf("Sandbox violation: package target '%s' is outside the workspace prefix", pkg)
 	}
 
@@ -198,12 +200,16 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 	output, err := watchdog.Run(ctx, cmd)
 	if err != nil && s.DepMgr != nil {
 		if tool, found := s.DepMgr.DetectMissingTool(string(output)); found {
+			fmt.Printf("🔍 [Tool Auto-Install] Missing tool %q detected, attempting auto-installation...\n", tool)
 			if installErr := s.DepMgr.InstallTool(ctx, tool); installErr == nil {
+				fmt.Printf("✅ [Tool Auto-Install Success] Installed %q successfully. Re-running command...\n", tool)
 				watchdog2 := Watchdog{IdleTimeout: s.IdleTimeout}
 				output2, err2 := watchdog2.Run(ctx, cmd)
 				if err2 == nil {
 					return string(output2), nil
 				}
+			} else {
+				fmt.Printf("❌ [Tool Auto-Install Failure] Failed to install %q: %v\n", tool, installErr)
 			}
 		}
 	}
@@ -269,6 +275,38 @@ func (s *DockerSandbox) RunCommand(ctx context.Context, projectPath string, comm
 		return output, fmt.Errorf("docker exec command failed: %w (output: %s)", err, output)
 	}
 	return output, nil
+}
+
+// BuildCacheVolumeArgs returns docker -v volume flags for mounting persistent host build caches
+func BuildCacheVolumeArgs() []string {
+	var cacheArgs []string
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return cacheArgs
+	}
+
+	// Go build & module caches
+	goModDir := filepath.Join(home, "go", "pkg", "mod")
+	goBuildDir := filepath.Join(home, ".cache", "go-build")
+	_ = os.MkdirAll(goModDir, 0755)
+	_ = os.MkdirAll(goBuildDir, 0755)
+	cacheArgs = append(cacheArgs, "-v", fmt.Sprintf("%s:/go/pkg/mod", goModDir))
+	cacheArgs = append(cacheArgs, "-v", fmt.Sprintf("%s:/root/.cache/go-build", goBuildDir))
+
+	// Cargo cache for Rust
+	cargoReg := filepath.Join(home, ".cargo", "registry")
+	cargoGit := filepath.Join(home, ".cargo", "git")
+	_ = os.MkdirAll(cargoReg, 0755)
+	_ = os.MkdirAll(cargoGit, 0755)
+	cacheArgs = append(cacheArgs, "-v", fmt.Sprintf("%s:/usr/local/cargo/registry", cargoReg))
+	cacheArgs = append(cacheArgs, "-v", fmt.Sprintf("%s:/usr/local/cargo/git", cargoGit))
+
+	// NPM cache for Node/TypeScript
+	npmCache := filepath.Join(home, ".npm")
+	_ = os.MkdirAll(npmCache, 0755)
+	cacheArgs = append(cacheArgs, "-v", fmt.Sprintf("%s:/root/.npm", npmCache))
+
+	return cacheArgs
 }
 
 func (s *HostSandbox) runPythonTestsIsolated(ctx context.Context, targetDir string, command string) (string, error) {

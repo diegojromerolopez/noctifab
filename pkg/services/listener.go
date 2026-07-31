@@ -142,6 +142,9 @@ func (a *ListenerAgent) ruleBasedParse(input string) Intent {
 		// Preserve original casing for path
 		path := strings.TrimSpace(input[len("start "):])
 		path = os.ExpandEnv(path)
+		if fi, err := os.Stat(path); err == nil && fi.IsDir() {
+			return Intent{Kind: IntentKindStartDirectory, Path: path}
+		}
 		if strings.HasSuffix(strings.ToLower(path), ".md") {
 			return Intent{Kind: IntentKindStartStory, Path: path}
 		}

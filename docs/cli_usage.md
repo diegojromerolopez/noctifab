@@ -37,34 +37,46 @@ noctifab init [flags]
 ```
 - **Security Check**: If the target directory contains existing project files but does not have a `.noctifab` directory, the command will warn the developer and abort with exit code `4` to prevent unintended code overwrites.
 
+### 1. `init`
+Initializes a Noctifab project workspace in the target directory (defaults to `.`). Automatically creates `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, SQLite database, and a `SPEC.md` template if missing.
+```bash
+noctifab init [target_dir]
+```
+
 ### 2. `validate`
 Loads and validates the current configurations, state, and directory constraints, ensuring that security policies, LLM keys, and local sandbox folders are correctly aligned.
 ```bash
 noctifab validate
 ```
 
-
 ### 3. `start`
-Spawns the background daemon process (`noctifab serve`) and starts a foreground interactive REPL loop. The REPL accepts operator orders (e.g. `start roadmap/US-001.md`) and displays/prompts for clarification answers.
+Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-i` / `--interactive` to launch the live TUI dashboard interface.
 ```bash
-noctifab start
+# Run in current directory
+noctifab start -i
+
+# Run on a target project folder
+noctifab start /path/to/my-project -i
 ```
 
-When stdin is not a TTY (CI, `noctifab start --wait < script`), the `--wait` polling loop renders one timestamped status line per poll separated by newlines, instead of the dot-accumulating progress animation used in an interactive terminal. This keeps CI logs and `2>&1 | tee` captures readable.
-
-### 4. `start-one`
-Plans and executes a single user story specification file end-to-end in a blocking execution loop until complete or failed, then exits.
+### 5. `dashboard`
+Launches the interactive real-time Terminal User Interface (TUI) progress dashboard to monitor active story and task orchestrations.
 ```bash
-noctifab start-one --input ./feature-spec.md
+noctifab dashboard
 ```
+* **Interactive Keyboard Shortcuts**:
+  * `q`: Quit the dashboard (returns an error if active runs exist, otherwise clean exit).
+  * `p`: Prompt to Pause/Resume execution of the active story.
+  * `x`: Prompt to Cancel execution of the active story.
+* **CI/CD Non-Interactive Mode**: If stdin is not a terminal, the dashboard automatically falls back to dumping a plain-text status summary to stdout every 5 seconds, auto-exiting when all active stories have finished.
 
-### 5. `stop`
+### 6. `stop`
 Gracefully stops the background daemon process and saves state.
 ```bash
 noctifab stop
 ```
 
-### 6. `clean`
+### 7. `clean`
 Wipes all noctifab state (deletes database, PID, and story/daemon logs).
 
 ```bash
@@ -78,7 +90,7 @@ noctifab clean --dry-run # preview what would be deleted without deleting
 | `--yes` | `-y` | Skip the `Are you sure? [y/N]` prompt |
 | `--dry-run` | | Print what would be removed without deleting anything |
 
-### 7. `maintenance`
+### 8. `maintenance`
 Performs cleanup actions: prunes fully merged task branches from the local directory, cleans orphaned worktrees, and executes state database schema migrations.
 ```bash
 noctifab maintenance

@@ -11,7 +11,7 @@ FROM noctifab-validation:base AS noctifab-artifacts
 
 FROM golang:alpine
 
-RUN apk add --no-cache git bash docker-cli
+RUN apk add --no-cache git bash docker-cli curl
 
 # Copy noctifab binary, validation projects, and the validate.sh harness
 # from the shared base image.

@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -21,31 +24,63 @@ type RepairHandler interface {
 }
 
 type OrchestratorConfig struct {
-	PollInterval     time.Duration
-	MaxRetries       int
-	Concurrency      int
-	MaxBudgetUSD     float64
-	OCCMaxRetries    int
-	OCCBackoffBase   time.Duration
-	OCCBackoffFactor float64
-	MaxDuration      time.Duration
-	AutoCreatePR     bool
+	Architecture          string
+	ArchitectNumber       int
+	ArchitectIterations   int
+	GeneratorsNumber      int
+	GeneratorsIterations  int
+	TestersNumber         int
+	TestersIterations     int
+	QAAgentsNumber        int
+	QAAgentsIterations    int
+	SecurityNumber        int
+	SecurityIterations    int
+	PerformanceNumber     int
+	PerformanceIterations int
+	DocsNumber            int
+	DocsIterations        int
+	DevOpsNumber          int
+	DevOpsIterations      int
+	PollInterval          time.Duration
+	MaxRetries            int
+	Concurrency           int
+	UseWorktrees          bool
+	OCCMaxRetries         int
+	OCCBackoffBase        time.Duration
+	OCCBackoffFactor      float64
+	MaxDuration           time.Duration
+	AutoCreatePR          bool
+	MaxActions            int
+	ExcludePaths          []string
+	MetricsEnabled        bool
+	MetricsOutputPath     string
+	Context               config.ContextConfig
+	WorkspaceCache        config.WorkspaceCacheConfig
+}
+
+func (c OrchestratorConfig) GetWorkspaceCache() config.WorkspaceCacheConfig {
+	return c.WorkspaceCache
 }
 
 type Orchestrator struct {
-	repo           domain.StateRepository
-	registry       Registry
-	llmClient      domain.LLMClient
-	validator      Validator
-	scheduler      *Scheduler
-	git            *GitClient
-	rebaseQueue    *RebaseQueue
-	evaluator      *TestValidator
-	vcsClient      domain.VCSClient
-	cfg            OrchestratorConfig
-	mailbox        *CommandMailbox
-	watchdogRepair RepairHandler
-	storyStartedAt time.Time
+	repo              domain.StateRepository
+	registry          Registry
+	llmClient         domain.LLMClient
+	validator         Validator
+	scheduler         *Scheduler
+	git               *GitClient
+	rebaseQueue       *RebaseQueue
+	evaluator         *TestValidator
+	vcsClient         domain.VCSClient
+	cfg               OrchestratorConfig
+	mailbox           *CommandMailbox
+	watchdogRepair    RepairHandler
+	metricsCollector  *MetricsCollector
+	unblocker         *UnblockerAgent
+	storyStartedAt    time.Time
+	totalActions      int64
+	taskCompletedChan chan struct{}
+	lastWorkspaceSync time.Time
 }
 
 func NewOrchestrator(
@@ -63,32 +98,87 @@ func NewOrchestrator(
 	watchdogRepair RepairHandler,
 ) *Orchestrator {
 	return &Orchestrator{
-		repo:           repo,
-		registry:       reg,
-		llmClient:      client,
-		validator:      val,
-		scheduler:      sched,
-		git:            git,
-		rebaseQueue:    queue,
-		evaluator:      eval,
-		vcsClient:      vcsClient,
-		cfg:            cfg,
-		mailbox:        mailbox,
-		watchdogRepair: watchdogRepair,
+		repo:              repo,
+		registry:          reg,
+		llmClient:         client,
+		validator:         val,
+		scheduler:         sched,
+		git:               git,
+		rebaseQueue:       queue,
+		evaluator:         eval,
+		vcsClient:         vcsClient,
+		cfg:               cfg,
+		mailbox:           mailbox,
+		watchdogRepair:    watchdogRepair,
+		metricsCollector:  NewMetricsCollector(cfg.MetricsEnabled),
+		taskCompletedChan: make(chan struct{}, 100),
+	}
+}
+
+// Metrics returns the MetricsCollector instance associated with the Orchestrator.
+func (o *Orchestrator) Metrics() *MetricsCollector {
+	if o == nil {
+		return nil
+	}
+	return o.metricsCollector
+}
+
+// SetMetricsCollector updates the MetricsCollector instance on the Orchestrator.
+func (o *Orchestrator) SetMetricsCollector(mc *MetricsCollector) {
+	if o != nil {
+		o.metricsCollector = mc
+	}
+}
+
+// SetUnblocker attaches an UnblockerAgent to the Orchestrator. It must be called
+// before Start so the goroutine is launched alongside the main polling loop.
+func (o *Orchestrator) SetUnblocker(u *UnblockerAgent) {
+	if o != nil {
+		o.unblocker = u
 	}
 }
 
 // Start runs the polling loop
 func (o *Orchestrator) Start(ctx context.Context) error {
+	// Start unblocker goroutine alongside the main polling loop (nil-safe).
+	if o.unblocker != nil {
+		o.unblocker.Start(ctx)
+	}
 	for {
-		if err := o.RunOnce(ctx); err != nil {
+		hasWork, err := o.RunOnce(ctx)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator error: %v\n", err)
+		}
+		if hasWork && err == nil {
+			continue
 		}
 		var wakeup <-chan struct{}
 		if o.mailbox != nil {
 			wakeup = o.mailbox.Wakeup()
 		}
-		if err := SleepWithInterrupt(ctx, o.cfg.PollInterval, wakeup); err != nil {
+
+		combinedWakeup := make(chan struct{}, 1)
+		sleepCtx, cancelSleep := context.WithCancel(ctx)
+		go func() {
+			defer cancelSleep()
+			select {
+			case <-wakeup:
+				select {
+				case combinedWakeup <- struct{}{}:
+				default:
+				}
+			case <-o.taskCompletedChan:
+				select {
+				case combinedWakeup <- struct{}{}:
+				default:
+				}
+			case <-sleepCtx.Done():
+			}
+		}()
+
+		err = SleepWithInterrupt(sleepCtx, o.cfg.PollInterval, combinedWakeup)
+		cancelSleep()
+		if err != nil {
 			if errors.Is(err, ErrInterrupted) {
 				continue
 			}
@@ -97,8 +187,9 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	}
 }
 
-// RunOnce runs a single cycle of the event loop
-func (o *Orchestrator) RunOnce(ctx context.Context) error {
+// RunOnce runs a single cycle of the event loop.
+// Returns a boolean indicating if any ready tasks were executed in this cycle, and any error.
+func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "RunOnce",
 		trace.WithAttributes(
 			attribute.Int("concurrency", o.cfg.Concurrency),
@@ -109,18 +200,37 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 
 	state, err := o.repo.Load(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// 1. Observe Phase: File indexing and sync
 	if err := o.syncWorkspaceFiles(ctx, state); err != nil {
-		return err
+		return false, err
 	}
 
 	// 2. Scheduler check: find ready tasks
 	ready := o.scheduler.GetReadyTasks(state, o.cfg.Concurrency)
 
-	// 2a. Story-level wall clock enforcement. When max_duration is configured
+	// 2a. Global max_actions enforcement.
+	currentActions := atomic.LoadInt64(&o.totalActions)
+	if o.cfg.MaxActions > 0 && int(currentActions) >= o.cfg.MaxActions && state.StoryStatus == domain.StoryIdle {
+		fmt.Printf("Orchestrator: story exceeded max_actions ceiling %d (executed %d); failing remaining tasks and aborting story.\n", o.cfg.MaxActions, currentActions)
+		_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+			for i := range st.Tasks {
+				if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
+					st.Tasks[i].Status = domain.TaskFailed
+					st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_actions ceiling %d (executed %d)", st.Tasks[i].MaxRetries, currentActions)
+					st.Tasks[i].UpdatedAt = time.Now()
+				}
+			}
+			st.BuildStatus = domain.BuildFailing
+			st.StoryStatus = domain.StoryFailed
+			return nil
+		})
+		return false, nil
+	}
+
+	// 2b. Story-level wall clock enforcement. When max_duration is configured
 	// (> 0) and the story has been running longer than the limit, fail every
 	// non-finished task and mark the story as FAILED so the daemon stops
 	// spending LLM budget on a stuck story. The start time is the first cycle
@@ -144,7 +254,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 				st.StoryStatus = domain.StoryFailed
 				return nil
 			})
-			return nil
+			return false, nil
 		}
 	}
 
@@ -173,7 +283,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 				return nil
 			})
 		}
-		return nil
+		return false, nil
 	}
 
 	fmt.Printf("Orchestrator: Found %d ready task(s) to execute in this cycle\n", len(ready))
@@ -189,7 +299,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) error {
 	}
 
 	wg.Wait()
-	return nil
+	return true, nil
 }
 
 func (o *Orchestrator) updateStateWithRetry(ctx context.Context, updateFn func(state *domain.State) error) error {
@@ -225,11 +335,16 @@ func (o *Orchestrator) updateStateWithRetry(ctx context.Context, updateFn func(s
 			return err
 		}
 
+		fmt.Printf("⚠️  [OCC Conflict] DB version conflict detected on state update (attempt %d/%d). Retrying...\n", attempt+1, maxRetries)
+
 		if attempt == maxRetries {
+			fmt.Printf("❌ [OCC Conflict Exhausted] State update failed after %d retries: %v\n", maxRetries, err)
 			return fmt.Errorf("state update failed after %d retries due to OCC conflict: %w", maxRetries, err)
 		}
 
 		sleepDur := time.Duration(float64(backoff) * math.Pow(factor, float64(attempt)))
+		jitter := 0.5 + rand.Float64()
+		sleepDur = time.Duration(float64(sleepDur) * jitter)
 
 		var wakeup <-chan struct{}
 		if o.mailbox != nil {

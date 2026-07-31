@@ -5,11 +5,21 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 func (o *Orchestrator) syncWorkspaceFiles(ctx context.Context, state *domain.State) error {
+	// Fast check: if less than 5 seconds elapsed and git status reports no changes, skip walk
+	if time.Since(o.lastWorkspaceSync) < 5*time.Second {
+		status, err := o.git.Run(ctx, false, "status", "--porcelain")
+		if err == nil && strings.TrimSpace(status) == "" {
+			return nil
+		}
+	}
+	o.lastWorkspaceSync = time.Now()
+
 	var files []domain.FileInfo
 
 	// Try git-aware scanning first
@@ -24,8 +34,18 @@ func (o *Orchestrator) syncWorkspaceFiles(ctx context.Context, state *domain.Sta
 			parts := strings.Split(rel, string(filepath.Separator))
 			ignored := false
 			for _, part := range parts {
-				if part == ".noctifab" || part == ".git" || part == "node_modules" || part == "vendor" {
+				if part == ".noctifab" || part == ".git" {
 					ignored = true
+					break
+				}
+				for _, exp := range o.cfg.ExcludePaths {
+					cleanExp := strings.Trim(exp, "/")
+					if cleanExp != "" && part == cleanExp {
+						ignored = true
+						break
+					}
+				}
+				if ignored {
 					break
 				}
 			}
@@ -60,7 +80,19 @@ func (o *Orchestrator) syncWorkspaceFiles(ctx context.Context, state *domain.Sta
 		}
 		parts := strings.Split(rel, string(filepath.Separator))
 		for _, part := range parts {
-			if part == ".noctifab" || part == ".git" || part == "node_modules" || part == "vendor" {
+			ignored := false
+			if part == ".noctifab" || part == ".git" {
+				ignored = true
+			} else {
+				for _, exp := range o.cfg.ExcludePaths {
+					cleanExp := strings.Trim(exp, "/")
+					if cleanExp != "" && part == cleanExp {
+						ignored = true
+						break
+					}
+				}
+			}
+			if ignored {
 				if d.IsDir() {
 					return filepath.SkipDir
 				}

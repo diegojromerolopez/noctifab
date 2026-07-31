@@ -14,28 +14,28 @@ import (
 
 type mockBudgetStore struct {
 	mu           sync.Mutex
-	records      map[string]float64
+	records      map[string]int64
 	incrementErr error
 }
 
-func (m *mockBudgetStore) GetDailyUsage(_ context.Context, date string, provider string) (float64, error) {
+func (m *mockBudgetStore) GetDailyUsage(_ context.Context, date string, provider string) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.records[date+"|"+provider], nil
 }
 
-func (m *mockBudgetStore) IncrementUsage(_ context.Context, date string, provider string, costUSD float64) error {
+func (m *mockBudgetStore) IncrementUsage(_ context.Context, date string, provider string, tokens int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.incrementErr != nil {
 		return m.incrementErr
 	}
-	m.records[date+"|"+provider] += costUSD
+	m.records[date+"|"+provider] += tokens
 	return nil
 }
 
 func newMockBudgetStore() *mockBudgetStore {
-	return &mockBudgetStore{records: make(map[string]float64)}
+	return &mockBudgetStore{records: make(map[string]int64)}
 }
 
 type mockLLM struct {
@@ -185,31 +185,31 @@ func TestFailoverClient(t *testing.T) {
 		}
 	})
 
-	t.Run("budget store blocks when daily budget exceeded", func(t *testing.T) {
+	t.Run("budget store blocks when daily token limit exceeded", func(t *testing.T) {
 		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "m1 response"}}
 		backends := []NamedClient{
 			{Name: "model-1", Model: "gpt-4o", Client: m1},
 		}
 		store := newMockBudgetStore()
-		_ = store.IncrementUsage(context.Background(), mustToday(), "gpt-4o", 10.00)
-		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 5.00)
+		_ = store.IncrementUsage(context.Background(), mustToday(), "gpt-4o", 10000)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 5000)
 
 		_, err := client.Complete(context.Background(), "hello")
 		if err == nil {
-			t.Fatal("expected budget exhausted error, got nil")
+			t.Fatal("expected token limit exhausted error, got nil")
 		}
 		if m1.calls != 0 {
-			t.Errorf("expected backend not to be called when budget exceeded, calls: %d", m1.calls)
+			t.Errorf("expected backend not to be called when token limit exceeded, calls: %d", m1.calls)
 		}
 	})
 
-	t.Run("budget store allows calls within budget", func(t *testing.T) {
+	t.Run("budget store allows calls within token limit", func(t *testing.T) {
 		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "m1 response"}}
 		backends := []NamedClient{
 			{Name: "model-1", Model: "gpt-4o", Client: m1},
 		}
 		store := newMockBudgetStore()
-		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 100.00)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 100000)
 
 		resp, err := client.Complete(context.Background(), "hello")
 		if err != nil {
@@ -220,7 +220,7 @@ func TestFailoverClient(t *testing.T) {
 		}
 	})
 
-	t.Run("budget store records usage after successful call", func(t *testing.T) {
+	t.Run("budget store records token usage after successful call", func(t *testing.T) {
 		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "response", Actions: []domain.LLMAction{
 			{Tool: "write_file", Args: map[string]any{"path": "test.txt"}},
 		}}}
@@ -228,7 +228,7 @@ func TestFailoverClient(t *testing.T) {
 			{Name: "model-1", Model: "gpt-4o", Client: m1},
 		}
 		store := newMockBudgetStore()
-		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 100.00)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 100000)
 
 		_, err := client.Complete(context.Background(), "Write a file called test.txt with hello world in it.")
 		if err != nil {
@@ -237,16 +237,16 @@ func TestFailoverClient(t *testing.T) {
 		today := mustToday()
 		usage, _ := store.GetDailyUsage(context.Background(), today, "gpt-4o")
 		if usage <= 0 {
-			t.Errorf("expected usage > 0 after successful call, got %.6f", usage)
+			t.Errorf("expected usage > 0 after successful call, got %d", usage)
 		}
 	})
 
-	t.Run("nil budget store skips budget tracking", func(t *testing.T) {
+	t.Run("nil budget store skips token tracking", func(t *testing.T) {
 		m1 := &mockLLM{resp: &domain.LLMResponse{Reasoning: "m1 response"}}
 		backends := []NamedClient{
 			{Name: "model-1", Model: "gpt-4o", Client: m1},
 		}
-		client := NewFailoverClient(backends, 10*time.Millisecond, 0, nil, 100.00)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, nil, 100000)
 
 		resp, err := client.Complete(context.Background(), "hello")
 		if err != nil {
@@ -264,14 +264,14 @@ func TestFailoverClient(t *testing.T) {
 		}
 		store := newMockBudgetStore()
 		store.incrementErr = fmt.Errorf("DB connection lost")
-		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 100.00)
+		client := NewFailoverClient(backends, 10*time.Millisecond, 0, store, 100000)
 
 		_, err := client.Complete(context.Background(), "hello")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "failed to record budget usage") && !strings.Contains(err.Error(), "DB connection lost") {
-			t.Errorf("expected budget save error, got: %v", err)
+		if !strings.Contains(err.Error(), "failed to record token usage") && !strings.Contains(err.Error(), "DB connection lost") {
+			t.Errorf("expected token save error, got: %v", err)
 		}
 	})
 }

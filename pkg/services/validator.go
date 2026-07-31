@@ -51,7 +51,7 @@ var defaultRoleProfiles = map[string]ProfileConfig{
 		AllowedCommands: []string{},
 	},
 	"generator": {
-		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "request_test_fix", "noop"},
 		AllowedCommands: []string{},
 	},
 }
@@ -62,6 +62,7 @@ type PolicyValidator struct {
 	ProtectedBranch   string
 	Profiles          map[string]ProfileConfig
 	forbiddenPatterns []*regexp.Regexp
+	ExcludePaths      []string
 }
 
 var _ Validator = (*PolicyValidator)(nil)
@@ -78,6 +79,7 @@ func NewPolicyValidator(allowedCommands []string, protectedBranch string, profil
 		ProtectedBranch:   protectedBranch,
 		Profiles:          profiles,
 		forbiddenPatterns: compileForbiddenPatterns(nil),
+		ExcludePaths:      nil,
 	}
 }
 
@@ -194,6 +196,28 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 				Allowed: false,
 				Reason:  "Sandbox violation: tests/holdout directory must not be created, modified, or used under any circumstance",
 			}, nil
+		}
+
+		rel, err := filepath.Rel(cleanProj, absPath)
+		if err == nil {
+			parts := strings.Split(rel, string(filepath.Separator))
+			for _, part := range parts {
+				if part == ".noctifab" || part == ".git" {
+					return &ValidationResult{
+						Allowed: false,
+						Reason:  fmt.Sprintf("Sandbox violation: path '%s' targets blacklisted directory '%s'", path, part),
+					}, nil
+				}
+				for _, exp := range v.ExcludePaths {
+					cleanExp := strings.Trim(exp, "/")
+					if cleanExp != "" && part == cleanExp {
+						return &ValidationResult{
+							Allowed: false,
+							Reason:  fmt.Sprintf("Sandbox violation: path '%s' targets excluded path segment '%s'", path, cleanExp),
+						}, nil
+					}
+				}
+			}
 		}
 
 		// Forbidden pattern content checks (write_file/edit_file only).

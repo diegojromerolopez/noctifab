@@ -110,3 +110,65 @@ func TestGenerateRoadmap_NoValidActions(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "did not return any valid create_story actions")
 }
+
+func TestGenerateRoadmap_RefineExistingStories(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "noctifab-roadmap-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	specPath := filepath.Join(tempDir, "SPEC.md")
+	err = os.WriteFile(specPath, []byte("# Calculator Spec\nBuild CLI calculator."), 0644)
+	assert.NoError(t, err)
+
+	roadmapDir := filepath.Join(tempDir, "roadmap")
+	err = os.MkdirAll(roadmapDir, 0755)
+	assert.NoError(t, err)
+
+	existingStoryPath := filepath.Join(roadmapDir, "US-001.md")
+	err = os.WriteFile(existingStoryPath, []byte("# Existing Vague Story\nBuild calculator."), 0644)
+	assert.NoError(t, err)
+
+	var capturedPrompt string
+	mockLLM := &mockRoadmapLLMClient{
+		Response: &domain.LLMResponse{
+			Reasoning: "Refining existing story with DoD and contracts",
+			Actions: []domain.LLMAction{
+				{
+					Tool: "create_story",
+					Args: map[string]any{
+						"filename": "roadmap/US-001.md",
+						"content":  "# US-001: Refined Story with DoD\n## Definition of Done\n- Interface: Calculator::CLI\n",
+					},
+				},
+			},
+		},
+	}
+
+	// Capture prompt in mock
+	mockLLMWithPromptCapture := &promptCapturingMockClient{
+		mockRoadmapLLMClient: mockLLM,
+		capturedPrompt:       &capturedPrompt,
+	}
+
+	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLMWithPromptCapture)
+	assert.NoError(t, err)
+
+	assert.Contains(t, capturedPrompt, "Audit and refine existing user stories")
+	assert.Contains(t, capturedPrompt, "# Existing Vague Story")
+
+	refinedBytes, err := os.ReadFile(existingStoryPath)
+	assert.NoError(t, err)
+	assert.Contains(t, string(refinedBytes), "Refined Story with DoD")
+}
+
+type promptCapturingMockClient struct {
+	*mockRoadmapLLMClient
+	capturedPrompt *string
+}
+
+func (p *promptCapturingMockClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	*p.capturedPrompt = prompt
+	return p.mockRoadmapLLMClient.Complete(ctx, prompt)
+}

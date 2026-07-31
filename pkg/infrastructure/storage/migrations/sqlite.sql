@@ -55,10 +55,11 @@ CREATE TABLE IF NOT EXISTS actions (
 );
 
 CREATE TABLE IF NOT EXISTS workspace_files (
-    path TEXT PRIMARY KEY,
+    path TEXT NOT NULL,
     state_id TEXT NOT NULL,
     size INTEGER NOT NULL,
     last_modified DATETIME NOT NULL,
+    PRIMARY KEY(path, state_id),
     FOREIGN KEY(state_id) REFERENCES state(id) ON DELETE CASCADE
 );
 

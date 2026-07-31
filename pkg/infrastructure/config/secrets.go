@@ -56,4 +56,14 @@ func applySecretsToConfig(cfg *Config, secrets map[string]string) {
 		cfg.LLMs[i].APIKey = resolveSecretRef(cfg.LLMs[i].APIKey, secrets)
 		cfg.LLMs[i].URL = resolveSecretRef(cfg.LLMs[i].URL, secrets)
 	}
+
+	for i := range cfg.LLM.Providers {
+		cfg.LLM.Providers[i].APIKey = resolveSecretRef(cfg.LLM.Providers[i].APIKey, secrets)
+		cfg.LLM.Providers[i].URL = resolveSecretRef(cfg.LLM.Providers[i].URL, secrets)
+		if cfg.LLM.Providers[i].APIKeyValue == "" && cfg.LLM.Providers[i].APIKeyEnv != "" {
+			if val, ok := secrets[cfg.LLM.Providers[i].APIKeyEnv]; ok && val != "" {
+				cfg.LLM.Providers[i].APIKeyValue = val
+			}
+		}
+	}
 }

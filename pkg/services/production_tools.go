@@ -55,7 +55,7 @@ func resolveSandboxPath(projectPath, targetPath string) (string, error) {
 	}
 	parts := strings.Split(rel, string(filepath.Separator))
 	for _, part := range parts {
-		if part == ".noctifab" {
+		if part == ".noctifab" || part == ".git" {
 			return "", fmt.Errorf("Sandbox violation: path '%s' targets blacklisted configuration directory", targetPath)
 		}
 	}
@@ -206,7 +206,13 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 		targetJoined := strings.Join(targetSlice, "\n")
 
 		if !strings.Contains(targetJoined, edit.TargetContent) {
-			return "", fmt.Errorf("TargetContent not found in specified range %d-%d", edit.StartLine, edit.EndLine)
+			return "", fmt.Errorf(
+				"edit_file failed: target_content not found in file (range %d-%d). "+
+					"The file content may have changed since you last read it. "+
+					"Call read_file first to get the current content, then retry edit_file with the exact matching target_content, "+
+					"or use write_file to overwrite the entire file with the corrected content",
+				edit.StartLine, edit.EndLine,
+			)
 		}
 
 		replacedJoined := strings.Replace(targetJoined, edit.TargetContent, edit.ReplacementContent, 1)
@@ -229,8 +235,26 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	return "Edits applied successfully", nil
 }
 
+func isPathExcluded(rel string, excludePaths []string) bool {
+	parts := strings.Split(rel, string(filepath.Separator))
+	for _, part := range parts {
+		if part == ".noctifab" || part == ".git" {
+			return true
+		}
+		for _, exp := range excludePaths {
+			cleanExp := strings.Trim(exp, "/")
+			if cleanExp != "" && part == cleanExp {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ListDirectoryTool implements list_directory.
-type ListDirectoryTool struct{}
+type ListDirectoryTool struct {
+	ExcludePaths []string
+}
 
 func (t *ListDirectoryTool) Name() string { return "list_directory" }
 func (t *ListDirectoryTool) Description() string {
@@ -253,6 +277,22 @@ func (t *ListDirectoryTool) Execute(ctx context.Context, state *domain.State, ar
 
 	var sb strings.Builder
 	for _, entry := range entries {
+		name := entry.Name()
+		if name == ".noctifab" || name == ".git" {
+			continue
+		}
+		ignored := false
+		for _, exp := range t.ExcludePaths {
+			cleanExp := strings.Trim(exp, "/")
+			if cleanExp != "" && name == cleanExp {
+				ignored = true
+				break
+			}
+		}
+		if ignored {
+			continue
+		}
+
 		info, err := entry.Info()
 		if err != nil {
 			continue
@@ -261,13 +301,15 @@ func (t *ListDirectoryTool) Execute(ctx context.Context, state *domain.State, ar
 		if entry.IsDir() {
 			typeStr = "D"
 		}
-		fmt.Fprintf(&sb, "%s\t%d\t%s\n", typeStr, info.Size(), entry.Name())
+		fmt.Fprintf(&sb, "%s\t%d\t%s\n", typeStr, info.Size(), name)
 	}
 	return sb.String(), nil
 }
 
 // FindFilesTool implements find_files.
-type FindFilesTool struct{}
+type FindFilesTool struct {
+	ExcludePaths []string
+}
 
 func (t *FindFilesTool) Name() string { return "find_files" }
 func (t *FindFilesTool) Description() string {
@@ -291,15 +333,12 @@ func (t *FindFilesTool) Execute(ctx context.Context, state *domain.State, args m
 		if rel == "." || rel == ".." {
 			return nil
 		}
-		// Ignore hidden/excluded paths
-		parts := strings.Split(rel, string(filepath.Separator))
-		for _, part := range parts {
-			if part == ".noctifab" || part == ".git" || part == "node_modules" || part == "vendor" {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
+		// Ignore hidden/excluded paths using isPathExcluded
+		if isPathExcluded(rel, t.ExcludePaths) {
+			if d.IsDir() {
+				return filepath.SkipDir
 			}
+			return nil
 		}
 
 		matchedName, _ := filepath.Match(pattern, d.Name())
@@ -317,7 +356,9 @@ func (t *FindFilesTool) Execute(ctx context.Context, state *domain.State, args m
 }
 
 // GrepSearchTool implements grep_search.
-type GrepSearchTool struct{}
+type GrepSearchTool struct {
+	ExcludePaths []string
+}
 
 func (t *GrepSearchTool) Name() string { return "grep_search" }
 func (t *GrepSearchTool) Description() string {
@@ -350,11 +391,8 @@ func (t *GrepSearchTool) Execute(ctx context.Context, state *domain.State, args 
 		}
 		if d.IsDir() {
 			rel, _ := filepath.Rel(state.ProjectPath, fPath)
-			parts := strings.Split(rel, string(filepath.Separator))
-			for _, part := range parts {
-				if part == ".noctifab" || part == ".git" || part == "node_modules" || part == "vendor" {
-					return filepath.SkipDir
-				}
+			if isPathExcluded(rel, t.ExcludePaths) {
+				return filepath.SkipDir
 			}
 			return nil
 		}
@@ -382,7 +420,8 @@ func (t *GrepSearchTool) Execute(ctx context.Context, state *domain.State, args 
 
 // RunTestsTool implements run_tests by delegating execution to the active Sandbox engine.
 type RunTestsTool struct {
-	Runner Sandbox
+	Runner  Sandbox
+	Timeout time.Duration
 }
 
 func (t *RunTestsTool) Name() string { return "run_tests" }
@@ -397,8 +436,11 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 		return "", errors.New("no sandbox execution engine registered")
 	}
 
-	// Delegate to the sandbox with a 60-second timeout
-	runCtx, runCancel := context.WithTimeout(ctx, 60*time.Second)
+	timeout := t.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
 	return t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
 }
@@ -407,6 +449,7 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 type RunLinterTool struct {
 	Runner        Sandbox
 	LinterCommand string
+	Timeout       time.Duration
 }
 
 func (t *RunLinterTool) Name() string { return "run_linter" }
@@ -420,7 +463,11 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 	if t.LinterCommand == "" {
 		return "No linter command configured for this project.", nil
 	}
-	runCtx, runCancel := context.WithTimeout(ctx, 60*time.Second)
+	timeout := t.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
 	return t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")
 }

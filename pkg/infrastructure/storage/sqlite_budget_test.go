@@ -33,12 +33,12 @@ func TestSQLiteBudgetStore(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if usage != 0 {
-			t.Errorf("expected 0, got %.2f", usage)
+			t.Errorf("expected 0, got %d", usage)
 		}
 	})
 
 	t.Run("IncrementUsage increases value", func(t *testing.T) {
-		err := store.IncrementUsage(context.Background(), "2026-07-02", "gpt-4o", 1.50)
+		err := store.IncrementUsage(context.Background(), "2026-07-02", "gpt-4o", 1500)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -46,33 +46,33 @@ func TestSQLiteBudgetStore(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if usage != 1.50 {
-			t.Errorf("expected 1.50, got %.2f", usage)
+		if usage != 1500 {
+			t.Errorf("expected 1500, got %d", usage)
 		}
 	})
 
 	t.Run("IncrementUsage accumulates multiple calls", func(t *testing.T) {
-		_ = store.IncrementUsage(context.Background(), "2026-07-02", "gpt-4o", 2.00)
-		_ = store.IncrementUsage(context.Background(), "2026-07-02", "gpt-4o", 3.00)
+		_ = store.IncrementUsage(context.Background(), "2026-07-02", "gpt-4o", 2000)
+		_ = store.IncrementUsage(context.Background(), "2026-07-02", "gpt-4o", 3000)
 		usage, err := store.GetDailyUsage(context.Background(), "2026-07-02", "gpt-4o")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if usage != 6.50 {
-			t.Errorf("expected 6.50, got %.2f", usage)
+		if usage != 6500 {
+			t.Errorf("expected 6500, got %d", usage)
 		}
 	})
 
 	t.Run("different dates tracked separately", func(t *testing.T) {
-		_ = store.IncrementUsage(context.Background(), "2026-07-02", "gpt-4o", 1.00)
-		_ = store.IncrementUsage(context.Background(), "2026-07-03", "gpt-4o", 2.00)
+		_ = store.IncrementUsage(context.Background(), "2026-07-02", "gpt-4o", 1000)
+		_ = store.IncrementUsage(context.Background(), "2026-07-03", "gpt-4o", 2000)
 		day1, _ := store.GetDailyUsage(context.Background(), "2026-07-02", "gpt-4o")
 		day2, _ := store.GetDailyUsage(context.Background(), "2026-07-03", "gpt-4o")
-		if day1 != 7.50 {
-			t.Errorf("expected day1 7.50, got %.2f", day1)
+		if day1 != 7500 {
+			t.Errorf("expected day1 7500, got %d", day1)
 		}
-		if day2 != 2.00 {
-			t.Errorf("expected day2 2.00, got %.2f", day2)
+		if day2 != 2000 {
+			t.Errorf("expected day2 2000, got %d", day2)
 		}
 	})
 }

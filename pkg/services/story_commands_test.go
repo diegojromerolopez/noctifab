@@ -25,6 +25,20 @@ func (r *stubStateRepository) Load(_ context.Context) (*domain.State, error) {
 	return r.state, nil
 }
 
+func (r *stubStateRepository) LoadByID(_ context.Context, id string) (*domain.State, error) {
+	if r.state == nil {
+		return &domain.State{ID: id, Version: 0}, nil
+	}
+	return r.state, nil
+}
+
+func (r *stubStateRepository) LoadAll(_ context.Context) ([]*domain.State, error) {
+	if r.state == nil {
+		return []*domain.State{{ID: "test-state", Version: 0}}, nil
+	}
+	return []*domain.State{r.state}, nil
+}
+
 func (r *stubStateRepository) Save(_ context.Context, s *domain.State) error {
 	r.state = s
 	return nil

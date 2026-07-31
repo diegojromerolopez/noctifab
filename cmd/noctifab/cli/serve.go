@@ -85,12 +85,17 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.NoopTool{})
 		reg.Register(&services.ReadFileTool{})
 		reg.Register(&services.WriteFileTool{})
+		reg.Register(&services.DeleteFileTool{})
 		reg.Register(&services.EditFileTool{})
-		reg.Register(&services.ListDirectoryTool{})
-		reg.Register(&services.FindFilesTool{})
-		reg.Register(&services.GrepSearchTool{})
-		reg.Register(&services.RunTestsTool{Runner: sandboxRunner})
-		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand})
+		reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+		reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+		reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+		runTimeout := 5 * time.Minute
+		if cfg.Sandbox.TimeoutSeconds > 0 {
+			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
+		}
+		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand, Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM client with database budget store.
@@ -121,24 +126,47 @@ var serveCmd = &cobra.Command{
 			}
 		}
 		validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+		validator.ExcludePaths = cfg.Sandbox.ExcludePaths
 		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
+		if cfg.Sandbox.TimeoutSeconds > 0 {
+			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
+		}
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
-		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools())
+		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
 
 		orchConfig := services.OrchestratorConfig{
-			PollInterval:     time.Duration(cfg.Orchestrator.PollInterval),
-			MaxRetries:       3,
-			Concurrency:      cfg.Orchestrator.Concurrency,
-			MaxBudgetUSD:     cfg.LLM.MaxBudgetUSD,
-			OCCMaxRetries:    cfg.OCCMaxRetries,
-			OCCBackoffBase:   time.Duration(cfg.OCCBackoffBase),
-			OCCBackoffFactor: cfg.OCCBackoffFactor,
-			MaxDuration:      time.Duration(cfg.MaxDuration),
-			AutoCreatePR:     cfg.VCS.PullRequest.AutoCreate,
+			Architecture:          cfg.Agents.Architecture,
+			ArchitectNumber:       cfg.Agents.Architect.Number,
+			ArchitectIterations:   cfg.Agents.Architect.Iterations,
+			GeneratorsNumber:      cfg.Agents.Generators.Number,
+			GeneratorsIterations:  cfg.Agents.Generators.Iterations,
+			TestersNumber:         cfg.Agents.Testers.Number,
+			TestersIterations:     cfg.Agents.Testers.Iterations,
+			QAAgentsNumber:        cfg.Agents.QA.Number,
+			QAAgentsIterations:    cfg.Agents.QA.Iterations,
+			SecurityNumber:        cfg.Agents.Security.Number,
+			SecurityIterations:    cfg.Agents.Security.Iterations,
+			PerformanceNumber:     cfg.Agents.Performance.Number,
+			PerformanceIterations: cfg.Agents.Performance.Iterations,
+			DocsNumber:            cfg.Agents.Docs.Number,
+			DocsIterations:        cfg.Agents.Docs.Iterations,
+			DevOpsNumber:          cfg.Agents.DevOps.Number,
+			DevOpsIterations:      cfg.Agents.DevOps.Iterations,
+			PollInterval:          time.Duration(cfg.PollInterval),
+			MaxRetries:            10,
+			Concurrency:           cfg.Agents.Generators.Number,
+			OCCMaxRetries:         cfg.OCCMaxRetries,
+			OCCBackoffBase:        time.Duration(cfg.OCCBackoffBase),
+			OCCBackoffFactor:      cfg.OCCBackoffFactor,
+			MaxDuration:           time.Duration(cfg.MaxDuration),
+			AutoCreatePR:          cfg.VCS.PullRequest.AutoCreate,
+			ExcludePaths:          cfg.Sandbox.ExcludePaths,
+			WorkspaceCache:        cfg.GetWorkspaceCache(),
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.
@@ -151,6 +179,21 @@ var serveCmd = &cobra.Command{
 		)
 
 		ctx, cancel := context.WithCancel(context.Background())
+
+		if cfg.Unblocker.Enabled {
+			unblocker := services.NewUnblockerAgent(
+				repo,
+				llmClient,
+				mailbox,
+				time.Duration(cfg.Unblocker.PollInterval),
+				cfg.Unblocker.MaxRetries,
+				time.Duration(cfg.Unblocker.StallThreshold),
+				time.Duration(cfg.Unblocker.ConflictThreshold),
+				cfg.Unblocker.LLMAssessment,
+			)
+			orchestrator.SetUnblocker(unblocker)
+			unblocker.Start(ctx)
+		}
 
 		// Graceful shutdown on SIGTERM / SIGINT.
 		sigCh := make(chan os.Signal, 1)
@@ -265,11 +308,44 @@ func processStory(
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if err := orchestrator.RunOnce(ctx); err != nil {
+			current, loadErr := repo.Load(ctx)
+			if loadErr != nil {
+				logf("⚠ Load error: %v\n", loadErr)
+				continue
+			}
+
+			if current.StoryStatus == domain.StoryPaused {
+				continue
+			}
+
+			if current.StoryStatus == domain.StoryCancelled {
+				logf("❌ Story %s: execution cancelled by user.\n", item.Path)
+				// Revert running tasks to interrupted status
+				for i := range current.Tasks {
+					if current.Tasks[i].Status == domain.TaskInProgress || current.Tasks[i].Status == domain.TaskPending {
+						current.Tasks[i].Status = domain.TaskInterrupted
+						current.Tasks[i].UpdatedAt = time.Now()
+					}
+				}
+				current.StoryError = "cancelled by user"
+				_ = repo.Save(ctx, current)
+
+				// Checkout back to base integration branch
+				gitClient := services.NewGitClient(current.ProjectPath)
+				_, _ = gitClient.Run(ctx, true, "checkout", baseBranch)
+
+				if logFile != nil {
+					_, _ = fmt.Fprintf(logFile, "=== Story CANCELLED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
+				}
+				return fmt.Errorf("story %s: cancelled by user", item.Path)
+			}
+
+			if _, err := orchestrator.RunOnce(ctx); err != nil {
 				logf("⚠ Orchestrator error: %v\n", err)
 			}
 
-			current, loadErr := repo.Load(ctx)
+			// Reload state to check completion status
+			current, loadErr = repo.Load(ctx)
 			if loadErr != nil {
 				return loadErr
 			}

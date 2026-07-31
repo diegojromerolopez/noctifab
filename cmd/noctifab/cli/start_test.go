@@ -1,0 +1,105 @@
+package cli
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestStartCmd_AutoInitializeMissingWorkspace(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "auto_init_project")
+
+	// Set E2E environment flag to avoid connecting to real LLM during start CLI execution test
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "mock-key")
+
+	// Run noctifab start targetDir
+	err := startCmd.RunE(startCmd, []string{targetDir})
+	require.NoError(t, err)
+
+	// Verify targetDir was created along with .noctifab, secrets.yaml, SPEC.md, and roadmap/US-001.md
+	assert.DirExists(t, targetDir)
+	assert.FileExists(t, filepath.Join(targetDir, ".noctifab", "config.yaml"))
+	assert.FileExists(t, filepath.Join(targetDir, ".noctifab", "secrets.yaml"))
+	assert.FileExists(t, filepath.Join(targetDir, "SPEC.md"))
+	assert.FileExists(t, filepath.Join(targetDir, "roadmap", "US-001.md"))
+}
+
+func TestStartCmd_CurrentDirectoryAutoInit(t *testing.T) {
+	tmpDir := t.TempDir()
+	origDir, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { _ = os.Chdir(origDir) }()
+
+	require.NoError(t, os.Chdir(tmpDir))
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "mock-key")
+
+	// Run noctifab start with no arguments
+	err = startCmd.RunE(startCmd, []string{})
+	require.NoError(t, err)
+
+	// Verify current directory was initialized with .noctifab, secrets.yaml, SPEC.md, and roadmap/US-001.md
+	assert.FileExists(t, filepath.Join(tmpDir, ".noctifab", "config.yaml"))
+	assert.FileExists(t, filepath.Join(tmpDir, ".noctifab", "secrets.yaml"))
+	assert.FileExists(t, filepath.Join(tmpDir, "SPEC.md"))
+	assert.FileExists(t, filepath.Join(tmpDir, "roadmap", "US-001.md"))
+}
+
+func TestIsTemplateSpec(t *testing.T) {
+	t.Run("when spec contains template marker, it returns true", func(t *testing.T) {
+		assert.True(t, isTemplateSpec("# Specification: New Project\n\n## Overview"))
+	})
+	t.Run("when spec contains real content, it returns false", func(t *testing.T) {
+		assert.False(t, isTemplateSpec("# Specification: Word Count CLI\n\n## Overview\nA real spec."))
+	})
+}
+
+func TestIsTemplateStory(t *testing.T) {
+	t.Run("when story contains template marker, it returns true", func(t *testing.T) {
+		assert.True(t, isTemplateStory("# User Story: US-001 - Initial Feature Specification\n\n## Metadata"))
+	})
+	t.Run("when story contains real content, it returns false", func(t *testing.T) {
+		assert.False(t, isTemplateStory("# User Story: US-001 - Count bytes from stdin\n\n## Metadata"))
+	})
+}
+
+func TestStartCmd_RejectsTemplateSpec(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "mock-key")
+
+	// Write the unedited template SPEC.md
+	specPath := filepath.Join(tmpDir, "SPEC.md")
+	require.NoError(t, os.WriteFile(specPath, []byte("# Specification: New Project\n\n## Overview"), 0644))
+
+	err := startCmd.RunE(startCmd, []string{tmpDir})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "still contains the default template content")
+}
+
+func TestStartCmd_RejectsTemplateUserStory(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "mock-key")
+
+	// Write a real SPEC.md but a template user story
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "SPEC.md"),
+		[]byte("# Specification: Word Count CLI\n\n## Overview\nCount words."), 0644))
+
+	roadmapDir := filepath.Join(tmpDir, "roadmap")
+	require.NoError(t, os.MkdirAll(roadmapDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(roadmapDir, "US-001.md"),
+		[]byte("# User Story: US-001 - Initial Feature Specification\n\n## Metadata"),
+		0644,
+	))
+
+	err := startCmd.RunE(startCmd, []string{tmpDir})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "still contains the default template content")
+}

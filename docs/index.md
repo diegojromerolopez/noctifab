@@ -29,10 +29,12 @@ A "Dark Factory" (in a software engineering context) is a fully automated reposi
 ```{toctree}
 :maxdepth: 2
 
+getting_started
 cli_usage
 configuration
 architecture
 developer_guide
+unblocker_agent
 secrets
 ```
 
@@ -45,3 +47,4 @@ secrets
 - **Sandboxed Action Execution**: Safely edits code files and runs test suites inside host sandboxes or Docker containers.
 - **Test Validator Verification**: Prevents regression and guarantees code quality by running the project test suite multiple times with majority voting.
 - **Automated VCS Merging**: Manages Git checkouts, worker branch creation, rebase queues, pull request creation, and merges on GitHub and GitLab.
+- **Unblocker Agent**: An autonomous background goroutine that periodically scans the pipeline for stalled tasks and blocked agents, diagnoses root causes via LLM, and injects corrective interventions to restore forward progress — with configurable waking frequency (`unblocker.poll_interval`).

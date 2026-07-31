@@ -122,3 +122,20 @@ func TestHostSandbox_DepMgrSet_WithAllowedCommand(t *testing.T) {
 		t.Error("expected output from echo command")
 	}
 }
+
+func TestBuildCacheVolumeArgs(t *testing.T) {
+	args := BuildCacheVolumeArgs()
+	if len(args) == 0 {
+		t.Skip("skipping build cache test: home directory not available")
+	}
+	hasGoMod := false
+	for i, arg := range args {
+		if arg == "-v" && i+1 < len(args) && (filepath.Ext(args[i+1]) == "" || filepath.Base(args[i+1]) != "") {
+			hasGoMod = true
+			break
+		}
+	}
+	if !hasGoMod {
+		t.Error("expected volume flag args in BuildCacheVolumeArgs")
+	}
+}

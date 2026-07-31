@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -46,8 +45,8 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		err = repo.Save(ctx, state)
 		require.NoError(t, err)
 
-		// Low budget limit of $0.01 ($0.0375 is required for Planner)
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 0.01)
+		// Low token limit of 100 (2500 required for Planner)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100)
 		assert.ErrorIs(t, err, domain.ErrBudgetExhausted)
 
 		// Assert no tasks were planned because budget was exceeded pre-flight
@@ -84,7 +83,7 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		err = repo.Save(ctx, state)
 		require.NoError(t, err)
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		assert.ErrorContains(t, err, "cycle detected in task DAG")
 
 		// Verify cycle validation failure action was logged in state
@@ -148,7 +147,7 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		// 1. Run 1: Clarification block
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		midState1, err := repo.Load(ctx)
@@ -171,7 +170,7 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		// 2. Run 2: planning and execution to completion
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		finalState, err := repo.Load(ctx)
@@ -180,11 +179,8 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 		// 3. Verify OCC version save check
 		assert.Equal(t, 18, finalState.Version, "Expected exactly 18 updates (final version 18)")
 
-		// 4. Verify token and cost accumulation
+		// 4. Verify token accumulation
 		assert.Greater(t, finalState.Metadata.TotalTokensUsed, int64(4000))
-		costVal, err := strconv.ParseFloat(finalState.Metadata.TotalCostUSD, 64)
-		require.NoError(t, err)
-		assert.InDelta(t, 0.0930, costVal, 0.0001)
 
 		// 5. Verify Git branch sandboxing checkouts & commits logged
 		gitCheckoutCount := 0
@@ -278,7 +274,7 @@ func TestScenario_GitConflict(t *testing.T) {
 
 		// Run the simulated orchestrator loop
 		// We expect the orchestrator to succeed because the Conflict Resolver agent resolves the conflict.
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		// Load final state and assert task statuses

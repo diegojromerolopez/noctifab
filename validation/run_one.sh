@@ -19,8 +19,14 @@
 #   NOCTIFAB_BUILD_DIR       (optional) – repo root; defaults to script parent/..
 #   NOCTIFAB_LOG_DIR         (optional) – log dir; defaults to "$root/.validation-logs"
 #   NOCTIFAB_SKIP_BUILD      (optional) – "1" to skip per-project image build
-#   MODE                     (optional) – validate.sh MODE (start|start-one)
+#   MODE                     (optional) – validate.sh MODE (start)
 set -euo pipefail
+
+INTERACTIVE=0
+if [ "${1:-}" = "-i" ]; then
+  INTERACTIVE=1
+  shift
+fi
 
 PROJECT="${1:?run_one.sh: missing project name}"
 IMAGE_TAG_OVERRIDE="${2:-}"
@@ -28,8 +34,14 @@ IMAGE_TAG_OVERRIDE="${2:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${NOCTIFAB_BUILD_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 
-# Clean up output directory from previous runs
-rm -rf "${ROOT}/validation/projects/${PROJECT}/output"
+# Clean up output directory contents from previous runs, preserving base directories
+# to avoid Docker Desktop mount synchronization race conditions on macOS hosts.
+if [ -d "${ROOT}/validation/projects/${PROJECT}/output" ]; then
+  find "${ROOT}/validation/projects/${PROJECT}/output" -mindepth 1 -maxdepth 1 -not -name "log" -exec rm -rf {} + || true
+  rm -f "${ROOT}/validation/projects/${PROJECT}/output/log"/* || true
+else
+  mkdir -p "${ROOT}/validation/projects/${PROJECT}/output"
+fi
 
 LOG_DIR="${NOCTIFAB_LOG_DIR:-${ROOT}/validation/projects/${PROJECT}/output/log}"
 mkdir -p "${LOG_DIR}"
@@ -42,6 +54,7 @@ case "${PROJECT}" in
   wc)         TARGETS="Cargo.toml;src/main.rs" ;;
   calculator) TARGETS="calculator.rb;lib/calculator/cli.rb" ;;
   echo)       TARGETS="cmd/echo/main.go" ;;
+  fortune)    TARGETS="main.c;Makefile" ;;
   *)          TARGETS="" ;;
 esac
 
@@ -49,8 +62,15 @@ esac
 IMAGE="${IMAGE_TAG_OVERRIDE:-noctifab-validation:${PROJECT}}"
 if [ -z "${NOCTIFAB_SKIP_BUILD:-}" ] || [ -z "$(docker images -q "${IMAGE}" 2>/dev/null)" ]; then
   TS="$(date +%H:%M:%S)"
+  echo "[${TS}] building base image noctifab-validation:base..."
+  docker build \
+    --no-cache \
+    -f "${ROOT}/validation/Dockerfile.validation" \
+    -t "noctifab-validation:base" "${ROOT}" >&2
+
   echo "[${TS}] building ${PROJECT} image from ${ROOT}/validation/projects/${PROJECT}/Dockerfile..."
   docker build \
+    --no-cache \
     -f "${ROOT}/validation/projects/${PROJECT}/Dockerfile" \
     -t "${IMAGE}" "${ROOT}" >&2
 fi
@@ -79,20 +99,62 @@ DIST_DIR="${ROOT}/validation/projects/${PROJECT}/output/dist"
 mkdir -p "${SRC_DIR}"
 mkdir -p "${DIST_DIR}"
 
+# Prepare cache directories on host to speed up compiler and package manager resolution
+CACHE_ARGS=()
+if [ -n "${HOME:-}" ] && [ -d "${HOME}" ]; then
+  # Go Cache mounts
+  mkdir -p "${HOME}/go/pkg/mod" "${HOME}/.cache/go-build"
+  CACHE_ARGS+=(
+    -v "${HOME}/go/pkg/mod:/go/pkg/mod"
+    -v "${HOME}/.cache/go-build:/root/.cache/go-build"
+  )
+  
+  # Cargo Cache mounts (for Rust projects)
+  if [ "${PROJECT}" = "wc" ]; then
+    mkdir -p "${HOME}/.cargo/registry" "${HOME}/.cargo/git"
+    CACHE_ARGS+=(
+      -v "${HOME}/.cargo/registry:/usr/local/cargo/registry"
+      -v "${HOME}/.cargo/git:/usr/local/cargo/git"
+    )
+  fi
+fi
+
+# Add brief sleep to guarantee Docker Desktop filesystem mount synchronization
+sleep 1
+
 # Run with --rm so the container is cleaned up after exit; capture combined
 # stdout/stderr to the log file. The bind-mounts include the read-only
 # secrets.yaml, and read-write source/dist folders.
 set +e
-docker run \
-  --rm \
-  --name "${CONTAINER}" \
-  -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
-  -v "${SRC_DIR}:/app/src_mount" \
-  -v "${DIST_DIR}:/app/dist_mount" \
-  -e PROJECT="${PROJECT}" \
-  -e MODE="${MODE:-start-one}" \
-  "${IMAGE}" >"${LOG_FILE}" 2>&1
-EXIT_CODE=$?
+if [ "${INTERACTIVE}" = "1" ]; then
+  echo "Interactive validation run for ${PROJECT}. Console output printed to terminal." >"${LOG_FILE}"
+  docker run \
+    -it \
+    --rm \
+    --name "${CONTAINER}" \
+    "${CACHE_ARGS[@]}" \
+    -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
+    -v "${SRC_DIR}:/app/src_mount" \
+    -v "${DIST_DIR}:/app/dist_mount" \
+    -e PROJECT="${PROJECT}" \
+    -e MODE="${MODE:-start}" \
+    -e NOCTIFAB_INTERACTIVE="${INTERACTIVE}" \
+    "${IMAGE}"
+  EXIT_CODE=$?
+else
+  docker run \
+    --rm \
+    --name "${CONTAINER}" \
+    "${CACHE_ARGS[@]}" \
+    -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
+    -v "${SRC_DIR}:/app/src_mount" \
+    -v "${DIST_DIR}:/app/dist_mount" \
+    -e PROJECT="${PROJECT}" \
+    -e MODE="${MODE:-start}" \
+    -e NOCTIFAB_INTERACTIVE="${INTERACTIVE}" \
+    "${IMAGE}" >"${LOG_FILE}" 2>&1
+  EXIT_CODE=$?
+fi
 set -e
 
 TS="$(date +%H:%M:%S)"

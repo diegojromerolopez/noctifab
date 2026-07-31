@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,8 +31,12 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
-		if err := yaml.Unmarshal(data, cfg); err != nil {
-			return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+		if len(bytes.TrimSpace(data)) > 0 {
+			decoder := yaml.NewDecoder(bytes.NewReader(data))
+			decoder.KnownFields(true)
+			if err := decoder.Decode(cfg); err != nil {
+				return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+			}
 		}
 		if len(cfg.LLMs) > 0 {
 			cfg.LLM = cfg.LLMs[0]
@@ -82,6 +87,47 @@ func resolveSecrets(cfg *Config) {
 	for i := range cfg.LLMs {
 		resolveSingleLLMSecret(&cfg.LLMs[i])
 	}
+	for i := range cfg.LLM.Providers {
+		resolveProviderSpecSecret(&cfg.LLM.Providers[i])
+	}
+}
+
+func resolveProviderSpecSecret(p *ProviderSpec) {
+	if p.APIKeyValue == "" {
+		if p.APIKey != "" && !strings.HasPrefix(p.APIKey, "secret:") {
+			p.APIKeyValue = p.APIKey
+		} else {
+			if p.APIKeyEnv != "" {
+				p.APIKeyValue = os.Getenv(p.APIKeyEnv)
+			}
+			if p.APIKeyValue == "" {
+				switch strings.ToLower(p.Provider) {
+				case "openai":
+					p.APIKeyValue = os.Getenv("OPENAI_API_KEY")
+				case "anthropic":
+					p.APIKeyValue = os.Getenv("ANTHROPIC_API_KEY")
+				case "gemini":
+					p.APIKeyValue = os.Getenv("GEMINI_API_KEY")
+				case "hermes":
+					p.APIKeyValue = os.Getenv("NOUS_API_KEY")
+				case "huggingface":
+					val := os.Getenv("HF_TOKEN")
+					if val == "" {
+						val = os.Getenv("HUGGINGFACE_API_KEY")
+					}
+					p.APIKeyValue = val
+				case "mistral":
+					p.APIKeyValue = os.Getenv("MISTRAL_API_KEY")
+				case "deepseek":
+					p.APIKeyValue = os.Getenv("DEEPSEEK_API_KEY")
+				case "ollama":
+					p.APIKeyValue = os.Getenv("OLLAMA_API_KEY")
+				case "opencode":
+					p.APIKeyValue = os.Getenv("OPENCODE_API_KEY")
+				}
+			}
+		}
+	}
 }
 
 func resolveSingleLLMSecret(llm *LLMConfig) {
@@ -129,6 +175,42 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("invalid storage provider: %s", cfg.Storage.Provider)
 	}
 
+	if cfg.Agents.Architecture != "" {
+		norm := NormalizeArchitecture(cfg.Agents.Architecture)
+		if norm != "code_first" && norm != "single_pass" && norm != "breadth_first" {
+			return fmt.Errorf("invalid agent architecture mode: %s (must be code_first, single_pass, or breadth_first)", cfg.Agents.Architecture)
+		}
+		cfg.Agents.Architecture = norm
+	}
+
+	if cfg.Agents.MaxToolsPerResponse < 0 {
+		return fmt.Errorf("max_tools_per_response must be non-negative, got %d", cfg.Agents.MaxToolsPerResponse)
+	}
+
+	roles := map[string]AgentRoleConfig{
+		"orchestrator":    cfg.Agents.Orchestrator,
+		"product_manager": cfg.Agents.ProductManager,
+		"planner":         cfg.Agents.Planner,
+		"architect":       cfg.Agents.Architect,
+		"generators":      cfg.Agents.Generators,
+		"testers":         cfg.Agents.Testers,
+		"qa":              cfg.Agents.QA,
+		"security":        cfg.Agents.Security,
+		"performance":     cfg.Agents.Performance,
+		"docs":            cfg.Agents.Docs,
+		"devops":          cfg.Agents.DevOps,
+		"unblocker":       cfg.Agents.Unblocker,
+	}
+
+	for roleName, roleCfg := range roles {
+		if roleCfg.Number < 0 {
+			return fmt.Errorf("agent role %s number must be non-negative, got %d", roleName, roleCfg.Number)
+		}
+		if roleCfg.Iterations < 0 {
+			return fmt.Errorf("agent role %s iterations must be non-negative, got %d", roleName, roleCfg.Iterations)
+		}
+	}
+
 	validLLM := map[string]bool{
 		"openai":      true,
 		"anthropic":   true,
@@ -141,7 +223,14 @@ func (cfg *Config) Validate() error {
 		"opencode":    true,
 	}
 
-	if len(cfg.LLMs) > 0 {
+	if len(cfg.LLM.Providers) > 0 {
+		for _, p := range cfg.LLM.Providers {
+			lp := strings.ToLower(p.Provider)
+			if !validLLM[lp] {
+				return fmt.Errorf("invalid LLM provider in providers list: %s", p.Provider)
+			}
+		}
+	} else if len(cfg.LLMs) > 0 {
 		for _, llm := range cfg.LLMs {
 			lp := strings.ToLower(llm.Provider)
 			if !validLLM[lp] {
@@ -160,15 +249,21 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("invalid VCS provider: %s", cfg.VCS.Provider)
 	}
 
-	if cfg.VCS.Repository == "" {
+	if cfg.VCS.Repository == "" && os.Getenv("NOCTIFAB_E2E") != "true" {
 		return fmt.Errorf("VCS repository is required")
 	}
 
-	if cfg.VCS.TokenValue == "" {
+	if cfg.VCS.TokenValue == "" && os.Getenv("NOCTIFAB_E2E") != "true" {
 		return fmt.Errorf("VCS token is required")
 	}
 
-	if len(cfg.LLMs) > 0 {
+	if len(cfg.LLM.Providers) > 0 {
+		for _, p := range cfg.LLM.Providers {
+			if p.APIKeyValue == "" && strings.ToLower(p.Provider) != "ollama" {
+				return fmt.Errorf("LLM API key is required for provider %s", p.Name)
+			}
+		}
+	} else if len(cfg.LLMs) > 0 {
 		for _, llm := range cfg.LLMs {
 			if llm.APIKeyValue == "" && strings.ToLower(llm.Provider) != "ollama" {
 				return fmt.Errorf("LLM API key is required for provider %s", llm.Provider)
@@ -181,4 +276,18 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// NormalizeArchitecture normalizes architecture mode strings, short names, and legacy aliases to canonical forms.
+func NormalizeArchitecture(arch string) string {
+	switch strings.ToLower(strings.TrimSpace(arch)) {
+	case "code_first", "code_first_verification_loop", "cfv", "dfv":
+		return "code_first"
+	case "single_pass", "single_pass_execution", "spe":
+		return "single_pass"
+	case "breadth_first", "breadth_first_generation", "bfg", "big":
+		return "breadth_first"
+	default:
+		return arch
+	}
 }

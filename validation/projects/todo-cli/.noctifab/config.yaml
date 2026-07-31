@@ -1,38 +1,81 @@
 config_version: "1.0"
-orchestrator:
+agents:
+    architecture: code_first
     max_tools_per_response: 5
-    concurrency: 1
-    poll_interval: 5m0s
-    max_clarification_wait: 30m0s
-    clarification_timeout_action: abort
+    orchestrator:
+        number: 1
+        iterations: 2
+    product_manager:
+        number: 1
+        iterations: 2
+    planner:
+        number: 1
+        iterations: 2
+    architect:
+        number: 1
+        iterations: 2
+    generators:
+        number: 4
+        iterations: 5
+    testers:
+        number: 2
+        iterations: 3
+    qa:
+        number: 1
+        iterations: 2
+    security:
+        number: 1
+        iterations: 2
+    performance:
+        number: 1
+        iterations: 2
+    docs:
+        number: 1
+        iterations: 2
+    devops:
+        number: 1
+        iterations: 2
+    unblocker:
+        number: 1
+        iterations: 2
+workspace_cache:
+    enabled: true
+poll_interval: 5m0s
+max_clarification_wait: 30m0s
+clarification_timeout_action: abort
 storage:
     provider: sqlite
     conn_string: .noctifab/data/noctifab.db
     json_file_path: .noctifab/data/state.json
-llms:
-    - provider: opencode
-      model: glm-5.2
-      temperature: 0
-      api_key: "secret:OPENCODE_API_KEY"
-      url: ""
-      max_retries: 5
-      retry_backoff: 100ms
-      retry_backoff_factor: 2
-      max_budget_usd: 10
-    - provider: gemini
-      model: gemini-2.5-flash
-      temperature: 0
-      api_key: "secret:GEMINI_API_KEY"
-      url: ""
-      max_retries: 5
-      retry_backoff: 100ms
-      retry_backoff_factor: 2
-      max_budget_usd: 10
+llm:
+    priority:
+        - gemini-primary
+        - opencode-primary
+    providers:
+        - name: gemini-primary
+          provider: gemini
+          model: gemini-2.5-flash
+          api_key_env: GEMINI_API_KEY
+          max_retries: 5
+          retry_backoff: 100ms
+          max_timeout: 60s
+          idle_timeout: 15s
+          streaming: true
+        - name: opencode-primary
+          provider: opencode
+          model: glm-5.2
+          api_key_env: OPENCODE_API_KEY
+          max_retries: 5
+          retry_backoff: 100ms
+          max_timeout: 60s
+          idle_timeout: 15s
+          streaming: true
 vcs:
     provider: github
     repository: diegojromerolopez/todo-cli
     base_branch: main
     branch_prefix: noctifab/
+    use_worktrees: true
     token: "secret:GITHUB_TOKEN"
     token_env: GITHUB_TOKEN
     conventional_commits:
@@ -45,34 +88,19 @@ sandbox:
     mode: host
     timeout_seconds: 300
     grace_period_seconds: 30
-    test_command: go test ./...
-    linter_command: "go vet ./..."
+    test_command: "go mod tidy && go test ./..."
+    linter_command: "go mod tidy && go vet ./..."
+    formatter_command: "go fmt ./..."
     exclude_paths:
         - node_modules/
         - vendor/
         - bin/
         - dist/
         - .noctifab/
+        - .git/
     allowed_commands:
         - go
         - git
-roles:
-    orchestrator:
-        model: ""
-        temperature: 0
-        profile: orchestrator
-    planner:
-        model: ""
-        temperature: 0.5
-        profile: planner
-    generator:
-        model: ""
-        temperature: 0
-        profile: generator
-    tester:
-        model: ""
-        temperature: 0
-        profile: tester
 input: ""
 auto_commit: false
 max_actions: 100
@@ -88,3 +116,15 @@ occ_backoff_factor: 2
 token_usage_limit: 0
 log_level: info
 log_file: ""
+telemetry:
+    enabled: false
+    exporter: otlp
+    endpoint: ""
+    service_name: noctifab
+    metrics:
+        enabled: true
+context:
+    mode: full
+    diff_window_lines: 15
+
+

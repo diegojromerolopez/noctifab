@@ -13,13 +13,56 @@ import (
 func DefaultConfig() *Config {
 	return &Config{
 		ConfigVersion: "1.0",
-		Orchestrator: OrchestratorConfig{
-			MaxToolsPerResponse:        5,
-			Concurrency:                3,
-			PollInterval:               Duration(5 * time.Minute),
-			MaxClarificationWait:       Duration(30 * time.Minute),
-			ClarificationTimeoutAction: "abort",
+		Agents: AgentsConfig{
+			Architecture:        "code_first",
+			MaxToolsPerResponse: 5,
+			ProductManager: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Planner: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Architect: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Generators: AgentRoleConfig{
+				Number:     3,
+				Iterations: 5,
+			},
+			Testers: AgentRoleConfig{
+				Number:     2,
+				Iterations: 3,
+			},
+			QA: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Security: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Performance: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			Docs: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
+			DevOps: AgentRoleConfig{
+				Number:     1,
+				Iterations: 2,
+			},
 		},
+		WorkspaceCache: WorkspaceCacheConfig{
+			Enabled: boolPtr(true),
+		},
+		PollInterval:               Duration(5 * time.Minute),
+		MaxClarificationWait:       Duration(30 * time.Minute),
+		ClarificationTimeoutAction: "abort",
 		Storage: StorageConfig{
 			Provider:     "sqlite",
 			ConnString:   ".noctifab/data/noctifab.db",
@@ -34,7 +77,6 @@ func DefaultConfig() *Config {
 			MaxRetries:         5,
 			RetryBackoff:       Duration(100 * time.Millisecond),
 			RetryBackoffFactor: 2.0,
-			MaxBudgetUSD:       10.0,
 			ResetPeriod:        "daily",
 			Failover: FailoverConfig{
 				Enabled:      false,
@@ -42,12 +84,16 @@ func DefaultConfig() *Config {
 				MaxCallLimit: 0,
 				Backends:     nil,
 			},
+			MaxTimeout:  Duration(60 * time.Second),
+			IdleTimeout: Duration(15 * time.Second),
+			Streaming:   boolPtr(true),
 		},
 		VCS: VCSConfig{
 			Provider:     "github",
-			Repository:   "",
+			Repository:   "local/repo",
 			BaseBranch:   "master",
 			BranchPrefix: "noctifab/",
+			UseWorktrees: true,
 			TokenEnv:     "GITHUB_TOKEN",
 			ConventionalCommits: ConventionalCommitConfig{
 				Enabled:      true,
@@ -77,7 +123,7 @@ func DefaultConfig() *Config {
 			TestCommand:        "go test -v ./...",
 			LinterCommand:      "golangci-lint run",
 			FormatterCommand:   "go fmt ./...",
-			ExcludePaths:       []string{"node_modules/", "vendor/", "bin/", "dist/", ".noctifab/"},
+			ExcludePaths:       []string{".noctifab"},
 			AllowedCommands:    []string{"go", "git", "npm", "python", "make"},
 			AutoInstallDeps:    false,
 			PackageManagers:    []string{"pip", "go", "brew", "curl", "npm"},
@@ -106,11 +152,26 @@ func DefaultConfig() *Config {
 			Exporter:    "otlp",
 			Endpoint:    "",
 			ServiceName: "noctifab",
+			Metrics: MetricsConfig{
+				Enabled: boolPtr(true),
+			},
 		},
 		SAST: SASTConfig{
 			Enabled:        false,
 			Scanners:       []string{"gosec"},
 			FailOnSeverity: "high",
+		},
+		Unblocker: UnblockerConfig{
+			Enabled:           true,
+			PollInterval:      Duration(30 * time.Second),
+			MaxRetries:        3,
+			StallThreshold:    Duration(5 * time.Minute),
+			ConflictThreshold: Duration(15 * time.Minute),
+			LLMAssessment:     true,
+		},
+		Context: ContextConfig{
+			Mode:            "full",
+			DiffWindowLines: 15,
 		},
 		LogLevel: "info",
 	}
@@ -134,4 +195,8 @@ func WriteDefaultConfig(path string) error {
 	}
 
 	return nil
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }

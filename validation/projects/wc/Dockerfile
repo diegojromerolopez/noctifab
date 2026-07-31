@@ -11,11 +11,11 @@
 FROM noctifab-validation:base AS noctifab-artifacts
 # No-op stage: just gives us a name to COPY --from below.
 
-FROM rust:1.84-alpine
+FROM rust:alpine
 
 RUN rustup component add rustfmt clippy
 
-RUN apk add --no-cache git bash docker-cli
+RUN apk add --no-cache git bash docker-cli curl build-base
 
 # Copy noctifab binary, validation projects, and the validate.sh harness
 # from the shared base image.

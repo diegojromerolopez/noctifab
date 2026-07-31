@@ -1,0 +1,675 @@
+# LLM Provider Reference
+
+This document covers all supported LLM providers, their configuration options, environment variables, API key setup, model capacity ranking, and dynamic fallback behaviour.
+
+> [!TIP]
+> noctifab fetches the live model list from each provider's `/models` endpoint at runtime. **Never hardcode model names in config if you want automatic fallback** — use the provider's recommended flagship model as `llm.model` and let the fallback engine handle the rest.
+
+---
+
+## Quick Reference
+
+| Provider | `llm.provider` value | Environment Variable | Default Base URL | Protocol |
+|---|---|---|---|---|
+| OpenAI | `openai` | `OPENAI_API_KEY` | `https://api.openai.com/v1` | OpenAI |
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | `https://api.anthropic.com/v1` | Anthropic |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` | `https://generativelanguage.googleapis.com/v1beta` | Gemini |
+| OpenCode | `opencode` | `OPENCODE_API_KEY` | `https://opencode.ai/api/v1` | OpenAI-compat |
+| Kimi / Moonshot | `kimi`, `moonshot` | `KIMI_API_KEY`, `MOONSHOT_API_KEY` | `https://api.moonshot.ai/v1` | OpenAI-compat |
+| Groq | `groq` | `GROQ_API_KEY` | `https://api.groq.com/openai/v1` | OpenAI-compat |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` | OpenAI-compat |
+| Qwen / DashScope | `qwen`, `dashscope` | `DASHSCOPE_API_KEY`, `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI-compat |
+| Together AI | `together` | `TOGETHER_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
+| Meta Llama | `llama`, `meta` | `LLAMA_API_KEY`, `META_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
+| HuggingFace | `huggingface` | `HUGGINGFACE_API_KEY`, `HF_TOKEN` | `https://api-inference.huggingface.co/v1` | OpenAI-compat |
+| Mistral | `mistral` | `MISTRAL_API_KEY` | `https://api.mistral.ai/v1` | OpenAI-compat |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` | OpenAI-compat |
+| Hermes (Nous Research) | `hermes` | `HERMES_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
+| Ollama | `ollama` | `OLLAMA_API_KEY` *(optional)* | `http://localhost:11434/v1` | OpenAI-compat |
+| xAI / Grok | `xai`, `grok` | `XAI_API_KEY`, `GROK_API_KEY` | `https://api.x.ai/v1` | OpenAI-compat |
+| Perplexity | `perplexity` | `PERPLEXITY_API_KEY` | `https://api.perplexity.ai` | OpenAI-compat |
+| Fireworks AI | `fireworks` | `FIREWORKS_API_KEY` | `https://api.fireworks.ai/inference/v1` | OpenAI-compat |
+| SambaNova | `sambanova` | `SAMBANOVA_API_KEY` | `https://api.sambanova.ai/v1` | OpenAI-compat |
+| Cohere | `cohere` | `COHERE_API_KEY`, `CO_API_KEY` | `https://api.cohere.com/v2` | OpenAI-compat |
+| Cerebras | `cerebras` | `CEREBRAS_API_KEY` | `https://api.cerebras.ai/v1` | OpenAI-compat |
+| NVIDIA NIM | `nvidia` | `NVIDIA_API_KEY` | `https://integrate.api.nvidia.com/v1` | OpenAI-compat |
+| AI21 Labs | `ai21` | `AI21_API_KEY` | `https://api.ai21.com/studio/v1` | OpenAI-compat |
+| Upstage | `upstage` | `UPSTAGE_API_KEY` | `https://api.upstage.ai/v1/solar` | OpenAI-compat |
+
+---
+
+## Named Provider Registries & Per-Agent Model Routing
+
+`noctifab` supports declaring a named registry of LLM providers (`llm.providers`), setting a global failover priority list (`llm.priority`), and overriding provider priority chains per agent role (`roles.<agent>.providers`).
+
+### Configuration Syntax
+
+```yaml
+llm:
+  # Global Default Failover Priority Chain
+  priority:
+    - "openai-primary"
+    - "anthropic-backup"
+    - "deepseek-coder"
+
+  # Named Provider Registry
+  providers:
+    - name: "openai-primary"
+      provider: "openai"
+      api_key_env: "OPENAI_API_KEY"
+
+    - name: "anthropic-backup"
+      provider: "anthropic"
+      api_key_env: "ANTHROPIC_API_KEY"
+      model: "claude-3-5-sonnet-latest"
+
+    - name: "deepseek-coder"
+      provider: "deepseek"
+      api_key_env: "DEEPSEEK_API_KEY"
+      model: "deepseek-coder"
+
+# Per-Agent Priority Overrides directly inside agents:
+agents:
+  generators:
+    number: 4
+    iterations: 5
+    providers:
+      - name: "deepseek-coder"
+      - name: "openai-primary"
+
+  testers:
+    number: 2
+    iterations: 3
+    providers:
+      - name: "openai-primary"
+      - name: "anthropic-backup"
+
+  qa:
+    number: 1
+    iterations: 2
+    providers:
+      - name: "anthropic-backup"
+      - name: "openai-primary"
+```
+
+---
+
+## Provider Details & Config Examples
+
+---
+
+### OpenAI
+
+**Models**: `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`
+**Fallback chain**: `gpt-4o` → `gpt-4o-mini` → `gpt-3.5-turbo`
+**Ranking**: tier keyword (`o1`, `flagship`, `o-mini`, `o-mini-high`, `gpt-4o`, `mini`, `turbo`, `instruct`, `lite`) + version multiplier.
+
+```yaml
+# .noctifab/secrets.yaml
+OPENAI_API_KEY: "sk-proj-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "openai"
+  model: "gpt-4o"
+  api_key: "secret:OPENAI_API_KEY"
+  max_retries: 3
+  streaming: true
+```
+
+**Multi-backend failover (OpenAI → Anthropic):**
+```yaml
+llms:
+  - provider: "openai"
+    model: "gpt-4o"
+    api_key: "secret:OPENAI_API_KEY"
+  - provider: "anthropic"
+    model: "claude-3-5-sonnet-latest"
+    api_key: "secret:ANTHROPIC_API_KEY"
+```
+
+---
+
+### Anthropic (Claude)
+
+**Models**: `claude-3-opus-*`, `claude-3-5-sonnet-*`, `claude-3-5-haiku-*`, `claude-3-7-sonnet-*`
+**Fallback chain**: `opus` → `sonnet` → `haiku`
+**Ranking**: tier keyword (`opus` > `sonnet` > `haiku`) + version multiplier × 10.
+
+```yaml
+# .noctifab/secrets.yaml
+ANTHROPIC_API_KEY: "sk-ant-api03-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "anthropic"
+  model: "claude-3-5-sonnet-latest"
+  api_key: "secret:ANTHROPIC_API_KEY"
+  max_retries: 3
+  streaming: true
+```
+
+---
+
+### Google Gemini
+
+**Models**: `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`
+**Fallback chain**: `2.5-pro` → `2.5-flash` → `2.0-flash` → `1.5-pro` → `1.5-flash`
+**Ranking**: model family weight + version × 5. Uses the Gemini-specific `sortGeminiModels` with `GeminiModelInfo.Rank`.
+
+```yaml
+# .noctifab/secrets.yaml
+GEMINI_API_KEY: "AIzaSy..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "gemini"
+  model: "gemini-2.5-pro"
+  api_key: "secret:GEMINI_API_KEY"
+  max_retries: 3
+  streaming: true
+```
+
+---
+
+### OpenCode
+
+**Models**: returned live from `https://opencode.ai/api/v1/models`
+**Ranking**: OpenAI-compatible tier keywords.
+
+```yaml
+# .noctifab/secrets.yaml
+OPENCODE_API_KEY: "oc-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "opencode"
+  model: "opencode-latest"
+  api_key: "secret:OPENCODE_API_KEY"
+```
+
+---
+
+### Kimi / Moonshot AI
+
+**Models**: `kimi-k3`, `kimi-k2.7`, `kimi-k2.6`, `kimi-k2.5`, `kimi-k2`
+**Fallback chain**: `kimi-k3` → `kimi-k2.7` → `kimi-k2.5`
+**Ranking**: generation number extracted from `k<N>` suffix × 10.
+
+```yaml
+# .noctifab/secrets.yaml
+KIMI_API_KEY: "..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "kimi"
+  model: "kimi-k3"
+  api_key: "secret:KIMI_API_KEY"
+  streaming: true
+```
+
+> Both `kimi` and `moonshot` are accepted as provider names and map to the same client.
+
+---
+
+### Groq
+
+**Models**: `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `gemma2-9b-it`, `mixtral-8x7b-32768`
+**Fallback chain**: size-based (`70b` → `8b`) or tier-based.
+**Ranking**: `StandardSizeWeights` parameter count ranking.
+
+```yaml
+# .noctifab/secrets.yaml
+GROQ_API_KEY: "gsk_..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "groq"
+  model: "llama-3.3-70b-versatile"
+  api_key: "secret:GROQ_API_KEY"
+  streaming: true
+```
+
+---
+
+### OpenRouter
+
+**Models**: unified access to 200+ models from all providers. Model names use `provider/model` format (e.g. `anthropic/claude-3-5-sonnet`, `google/gemini-2.5-pro`).
+**Ranking**: `StandardSizeWeights` + tier keywords across the unified catalog.
+
+```yaml
+# .noctifab/secrets.yaml
+OPENROUTER_API_KEY: "sk-or-v1-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "openrouter"
+  model: "anthropic/claude-3-5-sonnet"
+  api_key: "secret:OPENROUTER_API_KEY"
+  streaming: true
+```
+
+---
+
+### Qwen / DashScope (Alibaba Cloud)
+
+**Models**: `qwen-max`, `qwen-plus`, `qwen-turbo`, `qwen-long`, `qwen-coder-plus`
+**Fallback chain**: `qwen-max` → `qwen-plus` → `qwen-turbo`
+**Ranking**: tier keyword (`max` > `plus` > `turbo` > `long`) × base score.
+
+```yaml
+# .noctifab/secrets.yaml
+DASHSCOPE_API_KEY: "sk-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "qwen"
+  model: "qwen-max"
+  api_key: "secret:DASHSCOPE_API_KEY"
+  streaming: true
+```
+
+> Both `qwen` and `dashscope` are accepted as provider names.
+
+---
+
+### Together AI
+
+**Models**: broad open-weight catalog — `meta-llama/Llama-3.3-70B-Instruct-Turbo`, `mistralai/Mistral-7B-Instruct-v0.3`, etc.
+**Ranking**: `StandardSizeWeights` parameter count ranking.
+
+```yaml
+# .noctifab/secrets.yaml
+TOGETHER_API_KEY: "..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "together"
+  model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+  api_key: "secret:TOGETHER_API_KEY"
+  streaming: true
+```
+
+---
+
+### Meta Llama (via Together AI)
+
+**Models**: `Llama-3.1-405B-Instruct`, `Llama-3.3-70B-Instruct`, `Llama-3.1-8B-Instruct`
+**Fallback chain**: `405B` → `70B` → `8B`
+**Ranking**: `StandardSizeWeights` (405b→500, 70b→400, 8b→200).
+
+```yaml
+# .noctifab/secrets.yaml
+LLAMA_API_KEY: "..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "llama"
+  model: "Llama-3.1-405B-Instruct"
+  api_key: "secret:LLAMA_API_KEY"
+  streaming: true
+```
+
+> Both `llama` and `meta` are accepted as provider names.
+
+---
+
+### HuggingFace Inference API
+
+**Models**: any model hosted on HuggingFace Hub (e.g. `meta-llama/Meta-Llama-3.1-70B-Instruct`).
+**Ranking**: `StandardSizeWeights` extracted from model name.
+
+```yaml
+# .noctifab/secrets.yaml
+HF_TOKEN: "hf_..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "huggingface"
+  model: "meta-llama/Meta-Llama-3.1-70B-Instruct"
+  api_key: "secret:HF_TOKEN"
+  streaming: true
+```
+
+---
+
+### Mistral AI
+
+**Models**: `mistral-large-latest`, `mistral-small-latest`, `codestral-latest`, `open-mistral-nemo`
+**Fallback chain**: `mistral-large` → `mistral-small`
+**Ranking**: tier keyword (`large`, `codestral` > `medium` > `small`, `nemo`) × base score.
+
+```yaml
+# .noctifab/secrets.yaml
+MISTRAL_API_KEY: "..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "mistral"
+  model: "mistral-large-latest"
+  api_key: "secret:MISTRAL_API_KEY"
+  streaming: true
+```
+
+---
+
+### DeepSeek
+
+**Models**: `deepseek-r1`, `deepseek-v3`, `deepseek-coder`, `deepseek-chat`
+**Fallback chain**: `deepseek-r1` / `deepseek-coder` → `deepseek-chat`
+**Ranking**: tier keyword (`r1`, `v3`, `coder` > `chat`).
+
+```yaml
+# .noctifab/secrets.yaml
+DEEPSEEK_API_KEY: "sk-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "deepseek"
+  model: "deepseek-r1"
+  api_key: "secret:DEEPSEEK_API_KEY"
+  streaming: true
+```
+
+---
+
+### Hermes (Nous Research via Together AI)
+
+**Models**: `hermes-3-llama-3.1-405b`, `hermes-3-llama-3.1-70b`
+**Fallback chain**: `405b` → `70b`
+**Ranking**: `StandardSizeWeights`.
+
+```yaml
+# .noctifab/secrets.yaml
+HERMES_API_KEY: "..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "hermes"
+  model: "hermes-3-llama-3.1-405b"
+  api_key: "secret:HERMES_API_KEY"
+```
+
+---
+
+### Ollama (Self-Hosted)
+
+**Models**: any model pulled locally via `ollama pull`, e.g. `llama3.1:70b`, `llama3.1:8b`, `qwen2.5-coder:32b`.
+**Fallback chain**: size-based (`70b` → `8b`).
+**Ranking**: `StandardSizeWeights` extracted from the `:tag` suffix.
+
+```yaml
+# No API key needed for local Ollama.
+# .noctifab/config.yaml
+llm:
+  provider: "ollama"
+  model: "llama3.1:70b"
+  url: "http://localhost:11434/v1"  # override if Ollama runs on a custom host/port
+  streaming: true
+```
+
+> To use a remote Ollama instance with authentication:
+> ```yaml
+> llm:
+>   provider: "ollama"
+>   model: "llama3.1:70b"
+>   url: "https://my-ollama-host.example.com/v1"
+>   api_key: "secret:OLLAMA_API_KEY"
+> ```
+
+---
+
+### xAI / Grok
+
+**Models**: `grok-3`, `grok-3-mini`, `grok-2`, `grok-2-mini`, `grok-beta`
+**Fallback chain**: `grok-3` → `grok-2` → `grok-3-mini` → `grok-2-mini`
+**Ranking**: version number × 25 + mini penalty.
+
+```yaml
+# .noctifab/secrets.yaml
+XAI_API_KEY: "xai-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "xai"
+  model: "grok-3"
+  api_key: "secret:XAI_API_KEY"
+  streaming: true
+```
+
+> Both `xai` and `grok` are accepted as provider names.
+
+---
+
+### Perplexity
+
+**Models**: `sonar-deep-research`, `sonar-reasoning-pro`, `sonar-reasoning`, `sonar-pro`, `sonar`
+**Fallback chain**: `sonar-deep-research` → `sonar-reasoning-pro` → `sonar-reasoning` → `sonar-pro` → `sonar`
+**Ranking**: tier keyword (`deep-research` > `reasoning-pro` > `reasoning` > `pro`).
+
+```yaml
+# .noctifab/secrets.yaml
+PERPLEXITY_API_KEY: "pplx-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "perplexity"
+  model: "sonar-pro"
+  api_key: "secret:PERPLEXITY_API_KEY"
+  streaming: true
+```
+
+---
+
+### Fireworks AI
+
+**Models**: broad open-weight catalog — `accounts/fireworks/models/llama-v3p1-70b-instruct`, `accounts/fireworks/models/deepseek-r1`, etc.
+**Ranking**: `StandardSizeWeights` + DeepSeek tier keywords.
+
+```yaml
+# .noctifab/secrets.yaml
+FIREWORKS_API_KEY: "fw_..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "fireworks"
+  model: "accounts/fireworks/models/llama-v3p1-70b-instruct"
+  api_key: "secret:FIREWORKS_API_KEY"
+  streaming: true
+```
+
+---
+
+### SambaNova
+
+**Models**: `Meta-Llama-3.3-70B-Instruct`, `Meta-Llama-3.1-405B-Instruct`, `DeepSeek-R1`
+**Fallback chain**: `405B` → `70B` (size-based).
+**Ranking**: `StandardSizeWeights` + DeepSeek tier keywords.
+
+```yaml
+# .noctifab/secrets.yaml
+SAMBANOVA_API_KEY: "..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "sambanova"
+  model: "Meta-Llama-3.3-70B-Instruct"
+  api_key: "secret:SAMBANOVA_API_KEY"
+  streaming: true
+```
+
+---
+
+### Cohere
+
+**Models**: `command-r-plus`, `command-r`, `command-light`, `command-nightly`
+**Fallback chain**: `command-r-plus` → `command-r` → `command-light`
+**Ranking**: tier keyword (`r-plus` > `r` > `light`) + context bonus for `08-2024` or `nightly` variants.
+
+```yaml
+# .noctifab/secrets.yaml
+COHERE_API_KEY: "..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "cohere"
+  model: "command-r-plus"
+  api_key: "secret:COHERE_API_KEY"
+  streaming: true
+```
+
+---
+
+### Cerebras
+
+**Models**: `llama3.1-70b`, `llama3.1-8b`, and other Llama/Qwen variants optimised for Cerebras wafer-scale silicon.
+**Fallback chain**: size-based (`70b` → `8b`).
+**Ranking**: `StandardSizeWeights` + `scout`/`maverick` frontier tier bonus.
+
+> **Why Cerebras?** Cerebras delivers the highest raw token throughput available (orders of magnitude faster than GPU-based providers on large models), making it ideal for latency-critical agent loops.
+
+```yaml
+# .noctifab/secrets.yaml
+CEREBRAS_API_KEY: "csk-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "cerebras"
+  model: "llama3.1-70b"
+  api_key: "secret:CEREBRAS_API_KEY"
+  streaming: true
+```
+
+---
+
+### NVIDIA NIM
+
+**Models**: large open-weight catalog hosted on NVIDIA GPU infrastructure — `meta/llama-3.1-70b-instruct`, `nvidia/nemotron-70b-instruct-hf`, `mistralai/mistral-7b-instruct-v0.3`, etc.
+**Fallback chain**: size-based (`70b` → `8b`) or flagship (`nemotron`) → standard.
+**Ranking**: `StandardSizeWeights` + `nemotron`/`starcoder` flagship tier bonus.
+
+```yaml
+# .noctifab/secrets.yaml
+NVIDIA_API_KEY: "nvapi-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "nvidia"
+  model: "meta/llama-3.1-70b-instruct"
+  api_key: "secret:NVIDIA_API_KEY"
+  streaming: true
+```
+
+---
+
+### AI21 Labs (Jamba)
+
+**Models**: `jamba-large`, `jamba-mini` (and versioned variants like `jamba-large-1.7`)
+**Fallback chain**: `jamba-large` → `jamba-mini`
+**Ranking**: tier keyword (`large` > `mini`) + generation version multiplier.
+
+> **Why AI21 Jamba?** Jamba uses a hybrid SSM (Mamba) + Transformer architecture supporting 256k+ context windows at significantly lower cost than pure transformer models of equivalent quality.
+
+```yaml
+# .noctifab/secrets.yaml
+AI21_API_KEY: "..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "ai21"
+  model: "jamba-large"
+  api_key: "secret:AI21_API_KEY"
+  streaming: true
+```
+
+---
+
+### Upstage (Solar)
+
+**Models**: `solar-pro`, `solar-mini`
+**Fallback chain**: `solar-pro` → `solar-mini`
+**Ranking**: tier keyword (`pro` > `mini`) + generation number suffix.
+
+```yaml
+# .noctifab/secrets.yaml
+UPSTAGE_API_KEY: "up-..."
+
+# .noctifab/config.yaml
+llm:
+  provider: "upstage"
+  model: "solar-pro"
+  api_key: "secret:UPSTAGE_API_KEY"
+  streaming: true
+```
+
+---
+
+## Multi-Backend Failover Configuration
+
+The `llms:` list enables cross-provider failover. If the primary provider exhausts its fallback chain entirely, the `FailoverClient` advances to the next backend in the list.
+
+```yaml
+# .noctifab/secrets.yaml
+OPENAI_API_KEY: "sk-proj-..."
+ANTHROPIC_API_KEY: "sk-ant-..."
+GEMINI_API_KEY: "AIzaSy..."
+GROQ_API_KEY: "gsk_..."
+
+# .noctifab/config.yaml
+llms:
+  - provider: "openai"
+    model: "gpt-4o"
+    api_key: "secret:OPENAI_API_KEY"
+    streaming: true
+  - provider: "anthropic"
+    model: "claude-3-5-sonnet-latest"
+    api_key: "secret:ANTHROPIC_API_KEY"
+    streaming: true
+  - provider: "gemini"
+    model: "gemini-2.5-pro"
+    api_key: "secret:GEMINI_API_KEY"
+    streaming: true
+  - provider: "groq"
+    model: "llama-3.3-70b-versatile"
+    api_key: "secret:GROQ_API_KEY"
+    streaming: true
+
+llm:
+  failover:
+    cooldown: "5m"
+    max_call_limit: 0
+  max_budget_usd: 10.0
+```
+
+In the above config:
+1. `gpt-4o` is tried first. On rate-limit, the engine queries OpenAI's `/models` endpoint and falls back to `gpt-4o-mini` → `gpt-3.5-turbo` within OpenAI.
+2. If all OpenAI models are exhausted, the `FailoverClient` switches to Anthropic and repeats the same intra-provider chain.
+3. After Anthropic, Gemini is tried, then Groq.
+
+---
+
+## Custom Endpoint Override
+
+All providers support a `url:` field to override the default base URL. Useful for:
+- Self-hosted vLLM / LMDeploy instances
+- Azure OpenAI deployments
+- Corporate API proxies
+
+```yaml
+llm:
+  provider: "openai"
+  model: "gpt-4o"
+  url: "https://my-azure-openai.openai.azure.com/openai/deployments/gpt-4o"
+  api_key: "secret:AZURE_OPENAI_KEY"
+```
+
+---
+
+## Dynamic Model Fallback Behaviour
+
+See [architecture.md](architecture.md#3-dynamic-model-fallback-engine-provider-specific-capacity-ranking) for the full explanation of how models are ranked and selected. The core behaviour:
+
+1. The provider's live `/models` endpoint is queried on every fallback.
+2. Each model is scored by the provider's `ParseModelFunc`.
+3. The next lower-ranked model is selected and execution resumes transparently.
+4. If the current model is unrecognised (e.g. a brand-new model release), the safety valve selects the **lowest-ranked known model**, preventing a hard failure.

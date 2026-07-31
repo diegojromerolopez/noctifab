@@ -123,4 +123,59 @@ func TestOpenCodeProviderE2E(t *testing.T) {
 			t.Errorf("expected at least 2 calls, got %d", calls)
 		}
 	})
+
+	t.Run("when the opencode model glm-5.2 returns an error, it falls back to the next available lower model glm-5.1 and succeeds", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/models" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				resp := map[string]any{
+					"data": []map[string]any{
+						{"id": "glm-5.2"},
+						{"id": "glm-5.1"},
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+
+			var req map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			model, _ := req["model"].(string)
+			if model == "glm-5.2" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error":{"message":"internal error in glm-5.2"}}`))
+				return
+			}
+
+			if model == "glm-5.1" {
+				content := `{"reasoning":"fallback successful","actions":[{"tool":"noop","args":{}}]}`
+				resp := map[string]any{
+					"choices": []map[string]any{
+						{"message": map[string]any{"content": content}},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+
+			w.WriteHeader(http.StatusBadRequest)
+		}))
+		defer server.Close()
+
+		c := NewClient("opencode", "glm-5.2", "go-test-key", 1, 0, server.URL)
+		res, err := c.Complete(context.Background(), "Execute task: fallback test")
+		if err != nil {
+			t.Fatalf("unexpected error during fallback: %v", err)
+		}
+		if res == nil || res.Reasoning != "fallback successful" {
+			t.Fatalf("expected fallback response, got: %+v", res)
+		}
+	})
 }

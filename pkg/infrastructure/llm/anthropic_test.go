@@ -43,7 +43,7 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewAnthropicProviderClient(server.URL)
+		client := NewAnthropicProviderClient(server.URL, 0, 0, false)
 		res, err := client.Call(context.Background(), "claude-3-opus-20240229", "test-key", "hello")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -60,7 +60,7 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewAnthropicProviderClient(server.URL)
+		client := NewAnthropicProviderClient(server.URL, 0, 0, false)
 		_, err := client.Call(context.Background(), "claude-3-opus-20240229", "test-key", "hello")
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -68,7 +68,7 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 	})
 
 	t.Run("GetAvailableModels unsupported", func(t *testing.T) {
-		client := NewAnthropicProviderClient("")
+		client := NewAnthropicProviderClient("", 0, 0, false)
 		_, err := client.GetAvailableModels(context.Background(), "test-key")
 		if err == nil {
 			t.Fatal("expected error for GetAvailableModels on anthropic client, got nil")

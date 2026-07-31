@@ -76,6 +76,320 @@ Configured via `sandbox.idle_timeout_seconds` in `config.yaml` (default: 30s).
 A thread-safe channel queue that manages Git rebases and branch merges. When multiple tasks complete in parallel, the rebase queue serializes merges into the target branch to avoid merge conflicts and race conditions.
 
 ### 6. Command Mailbox (`pkg/services/command_channel.go`)
-Runs a lightweight REST API server binding loopback commands. If an agent raises a clarification question, a human operator or external CI/CD runner can POST answers directly to `/api/v1/clarifications/:id/resolve` to safely unblock execution.
+Runs a lightweight REST API server binding loopback commands on `127.0.0.1:18080`. The REST API exposes endpoints to manage stories, pause/resume/cancel cycles, resolve clarifications, and inject manual tasks. See [docs/api.md](api.md) for the complete endpoint reference.
 
 The mailbox exposes a **Wakeup channel** that fires whenever a command is enqueued. The orchestrator's OCC backoff loop (`updateStateWithRetry`) selects on this channel via `SleepWithInterrupt`, allowing operator commands (abort, model switch) to interrupt exponential backoff immediately instead of blocking for the full duration.
+
+---
+
+## Multi-Agent Roles & Team Pipeline
+
+Noctifab organizes execution into 12 specialized agent roles:
+
+| Role Key | Agent Name | Domain Scope & Responsibility |
+| :--- | :--- | :--- |
+| **`orchestrator`** | Orchestrator Agent | Coordinates state persistence, VCS branch rebasing, task assignment, and PR creation. |
+| **`product_manager`** | Product Manager Agent | Analyzes `SPEC.md` and existing user stories in `roadmap/`. Generates new User Stories or audits and enriches existing ones with explicit Definitions of Done (DoD), language-agnostic interface contracts, I/O formatting invariants, error prefixes, exit codes, and comprehensive edge-case scenario matrices before task planning starts. |
+| **`planner`** | Task Planner Agent | Decomposes User Stories into a Directed Acyclic Graph (DAG) of executable technical tasks. |
+| **`architect`** | Software Architect Agent | Audits package boundaries, system design, and cross-cutting architectural constraints. |
+| **`generators`** | Generator Agent | Writes production source code and initial feature logic in task branches. |
+| **`testers`** | Tester Agent | Independently writes black-box test suites (unit, integration, e2e) against public contracts. |
+| **`qa`** | QA Auditor Agent | Audits code/test quality by domain and executes refactoring passes. |
+| **`security`** | Security Auditor Agent | Executes SAST scanning and security vulnerability audits. |
+| **`performance`** | Performance Agent | Runs profilers, benchmark suites, and memory leak detection. |
+| **`docs`** | Documentation Agent | Maintains OpenAPI specs, README documentation, and inline code docstrings. |
+| **`devops`** | DevOps Release Agent | Generates Dockerfiles, Makefiles, and CI/CD release pipeline workflows. |
+| **`unblocker`** | Unblocker Daemon Agent | Continuously monitors execution pipelines for stalls, deadlocks, and task re-queueing. |
+
+---
+
+## Self-Healing & Anti-Stalling Resiliency
+
+To prevent execution stalls and guarantee progress under validation failures, `noctifab` implements self-healing at two distinct layers:
+
+### 1. Multi-Turn Agent Loop (Intra-Turn Healing)
+During the **Execute Phase**, Generator and Tester agents are not restricted to a single-turn completion. If they execute verification tools like `run_tests` or `run_linter` and encounter failures (compilation errors, test assertion failures, or policy violations), the orchestrator automatically captures the error output, appends it to the prompt context, and completes the LLM again in a loop of up to **5 turns**. This allows agents to fix formatting, syntax, and logic bugs immediately within a single run.
+
+### 2. General Watchdog Repair (Inter-Turn Healing)
+If a task completes its execution phase but fails the final test suite evaluation, the orchestrator intercepts the failure logs and invokes the `WatchdogRepair` handler. It supports three failure categories:
+- **Timeout**: Triggered when a test run hangs and is terminated by the liveness watchdog. The prompt focuses on resolving infinite loops, unjoined threads, and deadlocks.
+- **Compile**: Triggered when compilation fails. The prompt focuses on resolving syntax errors, type mismatches, and import problems.
+- **Test Logic**: Triggered when assertions fail. The prompt focuses on resolving incorrect test expectations or fixing logic implementations.
+
+The repair handler makes up to **3 repair attempts** autonomously to self-heal the codebase.
+
+### 3. Dynamic Model Fallback Engine (Provider-Specific Capacity Ranking)
+When an LLM call fails due to rate limits (HTTP 429), quota limits (HTTP 401/402), or server errors (HTTP 5xx), the orchestrator triggers the dynamic fallback pipeline (`getNextLowerModel`):
+
+1. **Live Endpoint Model Discovery**: Queries `GET /models` or `/v1/models` live from the provider API to fetch all currently active models. No static model lists are used.
+2. **Provider Capacity Ranking**: Invokes the provider's `ParseModelFunc` (registered in `ProviderSpec`) to compute a numerical `Rank` for each model, combining tier keywords, version numbers, and parameter size suffixes.
+3. **Descending Sort**: All models are sorted by `Rank` descending (highest capacity first).
+4. **Transparent Model Switch**: The model immediately below the failing one in the sorted list is selected and `Client.Model` is updated in-place. The task resumes without losing context.
+
+If the failing model is already the lowest-ranked model available, no fallback is selected and the error is surfaced to the caller.
+
+#### Fallback Chain Examples
+
+Each provider has its own capacity ranking formula. The following chains are verified by `TestModelFallbackChains` in [fallback_test.go](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/fallback_test.go).
+
+**Anthropic (claude-* via `parseAnthropicModel` — tier keyword ranking: opus > sonnet > haiku)**
+
+```
+claude-3-opus-20240229   [Rank: 430]  ← primary
+    ↓ fails
+claude-3-5-sonnet-latest [Rank: 335]  ← fallback 1
+    ↓ fails
+claude-3-5-haiku-latest  [Rank: 235]  ← fallback 2
+    ↓ fails
+(no fallback — surface error)
+```
+
+**OpenAI (gpt-* via `parseOpenAIModel` — tier keyword + version multiplier ranking)**
+
+```
+gpt-4o        [Rank: flagship tier + version×5]  ← primary
+    ↓ fails
+gpt-4o-mini   [Rank: compact tier + version×5]   ← fallback 1
+    ↓ fails
+gpt-3.5-turbo [Rank: lite tier + version×5]      ← fallback 2
+    ↓ fails
+(no fallback — surface error)
+```
+
+**Mistral (via `parseMistralModel` — large/codestral > medium > small)**
+
+```
+mistral-large-latest  [Rank: 40]  ← primary
+    ↓ fails
+mistral-small-latest  [Rank: 20]  ← fallback 1
+    ↓ fails
+(no fallback — surface error)
+```
+
+**Meta Llama / Together AI (via `parseLlamaModel` — parameter size ranking using `StandardSizeWeights`)**
+
+```
+Llama-3.1-405B-Instruct  [Rank: 531]  ← primary
+    ↓ fails
+Llama-3.3-70B-Instruct   [Rank: 433]  ← fallback 1
+    ↓ fails
+Llama-3.1-8B-Instruct    [Rank: 231]  ← fallback 2
+    ↓ fails
+(no fallback — surface error)
+```
+
+**DeepSeek (via `parseDeepSeekModel` — r1/v3/coder > chat)**
+
+```
+deepseek-coder  [Rank: 30]  ← primary
+    ↓ fails
+deepseek-chat   [Rank: 20]  ← fallback 1
+    ↓ fails
+(no fallback — surface error)
+```
+
+**xAI / Grok (via `parseXAIModel` — grok-3 > grok-2 > grok-3-mini > mini)**
+
+```
+grok-3       [Rank: 75]  ← primary
+    ↓ fails
+grok-2       [Rank: 50]  ← fallback 1
+    ↓ fails
+grok-3-mini  [Rank: 45]  ← fallback 2 (if available)
+    ↓ fails
+(no fallback — surface error)
+```
+
+**Perplexity (via `parsePerplexityModel` — deep-research > reasoning-pro > reasoning > pro)**
+
+```
+sonar-deep-research  [Rank: 50]  ← primary
+    ↓ fails
+sonar-reasoning-pro  [Rank: 40]  ← fallback 1
+    ↓ fails
+sonar-reasoning      [Rank: 30]  ← fallback 2
+    ↓ fails
+sonar-pro            [Rank: 20]  ← fallback 3
+    ↓ fails
+(no fallback — surface error)
+```
+
+**Cohere (via `parseCohereModel` — command-r-plus > command-r > command-light)**
+
+```
+command-r-plus  [Rank: 40]  ← primary
+    ↓ fails
+command-r       [Rank: 30]  ← fallback 1
+    ↓ fails
+command-light   [Rank: 20]  ← fallback 2
+    ↓ fails
+(no fallback — surface error)
+```
+
+**Kimi / Moonshot (via `parseKimiModel` — k3 > k2.7 > k2.6 > k2.5 > k2)**
+
+```
+kimi-k3    [Rank: 50]  ← primary
+    ↓ fails
+kimi-k2.7  [Rank: 40]  ← fallback 1
+    ↓ fails
+kimi-k2.5  [Rank: 20]  ← fallback 2
+    ↓ fails
+(no fallback — surface error)
+```
+
+**Qwen / DashScope (via `parseQwenModel` — max > plus > turbo)**
+
+```
+qwen-max    [Rank: 65]  ← primary
+    ↓ fails
+qwen-plus   [Rank: 55]  ← fallback 1
+    ↓ fails
+qwen-turbo  [Rank: 45]  ← fallback 2
+    ↓ fails
+(no fallback — surface error)
+```
+
+**Ollama / HuggingFace (via `parseOllamaModel` / `parseHuggingFaceModel` — parameter size using `StandardSizeWeights`)**
+
+```
+llama3.1:70b  [Rank: 431]  ← primary
+    ↓ fails
+llama3.1:8b   [Rank: 231]  ← fallback 1
+    ↓ fails
+(no fallback — surface error)
+```
+
+> **Implementation**: The complete `TestModelFallbackChains` test in [fallback_test.go](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/fallback_test.go) verifies all the above chains end-to-end, using real `ParseModelFunc` parsers and `selectLowerModelFromParsed` to simulate exactly what `getNextLowerModel` in [client.go](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/client.go) does at runtime.
+
+#### Fault Tolerance: New Model Resilience
+
+The fallback engine is designed to remain operational even when a provider releases models whose names are not yet recognised by the capacity parser. Three edge cases are explicitly handled and verified by `TestFallbackFaultTolerance` in [fallback_test.go](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/fallback_test.go):
+
+| Scenario | Behaviour |
+|---|---|
+| **Current model unrecognised by parser** (e.g. new tier keyword like `"claude-4-nova"`) | Safety valve selects the **lowest-ranked** known model from the provider's live `/models` list instead of failing |
+| **Current model fails `RequiredPrefix` filter** (e.g. provider renames a model family) | Same safety valve — falls back to the lowest-ranked successfully parsed model |
+| **Current model is the only available model** | Returns `""` — error is surfaced correctly; no infinite retry |
+| **Current model is already the lowest-ranked** | Returns `""` — error is surfaced correctly; no infinite retry |
+| **No models available from provider** | Returns `""` — emits a warning to stderr and surfaces error |
+
+The core guarantee is: **as long as the provider's `/models` endpoint returns at least one model that the parser recognises, the fallback engine will never fail with an empty candidate list due to an unrecognised current model name.**
+
+When a provider adopts a completely new naming convention (e.g., changing from `"claude-3-*"` to a scheme without the `"claude"` prefix), the `RequiredPrefix` in the parser should be updated or removed in the corresponding provider file (e.g. [anthropic.go](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/anthropic.go)). No other files need to be changed.
+
+### 4. Safety Circuit Breakers
+- **`max_actions`**: Specifies a global limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
+- **`max_duration`**: Specifies a story-level wall-clock timeout.
+- **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
+
+### 5. Unblocker Agent (Cross-Agent Stall Recovery)
+
+The **Unblocker Agent** (`pkg/services/unblocker.go`) is an autonomous daemon goroutine that runs on an independent timer alongside the orchestrator's task-dispatch loop. Unlike the Watchdog (which guards individual command execution) and WatchdogRepair (which heals test failures after completion), the Unblocker operates at the **pipeline level** — it periodically scans `ActiveAgents` and `Tasks` in the shared state to detect situations where the entire pipeline has stalled.
+
+**When it fires:** Every `unblocker.poll_interval` (default: `30s`). Configurable per run via `config.yaml` or `--unblocker-poll-interval`.
+
+**What it detects:**
+
+| Stall Reason | Signal | Threshold |
+|---|---|---|
+| `frozen_progress` | Task `IN_PROGRESS` with `UpdatedAt` stale | > `stall_threshold` (default: 5m) |
+| `orphaned_task` | Task `IN_PROGRESS` but no `WORKING` agent assigned | > `stall_threshold / 2` |
+| `agent_inconsistency` | Agent `WORKING` but its task is not `IN_PROGRESS` | Immediate (any age) |
+| `conflict_blocked` | Task `CONFLICT_BLOCKED` unresolved | > `conflict_threshold` (default: 15m) |
+
+**How it recovers:**
+
+1. **LLM Assessment** (when `unblocker.llm_assessment: true`, the default): Builds a structured prompt from the detected stalls and current pipeline state, calls the LLM, and parses the returned JSON action list.
+2. **Heuristic Fallback** (when `llm_assessment: false` or LLM call fails): Applies deterministic rules — resets frozen recoverable tasks to `PENDING`, permanently fails tasks that have exhausted retries.
+
+**Command dispatch:** All corrective actions are injected via the `CommandMailbox`, ensuring consistency with the OCC state model. Three new command types are available: `ResetTaskCmd`, `FailTaskCmd`, and `LogUnblockerActionCmd`.
+
+See [docs/unblocker_agent.md](unblocker_agent.md) for the full developer reference.
+
+---
+
+## Development Performance Speedups
+
+To support near-instantaneous development feedback loops, `noctifab` implements three latency optimization strategies:
+
+1. **Warm Compiler Caching (E2E Sandbox Caching):**
+   When executing validation tasks in Docker containers, the host mounts persistent compiler caches (e.g. `/go/pkg/mod` and `~/.cache/go-build` for Go; `.cargo/registry` and target mounts for Rust) directly into the containers. This prevents re-downloading packages and enables fast incremental compilations.
+
+2. **Heuristic Context Preloading:**
+   The context-gathering Reader phase is bypassed entirely if the files that a task plans to modify already exist in the repository. Instead of calling a heavy LLM to plan which files to inspect, the orchestrator automatically reads these target files using its local tools and loads their content directly into the context, shaving off critical seconds.
+
+3. **Zero-Delay Task Handoff:**
+   Whenever a scheduler loop run makes progress (i.e., a task completes or state is updated), the orchestrator immediately invokes the next schedule check without sleeping for `poll_interval`. Tasks are chained sequentially with no idle latency.
+
+4. **In-Memory Diagnostic Result Caching (`TaskDiagnosticCache`):**
+   During intra-turn multi-turn agent loops (`RunTesterAgent` and `RunGeneratorAgent`), the orchestrator instantiates an in-memory `TaskDiagnosticCache` that caches the execution results of read-only verification tools (`run_tests` and `run_linter`). Whenever an agent executes file-mutating actions (`write_file`, `edit_file`, `multi_replace_file_content`, `delete_file`), an internal `isDirty` boolean flag stored in RAM inside the cache struct is set to `true`, invalidating the cache. If an agent calls `run_tests` or `run_linter` again without modifying workspace files (`isDirty == false`), the orchestrator returns the cached result instantly (`0ms`), eliminating redundant subprocess executions.
+
+---
+
+## Orchestrator Execution Architecture Modes
+
+The orchestrator supports three distinct execution architecture modes configured via `agents.architecture` in `.noctifab/config.yaml`:
+
+### 1. `code_first` (Default, legacy alias `code_first_verification_loop`)
+The **Code-First Verification Loop** separates implementation from test verification:
+1. **Minimal Implementation Pass (Generator Agent)**: Scaffolds core types, function signatures, and minimal implementation logic first.
+2. **Test Characterization Pass (Tester Agent)**: Inspects the created code signatures and writes comprehensive unit and integration tests against them.
+3. **Refactor & Fulfill Pass (Generator Agent)**: Refactors and expands the implementation to satisfy all tests.
+
+### 2. `single_pass` (Legacy alias `single_pass_execution`)
+The **Single-Pass Execution** mode optimizes for maximum generation speed and minimum token latency:
+* A single Generator agent pass creates both the source code implementation and corresponding tests together in one turn.
+* Eliminates multi-pass turn delays for straightforward user stories and micro-specifications.
+
+### 3. `breadth_first` (Legacy alias `breadth_first_generation`, `bfg`)
+The **Breadth-First Generation** mode optimizes for rapid end-to-end prototype delivery across all user stories:
+* **Pass 1 (Broad Foundation / ~80% Feature Coverage)**: Generator and Tester implement core happy-path functionality across all tasks first, explicitly deferring cosmetic formatting, linter nitpicks, and obscure corner cases.
+* **Benevolent Judges (QA, Security, DevOps)**: Evaluates candidates based on functional happy paths and enforces the non-negotiable **Zero Regressions** rule.
+* **Iterative Refinement (Passes 2..N)**: Progressive passes expand edge-case coverage, error handling, linter compliance, and performance hardening.
+
+### 4. Specialized Multi-Agent Audit & Release Panel
+
+Configured via `agents:` in `.noctifab/config.yaml`:
+```yaml
+agents:
+  architecture: code_first
+
+  architect:
+    number: 1      # Pre-flight architecture pass (default: 1)
+    iterations: 2
+  generators:
+    number: 3      # Parallel Generator agents (default: 3)
+    iterations: 5
+  testers:
+    number: 2      # Parallel Tester agents (default: 2)
+    iterations: 3
+  qa:
+    number: 1      # QA Auditor agents (default: 1)
+    iterations: 2
+  security:
+    number: 1      # Security & SAST auditor agents (default: 1)
+    iterations: 2
+  performance:
+    number: 1      # Benchmark & profiler agents (default: 1)
+    iterations: 2
+  docs:
+    number: 1      # OpenAPI & docstring agents (default: 1)
+    iterations: 2
+  devops:
+    number: 1      # Dockerfile & CI pipeline agents (default: 1)
+    iterations: 2
+```
+
+#### Chronological Parallelization Pipeline
+- **Stage 1 (Pre-Flight):** `architect` runs on `SPEC.md` before story planning to validate domain boundaries and package layout.
+- **Stage 2 (Planning):** `planner` decomposes `SPEC.md` into the topological DAG task dependency graph.
+- **Stage 3 (Task Workers):** `testers` and `generators` execute concurrently in parallel Git Worktree sandboxes (`concurrency = generators.number`).
+- **Stage 4 (Parallel Audits):** `qa`, `security`, and `performance` run **in parallel background goroutines** on completed feature branches:
+  - `qa` catches tautological tests (`assert(true)`) and fragile mocks.
+  - `security` runs SAST scanners (`gosec`, `semgrep`) & checks memory safety.
+  - `performance` runs benchmark suites & memory leak profiling.
+- **Stage 5 (Release Assets):** `docs` (maintaining OpenAPI specs & docstrings) and `devops` (generating Dockerfiles & CI workflows) run right before final Git branch merge and PR creation.
+
+
+

@@ -79,7 +79,7 @@ func TestScenario_UpstreamFailurePruning(t *testing.T) {
 			}, nil
 		}
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		finalState, err := repo.Load(ctx)
@@ -165,7 +165,7 @@ func TestScenario_RollbackOnBuildBreakage(t *testing.T) {
 			}, nil
 		}
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		finalState, err := repo.Load(ctx)

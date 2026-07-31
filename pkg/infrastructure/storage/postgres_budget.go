@@ -18,26 +18,26 @@ func NewPostgresBudgetStore(db *sql.DB) *PostgresBudgetStore {
 	return &PostgresBudgetStore{db: db}
 }
 
-func (s *PostgresBudgetStore) GetDailyUsage(ctx context.Context, date string, provider string) (float64, error) {
-	var cost float64
+func (s *PostgresBudgetStore) GetDailyUsage(ctx context.Context, date string, provider string) (int64, error) {
+	var tokens int64
 	err := s.db.QueryRowContext(ctx,
-		"SELECT cost_usd FROM budget_usage WHERE date = $1 AND provider = $2",
+		"SELECT tokens_used FROM budget_usage WHERE date = $1 AND provider = $2",
 		date, provider,
-	).Scan(&cost)
+	).Scan(&tokens)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}
 	if err != nil {
 		return 0, fmt.Errorf("get daily usage: %w", err)
 	}
-	return cost, nil
+	return tokens, nil
 }
 
-func (s *PostgresBudgetStore) IncrementUsage(ctx context.Context, date string, provider string, costUSD float64) error {
+func (s *PostgresBudgetStore) IncrementUsage(ctx context.Context, date string, provider string, tokens int64) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO budget_usage (date, provider, cost_usd) VALUES ($1, $2, $3)
-		 ON CONFLICT(date, provider) DO UPDATE SET cost_usd = budget_usage.cost_usd + $3`,
-		date, provider, costUSD,
+		`INSERT INTO budget_usage (date, provider, tokens_used) VALUES ($1, $2, $3)
+		 ON CONFLICT(date, provider) DO UPDATE SET tokens_used = budget_usage.tokens_used + $3`,
+		date, provider, tokens,
 	)
 	if err != nil {
 		return fmt.Errorf("increment usage: %w", err)

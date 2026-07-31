@@ -87,8 +87,7 @@ Override the host path to mount by setting `NOCTIFAB_SECRETS_FILE`.
      (`tmp_verify_autonomy/`).
    - Runs `git init`, checks out branch `main`, commits the initial config,
      and sets up a local bare `origin` so `git push` works without a remote.
-   - Runs `noctifab init` then `noctifab start-one` (or `noctifab start --wait`
-     when `MODE=start`) using the input spec (`SPEC.md`).
+   - Runs `noctifab start` using the target directory or specification (`SPEC.md`).
      
    > [!IMPORTANT]
    > **Spec-Driven Validation Rule:** Checking in pre-written roadmap user stories (e.g. under `roadmap/`) for new validation projects is **strictly forbidden**. Validation projects must be defined and run solely based on `SPEC.md` to verify that `noctifab` is capable of autonomously decomposing specifications into user stories on the fly using its Product Manager Agent.

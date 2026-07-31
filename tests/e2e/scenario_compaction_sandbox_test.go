@@ -72,7 +72,7 @@ func TestScenario_ContextCompaction(t *testing.T) {
 			}, nil
 		}
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.NoError(t, err)
 
 		finalState, err := repo.Load(ctx)
@@ -152,7 +152,7 @@ func TestScenario_SandboxViolation(t *testing.T) {
 			}, nil
 		}
 
-		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 10.0)
+		err = runSimulatedOrchestrator(ctx, repo, client, workspace, 100000)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Sandbox violation: path resolves outside workspace")
 

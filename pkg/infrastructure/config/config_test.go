@@ -71,7 +71,7 @@ func TestLoad_BadValues(t *testing.T) {
 	_ = os.Setenv("NOCTIFAB_AGENTS_COUNT", "invalid-int")
 	cfg = &Config{}
 	applyEnvOverrides(cfg)
-	if cfg.Orchestrator.Concurrency != 0 {
+	if cfg.Agents.Generators.Number != 0 {
 		t.Error("expected Concurrency to remain 0 on invalid env value")
 	}
 	_ = os.Unsetenv("NOCTIFAB_AGENTS_COUNT")
@@ -80,7 +80,7 @@ func TestLoad_BadValues(t *testing.T) {
 	_ = os.Setenv("NOCTIFAB_INTERVAL", "invalid-duration")
 	cfg = &Config{}
 	applyEnvOverrides(cfg)
-	if time.Duration(cfg.Orchestrator.PollInterval) != 0 {
+	if time.Duration(cfg.PollInterval) != 0 {
 		t.Error("expected PollInterval to remain 0 on invalid env value")
 	}
 	_ = os.Unsetenv("NOCTIFAB_INTERVAL")
@@ -113,10 +113,10 @@ func TestLoad_BadFlags(t *testing.T) {
 	if cfg.AutoCommit {
 		t.Error("expected AutoCommit to remain false on invalid flag value")
 	}
-	if cfg.Orchestrator.Concurrency != 0 {
+	if cfg.Agents.Generators.Number != 0 {
 		t.Error("expected Concurrency to remain 0 on invalid flag value")
 	}
-	if time.Duration(cfg.Orchestrator.PollInterval) != 0 {
+	if time.Duration(cfg.PollInterval) != 0 {
 		t.Error("expected PollInterval to remain 0 on invalid flag value")
 	}
 	if cfg.OCCBackoffFactor != 0.0 {
@@ -246,6 +246,8 @@ func TestValidate(t *testing.T) {
 	})
 
 	t.Run("Missing VCS repository", func(t *testing.T) {
+		t.Setenv("NOCTIFAB_E2E", "")
+		t.Setenv("NOCTIFAB_VCS_REPO", "")
 		cfg := baseCfg()
 		cfg.VCS.Repository = ""
 		if err := cfg.Validate(); err == nil {
@@ -254,6 +256,9 @@ func TestValidate(t *testing.T) {
 	})
 
 	t.Run("Missing VCS token", func(t *testing.T) {
+		t.Setenv("NOCTIFAB_E2E", "")
+		t.Setenv("GITHUB_TOKEN", "")
+		t.Setenv("NOCTIFAB_VCS_TOKEN", "")
 		cfg := baseCfg()
 		cfg.VCS.TokenValue = ""
 		if err := cfg.Validate(); err == nil {

@@ -101,7 +101,7 @@ From the REPL prompt, enqueue your user story:
 ```
 Alternatively, for non-interactive execution (e.g., in CI/CD pipelines or headless scripts), run:
 ```bash
-noctifab start-one --input roadmap/US-001_auth_service.md --auto-commit
+noctifab start roadmap/US-001_auth_service.md
 ```
 
 ### Step 5: Interacting with the Loop (Human-in-the-Loop)

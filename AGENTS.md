@@ -8,6 +8,7 @@ Welcome, agent. This document outlines the rules, architecture, and coding const
 
 Before planning or executing any task in this codebase, you **must** read and understand:
 *   [SPEC.md](/SPEC.md) - The technical specification of the project.
+*   [TESTS.md](/TESTS.md) - The testing strategy, structures, and verification specifications.
 
 ---
 
@@ -22,11 +23,14 @@ To maintain modularity and high context compatibility, the following guidelines 
     *   **Dependency Injection (DI):** Do not hardcode dependencies. Provide all objects, configurations, and clients through constructors. Code must be built in a way that is easy to test (utilizing dependency injection to make components highly mockable and isolated).
     *   **SOLID:** Keep classes/structs focused on a single responsibility.
     *   **Domain-Driven Design (DDD):** Align packaging boundaries to domain logic (e.g., domain entities, value objects, and service interfaces), not technical categories.
+    *   **Provider Struct Composition (LLM Infrastructure):** All LLM provider clients must reside in dedicated per-provider source files (`pkg/infrastructure/llm/<provider>.go`). OpenAI-compatible providers must embed `*baseOpenAIClient` and use the declarative `NewModelParser` engine. Core dispatching in `client.go` must be data-driven via `ProviderSpec.NewClientFunc` with zero protocol `switch` statements.
+    *   **Verification vs. Validation Engineering Strategy:** Task execution is divided into two distinct stages: *Verification* (building minimal working functionality that compiles and satisfies baseline checks) and *Validation* (black-box behavioral testing against public contracts, CLI outputs, and API signatures). Tests must never assert internal module implementation details.
+    *   **Product Manager Definition of Done (DoD) Mandate:** Generated user stories (`roadmap/US-xxx.md`) must specify explicit public API signatures, binary executable paths, I/O formatting invariants, error prefixes, exit codes, number precision representations, and zero-failure test pass criteria before downstream task planning starts.
     *   **Project & Language Agnosticism:** Noctifab MUST NOT HAVE validation project-specific or language-specific code in its codebase. Noctifab is a dark factory agent; do not add specific instructions, context helpers, or code rules for particular validation projects or programming languages.
 3.  **Testing Strategy:**
     *   All code must be **100% unit tested**. Every Go package must be accompanied by unit tests.
     *   After making any change to the codebase, you **must** run the test suite to verify correctness.
-    *   Tests must reside in files ending with `_test.go` in the same directory as the target logic.
+    *   Tests must reside in files ending with `_test.go` in the same directory as the target logic. Detailed testing context and architecture details are documented in [TESTS.md](/TESTS.md).
     *   When writing new features, ensure corresponding unit tests are implemented concurrently.
     *   **How to Run Unit & Local Integration Tests:**
         *   Run all unit and in-process CLI integration tests locally:
@@ -52,6 +56,8 @@ To maintain modularity and high context compatibility, the following guidelines 
 6.  **Branching & Commit Guidelines:**
     *   **No Commits on Main**: Never create commits directly on the `main` branch. Always create a new branch with the changes.
     *   **CHANGELOG Updates**: Every commit must contain the corresponding changes documented in `CHANGELOG.md`, incrementing the version accordingly: minor version bump for features, and patch version bump for bug fixes.
+7.  **Resilience to Scaffold Errors:**
+    *   A bad scaffold or failing scaffold verification test must not stop development. It is mandatory for agents to continue making progress on implementing core business requirements even if there are scaffolding or setup errors. It is better to have an imperfect/partial solution that fulfills core requirements than to stall.
 
 ---
 

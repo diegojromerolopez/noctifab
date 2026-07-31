@@ -42,6 +42,7 @@ type Task struct {
 	Status           TaskStatus `json:"status"`
 	ChangeType       ChangeType `json:"change_type"`
 	AssignedTo       string     `json:"assigned_to"`
+	Progress         int        `json:"progress"`   // Completion percentage (0 to 100)
 	DependsOn        []string   `json:"depends_on"` // Can store parent task IDs or matching titles
 	TargetFiles      []string   `json:"target_files,omitempty"`
 	PartialChangelog []string   `json:"partial_changelog,omitempty"`

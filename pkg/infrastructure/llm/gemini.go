@@ -12,13 +12,42 @@ import (
 	"time"
 )
 
+func init() {
+	RegisterProvider(&ProviderSpec{
+		Name:           "gemini",
+		BaseURL:        "https://generativelanguage.googleapis.com/v1beta",
+		EnvKeys:        []string{"GEMINI_API_KEY"},
+		ParseModelFunc: parseGeminiModelProvider,
+		Protocol:       "gemini",
+		NewClientFunc: func(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+			return NewGeminiProviderClient(url, timeout, idleTimeout, streaming)
+		},
+	})
+}
+
+var parseGeminiModelProvider = NewModelParser(ParserConfig{
+	RequiredPrefix:    "gemini",
+	DefaultVersion:    1.5,
+	VersionRegexp:     `gemini-([0-9]+(?:\.[0-9]+)?)`,
+	VersionMultiplier: 10,
+	Tiers: []KeywordTier{
+		{Keywords: []string{"pro"}, Score: 40, TierName: "pro"},
+		{Keywords: []string{"flash"}, Score: 30, TierName: "flash"},
+		{Keywords: []string{"flash-lite", "flash_lite"}, Score: 20, TierName: "flash-lite"},
+		{Keywords: []string{"nano"}, Score: 10, TierName: "nano"},
+	},
+})
+
 type geminiProviderClient struct {
-	url string
+	url         string
+	timeout     time.Duration
+	idleTimeout time.Duration
+	streaming   bool
 }
 
 // NewGeminiProviderClient creates a ProviderClient for Gemini API.
-func NewGeminiProviderClient(url string) ProviderClient {
-	return &geminiProviderClient{url: url}
+func NewGeminiProviderClient(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+	return &geminiProviderClient{url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
 }
 
 func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
@@ -50,7 +79,12 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 		return nil, err
 	}
 
-	postCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	timeout := g.timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+
+	postCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
@@ -63,7 +97,7 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	}
 
 	client := &http.Client{
-		Timeout: 10 * time.Minute,
+		Timeout: timeout,
 		Transport: &http.Transport{
 			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 		},
@@ -91,10 +125,22 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	if !ok || len(candidates) == 0 {
 		return nil, fmt.Errorf("unexpected Gemini response: %s", string(respBody))
 	}
-	candidate := candidates[0].(map[string]any)
-	content := candidate["content"].(map[string]any)
-	parts := content["parts"].([]any)
-	part := parts[0].(map[string]any)
+	candidate, ok := candidates[0].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected Gemini response: candidate is not a map")
+	}
+	content, ok := candidate["content"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected Gemini response: content is not a map")
+	}
+	parts, ok := content["parts"].([]any)
+	if !ok || len(parts) == 0 {
+		return nil, fmt.Errorf("unexpected Gemini response: parts list is missing or empty")
+	}
+	part, ok := parts[0].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected Gemini response: part is not a map")
+	}
 	text, _ := part["text"].(string)
 	return []byte(text), nil
 }

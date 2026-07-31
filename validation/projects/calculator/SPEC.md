@@ -9,6 +9,7 @@ To keep the codebase modular, testable, and clean, the files must follow a Domai
 - `calculator.rb` - The CLI application main entry point.
 - `lib/calculator/engine.rb` - Core domain model containing mathematical operations.
 - `lib/calculator/cli.rb` - Interface layer for the CLI argument parsing and REPL loop.
+- `.rspec` - RSpec configuration specifying load paths (contains `-I spec`).
 - `spec/spec_helper.rb` - RSpec testing configuration.
 - `spec/unit/engine_spec.rb` - Unit tests for the core engine logic.
 - `spec/integration/cli_spec.rb` - Integration tests verifying command line interactions and REPL behavior.
@@ -68,21 +69,25 @@ All error messages must be printed to `stderr`.
 
 ## 3. Formatting & Linting
 
-1. **Style Guidelines:** All code must pass RuboCop linting without warnings or errors. The code generation process and any modifications must respect and use the `.rubocop.yml` style configuration located in the root folder of the project. Every time a feature is complete, the agent must run the linter process, and format the code until the linter passes. Run the linter command:
+1. **Style Guidelines:** All code must pass RuboCop linting without warnings or errors. The code generation process and any modifications must respect and use the [.rubocop.yml](.rubocop.yml) style configuration located in the root folder of the project. Every time a feature is complete, the agent must run the linter process, and format the code until the linter passes. Run the linter command:
    ```bash
    rubocop
    ```
+   > **CRITICAL:** The `.rubocop.yml` file is pre-configured and **must NOT be modified**. It already disables all metric cops (`Metrics/MethodLength`, `Metrics/AbcSize`, etc.) and relaxed RSpec cops (`RSpec/MultipleExpectations`, `RSpec/ExampleLength`, etc.) that would otherwise block the linter. Do not add, remove, or change any rules in `.rubocop.yml`. If `rubocop` fails, fix the **source code**, not the configuration file.
 2. **Standard Format:** Use 2 spaces for indentation, clean Ruby style, and define helper classes inside the `Calculator` namespace.
 
 ## 4. Verification Requirements
 
-1. **Unit Tests:** Verify all math operations, edge cases, and error cases in isolation using RSpec. CRITICAL: Keep unit test files simple, concise, and under 100 lines of code to prevent token truncation.
-2. **Integration Tests:** Verify execution modes (CLI arguments and REPL prompting) by capturing process stdout/stderr and verifying output formats. Keep integration test files simple, concise, and under 100 lines.
-3. **Execution Command:** All tests must pass cleanly:
+1. **Unit Tests:** Verify all math operations, edge cases, and error cases in isolation using RSpec. You MUST use RSpec for all tests. Do NOT use Minitest or any other testing framework. CRITICAL: Keep unit test files simple, concise, and under 100 lines of code to prevent token truncation.
+2. **Integration Tests:** Verify execution modes (CLI arguments and REPL prompting) by testing Ruby classes/modules directly or capturing I/O streams in-memory. Keep integration test files simple, concise, and under 100 lines.
+3. **Strict Testing Constraints:**
+   - **No Process Spawning:** Tests MUST NOT spawn sub-shell processes or call external commands (`Open3.capture3`, `system`, `exec`, `rake`, `bundle exec`) inside test blocks.
+   - **Test Code, Not Meta-Tooling:** Tests MUST test the application business logic in `lib/`, NOT the Rakefile, NOT RuboCop, and NOT the existence of test files or project metadata.
+   - **In-Memory Testing:** All tests MUST test Ruby objects and methods directly in-memory without heavy lifting or external process overhead.
+4. **Execution Command:** All tests must pass cleanly:
    ```bash
    rspec spec/
    ```
-
 
 ## 5. Product Manager Instructions
 
@@ -98,7 +103,7 @@ JSON Schema:
       "tool": "create_story",
       "args": {
         "filename": "roadmap/US-001.md",
-        "content": "# User Story 001: Implement Ruby Terminal Calculator\n\nAs a developer, I want to implement the complete Ruby terminal calculator so that users can perform mathematical operations in both CLI and interactive REPL modes.\n\n## Requirements\n- Initialize the Ruby project skeleton (Gemfile, .rubocop.yml, Rakefile, and spec/spec_helper.rb) dynamically as needed. Do NOT create a bin/setup script. Do NOT write any tests checking if files are executable, as file permissions cannot be modified in this sandbox.\n- CRITICAL: To prevent token truncation, all unit and integration test files written by the Tester Agent (e.g. spec/calculator/engine_spec.rb) MUST be kept simple, concise, and under 100 lines. Do NOT write verbose or repetitive tests.\n- CRITICAL: The Tester Agent is only authorized to write and edit files inside the spec/ directory. The Tester Agent must never write or edit files inside lib/ or the root directory.\n- CRITICAL: The Generator Agent is only authorized to write and edit implementation files (e.g. calculator.rb and lib/ calculator/ files). The Generator Agent must never modify files inside the spec/ directory.\n- Implement calculator.rb as the main entry point.\n- Implement lib/calculator/engine.rb containing mathematical operations: +, -, *, /, ^, %, sqrt. Do NOT create lib/calculator/core.rb.\n- Division by zero in lib/calculator/engine.rb must raise ZeroDivisionError if the divisor is 0 or 0.0.\n- Implement lib/calculator/cli.rb for argument parsing and interactive REPL mode.\n- Error handling: division by zero, negative square root, and invalid expression. Print errors to stderr and return correct exit codes.\n- Indentation: 2 spaces. Code must pass rubocop.\n\n## Validation Criteria\n- Unit tests in spec/unit/engine_spec.rb.\n- Integration tests in spec/integration/cli_spec.rb.\n- Run tests with rspec spec/.\n\n\n---\ndepends_on: []\nchange_type: new"
+        "content": "# User Story 001: Implement Ruby Terminal Calculator\n\nAs a developer, I want to implement the complete Ruby terminal calculator so that users can perform mathematical operations in both CLI and interactive REPL modes.\n\n## Requirements\n- Initialize the Ruby project skeleton (Gemfile, .rubocop.yml, Rakefile, .rspec, and spec/spec_helper.rb) dynamically as needed. Do NOT create a bin/setup script. Do NOT write any tests checking if files are executable, as file permissions cannot be modified in this sandbox.\n- You MUST use RSpec for all tests. Do NOT use Minitest or any other testing framework.\n- CRITICAL TESTING RULES: Tests MUST test the application code in lib/ directly in-memory. Tests MUST NOT test Rake tasks, RuboCop, or project file existence. Tests MUST NOT spawn sub-shell processes (Open3, system, exec, rake, bundle exec) or perform heavy lifting.\n- CRITICAL: To prevent token truncation, all unit and integration test files written by the Tester Agent (e.g. spec/unit/engine_spec.rb) MUST be kept simple, concise, and under 100 lines. Do NOT write verbose or repetitive tests.\n- CRITICAL: The Tester Agent is only authorized to write and edit files inside the spec/ directory. The Tester Agent must never write or edit files inside lib/ or the root directory.\n- CRITICAL: The Generator Agent is only authorized to write and edit implementation files (e.g. calculator.rb and lib/ calculator/ files). The Generator Agent must never modify files inside the spec/ directory.\n- Implement calculator.rb as the main entry point.\n- Implement lib/calculator/engine.rb containing mathematical operations: +, -, *, /, ^, %, sqrt. Do NOT create lib/calculator/core.rb.\n- Division by zero in lib/calculator/engine.rb must raise ZeroDivisionError if the divisor is 0 or 0.0.\n- Implement lib/calculator/cli.rb for argument parsing and interactive REPL mode.\n- Error handling: division by zero, negative square root, and invalid expression. Print errors to stderr and return correct exit codes.\n- Indentation: 2 spaces. Code must pass rubocop.\n\n## Validation Criteria\n- Unit tests in spec/unit/engine_spec.rb.\n- Integration tests in spec/integration/cli_spec.rb.\n- Run tests with rspec spec/.\n\n\n---\ndepends_on: []\nchange_type: new"
       }
     }
   ]
