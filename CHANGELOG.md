@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.9] - 2026-07-31
+
+### Fixed
+- **500-Line Code File Limit Compliance**: Refactored Go source code and test files exceeding 500 lines into smaller domain helper modules (`pkg/services/orchestrator_generator.go`, `pkg/services/orchestrator_execute_helpers.go`, `pkg/infrastructure/config/config_validation_test.go`, and `tests/e2e/scenario_simulation_test.go`), achieving 100% compliance with `AGENTS.md` section 2.1 rules.
+- **Provider Struct Composition Data-Driven Dispatching**: Removed legacy `if provider == "gemini"` hardcoded logic from `getNextLowerModel()` in `pkg/infrastructure/llm/client.go` by registering `ParseModelFunc` on Gemini's `ProviderSpec`, making LLM lower-model fallback 100% data-driven across all providers.
+- **Command Context Wiring**: Replaced un-cancellable `context.Background()` calls for `rebaseQueue` and `mailbox` daemons in `cmd/noctifab/cli/start.go` with the cancellable root command context, enabling graceful shutdown on process termination signals.
+
 ## [0.18.8] - 2026-07-31
 
 ### Fixed

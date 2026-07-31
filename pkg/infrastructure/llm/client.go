@@ -224,58 +224,6 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 	provider := strings.ToLower(c.Provider)
 
-	if provider == "gemini" {
-		pClient := NewGeminiProviderClient(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-		available, err := pClient.GetAvailableModels(ctx, apiKey)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "⚠ Warning: failed to query available models from %s: %v.\n", c.Provider, err)
-			return ""
-		}
-
-		var parsedModels []*GeminiModelInfo
-		for _, m := range available {
-			if info, ok := parseGeminiModel(m); ok {
-				parsedModels = append(parsedModels, info)
-			}
-		}
-
-		if len(parsedModels) == 0 {
-			return ""
-		}
-
-		sortGeminiModels(parsedModels)
-
-		currentInfo, _ := parseGeminiModel(c.Model)
-
-		var nextModel string
-		foundCurrent := false
-		for i, m := range parsedModels {
-			normM := strings.TrimPrefix(strings.ToLower(m.Name), "models/")
-			normCurrent := strings.TrimPrefix(strings.ToLower(c.Model), "models/")
-			if normM == normCurrent {
-				foundCurrent = true
-				if i+1 < len(parsedModels) {
-					nextModel = parsedModels[i+1].Name
-				}
-				break
-			}
-		}
-
-		if !foundCurrent && currentInfo != nil {
-			for _, m := range parsedModels {
-				if m.Version < currentInfo.Version {
-					nextModel = m.Name
-					break
-				} else if m.Version == currentInfo.Version && m.Rank < currentInfo.Rank {
-					nextModel = m.Name
-					break
-				}
-			}
-		}
-
-		return nextModel
-	}
-
 	var pClient ProviderClient
 	spec, _ := GetProviderSpec(provider)
 	if spec != nil && spec.NewClientFunc != nil {
@@ -301,13 +249,11 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 		}
 	}
 
-	if len(parsedModels) > 1 {
-		if next := selectLowerModelFromParsed(c.Model, parsedModels); next != "" {
-			return next
-		}
+	if len(parsedModels) == 0 {
+		return ""
 	}
 
-	return ""
+	return selectLowerModelFromParsed(c.Model, parsedModels)
 }
 
 // httpError is returned by provider Call methods on non-2xx responses.

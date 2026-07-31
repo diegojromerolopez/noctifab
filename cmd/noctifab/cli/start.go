@@ -254,8 +254,12 @@ var startCmd = &cobra.Command{
 				cfg.VCS.BaseBranch = "main"
 			}
 		}
+		cmdCtx := cmd.Context()
+		if cmdCtx == nil {
+			cmdCtx = context.Background()
+		}
 		rebaseQueue := services.NewRebaseQueue(gitClient)
-		go rebaseQueue.Start(context.Background())
+		go rebaseQueue.Start(cmdCtx)
 
 		profilesMap := make(map[string]services.ProfileConfig)
 		for role, prof := range cfg.Profiles {
@@ -308,7 +312,7 @@ var startCmd = &cobra.Command{
 		}
 
 		mailbox := services.NewCommandMailbox(repo)
-		go mailbox.Start(context.Background())
+		go mailbox.Start(cmdCtx)
 
 		// Execute all enqueued user stories sequentially
 		for _, currentStoryFile := range storyFiles {

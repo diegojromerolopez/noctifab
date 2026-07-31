@@ -14,15 +14,29 @@ import (
 
 func init() {
 	RegisterProvider(&ProviderSpec{
-		Name:     "gemini",
-		BaseURL:  "https://generativelanguage.googleapis.com/v1beta",
-		EnvKeys:  []string{"GEMINI_API_KEY"},
-		Protocol: "gemini",
+		Name:           "gemini",
+		BaseURL:        "https://generativelanguage.googleapis.com/v1beta",
+		EnvKeys:        []string{"GEMINI_API_KEY"},
+		ParseModelFunc: parseGeminiModelProvider,
+		Protocol:       "gemini",
 		NewClientFunc: func(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
 			return NewGeminiProviderClient(url, timeout, idleTimeout, streaming)
 		},
 	})
 }
+
+var parseGeminiModelProvider = NewModelParser(ParserConfig{
+	RequiredPrefix:    "gemini",
+	DefaultVersion:    1.5,
+	VersionRegexp:     `gemini-([0-9]+(?:\.[0-9]+)?)`,
+	VersionMultiplier: 10,
+	Tiers: []KeywordTier{
+		{Keywords: []string{"pro"}, Score: 40, TierName: "pro"},
+		{Keywords: []string{"flash"}, Score: 30, TierName: "flash"},
+		{Keywords: []string{"flash-lite", "flash_lite"}, Score: 20, TierName: "flash-lite"},
+		{Keywords: []string{"nano"}, Score: 10, TierName: "nano"},
+	},
+})
 
 type geminiProviderClient struct {
 	url         string
