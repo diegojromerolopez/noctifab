@@ -53,26 +53,20 @@ Overall, Noctifab successfully demonstrated autonomous roadmap generation, multi
 
 ## 4. Actionable Proposals to Accelerate Development Speed
 
-### 🚀 Proposal 1: Auto-Fix Pre-Step & Linter Iteration Cap
+### 🚀 Proposal 1: Auto-Fix Pre-Step & Linter Iteration Cap (Resolves Linter Stalls)
 To prevent agents from getting stuck in linter loops like `calculator`:
-1. **Auto-Fixer Executed First**: Automatically run linter auto-fix tools (e.g. `rubocop -a`, `go fmt`, `prettier --write`) **before** invoking linter diagnostic checks.
+1. **Auto-Fixer Executed First**: Automatically run linter auto-fix tools (e.g. `rubocop -a`, `go fmt`, `prettier --write`) **before** invoking diagnostic linter checks.
 2. **Cap Linter Retries**: Limit linter fix iterations per task to **maximum 3 attempts**. If linter offenses persist after 3 retries, automatically log the offense as non-blocking warning or surface explicit file-rename instructions to the agent.
 
-### 🚀 Proposal 2: API Key Rotation & Concurrency Queue
+### 🚀 Proposal 2: API Key Rotation & Concurrency Queue (Resolves Rate Limits)
 To avoid HTTP 429 rate limit stalls when running validation projects in parallel:
 1. **Multi-Key Support**: Support comma-separated API keys in `secrets.yaml` (`OPENCODE_API_KEYS: "key1,key2,key3"`) with round-robin rotation.
 2. **Local Token Bucket / Queue**: Implement a central concurrency semaphore in `make validate-all` to space out requests across containers.
 
-### 🚀 Proposal 3: Strict Non-Text Keywords & Health Ping for Latest Model Alias
-1. **Filter Non-Text Models**: Explicitly exclude `"image"`, `"vision"`, `"audio"`, `"video"`, `"computer-use"`, and `"preview"` from Gemini and OpenAI provider parsers.
-2. **Pre-flight Health Ping**: Verify model response with a lightweight 1-token test ping before caching the `"latest"` resolved alias.
-
-### 🚀 Proposal 4: Roadmap User Story Hard Cap (Max 3–5 Stories)
-1. **Cap Story Count**: Enforce a maximum limit of **3 to 5 user stories** per roadmap generation pass for standard validation specifications.
-2. **Chunked Iterative Sprints**: Require the Product Manager agent to group requirements into high-level features rather than atomic micro-stories.
-
-### 🚀 Proposal 5: Enforce Native JSON Mode Across All OpenAI-Compatible Providers
-1. Set `"response_format": { "type": "json_object" }` on all supported provider clients (OpenAI, Gemini, OpenCode, DeepSeek, Mistral) to guarantee strict JSON formatting without markdown wrappers.
+### 🚀 Proposal 3: Product Manager User Story Hard Cap (Resolves Over-Decomposition)
+To prevent generating excessive micro-stories (such as the 27 user stories in `frontpunch`):
+1. **Cap Story Count**: Enforce `max_user_stories: 5` in `AgentsConfig` for Product Manager roadmap generation.
+2. **Post-Generation Validation Check**: If the Product Manager agent generates more stories than `max_user_stories`, trigger an automated consolidation pass to merge micro-stories into broader acceptance criteria.
 
 ---
 
