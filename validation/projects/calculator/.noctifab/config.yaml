@@ -59,6 +59,7 @@ llm:
         - gemini-primary
         - opencode-primary
         - huggingface-kimi
+        - openrouter-backup
     providers:
         - name: gemini-primary
           provider: gemini
@@ -86,6 +87,15 @@ llm:
           retry_backoff: 100ms
           max_timeout: 60s
           idle_timeout: 15s
+          streaming: true
+        - name: openrouter-backup
+          provider: openrouter
+          model: latest
+          api_keys: OPENROUTER_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 15s
+          idle_timeout: 10s
           streaming: true
 
 vcs:
