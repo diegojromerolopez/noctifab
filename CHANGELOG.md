@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Universal "latest" Model Alias Support Across All LLM Providers**: Implemented dynamic `/models` endpoint model resolution and `ExcludedKeywords` filtering for all LLM providers (`openai`, `anthropic`, `gemini`, `mistral`, `deepseek`, `hermes`, `ollama`, `huggingface`, `kimi`, `qwen`, `llama`, `xai`, `perplexity`, `opencode`, etc.).
 - **Comprehensive Multi-Provider Latest Model Resolution Unit Tests**: Implemented `TestProvidersLatestAliasResolution` in `pkg/infrastructure/llm/providers_latest_test.go` with authentic mock HTTP `/models` responses verifying automatic resolution of `"latest"` model aliases across all LLM providers.
+- **Validation Project Monitoring Guidelines in AGENTS.md**: Added periodic 60-second status reporting specifications and stuck-detection rules (`Stuck?`, `Tests (Passed/Total)`, `Elapsed Time`, `Last Log Activity`, and `Completed ✅` emoji status indicator) for validation project execution matrix.
 
 ## [0.18.11] - 2026-08-01
 
