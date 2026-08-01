@@ -203,7 +203,7 @@ agents:
   - **`name`** (String): Unique identifier for the provider (e.g. `openai-primary`, `anthropic-backup`, `ollama-local`).
   - **`provider`** (String): LLM provider client backend. Options: `openai`, `anthropic`, `gemini`, `opencode`, `kimi`, `moonshot`, `groq`, `openrouter`, `qwen`, `dashscope`, `together`, `llama`, `meta`, `huggingface`, `mistral`, `deepseek`, `hermes`, `ollama`, `xai`, `perplexity`, `fireworks`, `sambanova`, `cohere`, `cerebras`, `nvidia`, `ai21`, `upstage`.
   - **`model`** (String): Optional fixed model override (e.g. `claude-3-5-sonnet-latest`, `gpt-4o-mini`). Omit for dynamic capacity auto-selection.
-  - **`api_key`** / **`api_key_env`** (String): API authentication key value or environment variable name.
+  - **`api_key`** / **`api_keys`** (String or List of Strings): API authentication key value, secret reference, or secret name(s) in `secrets.yaml` / environment variables.
   - **`url`** (String): Endpoint URL override (required for self-hosted models or `ollama`).
   - **`max_retries`** / **`retry_backoff`** / **`max_timeout`**: Resilient retries and timeout constraints.
 - **`roles.<agent>.providers`** (List of Agent Provider Refs): Role-specific provider priority list. Allows configuring different model priorities per agent role (`architect`, `planner`, `generator`, `tester`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`).
@@ -215,7 +215,7 @@ agents:
   - **`enabled`** (Boolean): Auto-route failed calls to alternate providers when true.
   - **`cooldown`** (Duration): Time to temporarily quarantine a failed backend model.
   - **`max_call_limit`** (Integer): Maximum consecutive failover API calls allowed.
-  - **`backends`** (List): Alternate backends definition list (containing `provider`, `model`, `api_key_env`, `url`, `max_retries`).
+  - **`backends`** (List): Alternate backends definition list (containing `provider`, `model`, `api_keys`, `url`, `max_retries`).
 
 ---
 
@@ -543,7 +543,7 @@ llm:
     backends:
       - provider: "openai"
         model: "gpt-4o"
-        api_key_env: "OPENAI_API_KEY"
+        api_keys: "OPENAI_API_KEY"
 
 vcs:
   provider: "github"

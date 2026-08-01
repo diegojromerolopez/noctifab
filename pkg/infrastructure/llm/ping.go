@@ -56,7 +56,7 @@ func classifyPingError(provider string, err error) error {
 	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "401") || strings.Contains(msg, "Unauthorized") || strings.Contains(msg, "invalid_api_key") || strings.Contains(msg, "Authentication Fails"):
-		return fmt.Errorf("LLM provider %s rejected the API key (HTTP 401). Check that api_key/api_key_env points to a valid key for the configured provider", provider)
+		return fmt.Errorf("LLM provider %s rejected the API key (HTTP 401). Check that api_keys points to a valid key for the configured provider", provider)
 	case strings.Contains(msg, "403") || strings.Contains(msg, "Forbidden"):
 		return fmt.Errorf("LLM provider %s returned 403 Forbidden. The key may lack model-listing scope or be rate-limited; verify key permissions at the provider dashboard", provider)
 	case strings.Contains(msg, "429") || strings.Contains(msg, "RESOURCE_EXHAUSTED") || strings.Contains(msg, "Quota") || strings.Contains(msg, "quota"):

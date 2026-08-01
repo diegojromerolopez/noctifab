@@ -109,7 +109,7 @@ type FailoverConfig struct {
 type FailoverBackend struct {
 	Provider    string   `yaml:"provider"`
 	Model       string   `yaml:"model"`
-	APIKeyEnv   string   `yaml:"api_key_env"`
+	APIKeys     APIKeys  `yaml:"api_keys"`
 	URL         string   `yaml:"url"`
 	MaxRetries  int      `yaml:"max_retries"`
 	IdleTimeout Duration `yaml:"idle_timeout"`
@@ -152,7 +152,6 @@ type ProviderSpec struct {
 	Provider           string   `yaml:"provider"`
 	Model              string   `yaml:"model,omitempty"`
 	APIKey             string   `yaml:"api_key,omitempty"`
-	APIKeyEnv          string   `yaml:"api_key_env,omitempty"` // Legacy alias
 	APIKeys            APIKeys  `yaml:"api_keys,omitempty"`
 	APIKeyValue        string   `yaml:"-"`
 	APIKeyPool         []string `yaml:"-"`
@@ -172,7 +171,6 @@ type LLMConfig struct {
 	Model              string         `yaml:"model"`
 	Temperature        float64        `yaml:"temperature"`
 	APIKey             string         `yaml:"api_key"`
-	APIKeyEnv          string         `yaml:"api_key_env"` // Legacy alias
 	APIKeys            APIKeys        `yaml:"api_keys"`
 	APIKeyValue        string         `yaml:"-"`
 	APIKeyPool         []string       `yaml:"-"`

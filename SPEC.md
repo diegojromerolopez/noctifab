@@ -1855,7 +1855,7 @@ llm:
   provider: "gemini"            # Options: gemini (Gemini), anthropic (Claude), openai (ChatGPT/GPT-4o), ollama
   model: "gemini-1.5-pro"       # Target LLM model identifier
   temperature: 0.0              # Default temperature for completions
-  api_key_env: "GEMINI_API_KEY" # Environment variable containing the secret API token/credentials
+  api_keys: "GEMINI_API_KEY" # Environment variable containing the secret API token/credentials
   max_retries: 10               # Max retries for outbound HTTP requests
   retry_backoff: "100ms"        # Base delay time duration for exponential backoff (e.g. retry_backoff * 2^retry)
   retry_backoff_factor: 2.0     # Multiplier factor for exponential backoff retry logic
@@ -1867,7 +1867,7 @@ llm:
     backends:
       - provider: "gemini"
         model: "gemini-2.5-flash"
-        api_key_env: "GEMINI_API_KEY"
+        api_keys: "GEMINI_API_KEY"
 
 vcs:
   provider: "github"            # Options: github, gitlab

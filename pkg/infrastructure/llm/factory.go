@@ -62,7 +62,10 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 	if cfg.LLM.Failover.Enabled && len(cfg.LLM.Failover.Backends) > 0 {
 		backends := make([]NamedClient, 0, len(cfg.LLM.Failover.Backends))
 		for _, b := range cfg.LLM.Failover.Backends {
-			apiKey := os.Getenv(b.APIKeyEnv)
+			var apiKey string
+			if len(b.APIKeys) > 0 {
+				apiKey = os.Getenv(b.APIKeys[0])
+			}
 			client := NewClient(b.Provider, b.Model, apiKey, b.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), b.URL)
 			if cfg.LLM.MaxTimeout > 0 {
 				client.Timeout = time.Duration(cfg.LLM.MaxTimeout)

@@ -130,9 +130,6 @@ func applySecretsToConfig(cfg *Config, secrets map[string]string) {
 		if len(cfg.LLM.Providers[i].APIKeys) > 0 {
 			keySources = append(keySources, cfg.LLM.Providers[i].APIKeys...)
 		}
-		if cfg.LLM.Providers[i].APIKeyEnv != "" {
-			keySources = append(keySources, cfg.LLM.Providers[i].APIKeyEnv)
-		}
 		defaultEnv := strings.ToUpper(cfg.LLM.Providers[i].Provider) + "_API_KEY"
 
 		pool, primary := resolveSecretKeys(keySources, defaultEnv, secrets)

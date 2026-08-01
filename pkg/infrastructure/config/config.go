@@ -102,9 +102,6 @@ func resolveProviderSpecSecret(p *ProviderSpec) {
 			if len(p.APIKeys) > 0 {
 				keySources = append(keySources, p.APIKeys...)
 			}
-			if p.APIKeyEnv != "" {
-				keySources = append(keySources, p.APIKeyEnv)
-			}
 			defaultEnv := strings.ToUpper(p.Provider) + "_API_KEY"
 
 			pool, primary := resolveSecretKeys(keySources, defaultEnv, nil)
@@ -123,9 +120,6 @@ func resolveSingleLLMSecret(llm *LLMConfig) {
 			var keySources []string
 			if len(llm.APIKeys) > 0 {
 				keySources = append(keySources, llm.APIKeys...)
-			}
-			if llm.APIKeyEnv != "" {
-				keySources = append(keySources, llm.APIKeyEnv)
 			}
 			defaultEnv := strings.ToUpper(llm.Provider) + "_API_KEY"
 

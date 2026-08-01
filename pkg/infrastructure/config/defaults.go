@@ -73,7 +73,6 @@ func DefaultConfig() *Config {
 			Provider:           "openai",
 			Model:              "latest",
 			Temperature:        0.0,
-			APIKeyEnv:          "",
 			URL:                "",
 			MaxRetries:         5,
 			RetryBackoff:       Duration(100 * time.Millisecond),

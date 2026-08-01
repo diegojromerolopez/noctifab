@@ -56,16 +56,16 @@ llm:
   providers:
     - name: "openai-primary"
       provider: "openai"
-      api_key_env: "OPENAI_API_KEY"
+      api_keys: "OPENAI_API_KEY"
 
     - name: "anthropic-backup"
       provider: "anthropic"
-      api_key_env: "ANTHROPIC_API_KEY"
+      api_keys: "ANTHROPIC_API_KEY"
       model: "claude-3-5-sonnet-latest"
 
     - name: "deepseek-coder"
       provider: "deepseek"
-      api_key_env: "DEEPSEEK_API_KEY"
+      api_keys: "DEEPSEEK_API_KEY"
       model: "deepseek-coder"
 
 # Per-Agent Priority Overrides directly inside agents:

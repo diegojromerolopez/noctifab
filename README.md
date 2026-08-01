@@ -411,17 +411,17 @@ llm:
   providers:
     - name: "deepseek-coder"
       provider: "deepseek"
-      api_key_env: "DEEPSEEK_API_KEY"
+      api_keys: "DEEPSEEK_API_KEY"
       model: "deepseek-coder"
 
     - name: "openai-primary"
       provider: "openai"
-      api_key_env: "OPENAI_API_KEY"
+      api_keys: "OPENAI_API_KEY"
       model: "gpt-4o"
 
     - name: "anthropic-reviewer"
       provider: "anthropic"
-      api_key_env: "ANTHROPIC_API_KEY"
+      api_keys: "ANTHROPIC_API_KEY"
       model: "claude-3-5-sonnet-latest"
 
 # 2. Assign Specialized Models per Agent Phase directly inside agents:

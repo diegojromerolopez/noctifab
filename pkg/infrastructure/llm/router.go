@@ -131,11 +131,11 @@ func (r *ResilientLLMRouter) ResolveCandidatesForRole(roleName string) []RouterC
 			} else if ref.Provider != "" {
 				// Inline provider shorthand
 				spec = config.ProviderSpec{
-					Name:      ref.Provider,
-					Provider:  ref.Provider,
-					APIKeyEnv: strings.ToUpper(ref.Provider) + "_API_KEY",
+					Name:     ref.Provider,
+					Provider: ref.Provider,
+					APIKeys:  config.APIKeys{strings.ToUpper(ref.Provider) + "_API_KEY"},
 				}
-				spec.APIKeyValue = os.Getenv(spec.APIKeyEnv)
+				spec.APIKeyValue = os.Getenv(spec.APIKeys[0])
 				found = true
 			}
 
@@ -183,11 +183,11 @@ func (r *ResilientLLMRouter) ResolveCandidatesForRole(roleName string) []RouterC
 			// Check if pName is a raw provider name (e.g., "openai", "anthropic")
 			if pName != "" {
 				spec = config.ProviderSpec{
-					Name:      pName,
-					Provider:  pName,
-					APIKeyEnv: strings.ToUpper(pName) + "_API_KEY",
+					Name:     pName,
+					Provider: pName,
+					APIKeys:  config.APIKeys{strings.ToUpper(pName) + "_API_KEY"},
 				}
-				spec.APIKeyValue = os.Getenv(spec.APIKeyEnv)
+				spec.APIKeyValue = os.Getenv(spec.APIKeys[0])
 				found = true
 			}
 		}
@@ -297,8 +297,8 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 	}
 
 	apiKey := spec.APIKeyValue
-	if apiKey == "" && spec.APIKeyEnv != "" {
-		apiKey = os.Getenv(spec.APIKeyEnv)
+	if apiKey == "" && len(spec.APIKeys) > 0 {
+		apiKey = os.Getenv(spec.APIKeys[0])
 	}
 
 	maxRetries := spec.MaxRetries
