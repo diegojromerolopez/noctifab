@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.12] - 2026-08-01
+
+### Added
+- **Universal "latest" Model Alias Support Across All LLM Providers**: Implemented dynamic `/models` endpoint model resolution and `ExcludedKeywords` filtering for all LLM providers (`openai`, `anthropic`, `gemini`, `mistral`, `deepseek`, `hermes`, `ollama`, `huggingface`, `kimi`, `qwen`, `llama`, `xai`, `perplexity`, `opencode`, etc.).
+- **Comprehensive Multi-Provider Latest Model Resolution Unit Tests**: Implemented `TestProvidersLatestAliasResolution` in `pkg/infrastructure/llm/providers_latest_test.go` with authentic mock HTTP `/models` responses verifying automatic resolution of `"latest"` model aliases across all LLM providers.
+
+## [0.18.11] - 2026-08-01
+
+### Added
+- **Dynamic "latest" / "auto" Model Alias Resolution**: Added automatic model alias resolution in `Client.Complete` for model configurations specifying `"latest"`, `"auto"`, or `"<provider>-latest"`. Noctifab dynamically queries the provider's `/models` endpoint, filters out specialized niche models, ranks available general-purpose models by version and tier, and resolves the client model to the top-ranked available endpoint.
+- **`ExcludedKeywords` Filtering in Declarative Model Parsers**: Added `ExcludedKeywords []string` support to `ParserConfig` in `pkg/infrastructure/llm/provider_registry.go` and configured Gemini's model parser to reject niche/specialized endpoints (`robotics`, `embed`, `imagen`, `bison`, `tts`, `stt`), preventing niche preview models from slipping through as general LLM fallbacks.
+
 ## [0.18.10] - 2026-07-31
 
 ### Fixed

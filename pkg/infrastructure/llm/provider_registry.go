@@ -18,6 +18,7 @@ type KeywordTier struct {
 // ParserConfig defines the composable rules for building a ModelParser.
 type ParserConfig struct {
 	RequiredPrefix    string
+	ExcludedKeywords  []string
 	DefaultVersion    float64
 	VersionRegexp     string
 	Tiers             []KeywordTier
@@ -63,6 +64,11 @@ func NewModelParser(cfg ParserConfig) ModelParser {
 		norm := strings.ToLower(name)
 		if cfg.RequiredPrefix != "" && !strings.Contains(norm, cfg.RequiredPrefix) {
 			return nil, false
+		}
+		for _, ex := range cfg.ExcludedKeywords {
+			if strings.Contains(norm, ex) {
+				return nil, false
+			}
 		}
 
 		var tier string

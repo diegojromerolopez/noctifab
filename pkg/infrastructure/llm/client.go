@@ -125,6 +125,14 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		return nil, errors.New("missing API key for LLM provider")
 	}
 
+	normModel := strings.ToLower(strings.TrimSpace(c.Model))
+	if normModel == "latest" || normModel == "auto" || strings.HasSuffix(normModel, "-latest") || normModel == "" {
+		if resolved := c.resolveLatestModel(ctx, apiKey); resolved != "" {
+			fmt.Fprintf(os.Stderr, "ℹ Dynamically resolved model alias '%s' for provider %s to latest model: %s\n", c.Model, c.Provider, resolved)
+			c.Model = resolved
+		}
+	}
+
 	originalModel := c.Model
 	defer func() {
 		c.Model = originalModel
@@ -254,6 +262,41 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 	}
 
 	return selectLowerModelFromParsed(c.Model, parsedModels)
+}
+
+func (c *Client) resolveLatestModel(ctx context.Context, apiKey string) string {
+	provider := strings.ToLower(c.Provider)
+
+	var pClient ProviderClient
+	spec, _ := GetProviderSpec(provider)
+	if spec != nil && spec.NewClientFunc != nil {
+		pClient = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
+	} else {
+		pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
+	}
+
+	available, err := pClient.GetAvailableModels(ctx, apiKey)
+	if err != nil || len(available) == 0 {
+		return ""
+	}
+
+	var parsedModels []*ProviderModelInfo
+	parser := parseOpenAIModel
+	if spec != nil && spec.ParseModelFunc != nil {
+		parser = spec.ParseModelFunc
+	}
+	for _, m := range available {
+		if info, parsed := parser(m); parsed && info != nil {
+			parsedModels = append(parsedModels, info)
+		}
+	}
+
+	if len(parsedModels) == 0 {
+		return ""
+	}
+
+	sortProviderModels(parsedModels)
+	return parsedModels[0].Name
 }
 
 // httpError is returned by provider Call methods on non-2xx responses.

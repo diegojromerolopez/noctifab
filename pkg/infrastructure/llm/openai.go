@@ -27,6 +27,7 @@ func init() {
 }
 
 var parseOpenAIModel = NewModelParser(ParserConfig{
+	ExcludedKeywords:  []string{"embed", "tts", "whisper", "dall-e", "moderation", "realtime", "transcription", "bison", "audio"},
 	DefaultVersion:    4.0,
 	VersionRegexp:     `gpt-([0-9]+(?:\.[0-9]+)?)`,
 	VersionMultiplier: 5,

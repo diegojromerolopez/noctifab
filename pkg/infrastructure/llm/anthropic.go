@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -125,5 +126,55 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 }
 
 func (a *anthropicProviderClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {
-	return nil, fmt.Errorf("provider anthropic does not support listing models")
+	var url string
+	if a.url != "" {
+		if strings.HasSuffix(a.url, "/messages") {
+			url = strings.TrimSuffix(a.url, "/messages") + "/models"
+		} else {
+			url = a.url + "/models"
+		}
+	} else {
+		url = "https://api.anthropic.com/v1/models"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch Anthropic models (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	var models []string
+	for _, m := range result.Data {
+		models = append(models, m.ID)
+	}
+	return models, nil
 }

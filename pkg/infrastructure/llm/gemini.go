@@ -27,6 +27,7 @@ func init() {
 
 var parseGeminiModelProvider = NewModelParser(ParserConfig{
 	RequiredPrefix:    "gemini",
+	ExcludedKeywords:  []string{"robotics", "embed", "imagen", "bison", "tts", "stt"},
 	DefaultVersion:    1.5,
 	VersionRegexp:     `gemini-([0-9]+(?:\.[0-9]+)?)`,
 	VersionMultiplier: 10,

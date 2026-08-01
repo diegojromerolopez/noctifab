@@ -131,6 +131,21 @@ func TestProviderModelParsers(t *testing.T) {
 		}
 	})
 
+	t.Run("parseGeminiModelProvider", func(t *testing.T) {
+		info, ok := parseGeminiModelProvider("gemini-2.5-flash")
+		if !ok || info.Tier != "flash" || info.Rank != 55 {
+			t.Errorf("expected gemini-2.5-flash rank 55, got ok=%t tier=%s rank=%d", ok, info.Tier, info.Rank)
+		}
+		_, okRobotics := parseGeminiModelProvider("gemini-robotics-er-2-preview")
+		if okRobotics {
+			t.Error("expected gemini-robotics-er-2-preview to be rejected by ExcludedKeywords")
+		}
+		_, okEmbed := parseGeminiModelProvider("gemini-embed-text-001")
+		if okEmbed {
+			t.Error("expected gemini-embed-text-001 to be rejected by ExcludedKeywords")
+		}
+	})
+
 	t.Run("parsePerplexityModel", func(t *testing.T) {
 		infoDeep, okDeep := parsePerplexityModel("sonar-deep-research")
 		if !okDeep || infoDeep.Rank != 50 {
