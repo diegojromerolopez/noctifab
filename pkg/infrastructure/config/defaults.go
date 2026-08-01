@@ -173,6 +173,7 @@ func DefaultConfig() *Config {
 		Context: ContextConfig{
 			Mode:            "full",
 			DiffWindowLines: 15,
+			Compaction:      "none",
 		},
 		LogLevel: "info",
 	}

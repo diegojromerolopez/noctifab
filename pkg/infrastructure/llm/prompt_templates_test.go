@@ -54,9 +54,21 @@ func TestPreprocessPrompt(t *testing.T) {
 		}
 	})
 
-	t.Run("CompactMarkdownSpec", func(t *testing.T) {
+	t.Run("CompactSimpleEnglish", func(t *testing.T) {
+		raw := "Please note that we utilize this component to facilitate building features."
+		compacted := CompactSimpleEnglish(raw)
+
+		if strings.Contains(compacted, "Please note that") {
+			t.Errorf("expected conversational fluff to be stripped, got: %s", compacted)
+		}
+		if !strings.Contains(compacted, "use") || !strings.Contains(compacted, "help") {
+			t.Errorf("expected vocabulary simplification, got: %s", compacted)
+		}
+	})
+
+	t.Run("CompactCaveman", func(t *testing.T) {
 		raw := "Please note that this is a feature.\n---\n```go\nfmt.Println(\"hello\")\n```\nIn order to ensure that it works."
-		compacted := CompactMarkdownSpec(raw)
+		compacted := CompactCaveman(raw)
 
 		if strings.Contains(compacted, "Please note that") {
 			t.Errorf("expected conversational fluff to be stripped, got: %s", compacted)

@@ -33,6 +33,7 @@ type Client struct {
 	IdleTimeout       time.Duration
 	Streaming         bool
 	CavemanCompaction bool
+	Compaction        string
 }
 
 func (c *Client) getNextAPIKey() string {
@@ -114,8 +115,15 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 	defer span.End()
 
 	// Preprocess prompt to inject system instructions and schemas based on the target action type
-	if c.CavemanCompaction {
-		prompt = CompactMarkdownSpec(prompt)
+	switch strings.ToLower(strings.TrimSpace(c.Compaction)) {
+	case "simple_english":
+		prompt = CompactSimpleEnglish(prompt)
+	case "caveman":
+		prompt = CompactCaveman(prompt)
+	default:
+		if c.CavemanCompaction {
+			prompt = CompactCaveman(prompt)
+		}
 	}
 	prompt = preprocessPrompt(prompt)
 

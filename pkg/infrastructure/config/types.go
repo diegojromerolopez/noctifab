@@ -334,6 +334,18 @@ type ContextConfig struct {
 	Mode              string `yaml:"mode"`
 	DiffWindowLines   int    `yaml:"diff_window_lines"`
 	CavemanCompaction bool   `yaml:"caveman_compaction"`
+	Compaction        string `yaml:"compaction"` // Options: "none" (default), "simple_english", "caveman"
+}
+
+func (c ContextConfig) GetCompactionMode() string {
+	mode := strings.ToLower(strings.TrimSpace(c.Compaction))
+	if mode != "" {
+		return mode
+	}
+	if c.CavemanCompaction {
+		return "caveman"
+	}
+	return "none"
 }
 
 func (c ContextConfig) GetMode() ContextMode {

@@ -147,6 +147,6 @@ telemetry:
 context:
     mode: tree_sitter
     diff_window_lines: 15
-    caveman_compaction: false
+    compaction: caveman
 
 

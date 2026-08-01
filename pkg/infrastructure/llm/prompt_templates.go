@@ -32,10 +32,64 @@ func preprocessPrompt(prompt string) string {
 	return prompt
 }
 
-// CompactMarkdownSpec performs caveman-style compaction on Markdown specifications and prompts.
-// It removes conversational fluff, polite introduction phrases, and decorative dividers
+// CompactSimpleEnglish compacts prompts using Simple English rules (active voice, simple vocabulary, no conversational fluff)
+// while strictly preserving code blocks, JSON schemas, filepaths, CLI flags, and technical invariants.
+func CompactSimpleEnglish(prompt string) string {
+	lines := strings.Split(prompt, "\n")
+	var cleaned []string
+	inCodeBlock := false
+
+	replacer := strings.NewReplacer(
+		"utilize", "use",
+		"Utilize", "Use",
+		"facilitate", "help",
+		"Facilitate", "Help",
+		"demonstrate", "show",
+		"Demonstrate", "Show",
+		"commence", "start",
+		"Commence", "Start",
+		"terminate", "end",
+		"Terminate", "End",
+		"is required to be", "must be",
+		"has the capability to", "can",
+	)
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "```") {
+			inCodeBlock = !inCodeBlock
+			cleaned = append(cleaned, line)
+			continue
+		}
+
+		if inCodeBlock {
+			cleaned = append(cleaned, line)
+			continue
+		}
+
+		lower := strings.ToLower(trimmed)
+		if lower == "please note that" || lower == "in order to ensure that" || lower == "the purpose of this document is to" {
+			continue
+		}
+
+		if strings.HasPrefix(lower, "please note that ") {
+			line = line[len("Please note that "):]
+		} else if strings.HasPrefix(lower, "in order to ") {
+			line = line[len("In order to "):]
+		}
+
+		simplifiedLine := replacer.Replace(line)
+		cleaned = append(cleaned, simplifiedLine)
+	}
+
+	return strings.Join(cleaned, "\n")
+}
+
+// CompactCaveman performs telegraphic caveman-style compaction on prompts.
+// It removes conversational fluff, polite phrases, and decorative dividers
 // while strictly preserving exact filepaths, code blocks, JSON schemas, CLI flags, and technical invariants.
-func CompactMarkdownSpec(prompt string) string {
+func CompactCaveman(prompt string) string {
 	lines := strings.Split(prompt, "\n")
 	var cleaned []string
 	inCodeBlock := false
@@ -64,7 +118,8 @@ func CompactMarkdownSpec(prompt string) string {
 		if strings.HasPrefix(lower, "please note that") ||
 			strings.HasPrefix(lower, "as a user, i would like to") ||
 			strings.HasPrefix(lower, "in order to ensure that") ||
-			strings.HasPrefix(lower, "the purpose of this document is to") {
+			strings.HasPrefix(lower, "the purpose of this document is to") ||
+			strings.HasPrefix(lower, "it is recommended that you") {
 			continue
 		}
 
@@ -72,6 +127,11 @@ func CompactMarkdownSpec(prompt string) string {
 	}
 
 	return strings.Join(cleaned, "\n")
+}
+
+// CompactMarkdownSpec performs caveman-style compaction on Markdown specifications and prompts.
+func CompactMarkdownSpec(prompt string) string {
+	return CompactCaveman(prompt)
 }
 
 func buildProductManagerPrompt(specStr string) string {

@@ -136,6 +136,6 @@ telemetry:
 context:
     mode: full
     diff_window_lines: 15
-    caveman_compaction: false
+    compaction: simple_english
 
 
