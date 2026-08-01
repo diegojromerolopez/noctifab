@@ -76,6 +76,7 @@ for project in "${PROJECTS[@]}"; do
   fi
   pids+=("$!")
   echo "[$(date +%H:%M:%S)] launched run_one.sh for ${project} (pid=$!)" | tee -a "${WRAPPER_LOG}"
+  sleep 2
 done
 
 # Step 3. Wait for all parallel jobs to complete; record their exit codes.
