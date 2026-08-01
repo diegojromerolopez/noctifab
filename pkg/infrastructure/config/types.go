@@ -84,12 +84,13 @@ type AgentsConfig struct {
 }
 
 type AgentRoleConfig struct {
-	Number      int                `yaml:"number"`
-	Iterations  int                `yaml:"iterations"`
-	Model       string             `yaml:"model,omitempty"`
-	Temperature float64            `yaml:"temperature,omitempty"`
-	Profile     string             `yaml:"profile,omitempty"`
-	Providers   []AgentProviderRef `yaml:"providers,omitempty"`
+	Number         int                `yaml:"number"`
+	Iterations     int                `yaml:"iterations"`
+	Model          string             `yaml:"model,omitempty"`
+	Temperature    float64            `yaml:"temperature,omitempty"`
+	Profile        string             `yaml:"profile,omitempty"`
+	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
+	MaxUserStories int                `yaml:"max_user_stories,omitempty"`
 }
 
 type StorageConfig struct {

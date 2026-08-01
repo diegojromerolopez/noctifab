@@ -13,7 +13,7 @@ func TestPreprocessPrompt(t *testing.T) {
 		if !strings.Contains(processed, "You are acting as the Product Manager Agent.") {
 			t.Errorf("expected Product Manager agent header in prompt, got: %s", processed)
 		}
-		if !strings.Contains(processed, "ROADMAP CONSOLIDATION RULE:") {
+		if !strings.Contains(processed, "ROADMAP CONSOLIDATION & STORY LIMIT RULE:") {
 			t.Errorf("expected roadmap consolidation rule in prompt, got: %s", processed)
 		}
 		if !strings.Contains(processed, "DEFINITION OF DONE (DoD) & CONTRACT MANDATE:") {

@@ -17,8 +17,9 @@ func DefaultConfig() *Config {
 			Architecture:        "code_first",
 			MaxToolsPerResponse: 5,
 			ProductManager: AgentRoleConfig{
-				Number:     1,
-				Iterations: 2,
+				Number:         1,
+				Iterations:     2,
+				MaxUserStories: 5,
 			},
 			Planner: AgentRoleConfig{
 				Number:     1,

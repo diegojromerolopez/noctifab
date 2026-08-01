@@ -8,6 +8,7 @@ agents:
     product_manager:
         number: 1
         iterations: 2
+        max_user_stories: 5
     planner:
         number: 1
         iterations: 2
