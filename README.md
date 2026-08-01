@@ -145,8 +145,11 @@ The core engine runs a continuous polling event loop that drives all development
    - **Compile**: Solves syntax issues, missing imports, and compile failures.
    - **Test Logic**: Fixes assertion value mismatches and incorrect test expectations.
    The handler attempts up to **3 consecutive repairs** automatically.
-4. **Safety Circuit Breakers**:
+4. **Formatter Pre-Step Auto-Fix & Linter Cap**: Automatically executes the project's `formatter_command` (`rubocop -A`, `go fmt`, `black`, `cargo fmt`) before running static analysis linter checks to fix auto-correctable style offenses instantly. Capped by `max_linter_retries: 3` to prevent infinite loops.
+5. **Prompt Compaction (`context.compaction`)**: Compress HTTP prompt payloads using `simple_english` (active voice, simplified vocabulary) or `caveman` (telegraphic Markdown compaction) modes to reduce latency and token usage by 25%+.
+6. **Safety Circuit Breakers**:
    - **`max_actions`**: Root config value (default: `100`) that sets a ceiling on the total task execution loops. If the system exceeds this limit, the orchestrator aborts the story to protect the LLM token budget from infinite loops.
+   - **`max_user_stories`**: Ceiling on Product Manager roadmap story generation (default: `5`).
    - **`max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
 

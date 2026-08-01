@@ -1905,7 +1905,8 @@ sandbox:
   # - Java: Linter="checkstyle", Formatter="google-java-format"
   # - JavaScript/TypeScript: Linter="eslint .", Formatter="prettier --write ."
   linter_command: "golangci-lint run" # Default deterministic linter tool command
-  formatter_command: "go fmt ./..." # Default deterministic code formatter tool command
+  formatter_command: "go fmt ./..." # Default deterministic code formatter tool command (executed as pre-step before linter checks)
+  max_linter_retries: 3         # Max linter retry turns per task (default: 3)
   exclude_paths:                # Scanned path exclusions
     - "node_modules/"
     - "vendor/"
@@ -1960,6 +1961,11 @@ unblocker:
   stall_threshold: "5m"          # Frozen IN_PROGRESS task trigger threshold (default: 5m)
   conflict_threshold: "15m"      # CONFLICT_BLOCKED task trigger threshold (default: 15m)
   llm_assessment: true           # Use LLM for stall diagnosis (false = heuristic-only)
+
+context:
+  mode: "full"                   # Options: full, diff_window, tree_sitter
+  diff_window_lines: 15          # Diff window context line limit
+  compaction: "none"             # Options: none (default), simple_english, caveman (caveman_compaction: true supported as legacy alias)
 ```
 
 #### 3.9.3. Profile Configuration Schema (`.noctifab/profiles/<profile_name>.yaml`)

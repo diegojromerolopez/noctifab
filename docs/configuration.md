@@ -331,7 +331,7 @@ sandbox:
 - **`auto_install_deps`** (Boolean): Allow sandbox to auto-detect and attempt to install missing build dependencies.
 - **`package_managers`** (List of Strings): Authorized tool package managers (e.g. `pip`, `go`, `npm`, `brew`).
 - **`forbidden_patterns`** (List of Strings): Regex patterns disallowed in tool inputs or parameters.
-- **`context.caveman_compaction`** (Boolean): When set to `true`, enables caveman-style prompt & spec markdown compaction (stripping polite conversational fluff and decorative markdown headers before sending requests over HTTP). Defaults to `false`.
+- **`context.compaction`** (String): Prompt & spec markdown compaction strategy. Options: `none` (default, no compaction), `simple_english` (active voice, simplified vocabulary, stripping conversational preambles), `caveman` (telegraphic markdown compaction stripping dividers and headers). `caveman_compaction: true` is supported as a legacy backward-compatible alias for `caveman`.
 
 ---
 
