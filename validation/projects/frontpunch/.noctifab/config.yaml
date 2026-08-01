@@ -50,19 +50,10 @@ storage:
     json_file_path: .noctifab/data/state.json
 llm:
     priority:
-        - openrouter-backup
         - opencode-primary
         - gemini-primary
+        - openrouter-backup
     providers:
-        - name: openrouter-backup
-          provider: openrouter
-          model: deepseek/deepseek-v4-flash-latest
-          api_keys: OPENROUTER_API_KEY
-          max_retries: 2
-          retry_backoff: 50ms
-          max_timeout: 25s
-          idle_timeout: 8s
-          streaming: true
         - name: opencode-primary
           provider: opencode
           model: latest
@@ -76,6 +67,15 @@ llm:
           provider: gemini
           model: latest
           api_keys: GEMINI_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 25s
+          idle_timeout: 8s
+          streaming: true
+        - name: openrouter-backup
+          provider: openrouter
+          model: deepseek/deepseek-v4-flash-latest
+          api_keys: OPENROUTER_API_KEY
           max_retries: 2
           retry_backoff: 50ms
           max_timeout: 25s

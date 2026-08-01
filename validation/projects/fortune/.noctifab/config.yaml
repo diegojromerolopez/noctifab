@@ -95,7 +95,6 @@ llm:
           max_timeout: 25s
           idle_timeout: 8s
           streaming: true
-
 vcs:
     provider: github
     repository: diegojromerolopez/fortune
