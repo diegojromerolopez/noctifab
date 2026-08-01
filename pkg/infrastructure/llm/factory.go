@@ -93,6 +93,7 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 		cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
 		cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
 	)
+	client.CavemanCompaction = cfg.Context.CavemanCompaction
 	if cfg.LLM.MaxTimeout > 0 {
 		client.Timeout = time.Duration(cfg.LLM.MaxTimeout)
 	}

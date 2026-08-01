@@ -92,6 +92,7 @@ sandbox:
     test_command: "go mod tidy && go test ./..."
     linter_command: "go mod tidy && go vet ./..."
     formatter_command: "go fmt ./..."
+    max_linter_retries: 3
     exclude_paths:
         - node_modules/
         - vendor/
@@ -127,5 +128,6 @@ telemetry:
 context:
     mode: full
     diff_window_lines: 15
+    caveman_compaction: false
 
 

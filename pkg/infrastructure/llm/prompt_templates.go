@@ -32,6 +32,48 @@ func preprocessPrompt(prompt string) string {
 	return prompt
 }
 
+// CompactMarkdownSpec performs caveman-style compaction on Markdown specifications and prompts.
+// It removes conversational fluff, polite introduction phrases, and decorative dividers
+// while strictly preserving exact filepaths, code blocks, JSON schemas, CLI flags, and technical invariants.
+func CompactMarkdownSpec(prompt string) string {
+	lines := strings.Split(prompt, "\n")
+	var cleaned []string
+	inCodeBlock := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "```") {
+			inCodeBlock = !inCodeBlock
+			cleaned = append(cleaned, line)
+			continue
+		}
+
+		if inCodeBlock {
+			cleaned = append(cleaned, line)
+			continue
+		}
+
+		// Omit empty decorative divider lines or repetitive markdown horizontal rules
+		if trimmed == "---" || trimmed == "***" || trimmed == "===" || trimmed == "___" {
+			continue
+		}
+
+		// Remove common polite/conversational filler phrases in prompts
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "please note that") ||
+			strings.HasPrefix(lower, "as a user, i would like to") ||
+			strings.HasPrefix(lower, "in order to ensure that") ||
+			strings.HasPrefix(lower, "the purpose of this document is to") {
+			continue
+		}
+
+		cleaned = append(cleaned, line)
+	}
+
+	return strings.Join(cleaned, "\n")
+}
+
 func buildProductManagerPrompt(specStr string) string {
 	return fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
 You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes.

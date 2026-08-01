@@ -92,6 +92,7 @@ sandbox:
     test_command: python -m unittest discover -s tests
     linter_command: ""
     formatter_command: black --line-length 120 .
+    max_linter_retries: 3
     exclude_paths:
         - node_modules/
         - vendor/
@@ -135,5 +136,6 @@ telemetry:
 context:
     mode: full
     diff_window_lines: 15
+    caveman_compaction: false
 
 

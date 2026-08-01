@@ -53,4 +53,19 @@ func TestPreprocessPrompt(t *testing.T) {
 			t.Errorf("expected generator self-verification in prompt, got: %s", processed)
 		}
 	})
+
+	t.Run("CompactMarkdownSpec", func(t *testing.T) {
+		raw := "Please note that this is a feature.\n---\n```go\nfmt.Println(\"hello\")\n```\nIn order to ensure that it works."
+		compacted := CompactMarkdownSpec(raw)
+
+		if strings.Contains(compacted, "Please note that") {
+			t.Errorf("expected conversational fluff to be stripped, got: %s", compacted)
+		}
+		if strings.Contains(compacted, "---") {
+			t.Errorf("expected decorative dividers to be stripped, got: %s", compacted)
+		}
+		if !strings.Contains(compacted, "fmt.Println(\"hello\")") {
+			t.Errorf("expected code block to be preserved, got: %s", compacted)
+		}
+	})
 }

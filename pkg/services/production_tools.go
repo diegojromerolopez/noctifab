@@ -447,9 +447,10 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 
 // RunLinterTool implements run_linter.
 type RunLinterTool struct {
-	Runner        Sandbox
-	LinterCommand string
-	Timeout       time.Duration
+	Runner           Sandbox
+	LinterCommand    string
+	FormatterCommand string
+	Timeout          time.Duration
 }
 
 func (t *RunLinterTool) Name() string { return "run_linter" }
@@ -469,6 +470,12 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 	}
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
+
+	// Auto-fix pre-step: automatically run formatter / auto-fixer command before running linter diagnostics
+	if t.FormatterCommand != "" {
+		_, _ = t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, "")
+	}
+
 	return t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")
 }
 

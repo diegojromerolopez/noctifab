@@ -92,6 +92,7 @@ sandbox:
     test_command: cargo test
     linter_command: "cargo fmt --check && cargo clippy -- -D warnings"
     formatter_command: "cargo fmt"
+    max_linter_retries: 3
     exclude_paths:
         - target/
         - .noctifab/
@@ -127,5 +128,6 @@ telemetry:
 context:
     mode: full
     diff_window_lines: 15
+    caveman_compaction: false
 
 

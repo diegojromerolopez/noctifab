@@ -21,17 +21,18 @@ import (
 )
 
 type Client struct {
-	Provider    string
-	Model       string
-	APIKey      string
-	APIKeys     []string
-	keyIndex    uint64
-	MaxRetries  int
-	Backoff     time.Duration
-	URL         string
-	Timeout     time.Duration
-	IdleTimeout time.Duration
-	Streaming   bool
+	Provider          string
+	Model             string
+	APIKey            string
+	APIKeys           []string
+	keyIndex          uint64
+	MaxRetries        int
+	Backoff           time.Duration
+	URL               string
+	Timeout           time.Duration
+	IdleTimeout       time.Duration
+	Streaming         bool
+	CavemanCompaction bool
 }
 
 func (c *Client) getNextAPIKey() string {
@@ -113,6 +114,9 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 	defer span.End()
 
 	// Preprocess prompt to inject system instructions and schemas based on the target action type
+	if c.CavemanCompaction {
+		prompt = CompactMarkdownSpec(prompt)
+	}
 	prompt = preprocessPrompt(prompt)
 
 	spec, _ := GetProviderSpec(c.Provider)

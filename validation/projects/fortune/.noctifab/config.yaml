@@ -107,6 +107,7 @@ sandbox:
     test_command: make test
     linter_command: make lint
     formatter_command: make format
+    max_linter_retries: 3
     exclude_paths:
         - build/
         - .noctifab/
@@ -126,5 +127,6 @@ telemetry:
 context:
     mode: full
     diff_window_lines: 15
+    caveman_compaction: false
 
 

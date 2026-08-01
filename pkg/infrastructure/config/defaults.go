@@ -123,6 +123,7 @@ func DefaultConfig() *Config {
 			TestCommand:        "go test -v ./...",
 			LinterCommand:      "golangci-lint run",
 			FormatterCommand:   "go fmt ./...",
+			MaxLinterRetries:   3,
 			ExcludePaths:       []string{".noctifab"},
 			AllowedCommands:    []string{"go", "git", "npm", "python", "make"},
 			AutoInstallDeps:    false,

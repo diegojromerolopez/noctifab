@@ -229,6 +229,7 @@ type SandboxConfig struct {
 	TestCommand        string   `yaml:"test_command"`
 	LinterCommand      string   `yaml:"linter_command"`
 	FormatterCommand   string   `yaml:"formatter_command"`
+	MaxLinterRetries   int      `yaml:"max_linter_retries"`
 	ExcludePaths       []string `yaml:"exclude_paths"`
 	AllowedCommands    []string `yaml:"allowed_commands"`
 	AutoInstallDeps    bool     `yaml:"auto_install_deps"`
@@ -330,8 +331,9 @@ const (
 )
 
 type ContextConfig struct {
-	Mode            string `yaml:"mode"`
-	DiffWindowLines int    `yaml:"diff_window_lines"`
+	Mode              string `yaml:"mode"`
+	DiffWindowLines   int    `yaml:"diff_window_lines"`
+	CavemanCompaction bool   `yaml:"caveman_compaction"`
 }
 
 func (c ContextConfig) GetMode() ContextMode {

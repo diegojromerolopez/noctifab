@@ -324,12 +324,14 @@ sandbox:
 - **`grace_period_seconds`** (Integer): Delay allowed for subprocesses to clean up after receiving `SIGTERM` before sending `SIGKILL`.
 - **`test_command`** (String): Command executed by the Test Validator to run the unit/integration test suites (e.g. `npm test`, `pytest`).
 - **`linter_command`** (String): Command executed to run project static analysis linter tasks.
-- **`formatter_command`** (String): Command executed to run code format checks.
+- **`formatter_command`** (String): Command executed to run code format checks (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_linter` runs this pre-step auto-fixer first before linter diagnostics.
+- **`max_linter_retries`** (Integer): Maximum linter fix retry turns per task (default: `3`). Prevents infinite agent loops on unfixable linter offenses.
 - **`exclude_paths`** (List of Strings): Directory trees ignored by the repository indexer and file walker (e.g. `node_modules/`, `.git/`).
 - **`allowed_commands`** (List of Strings): Whitelist of executable binaries permitted inside the sandbox process runner.
 - **`auto_install_deps`** (Boolean): Allow sandbox to auto-detect and attempt to install missing build dependencies.
 - **`package_managers`** (List of Strings): Authorized tool package managers (e.g. `pip`, `go`, `npm`, `brew`).
 - **`forbidden_patterns`** (List of Strings): Regex patterns disallowed in tool inputs or parameters.
+- **`context.caveman_compaction`** (Boolean): When set to `true`, enables caveman-style prompt & spec markdown compaction (stripping polite conversational fluff and decorative markdown headers before sending requests over HTTP). Defaults to `false`.
 
 ---
 
