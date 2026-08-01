@@ -88,7 +88,7 @@ llm:
           streaming: true
         - name: openrouter-backup
           provider: openrouter
-          model: latest
+          model: deepseek/deepseek-v4-flash-latest
           api_keys: OPENROUTER_API_KEY
           max_retries: 2
           retry_backoff: 50ms
