@@ -60,8 +60,8 @@ llm:
           api_keys: OPENCODE_API_KEY
           max_retries: 2
           retry_backoff: 50ms
-          max_timeout: 15s
-          idle_timeout: 10s
+          max_timeout: 25s
+          idle_timeout: 8s
           streaming: true
         - name: gemini-primary
           provider: gemini
@@ -69,8 +69,8 @@ llm:
           api_keys: GEMINI_API_KEY
           max_retries: 2
           retry_backoff: 50ms
-          max_timeout: 15s
-          idle_timeout: 10s
+          max_timeout: 25s
+          idle_timeout: 8s
           streaming: true
         - name: openrouter-backup
           provider: openrouter
@@ -78,8 +78,8 @@ llm:
           api_keys: OPENROUTER_API_KEY
           max_retries: 2
           retry_backoff: 50ms
-          max_timeout: 15s
-          idle_timeout: 10s
+          max_timeout: 25s
+          idle_timeout: 8s
           streaming: true
 vcs:
     provider: github
@@ -138,6 +138,6 @@ telemetry:
 context:
     mode: full
     diff_window_lines: 15
-    caveman_compaction: false
+    compaction: simple_english
 
 
