@@ -70,7 +70,7 @@ func DefaultConfig() *Config {
 		},
 		LLM: LLMConfig{
 			Provider:           "openai",
-			Model:              "gpt-4o",
+			Model:              "latest",
 			Temperature:        0.0,
 			APIKeyEnv:          "",
 			URL:                "",
