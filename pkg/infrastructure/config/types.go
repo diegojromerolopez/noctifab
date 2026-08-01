@@ -116,13 +116,46 @@ type FailoverBackend struct {
 	Streaming   *bool    `yaml:"streaming"`
 }
 
+// APIKeys represents one or more API key secret source names, supporting a scalar string or a slice of strings.
+type APIKeys []string
+
+func (a *APIKeys) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		var s string
+		if err := value.Decode(&s); err != nil {
+			return err
+		}
+		if strings.TrimSpace(s) != "" {
+			*a = APIKeys{strings.TrimSpace(s)}
+		}
+		return nil
+	}
+	if value.Kind == yaml.SequenceNode {
+		var list []string
+		if err := value.Decode(&list); err != nil {
+			return err
+		}
+		var clean []string
+		for _, item := range list {
+			if strings.TrimSpace(item) != "" {
+				clean = append(clean, strings.TrimSpace(item))
+			}
+		}
+		*a = APIKeys(clean)
+		return nil
+	}
+	return nil
+}
+
 type ProviderSpec struct {
 	Name               string   `yaml:"name"`
 	Provider           string   `yaml:"provider"`
 	Model              string   `yaml:"model,omitempty"`
 	APIKey             string   `yaml:"api_key,omitempty"`
-	APIKeyEnv          string   `yaml:"api_key_env,omitempty"`
+	APIKeyEnv          string   `yaml:"api_key_env,omitempty"` // Legacy alias
+	APIKeys            APIKeys  `yaml:"api_keys,omitempty"`
 	APIKeyValue        string   `yaml:"-"`
+	APIKeyPool         []string `yaml:"-"`
 	URL                string   `yaml:"url,omitempty"`
 	MaxRetries         int      `yaml:"max_retries,omitempty"`
 	RetryBackoff       Duration `yaml:"retry_backoff,omitempty"`
@@ -139,8 +172,10 @@ type LLMConfig struct {
 	Model              string         `yaml:"model"`
 	Temperature        float64        `yaml:"temperature"`
 	APIKey             string         `yaml:"api_key"`
-	APIKeyEnv          string         `yaml:"api_key_env"`
+	APIKeyEnv          string         `yaml:"api_key_env"` // Legacy alias
+	APIKeys            APIKeys        `yaml:"api_keys"`
 	APIKeyValue        string         `yaml:"-"`
+	APIKeyPool         []string       `yaml:"-"`
 	URL                string         `yaml:"url"`
 	MaxRetries         int            `yaml:"max_retries"`
 	RetryBackoff       Duration       `yaml:"retry_backoff"`

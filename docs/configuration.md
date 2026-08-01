@@ -154,13 +154,15 @@ llm:
 
     - name: "anthropic-backup"
       provider: "anthropic"
-      api_key_env: "ANTHROPIC_API_KEY"
+      api_keys: "ANTHROPIC_API_KEY"
       model: "claude-3-5-sonnet-latest"
       max_retries: 3
 
     - name: "deepseek-coder"
       provider: "deepseek"
-      api_key_env: "DEEPSEEK_API_KEY"
+      api_keys:
+        - "DEEPSEEK_API_KEY_PRIMARY"
+        - "DEEPSEEK_API_KEY_SECONDARY"
       model: "deepseek-coder"
       url: "https://api.deepseek.com"
 

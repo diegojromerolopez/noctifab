@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -23,12 +24,22 @@ type Client struct {
 	Provider    string
 	Model       string
 	APIKey      string
+	APIKeys     []string
+	keyIndex    uint64
 	MaxRetries  int
 	Backoff     time.Duration
 	URL         string
 	Timeout     time.Duration
 	IdleTimeout time.Duration
 	Streaming   bool
+}
+
+func (c *Client) getNextAPIKey() string {
+	if len(c.APIKeys) > 0 {
+		idx := atomic.AddUint64(&c.keyIndex, 1) - 1
+		return c.APIKeys[idx%uint64(len(c.APIKeys))]
+	}
+	return c.APIKey
 }
 
 var _ domain.LLMClient = (*Client)(nil)
@@ -106,7 +117,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 
 	spec, _ := GetProviderSpec(c.Provider)
 
-	apiKey := c.APIKey
+	apiKey := c.getNextAPIKey()
 	if apiKey == "" {
 		if spec != nil {
 			for _, envKey := range spec.EnvKeys {
@@ -158,8 +169,9 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 		}
 
+		activeKey := apiKey
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			responseBody, err = pClient.Call(ctx, c.Model, apiKey, prompt)
+			responseBody, err = pClient.Call(ctx, c.Model, activeKey, prompt)
 			if err == nil {
 				break
 			}
@@ -167,6 +179,10 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
 			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") {
 				fmt.Fprintln(os.Stderr, "⚠ Warning: You have exceeded your LLM API quota (HTTP 429). Please check your plan and billing details.")
+				if len(c.APIKeys) > 1 {
+					activeKey = c.getNextAPIKey()
+					fmt.Fprintf(os.Stderr, "ℹ Switching to next API key in pool for provider %s...\n", c.Provider)
+				}
 			}
 
 			if attempt == maxRetries {

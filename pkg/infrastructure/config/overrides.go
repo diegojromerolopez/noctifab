@@ -54,6 +54,7 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_LLM_API_KEY"); ok {
 		cfg.LLM.APIKeyValue = val
+		cfg.LLM.APIKeyPool = []string{val}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_LLM_URL"); ok {
 		cfg.LLM.URL = val

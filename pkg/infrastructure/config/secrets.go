@@ -42,6 +42,71 @@ func resolveSecretRef(value string, secrets map[string]string) string {
 	return secrets[key]
 }
 
+// resolveSecretKeys resolves secret key names against secrets map and OS environment.
+// Supports comma-separated keys and automatic "S" suffix fallback (e.g. OPENCODE_API_KEY -> OPENCODE_API_KEYS).
+func resolveSecretKeys(keyNames []string, fallbackEnv string, secrets map[string]string) ([]string, string) {
+	var pool []string
+	seen := make(map[string]bool)
+
+	addVal := func(val string) {
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return
+		}
+		if strings.Contains(val, ",") {
+			for _, part := range strings.Split(val, ",") {
+				trimmed := strings.TrimSpace(part)
+				if trimmed != "" && !seen[trimmed] {
+					seen[trimmed] = true
+					pool = append(pool, trimmed)
+				}
+			}
+		} else if !seen[val] {
+			seen[val] = true
+			pool = append(pool, val)
+		}
+	}
+
+	for _, name := range keyNames {
+		if val, ok := secrets[name]; ok && val != "" {
+			addVal(val)
+		} else if val := os.Getenv(name); val != "" {
+			addVal(val)
+		}
+
+		if !strings.HasSuffix(name, "S") && !strings.HasSuffix(name, "s") {
+			pluralName := name + "S"
+			if val, ok := secrets[pluralName]; ok && val != "" {
+				addVal(val)
+			} else if val := os.Getenv(pluralName); val != "" {
+				addVal(val)
+			}
+		}
+	}
+
+	if len(pool) == 0 && fallbackEnv != "" {
+		if val, ok := secrets[fallbackEnv]; ok && val != "" {
+			addVal(val)
+		} else if val := os.Getenv(fallbackEnv); val != "" {
+			addVal(val)
+		}
+		if !strings.HasSuffix(fallbackEnv, "S") && !strings.HasSuffix(fallbackEnv, "s") {
+			pluralFallback := fallbackEnv + "S"
+			if val, ok := secrets[pluralFallback]; ok && val != "" {
+				addVal(val)
+			} else if val := os.Getenv(pluralFallback); val != "" {
+				addVal(val)
+			}
+		}
+	}
+
+	primary := ""
+	if len(pool) > 0 {
+		primary = pool[0]
+	}
+	return pool, primary
+}
+
 // applySecretsToConfig resolves all secret: references in the mutable string
 // fields of cfg that are commonly used for credentials.
 func applySecretsToConfig(cfg *Config, secrets map[string]string) {
@@ -60,10 +125,20 @@ func applySecretsToConfig(cfg *Config, secrets map[string]string) {
 	for i := range cfg.LLM.Providers {
 		cfg.LLM.Providers[i].APIKey = resolveSecretRef(cfg.LLM.Providers[i].APIKey, secrets)
 		cfg.LLM.Providers[i].URL = resolveSecretRef(cfg.LLM.Providers[i].URL, secrets)
-		if cfg.LLM.Providers[i].APIKeyValue == "" && cfg.LLM.Providers[i].APIKeyEnv != "" {
-			if val, ok := secrets[cfg.LLM.Providers[i].APIKeyEnv]; ok && val != "" {
-				cfg.LLM.Providers[i].APIKeyValue = val
-			}
+		
+		var keySources []string
+		if len(cfg.LLM.Providers[i].APIKeys) > 0 {
+			keySources = append(keySources, cfg.LLM.Providers[i].APIKeys...)
+		}
+		if cfg.LLM.Providers[i].APIKeyEnv != "" {
+			keySources = append(keySources, cfg.LLM.Providers[i].APIKeyEnv)
+		}
+		defaultEnv := strings.ToUpper(cfg.LLM.Providers[i].Provider) + "_API_KEY"
+
+		pool, primary := resolveSecretKeys(keySources, defaultEnv, secrets)
+		if len(pool) > 0 {
+			cfg.LLM.Providers[i].APIKeyPool = pool
+			cfg.LLM.Providers[i].APIKeyValue = primary
 		}
 	}
 }

@@ -93,77 +93,45 @@ func resolveSecrets(cfg *Config) {
 }
 
 func resolveProviderSpecSecret(p *ProviderSpec) {
-	if p.APIKeyValue == "" {
+	if len(p.APIKeyPool) == 0 {
 		if p.APIKey != "" && !strings.HasPrefix(p.APIKey, "secret:") {
 			p.APIKeyValue = p.APIKey
+			p.APIKeyPool = []string{p.APIKey}
 		} else {
+			var keySources []string
+			if len(p.APIKeys) > 0 {
+				keySources = append(keySources, p.APIKeys...)
+			}
 			if p.APIKeyEnv != "" {
-				p.APIKeyValue = os.Getenv(p.APIKeyEnv)
+				keySources = append(keySources, p.APIKeyEnv)
 			}
-			if p.APIKeyValue == "" {
-				switch strings.ToLower(p.Provider) {
-				case "openai":
-					p.APIKeyValue = os.Getenv("OPENAI_API_KEY")
-				case "anthropic":
-					p.APIKeyValue = os.Getenv("ANTHROPIC_API_KEY")
-				case "gemini":
-					p.APIKeyValue = os.Getenv("GEMINI_API_KEY")
-				case "hermes":
-					p.APIKeyValue = os.Getenv("NOUS_API_KEY")
-				case "huggingface":
-					val := os.Getenv("HF_TOKEN")
-					if val == "" {
-						val = os.Getenv("HUGGINGFACE_API_KEY")
-					}
-					p.APIKeyValue = val
-				case "mistral":
-					p.APIKeyValue = os.Getenv("MISTRAL_API_KEY")
-				case "deepseek":
-					p.APIKeyValue = os.Getenv("DEEPSEEK_API_KEY")
-				case "ollama":
-					p.APIKeyValue = os.Getenv("OLLAMA_API_KEY")
-				case "opencode":
-					p.APIKeyValue = os.Getenv("OPENCODE_API_KEY")
-				}
-			}
+			defaultEnv := strings.ToUpper(p.Provider) + "_API_KEY"
+
+			pool, primary := resolveSecretKeys(keySources, defaultEnv, nil)
+			p.APIKeyPool = pool
+			p.APIKeyValue = primary
 		}
 	}
 }
 
 func resolveSingleLLMSecret(llm *LLMConfig) {
-	if llm.APIKeyValue == "" {
+	if len(llm.APIKeyPool) == 0 {
 		if llm.APIKey != "" && !strings.HasPrefix(llm.APIKey, "secret:") {
 			llm.APIKeyValue = llm.APIKey
+			llm.APIKeyPool = []string{llm.APIKey}
 		} else {
+			var keySources []string
+			if len(llm.APIKeys) > 0 {
+				keySources = append(keySources, llm.APIKeys...)
+			}
 			if llm.APIKeyEnv != "" {
-				llm.APIKeyValue = os.Getenv(llm.APIKeyEnv)
+				keySources = append(keySources, llm.APIKeyEnv)
 			}
-			if llm.APIKeyValue == "" {
-				switch strings.ToLower(llm.Provider) {
-				case "openai":
-					llm.APIKeyValue = os.Getenv("OPENAI_API_KEY")
-				case "anthropic":
-					llm.APIKeyValue = os.Getenv("ANTHROPIC_API_KEY")
-				case "gemini":
-					llm.APIKeyValue = os.Getenv("GEMINI_API_KEY")
-				case "hermes":
-					llm.APIKeyValue = os.Getenv("NOUS_API_KEY")
-				case "huggingface":
-					val := os.Getenv("HF_TOKEN")
-					if val == "" {
-						val = os.Getenv("HUGGINGFACE_API_KEY")
-					}
-					llm.APIKeyValue = val
-				case "mistral":
-					llm.APIKeyValue = os.Getenv("MISTRAL_API_KEY")
-				case "deepseek":
-					llm.APIKeyValue = os.Getenv("DEEPSEEK_API_KEY")
-				case "ollama":
-					llm.APIKeyValue = os.Getenv("OLLAMA_API_KEY")
-				case "opencode":
-					llm.APIKeyValue = os.Getenv("OPENCODE_API_KEY")
-				}
-			}
+			defaultEnv := strings.ToUpper(llm.Provider) + "_API_KEY"
+
+			pool, primary := resolveSecretKeys(keySources, defaultEnv, nil)
+			llm.APIKeyPool = pool
+			llm.APIKeyValue = primary
 		}
 	}
 }

@@ -312,6 +312,9 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 	}
 
 	client := NewClient(spec.Provider, model, apiKey, maxRetries, retryBackoff, spec.URL)
+	if len(spec.APIKeyPool) > 0 {
+		client.APIKeys = spec.APIKeyPool
+	}
 	if spec.MaxTimeout > 0 {
 		client.Timeout = time.Duration(spec.MaxTimeout)
 	} else if r.cfg != nil && r.cfg.LLM.MaxTimeout > 0 {

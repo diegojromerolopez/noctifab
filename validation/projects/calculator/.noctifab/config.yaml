@@ -63,16 +63,16 @@ llm:
         - name: gemini-primary
           provider: gemini
           model: latest
-          api_key_env: GEMINI_API_KEY
-          max_retries: 2
-          retry_backoff: 50ms
-          max_timeout: 15s
-          idle_timeout: 10s
+          api_keys: GEMINI_API_KEY
+          max_retries: 5
+          retry_backoff: 100ms
+          max_timeout: 60s
+          idle_timeout: 15s
           streaming: true
         - name: opencode-primary
           provider: opencode
           model: latest
-          api_key_env: OPENCODE_API_KEY
+          api_keys: OPENCODE_API_KEY
           max_retries: 2
           retry_backoff: 50ms
           max_timeout: 15s
@@ -81,7 +81,7 @@ llm:
         - name: huggingface-kimi
           provider: huggingface
           model: latest
-          api_key_env: HUGGINGFACE_API_KEY
+          api_keys: HUGGINGFACE_API_KEY
           max_retries: 5
           retry_backoff: 100ms
           max_timeout: 60s

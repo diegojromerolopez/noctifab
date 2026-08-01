@@ -61,7 +61,7 @@ llm:
         - name: opencode-primary
           provider: opencode
           model: latest
-          api_key_env: OPENCODE_API_KEY
+          api_keys: OPENCODE_API_KEY
           max_retries: 2
           retry_backoff: 50ms
           max_timeout: 15s
@@ -70,7 +70,7 @@ llm:
         - name: gemini-primary
           provider: gemini
           model: latest
-          api_key_env: GEMINI_API_KEY
+          api_keys: GEMINI_API_KEY
           max_retries: 2
           retry_backoff: 50ms
           max_timeout: 15s
