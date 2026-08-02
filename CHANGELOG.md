@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.15] - 2026-08-02
+
+### Changed
+- **Remove Gemini from Validation Project LLM Providers**: Removed `gemini`/`gemini-primary` from all 6 validation project configs (`calculator`, `echo`, `fortune`, `frontpunch`, `todo-cli`, `wc`), including the `priority` lists, the provider registry entries, and the generator agent provider assignment in `calculator` and `fortune`. Each project now resolves through `opencode-primary` → `openrouter-backup` (plus `huggingface-kimi` where present).
+
 ## [0.18.14] - 2026-08-02
 
 ### Changed

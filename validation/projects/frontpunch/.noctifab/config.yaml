@@ -51,22 +51,12 @@ storage:
 llm:
     priority:
         - opencode-primary
-        - gemini-primary
         - openrouter-backup
     providers:
         - name: opencode-primary
           provider: opencode
           model: latest
           api_keys: OPENCODE_API_KEY
-          max_retries: 2
-          retry_backoff: 50ms
-          max_timeout: 25s
-          idle_timeout: 8s
-          streaming: true
-        - name: gemini-primary
-          provider: gemini
-          model: latest
-          api_keys: GEMINI_API_KEY
           max_retries: 2
           retry_backoff: 50ms
           max_timeout: 25s
