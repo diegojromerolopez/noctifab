@@ -111,7 +111,7 @@ When `llm.api_key`, `vcs.token`, or `jira.token` are not explicitly defined in `
 | **LLM** | `qwen`, `dashscope` | `DASHSCOPE_API_KEY`, `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | **LLM** | `together` | `TOGETHER_API_KEY` | `https://api.together.xyz/v1` |
 | **LLM** | `llama`, `meta` | `LLAMA_API_KEY`, `META_API_KEY` | `https://api.together.xyz/v1` |
-| **LLM** | `huggingface` | `HUGGINGFACE_API_KEY`, `HF_TOKEN` | `https://api-inference.huggingface.co/v1` |
+| **LLM** | `huggingface` | `HUGGINGFACE_API_KEY` | `https://api-inference.huggingface.co/v1` |
 | **LLM** | `mistral` | `MISTRAL_API_KEY` | `https://api.mistral.ai/v1` |
 | **LLM** | `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` |
 | **LLM** | `hermes` | `HERMES_API_KEY` | `https://api.together.xyz/v1` |

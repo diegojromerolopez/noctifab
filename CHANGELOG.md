@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.14] - 2026-08-02
+
+### Changed
+- **Canonical LLM Provider Env Var Names**: Standardized HuggingFace and Hermes provider auth to the canonical environment variable names, `HUGGINGFACE_API_KEY` and `HERMES_API_KEY`. Removed the legacy `HF_TOKEN` fallback from HuggingFace provider registration and docs, and the `NOUS_API_KEY` reference, so config validation and runtime key resolution consistently use a single documented env var per provider. Added `TestResolveProviderSpecSecret_CanonicalEnvNames` covering both.
+
 ## [0.18.13] - 2026-08-02
 
 ### Fixed

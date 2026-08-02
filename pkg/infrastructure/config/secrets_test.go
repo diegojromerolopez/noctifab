@@ -132,3 +132,30 @@ func TestApplySecretsToConfig_PlainValuesUnchanged(t *testing.T) {
 		t.Errorf("expected plain-vcs-token unchanged, got %s", cfg.VCS.Token)
 	}
 }
+
+func TestResolveProviderSpecSecret_CanonicalEnvNames(t *testing.T) {
+	t.Setenv("HUGGINGFACE_API_KEY", "hf-canonical-key")
+	t.Setenv("HERMES_API_KEY", "hermes-canonical-key")
+	t.Setenv("NOUS_API_KEY", "should-not-be-used")
+	t.Setenv("HF_TOKEN", "should-not-be-used")
+
+	tests := []struct {
+		name        string
+		provider    string
+		wantPrimary string
+	}{
+		{"huggingface uses HUGGINGFACE_API_KEY", "huggingface", "hf-canonical-key"},
+		{"hermes uses HERMES_API_KEY", "hermes", "hermes-canonical-key"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &ProviderSpec{Name: tt.provider, Provider: tt.provider}
+			resolveProviderSpecSecret(p)
+
+			if len(p.APIKeyPool) != 1 || p.APIKeyValue != tt.wantPrimary {
+				t.Errorf("APIKeyPool=%v APIKeyValue=%q; want primary=%q pool of 1", p.APIKeyPool, p.APIKeyValue, tt.wantPrimary)
+			}
+		})
+	}
+}

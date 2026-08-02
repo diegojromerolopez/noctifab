@@ -21,7 +21,7 @@ This document covers all supported LLM providers, their configuration options, e
 | Qwen / DashScope | `qwen`, `dashscope` | `DASHSCOPE_API_KEY`, `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI-compat |
 | Together AI | `together` | `TOGETHER_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
 | Meta Llama | `llama`, `meta` | `LLAMA_API_KEY`, `META_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
-| HuggingFace | `huggingface` | `HUGGINGFACE_API_KEY`, `HF_TOKEN` | `https://api-inference.huggingface.co/v1` | OpenAI-compat |
+| HuggingFace | `huggingface` | `HUGGINGFACE_API_KEY` | `https://api-inference.huggingface.co/v1` | OpenAI-compat |
 | Mistral | `mistral` | `MISTRAL_API_KEY` | `https://api.mistral.ai/v1` | OpenAI-compat |
 | DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` | OpenAI-compat |
 | Hermes (Nous Research) | `hermes` | `HERMES_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
@@ -321,13 +321,13 @@ llm:
 
 ```yaml
 # .noctifab/secrets.yaml
-HF_TOKEN: "hf_..."
+HUGGINGFACE_API_KEY: "hf_..."
 
 # .noctifab/config.yaml
 llm:
   provider: "huggingface"
   model: "meta-llama/Meta-Llama-3.1-70B-Instruct"
-  api_key: "secret:HF_TOKEN"
+  api_key: "secret:HUGGINGFACE_API_KEY"
   streaming: true
 ```
 
