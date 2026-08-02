@@ -36,6 +36,22 @@ func TestPing_UnsupportedProvider(t *testing.T) {
 	}
 }
 
+func TestPing_RegistryProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"deepseek/deepseek-v4-flash"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	if err := Ping(context.Background(), "openrouter", "test-key", server.URL+"/v1"); err != nil {
+		t.Fatalf("expected nil error for registry-only provider openrouter, got: %v", err)
+	}
+}
+
 func TestPing_AuthFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

@@ -201,7 +201,7 @@ agents:
 - **`llm.priority`** (List of Strings): Global ordered provider failover sequence. If an agent role does not define a custom `providers` list, it automatically inherits this global priority list.
 - **`llm.providers`** (List of Provider Specs): Named provider registry.
   - **`name`** (String): Unique identifier for the provider (e.g. `openai-primary`, `anthropic-backup`, `ollama-local`).
-  - **`provider`** (String): LLM provider client backend. Options: `openai`, `anthropic`, `gemini`, `opencode`, `kimi`, `moonshot`, `groq`, `openrouter`, `qwen`, `dashscope`, `together`, `llama`, `meta`, `huggingface`, `mistral`, `deepseek`, `hermes`, `ollama`, `xai`, `perplexity`, `fireworks`, `sambanova`, `cohere`, `cerebras`, `nvidia`, `ai21`, `upstage`.
+  - **`provider`** (String): LLM provider client backend. Options: `openai`, `anthropic`, `gemini`, `opencode`, `kimi`, `moonshot`, `groq`, `openrouter`, `qwen`, `dashscope`, `together`, `llama`, `meta`, `huggingface`, `mistral`, `deepseek`, `hermes`, `ollama`, `xai`, `grok`, `perplexity`, `fireworks`, `sambanova`, `cohere`, `cerebras`, `nvidia`, `ai21`, `upstage`.
   - **`model`** (String): Optional fixed model override (e.g. `claude-3-5-sonnet-latest`, `gpt-4o-mini`). Omit for dynamic capacity auto-selection.
   - **`api_key`** / **`api_keys`** (String or List of Strings): API authentication key value, secret reference, or secret name(s) in `secrets.yaml` / environment variables.
   - **`url`** (String): Endpoint URL override (required for self-hosted models or `ollama`).

@@ -182,3 +182,16 @@ func GetProviderSpec(provider string) (*ProviderSpec, bool) {
 	spec, ok := registry[key]
 	return spec, ok
 }
+
+// RegistrySnapshot returns a copy of the provider registry keyed by
+// lower-cased provider name. It is primarily used by tests to verify that
+// configuration validation stays in sync with the registered providers.
+func RegistrySnapshot() map[string]*ProviderSpec {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	snapshot := make(map[string]*ProviderSpec, len(registry))
+	for k, v := range registry {
+		snapshot[k] = v
+	}
+	return snapshot
+}

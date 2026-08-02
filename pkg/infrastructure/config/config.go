@@ -173,35 +173,20 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
-	validLLM := map[string]bool{
-		"openai":      true,
-		"anthropic":   true,
-		"gemini":      true,
-		"ollama":      true,
-		"hermes":      true,
-		"huggingface": true,
-		"mistral":     true,
-		"deepseek":    true,
-		"opencode":    true,
-	}
-
 	if len(cfg.LLM.Providers) > 0 {
 		for _, p := range cfg.LLM.Providers {
-			lp := strings.ToLower(p.Provider)
-			if !validLLM[lp] {
+			if !IsValidLLMProvider(p.Provider) {
 				return fmt.Errorf("invalid LLM provider in providers list: %s", p.Provider)
 			}
 		}
 	} else if len(cfg.LLMs) > 0 {
-		for _, llm := range cfg.LLMs {
-			lp := strings.ToLower(llm.Provider)
-			if !validLLM[lp] {
-				return fmt.Errorf("invalid LLM provider in llms list: %s", llm.Provider)
+		for _, llmItem := range cfg.LLMs {
+			if !IsValidLLMProvider(llmItem.Provider) {
+				return fmt.Errorf("invalid LLM provider in llms list: %s", llmItem.Provider)
 			}
 		}
 	} else {
-		lp := strings.ToLower(cfg.LLM.Provider)
-		if !validLLM[lp] {
+		if !IsValidLLMProvider(cfg.LLM.Provider) {
 			return fmt.Errorf("invalid LLM provider: %s", cfg.LLM.Provider)
 		}
 	}
@@ -238,6 +223,48 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// validLLMProviders is the allowlist of LLM provider names accepted by
+// configuration validation. It must stay in sync with the provider registry in
+// the llm package (pkg/infrastructure/llm/provider_registry.go); the drift
+// guard test in that package asserts this. The list is duplicated here because
+// the config package cannot import llm (llm already imports config).
+var validLLMProviders = map[string]bool{
+	"openai":      true,
+	"anthropic":   true,
+	"gemini":      true,
+	"ollama":      true,
+	"hermes":      true,
+	"huggingface": true,
+	"mistral":     true,
+	"deepseek":    true,
+	"opencode":    true,
+	"openrouter":  true,
+	"groq":        true,
+	"qwen":        true,
+	"dashscope":   true,
+	"together":    true,
+	"llama":       true,
+	"meta":        true,
+	"xai":         true,
+	"grok":        true,
+	"perplexity":  true,
+	"fireworks":   true,
+	"sambanova":   true,
+	"cohere":      true,
+	"cerebras":    true,
+	"nvidia":      true,
+	"ai21":        true,
+	"upstage":     true,
+	"kimi":        true,
+	"moonshot":    true,
+}
+
+// IsValidLLMProvider reports whether name is a known LLM provider accepted by
+// configuration validation. Comparison is case-insensitive.
+func IsValidLLMProvider(name string) bool {
+	return validLLMProviders[strings.ToLower(name)]
 }
 
 // NormalizeArchitecture normalizes architecture mode strings, short names, and legacy aliases to canonical forms.

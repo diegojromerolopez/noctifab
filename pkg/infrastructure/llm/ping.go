@@ -37,6 +37,9 @@ func Ping(ctx context.Context, provider, apiKey, url string) error {
 // error for unknown providers instead of falling through to a default. The
 // returned ProviderClient is scoped to a single ping call.
 func newProviderClientForPing(provider, url string) (ProviderClient, error) {
+	if spec, ok := GetProviderSpec(provider); ok && spec.NewClientFunc != nil {
+		return spec.NewClientFunc(url, 15*time.Second, 15*time.Second, false), nil
+	}
 	switch strings.ToLower(provider) {
 	case "openai", "hermes", "huggingface", "mistral", "deepseek", "ollama", "opencode":
 		return NewOpenAIProviderClient(provider, url, 15*time.Second, 15*time.Second, false), nil

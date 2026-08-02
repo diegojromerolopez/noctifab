@@ -197,6 +197,29 @@ llm:
 	}
 }
 
+func TestIsValidLLMProvider(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		want     bool
+	}{
+		{"core provider", "openai", true},
+		{"openrouter", "openrouter", true},
+		{"grok alias", "grok", true},
+		{"case insensitive", "OpenRouter", true},
+		{"unknown provider", "super_ai_provider", false},
+		{"empty provider", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsValidLLMProvider(tt.provider); got != tt.want {
+				t.Errorf("IsValidLLMProvider(%q) = %v, want %v", tt.provider, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConfigValidation_Comprehensive(t *testing.T) {
 	_ = os.Setenv("NOCTIFAB_E2E", "true")
 	defer func() { _ = os.Unsetenv("NOCTIFAB_E2E") }()
@@ -248,6 +271,27 @@ func TestConfigValidation_Comprehensive(t *testing.T) {
 			yamlContent: "config_version: \"1.0\"\nllm:\n  provider: \"super_ai_provider\"\n",
 			wantErr:     true,
 			errContains: "invalid LLM provider",
+		},
+		{
+			name:        "Valid registered providers accepted",
+			yamlContent: "config_version: \"1.0\"\nllm:\n  provider: \"openrouter\"\n  api_key: \"sk-test\"\n",
+			wantErr:     false,
+		},
+		{
+			name:        "Valid grok provider accepted",
+			yamlContent: "config_version: \"1.0\"\nllm:\n  provider: \"grok\"\n  api_key: \"sk-test\"\n",
+			wantErr:     false,
+		},
+		{
+			name: "Valid provider in providers list accepted",
+			yamlContent: "config_version: \"1.0\"\nllm:\n  providers:\n    - name: openrouter-backup\n      provider: openrouter\n      api_key: \"sk-test\"\n",
+			wantErr: false,
+		},
+		{
+			name:        "Invalid provider in providers list rejected",
+			yamlContent: "config_version: \"1.0\"\nllm:\n  providers:\n    - name: some-backup\n      provider: super_ai_provider\n      api_key: \"sk-test\"\n",
+			wantErr:     true,
+			errContains: "invalid LLM provider in providers list",
 		},
 		{
 			name:        "Invalid VCS provider name",
