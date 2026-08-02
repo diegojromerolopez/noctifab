@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Config Validation Rejects Registered LLM Providers**: Added the `openrouter`, `groq`, `qwen`, `dashscope`, `together`, `llama`, `meta`, `xai`, `grok`, `perplexity`, `fireworks`, `sambanova`, `cohere`, `cerebras`, `nvidia`, `ai21`, `upstage`, `kimi`, and `moonshot` provider names to the `validLLM` allowlist in `pkg/infrastructure/config/config.go` so `config.Validate()` accepts providers that are already registered in the LLM package (previously `provider: openrouter` in validation project configs failed with `invalid LLM provider`).
 - **Ping Dispatch Now Uses Data-Driven ProviderSpec Registry**: `newProviderClientForPing` in `pkg/infrastructure/llm/ping.go` now resolves the client via `GetProviderSpec(...).NewClientFunc` before falling back to the hardcoded switch, so ping works for all registry-registered providers (e.g. `openrouter`).
 - **Registry Drift Guard**: Added `config.IsValidLLMProvider` and `llm.RegistrySnapshot`, plus a unit test asserting every registered provider is accepted by config validation, preventing future divergence between the LLM registry and the config allowlist.
+- **Validation Project Config Load Test**: Added `TestLoadValidationProjectConfigs` in `pkg/infrastructure/config/validation_projects_test.go` that loads every validation project config (`calculator`, `echo`, `fortune`, `frontpunch`, `todo-cli`, `wc`) through the full config pipeline (skipping when local `secrets.yaml` is absent, as it is gitignored).
 
 ## [0.18.12] - 2026-08-01
 
