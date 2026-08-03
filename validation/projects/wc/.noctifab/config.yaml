@@ -55,7 +55,7 @@ llm:
     providers:
         - name: opencode-primary
           provider: opencode
-          model: latest
+          model: qwen3.8-max
           api_keys: OPENCODE_API_KEY
           max_retries: 2
           retry_backoff: 50ms

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] - 2026-08-03
+
+### Changed
+- **Pin Validation Projects to `qwen3.8-max`**: The `opencode-primary` LLM provider in all 6 validation project configs (`calculator`, `echo`, `fortune`, `frontpunch`, `todo-cli`, `wc`) now pins `model: qwen3.8-max` (verified against the opencode `/models` endpoint) instead of the dynamically-resolved `latest` alias. Other provider blocks (`huggingface-kimi`, `openrouter-backup`) are unchanged.
+
 ## [0.19.0] - 2026-08-03
 
 ### Added
