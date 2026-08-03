@@ -74,6 +74,10 @@ To maintain modularity and high context compatibility, the following guidelines 
 
 To run a fully containerized, isolated, end-to-end (E2E) integration check of `noctifab` implementing features autonomously inside a target project:
 
+> [!TIP]
+> For the recommended project order, tier classification, and failure attribution,
+> see [`validation/projects/TESTING_GUIDE.md`](validation/projects/TESTING_GUIDE.md).
+
 1. **Credentials Setup**:
    Create a `secrets.yaml` file on the host at `validation/projects/<project>/.noctifab/secrets.yaml` containing the necessary LLM API keys:
    ```yaml

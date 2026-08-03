@@ -55,6 +55,9 @@ case "${PROJECT}" in
   calculator) TARGETS="calculator.rb;lib/calculator/cli.rb" ;;
   echo)       TARGETS="cmd/echo/main.go" ;;
   fortune)    TARGETS="main.c;Makefile" ;;
+  t4)         TARGETS="Makefile;docker-compose.yml;src/t4.c" ;;
+  pyedis)     TARGETS="app/main.py;pyproject.toml" ;;
+  notebook)   TARGETS="src/index.ts;package.json;docker-compose.yml" ;;
   *)          TARGETS="" ;;
 esac
 

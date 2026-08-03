@@ -141,6 +141,21 @@ elif [ "${PROJECT}" = "fortune" ]; then
     echo "❌ Error: main.c or Makefile was not created/modified!"
     exit 1
   fi
+elif [ "${PROJECT}" = "t4" ]; then
+  if [ ! -f "Makefile" ] || [ ! -f "docker-compose.yml" ] || [ ! -f "src/t4.c" ]; then
+    echo "❌ Error: t4 artifacts (Makefile, docker-compose.yml, src/t4.c) were not created!"
+    exit 1
+  fi
+elif [ "${PROJECT}" = "pyedis" ]; then
+  if [ ! -f "app/main.py" ] || [ ! -f "pyproject.toml" ]; then
+    echo "❌ Error: pyedis artifacts (app/main.py, pyproject.toml) were not created!"
+    exit 1
+  fi
+elif [ "${PROJECT}" = "notebook" ]; then
+  if [ ! -f "src/index.ts" ] || [ ! -f "package.json" ] || [ ! -f "docker-compose.yml" ]; then
+    echo "❌ Error: notebook artifacts (src/index.ts, package.json, docker-compose.yml) were not created!"
+    exit 1
+  fi
 else
   echo "⚠ Warning: No specific file check defined for project ${PROJECT}."
 fi
@@ -183,6 +198,24 @@ if [ -d "/app/dist_mount" ]; then
     fi
     if [ -f "fortune" ]; then
       cp fortune /app/dist_mount/
+    fi
+  elif [ "${PROJECT}" = "t4" ]; then
+    if [ -f "Makefile" ]; then
+      make build || true
+    fi
+    if [ -f "bin/t4" ]; then
+      cp bin/t4 /app/dist_mount/
+    fi
+  elif [ "${PROJECT}" = "pyedis" ]; then
+    # Interpreted service; nothing to compile. The source is captured via src_mount.
+    :
+  elif [ "${PROJECT}" = "notebook" ]; then
+    if [ -f "package.json" ]; then
+      npm install --no-audit --no-fund >/dev/null 2>&1 || true
+      npm run build >/dev/null 2>&1 || true
+    fi
+    if [ -d "dist" ]; then
+      cp -a dist/. /app/dist_mount/ || true
     fi
   fi
 fi

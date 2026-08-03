@@ -649,6 +649,8 @@ When the agent asks a clarification question, Noctifab can attempt to auto-answe
 
 The `validation/` directory contains fully containerized, isolated end-to-end integration checks that run `noctifab` autonomously against real project specs — with **zero human intervention** — and verify that the correct source files are produced and all tests pass.
 
+See [`validation/README.md`](validation/README.md) for the full project list, the tier-based effectiveness classification, setup, and credential details.
+
 ### Near-Instantaneous Iterations (Speedup Measures)
 To optimize validation container runs for near-instantaneous development feedback loops, the platform includes:
 - **Warm Compiler Caching:** Persistent mounts for Go modules/build caches and Cargo registries directly from the host.
@@ -660,11 +662,15 @@ To optimize validation container runs for near-instantaneous development feedbac
 
 | Project | Language | User Story | What is Checked |
 | :--- | :--- | :--- | :--- |
-| **`frontpunch`** | Python | `US-001.md` | `frontpunch/worker.py` created/modified and test suite passes |
+| **`frontpunch`** | Python | `SPEC.md` | `frontpunch/worker.py` created/modified and test suite passes |
 | **`todo-cli`** | Go | `US-001.md` | `cmd/todo/main.go` (or `main.go`) created/modified and test suite passes |
 | **`wc`** | Rust | `US-002.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
 | **`calculator`** | Ruby | `SPEC.md` | `calculator.rb` (or under `lib/`) created/modified and test suite passes |
 | **`echo`** | Go | `SPEC.md` | `cmd/echo/main.go` (or `main.go`) created/modified and test suite passes |
+| **`fortune`** | C | `SPEC.md` | `main.c` (or `Makefile`) created/modified and test suite passes |
+| **`t4`** | C | `SPEC.md` | `Makefile` + `docker-compose.yml` + `src/t4.c` created/modified and test suite passes |
+| **`pyedis`** | Python | `SPEC.md` | `app/main.py` + `pyproject.toml` created/modified and test suite passes |
+| **`notebook`** | TypeScript | `SPEC.md` | `src/index.ts` + `package.json` + `docker-compose.yml` created/modified and test suite passes |
 
 The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
 
