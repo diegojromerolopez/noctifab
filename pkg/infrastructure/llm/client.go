@@ -176,18 +176,20 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		return nil, errors.New("missing API key for LLM provider")
 	}
 
-	normModel := strings.ToLower(strings.TrimSpace(c.Model))
+	// activeModel carries the concrete model for this call. The shared Client
+	// struct's Model field is never mutated here: Client instances are shared
+	// across concurrent agent calls, so writing c.Model from Complete would be a
+	// data race and would permanently pin a resolved "latest" alias (the alias
+	// would never be re-resolved on later calls once the concrete name leaked
+	// back into the struct). Keep everything on the local variable instead.
+	activeModel := c.Model
+	normModel := strings.ToLower(strings.TrimSpace(activeModel))
 	if normModel == "latest" || normModel == "auto" || strings.HasSuffix(normModel, "-latest") || normModel == "" {
 		if resolved := c.resolveLatestModel(ctx, apiKey); resolved != "" {
-			fmt.Fprintf(os.Stderr, "ℹ Dynamically resolved model alias '%s' for provider %s to latest model: %s\n", c.Model, c.Provider, resolved)
-			c.Model = resolved
+			fmt.Fprintf(os.Stderr, "ℹ Dynamically resolved model alias '%s' for provider %s to latest model: %s\n", activeModel, c.Provider, resolved)
+			activeModel = resolved
 		}
 	}
-
-	originalModel := c.Model
-	defer func() {
-		c.Model = originalModel
-	}()
 
 	for {
 		var responseBody []byte
@@ -212,7 +214,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		activeKey := apiKey
 		creditExhausted := false
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			responseBody, err = pClient.Call(ctx, c.Model, activeKey, prompt)
+			responseBody, err = pClient.Call(ctx, activeModel, activeKey, prompt)
 			if err == nil {
 				break
 			}
@@ -270,7 +272,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			fmt.Fprintf(os.Stderr, "⚠ LLM response was not a valid JSON envelope (%v). Sending a one-shot format reminder and retrying...\n", parseErr)
 			reminderPrompt := buildJSONReminderPrompt(prompt, responseBody)
 			reminderCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-			reminderBody, rErr := pClient.Call(reminderCtx, c.Model, apiKey, reminderPrompt)
+			reminderBody, rErr := pClient.Call(reminderCtx, activeModel, apiKey, reminderPrompt)
 			cancel()
 			if rErr == nil {
 				resp2, pErr2 := parseAndUnmarshal(reminderBody)
@@ -295,23 +297,23 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		}
 
 		if shouldFallback {
-			nextModel := c.getNextLowerModel(ctx, apiKey)
+			nextModel := c.getNextLowerModel(ctx, apiKey, activeModel)
 			if nextModel != "" {
-				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to lower model: %s...\n", c.Model, err, nextModel)
-				c.Model = nextModel
+				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to lower model: %s...\n", activeModel, err, nextModel)
+				activeModel = nextModel
 				continue
 			}
 		}
 
 		if creditExhausted && c.SkipOnCreditExhausted {
-			return nil, fmt.Errorf("%w (provider %s, model %s): %v", ErrCreditExhausted, c.Provider, c.Model, err)
+			return nil, fmt.Errorf("%w (provider %s, model %s): %v", ErrCreditExhausted, c.Provider, activeModel, err)
 		}
 
 		return nil, fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
 	}
 }
 
-func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
+func (c *Client) getNextLowerModel(ctx context.Context, apiKey, currentModel string) string {
 	provider := strings.ToLower(c.Provider)
 
 	var pClient ProviderClient
@@ -343,7 +345,7 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 		return ""
 	}
 
-	return selectLowerModelFromParsed(c.Model, parsedModels)
+	return selectLowerModelFromParsed(currentModel, parsedModels)
 }
 
 func (c *Client) resolveLatestModel(ctx context.Context, apiKey string) string {

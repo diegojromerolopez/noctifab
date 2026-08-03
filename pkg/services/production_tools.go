@@ -473,7 +473,9 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 
 	// Auto-fix pre-step: automatically run formatter / auto-fixer command before running linter diagnostics
 	if t.FormatterCommand != "" {
-		_, _ = t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, "")
+		if _, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Formatter auto-fix (%s) failed and was skipped: %v\n", t.FormatterCommand, err)
+		}
 	}
 
 	return t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.2] - 2026-08-03
+
+### Fixed
+- **Latest-Model Alias No Longer Mutates the Shared Client (Race)**: `Client.Complete` used to write the dynamically-resolved model back into `c.Model`. Because clients are shared across concurrent agent calls this was a data race, and the deferred restore captured the *resolved* value — so the `latest`/`-latest` alias was permanently pinned after the first call and never re-resolved. The concrete model now lives only on a local `activeModel` variable threaded through `Complete` and `getNextLowerModel`; the shared `Client.Model` is never mutated. Added regression tests (alias stays intact across repeated calls; concurrent `Complete` under `go test -race`).
+- **Formatter Auto-Fix Failures Are Logged**: The `run_linter` formatter pre-step no longer silently swallows a failing formatter command (`_, _ = ...`). A failure is now reported to stderr while remaining non-fatal to the linter step.
+
 ## [0.19.1] - 2026-08-03
 
 ### Changed
