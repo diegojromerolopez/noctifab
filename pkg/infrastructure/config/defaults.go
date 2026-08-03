@@ -87,6 +87,11 @@ func DefaultConfig() *Config {
 			MaxTimeout:  Duration(60 * time.Second),
 			IdleTimeout: Duration(15 * time.Second),
 			Streaming:   boolPtr(true),
+			// skip_on_credit_exhausted: stop attempting a provider chain the
+			// moment an HTTP 402 credit-limit response is detected, rather than
+			// burning wall-clock time on retries and lower-model fallbacks that
+			// cannot succeed without a funded key.
+			SkipOnCreditExhausted: true,
 		},
 		VCS: VCSConfig{
 			Provider:     "github",

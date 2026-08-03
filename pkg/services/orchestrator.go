@@ -239,7 +239,12 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 		if o.storyStartedAt.IsZero() && len(ready) > 0 {
 			o.storyStartedAt = time.Now()
 		}
-		if !o.storyStartedAt.IsZero() && time.Since(o.storyStartedAt) > o.cfg.MaxDuration && state.StoryStatus == domain.StoryIdle {
+		// Enforce the wall-clock cap regardless of the transient StoryStatus:
+		// previously this only fired while StoryIdle, so a story that was stuck
+		// mid-execution (StoryRunning) with a hung LLM/sandbox call never hit
+		// the deadline and burned the remaining budget indefinitely. Now we
+		// abort as soon as the deadline elapses and any task is still pending.
+		if !o.storyStartedAt.IsZero() && time.Since(o.storyStartedAt) > o.cfg.MaxDuration && !o.allTasksFinished(state) {
 			elapsed := time.Since(o.storyStartedAt)
 			fmt.Printf("Orchestrator: story exceeded max_duration %s (elapsed %s); failing remaining tasks and aborting story.\n", o.cfg.MaxDuration, elapsed.Truncate(time.Second))
 			_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {

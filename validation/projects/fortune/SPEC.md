@@ -64,7 +64,12 @@ The project root MUST include a `Makefile` supporting the following targets:
 - `build`: Compiles C source files into object files and links binary.
 - `test`: Builds and runs all C unit test suites. Exits 0 on all tests passing.
 - `lint`: Runs GCC static syntax and constraint check (`gcc -Wall -Wextra -Werror -pedantic -std=c17 -fsyntax-only`).
+- `format`: Runs code formatting (e.g. `gcc -Wall -Wextra -Werror -pedantic -std=c17 -fsyntax-only` or a clang-format pass). MUST always exist because the build automation invokes `make format`.
 - `clean`: Removes object files, binaries, and build artifacts.
+
+IMPORTANT: Each target MUST be defined EXACTLY ONCE in the Makefile. Do not define
+`test`, `lint`, or `format` more than once (duplicate recipes override each other and
+warn), and never omit `lint` or `format`.
 
 ## 4. Verification Requirements
 
@@ -90,7 +95,7 @@ JSON Schema:
       "tool": "create_story",
       "args": {
         "filename": "roadmap/US-001.md",
-        "content": "# User Story 001: Implement Fortune Quote Generator in C\n\nAs a user, I want a C command-line application that retrieves and displays a random famous quote from an SQLite database containing 100 quotes.\n\n## Requirements\n- Write standard C code conforming to C17 standard compiled with GCC (gcc -Wall -Wextra -Werror -pedantic -std=c17).\n- Follow SOLID principles and DDD layer structure: include/domain/, src/domain/, include/infrastructure/, src/infrastructure/, include/application/, src/application/, main.c, Makefile.\n- Use official SQLite C API interface (sqlite3_open, sqlite3_prepare_v2, sqlite3_step, sqlite3_column_text, sqlite3_finalize, sqlite3_close).\n- Seed SQLite database fortune.db using the provided seed.sql file containing 100 famous quotes.\n- Memory optimization: minimal heap allocations, zero memory leaks, explicit free.\n- Build system Makefile with targets: all, build, test, lint, clean.\n- 100% unit test coverage under tests/ running via make test.\n\n## Validation Criteria\n- Unit tests pass with make test.\n- Program executes and displays random quote.\n\n---\ndepends_on: []\nchange_type: new"
+        "content": "# User Story 001: Implement Fortune Quote Generator in C\n\nAs a user, I want a C command-line application that retrieves and displays a random famous quote from an SQLite database containing 100 quotes.\n\n## Requirements\n- Write standard C code conforming to C17 standard compiled with GCC (gcc -Wall -Wextra -Werror -pedantic -std=c17).\n- Follow SOLID principles and DDD layer structure: include/domain/, src/domain/, include/infrastructure/, src/infrastructure/, include/application/, src/application/, main.c, Makefile.\n- Use official SQLite C API interface (sqlite3_open, sqlite3_prepare_v2, sqlite3_step, sqlite3_column_text, sqlite3_finalize, sqlite3_close).\n- Seed SQLite database fortune.db using the provided seed.sql file containing 100 famous quotes.\n- Memory optimization: minimal heap allocations, zero memory leaks, explicit free.\n- Build system Makefile with targets: all, build, test, lint, format, clean. Each target MUST be defined exactly once (no duplicated recipes). lint and format MUST NOT be omitted.\n- 100% unit test coverage under tests/ running via make test.\n\n## Validation Criteria\n- Unit tests pass with make test.\n- Program executes and displays random quote.\n\n---\ndepends_on: []\nchange_type: new"
       }
     }
   ]

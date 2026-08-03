@@ -89,6 +89,10 @@ func NewResilientLLMRouter(cfg *config.Config, budgetStore domain.BudgetStore) *
 			cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
 			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
 		)
+		if dc, ok := defaultClient.(*Client); ok {
+			dc.APIKeys = cfg.LLM.APIKeyPool
+			dc.SkipOnCreditExhausted = cfg.LLM.SkipOnCreditExhausted
+		}
 	}
 
 	var tokenLimit int64
@@ -332,6 +336,8 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 	} else if r.cfg != nil && r.cfg.LLM.Streaming != nil {
 		client.Streaming = *r.cfg.LLM.Streaming
 	}
+
+	client.SkipOnCreditExhausted = r.cfg == nil || r.cfg.LLM.SkipOnCreditExhausted
 
 	return client
 }

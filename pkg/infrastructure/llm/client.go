@@ -21,19 +21,47 @@ import (
 )
 
 type Client struct {
-	Provider          string
-	Model             string
-	APIKey            string
-	APIKeys           []string
-	keyIndex          uint64
-	MaxRetries        int
-	Backoff           time.Duration
-	URL               string
-	Timeout           time.Duration
-	IdleTimeout       time.Duration
-	Streaming         bool
-	CavemanCompaction bool
-	Compaction        string
+	Provider              string
+	Model                 string
+	APIKey                string
+	APIKeys               []string
+	keyIndex              uint64
+	MaxRetries            int
+	Backoff               time.Duration
+	URL                   string
+	Timeout               time.Duration
+	IdleTimeout           time.Duration
+	Streaming             bool
+	CavemanCompaction     bool
+	Compaction            string
+	SkipOnCreditExhausted bool
+}
+
+// ErrCreditExhausted is returned when a provider reports an HTTP 402 (or a
+// credit/quota-limited 429) that cannot be resolved by retrying or by falling
+// back to a lower model — the account is out of payable credits. The router
+// treats it as a hard "skip this provider chain" signal so the next provider
+// in priority is attempted immediately instead of burning wall-clock time.
+var ErrCreditExhausted = errors.New("LLM provider credit exhausted")
+
+// isCreditExhausted reports whether err signals provider credit/limit exhaustion.
+// An HTTP 402 from the completion endpoint always qualifies. A 429 is only
+// treated as credit exhaustion when the provider body explicitly mentions
+// "credit" (e.g. OpenRouter's "You have depleted your monthly included
+// credits") — a plain rate-limit 429 still falls through to normal handling.
+func isCreditExhausted(err error) bool {
+	var he *httpError
+	if !errors.As(err, &he) {
+		return false
+	}
+	if he.StatusCode == http.StatusPaymentRequired {
+		return true
+	}
+	if he.StatusCode == http.StatusTooManyRequests {
+		low := strings.ToLower(he.Body)
+		return strings.Contains(low, "credit")
+	}
+	return false
 }
 
 func (c *Client) getNextAPIKey() string {
@@ -182,14 +210,29 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		}
 
 		activeKey := apiKey
+		creditExhausted := false
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			responseBody, err = pClient.Call(ctx, c.Model, activeKey, prompt)
 			if err == nil {
 				break
 			}
 
+			if isCreditExhausted(err) {
+				creditExhausted = true
+				fmt.Fprintf(os.Stderr, "⚠ LLM provider credit limit reached: %v\n", err)
+				if c.SkipOnCreditExhausted {
+					// Fast-fail: do not retry or fall back to a lower model —
+					// every further attempt & fallback reuses the same spent
+					// account and only delays the provider switch.
+					break
+				}
+				// skip_on_credit_exhausted disabled: rotate to the next key in
+				// the pool (the spent key is pushed to the back) and retry as
+				// usual.
+			}
+
 			fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
-			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") {
+			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") || creditExhausted {
 				fmt.Fprintln(os.Stderr, "⚠ Warning: You have exceeded your LLM API quota (HTTP 429). Please check your plan and billing details.")
 				if len(c.APIKeys) > 1 {
 					activeKey = c.getNextAPIKey()
@@ -243,6 +286,13 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 
 		// Unconditionally attempt model fallback across all LLM providers when an error response is returned
 		shouldFallback := true
+		if creditExhausted && c.SkipOnCreditExhausted {
+			// Credit exhaustion is not recoverable with a cheaper model — the
+			// account (or key) is out of payable credits. Skip the fallback
+			// ladder and surface ErrCreditExhausted so the router moves to the
+			// next provider in priority immediately.
+			shouldFallback = false
+		}
 
 		if shouldFallback {
 			nextModel := c.getNextLowerModel(ctx, apiKey)
@@ -251,6 +301,10 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 				c.Model = nextModel
 				continue
 			}
+		}
+
+		if creditExhausted && c.SkipOnCreditExhausted {
+			return nil, fmt.Errorf("%w (provider %s, model %s): %v", ErrCreditExhausted, c.Provider, c.Model, err)
 		}
 
 		return nil, fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)

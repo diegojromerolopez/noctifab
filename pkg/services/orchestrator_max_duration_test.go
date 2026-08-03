@@ -67,6 +67,51 @@ func TestRunOnce_MaxDurationExceeded(t *testing.T) {
 	}
 }
 
+// TestRunOnce_MaxDurationEnforcedWhileRunning verifies that the wall-clock cap
+// aborts a story that is stuck mid-execution (StoryStatus=StoryRunning, an
+// IN_PROGRESS task that never finishes). Previously the guard only fired while
+// StoryIdle, so a hung LLM/sandbox call inside a running task could burn the
+// remaining budget indefinitely.
+func TestRunOnce_MaxDurationEnforcedWhileRunning(t *testing.T) {
+	state := &domain.State{
+		ID:          "story-running-overdue",
+		ProjectPath: t.TempDir(),
+		Tasks: []domain.Task{
+			{ID: "t1", Title: "T1", Description: "desc one", Status: domain.TaskInProgress, MaxRetries: 3},
+			{ID: "t2", Title: "T2", Description: "desc two", Status: domain.TaskPending, MaxRetries: 3},
+		},
+		StoryStatus: domain.StoryRunning,
+	}
+	repo := &mockRepo{state: state}
+	reg := NewToolRegistry()
+	validator := NewPolicyValidator(nil, "main", nil)
+	scheduler := NewScheduler(NewFileLockRegistry())
+	git := NewGitClient(state.ProjectPath)
+	queue := NewRebaseQueue(git)
+	evaluator := NewTestValidator(NewHostSandbox(nil, "", 0, nil), false, nil, nil)
+	vcsClient := &mockVCS{}
+	cfg := OrchestratorConfig{
+		PollInterval: 10 * time.Millisecond,
+		Concurrency:  1,
+		MaxDuration:  1 * time.Nanosecond, // effectively immediate
+	}
+	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch.storyStartedAt = time.Now().Add(-1 * time.Hour)
+
+	if _, err := orch.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce returned error: %v", err)
+	}
+
+	if repo.state.StoryStatus != domain.StoryFailed {
+		t.Errorf("expected StoryStatus=StoryFailed while StoryRunning and past deadline, got %q", repo.state.StoryStatus)
+	}
+	for _, tk := range repo.state.Tasks {
+		if tk.Status != domain.TaskFailed {
+			t.Errorf("task %s expected TaskFailed, got %q", tk.ID, tk.Status)
+		}
+	}
+}
+
 // TestRunOnce_MaxDurationZero_Disabled verifies that a MaxDuration of 0
 // disables the wall-clock check (the historical default behaviour): a story
 // with running tasks and an old storyStartedAt stays Idle and is not aborted.

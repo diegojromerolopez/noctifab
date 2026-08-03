@@ -165,24 +165,25 @@ type ProviderSpec struct {
 }
 
 type LLMConfig struct {
-	Priority           []string       `yaml:"priority,omitempty"`
-	Providers          []ProviderSpec `yaml:"providers,omitempty"`
-	Provider           string         `yaml:"provider"`
-	Model              string         `yaml:"model"`
-	Temperature        float64        `yaml:"temperature"`
-	APIKey             string         `yaml:"api_key"`
-	APIKeys            APIKeys        `yaml:"api_keys"`
-	APIKeyValue        string         `yaml:"-"`
-	APIKeyPool         []string       `yaml:"-"`
-	URL                string         `yaml:"url"`
-	MaxRetries         int            `yaml:"max_retries"`
-	RetryBackoff       Duration       `yaml:"retry_backoff"`
-	RetryBackoffFactor float64        `yaml:"retry_backoff_factor"`
-	ResetPeriod        string         `yaml:"reset_period"`
-	Failover           FailoverConfig `yaml:"failover"`
-	MaxTimeout         Duration       `yaml:"max_timeout"`
-	IdleTimeout        Duration       `yaml:"idle_timeout"`
-	Streaming          *bool          `yaml:"streaming"`
+	Priority              []string       `yaml:"priority,omitempty"`
+	Providers             []ProviderSpec `yaml:"providers,omitempty"`
+	Provider              string         `yaml:"provider"`
+	Model                 string         `yaml:"model"`
+	Temperature           float64        `yaml:"temperature"`
+	APIKey                string         `yaml:"api_key"`
+	APIKeys               APIKeys        `yaml:"api_keys"`
+	APIKeyValue           string         `yaml:"-"`
+	APIKeyPool            []string       `yaml:"-"`
+	URL                   string         `yaml:"url"`
+	MaxRetries            int            `yaml:"max_retries"`
+	RetryBackoff          Duration       `yaml:"retry_backoff"`
+	RetryBackoffFactor    float64        `yaml:"retry_backoff_factor"`
+	ResetPeriod           string         `yaml:"reset_period"`
+	Failover              FailoverConfig `yaml:"failover"`
+	SkipOnCreditExhausted bool           `yaml:"skip_on_credit_exhausted"`
+	MaxTimeout            Duration       `yaml:"max_timeout"`
+	IdleTimeout           Duration       `yaml:"idle_timeout"`
+	Streaming             *bool          `yaml:"streaming"`
 }
 
 type PullRequestConfig struct {

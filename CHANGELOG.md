@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-08-03
+
+### Added
+- **LLM Credit Exhaustion Fast-Fail (`llm.skip_on_credit_exhausted`)**: New config toggle (default `true`) that stops attempting a provider chain the moment an HTTP 402 credit-limit response (or a credit/quota-limited 429) is detected. `noctifab` no longer burns wall-clock time retrying and falling back to lower models on a spent account — the router moves straight to the next provider in `llm.priority`. When disabled, the client rotates to the next key in the `api_keys` pool and keeps retrying. Detection is robust: HTTP 402 always qualifies; a 429 only when the provider body explicitly mentions `credit` (e.g. OpenRouter's `openrouter_key_limit`).
+
+### Fixed
+- **`max_duration` Now Enforced During Execution**: The orchestrator's wall-clock cap previously only aborted a story while `StoryStatus == StoryIdle`, so a story stuck mid-execution (a hung LLM/sandbox call inside a running task) never hit the deadline. The guard now aborts as soon as the deadline elapses and any task is still unfinished, regardless of transient story status.
+- **Validation Projects Enforce a 30-Minute Cap**: All 6 validation project configs (`calculator`, `echo`, `fortune`, `frontpunch`, `todo-cli`, `wc`) now set `max_duration: 30m` instead of the previously unlimited `0s`.
+- **`fortune` SPEC Requires a Complete Makefile**: Added the missing `format` target to the SPEC's required Makefile targets (the harness invokes `make format`) and explicitly forbid omitting `lint`/`format` or defining any target more than once.
+
 ## [0.18.15] - 2026-08-02
 
 ### Changed

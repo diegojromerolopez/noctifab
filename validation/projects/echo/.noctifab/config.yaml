@@ -108,7 +108,7 @@ sandbox:
 input: ""
 auto_commit: false
 max_actions: 100
-max_duration: 0s
+max_duration: 30m
 conversation_mode: sliding-window
 max_history_messages: 10
 compaction_threshold: 15

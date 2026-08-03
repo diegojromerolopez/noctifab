@@ -48,6 +48,7 @@ workspace_cache:
 poll_interval: 10s
 max_clarification_wait: 30m0s
 clarification_timeout_action: continue
+max_duration: 30m
 storage:
     provider: sqlite
     conn_string: .noctifab/data/noctifab.db
