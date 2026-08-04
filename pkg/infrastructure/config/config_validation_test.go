@@ -283,9 +283,9 @@ func TestConfigValidation_Comprehensive(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			name: "Valid provider in providers list accepted",
+			name:        "Valid provider in providers list accepted",
 			yamlContent: "config_version: \"1.0\"\nllm:\n  providers:\n    - name: openrouter-backup\n      provider: openrouter\n      api_key: \"sk-test\"\n",
-			wantErr: false,
+			wantErr:     false,
 		},
 		{
 			name:        "Invalid provider in providers list rejected",

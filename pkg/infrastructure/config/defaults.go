@@ -62,12 +62,14 @@ func DefaultConfig() *Config {
 			Enabled: boolPtr(true),
 		},
 		PollInterval:               Duration(5 * time.Minute),
+		StoryExecInterval:          Duration(2 * time.Second),
 		MaxClarificationWait:       Duration(30 * time.Minute),
 		ClarificationTimeoutAction: "abort",
 		Storage: StorageConfig{
-			Provider:     "sqlite",
-			ConnString:   ".noctifab/data/noctifab.db",
-			JSONFilePath: ".noctifab/data/state.json",
+			Provider:           "sqlite",
+			ConnString:         ".noctifab/data/noctifab.db",
+			JSONFilePath:       ".noctifab/data/state.json",
+			KeepFinishedStates: 20,
 		},
 		LLM: LLMConfig{
 			Provider:           "openai",

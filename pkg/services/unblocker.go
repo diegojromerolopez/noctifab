@@ -3,10 +3,16 @@ package services
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
+
+// defaultLLMAssessmentCooldown is the minimum interval between LLM
+// re-assessments of the same stall (keyed by task ID + task status).
+const defaultLLMAssessmentCooldown = 5 * time.Minute
 
 // UnblockerAgent is an autonomous daemon goroutine that periodically scans the
 // shared pipeline state for stalled or blocked tasks and agents, diagnoses the
@@ -24,6 +30,17 @@ type UnblockerAgent struct {
 	stallThreshold    time.Duration
 	conflictThreshold time.Duration
 	llmAssessment     bool
+
+	// started makes Start idempotent so double-starting (e.g. serve.go plus
+	// Orchestrator.Start) never spawns two competing polling loops.
+	started atomic.Bool
+
+	// llmCooldown throttles LLM re-assessment of the same stall; entries in
+	// llmAssessedAt are keyed by task ID + status and pruned when the task's
+	// status changes.
+	llmCooldown   time.Duration
+	cooldownMu    sync.Mutex
+	llmAssessedAt map[string]time.Time
 }
 
 // NewUnblockerAgent creates a new UnblockerAgent via dependency injection.
@@ -58,12 +75,19 @@ func NewUnblockerAgent(
 		stallThreshold:    stallThreshold,
 		conflictThreshold: conflictThreshold,
 		llmAssessment:     llmAssessment,
+		llmCooldown:       defaultLLMAssessmentCooldown,
+		llmAssessedAt:     make(map[string]time.Time),
 	}
 }
 
 // Start launches the unblocker polling loop as a background goroutine.
-// It returns immediately; cancel ctx to stop.
+// It returns immediately; cancel ctx to stop. Start is idempotent: subsequent
+// calls are no-ops, defusing the serve.go + Orchestrator.Start double-start
+// hazard.
 func (u *UnblockerAgent) Start(ctx context.Context) {
+	if !u.started.CompareAndSwap(false, true) {
+		return
+	}
 	go u.loop(ctx)
 }
 
@@ -116,10 +140,61 @@ func (u *UnblockerAgent) checkAndUnblock(ctx context.Context) {
 	fmt.Printf("🔍 [UnblockerAgent] Detected %d stall(s). Assessing...\n", len(stalls))
 
 	if u.llmAssessment && u.llmClient != nil {
-		u.assessWithLLM(ctx, state, stalls)
+		fresh := u.filterStallsForLLMAssessment(state, stalls)
+		if len(fresh) == 0 {
+			fmt.Printf("UnblockerAgent: all %d stall(s) are within the LLM assessment cooldown; skipping re-assessment.\n", len(stalls))
+			return
+		}
+		u.assessWithLLM(ctx, state, fresh)
 	} else {
 		u.assessHeuristic(ctx, stalls)
 	}
+}
+
+// stallCooldownKey identifies a stall for LLM-assessment throttling purposes.
+func stallCooldownKey(taskID string, status domain.TaskStatus) string {
+	return taskID + "|" + string(status)
+}
+
+// filterStallsForLLMAssessment prunes cooldown entries whose task status has
+// changed (or whose task disappeared) and returns only the stalls that have
+// not been LLM-assessed within the cooldown window. Returned stalls are marked
+// as assessed now.
+func (u *UnblockerAgent) filterStallsForLLMAssessment(state *domain.State, stalls []StalledTask) []StalledTask {
+	cooldown := u.llmCooldown
+	if cooldown <= 0 {
+		cooldown = defaultLLMAssessmentCooldown
+	}
+
+	u.cooldownMu.Lock()
+	defer u.cooldownMu.Unlock()
+	if u.llmAssessedAt == nil {
+		u.llmAssessedAt = make(map[string]time.Time)
+	}
+
+	// Prune entries for tasks whose status changed since the assessment (the
+	// key embeds the status) or that no longer exist in the state.
+	current := make(map[string]bool, len(state.Tasks))
+	for _, t := range state.Tasks {
+		current[stallCooldownKey(t.ID, t.Status)] = true
+	}
+	for key := range u.llmAssessedAt {
+		if !current[key] {
+			delete(u.llmAssessedAt, key)
+		}
+	}
+
+	now := time.Now()
+	var fresh []StalledTask
+	for _, s := range stalls {
+		key := stallCooldownKey(s.Task.ID, s.Task.Status)
+		if assessedAt, ok := u.llmAssessedAt[key]; ok && now.Sub(assessedAt) < cooldown {
+			continue
+		}
+		u.llmAssessedAt[key] = now
+		fresh = append(fresh, s)
+	}
+	return fresh
 }
 
 // detectStalledTasks inspects the state and returns all detected stalls.

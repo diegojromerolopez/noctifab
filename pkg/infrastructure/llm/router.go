@@ -55,6 +55,7 @@ type ResilientLLMRouter struct {
 	tokenUsageLimit  int64
 	cooldowns        map[string]time.Time
 	cooldownDuration time.Duration
+	candidateCache   map[string][]RouterCandidate
 }
 
 // NewResilientLLMRouter constructs a new ResilientLLMRouter.
@@ -110,11 +111,45 @@ func NewResilientLLMRouter(cfg *config.Config, budgetStore domain.BudgetStore) *
 		tokenUsageLimit:  tokenLimit,
 		cooldowns:        make(map[string]time.Time),
 		cooldownDuration: cooldown,
+		candidateCache:   make(map[string][]RouterCandidate),
 	}
 }
 
-// ResolveCandidatesForRole builds the ordered candidate client list for a given role.
+// ResolveCandidatesForRole returns the ordered candidate client list for a
+// given role. Results are memoized per role: the candidate list is derived
+// solely from static configuration and environment variables, so rebuilding
+// clients (and re-scanning os.Getenv) on every completion is wasted work.
 func (r *ResilientLLMRouter) ResolveCandidatesForRole(roleName string) []RouterCandidate {
+	r.mu.RLock()
+	if cached, ok := r.candidateCache[roleName]; ok {
+		r.mu.RUnlock()
+		return cached
+	}
+	r.mu.RUnlock()
+
+	candidates := r.buildCandidatesForRole(roleName)
+
+	r.mu.Lock()
+	if r.candidateCache == nil {
+		r.candidateCache = make(map[string][]RouterCandidate)
+	}
+	r.candidateCache[roleName] = candidates
+	r.mu.Unlock()
+
+	return candidates
+}
+
+// InvalidateCandidateCache clears the memoized per-role candidate lists,
+// forcing the next resolution to rebuild clients from config/env.
+func (r *ResilientLLMRouter) InvalidateCandidateCache() {
+	r.mu.Lock()
+	r.candidateCache = make(map[string][]RouterCandidate)
+	r.mu.Unlock()
+}
+
+// buildCandidatesForRole constructs the ordered candidate client list for a
+// given role from configuration.
+func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCandidate {
 	var candidates []RouterCandidate
 	seen := make(map[string]bool)
 
@@ -331,10 +366,28 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 		client.IdleTimeout = time.Duration(r.cfg.LLM.IdleTimeout)
 	}
 
+	if spec.MaxTokens > 0 {
+		client.MaxTokens = spec.MaxTokens
+	} else if r.cfg != nil && r.cfg.LLM.MaxTokens > 0 {
+		client.MaxTokens = r.cfg.LLM.MaxTokens
+	}
+
+	if spec.Temperature != 0 {
+		client.Temperature = spec.Temperature
+	} else if r.cfg != nil && r.cfg.LLM.Temperature != 0 {
+		client.Temperature = r.cfg.LLM.Temperature
+	}
+
 	if spec.Streaming != nil {
 		client.Streaming = *spec.Streaming
 	} else if r.cfg != nil && r.cfg.LLM.Streaming != nil {
 		client.Streaming = *r.cfg.LLM.Streaming
+	}
+
+	if r.cfg != nil {
+		client.Compaction = r.cfg.Context.GetCompactionMode()
+		client.CavemanCompaction = r.cfg.Context.CavemanCompaction
+		client.MaxPromptTokens = r.cfg.LLM.MaxPromptTokens
 	}
 
 	client.SkipOnCreditExhausted = r.cfg == nil || r.cfg.LLM.SkipOnCreditExhausted
@@ -373,20 +426,29 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 
 		resp, err := c.Client.Complete(ctx, prompt)
 		if err == nil {
-			// Record token usage if budget store is present
+			// Record estimated token usage if budget store is present, using
+			// the same prompt+completion estimation as FailoverClient so a
+			// daily "token" limit means the same thing regardless of which
+			// client the factory built.
 			if r.budgetStore != nil && resp != nil {
 				today := time.Now().UTC().Format("2006-01-02")
-				_ = r.budgetStore.IncrementUsage(ctx, today, c.Provider, 1)
-				_ = r.budgetStore.IncrementUsage(ctx, today, "total", 1)
+				tokens := estimateUsageTokens(prompt, resp)
+				_ = r.budgetStore.IncrementUsage(ctx, today, c.Provider, tokens)
+				_ = r.budgetStore.IncrementUsage(ctx, today, "total", tokens)
 			}
 			return resp, nil
 		}
 
 		lastErr = err
-		// Mark candidate in cooldown on failure
-		r.mu.Lock()
-		r.cooldowns[c.Name] = time.Now().Add(r.cooldownDuration)
-		r.mu.Unlock()
+		// Cooldown only helps when the failure is plausibly transient (rate
+		// limit, overload, timeout). Deterministic rejections (bad API key,
+		// invalid params) would not be fixed by waiting, so just move on to
+		// the next candidate without benching this one.
+		if isTransientError(err) {
+			r.mu.Lock()
+			r.cooldowns[c.Name] = time.Now().Add(r.cooldownDuration)
+			r.mu.Unlock()
+		}
 	}
 
 	if lastErr != nil {

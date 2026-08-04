@@ -105,14 +105,14 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		// Does not exist, create it from base branch
 		if _, err := o.git.Run(ctx, true, "checkout", baseBranch); err != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout base branch %s: %v\n", baseBranch, err)
-			o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout base branch: %v", err))
+			_ = o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout base branch: %v", err))
 			return
 		}
 		if _, err := o.git.Run(ctx, true, "checkout", "-b", integrationBranch); err != nil {
 			_, errVerify := o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
 			if errVerify != nil {
 				fmt.Fprintf(os.Stderr, "Orchestrator: Failed to create integration branch %s: %v\n", integrationBranch, err)
-				o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to create integration branch: %v", err))
+				_ = o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to create integration branch: %v", err))
 				return
 			}
 		}
@@ -145,7 +145,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		// Switch to integration branch first to branch off accumulative state
 		if _, err := o.git.Run(ctx, true, "checkout", integrationBranch); err != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout integration branch %s: %v\n", integrationBranch, err)
-			o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout integration branch: %v", err))
+			_ = o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout integration branch: %v", err))
 			return
 		}
 
@@ -170,14 +170,14 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			_, err = o.git.Run(ctx, true, "checkout", "-b", branchName)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Orchestrator: Failed to create worker branch %s: %v\n", branchName, err)
-				o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to create worker branch: %v", err))
+				_ = o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to create worker branch: %v", err))
 				return
 			}
 		}
 	}
 
 	// Clone state for this task execution to isolate state.ProjectPath if using worktrees
-	taskState := *state
+	taskState := *state.Clone()
 	if o.cfg.UseWorktrees {
 		taskState.ProjectPath = worktreeDir
 	}
@@ -188,7 +188,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		fullPath, err := resolveSandboxPath(taskState.ProjectPath, file)
 		if err == nil {
 			if content, err := os.ReadFile(fullPath); err == nil {
-				fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", file, string(content)))
+				fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", file, capText(string(content), fileContextCapChars)))
 			}
 		}
 	}
@@ -248,7 +248,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 					fullPath, err := resolveSandboxPath(taskState.ProjectPath, file)
 					if err == nil {
 						if content, err := os.ReadFile(fullPath); err == nil {
-							testFileContexts = append(testFileContexts, fmt.Sprintf("Test File %s:\n```\n%s\n```", file, string(content)))
+							testFileContexts = append(testFileContexts, fmt.Sprintf("Test File %s:\n```\n%s\n```", file, capText(string(content), fileContextCapChars)))
 						}
 					}
 				}
@@ -310,7 +310,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 					fullPath, err := resolveSandboxPath(taskState.ProjectPath, file)
 					if err == nil {
 						if content, err := os.ReadFile(fullPath); err == nil {
-							testFileContexts = append(testFileContexts, fmt.Sprintf("Test File %s:\n```\n%s\n```", file, string(content)))
+							testFileContexts = append(testFileContexts, fmt.Sprintf("Test File %s:\n```\n%s\n```", file, capText(string(content), fileContextCapChars)))
 						}
 					}
 				}
@@ -361,7 +361,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			targetTask.Status = domain.TaskSuccess
 			targetTask.Progress = 100
 			targetTask.FailureLog = ""
-			fmt.Printf("✅ [3x Consensus Passed] Task %s (%s) passed 3x test validation\n", taskID, task.Title)
+			fmt.Printf("✅ [Validation Passed] Task %s (%s) passed test validation\n", taskID, task.Title)
 		} else {
 			category := CategorizeFailureLog(logMsg)
 			if category == FailureSandbox {
@@ -387,7 +387,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 		targetTask.UpdatedAt = time.Now()
 
-		st.LastActions = append(st.LastActions, domain.Action{
+		domain.AppendAction(st, domain.Action{
 			Timestamp: time.Now(),
 			Tool:      "evaluate",
 			Success:   passed,
@@ -408,9 +408,13 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	if passed {
 		fmt.Printf("Orchestrator: Task %s completed successfully!\n", taskID)
-		o.metricsCollector.RecordCommit()
-		// Merge back sequentially into integrationBranch using RebaseQueue
-		_ = o.rebaseQueue.Push(ctx, branchName, integrationBranch)
+		o.metrics().RecordCommit()
+		// Merge back sequentially into integrationBranch using RebaseQueue.
+		// A failed merge-back must not stay invisible: the task is already
+		// marked SUCCESS, so surface the error loudly for the unblocker/logs.
+		if pushErr := o.rebaseQueue.Push(ctx, branchName, integrationBranch); pushErr != nil {
+			fmt.Fprintf(os.Stderr, "Orchestrator: merge-back of %s into %s failed for task %s: %v\n", branchName, integrationBranch, taskID, pushErr)
+		}
 
 		// Clean up branch
 		if !o.cfg.UseWorktrees {
@@ -420,7 +424,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
 		}
 	} else {
-		o.metricsCollector.RecordRetry()
+		o.metrics().RecordRetry()
 		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s failed test validation. Retrying or marking FAILED. Failure log:\n%s\n", taskID, logMsg)
 		if !o.cfg.UseWorktrees {
 			if permanentlyFailed {
@@ -437,7 +441,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	}
 
 	metricsPath := filepath.Join(state.ProjectPath, ".noctifab", "data", "metrics.json")
-	_ = o.metricsCollector.ExportJSON(metricsPath)
+	_ = o.metrics().ExportJSON(metricsPath)
 
 	o.scheduler.ReleaseLocks(taskID)
 

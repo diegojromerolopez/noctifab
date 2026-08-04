@@ -18,6 +18,11 @@ type FlakyResult struct {
 	Outputs     []string
 }
 
+// DetectFlaky analyzes repeated test run results for flakiness.
+//
+// NOTE: DetectFlaky and BuildFlakyStabilizationPrompt are currently only
+// exercised by tests; no production code path invokes them yet. They are
+// kept in place for future use by multi-run test validation.
 func DetectFlaky(results []TestRunResult) *FlakyResult {
 	passed, failed := 0, 0
 	outputs := make([]string, len(results))

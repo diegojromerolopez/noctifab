@@ -301,7 +301,8 @@ var startCmd = &cobra.Command{
 			DevOpsIterations:      cfg.Agents.DevOps.Iterations,
 			PollInterval:          time.Duration(cfg.PollInterval),
 			MaxRetries:            10,
-			Concurrency:           cfg.Agents.Generators.Number,
+			Concurrency:           effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
+			UseWorktrees:          cfg.VCS.UseWorktrees,
 			OCCMaxRetries:         cfg.OCCMaxRetries,
 			OCCBackoffBase:        time.Duration(cfg.OCCBackoffBase),
 			OCCBackoffFactor:      cfg.OCCBackoffFactor,
@@ -395,8 +396,8 @@ var startCmd = &cobra.Command{
 					return fmt.Errorf("failed to plan specification: %w", err)
 				}
 
-				// Run orchestrator loop
-				ticker := time.NewTicker(2 * time.Second)
+				// Run orchestrator loop (story_exec_interval, default 2s)
+				ticker := time.NewTicker(storyExecInterval(cfg))
 				defer ticker.Stop()
 
 				storyDone := false

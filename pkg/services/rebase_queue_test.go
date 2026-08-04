@@ -1,0 +1,124 @@
+package services
+
+import (
+	"context"
+	"errors"
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestRunCommandWithTimeout(t *testing.T) {
+	t.Run("when the command finishes before the timeout it returns its output", func(t *testing.T) {
+		out, err := runCommandWithTimeout(context.Background(), 5*time.Second, t.TempDir(), os.Environ(), "echo", "ok")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "ok") {
+			t.Errorf("expected output to contain 'ok', got %q", out)
+		}
+	})
+
+	t.Run("when the command exceeds the timeout it is killed and returns a timeout error", func(t *testing.T) {
+		start := time.Now()
+		_, err := runCommandWithTimeout(context.Background(), 100*time.Millisecond, t.TempDir(), os.Environ(), "sleep", "10")
+		if err == nil {
+			t.Fatal("expected a timeout error")
+		}
+		if !strings.Contains(err.Error(), "timed out") {
+			t.Errorf("expected 'timed out' in error, got %v", err)
+		}
+		if elapsed := time.Since(start); elapsed > 5*time.Second {
+			t.Errorf("command was not killed promptly, took %s", elapsed)
+		}
+	})
+
+	t.Run("when the caller ctx is already cancelled it fails immediately", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := runCommandWithTimeout(ctx, time.Minute, t.TempDir(), os.Environ(), "sleep", "10")
+		if err == nil {
+			t.Fatal("expected an error for cancelled context")
+		}
+	})
+}
+
+func TestGitClientRun(t *testing.T) {
+	t.Run("when constructed without options it defaults the timeout to 2 minutes", func(t *testing.T) {
+		g := NewGitClient(t.TempDir())
+		if g.commandTimeout != 0 {
+			t.Errorf("expected zero-value field, got %v", g.commandTimeout)
+		}
+		// The zero value defaults to 2m at Run time via defaultGitCommandTimeout.
+		if defaultGitCommandTimeout != 2*time.Minute {
+			t.Errorf("expected default of 2m, got %v", defaultGitCommandTimeout)
+		}
+	})
+
+	t.Run("when constructed with WithGitCommandTimeout it uses the custom timeout", func(t *testing.T) {
+		g := NewGitClient(t.TempDir(), WithGitCommandTimeout(50*time.Millisecond))
+		if g.commandTimeout != 50*time.Millisecond {
+			t.Errorf("expected 50ms, got %v", g.commandTimeout)
+		}
+	})
+
+	t.Run("when running a valid git command it returns output without error", func(t *testing.T) {
+		g := NewGitClient(t.TempDir())
+		out, err := g.Run(context.Background(), false, "version")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "git version") {
+			t.Errorf("expected git version output, got %q", out)
+		}
+	})
+
+	t.Run("when a git command fails it wraps the error with the output", func(t *testing.T) {
+		g := NewGitClient(t.TempDir())
+		_, err := g.Run(context.Background(), false, "status")
+		if err == nil {
+			t.Fatal("expected an error for git status outside a repository")
+		}
+		if !strings.Contains(err.Error(), "git command failed") {
+			t.Errorf("expected wrapped error, got %v", err)
+		}
+	})
+}
+
+func TestRebaseQueuePush(t *testing.T) {
+	t.Run("when the queue was never started it fails fast instead of blocking", func(t *testing.T) {
+		q := NewRebaseQueue(NewGitClient(t.TempDir()))
+		start := time.Now()
+		err := q.Push(context.Background(), "feature", "main")
+		if !errors.Is(err, ErrRebaseQueueNotStarted) {
+			t.Fatalf("expected ErrRebaseQueueNotStarted, got %v", err)
+		}
+		if time.Since(start) > time.Second {
+			t.Error("Push did not fail fast")
+		}
+	})
+
+	t.Run("when the queue is started it accepts and processes jobs", func(t *testing.T) {
+		dir := t.TempDir()
+		g := NewGitClient(dir, WithGitCommandTimeout(30*time.Second))
+		q := NewRebaseQueue(g)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		go q.Start(ctx)
+
+		// Wait for the started flag so Push does not fail fast.
+		deadline := time.Now().Add(2 * time.Second)
+		for !q.started.Load() && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+
+		// The rebase will fail (not a git repo), but Push must return an
+		// error from processing rather than blocking or fail-fast.
+		err := q.Push(ctx, "feature", "main")
+		if errors.Is(err, ErrRebaseQueueNotStarted) {
+			t.Fatalf("expected a processed job result, got not-started error")
+		}
+	})
+}

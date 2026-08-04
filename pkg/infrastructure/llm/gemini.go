@@ -25,6 +25,14 @@ func init() {
 	})
 }
 
+// geminiTransport is a shared HTTP transport reused across all Gemini calls
+// so TLS connections are pooled instead of re-handshaking per request. A
+// non-nil empty TLSNextProto disables HTTP/2 (forcing HTTP/1.1), which works
+// around mid-stream stalls observed with the Gemini endpoint over HTTP/2.
+var geminiTransport = &http.Transport{
+	TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+}
+
 var parseGeminiModelProvider = NewModelParser(ParserConfig{
 	RequiredPrefix:    "gemini",
 	ExcludedKeywords:  []string{"robotics", "embed", "imagen", "image", "vision", "audio", "video", "bison", "tts", "stt"},
@@ -51,7 +59,7 @@ func NewGeminiProviderClient(url string, timeout, idleTimeout time.Duration, str
 	return &geminiProviderClient{url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
 }
 
-func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
+func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) ([]byte, error) {
 	var url string
 	if g.url != "" {
 		url = g.url
@@ -62,6 +70,13 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	headers := make(map[string]string)
 	headers["Content-Type"] = "application/json"
 
+	generationConfig := map[string]any{
+		"temperature":      tempOrDefault(temperature),
+		"responseMimeType": "application/json",
+	}
+	if maxTokens > 0 {
+		generationConfig["maxOutputTokens"] = maxTokens
+	}
 	payload := map[string]any{
 		"contents": []map[string]any{
 			{
@@ -70,10 +85,7 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 				},
 			},
 		},
-		"generationConfig": map[string]any{
-			"temperature":      0.0,
-			"responseMimeType": "application/json",
-		},
+		"generationConfig": generationConfig,
 	}
 	reqBody, err := json.Marshal(payload)
 	if err != nil {
@@ -98,10 +110,8 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	}
 
 	client := &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
-		},
+		Timeout:   timeout,
+		Transport: geminiTransport,
 	}
 	resp, err := client.Do(req)
 	if err != nil {

@@ -70,6 +70,19 @@ func (m *mockRepo) LoadAll(ctx context.Context) ([]*domain.State, error) {
 	return []*domain.State{m.cloneState(m.state)}, nil
 }
 
+func (m *mockRepo) LoadAllSummaries(ctx context.Context) ([]domain.StateSummary, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.state == nil {
+		return []domain.StateSummary{}, nil
+	}
+	return []domain.StateSummary{domain.SummarizeState(m.state)}, nil
+}
+
+func (m *mockRepo) PruneFinishedStates(ctx context.Context, keepLast int) (int, error) {
+	return 0, nil
+}
+
 func (m *mockRepo) Save(ctx context.Context, s *domain.State) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -12,8 +12,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// TestValidator runs the project's tests up to 3 times to check for flakiness
-// and optionally auto-stabilizes flaky tests via an LLM client.
+// TestValidator validates a task by running the project's tests. By default
+// it performs a single validation run; when Runs is configured to a value
+// greater than 1 it runs the suite N times and passes on a strict majority
+// vote (passCount > runs/2). It optionally runs formatter/linter pre-passes.
 type TestValidator struct {
 	Runner           Sandbox
 	Strict           bool
@@ -22,6 +24,9 @@ type TestValidator struct {
 	LLMClient        domain.LLMClient
 	Tools            map[string]Tool
 	RunTimeout       time.Duration
+	// Runs is the number of test suite executions per validation. Values
+	// <= 0 default to 1 (single run, no consensus voting).
+	Runs int
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
@@ -32,6 +37,7 @@ func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, t
 		LLMClient:     llmClient,
 		Tools:         tools,
 		RunTimeout:    5 * time.Minute,
+		Runs:          1,
 	}
 }
 
@@ -42,8 +48,9 @@ func raceCommand(cmd string) string {
 	return cmd
 }
 
-// ValidateTask executes the project's tests 3 times and counts majority votes.
-// When flaky is detected and an LLM client is configured, it attempts to auto-stabilize.
+// ValidateTask executes the project's tests Runs times (default 1) and
+// passes when a strict majority of runs pass (passCount > runs/2). With the
+// default single run this is simply pass/fail of that one run.
 func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, task domain.Task) (bool, string, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "ValidateTask",
 		trace.WithAttributes(
@@ -75,7 +82,11 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		}
 	}
 
-	results := v.runWithCount(ctx, state, 1)
+	runs := v.Runs
+	if runs <= 0 {
+		runs = 1
+	}
+	results := v.runWithCount(ctx, state, runs)
 
 	passCount := 0
 	for _, r := range results {
@@ -84,12 +95,17 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		}
 	}
 
-	if passCount == 1 {
-		return true, "All validation runs passed successfully", nil
+	// Strict majority vote; with the default single run this reduces to
+	// requiring that one run to pass.
+	if passCount > runs/2 {
+		if passCount == runs {
+			return true, "All validation runs passed successfully", nil
+		}
+		return true, fmt.Sprintf("Validation passed by majority vote (%d/%d runs passed)", passCount, runs), nil
 	}
 
 	lastErr := lastFailureOutput(results)
-	return false, fmt.Sprintf("Test validation failed (0/1 runs passed). Last error log:\n%s", lastErr), nil
+	return false, fmt.Sprintf("Test validation failed (%d/%d runs passed). Last error log:\n%s", passCount, runs, lastErr), nil
 }
 
 func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n int) []TestRunResult {

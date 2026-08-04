@@ -9,8 +9,8 @@ import (
 
 func TestProvidersLatestAliasResolution(t *testing.T) {
 	tests := []struct {
-		provider     string
-		mockBody     string
+		provider      string
+		mockBody      string
 		expectedModel string
 	}{
 		{
@@ -158,6 +158,7 @@ func TestProvidersLatestAliasResolution(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.provider, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(tt.mockBody))
 			}))
@@ -175,5 +176,69 @@ func TestProvidersLatestAliasResolution(t *testing.T) {
 				t.Errorf("provider %s: expected resolved model %q, got %q", tt.provider, tt.expectedModel, resolved)
 			}
 		})
+	}
+}
+
+// TestResolveLatestModel_UsesExactAliasWhenPresent is a regression test for
+// OpenRouter-style pinned models whose official name already ends in
+// `-latest` (e.g. `~deepseek/deepseek-v4-flash-latest`). resolveLatestModel
+// must NOT select the `~`-prefixed moving alias (it routes to variable
+// upstreams); it must resolve to a concrete pinned model in the same family
+// instead.
+func TestResolveLatestModel_UsesExactAliasWhenPresent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"data": [
+				{"id": "sao10k/l3-lunaris-8b"},
+				{"id": "deepseek/deepseek-v4-flash-0731"},
+				{"id": "~deepseek/deepseek-v4-flash-latest"},
+				{"id": "deepseek/deepseek-v4-flash"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	c := &Client{
+		Provider: "openrouter",
+		Model:    "deepseek/deepseek-v4-flash-latest",
+		URL:      server.URL,
+		APIKey:   "mock-api-key",
+	}
+
+	resolved := c.resolveLatestModel(context.Background(), "mock-api-key")
+	if resolved != "deepseek/deepseek-v4-flash-0731" {
+		t.Errorf("expected dated snapshot %q (not the ~ alias or bare base), got %q", "deepseek/deepseek-v4-flash-0731", resolved)
+	}
+}
+
+// TestResolveLatestModel_AliasAbsentFallsBackToFamily ensures that when the
+// exact alias is not in the catalog, resolution stays within the alias's model
+// family rather than jumping to an unrelated top-ranked model.
+func TestResolveLatestModel_AliasAbsentFallsBackToFamily(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"data": [
+				{"id": "sao10k/l3-lunaris-8b"},
+				{"id": "deepseek/deepseek-v4-flash-0731"},
+				{"id": "deepseek/deepseek-v4-flash"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	c := &Client{
+		Provider: "openrouter",
+		Model:    "deepseek/deepseek-v4-flash-latest",
+		URL:      server.URL,
+		APIKey:   "mock-api-key",
+	}
+
+	resolved := c.resolveLatestModel(context.Background(), "mock-api-key")
+	if resolved != "deepseek/deepseek-v4-flash-0731" {
+		t.Errorf("expected family model %q, got %q", "deepseek/deepseek-v4-flash-0731", resolved)
 	}
 }

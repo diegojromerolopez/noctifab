@@ -4,26 +4,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-func checkPythonSyntax(path string) error {
+// pythonSyntaxCheckTimeout bounds each py_compile invocation so a hung
+// interpreter cannot block file write/edit tools indefinitely.
+const pythonSyntaxCheckTimeout = 10 * time.Second
+
+func checkPythonSyntax(ctx context.Context, path string) error {
 	if !strings.HasSuffix(path, ".py") {
 		return nil
 	}
+	checkCtx, cancel := context.WithTimeout(ctx, pythonSyntaxCheckTimeout)
+	defer cancel()
 	// Try running python3 -m py_compile
-	cmd := exec.Command("python3", "-m", "py_compile", path)
+	cmd := exec.CommandContext(checkCtx, "python3", "-m", "py_compile", path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Fallback to python
-		cmdFallback := exec.Command("python", "-m", "py_compile", path)
+		cmdFallback := exec.CommandContext(checkCtx, "python", "-m", "py_compile", path)
 		if outFallback, errFallback := cmdFallback.CombinedOutput(); errFallback != nil {
 			errMsg := string(outFallback)
 			if len(errMsg) == 0 {
@@ -112,7 +116,7 @@ func (t *WriteFileTool) Execute(ctx context.Context, state *domain.State, args m
 	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
 		return "", err
 	}
-	if err := checkPythonSyntax(fullPath); err != nil {
+	if err := checkPythonSyntax(ctx, fullPath); err != nil {
 		return "", err
 	}
 	return "File written successfully", nil
@@ -229,7 +233,7 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	if err := os.WriteFile(fullPath, []byte(newContent), 0644); err != nil {
 		return "", err
 	}
-	if err := checkPythonSyntax(fullPath); err != nil {
+	if err := checkPythonSyntax(ctx, fullPath); err != nil {
 		return "", err
 	}
 	return "Edits applied successfully", nil
@@ -304,118 +308,6 @@ func (t *ListDirectoryTool) Execute(ctx context.Context, state *domain.State, ar
 		fmt.Fprintf(&sb, "%s\t%d\t%s\n", typeStr, info.Size(), name)
 	}
 	return sb.String(), nil
-}
-
-// FindFilesTool implements find_files.
-type FindFilesTool struct {
-	ExcludePaths []string
-}
-
-func (t *FindFilesTool) Name() string { return "find_files" }
-func (t *FindFilesTool) Description() string {
-	return "find_files finds files matching a pattern. Arguments: pattern (string)."
-}
-func (t *FindFilesTool) Execute(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
-	pattern, ok := args["pattern"].(string)
-	if !ok || pattern == "" {
-		return "", errors.New("missing or invalid 'pattern' argument")
-	}
-
-	var matched []string
-	err := filepath.WalkDir(state.ProjectPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		rel, err := filepath.Rel(state.ProjectPath, path)
-		if err != nil {
-			return nil
-		}
-		if rel == "." || rel == ".." {
-			return nil
-		}
-		// Ignore hidden/excluded paths using isPathExcluded
-		if isPathExcluded(rel, t.ExcludePaths) {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		matchedName, _ := filepath.Match(pattern, d.Name())
-		matchedRel, _ := filepath.Match(pattern, rel)
-		if matchedName || matchedRel {
-			matched = append(matched, rel)
-		}
-		return nil
-	})
-
-	if err != nil {
-		return "", err
-	}
-	return strings.Join(matched, "\n"), nil
-}
-
-// GrepSearchTool implements grep_search.
-type GrepSearchTool struct {
-	ExcludePaths []string
-}
-
-func (t *GrepSearchTool) Name() string { return "grep_search" }
-func (t *GrepSearchTool) Description() string {
-	return "grep_search performs regex query searches over file contents. Arguments: query (string), path (optional, string)."
-}
-func (t *GrepSearchTool) Execute(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
-	query, ok := args["query"].(string)
-	if !ok || query == "" {
-		return "", errors.New("missing or invalid 'query' argument")
-	}
-	path, _ := args["path"].(string)
-	if path == "" {
-		path = "."
-	}
-
-	fullPath, err := resolveSandboxPath(state.ProjectPath, path)
-	if err != nil {
-		return "", err
-	}
-
-	re, err := regexp.Compile(query)
-	if err != nil {
-		return "", fmt.Errorf("invalid regex query: %w", err)
-	}
-
-	var matchedLines []string
-	err = filepath.WalkDir(fullPath, func(fPath string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			rel, _ := filepath.Rel(state.ProjectPath, fPath)
-			if isPathExcluded(rel, t.ExcludePaths) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		contentBytes, err := os.ReadFile(fPath)
-		if err != nil {
-			return nil
-		}
-		relPath, _ := filepath.Rel(state.ProjectPath, fPath)
-
-		lines := strings.Split(string(contentBytes), "\n")
-		for idx, line := range lines {
-			if re.MatchString(line) {
-				matchedLines = append(matchedLines, fmt.Sprintf("%s:%d: %s", relPath, idx+1, line))
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		return "", err
-	}
-	return strings.Join(matchedLines, "\n"), nil
 }
 
 // RunTestsTool implements run_tests by delegating execution to the active Sandbox engine.

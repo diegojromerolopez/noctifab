@@ -34,7 +34,7 @@ func ValidatePlannedTasks(tasks []domain.Task) error {
 func (o *Orchestrator) registerAgentStart(ctx context.Context, role string, taskID string) {
 	agentID := fmt.Sprintf("agent-%s-%s", role, taskID)
 	name := fmt.Sprintf("%s-%s", role, taskID)
-	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+	updateErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		found := false
 		for i := range st.ActiveAgents {
 			if st.ActiveAgents[i].ID == agentID {
@@ -58,11 +58,14 @@ func (o *Orchestrator) registerAgentStart(ctx context.Context, role string, task
 		}
 		return nil
 	})
+	if updateErr != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: failed to register agent start for role %s task %s: %v\n", role, taskID, updateErr)
+	}
 }
 
 func (o *Orchestrator) registerAgentComplete(ctx context.Context, role string, taskID string, err error) {
 	agentID := fmt.Sprintf("agent-%s-%s", role, taskID)
-	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+	updateErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		for i := range st.ActiveAgents {
 			if st.ActiveAgents[i].ID == agentID {
 				st.ActiveAgents[i].Status = domain.AgentCompleted
@@ -77,6 +80,9 @@ func (o *Orchestrator) registerAgentComplete(ctx context.Context, role string, t
 		}
 		return nil
 	})
+	if updateErr != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: failed to register agent completion for role %s task %s: %v\n", role, taskID, updateErr)
+	}
 }
 
 // RunReaderPhase runs the pre-step to collect workspace context before execution
@@ -255,7 +261,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	o.registerAgentStart(ctx, "tester", task.ID)
 
 	currentPrompt := testPrompt
-	maxTurns := 5
+	maxTurns := iterationsOrDefault(o.cfg.TestersIterations)
 	var lastErr error
 	runTestsCalled := false
 	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
@@ -355,7 +361,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 		// Append errors and tool outputs to currentPrompt for the next turn
 		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.",
 			testPrompt, turn+1, maxTurns,
-			strings.Join(turnToolOutputs, "\n---\n"),
+			joinCappedToolOutputs(turnToolOutputs),
 			maxTurns-turn-1)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -110,6 +111,25 @@ func TestOpenAIProviderClient_GetAvailableModels(t *testing.T) {
 	})
 }
 
+func TestOpenAIProviderClient_Streaming(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"reasoning\\\":\\\"test\\\",\\\"actions\\\":[]}\"}}]}\n\ndata: [DONE]\n"))
+	}))
+	defer ts.Close()
+
+	client := NewOpenAIProviderClient("openai", ts.URL, 5*time.Second, 1*time.Second, true)
+	resp, err := client.Call(context.Background(), "gpt-4o", "test-key", "hello", 4096, 0.0)
+	if err != nil {
+		t.Fatalf("expected nil error on streaming call, got %v", err)
+	}
+
+	if !strings.Contains(string(resp), "reasoning") {
+		t.Fatalf("expected response to contain 'reasoning', got %s", string(resp))
+	}
+}
+
 // TestSDKMaxRetriesDisabled verifies that the SDK is configured with
 // WithMaxRetries(0). A hanging server that never responds should only receive
 // a single HTTP attempt (no SDK-level automatic retries). Previously, the SDK
@@ -141,7 +161,7 @@ func TestSDKMaxRetriesDisabled(t *testing.T) {
 	client := newBaseOpenAIClient("openai", server.URL, server.URL, timeout, 0, false)
 
 	ctx := context.Background()
-	_, _ = client.sendCompletion(ctx, "gpt-4o", "test-key", "hello", false, 0, 0)
+	_, _ = client.sendCompletion(ctx, "gpt-4o", "test-key", "hello", completionOptions{})
 
 	got := atomic.LoadInt64(&requestCount)
 	// With WithMaxRetries(0) the SDK makes exactly 1 attempt. Without it the
@@ -177,7 +197,7 @@ func TestStreamingIdleTimeoutEnforced(t *testing.T) {
 
 	start := time.Now()
 	ctx := context.Background()
-	_, err := client.sendCompletionStreaming(ctx, "gpt-4o", "test-key", "hello", false, 0, 0)
+	_, err := client.sendCompletionStreaming(ctx, "gpt-4o", "test-key", "hello", completionOptions{})
 	elapsed := time.Since(start)
 
 	if err == nil {

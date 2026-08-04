@@ -40,7 +40,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	o.registerAgentStart(ctx, "generator", task.ID)
 
 	currentPrompt := genPrompt
-	maxTurns := 5
+	maxTurns := iterationsOrDefault(o.cfg.GeneratorsIterations)
 	var lastErr error
 	runTestsCalled := false
 	testFixRequestCount := 0
@@ -170,7 +170,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		// Append errors and tool outputs to currentPrompt for the next turn
 		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.",
 			genPrompt, turn+1, maxTurns,
-			strings.Join(turnToolOutputs, "\n---\n"),
+			joinCappedToolOutputs(turnToolOutputs),
 			maxTurns-turn-1)
 	}
 

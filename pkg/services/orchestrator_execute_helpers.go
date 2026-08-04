@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"time"
 
@@ -51,7 +52,7 @@ func collectTargetFilesRecursively(task domain.Task, tasks []domain.Task) []stri
 }
 
 func (o *Orchestrator) updateTaskProgress(ctx context.Context, taskID string, progress int) {
-	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+	err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		for i := range st.Tasks {
 			if st.Tasks[i].ID == taskID {
 				st.Tasks[i].Progress = progress
@@ -61,4 +62,7 @@ func (o *Orchestrator) updateTaskProgress(ctx context.Context, taskID string, pr
 		}
 		return fmt.Errorf("task %s not found in state", taskID)
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist progress %d%% for task %s: %v\n", progress, taskID, err)
+	}
 }

@@ -62,7 +62,7 @@ func (c *ResetTaskCmd) Execute(ctx context.Context, repo domain.StateRepository)
 		}
 	}
 
-	state.LastActions = append(state.LastActions, domain.Action{
+	domain.AppendAction(state, domain.Action{
 		Timestamp: time.Now(),
 		Tool:      "unblocker_reset",
 		Success:   true,
@@ -120,7 +120,7 @@ func (c *FailTaskCmd) Execute(ctx context.Context, repo domain.StateRepository) 
 	}
 
 	state.BuildStatus = domain.BuildFailing
-	state.LastActions = append(state.LastActions, domain.Action{
+	domain.AppendAction(state, domain.Action{
 		Timestamp: time.Now(),
 		Tool:      "unblocker_fail",
 		Success:   false,
@@ -145,7 +145,7 @@ func (c *LogUnblockerActionCmd) Execute(ctx context.Context, repo domain.StateRe
 		return fmt.Errorf("LogUnblockerActionCmd: failed to load state: %w", err)
 	}
 
-	state.LastActions = append(state.LastActions, domain.Action{
+	domain.AppendAction(state, domain.Action{
 		Timestamp: time.Now(),
 		Tool:      "unblocker_log",
 		Success:   true,
@@ -177,7 +177,7 @@ func (c *ClearInconsistentAgentCmd) Execute(ctx context.Context, repo domain.Sta
 		}
 	}
 
-	state.LastActions = append(state.LastActions, domain.Action{
+	domain.AppendAction(state, domain.Action{
 		Timestamp: time.Now(),
 		Tool:      "unblocker_clear_agent",
 		Success:   true,

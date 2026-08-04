@@ -44,7 +44,11 @@ type Config struct {
 	Context        ContextConfig            `yaml:"context"`
 	WorkspaceCache WorkspaceCacheConfig     `yaml:"workspace_cache"`
 
-	PollInterval               Duration `yaml:"poll_interval"`
+	PollInterval Duration `yaml:"poll_interval"`
+	// StoryExecInterval is the tick frequency of the story execution loop
+	// (how often RunOnce is retried while a story is executing). Defaults to
+	// 2s; the coarser PollInterval governs server-wide idle polling.
+	StoryExecInterval          Duration `yaml:"story_exec_interval"`
 	MaxClarificationWait       Duration `yaml:"max_clarification_wait"`
 	ClarificationTimeoutAction string   `yaml:"clarification_timeout_action"`
 
@@ -97,6 +101,10 @@ type StorageConfig struct {
 	Provider     string `yaml:"provider"`
 	ConnString   string `yaml:"conn_string"`
 	JSONFilePath string `yaml:"json_file_path"`
+	// KeepFinishedStates bounds how many terminal (SUCCESS/FAILED) story
+	// states are retained; older ones are pruned on daemon startup
+	// (0 = built-in default of 20, negative = never prune).
+	KeepFinishedStates int `yaml:"keep_finished_states"`
 }
 
 type FailoverConfig struct {
@@ -161,6 +169,8 @@ type ProviderSpec struct {
 	RetryBackoffFactor float64  `yaml:"retry_backoff_factor,omitempty"`
 	MaxTimeout         Duration `yaml:"max_timeout,omitempty"`
 	IdleTimeout        Duration `yaml:"idle_timeout,omitempty"`
+	MaxTokens          int      `yaml:"max_tokens,omitempty"`
+	Temperature        float64  `yaml:"temperature,omitempty"`
 	Streaming          *bool    `yaml:"streaming,omitempty"`
 }
 
@@ -183,7 +193,11 @@ type LLMConfig struct {
 	SkipOnCreditExhausted bool           `yaml:"skip_on_credit_exhausted"`
 	MaxTimeout            Duration       `yaml:"max_timeout"`
 	IdleTimeout           Duration       `yaml:"idle_timeout"`
+	MaxTokens             int            `yaml:"max_tokens"`
 	Streaming             *bool          `yaml:"streaming"`
+	// MaxPromptTokens is a pre-send cap on the estimated token size of
+	// outgoing prompts (0 = built-in default of 262144, negative = disabled).
+	MaxPromptTokens int64 `yaml:"max_prompt_tokens"`
 }
 
 type PullRequestConfig struct {

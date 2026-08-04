@@ -49,10 +49,40 @@ storage:
     conn_string: .noctifab/data/noctifab.db
     json_file_path: .noctifab/data/state.json
 llm:
+    # 1. qwencloud: Qwen's cloud API (DashScope compatible-mode endpoint,
+    #    registered provider name `qwen`).
+    # 2. opencode: zen go gateway with glm-5.2 (the best-behaved model there;
+    #    with response_format the gateway returns content in reasoning_content,
+    #    handled by the client fallback).
+    # 3. openrouter: pinned deepseek snapshot responds slowly (~5min/call),
+    #    kept as last resort.
     priority:
-        - openrouter
+        - qwencloud
         - opencode
+        - openrouter
     providers:
+        - name: qwencloud
+          provider: qwen
+          model: qwen3.8-max
+          api_keys: QWENCLOUD_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
+        - name: opencode
+          provider: opencode
+          model: glm-5.2
+          api_keys: OPENCODE_ZEN_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
         - name: openrouter
           provider: openrouter
           model: deepseek/deepseek-v4-flash-0731
@@ -60,22 +90,11 @@ llm:
           max_retries: 2
           retry_backoff: 50ms
           max_timeout: 600s
-          idle_timeout: 8s
+          idle_timeout: 600s
           max_tokens: 32768
           temperature: 0.3
           streaming: true
-        - name: opencode
-          provider: opencode
-          model: qwen3.8-max
-          api_keys: OPENCODE_API_KEY
-          max_retries: 2
-          retry_backoff: 50ms
-          max_timeout: 600s
-          idle_timeout: 8s
-          max_tokens: 32768
-          temperature: 0.3
-          streaming: true
-        
+
 vcs:
     provider: github
     repository: diegojromerolopez/wc

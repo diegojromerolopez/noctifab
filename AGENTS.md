@@ -107,7 +107,7 @@ To run a fully containerized, isolated, end-to-end (E2E) integration check of `n
    - **Source Code & Binaries**: The generated codebase and compiled executables are placed in `validation/projects/<project>/output/src/` and `validation/projects/<project>/output/dist/` respectively.
 
 4. **Spec-Driven Validation Rule**:
-   Pre-creating or checking in static roadmap user stories (e.g. under `roadmap/`) for validation projects is **strictly forbidden**. Validation projects must be defined and run solely based on `SPEC.md` to verify that `noctifab` is capable of autonomously decomposing specifications into user stories on the fly using its Product Manager Agent.
+   You (the AI coding assistant developing `noctifab`) **must not modify, hand-edit, pre-create, or check in static user stories** under any `validation/projects/<project>/roadmap/` directory. Validation projects exist to verify that `noctifab` autonomously decomposes a project's `SPEC.md` into user stories on the fly via its Product Manager Agent; pre-seeding or mutating those roadmaps from the host side would defeat that test. Having pre-existing roadmap files checked into `validation/projects/<project>/roadmap/` is acceptable (they are test fixtures), and `noctifab` autonomously generating new user stories into the roadmap at runtime is also acceptable — what is forbidden is *you* editing the validation project's roadmap as a shortcut.
 
 5. **Monitoring & 60-Second Status Loop**:
    When executing validation projects in parallel or in the background (e.g. `make validate-all`), agents must monitor the execution status and output a periodic update table every 60 seconds using the `schedule` tool (`DurationSeconds=60`).
