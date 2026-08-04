@@ -50,27 +50,32 @@ storage:
     json_file_path: .noctifab/data/state.json
 llm:
     priority:
-        - opencode-primary
-        - openrouter-backup
+        - openrouter
+        - opencode
     providers:
-        - name: opencode-primary
+        - name: openrouter
+          provider: openrouter
+          model: deepseek/deepseek-v4-flash-0731
+          api_keys: OPENROUTER_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 8s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
+        - name: opencode
           provider: opencode
           model: qwen3.8-max
           api_keys: OPENCODE_API_KEY
           max_retries: 2
           retry_backoff: 50ms
-          max_timeout: 25s
+          max_timeout: 600s
           idle_timeout: 8s
+          max_tokens: 32768
+          temperature: 0.3
           streaming: true
-        - name: openrouter-backup
-          provider: openrouter
-          model: deepseek/deepseek-v4-flash-latest
-          api_keys: OPENROUTER_API_KEY
-          max_retries: 2
-          retry_backoff: 50ms
-          max_timeout: 25s
-          idle_timeout: 8s
-          streaming: true
+        
 vcs:
     provider: github
     repository: diegojromerolopez/wc

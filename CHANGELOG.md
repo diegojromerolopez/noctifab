@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.1] - 2026-08-04
+
+### Fixed
+- **Layered Retry Amplification (Critical)**: The OpenAI SDK was configured without `option.WithMaxRetries(0)`, causing it to silently add 2 implicit retries on top of `client.go`'s own `max_retries` loop. A single hung upstream call (e.g. OpenCode timing out) could trigger up to 9 total HTTP attempts (3 SDK × 3 client.go), resulting in a 30m34s wall-clock block before failover to the next provider. Fixed by passing `option.WithMaxRetries(0)` in `baseOpenAIClient.sdkClient()` so only `client.go`'s explicit retry loop governs retry cadence. Regression test `TestSDKMaxRetriesDisabled` verifies exactly 1 HTTP attempt is made per `client.go` retry cycle.
+- **`idle_timeout` Dead Config on SDK Streaming Paths (Critical)**: `baseOpenAIClient.sdkHTTPClient()` only set the overall `http.Client.Timeout` (`max_timeout`); the `idle_timeout` field was stored but never applied to the SDK streaming path. A hung upstream that never sent response headers would hold the connection for the full `max_timeout` (e.g. 600s) instead of timing out at `idle_timeout` (e.g. 8s). Fixed by wrapping the streaming context with `context.WithTimeout(ctx, o.idleTimeout)` in `sendCompletionStreaming()`, mirroring the sliding idle timer already present in `readSSEResponse` for the raw-HTTP path. Regression test `TestStreamingIdleTimeoutEnforced` verifies the streaming call fails within `2×idleTimeout` (150ms) instead of `max_timeout` (10s).
+
+### Changed
+- **Validation Project Provider Priority**: Reordered `llm.priority` in all 9 validation project `config.yaml` files (`wc`, `notebook`, `echo`, `frontpunch`, `t4`, `todo-cli`, `pyedis`, `calculator`, `fortune`) to put `openrouter` before `opencode`. OpenRouter pinged successfully pre-run and serves JSON-capable models; OpenCode's `qwen3.8-max` upstream was rejecting `response_format: json_object` and returning 0-byte streamed responses, making it unusable for the dark factory loop.
+
 ## [0.20.0] - 2026-08-03
 
 ### Added

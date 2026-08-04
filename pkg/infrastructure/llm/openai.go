@@ -1,16 +1,17 @@
 package llm
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/shared"
 )
 
 func init() {
@@ -82,10 +83,6 @@ func NewOpenAIProviderClient(provider, url string, timeout, idleTimeout time.Dur
 	}
 }
 
-// osStderr returns the process stderr. Wrapped so tests can swap it without
-// importing "os" elsewhere.
-func osStderr() *os.File { return os.Stderr }
-
 // looksLikeResponseFormatRejection inspects the body of an HTTP 400 from a
 // `/chat/completions` endpoint to decide whether the failure is plausibly
 // caused by the server refusing to honour `response_format`. Conservative:
@@ -106,15 +103,60 @@ func looksLikeResponseFormatRejection(body string) bool {
 	return false
 }
 
-func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
-	url := o.resolveEndpoint()
-	headers := make(map[string]string)
-	if apiKey != "" {
-		headers["Authorization"] = "Bearer " + apiKey
+// resolveProviderBaseURL returns the default base URL for a registered provider.
+func resolveProviderBaseURL(provider string) string {
+	if spec, ok := GetProviderSpec(provider); ok {
+		return spec.BaseURL
 	}
-	headers["Content-Type"] = "application/json"
+	return "https://api.openai.com/v1"
+}
 
-	respBody, err := o.sendCompletion(ctx, url, headers, model, prompt, true)
+// sdkBaseURL derives the SDK base URL. The official SDK appends the endpoint
+// path (e.g. `chat/completions`) to the base, so any full endpoint override
+// URL is reduced to its base origin. The result always ends in "/" as the SDK
+// expects.
+func (o *baseOpenAIClient) sdkBaseURL() string {
+	base := o.baseURL
+	if base == "" {
+		base = resolveProviderBaseURL(o.provider)
+	}
+	if o.url != "" {
+		base = o.url
+	}
+	base = strings.TrimSuffix(base, "/chat/completions")
+	base = strings.TrimSuffix(base, "/")
+	return base + "/"
+}
+
+// sdkHTTPClient builds an *http.Client honouring the configured overall
+// request timeout. The SDK otherwise uses http.DefaultClient.
+func (o *baseOpenAIClient) sdkHTTPClient() *http.Client {
+	timeout := o.timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	return &http.Client{Timeout: timeout}
+}
+
+// sdkClient builds an SDK client bound to this provider's base URL and key.
+// SDK-level retries are disabled (WithMaxRetries(0)) so that only client.go's
+// explicit retry loop controls retry cadence. Without this, the SDK adds 2
+// implicit retries on top of client.go's own loop, multiplying a single hung
+// call into up to 9 total attempts (3 SDK × 3 client.go).
+func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
+	opts := []option.RequestOption{
+		option.WithBaseURL(o.sdkBaseURL()),
+		option.WithHTTPClient(o.sdkHTTPClient()),
+		option.WithMaxRetries(0),
+	}
+	if apiKey != "" {
+		opts = append(opts, option.WithAPIKey(apiKey))
+	}
+	return openai.NewClient(opts...)
+}
+
+func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) ([]byte, error) {
+	respBody, err := o.sendCompletion(ctx, model, apiKey, prompt, true, maxTokens, temperature)
 	if err == nil {
 		return respBody, nil
 	}
@@ -123,280 +165,163 @@ func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt strin
 	// body), retry once without the field. This keeps compliant models on
 	// the strong JSON path while not breaking older vLLM / Ollama setups.
 	if he, ok := err.(*httpError); ok && he.StatusCode == http.StatusBadRequest && looksLikeResponseFormatRejection(he.Body) {
-		_, _ = fmt.Fprintln(osStderr(), "⚠ Server rejected response_format; retrying without JSON enforcement.")
-		return o.sendCompletion(ctx, url, headers, model, prompt, false)
+		_, _ = fmt.Fprintln(os.Stderr, "⚠ Server rejected response_format; retrying without JSON enforcement.")
+		return o.sendCompletion(ctx, model, apiKey, prompt, false, maxTokens, temperature)
 	}
 	return nil, err
 }
 
-func resolveProviderBaseURL(provider string) string {
-	if spec, ok := GetProviderSpec(provider); ok {
-		return spec.BaseURL
-	}
-	return "https://api.openai.com/v1"
-}
-
-// resolveEndpoint returns the chat completions URL for this provider, honouring
-// an explicit override URL when one is configured.
-func (o *baseOpenAIClient) resolveEndpoint() string {
-	baseURL := o.baseURL
-	if baseURL == "" {
-		baseURL = resolveProviderBaseURL(o.provider)
-	}
-	if o.url != "" {
-		return o.url
-	}
-	return baseURL + "/chat/completions"
-}
-
-// sendCompletion performs a single chat completions POST. When enforceJSON
-// is true the request advertises response_format=json_object so the assistant
-// is constrained to a JSON object.
-func (o *baseOpenAIClient) sendCompletion(ctx context.Context, url string, headers map[string]string, model, prompt string, enforceJSON bool) ([]byte, error) {
+// sendCompletion performs a single chat completions POST via the official
+// OpenAI SDK. When enforceJSON is true the request advertises
+// response_format=json_object so the assistant is constrained to a JSON object.
+func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, prompt string, enforceJSON bool, maxTokens int, temperature float64) ([]byte, error) {
 	if o.streaming {
-		respBody, err := o.sendCompletionStreaming(ctx, url, headers, model, prompt, enforceJSON)
-		if err == nil {
+		respBody, err := o.sendCompletionStreaming(ctx, model, apiKey, prompt, enforceJSON, maxTokens, temperature)
+		if err == nil && len(respBody) > 0 {
 			return respBody, nil
 		}
-		// On streaming error, fallback to standard non-streaming POST
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Streaming call failed (%v); retrying with non-streaming POST.\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "⚠ Streaming call returned empty content; retrying with non-streaming POST.\n")
+		}
 	}
 
-	payload := map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
+	client := o.sdkClient(apiKey)
+
+	params := openai.ChatCompletionNewParams{
+		Model: openai.ChatModel(model),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
 		},
-		"temperature": 0.0,
+		Temperature: openai.Float(tempOrDefault(temperature)),
+	}
+	if maxTokens > 0 {
+		params.MaxTokens = openai.Int(int64(maxTokens))
 	}
 	if enforceJSON {
-		payload["response_format"] = map[string]string{"type": "json_object"}
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+		}
 	}
-	reqBody, err := json.Marshal(payload)
+
+	start := time.Now()
+	completion, err := client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		return nil, err
+		return nil, o.sdkError(err)
 	}
+	fmt.Fprintf(os.Stderr, "ℹ [llm] chat/completions for model %s completed after %v\n", model, time.Since(start))
 
-	timeout := o.timeout
-	if timeout <= 0 {
-		timeout = 10 * time.Minute
+	if len(completion.Choices) == 0 {
+		return nil, fmt.Errorf("unexpected OpenAI-compatible response: no choices returned")
 	}
-
-	postCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, err
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	client := &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
-		},
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, &httpError{StatusCode: resp.StatusCode, Body: string(respBody), Header: resp.Header}
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, err
-	}
-	choices, ok := result["choices"].([]any)
-	if !ok || len(choices) == 0 {
-		return nil, fmt.Errorf("unexpected OpenAI-compatible response: %s", string(respBody))
-	}
-	choice := choices[0].(map[string]any)
-	msg := choice["message"].(map[string]any)
-	content, _ := msg["content"].(string)
+	content := completion.Choices[0].Message.Content
+	fmt.Fprintf(os.Stderr, "ℹ [llm] model %s returned finish=%q contentLen=%d first100=%q\n",
+		model, completion.Choices[0].FinishReason, len(content), truncate(content, 100))
 	return []byte(content), nil
 }
 
-func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, url string, headers map[string]string, model, prompt string, enforceJSON bool) ([]byte, error) {
-	payload := map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
+
+// tempOrDefault returns the configured sampling temperature, defaulting to 0.0
+// (deterministic) when the provider leaves it unset.
+func tempOrDefault(t float64) float64 {
+	if t == 0 {
+		return 0.0
+	}
+	return t
+}
+
+// sendCompletionStreaming streams the completion via the official SDK SSE
+// client and accumulates the full content. The SDK natively terminates on the
+// `data: [DONE]` marker (handling OpenRouter's keepalive behaviour) and
+// accumulates reasoning/content deltas correctly.
+//
+// idle_timeout enforcement: when idleTimeout > 0 the streaming context is
+// wrapped with idleTimeout so that a hung upstream that never sends response
+// headers/bytes fails fast at idleTimeout instead of blocking for the full
+// max_timeout. The http.Client timeout (max_timeout) continues to govern the
+// open TCP connection lifetime once headers are received, so long responses
+// are not cut short by the context deadline.
+func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, apiKey, prompt string, enforceJSON bool, maxTokens int, temperature float64) ([]byte, error) {
+	client := o.sdkClient(apiKey)
+
+	params := openai.ChatCompletionNewParams{
+		Model: openai.ChatModel(model),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
 		},
-		"temperature": 0.0,
-		"stream":      true,
+		Temperature: openai.Float(tempOrDefault(temperature)),
+	}
+	if maxTokens > 0 {
+		params.MaxTokens = openai.Int(int64(maxTokens))
 	}
 	if enforceJSON {
-		payload["response_format"] = map[string]string{"type": "json_object"}
-	}
-	reqBody, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-
-	timeout := o.timeout
-	if timeout <= 0 {
-		timeout = 10 * time.Minute
-	}
-
-	postCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, err
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	req.Header.Set("Accept", "text/event-stream")
-
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
-		},
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		defer func() { _ = resp.Body.Close() }()
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, &httpError{StatusCode: resp.StatusCode, Body: string(respBody), Header: resp.Header}
-	}
-
-	contentType := resp.Header.Get("Content-Type")
-	if !strings.Contains(contentType, "text/event-stream") {
-		defer func() { _ = resp.Body.Close() }()
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
 		}
-		var result map[string]any
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, err
-		}
-		choices, ok := result["choices"].([]any)
-		if !ok || len(choices) == 0 {
-			return nil, fmt.Errorf("unexpected OpenAI-compatible response: %s", string(respBody))
-		}
-		choice := choices[0].(map[string]any)
-		msg := choice["message"].(map[string]any)
-		content, _ := msg["content"].(string)
-		return []byte(content), nil
 	}
 
-	var sb strings.Builder
-	idleTimeout := o.idleTimeout
-	if idleTimeout <= 0 {
-		idleTimeout = 15 * time.Second
+	// Apply idle timeout: a hung upstream that never sends response
+	// headers/bytes will be cancelled after idleTimeout (e.g. 8s) instead
+	// of blocking for the full max_timeout (e.g. 600s). This enforces the
+	// config's idle_timeout field, which was previously stored but ignored
+	// on all SDK streaming paths.
+	streamCtx := ctx
+	if o.idleTimeout > 0 {
+		var idleCancel context.CancelFunc
+		streamCtx, idleCancel = context.WithTimeout(ctx, o.idleTimeout)
+		defer idleCancel()
 	}
 
-	err = readSSEResponse(postCtx, resp.Body, idleTimeout, func(line string) error {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, ":") {
-			return nil
-		}
-		if !strings.HasPrefix(line, "data:") {
-			return nil
-		}
-		dataStr := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if dataStr == "[DONE]" {
-			return nil
-		}
+	stream := client.Chat.Completions.NewStreaming(streamCtx, params)
 
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content string `json:"content"`
-				} `json:"delta"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal([]byte(dataStr), &chunk); err == nil {
-			if len(chunk.Choices) > 0 {
-				sb.WriteString(chunk.Choices[0].Delta.Content)
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
+	var acc openai.ChatCompletionAccumulator
+	streamStart := time.Now()
+	for stream.Next() {
+		chunk := stream.Current()
+		acc.AddChunk(chunk)
+	}
+	if err := stream.Err(); err != nil {
+		return nil, o.sdkError(err)
 	}
 
-	return []byte(sb.String()), nil
+	elapsed := time.Since(streamStart)
+	content := ""
+	if len(acc.Choices) > 0 {
+		content = acc.Choices[0].Message.Content
+	}
+	fmt.Fprintf(os.Stderr, "ℹ [llm] SSE stream for model %s completed: %d bytes, total=%v\n", model, len(content), elapsed)
+
+	return []byte(content), nil
+}
+
+// sdkError converts SDK errors into the codebase's httpError type when the
+// failure carries an HTTP status so existing retry/credit-exhaustion handling
+// keeps working.
+func (o *baseOpenAIClient) sdkError(err error) error {
+	var apiErr *openai.Error
+	if errors.As(err, &apiErr) && apiErr.StatusCode != 0 {
+		return &httpError{StatusCode: apiErr.StatusCode, Body: err.Error()}
+	}
+	return err
 }
 
 func (o *baseOpenAIClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {
-	baseURL := o.baseURL
-	if baseURL == "" {
-		baseURL = resolveProviderBaseURL(o.provider)
-	}
+	client := o.sdkClient(apiKey)
 
-	var url string
-	if o.url != "" {
-		if strings.HasSuffix(o.url, "/chat/completions") {
-			url = strings.TrimSuffix(o.url, "/chat/completions") + "/models"
-		} else {
-			url = o.url + "/models"
-		}
-	} else {
-		url = baseURL + "/models"
-	}
-
-	headers := make(map[string]string)
-	if apiKey != "" {
-		headers["Authorization"] = "Bearer " + apiKey
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch models (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
 	var models []string
-	for _, m := range result.Data {
-		models = append(models, m.ID)
+	page := client.Models.ListAutoPaging(ctx)
+	for page.Next() {
+		models = append(models, page.Current().ID)
+	}
+	if err := page.Err(); err != nil {
+		return nil, err
 	}
 	return models, nil
 }

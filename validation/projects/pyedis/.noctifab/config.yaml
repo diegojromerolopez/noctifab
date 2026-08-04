@@ -50,8 +50,8 @@ storage:
     json_file_path: .noctifab/data/state.json
 llm:
     priority:
-        - opencode-primary
         - openrouter-backup
+        - opencode-primary
     providers:
         - name: opencode-primary
           provider: opencode
