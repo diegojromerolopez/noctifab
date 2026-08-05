@@ -10,7 +10,9 @@ agents:
         iterations: 2
         max_user_stories: 5
         providers:
-            - name: qwencloud
+            - name: deepseek-pro
+            - name: gemini
+            - name: qwen
             - name: opencode
             - name: openrouter
     planner:
@@ -20,14 +22,18 @@ agents:
         number: 1
         iterations: 2
         providers:
-            - name: qwencloud
+            - name: deepseek-pro
+            - name: gemini
+            - name: qwen
             - name: opencode
             - name: openrouter
     generators:
         number: 4
         iterations: 5
         providers:
-            - name: qwencloud
+            - name: gemini
+            - name: deepseek-pro
+            - name: qwen
               enable_thinking: false
             - name: opencode
             - name: openrouter
@@ -35,13 +41,21 @@ agents:
         number: 2
         iterations: 3
         providers:
-            - name: qwencloud
+            - name: gemini
+            - name: deepseek-pro
+            - name: qwen
               enable_thinking: false
             - name: opencode
             - name: openrouter
     qa:
         number: 1
         iterations: 2
+        providers:
+            - name: gemini
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     security:
         number: 1
         iterations: 2
@@ -67,19 +81,45 @@ storage:
     conn_string: .noctifab/data/noctifab.db
     json_file_path: .noctifab/data/state.json
 llm:
-    # 1. qwencloud: Qwen's cloud API (DashScope compatible-mode endpoint,
+    # 1. deepseek-pro: Qwen's cloud API with deepseek-v4-pro model.
+    # 2. gemini: Google Gemini API (registered provider name `gemini`).
+    # 3. qwen: Qwen's cloud API (DashScope compatible-mode endpoint,
     #    registered provider name `qwen`).
-    # 2. opencode: zen go gateway with glm-5.2 (the best-behaved model there;
+    # 4. opencode: zen go gateway with glm-5.2 (the best-behaved model there;
     #    with response_format the gateway returns content in reasoning_content,
     #    handled by the client fallback).
-    # 3. openrouter: pinned deepseek snapshot responds slowly (~5min/call),
+    # 5. openrouter: pinned deepseek snapshot responds slowly (~5min/call),
     #    kept as last resort.
     priority:
+        - deepseek-pro
+        - gemini
         - opencode
         - openrouter
-        - qwencloud
+        - qwen
     providers:
-        - name: qwencloud
+        - name: deepseek-pro
+          provider: qwencloud
+          model: deepseek-v4-pro
+          api_keys: QWENCLOUD_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
+        - name: gemini
+          provider: gemini
+          model: gemini-2.5-flash
+          api_keys: GEMINI_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
+        - name: qwen
           provider: qwencloud
           model: qwen3.8-max
           api_keys: QWENCLOUD_API_KEY
