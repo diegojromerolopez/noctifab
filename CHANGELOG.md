@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.20.4] - 2026-08-05
 
 ### Added
+- **LLM Provider Evaluation Guide**: Created [LLM_PROVIDERS.md](file:///Users/diegoj/repos/noctifab/LLM_PROVIDERS.md) providing comprehensive benchmarks, JSON formatting accuracy comparisons, latency evaluations, and recommended configuration priority patterns for `qwencloud`, `openrouter`, and `opencode`.
 - **Agent-Level LLM Provider Overrides**: Extended `AgentProviderRef` configuration struct with `enable_thinking` and `thinking_budget` fields, allowing agents (e.g. `generators`, `testers`) to override provider-level thinking modes (e.g., setting `enable_thinking: false` for `qwencloud` to drop completion latency from 180s to ~2s). Added `Scenario 11` unit tests in `router_test.go`.
 - **Worktree Root Manifest Syncing**: Added `syncRootManifests` in `orchestrator_execute.go` to automatically copy project root manifests (`Cargo.toml`, `package.json`, `go.mod`, `Makefile`, etc.) into fresh Git worktrees when initialized.
 - **Enhanced Sandbox Policy Guidance**: Updated `validator.go` to include explicit lists of authorized tools and commands in `ValidationResult.Reason` when an unauthorized action or command is blocked.
