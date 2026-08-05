@@ -322,7 +322,7 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 		router := NewResilientLLMRouter(cfg, nil)
 
 		// Context with agent_role = "product_manager"
-		ctx := context.WithValue(context.Background(), "agent_role", "product_manager")
+		ctx := context.WithValue(context.Background(), stringKey("agent_role"), "product_manager")
 		role := GetRoleFromContext(ctx)
 		assert.Equal(t, "product_manager", role)
 
@@ -377,10 +377,10 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 			ctx1 := context.WithValue(context.Background(), RoleContextKey{}, roleName)
 			assert.Equal(t, roleName, GetRoleFromContext(ctx1))
 
-			ctx2 := context.WithValue(context.Background(), "role", roleName)
+			ctx2 := context.WithValue(context.Background(), stringKey("role"), roleName)
 			assert.Equal(t, roleName, GetRoleFromContext(ctx2))
 
-			ctx3 := context.WithValue(context.Background(), "agent_role", roleName)
+			ctx3 := context.WithValue(context.Background(), stringKey("agent_role"), roleName)
 			assert.Equal(t, roleName, GetRoleFromContext(ctx3))
 		}
 	})

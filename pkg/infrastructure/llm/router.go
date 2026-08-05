@@ -20,9 +20,26 @@ func WithRoleContext(ctx context.Context, role string) context.Context {
 	return context.WithValue(ctx, RoleContextKey{}, role)
 }
 
+type stringKey string
+
+const (
+	roleStringKey      stringKey = "role"
+	agentRoleStringKey stringKey = "agent_role"
+)
+
 // GetRoleFromContext retrieves the active agent role name from context.
 func GetRoleFromContext(ctx context.Context) string {
 	if roleVal := ctx.Value(RoleContextKey{}); roleVal != nil {
+		if roleStr, ok := roleVal.(string); ok && roleStr != "" {
+			return strings.ToLower(roleStr)
+		}
+	}
+	if roleVal := ctx.Value(roleStringKey); roleVal != nil {
+		if roleStr, ok := roleVal.(string); ok && roleStr != "" {
+			return strings.ToLower(roleStr)
+		}
+	}
+	if roleVal := ctx.Value(agentRoleStringKey); roleVal != nil {
 		if roleStr, ok := roleVal.(string); ok && roleStr != "" {
 			return strings.ToLower(roleStr)
 		}

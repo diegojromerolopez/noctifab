@@ -11,7 +11,9 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-const AgentRoleKey = "agent_role"
+type agentRoleKeyType string
+
+const AgentRoleKey agentRoleKeyType = "agent_role"
 
 // ValidationResult records the outcome of a security check or target validation check.
 type ValidationResult struct {
@@ -107,6 +109,9 @@ func compileForbiddenPatterns(patterns []string) []*regexp.Regexp {
 func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, state *domain.State) (*ValidationResult, error) {
 	// 1. Role-based dynamic checks
 	role, _ := ctx.Value(AgentRoleKey).(string)
+	if role == "" {
+		role, _ = ctx.Value("agent_role").(string)
+	}
 	if role != "" {
 		// Get default profile for this role
 		profile, exists := defaultRoleProfiles[role]
