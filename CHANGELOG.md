@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Per-Agent Provider Context Resolution**: Added `Scenario 10` & `Scenario 12` unit test coverage verifying role resolution across `agent_role`, `role`, and `RoleContextKey{}` for all agent roles (`product_manager`, `planner`, `architect`, `generators`, `testers`, `unblocker`).
+- **Authorized Tools for Generator & Tester Roles**: Added `delete_file` to `defaultRoleProfiles` for `generator` and `tester` agents in `validator.go`, allowing agents to delete redundant or conflicting files during refactoring tasks (e.g. resolving module path ambiguity between `src/domain.rs` and `src/domain/mod.rs`).
 
 ## [0.20.3] - 2026-08-04
 

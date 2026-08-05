@@ -45,11 +45,11 @@ var defaultRoleProfiles = map[string]ProfileConfig{
 		AllowedCommands: []string{},
 	},
 	"tester": {
-		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "edit_file", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
 		AllowedCommands: []string{},
 	},
 	"generator": {
-		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "request_test_fix", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "edit_file", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "request_test_fix", "noop"},
 		AllowedCommands: []string{},
 	},
 }
@@ -170,7 +170,7 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 
 	// 2. Global sandbox path checks (always enforced)
 	switch action.Tool {
-	case "write_file", "edit_file", "read_file":
+	case "write_file", "edit_file", "read_file", "delete_file":
 		path, ok := action.Args["path"].(string)
 		if !ok {
 			return &ValidationResult{Allowed: false, Reason: "missing path argument"}, nil
