@@ -176,3 +176,26 @@ func TestExecuteTask_FastAbortOnSandboxFailure(t *testing.T) {
 	assert.Equal(t, domain.TaskFailed, updatedState.Tasks[0].Status)
 	assert.Equal(t, 0, updatedState.Tasks[0].Retries, "Retries should not be wasted on sandbox failures")
 }
+
+func TestSyncRootManifests(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Create root manifest in srcDir
+	cargoContent := []byte("[package]\nname = \"test_pkg\"\nversion = \"0.1.0\"\n")
+	require.NoError(t, os.WriteFile(filepath.Join(srcDir, "Cargo.toml"), cargoContent, 0644))
+
+	pkgContent := []byte("{\"name\": \"test_npm\"}\n")
+	require.NoError(t, os.WriteFile(filepath.Join(srcDir, "package.json"), pkgContent, 0644))
+
+	syncRootManifests(srcDir, dstDir)
+
+	// Verify both manifests are synced into dstDir
+	dstCargo, errCargo := os.ReadFile(filepath.Join(dstDir, "Cargo.toml"))
+	require.NoError(t, errCargo)
+	assert.Equal(t, cargoContent, dstCargo)
+
+	dstPkg, errPkg := os.ReadFile(filepath.Join(dstDir, "package.json"))
+	require.NoError(t, errPkg)
+	assert.Equal(t, pkgContent, dstPkg)
+}
