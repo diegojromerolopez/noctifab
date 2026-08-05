@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Action records execution history and outcomes of tools run by agents.
 type Action struct {
@@ -10,4 +13,30 @@ type Action struct {
 	Reasoning string         `json:"reasoning"`
 	Result    string         `json:"result"`
 	Success   bool           `json:"success"`
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for Action to support LLM field aliases (cmd, name, command).
+func (a *Action) UnmarshalJSON(data []byte) error {
+	type Alias Action
+	aux := &struct {
+		*Alias
+		Cmd     string `json:"cmd"`
+		Name    string `json:"name"`
+		Command string `json:"command"`
+	}{
+		Alias: (*Alias)(a),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	if a.Tool == "" {
+		if aux.Cmd != "" {
+			a.Tool = aux.Cmd
+		} else if aux.Name != "" {
+			a.Tool = aux.Name
+		} else if aux.Command != "" {
+			a.Tool = aux.Command
+		}
+	}
+	return nil
 }

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-Agent Provider Context Resolution**: Added `Scenario 10` & `Scenario 12` unit test coverage verifying role resolution across `agent_role`, `role`, and `RoleContextKey{}` for all agent roles (`product_manager`, `planner`, `architect`, `generators`, `testers`, `unblocker`).
 - **Authorized Tools for Generator & Tester Roles**: Added `delete_file` to `defaultRoleProfiles` for `generator` and `tester` agents in `validator.go`, allowing agents to delete redundant or conflicting files during refactoring tasks (e.g. resolving module path ambiguity between `src/domain.rs` and `src/domain/mod.rs`).
 - **Resilient Planner Story Decomposition**: Added a 3-attempt retry loop to `PlanStory` in `orchestrator_server.go` so transient LLM streaming or formatting glitches during task DAG generation automatically retry instead of failing the story immediately.
+- **Robust LLM Action Field Alias Unmarshaling**: Added custom `UnmarshalJSON` implementation for `Action` in `pkg/domain/action.go` to support LLM field aliases (`cmd`, `name`, `command`) mapping transparently to `Action.Tool`. Added unit test coverage in `pkg/domain/action_test.go`.
 
 ## [0.20.3] - 2026-08-04
 
