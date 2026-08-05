@@ -11,9 +11,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-type contextKey string
-
-const AgentRoleKey contextKey = "agent_role"
+const AgentRoleKey = "agent_role"
 
 // ValidationResult records the outcome of a security check or target validation check.
 type ValidationResult struct {
@@ -141,7 +139,7 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 		if !toolAllowed {
 			return &ValidationResult{
 				Allowed: false,
-				Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to call tool '%s'", role, action.Tool),
+				Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to call tool '%s'. Authorized tools: [%s]. Please use allowed tools like read_file, list_directory, write_file, edit_file, or run_tests.", role, action.Tool, strings.Join(profile.AllowedTools, ", ")),
 			}, nil
 		}
 
@@ -162,7 +160,7 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 					if !cmdAllowed {
 						return &ValidationResult{
 							Allowed: false,
-							Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to execute command '%s'", role, binary),
+							Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to execute command '%s'. Allowed commands: [%s].", role, binary, strings.Join(profile.AllowedCommands, ", ")),
 						}, nil
 					}
 				}

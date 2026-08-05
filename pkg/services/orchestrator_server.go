@@ -35,7 +35,8 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 	}
 
 	prompt := fmt.Sprintf("Decompose specification into tasks:\n\n%s", spec)
-	resp, err := o.llmClient.Complete(ctx, prompt)
+	plannerCtx := context.WithValue(ctx, AgentRoleKey, "planner")
+	resp, err := o.llmClient.Complete(plannerCtx, prompt)
 	if err != nil {
 		return fmt.Errorf("LLM planning failed: %w", err)
 	}

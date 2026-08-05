@@ -11,6 +11,9 @@ func preprocessPrompt(prompt string) string {
 	if strings.HasPrefix(prompt, "Generate detailed user stories from specification:") {
 		return buildProductManagerPrompt(strings.TrimPrefix(prompt, "Generate detailed user stories from specification:"))
 	}
+	if strings.HasPrefix(prompt, "Audit and refine existing user stories") {
+		return buildProductManagerPrompt(prompt)
+	}
 	if strings.HasPrefix(prompt, "Decompose specification into tasks:") {
 		return buildPlannerPrompt(strings.TrimPrefix(prompt, "Decompose specification into tasks:"))
 	}

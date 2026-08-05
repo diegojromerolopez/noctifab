@@ -203,7 +203,8 @@ Return format:
 }
 `, role, task.Title, task.Description, task.TargetFiles, availableFilesMsg)
 
-	resp, err := o.llmClient.Complete(ctx, prompt)
+	readerCtx := context.WithValue(ctx, AgentRoleKey, role)
+	resp, err := o.llmClient.Complete(readerCtx, prompt)
 	if err != nil {
 		fmt.Printf("Orchestrator: Task [Reader] phase failed for role %s: %v. Continuing without extra context.\n", role, err)
 		return nil

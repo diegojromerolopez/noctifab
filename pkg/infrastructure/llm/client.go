@@ -41,7 +41,18 @@ type Client struct {
 	// provider-side rejection. 0 means defaultMaxPromptTokens; a negative
 	// value disables the check.
 	MaxPromptTokens int64
-
+	// ExtraParams holds provider-specific extra body parameters (e.g.
+	// enable_thinking, thinking_budget for QwenCloud). These are merged
+	// into the extra_body of each completion request as string-typed values.
+	ExtraParams map[string]string
+	// DisableJSONMode disables response_format=json_object for this client.
+	// Set when the provider/model cannot use forced JSON mode (e.g. QwenCloud
+	// thinking models). ExtractJSONBlock parses the JSON envelope instead.
+	DisableJSONMode bool
+	// EnableThinking enables chain-of-thought / reasoning output (e.g. QwenCloud thinking mode).
+	EnableThinking *bool
+	// ThinkingBudget caps the reasoning token budget.
+	ThinkingBudget *int
 	// catalogMu guards catalogCache: a small TTL cache of provider model
 	// catalogs so the fallback ladder and latest-alias resolution do not
 	// re-hit GetAvailableModels (a network call) on every invocation.

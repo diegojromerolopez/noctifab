@@ -308,7 +308,8 @@ func (u *UnblockerAgent) detectStalledTasks(state *domain.State) []StalledTask {
 // assessWithLLM calls the LLM to diagnose stalls and dispatches corrective commands.
 func (u *UnblockerAgent) assessWithLLM(ctx context.Context, state *domain.State, stalls []StalledTask) {
 	prompt := buildUnblockerPrompt(state, stalls)
-	resp, err := u.llmClient.Complete(ctx, prompt)
+	unblockerCtx := context.WithValue(ctx, AgentRoleKey, "unblocker")
+	resp, err := u.llmClient.Complete(unblockerCtx, prompt)
 	if err != nil {
 		fmt.Printf("UnblockerAgent: LLM assessment failed: %v. Falling back to heuristic.\n", err)
 		u.assessHeuristic(ctx, stalls)

@@ -50,6 +50,12 @@ type baseOpenAIClient struct {
 	timeout     time.Duration
 	idleTimeout time.Duration
 	streaming   bool
+	// extraBody holds provider-specific parameters to be merged into the
+	// request's extra_body field (e.g. enable_thinking for QwenCloud).
+	extraBody map[string]interface{}
+	// disableJSONMode disables response_format=json_object when set.
+	// Used for providers/models that cannot accept forced JSON mode.
+	disableJSONMode bool
 }
 
 func newBaseOpenAIClient(provider, baseURL, url string, timeout, idleTimeout time.Duration, streaming bool) *baseOpenAIClient {
@@ -61,6 +67,19 @@ func newBaseOpenAIClient(provider, baseURL, url string, timeout, idleTimeout tim
 		idleTimeout: idleTimeout,
 		streaming:   streaming,
 	}
+}
+
+// SetExtraBody attaches provider-specific extra body parameters to this client.
+// Parameters are merged into every outgoing completion request.
+func (o *baseOpenAIClient) SetExtraBody(params map[string]interface{}) {
+	o.extraBody = params
+}
+
+// SetDisableJSONMode disables response_format=json_object for this client.
+// Use when the provider/model cannot accept forced JSON mode (e.g. QwenCloud
+// thinking models). ExtractJSONBlock will parse the JSON from the raw response.
+func (o *baseOpenAIClient) SetDisableJSONMode(v bool) {
+	o.disableJSONMode = v
 }
 
 type OpenAIClient struct {
@@ -116,13 +135,19 @@ func resolveProviderBaseURL(provider string) string {
 // path (e.g. `chat/completions`) to the base, so any full endpoint override
 // URL is reduced to its base origin. The result always ends in "/" as the SDK
 // expects.
-func (o *baseOpenAIClient) sdkBaseURL() string {
+func (o *baseOpenAIClient) sdkBaseURL(apiKey string) string {
 	base := o.baseURL
 	if base == "" {
 		base = resolveProviderBaseURL(o.provider)
 	}
 	if o.url != "" {
 		base = o.url
+	}
+	if strings.HasPrefix(apiKey, "sk-nEx-") && (o.provider == "qwen" || o.provider == "dashscope" || o.provider == "qwencloud") {
+		base = "https://opencode.ai/zen/go/v1"
+	}
+	if strings.HasPrefix(apiKey, "sk-ws-") && (o.provider == "qwen" || o.provider == "dashscope" || o.provider == "qwencloud") {
+		base = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 	}
 	base = strings.TrimSuffix(base, "/chat/completions")
 	base = strings.TrimSuffix(base, "/")
@@ -146,7 +171,7 @@ func (o *baseOpenAIClient) sdkHTTPClient() *http.Client {
 // call into up to 9 total attempts (3 SDK × 3 client.go).
 func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
 	opts := []option.RequestOption{
-		option.WithBaseURL(o.sdkBaseURL()),
+		option.WithBaseURL(o.sdkBaseURL(apiKey)),
 		option.WithHTTPClient(o.sdkHTTPClient()),
 		option.WithMaxRetries(0),
 	}
@@ -164,9 +189,11 @@ func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
 // ladder can classify them.
 func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) ([]byte, error) {
 	opts := completionOptions{
-		enforceJSON: true,
-		maxTokens:   maxTokens,
-		temperature: &temperature,
+		enforceJSON:     true,
+		disableJSONMode: o.disableJSONMode,
+		maxTokens:       maxTokens,
+		temperature:     &temperature,
+		extraBody:       o.extraBody,
 	}
 	var lastErr error
 	for range 3 {
@@ -216,8 +243,14 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 	client := o.sdkClient(apiKey)
 	params := buildChatParams(model, prompt, opts)
 
+	// Build extra request options for provider-specific body params (e.g. enable_thinking).
+	var reqOpts []option.RequestOption
+	for k, v := range opts.extraBody {
+		reqOpts = append(reqOpts, option.WithJSONSet(k, v))
+	}
+
 	start := time.Now()
-	completion, err := client.Chat.Completions.New(ctx, params)
+	completion, err := client.Chat.Completions.New(ctx, params, reqOpts...)
 	if err != nil {
 		return nil, o.sdkError(err)
 	}
@@ -271,6 +304,12 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 	client := o.sdkClient(apiKey)
 	params := buildChatParams(model, prompt, opts)
 
+	// Build extra request options for provider-specific body params (e.g. enable_thinking).
+	var reqOpts []option.RequestOption
+	for k, v := range opts.extraBody {
+		reqOpts = append(reqOpts, option.WithJSONSet(k, v))
+	}
+
 	streamCtx := ctx
 	var idleTimer *time.Timer
 	var idleFired atomic.Bool
@@ -285,7 +324,7 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 		defer idleTimer.Stop()
 	}
 
-	stream := client.Chat.Completions.NewStreaming(streamCtx, params)
+	stream := client.Chat.Completions.NewStreaming(streamCtx, params, reqOpts...)
 
 	var acc openai.ChatCompletionAccumulator
 	var reasoning strings.Builder

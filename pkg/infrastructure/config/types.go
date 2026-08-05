@@ -172,6 +172,20 @@ type ProviderSpec struct {
 	MaxTokens          int      `yaml:"max_tokens,omitempty"`
 	Temperature        float64  `yaml:"temperature,omitempty"`
 	Streaming          *bool    `yaml:"streaming,omitempty"`
+	// DisableJSONMode disables response_format=json_object for this provider.
+	// Required when the provider/model does not support forced JSON mode (e.g.
+	// QwenCloud thinking models, which output a reasoning trace before the JSON
+	// payload and reject the json_object response format). When true, the LLM
+	// client skips the response_format field entirely and relies on
+	// ExtractJSONBlock to parse the JSON envelope from the raw response.
+	DisableJSONMode bool `yaml:"disable_json_mode,omitempty"`
+	// EnableThinking enables chain-of-thought / reasoning output (e.g. QwenCloud thinking mode).
+	EnableThinking *bool `yaml:"enable_thinking,omitempty"`
+	// ThinkingBudget caps the reasoning token budget (e.g. for QwenCloud thinking models).
+	ThinkingBudget *int `yaml:"thinking_budget,omitempty"`
+	// ExtraParams holds provider-specific extra body parameters passed verbatim
+	// in the API request.
+	ExtraParams map[string]string `yaml:"extra_params,omitempty"`
 }
 
 type LLMConfig struct {
@@ -253,10 +267,12 @@ type SandboxConfig struct {
 }
 
 type AgentProviderRef struct {
-	Name     string   `yaml:"name,omitempty"`
-	Provider string   `yaml:"provider,omitempty"`
-	Model    string   `yaml:"model,omitempty"`
-	Models   []string `yaml:"models,omitempty"`
+	Name           string   `yaml:"name,omitempty"`
+	Provider       string   `yaml:"provider,omitempty"`
+	Model          string   `yaml:"model,omitempty"`
+	Models         []string `yaml:"models,omitempty"`
+	EnableThinking *bool    `yaml:"enable_thinking,omitempty"`
+	ThinkingBudget *int     `yaml:"thinking_budget,omitempty"`
 }
 
 type RoleSetting struct {

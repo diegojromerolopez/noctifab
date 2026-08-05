@@ -134,6 +134,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			_, _ = o.git.Run(ctx, true, "worktree", "add", worktreeDir, branchName)
 		}
 		taskGit = NewGitClient(worktreeDir)
+		syncRootManifests(state.ProjectPath, worktreeDir)
 
 		defer func() {
 			_, _ = o.git.Run(ctx, true, "worktree", "remove", "--force", worktreeDir)
@@ -449,5 +450,28 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	select {
 	case o.taskCompletedChan <- struct{}{}:
 	default:
+	}
+}
+
+// syncRootManifests copies root project manifests into a worktree if missing.
+func syncRootManifests(srcDir, dstDir string) {
+	manifests := []string{
+		"Cargo.toml", "Cargo.lock",
+		"package.json", "package-lock.json",
+		"go.mod", "go.sum",
+		"Makefile", "CMakeLists.txt",
+		"pyproject.toml", "requirements.txt",
+	}
+	for _, file := range manifests {
+		srcPath := filepath.Join(srcDir, file)
+		dstPath := filepath.Join(dstDir, file)
+		if _, err := os.Stat(srcPath); err == nil {
+			if _, errDst := os.Stat(dstPath); os.IsNotExist(errDst) {
+				data, errRead := os.ReadFile(srcPath)
+				if errRead == nil {
+					_ = os.WriteFile(dstPath, data, 0644)
+				}
+			}
+		}
 	}
 }

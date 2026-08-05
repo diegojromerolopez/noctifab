@@ -19,11 +19,18 @@ import (
 // strict path while non-compliant gateways remain usable.
 type completionOptions struct {
 	enforceJSON bool
-	maxTokens   int
+	// disableJSONMode overrides enforceJSON: when true, response_format is
+	// never set, even if enforceJSON is true. Used for providers/models that
+	// are incompatible with forced JSON mode (e.g. QwenCloud thinking models).
+	disableJSONMode bool
+	maxTokens       int
 	// temperature is a pointer so the field can be omitted entirely: some
 	// models (e.g. kimi-k3 behind the OpenCode Zen gateway) only accept a
 	// single fixed temperature and reject any explicit value.
 	temperature *float64
+	// extraBody holds provider-specific key-value pairs to include verbatim
+	// in the request body (e.g. enable_thinking for QwenCloud thinking mode).
+	extraBody map[string]interface{}
 }
 
 // buildChatParams assembles SDK request params from completionOptions.
@@ -40,7 +47,10 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 	if opts.maxTokens > 0 {
 		params.MaxTokens = openai.Int(int64(opts.maxTokens))
 	}
-	if opts.enforceJSON {
+	// response_format=json_object is suppressed when disableJSONMode is set.
+	// This is required for providers/models that cannot use forced JSON mode
+	// (e.g. QwenCloud thinking models). ExtractJSONBlock handles the parsing.
+	if opts.enforceJSON && !opts.disableJSONMode {
 		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
 			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
 		}

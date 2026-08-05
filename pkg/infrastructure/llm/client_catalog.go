@@ -18,14 +18,64 @@ type catalogEntry struct {
 	expires time.Time
 }
 
+// extraBodySetter is an optional interface that provider clients can implement
+// to receive provider-specific extra body parameters after construction.
+type extraBodySetter interface {
+	SetExtraBody(params map[string]interface{})
+}
+
+// disableJSONModeSetter is an optional interface that provider clients can
+// implement to disable response_format=json_object for a given provider.
+type disableJSONModeSetter interface {
+	SetDisableJSONMode(v bool)
+}
+
 // providerClient builds the ProviderClient for this Client's provider using
 // the data-driven ProviderSpec dispatch (no protocol switch statements).
 func (c *Client) providerClient() ProviderClient {
 	spec, _ := GetProviderSpec(strings.ToLower(c.Provider))
+	var pc ProviderClient
 	if spec != nil && spec.NewClientFunc != nil {
-		return spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
+		pc = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
+	} else {
+		pc = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 	}
-	return NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
+	// Inject provider-specific extra body parameters (e.g. enable_thinking, thinking_budget)
+	// if the client supports the extraBodySetter interface.
+	extra := make(map[string]interface{})
+	if c.EnableThinking != nil {
+		extra["enable_thinking"] = *c.EnableThinking
+	}
+	if c.ThinkingBudget != nil {
+		extra["thinking_budget"] = *c.ThinkingBudget
+	}
+	for k, v := range c.ExtraParams {
+		if _, exists := extra[k]; !exists {
+			switch strings.ToLower(v) {
+			case "true":
+				extra[k] = true
+			case "false":
+				extra[k] = false
+			default:
+				extra[k] = v
+			}
+		}
+	}
+	if len(extra) > 0 {
+		if setter, ok := pc.(extraBodySetter); ok {
+			setter.SetExtraBody(extra)
+		}
+	}
+
+	// Propagate DisableJSONMode so the client skips response_format=json_object.
+	// Automatic when thinking is enabled (thinking trace in response breaks forced JSON mode).
+	thinkingOn := c.EnableThinking != nil && *c.EnableThinking
+	if c.DisableJSONMode || thinkingOn {
+		if setter, ok := pc.(disableJSONModeSetter); ok {
+			setter.SetDisableJSONMode(true)
+		}
+	}
+	return pc
 }
 
 // catalogCacheKey identifies a catalog by provider and base URL only. The

@@ -9,18 +9,36 @@ agents:
         number: 1
         iterations: 2
         max_user_stories: 5
+        providers:
+            - name: qwencloud
+            - name: opencode
+            - name: openrouter
     planner:
         number: 1
         iterations: 2
     architect:
         number: 1
         iterations: 2
+        providers:
+            - name: qwencloud
+            - name: opencode
+            - name: openrouter
     generators:
         number: 4
         iterations: 5
+        providers:
+            - name: qwencloud
+              enable_thinking: false
+            - name: opencode
+            - name: openrouter
     testers:
         number: 2
         iterations: 3
+        providers:
+            - name: qwencloud
+              enable_thinking: false
+            - name: opencode
+            - name: openrouter
     qa:
         number: 1
         iterations: 2
@@ -57,12 +75,12 @@ llm:
     # 3. openrouter: pinned deepseek snapshot responds slowly (~5min/call),
     #    kept as last resort.
     priority:
-        - qwencloud
         - opencode
         - openrouter
+        - qwencloud
     providers:
         - name: qwencloud
-          provider: qwen
+          provider: qwencloud
           model: qwen3.8-max
           api_keys: QWENCLOUD_API_KEY
           max_retries: 2
@@ -72,6 +90,8 @@ llm:
           max_tokens: 32768
           temperature: 0.3
           streaming: true
+          enable_thinking: true
+          thinking_budget: 8192
         - name: opencode
           provider: opencode
           model: glm-5.2

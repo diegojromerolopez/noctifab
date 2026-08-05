@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.4] - 2026-08-05
+
+### Added
+- **Agent-Level LLM Provider Overrides**: Extended `AgentProviderRef` configuration struct with `enable_thinking` and `thinking_budget` fields, allowing agents (e.g. `generators`, `testers`) to override provider-level thinking modes (e.g., setting `enable_thinking: false` for `qwencloud` to drop completion latency from 180s to ~2s). Added `Scenario 11` unit tests in `router_test.go`.
+- **Worktree Root Manifest Syncing**: Added `syncRootManifests` in `orchestrator_execute.go` to automatically copy project root manifests (`Cargo.toml`, `package.json`, `go.mod`, `Makefile`, etc.) into fresh Git worktrees when initialized.
+- **Enhanced Sandbox Policy Guidance**: Updated `validator.go` to include explicit lists of authorized tools and commands in `ValidationResult.Reason` when an unauthorized action or command is blocked.
+
+### Fixed
+- **Per-Agent Provider Context Resolution**: Added `Scenario 10` & `Scenario 12` unit test coverage verifying role resolution across `agent_role`, `role`, and `RoleContextKey{}` for all agent roles (`product_manager`, `planner`, `architect`, `generators`, `testers`, `unblocker`).
+
 ## [0.20.3] - 2026-08-04
 
 ### Fixed
