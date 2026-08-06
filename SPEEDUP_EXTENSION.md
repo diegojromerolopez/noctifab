@@ -10,17 +10,19 @@ Combining all 18 proposals creates an ultra-optimized, continuous Dark Factory c
 
 While Proposals 1–9 in `SPEEDUP.md` focus on high-level concurrency (DAG pools), LLM model routing, majority-vote test parallelism, and container pre-baking, Proposals 10–18 target **LLM KV prompt cache maximization, token output minimization, test impact filtering, daemonized worker reuse, and stream-level speculative execution**.
 
-| Proposal | Target Area | Estimated Speedup | Implementation Effort | Codebase Target |
-| :--- | :--- | :---: | :---: | :--- |
-| **10. KV Prompt Cache Prefix Stabilization** | LLM Ingestion Latency | **2.0x–4.0x** (80% TTFT reduction) | Low | `pkg/infrastructure/llm/`, `pkg/services/orchestrator_generator.go` |
-| **11. Unified Diff Multi-File Patching Tool (`apply_patch`)** | Output Generation & Turn Count | **2.5x–3.5x** | Medium | `pkg/services/production_tools.go` |
-| **12. Selective / Incremental Test Impact Analysis (TIA)** | Intermediate Test Validation | **3.0x–5.0x** | Medium | `pkg/services/test_validator.go`, `sandbox_python.go`, `sandbox_docker.go` |
-| **13. Hot Daemonized Test Worker Pool & Process Reuse** | Test Runner Boot Latency | **1.5x–2.0x** | Medium | `pkg/services/sandbox.go`, `sandbox_docker.go` |
-| **14. AST-Driven Interface Extraction for Dependency Files** | Prompt Token Ingestion | **1.5x–2.0x** | Low | `pkg/services/context_slicer.go`, `orchestrator_execute.go` |
-| **15. Generator Fast-Path Exit on Passing `run_tests`** | Generator Turn Overhead | **1.3x–1.5x** (Saves 1 turn/task) | Low | `pkg/services/orchestrator_generator.go` |
-| **16. Real-Time Speculative Streaming Tool Execution** | Tool Execution Pipelining | **1.3x–1.4x** | High | `pkg/infrastructure/llm/parser.go`, `pkg/services/orchestrator_generator.go` |
-| **17. Atomic Task Granularity Decomposition (PM Agent)** | Task Complexity & Retries | **2.0x** | Low | `pkg/services/roadmap_generator.go`, `story_commands.go` |
-| **18. Pooled Git Worktrees & Async State Flushing** | File System & Disk I/O | **1.2x–1.4x** | Medium | `pkg/services/orchestrator_execute.go`, `state_repository.go` |
+| Proposal | Target Area | Estimated Speedup | Implementation Effort | Status | Codebase Target |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **10. KV Prompt Cache Prefix Stabilization** | LLM Ingestion Latency | **2.0x–4.0x** (80% TTFT reduction) | Low | **[DONE] ✅** | `pkg/infrastructure/llm/`, `pkg/services/orchestrator_generator.go` |
+| **11. Unified Diff Multi-File Patching Tool (`apply_patch`)** | Output Generation & Turn Count | **2.5x–3.5x** | Medium | **[PLANNED] ⏳** | `pkg/services/production_tools.go` |
+| **12. Selective / Incremental Test Impact Analysis (TIA)** | Intermediate Test Validation | **3.0x–5.0x** | Medium | **[PLANNED] ⏳** | `pkg/services/test_validator.go`, `sandbox_python.go`, `sandbox_docker.go` |
+| **13. Hot Daemonized Test Worker Pool & Process Reuse** | Test Runner Boot Latency | **1.5x–2.0x** | Medium | **[PLANNED] ⏳** | `pkg/services/sandbox.go`, `sandbox_docker.go` |
+| **14. AST-Driven Interface Extraction for Dependency Files** | Prompt Token Ingestion | **1.5x–2.0x** | Low | **[PLANNED] ⏳** | `pkg/services/context_slicer.go`, `orchestrator_execute.go` |
+| **15. Generator Fast-Path Exit on Passing `run_tests`** | Generator Turn Overhead | **1.3x–1.5x** (Saves 1 turn/task) | Low | **[DONE] ✅** | `pkg/services/orchestrator_generator.go` |
+| **16. Real-Time Speculative Streaming Tool Execution** | Tool Execution Pipelining | **1.3x–1.4x** | High | **[PLANNED] ⏳** | `pkg/infrastructure/llm/parser.go`, `pkg/services/orchestrator_generator.go` |
+| **17. Atomic Task Granularity & Entity Mandate (PM Agent)** | Task Complexity & Retries | **2.0x** | Low | **[DONE] ✅** | `pkg/infrastructure/llm/prompt_templates.go`, `roadmap_generator.go` |
+| **18. Pooled Git Worktrees & Async State Flushing** | File System & Disk I/O | **1.2x–1.4x** | Medium | **[PLANNED] ⏳** | `pkg/services/orchestrator_execute.go`, `state_repository.go` |
+| **19. Interpreter/Compiler Syntax Pre-Validation** | Turn Latency & Retry Cost | **1.5x** | Low | **[DONE] ✅** | `pkg/services/validator.go`, `production_tools.go` |
+| **20. Adaptive Test Coverage Gates (Diff Coverage)** | Task Merge Timeout | **2.0x** | Low | **[DONE] ✅** | `pkg/services/test_validator.go`, `validator.go` |
 
 ---
 
@@ -32,13 +34,13 @@ The foundational proposals in `SPEEDUP.md` address key structural bottlenecks:
 * **Proposals 4, 5, 6** (Pre-baked Base Images, Mock Clocks, Native JSON): Reduce environment configuration retries and schema failures.
 * **Proposals 7, 8, 9** (Implicit Verification, Prompt Pruning, Speculative Prefetch): Smooth transitions between turns and tasks.
 
-Proposals 10–18 build directly on top of these foundations to maximize per-turn efficiency and eliminate micro-latencies across the entire agent loop.
+Proposals 10–20 build directly on top of these foundations to maximize per-turn efficiency and eliminate micro-latencies across the entire agent loop.
 
 ---
 
-## 3. Detailed Proposals (Proposals 10–18)
+## 3. Detailed Proposals (Proposals 10–20)
 
-### Proposal 10: Provider-Native KV Prompt Cache Prefix Stabilization
+### Proposal 10: Provider-Native KV Prompt Cache Prefix Stabilization [DONE] ✅
 * **Codebase Target**: `pkg/infrastructure/llm/client.go`, `prompt_templates.go`, `pkg/services/orchestrator_generator.go`
 * **Current Bottleneck**: `orchestrator_generator.go` reconstructs `currentPrompt` on every turn by placing dynamic parameters (`turn` index, remaining turns, changing tool outputs) near the top or middle of the prompt. This continuously alters the prompt prefix, causing LLM provider Key-Value (KV) Prompt Caching (OpenAI Prompt Caching, Anthropic Context Caching, DeepSeek Context Caching, Gemini Context Caching) to miss on every turn.
 * **Architecture Solution**:
@@ -51,7 +53,7 @@ Proposals 10–18 build directly on top of these foundations to maximize per-tur
 
 ---
 
-### Proposal 11: Fast-Path Direct Multi-File Patching (`apply_patch` / Unified Diff Tool)
+### Proposal 11: Fast-Path Direct Multi-File Patching (`apply_patch` / Unified Diff Tool) [PLANNED] ⏳
 * **Codebase Target**: `pkg/services/production_tools.go` (`WriteFileTool`, `EditFileTool`, `MultiReplaceFileContentTool`)
 * **Current Bottleneck**: `WriteFileTool` requires the LLM to rewrite entire 300+ line files to modify 5 lines, generating thousands of slow output tokens. `EditFileTool` requires rigid JSON representations (`ReplacementChunk`) which frequently suffer formatting/escaping retries. Furthermore, modifying 3 separate files takes 3 sequential LLM turns.
 * **Architecture Solution**:
@@ -61,7 +63,7 @@ Proposals 10–18 build directly on top of these foundations to maximize per-tur
 
 ---
 
-### Proposal 12: Selective / Incremental Test Impact Analysis (TIA)
+### Proposal 12: Selective / Incremental Test Impact Analysis (TIA) [PLANNED] ⏳
 * **Codebase Target**: `pkg/services/test_validator.go`, `validator.go`, `sandbox_docker.go`, `sandbox_python.go`
 * **Current Bottleneck**: Every call to `run_tests` during intermediate generator loops executes the entire test suite (`make test` or `go test ./...` or `pytest`), running tens or hundreds of unrelated tests for 15s–30s per turn.
 * **Architecture Solution**:
@@ -72,7 +74,7 @@ Proposals 10–18 build directly on top of these foundations to maximize per-tur
 
 ---
 
-### Proposal 13: Hot Daemonized Test Worker Pool & Process Reuse
+### Proposal 13: Hot Daemonized Test Worker Pool & Process Reuse [PLANNED] ⏳
 * **Codebase Target**: `pkg/services/sandbox.go`, `sandbox_docker.go`, `sandbox_python.go`
 * **Current Bottleneck**: Calling `run_tests` or `run_linter` spawns new OS subprocesses or Docker containers from scratch every time, incurring process instantiation overhead (1s–5s per call).
 * **Architecture Solution**:
@@ -82,7 +84,7 @@ Proposals 10–18 build directly on top of these foundations to maximize per-tur
 
 ---
 
-### Proposal 14: AST-Driven Interface Extraction for Dependency Files
+### Proposal 14: AST-Driven Interface Extraction for Dependency Files [PLANNED] ⏳
 * **Codebase Target**: `pkg/services/context_slicer.go`, `orchestrator_execute.go` (`collectTargetFilesRecursively`)
 * **Current Bottleneck**: `collectTargetFilesRecursively` pulls raw file contents of all upstream target files into `fileContexts`, adding thousands of implementation lines into the LLM prompt context window.
 * **Architecture Solution**:
@@ -92,7 +94,7 @@ Proposals 10–18 build directly on top of these foundations to maximize per-tur
 
 ---
 
-### Proposal 15: Generator Fast-Path Exit on Passing `run_tests`
+### Proposal 15: Generator Fast-Path Exit on Passing `run_tests` [DONE] ✅
 * **Codebase Target**: `pkg/services/orchestrator_generator.go` (lines 71–193)
 * **Current Bottleneck**: When `run_tests` completes successfully in a generator turn, the orchestrator appends the passing output to the prompt and queries the LLM for another turn just so the model can return `noop`.
 * **Architecture Solution**:
@@ -101,7 +103,7 @@ Proposals 10–18 build directly on top of these foundations to maximize per-tur
 
 ---
 
-### Proposal 16: Real-Time Speculative Streaming Tool Execution
+### Proposal 16: Real-Time Speculative Streaming Tool Execution [PLANNED] ⏳
 * **Codebase Target**: `pkg/infrastructure/llm/parser.go`, `pkg/services/orchestrator_generator.go`
 * **Current Bottleneck**: The orchestrator waits for the complete LLM HTTP response stream to finish before parsing actions and executing tools.
 * **Architecture Solution**:
@@ -111,23 +113,43 @@ Proposals 10–18 build directly on top of these foundations to maximize per-tur
 
 ---
 
-### Proposal 17: Atomic Task Granularity Decomposition (PM Agent)
-* **Codebase Target**: `pkg/services/roadmap_generator.go`, `story_commands.go`
-* **Current Bottleneck**: When the Product Manager agent creates broad multi-responsibility tasks, generator agents require 8–15 turns with high failure and retry rates.
+### Proposal 17: Atomic Task Granularity & Entity Mandate (PM Agent) [DONE] ✅
+* **Codebase Target**: `pkg/infrastructure/llm/prompt_templates.go`, `pkg/services/roadmap_generator.go`
+* **Current Bottleneck**: When the Product Manager agent creates broad multi-responsibility tasks or separate "test-only" tasks, generator agents require 8–15 turns with high failure and retry rates.
 * **Architecture Solution**:
-  1. Update Product Manager system prompts to enforce strict task atomicity: each task must target a single class/file/interface and be implementable in 1–2 turns.
+  1. Update Product Manager system prompts to enforce strict task atomicity and entity: **NO test-only tasks are allowed**. Every task MUST have concrete functionality entity alongside its co-located unit tests.
   2. Enforce explicit DoD (Definition of Done) invariants so tasks have zero ambiguity.
-* **Impact**: **2.0x overall project speedup** due to higher DAG concurrency and near-zero task retries.
+* **Impact**: **2.0x overall project speedup** due to higher DAG concurrency, zero test-only task clutter, and near-zero task retries.
 
 ---
 
-### Proposal 18: Pooled Git Worktrees & Asynchronous State Flushing
+### Proposal 18: Pooled Git Worktrees & Asynchronous State Flushing [PLANNED] ⏳
 * **Codebase Target**: `pkg/services/orchestrator_execute.go` (lines 123–144), `pkg/domain/state_repository.go`
 * **Current Bottleneck**: Creating and destroying Git worktrees via shell commands on every task and synchronously persisting state JSON files on every status update introduces disk I/O bottlenecks.
 * **Architecture Solution**:
   1. Maintain a pool of pre-created Git worktrees under `.noctifab/worktrees/pool-*`.
   2. Implement an in-memory state repository with asynchronous write-behind disk flushing for state transitions.
 * **Impact**: **1.2x–1.4x speedup** on file system operations during concurrent DAG execution.
+
+---
+
+### Proposal 19: Interpreter/Compiler In-Process Syntax Pre-Validation [DONE] ✅
+* **Codebase Target**: `pkg/services/validator.go`, `pkg/services/production_tools.go`
+* **Current Bottleneck**: When an agent introduces a syntax error, launching the full test suite container incurs a 15s–30s process penalty per attempt.
+* **Architecture Solution**:
+  1. Run the target language's interpreter/compiler syntax check (e.g. `python -m py_compile` / `go vet`) in-process or via lightweight CLI check prior to invoking full test runners.
+  2. Fail invalid syntax immediately (0.01s) before wasting test sandbox execution turns.
+* **Impact**: Saves 15–30 seconds per syntax error turn.
+
+---
+
+### Proposal 20: Adaptive Test Coverage Gates (Diff Coverage vs. Absolute Gate) [DONE] ✅
+* **Codebase Target**: `pkg/services/test_validator.go`, `validator.go`
+* **Current Bottleneck**: Forcing a strict 95.0% absolute project-wide coverage gate causes agents to spend 20+ minutes in 10-attempt retry loops chasing 1.7% fractional coverage gains.
+* **Architecture Solution**:
+  1. Measure coverage adaptively using Diff Coverage (coverage on modified lines for intermediate task merging).
+  2. Reserve full project-wide coverage gates for final project verification.
+* **Impact**: Eliminates 10-attempt retry timeouts on intermediate tasks.
 
 ---
 

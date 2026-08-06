@@ -157,6 +157,11 @@ ROADMAP CONSOLIDATION & STORY LIMIT RULE:
 1. Max User Stories: Do NOT generate more user stories than necessary. For concise applications or specifications under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/US-001.md") containing all specification requirements.
 2. Requirement Coverage Pre-Check: Before creating any new user story, you MUST verify if existing user stories already cover all requirements found in SPEC.md. If existing user stories already implement all SPEC.md requirements, do NOT create additional user stories.
 
+TASK ENTITY & ATOMICITY MANDATE:
+1. Entity & Functional Value: Every task created or defined in user stories MUST have concrete functionality entity. NO test-only or coverage-only tasks are allowed.
+2. Co-located Code & Tests: Every task MUST pair concrete application functionality alongside its corresponding unit/integration tests in the SAME task. Never separate functionality from its tests.
+3. Maximum Atomicity: Tasks MUST be as atomic as possible—each task must target a single fine-grained file/module/feature alongside its co-located tests, implementable in 1-2 turns.
+
 DEFINITION OF DONE (DoD) & CONTRACT MANDATE:
 Every user story content generated or refined MUST include an explicit, language-agnostic "Definition of Done (DoD)" section containing:
 1. Public Interface & Entry Point Contracts: Specify exact public API method/module signatures AND binary executable paths (if a CLI application or utility).
@@ -207,8 +212,9 @@ You may only use the 'add_task' tool to define the tasks.
 
 CRITICAL:
 1. You must always specify 'target_files' for each task to inform downstream generator agents of which files they need to work on.
-2. TASK COHESION MANDATE: Never create separate interface-only or stub-only tasks. Interface/domain model definitions and their corresponding primary concrete implementation (or functional memory repository/mock) MUST be defined in the SAME task. Downstream tester agents will write tests that execute the implementation immediately; separating interface definitions from implementations causes test compilation failures.
-3. The planned tasks must include enough detail so generator agents have all the instructions they need.
+2. TASK COHESION & ENTITY MANDATE: Every planned task MUST have concrete functionality entity. NO test-only or coverage-only tasks are allowed. Interface/domain model definitions, concrete implementations, and their corresponding co-located unit tests MUST be defined in the SAME task. Downstream tester agents will write tests that execute the implementation immediately; separating interface definitions, implementations, or tests into separate tasks causes test compilation and execution failures.
+3. TASK ATOMICITY: Tasks MUST be as atomic as possible—each task must target a single file/module alongside its co-located tests, implementable in 1-2 turns.
+4. The planned tasks must include enough detail so generator agents have all the instructions they need.
 
 Return format:
 {

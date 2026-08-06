@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.1] - 2026-08-06
+
+### Changed
+- **Task Entity & Atomicity Mandates**: Updated Product Manager and Planner system prompts in `prompt_templates.go` to enforce strict task entity and atomicity. Prohibited test-only tasks, mandated co-located application functionality and tests in every task, and enforced single-responsibility atomic tasks (1–2 turns).
+- **Dark Factory Acceleration Documentation**: Updated `SPEEDUP.md` and `SPEEDUP_EXTENSION.md` marking completed acceleration proposals (Proposals 1–8, 10, 15, 17, 19, 20) with `[DONE] ✅` status indicators.
+
 ## [0.21.0] - 2026-08-06
 
 ### Added
