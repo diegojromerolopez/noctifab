@@ -55,7 +55,7 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		}
 
 		// Validate the planned tasks
-		if err := ValidatePlannedTasks(state.Tasks); err != nil {
+		if err := ValidatePlannedTasks(state.Tasks, state.ProjectPath); err != nil {
 			state.Tasks = nil
 			lastErr = err
 			if attempt < maxAttempts {

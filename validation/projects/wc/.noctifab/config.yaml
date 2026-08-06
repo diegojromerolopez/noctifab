@@ -10,8 +10,9 @@ agents:
         iterations: 2
         max_user_stories: 5
         providers:
-            - name: deepseek-pro
             - name: gemini
+            - name: openai
+            - name: deepseek-pro
             - name: qwen
             - name: opencode
             - name: openrouter
@@ -22,8 +23,9 @@ agents:
         number: 1
         iterations: 2
         providers:
-            - name: deepseek-pro
             - name: gemini
+            - name: openai
+            - name: deepseek-pro
             - name: qwen
             - name: opencode
             - name: openrouter
@@ -32,6 +34,7 @@ agents:
         iterations: 5
         providers:
             - name: gemini
+            - name: openai
             - name: deepseek-pro
             - name: qwen
               enable_thinking: false
@@ -42,6 +45,7 @@ agents:
         iterations: 3
         providers:
             - name: gemini
+            - name: openai
             - name: deepseek-pro
             - name: qwen
               enable_thinking: false
@@ -52,6 +56,7 @@ agents:
         iterations: 2
         providers:
             - name: gemini
+            - name: openai
             - name: deepseek-pro
             - name: qwen
             - name: opencode
@@ -91,12 +96,24 @@ llm:
     # 5. openrouter: pinned deepseek snapshot responds slowly (~5min/call),
     #    kept as last resort.
     priority:
-        - deepseek-pro
         - gemini
+        - openai
+        - deepseek-pro
+        - qwen
         - opencode
         - openrouter
-        - qwen
     providers:
+        - name: openai
+          provider: openai
+          model: gpt-4o
+          api_keys: OPENAI_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
         - name: deepseek-pro
           provider: qwencloud
           model: deepseek-v4-pro

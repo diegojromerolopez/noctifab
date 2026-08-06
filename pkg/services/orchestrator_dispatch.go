@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -126,7 +127,53 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 			}); err != nil {
 				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist story finalization status: %v\n", err)
 			}
+			return false, nil
 		}
+
+		// Deadlock detection: when tasks exist, none are finished, no active workers exist, and no task is in progress
+		activeWorkers := 0
+		for _, agent := range state.ActiveAgents {
+			if agent.Status == domain.AgentWorking {
+				activeWorkers++
+			}
+		}
+
+		hasInProgress := false
+		for _, t := range state.Tasks {
+			if t.Status == domain.TaskInProgress {
+				hasInProgress = true
+				break
+			}
+		}
+
+		if !o.allTasksFinished(state) && activeWorkers == 0 && !hasInProgress && len(state.Tasks) > 0 {
+			var blockedInfo []string
+			for _, t := range state.Tasks {
+				if t.Status != domain.TaskSuccess {
+					blockedInfo = append(blockedInfo, fmt.Sprintf("task %s (%s, status=%s, deps=%v)", t.ID, t.Title, t.Status, t.DependsOn))
+				}
+			}
+			diagMsg := fmt.Sprintf("deadlock detected: 0 ready tasks and 0 active workers; blocked tasks:\n - %s", strings.Join(blockedInfo, "\n - "))
+			fmt.Fprintf(os.Stderr, "Orchestrator: %s\n", diagMsg)
+
+			if err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+				for i := range st.Tasks {
+					if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
+						st.Tasks[i].Status = domain.TaskFailed
+						st.Tasks[i].FailureLog = diagMsg
+						st.Tasks[i].UpdatedAt = time.Now()
+					}
+				}
+				st.BuildStatus = domain.BuildFailing
+				st.StoryStatus = domain.StoryFailed
+				st.StoryError = diagMsg
+				return nil
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist deadlock abort status: %v\n", err)
+			}
+			return false, fmt.Errorf("%s", diagMsg)
+		}
+
 		return false, nil
 	}
 

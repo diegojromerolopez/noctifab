@@ -329,18 +329,19 @@ var startCmd = &cobra.Command{
 				}
 				specStr := string(specBytes)
 
+				featName := filepath.Base(currentStoryFile)
+				featNameClean := strings.TrimSuffix(featName, filepath.Ext(featName))
+				integrationBranch := cfg.VCS.BranchPrefix + "feature-" + featNameClean
+				if cfg.VCS.BranchPrefix == "" {
+					integrationBranch = "noctifab/feature-" + featNameClean
+				}
+
 				state, err := repo.Load(context.Background())
 				if err != nil {
 					if errors.Is(err, sql.ErrNoRows) {
 						cwd, getwdErr := os.Getwd()
 						if getwdErr != nil {
 							cwd = "."
-						}
-						featName := filepath.Base(cfg.Input)
-						featNameClean := strings.TrimSuffix(featName, filepath.Ext(featName))
-						integrationBranch := cfg.VCS.BranchPrefix + "feature-" + featNameClean
-						if cfg.VCS.BranchPrefix == "" {
-							integrationBranch = "noctifab/feature-" + featNameClean
 						}
 						state = &domain.State{
 							ID:          uuid.New().String(),
@@ -349,7 +350,7 @@ var startCmd = &cobra.Command{
 							BuildStatus: domain.BuildUnknown,
 							Metadata: domain.StateMetadata{
 								InputSource:       "markdown",
-								InputPath:         cfg.Input,
+								InputPath:         currentStoryFile,
 								FeatureName:       featName,
 								BaseBranch:        cfg.VCS.BaseBranch,
 								IntegrationBranch: integrationBranch,
@@ -361,8 +362,12 @@ var startCmd = &cobra.Command{
 					}
 				}
 
-				// Clean up state tasks if completing previous run
+				// Always update metadata for current story file and reset state for fresh story pass
+				state.Metadata.InputPath = currentStoryFile
+				state.Metadata.FeatureName = featName
+				state.Metadata.IntegrationBranch = integrationBranch
 				state.Tasks = nil
+				state.ActiveAgents = nil
 				state.StoryStatus = domain.StoryRunning
 				state.StoryError = ""
 				if err := repo.Save(context.Background(), state); err != nil {

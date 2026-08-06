@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.7] - 2026-08-06
+
+### Changed
+- **WC Validation LLM Provider Configuration**: Configured `openai` provider (`OPENAI_API_KEY`) and prioritized high-speed `gemini` (`gemini-2.5-flash`) at #1 priority across global defaults and all agent role provider ladders (`product_manager`, `architect`, `generators`, `testers`, `qa`) in `validation/projects/wc/.noctifab/config.yaml`. Moved error-prone `opencode` and high-latency `openrouter` to last-resort fallbacks.
+
+## [0.20.6] - 2026-08-05
+
+### Fixed
+- **Cross-Story Dependency Resolution**: Added `ResolveTaskDependencies` (`pkg/services/task_dependencies.go`) to validate and resolve task dependencies across story boundaries. Prerequisite user story dependencies (e.g. `US-001`) referencing valid existing story files on disk are recognized as satisfied and omitted from the active DAG, while references to non-existent story files or unknown task IDs fail fast during `ValidatePlannedTasks`.
+- **Orchestrator Deadlock Detection**: Added deadlock detection in `RunOnce` (`pkg/services/orchestrator_dispatch.go`). When 0 ready tasks exist, 0 active workers are working, and 0 tasks are in progress while pending tasks remain, the orchestrator logs detailed diagnostic information for blocked tasks, sets story status to `StoryFailed`, and aborts execution cleanly instead of looping silently.
+- **State Metadata & Active Agent Reset on Story Switch**: Fixed state initialization when switching user stories in `cmd/noctifab/cli/start.go`. Always updates `state.Metadata.FeatureName`, `state.Metadata.InputPath`, and `state.Metadata.IntegrationBranch` to match the active story file, and clears `state.ActiveAgents` and `state.Tasks` between story runs.
+- **Enhanced Execution Tracing Logs**: Added structured cycle tracing logs in `RunOnce` to provide end-to-end visibility of task readiness, active workers, task completions, and story finalization.
+
 ## [0.20.5] - 2026-08-05
 
 ### Changed

@@ -201,4 +201,31 @@ func TestRunOnce_ContinuousDispatch(t *testing.T) {
 			t.Error("task C must not run when its dependency A failed")
 		}
 	})
+
+	t.Run("when 0 ready tasks exist and 0 active workers are running with pending tasks, deadlock is detected", func(t *testing.T) {
+		state := &domain.State{
+			ID:          "story-deadlock",
+			ProjectPath: t.TempDir(),
+			Tasks: []domain.Task{
+				{ID: "task-1", Title: "Task 1", Description: "depends on missing task", Status: domain.TaskPending, DependsOn: []string{"missing-dep"}},
+			},
+		}
+		orch, repo := newDispatchTestOrchestrator(t, state, 2)
+
+		_, err := orch.RunOnce(context.Background())
+		if err == nil {
+			t.Fatal("expected error on deadlock, got nil")
+		}
+
+		st, err := repo.Load(context.Background())
+		if err != nil {
+			t.Fatalf("failed to load state: %v", err)
+		}
+		if st.StoryStatus != domain.StoryFailed {
+			t.Errorf("expected StoryStatus to be StoryFailed, got: %s", st.StoryStatus)
+		}
+		if st.BuildStatus != domain.BuildFailing {
+			t.Errorf("expected BuildStatus to be BuildFailing, got: %s", st.BuildStatus)
+		}
+	})
 }
