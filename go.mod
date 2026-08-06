@@ -6,6 +6,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/openai/openai-go v1.12.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0
@@ -31,7 +32,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
-	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
