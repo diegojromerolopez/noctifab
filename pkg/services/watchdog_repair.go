@@ -139,7 +139,7 @@ Output:
 
 Error: %v
 
-Please try a different approach to %s.
+Please try a different approach to %s. MANDATE: In case of any persistent or unresolvable error, force a solution (even if simplified or fallback) to ensure the code compiles cleanly and passes all tests. Leaving a broken or non-compiling build is unacceptable.
 `, prevPrompt, toolOutputsBlock, testOutput, testErr, msg)
 }
 

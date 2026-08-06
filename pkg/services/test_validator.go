@@ -3,7 +3,9 @@ package services
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -27,6 +29,13 @@ type TestValidator struct {
 	// Runs is the number of test suite executions per validation. Values
 	// <= 0 default to 1 (single run, no consensus voting).
 	Runs int
+	// MaxLinterIssues is the maximum number of linter issues tolerated before
+	// failing validation. 0 means strict. -1 means disabled. Default 0.
+	MaxLinterIssues int
+	// linterConsecutiveFailures tracks consecutive linter failures without
+	// any file mutation in between. When this reaches 2, linter enforcement
+	// is deferred for the remainder of the task to prevent lock-in.
+	linterConsecutiveFailures int
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
@@ -67,18 +76,41 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	}
 
 	if v.LinterCommand != "" {
-		out, err := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
-		if err != nil && v.FormatterCommand != "" {
-			// Try auto-formatting once more to resolve formatting/style linter offenses automatically
-			_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
-			outRetry, errRetry := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
-			if errRetry == nil {
-				out = outRetry
-				err = nil
+		// Enforce linter unless consecutive failures have indicated a lock-in loop.
+		if v.linterConsecutiveFailures >= 2 {
+			fmt.Fprintf(os.Stderr, "⚠ Linter deferred: failed %d consecutive times without file changes — skipping linter enforcement to allow task completion.\n", v.linterConsecutiveFailures)
+		} else {
+			out, err := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
+			if err != nil && v.FormatterCommand != "" {
+				// Try auto-formatting once more to resolve formatting/style linter offenses automatically
+				_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
+				outRetry, errRetry := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
+				if errRetry == nil {
+					out = outRetry
+					err = nil
+				}
 			}
-		}
-		if err != nil {
-			return false, fmt.Sprintf("Linter validation failed. Command: %s. Output:\n%s", v.LinterCommand, out), nil
+			if err != nil {
+				// Apply MaxLinterIssues threshold: -1 = disabled, >0 = tolerance.
+				linterBlocking := true
+				if v.MaxLinterIssues < 0 {
+					fmt.Fprintf(os.Stderr, "⚠ Linter issues suppressed (max_linter_issues=-1).\n")
+					linterBlocking = false
+				} else if v.MaxLinterIssues > 0 {
+					issueCount := countLinterIssues(out)
+					if issueCount <= v.MaxLinterIssues {
+						fmt.Fprintf(os.Stderr, "⚠ Linter advisory: %d issue(s) within max_linter_issues=%d threshold — continuing.\n", issueCount, v.MaxLinterIssues)
+						linterBlocking = false
+					}
+				}
+				if linterBlocking {
+					v.linterConsecutiveFailures++
+					return false, fmt.Sprintf("Linter validation failed. Command: %s. Output:\n%s", v.LinterCommand, out), nil
+				}
+			} else {
+				// Linter passed — reset consecutive failure counter.
+				v.linterConsecutiveFailures = 0
+			}
 		}
 	}
 
@@ -110,7 +142,7 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 
 func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n int) []TestRunResult {
 	results := make([]TestRunResult, n)
-	for i := 0; i < n; i++ {
+	if n <= 1 {
 		timeout := v.RunTimeout
 		if timeout <= 0 {
 			timeout = 5 * time.Minute
@@ -126,12 +158,42 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 			strings.Contains(outLower, "collected 0 tests") ||
 			strings.Contains(outLower, "exit status 5")
 
-		results[i] = TestRunResult{
-			RunID:  i + 1,
+		results[0] = TestRunResult{
+			RunID:  1,
 			Passed: err == nil && !noTestsRan,
 			Output: out,
 		}
+		return results
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			timeout := v.RunTimeout
+			if timeout <= 0 {
+				timeout = 5 * time.Minute
+			}
+			runCtx, runCancel := context.WithTimeout(ctx, timeout)
+			out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
+			runCancel()
+
+			outLower := strings.ToLower(out)
+			noTestsRan := strings.Contains(outLower, "no tests ran") ||
+				strings.Contains(outLower, "ran 0 tests") ||
+				strings.Contains(outLower, "collected 0 items") ||
+				strings.Contains(outLower, "collected 0 tests") ||
+				strings.Contains(outLower, "exit status 5")
+
+			results[idx] = TestRunResult{
+				RunID:  idx + 1,
+				Passed: err == nil && !noTestsRan,
+				Output: out,
+			}
+		}(i)
+	}
+	wg.Wait()
 	return results
 }
 

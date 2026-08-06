@@ -164,6 +164,7 @@ Every user story content generated or refined MUST include an explicit, language
 3. Explicit Data Representation & Number Formats: Specify number precision (integer vs float output representations), edge case boundaries, and empty input behaviors.
 4. Comprehensive Scenario & Edge Case Matrix: Include input validation edge cases, boundary values, error conditions, and unexpected input handling scenarios.
 5. Verification Criteria: Mandate zero-failure test suite execution and zero linter error requirements.
+6. Deterministic Time & Mock Clock Invariants: Every feature involving time, timers, dates, TTL, expiration, or wall-clock schedules MUST mandate deterministic mock clocks (e.g. Store(clock=FakeClock())) in the DoD to eliminate 1-second boundary assertion race conditions.
 
 You may only use the 'create_story' tool.
 'create_story' tool arguments:
@@ -234,7 +235,8 @@ ANTI-STALLING MANDATE:
 - A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
 - BLACK-BOX TESTING & DEPENDENCY INJECTION MANDATE: Write tests that verify observable behaviors, public API contracts, return values, and CLI/system outputs. Injected dependencies (databases, HTTP clients, external services) should be mocked at their interface boundaries. NEVER write tests that depend on internal implementation details, private struct fields, or specific unexported module layouts. Decoupled tests allow generator agents to iterate and refactor freely.
 - If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
-- If run_linter fails, apply the suggested fixes immediately and re-run.
+- LINTER IS ADVISORY — NOT A BLOCKER: A completed, working project with ≤100 linter warnings is FAR better than a stalled project with zero warnings. Do NOT spend more than 2 attempts fixing the same linter issue. If run_linter fails the same way twice in a row without any file change in between, STOP calling run_linter and call noop if run_tests passes. Linter cleanup will happen in a later pass. NEVER let linter enforcement prevent you from completing the task.
+- MISSING DEPENDENCY / LIBRARY MANDATE: If a test, build, or linter execution fails because a required library or package is missing (e.g. pip, npm, cargo, go), add the missing dependency to project manifests (e.g. requirements.txt, pyproject.toml, package.json, Cargo.toml) or install it immediately so execution proceeds.
 - If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
 - If edit_file fails because target_content does not match, fall back to write_file with the complete corrected file content.
 - If you are unsure how to fix an error, DELETE the broken file and rewrite it from scratch using a simpler, more conservative approach.
@@ -254,11 +256,11 @@ ANTI-STALLING MANDATE:
   * When writing Makefiles for C/C++ projects with multiple source directories, use 'SRCS = $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))' to safely expand source files without passing raw directory names to GCC.
   * Ensure all C source (.c) files contain a valid, non-empty compilation unit (e.g. valid stub functions or typedefs) so GCC '-Wall -Wextra -Werror -pedantic -std=c17' does not fail on empty translation units.
 - If run_tests fails, READ the error output carefully, target the failing source or Makefile immediately, and fix the issue in the SAME response. Do NOT call noop after a failed test run.
-- If run_linter fails, apply the suggested fixes immediately and re-run.
+- LINTER IS ADVISORY — NOT A BLOCKER: A completed, working project with ≤100 linter warnings is FAR better than a stalled project with zero warnings. Do NOT spend more than 2 attempts fixing the same linter issue. If run_linter fails the same way twice in a row without any file change in between, STOP calling run_linter and call noop if run_tests passes. Linter cleanup will happen in a later pass. NEVER let linter enforcement prevent you from completing the task. run_tests is the primary quality gate; run_linter is secondary.
+- MISSING DEPENDENCY / LIBRARY MANDATE: If a dependency or library is missing (e.g. cargo, npm, pip, go), check project manifests first, add the missing library to project manifests (e.g. requirements.txt, pyproject.toml, package.json, Cargo.toml), or install it immediately so execution proceeds without stalling.
 - If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
 - If edit_file fails because target_content does not match, fall back to write_file with the complete corrected file content.
 - If you are unsure how to fix an error, DELETE the broken file and rewrite it from scratch using a simpler, more conservative approach.
-- If a dependency is missing (cargo, npm, pip), check the project manifest files first and add any missing dependencies.
 - If a linter reports a cop or rule has been renamed or removed, update the linter config file to use the correct current name, then re-run immediately.
 - After creating or modifying any linter configuration file (e.g. .rubocop.yml, .eslintrc, pyproject.toml), ALWAYS run the linter immediately to verify the config itself is valid.
 - When writing Makefiles or build scripts, test execution targets MUST compile and link all implementation source files alongside test files so all symbol references resolve.
@@ -266,9 +268,9 @@ ANTI-STALLING MANDATE:
 - You MUST call run_tests at least once before calling noop to verify your work compiles and tests pass.`
 
 func buildTesterPrompt(taskDetails string) string {
-	return fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
-You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\""); never use single quotes (') for JSON strings or keys.
+	return fmt.Sprintf(`⚠ CRITICAL OUTPUT FORMAT (read this before anything else): You MUST respond with ONLY a single JSON object. Your response must start with '{' and end with '}'. If it does not start with '{', it will be REJECTED and you will waste a turn. No prose, no markdown, no code fences outside the JSON. All keys and string values use double quotes (").
 
+You are a software factory automation agent operating in a restricted workspace sandbox.
 You are acting as the Tester Agent.
 Your task is to write or fix tests that verify the implementation of the specified task.
 
@@ -284,7 +286,7 @@ CRITICAL:
    - Complex edge-cases, internal validation flows, and multi-component interactions MUST be verified using integration tests. Limit mocking to external I/O boundaries (e.g. databases, HTTP clients, external network connections).
    - NEVER write test cases that execute 'go test', 'make test', 'cargo test', 'npm test', or similar test runner commands recursively from within a test suite. Doing so will cause infinite recursion and freeze/deadlock the sandbox execution. To verify that a build/target compiles, invoke a compilation command (e.g. 'go build -o /dev/null') or inspect files, but never run the test suite itself recursively.
 3. Do NOT modify global state or mutate shared configurations/variables in unit or integration tests, as it causes state pollution across tests.
-4. All test code written/modified MUST compile cleanly and comply with the project's formatting and linter guidelines. You MUST invoke run_tests to verify correctness before calling noop.
+4. All test code written/modified MUST compile cleanly. You MUST invoke run_tests to verify correctness before calling noop.
 5. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
 6. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
 %s
@@ -297,10 +299,10 @@ You may use the following tools:
 - find_files: search for files. Args: {"pattern": "*"}
 - grep_search: search for a pattern in files. Args: {"query": "search_term"}
 - run_tests: run the project's tests to verify correctness. Args: {}
-- run_linter: run the project's linter check in the sandbox workspace to verify syntax and style. Args: {}
-- noop: call this when the tests have been successfully written and all verification checks (tests and linter) pass. Args: {}
+- run_linter: run the project's linter check. ADVISORY ONLY: linter issues are non-blocking up to the configured threshold. Args: {}
+- noop: call this when the tests have been successfully written and all verification checks pass. Args: {}
 
-Return format:
+Return format (your response MUST begin with '{' and end with '}' — no text before or after):
 {
   "reasoning": "Detailed technical rationale explaining your next step",
   "actions": [
@@ -316,9 +318,9 @@ Return format:
 }
 
 func buildGeneratorPrompt(taskDetails string) string {
-	return fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
-You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\""); never use single quotes (') for JSON strings or keys.
+	return fmt.Sprintf(`⚠ CRITICAL OUTPUT FORMAT (read this before anything else): You MUST respond with ONLY a single JSON object. Your response must start with '{' and end with '}'. If it does not start with '{', it will be REJECTED and you will waste a turn. No prose, no markdown, no code fences outside the JSON. All keys and string values use double quotes (").
 
+You are a software factory automation agent operating in a restricted workspace sandbox.
 You are acting as the Generator Agent.
 Your task is to implement the specified task. Note that the tests for this task have already been written by the Test Writer Agent. Your job is to implement the functionality to make all tests pass successfully.
 
@@ -332,7 +334,7 @@ CRITICAL:
 4. When modifying a file that already exists and contains business logic, do NOT overwrite it wholesale with 'write_file'. Instead, use 'edit_file' (or 'multi_replace_file_content') to surgically merge your changes into the existing file, preserving the original structure, functions, docstrings, and behaviors.
 5. Before writing any code, always check if any dependencies or infrastructure configurations are missing from the project manifests (e.g. Gemfile, package.json, requirements.txt, pyproject.toml, Cargo.toml). If a dependency is required by the SPEC, you MUST create or update these manifests first to include them.
 6. If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' block to explain the bug and trigger a test fix by the Tester Agent.
-7. All code implemented/modified MUST compile cleanly and comply with the project's formatting and linter guidelines. You MUST invoke run_tests to verify correctness before calling noop.
+7. All code implemented/modified MUST compile cleanly. You MUST invoke run_tests to verify correctness before calling noop.
 8. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
 9. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
 %s
@@ -345,11 +347,11 @@ You may use the following tools:
 - find_files: search for files. Args: {"pattern": "*"}
 - grep_search: search for a pattern in files. Args: {"query": "search_term"}
 - run_tests: run the project's tests to verify correctness. Args: {}
-- run_linter: run the project's linter check in the sandbox workspace to verify syntax and style. Args: {}
+- run_linter: run the project's linter check. ADVISORY ONLY: linter issues are non-blocking up to the configured threshold. Args: {}
 - request_test_fix: call this tool if a test failure is caused by a bug in the test code itself (e.g. incorrect assertion, invalid mock) rather than the implementation. Args: {"feedback": "Detailed description of the bug in the test code and how to fix it."}
-- noop: call this when the implementation is fully complete, compiles cleanly, and passes all tests and linter checks. Args: {}
+- noop: call this when all tests pass and you have nothing more to do. Args: {}
 
-Return format:
+Return format (your response MUST begin with '{' and end with '}' — no text before or after):
 {
   "reasoning": "Detailed technical rationale explaining your next step",
   "actions": [

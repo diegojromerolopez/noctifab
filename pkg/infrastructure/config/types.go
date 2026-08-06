@@ -251,19 +251,26 @@ type ConventionalCommitConfig struct {
 }
 
 type SandboxConfig struct {
-	Mode               string   `yaml:"mode"`
-	TimeoutSeconds     int      `yaml:"timeout_seconds"`
-	IdleTimeoutSeconds int      `yaml:"idle_timeout_seconds"`
-	GracePeriodSeconds int      `yaml:"grace_period_seconds"`
-	TestCommand        string   `yaml:"test_command"`
-	LinterCommand      string   `yaml:"linter_command"`
-	FormatterCommand   string   `yaml:"formatter_command"`
-	MaxLinterRetries   int      `yaml:"max_linter_retries"`
-	ExcludePaths       []string `yaml:"exclude_paths"`
-	AllowedCommands    []string `yaml:"allowed_commands"`
-	AutoInstallDeps    bool     `yaml:"auto_install_deps"`
-	PackageManagers    []string `yaml:"package_managers"`
-	ForbiddenPatterns  []string `yaml:"forbidden_patterns"`
+	Mode               string `yaml:"mode"`
+	TimeoutSeconds     int    `yaml:"timeout_seconds"`
+	IdleTimeoutSeconds int    `yaml:"idle_timeout_seconds"`
+	GracePeriodSeconds int    `yaml:"grace_period_seconds"`
+	TestCommand        string `yaml:"test_command"`
+	LinterCommand      string `yaml:"linter_command"`
+	FormatterCommand   string `yaml:"formatter_command"`
+	MaxLinterRetries   int    `yaml:"max_linter_retries"`
+	// MaxLinterIssues is the maximum number of linter issues tolerated before
+	// task validation fails. 0 means strict (zero issues allowed). -1 means
+	// disabled (never fail on linter issues). Default is 100, which allows
+	// minor style issues to accumulate without blocking task completion —
+	// a completed project with some linter warnings is preferable to a
+	// permanently stalled task.
+	MaxLinterIssues   int      `yaml:"max_linter_issues"`
+	ExcludePaths      []string `yaml:"exclude_paths"`
+	AllowedCommands   []string `yaml:"allowed_commands"`
+	AutoInstallDeps   bool     `yaml:"auto_install_deps"`
+	PackageManagers   []string `yaml:"package_managers"`
+	ForbiddenPatterns []string `yaml:"forbidden_patterns"`
 }
 
 type AgentProviderRef struct {

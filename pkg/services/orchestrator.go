@@ -183,6 +183,9 @@ func (o *Orchestrator) SetUnblocker(u *UnblockerAgent) {
 
 // Start runs the polling loop
 func (o *Orchestrator) Start(ctx context.Context) error {
+	if o.rebaseQueue != nil {
+		go o.rebaseQueue.Start(ctx)
+	}
 	// Start unblocker goroutine alongside the main polling loop (nil-safe).
 	if o.unblocker != nil {
 		o.unblocker.Start(ctx)

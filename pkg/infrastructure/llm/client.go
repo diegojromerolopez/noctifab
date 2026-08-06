@@ -131,7 +131,7 @@ Your previous (rejected) response:
 %s
 
 CRITICAL INSTRUCTION (overrides anything above):
-Respond with ONLY a single JSON object matching this schema. No markdown, no code fences, no prose before or after the JSON. Keys and string values must use double quotes.
+Respond with ONLY a single JSON object matching this schema. Ensure the JSON starts with an opening brace '{' and ends with a closing brace '}'. No markdown, no code fences, no prose before or after the JSON. Keys and string values must use double quotes.
 
 Schema:
 {
@@ -141,7 +141,7 @@ Schema:
   ]
 }
 
-Return the JSON block now and nothing else.`, originalPrompt, tail)
+Return the valid JSON block now and nothing else.`, originalPrompt, tail)
 }
 
 func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Duration, url string) *Client {

@@ -105,31 +105,82 @@ var startCmd = &cobra.Command{
 		fmt.Println("Running pre-flight checks...")
 		fmt.Println("- Git CLI: OK")
 		fmt.Printf("- Database connectivity (%s): OK\n", cfg.Storage.Provider)
+		const maxAllowedPingLatency = 10 * time.Second
+
 		if len(cfg.LLM.Providers) > 0 {
+			var activeProviders []config.ProviderSpec
+			var bannedNames []string
+
 			for _, p := range cfg.LLM.Providers {
 				fmt.Printf("- LLM provider (%s / %s) ping: ", p.Name, p.Provider)
-				if err := llm.Ping(context.Background(), p.Provider, p.APIKeyValue, p.URL); err != nil {
-					fmt.Printf("FAIL: %v\n", err)
-					return fmt.Errorf("pre-flight LLM provider ping failed for provider %s: %w", p.Name, err)
+				latency, err := llm.Ping(context.Background(), p.Provider, p.APIKeyValue, p.URL)
+				if err != nil {
+					fmt.Printf("BANNED (unreachable: %v)\n", err)
+					bannedNames = append(bannedNames, p.Name, p.Provider)
+					continue
 				}
-				fmt.Println("OK")
+				if latency > maxAllowedPingLatency {
+					fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", latency.Milliseconds())
+					bannedNames = append(bannedNames, p.Name, p.Provider)
+					continue
+				}
+				fmt.Printf("OK (%dms)\n", latency.Milliseconds())
+				activeProviders = append(activeProviders, p)
+			}
+
+			if len(activeProviders) == 0 {
+				return fmt.Errorf("pre-flight check failed: all configured LLM providers were banned or unreachable")
+			}
+
+			cfg.LLM.Providers = activeProviders
+			if len(cfg.LLM.Priority) > 0 {
+				var filteredPriority []string
+				for _, name := range cfg.LLM.Priority {
+					banned := false
+					for _, b := range bannedNames {
+						if strings.EqualFold(name, b) {
+							banned = true
+							break
+						}
+					}
+					if !banned {
+						filteredPriority = append(filteredPriority, name)
+					}
+				}
+				cfg.LLM.Priority = filteredPriority
 			}
 		} else if len(cfg.LLMs) > 0 {
+			var activeLLMs []config.LLMConfig
 			for _, p := range cfg.LLMs {
 				fmt.Printf("- LLM provider (%s) ping: ", p.Provider)
-				if err := llm.Ping(context.Background(), p.Provider, p.APIKeyValue, p.URL); err != nil {
-					fmt.Printf("FAIL: %v\n", err)
-					return fmt.Errorf("pre-flight LLM provider ping failed for provider %s: %w", p.Provider, err)
+				latency, err := llm.Ping(context.Background(), p.Provider, p.APIKeyValue, p.URL)
+				if err != nil {
+					fmt.Printf("BANNED (unreachable: %v)\n", err)
+					continue
 				}
-				fmt.Println("OK")
+				if latency > maxAllowedPingLatency {
+					fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", latency.Milliseconds())
+					continue
+				}
+				fmt.Printf("OK (%dms)\n", latency.Milliseconds())
+				activeLLMs = append(activeLLMs, p)
 			}
+			if len(activeLLMs) == 0 {
+				return fmt.Errorf("pre-flight check failed: all configured LLM providers were banned or unreachable")
+			}
+			cfg.LLMs = activeLLMs
 		} else {
 			fmt.Printf("- LLM provider (%s) ping: ", cfg.LLM.Provider)
-			if err := llm.Ping(context.Background(), cfg.LLM.Provider, cfg.LLM.APIKeyValue, cfg.LLM.URL); err != nil {
+			latency, err := llm.Ping(context.Background(), cfg.LLM.Provider, cfg.LLM.APIKeyValue, cfg.LLM.URL)
+			if err != nil {
 				fmt.Printf("FAIL: %v\n", err)
 				return fmt.Errorf("pre-flight LLM provider ping failed: %w", err)
 			}
-			fmt.Println("OK")
+			if latency > maxAllowedPingLatency {
+				fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", latency.Milliseconds())
+				return fmt.Errorf("pre-flight LLM provider %s banned: latency %dms exceeds 10s threshold", cfg.LLM.Provider, latency.Milliseconds())
+			}
+			fmt.Printf("OK (%dms)\n", latency.Milliseconds())
 		}
 		fmt.Printf("- Sandbox mode (%s): OK\n", cfg.Sandbox.Mode)
 		fmt.Println("Pre-flight checks passed successfully.")
@@ -189,7 +240,7 @@ var startCmd = &cobra.Command{
 			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
 		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
-		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand, Timeout: runTimeout})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand, FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.MaxLinterIssues, Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM Client with database budget store
@@ -275,6 +326,7 @@ var startCmd = &cobra.Command{
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
 		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
+		evaluator.MaxLinterIssues = cfg.Sandbox.MaxLinterIssues
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}

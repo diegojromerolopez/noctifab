@@ -142,6 +142,12 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 			}
 		}
 		if !toolAllowed {
+			if strings.TrimSpace(action.Tool) == "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  fmt.Sprintf("Role authorization violation: tool name is empty. Role '%s' is bounded to authorized tools: [%s]. Please specify a valid tool name.", role, strings.Join(profile.AllowedTools, ", ")),
+				}, nil
+			}
 			return &ValidationResult{
 				Allowed: false,
 				Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to call tool '%s'. Authorized tools: [%s]. Please use allowed tools like read_file, list_directory, write_file, edit_file, or run_tests.", role, action.Tool, strings.Join(profile.AllowedTools, ", ")),
@@ -216,7 +222,7 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 					if cleanExp != "" && part == cleanExp {
 						return &ValidationResult{
 							Allowed: false,
-							Reason:  fmt.Sprintf("Sandbox violation: path '%s' targets excluded path segment '%s'", path, cleanExp),
+							Reason:  fmt.Sprintf("Sandbox violation: path '%s' targets excluded path segment '%s'. Do NOT attempt to create files in this excluded directory, and UPDATE any test files to omit assertions on excluded paths.", path, cleanExp),
 						}, nil
 					}
 				}

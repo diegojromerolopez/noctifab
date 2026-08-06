@@ -278,6 +278,11 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	var lastErr error
 	runTestsCalled := false
 	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
+	// consecutiveLinterFailures tracks back-to-back run_linter failures without
+	// any file mutation in between. When it reaches 2, run_linter is skipped
+	// for the remainder of this task to prevent the stale-cache lock-in spiral.
+	consecutiveLinterFailures := 0
+	linterDeferred := false
 
 	for turn := 0; turn < maxTurns; turn++ {
 		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
@@ -338,6 +343,12 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				continue
 			}
 
+			if action.Tool == "run_linter" && linterDeferred {
+				msg := "[LINTER DEFERRED] run_linter skipped: linter failed twice consecutively without file changes. Focus on run_tests — tests are the primary quality gate. Linter cleanup will happen in a later pass."
+				turnToolOutputs = append(turnToolOutputs, msg)
+				continue
+			}
+
 			tool, ok := o.registry.Get(action.Tool)
 			if ok {
 				out, execErr := tool.Execute(testerCtx, state, action.Args)
@@ -346,9 +357,22 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				if execErr != nil {
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 					hasNoop = false
+					// Track linter consecutive failures.
+					if action.Tool == "run_linter" {
+						consecutiveLinterFailures++
+						if consecutiveLinterFailures >= 2 {
+							linterDeferred = true
+							fmt.Fprintf(os.Stderr, "⚠ [Tester] Linter failed %d consecutive times without file changes for task %s — deferring linter enforcement. Tests are the primary quality gate.\n", consecutiveLinterFailures, task.ID)
+						}
+					}
 				} else {
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
+					// Reset linter failure counter on any successful file mutation.
+					switch action.Tool {
+					case "write_file", "edit_file", "multi_replace_file_content", "delete_file":
+						consecutiveLinterFailures = 0
+					}
 				}
 			}
 		}

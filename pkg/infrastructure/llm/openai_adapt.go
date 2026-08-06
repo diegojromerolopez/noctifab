@@ -46,6 +46,7 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 	}
 	if opts.maxTokens > 0 {
 		params.MaxTokens = openai.Int(int64(opts.maxTokens))
+		params.MaxCompletionTokens = openai.Int(int64(opts.maxTokens))
 	}
 	// response_format=json_object is suppressed when disableJSONMode is set.
 	// This is required for providers/models that cannot use forced JSON mode
@@ -87,6 +88,11 @@ func looksLikeInvalidTemperature(body string) bool {
 	return strings.Contains(low, "temperature")
 }
 
+func looksLikeMaxTokensRejection(body string) bool {
+	low := strings.ToLower(body)
+	return strings.Contains(low, "max_tokens") || strings.Contains(low, "max_completion_tokens")
+}
+
 // adaptOptionsForError inspects a provider error and, when the failure is
 // attributable to a specific request option, returns a copy of opts with
 // that single option relaxed and ok=true. It returns ok=false when the error
@@ -109,6 +115,10 @@ func adaptOptionsForError(opts completionOptions, err error) (completionOptions,
 	case he.StatusCode == http.StatusBadRequest && opts.temperature != nil && looksLikeInvalidTemperature(he.Body):
 		fmt.Fprintln(os.Stderr, "⚠ Server rejected the temperature value; retrying with the provider default.")
 		opts.temperature = nil
+		return opts, true
+	case he.StatusCode == http.StatusBadRequest && opts.maxTokens > 0 && looksLikeMaxTokensRejection(he.Body):
+		fmt.Fprintln(os.Stderr, "⚠ Server rejected max_tokens parameter; retrying without max_tokens.")
+		opts.maxTokens = 0
 		return opts, true
 	}
 	return opts, false

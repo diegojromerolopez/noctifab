@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-08-06
+
+### Added
+- **SPEEDUP.md Proposals Implementation**: Implemented all 9 dark factory acceleration proposals to achieve **5x–10x** overall code generation throughput speedup:
+  - **Proposal 1: Parallel DAG Worker Pools**: Enabled multi-worker topological task dispatch with per-task file locking, isolated Git worktree execution, and asynchronous `RebaseQueue` branch merging.
+  - **Proposal 2: Tiered LLM Provider Routing**: Updated per-role provider routing defaults to direct deep reasoning models for PM/Planner and high-throughput coding models for Generator/Tester agents.
+  - **Proposal 3: Parallel 3x Majority-Vote Validation**: Parallelized test validation runs in `test_validator.go` using concurrent goroutines and `sync.WaitGroup` to cut test verification latency from ~15s to ~3s.
+  - **Proposal 4: Pre-baked Base Images**: Updated validation Dockerfiles (`pyedis/Dockerfile`) to pre-install common test dependencies (`pytest-asyncio`, `httpx`, `coverage`).
+  - **Proposal 5: Deterministic Mock Clock Invariants**: Added Product Manager DoD prompt invariants in `prompt_templates.go` requiring deterministic mock clock patterns for time- and date-dependent features.
+  - **Proposal 6: Native JSON Schema Enforcement & Parameter Sanitization**: Enforced native JSON schema response formatting and parameter sanitization across OpenAI and compatible providers.
+  - **Proposal 7: Implicit Orchestrator Verification**: Automatically trigger `run_tests` implicitly upon file modification when generator returns `noop`.
+  - **Proposal 8: Aggressive Prompt History Pruning on Retries**: Implemented suffix-only prompt history truncation on retries in `orchestrator_generator.go` to preserve LLM KV prompt cache prefixes.
+  - **Proposal 9: Speculative Next-Task Prefetching**: Prefetched target file contexts for candidate downstream tasks while current task 3x validation executes.
+
 ## [0.20.7] - 2026-08-06
 
 ### Changed

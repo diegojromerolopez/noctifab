@@ -37,7 +37,6 @@ agents:
             - name: openai
             - name: deepseek-pro
             - name: qwen
-              enable_thinking: false
             - name: opencode
             - name: openrouter
     testers:
@@ -48,7 +47,6 @@ agents:
             - name: openai
             - name: deepseek-pro
             - name: qwen
-              enable_thinking: false
             - name: opencode
             - name: openrouter
     qa:
@@ -86,26 +84,16 @@ storage:
     conn_string: .noctifab/data/noctifab.db
     json_file_path: .noctifab/data/state.json
 llm:
-    # 1. deepseek-pro: Qwen's cloud API with deepseek-v4-pro model.
-    # 2. gemini: Google Gemini API (registered provider name `gemini`).
-    # 3. qwen: Qwen's cloud API (DashScope compatible-mode endpoint,
-    #    registered provider name `qwen`).
-    # 4. opencode: zen go gateway with glm-5.2 (the best-behaved model there;
-    #    with response_format the gateway returns content in reasoning_content,
-    #    handled by the client fallback).
-    # 5. openrouter: pinned deepseek snapshot responds slowly (~5min/call),
-    #    kept as last resort.
     priority:
-        - gemini
-        - openai
+        - opencode
         - deepseek-pro
         - qwen
-        - opencode
+        - openai
         - openrouter
     providers:
         - name: openai
           provider: openai
-          model: gpt-4o
+          model: gpt-5.6-luna
           api_keys: OPENAI_API_KEY
           max_retries: 2
           retry_backoff: 50ms
@@ -118,17 +106,6 @@ llm:
           provider: qwencloud
           model: deepseek-v4-pro
           api_keys: QWENCLOUD_API_KEY
-          max_retries: 2
-          retry_backoff: 50ms
-          max_timeout: 600s
-          idle_timeout: 600s
-          max_tokens: 32768
-          temperature: 0.3
-          streaming: true
-        - name: gemini
-          provider: gemini
-          model: gemini-2.5-flash
-          api_keys: GEMINI_API_KEY
           max_retries: 2
           retry_backoff: 50ms
           max_timeout: 600s
@@ -171,7 +148,6 @@ llm:
           max_tokens: 32768
           temperature: 0.3
           streaming: true
-
 vcs:
     provider: github
     repository: diegojromerolopez/wc
@@ -230,5 +206,3 @@ context:
     mode: full
     diff_window_lines: 15
     compaction: simple_english
-
-

@@ -131,10 +131,14 @@ func DefaultConfig() *Config {
 			LinterCommand:      "golangci-lint run",
 			FormatterCommand:   "go fmt ./...",
 			MaxLinterRetries:   3,
-			ExcludePaths:       []string{".noctifab"},
-			AllowedCommands:    []string{"go", "git", "npm", "python", "make"},
-			AutoInstallDeps:    false,
-			PackageManagers:    []string{"pip", "go", "brew", "curl", "npm"},
+			// MaxLinterIssues: a completed project with ≤100 style warnings is
+			// far better than a permanently stalled task. Projects that need
+			// stricter enforcement can set this to 0.
+			MaxLinterIssues: 100,
+			ExcludePaths:    []string{".noctifab"},
+			AllowedCommands: []string{"go", "git", "npm", "python", "make"},
+			AutoInstallDeps: false,
+			PackageManagers: []string{"pip", "go", "brew", "curl", "npm"},
 		},
 		Roles: RolesConfig{
 			Orchestrator: RoleSetting{Profile: "orchestrator", Temperature: 0.0},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -12,12 +13,15 @@ import (
 // scriptedSandbox returns a scripted sequence of outcomes for each
 // successive RunCommand call.
 type scriptedSandbox struct {
+	mu      sync.Mutex
 	results []error
 	outputs []string
 	calls   int
 }
 
 func (s *scriptedSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	i := s.calls
 	s.calls++
 	var out string
@@ -111,8 +115,8 @@ func TestTestValidatorValidateTask(t *testing.T) {
 		if !strings.Contains(msg, "(1/3 runs passed)") {
 			t.Errorf("expected 1/3 message, got %q", msg)
 		}
-		if !strings.Contains(msg, "FAIL B") {
-			t.Errorf("expected last failure output in message, got %q", msg)
+		if !strings.Contains(msg, "FAIL A") && !strings.Contains(msg, "FAIL B") {
+			t.Errorf("expected failure output in message, got %q", msg)
 		}
 	})
 
@@ -138,6 +142,52 @@ func TestTestValidatorValidateTask(t *testing.T) {
 		}
 		if ok {
 			t.Errorf("expected failure for no tests ran, got msg=%q", msg)
+		}
+	})
+
+	t.Run("when linter fails within MaxLinterIssues threshold it passes validation", func(t *testing.T) {
+		linterOut := "app.py:1:1: E501 line too long\napp.py:2:1: W293 blank line whitespace\n"
+		sb := &scriptedSandbox{
+			results: []error{errors.New("linter exit status 1"), nil},
+			outputs: []string{linterOut, "PASS: 1 test passed"},
+		}
+		v := NewTestValidator(sb, false, nil, nil)
+		v.LinterCommand = "make lint"
+		v.MaxLinterIssues = 10
+		ok, msg, err := v.ValidateTask(context.Background(), state, validatorTask())
+		if err != nil || !ok {
+			t.Fatalf("expected pass when linter issue count (2) <= threshold (10), got ok=%v msg=%q err=%v", ok, msg, err)
+		}
+	})
+
+	t.Run("when linter fails twice consecutively it defers enforcement on the third call", func(t *testing.T) {
+		linterErr := errors.New("linter exit status 1")
+		linterOut := "app.py:1:1: E501 line too long\n"
+		// 1st run: linter fail
+		sb1 := &scriptedSandbox{results: []error{linterErr}, outputs: []string{linterOut}}
+		v := NewTestValidator(sb1, false, nil, nil)
+		v.LinterCommand = "make lint"
+		v.MaxLinterIssues = 0
+
+		ok1, _, _ := v.ValidateTask(context.Background(), state, validatorTask())
+		if ok1 {
+			t.Fatal("expected failure on 1st linter run")
+		}
+
+		// 2nd run: linter fail (counter = 2)
+		sb2 := &scriptedSandbox{results: []error{linterErr}, outputs: []string{linterOut}}
+		v.Runner = sb2
+		ok2, _, _ := v.ValidateTask(context.Background(), state, validatorTask())
+		if ok2 {
+			t.Fatal("expected failure on 2nd linter run")
+		}
+
+		// 3rd run: counter >= 2 -> linter skipped, tests run and pass!
+		sb3 := &scriptedSandbox{results: []error{nil}, outputs: []string{"PASS: 1 test passed"}}
+		v.Runner = sb3
+		ok3, msg3, err3 := v.ValidateTask(context.Background(), state, validatorTask())
+		if err3 != nil || !ok3 {
+			t.Fatalf("expected pass on 3rd run due to linter deferral, got ok=%v msg=%q err=%v", ok3, msg3, err3)
 		}
 	})
 }

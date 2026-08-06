@@ -337,12 +337,37 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	return t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
 }
 
+// countLinterIssues counts the number of distinct linter issue lines in the
+// linter output. It counts lines that look like error/warning diagnostics
+// (start with a file path or contain an issue code pattern like E001, W123).
+func countLinterIssues(output string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		// Match common linter output patterns:
+		// - Lines with file:line:col: message (ruff, golangci, flake8, eslint)
+		// - Lines starting with a letter+digits error code (e.g. E501, W0123, I001)
+		if strings.Contains(trimmed, ":") && !strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, "make") && !strings.HasPrefix(trimmed, "Found") && !strings.HasPrefix(trimmed, "[*]") && !strings.HasPrefix(trimmed, "help:") && !strings.HasPrefix(trimmed, "|") {
+			// Heuristic: line contains a colon and is not a header/summary line
+			count++
+		}
+	}
+	return count
+}
+
 // RunLinterTool implements run_linter.
 type RunLinterTool struct {
 	Runner           Sandbox
 	LinterCommand    string
 	FormatterCommand string
 	Timeout          time.Duration
+	// MaxLinterIssues is the maximum number of linter issues tolerated before
+	// the tool returns an error. 0 means zero tolerance. -1 means disabled
+	// (never return an error for linter failures). Default 0 (strict).
+	MaxLinterIssues int
 }
 
 func (t *RunLinterTool) Name() string { return "run_linter" }
@@ -370,7 +395,28 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 		}
 	}
 
-	return t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")
+	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")
+	if err == nil {
+		return out, nil
+	}
+
+	// Linter failed: apply MaxLinterIssues threshold.
+	// -1 means disabled (never fail on linter).
+	if t.MaxLinterIssues < 0 {
+		fmt.Fprintf(os.Stderr, "⚠ Linter reported issues but max_linter_issues=-1 (disabled); suppressing error.\n")
+		return fmt.Sprintf("[LINTER ADVISORY — issues suppressed by max_linter_issues=-1]\n%s", out), nil
+	}
+
+	if t.MaxLinterIssues > 0 {
+		issueCount := countLinterIssues(out)
+		if issueCount <= t.MaxLinterIssues {
+			fmt.Fprintf(os.Stderr, "⚠ Linter found %d issue(s) (threshold: %d) — within tolerance, treating as advisory warning.\n", issueCount, t.MaxLinterIssues)
+			return fmt.Sprintf("[LINTER ADVISORY — %d issue(s) within max_linter_issues=%d threshold]\n%s", issueCount, t.MaxLinterIssues, out), nil
+		}
+		fmt.Fprintf(os.Stderr, "⚠ Linter found %d issue(s) which exceeds max_linter_issues=%d threshold.\n", issueCount, t.MaxLinterIssues)
+	}
+
+	return out, err
 }
 
 // RequestTestFixTool implements request_test_fix.

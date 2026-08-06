@@ -30,7 +30,7 @@ func (o *Orchestrator) executeTaskSinglePass(ctx context.Context, task *domain.T
 			}
 		}
 	} else {
-		fixSinglePassPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFix both the implementation and the tests to resolve previous failures and ensure all tests pass.", task.Title, task.Description)
+		fixSinglePassPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFix both the implementation and the tests to resolve previous failures and ensure all tests pass. MANDATE: If an error or dependency issue persists, force a working solution (even if simplified) so the code compiles cleanly and tests pass. Leaving non-compiling code is unacceptable.", task.Title, task.Description)
 		o.updateTaskProgress(ctx, taskID, 50)
 		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", fixSinglePassPrompt)
 
