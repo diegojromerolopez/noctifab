@@ -283,28 +283,34 @@ When a provider adopts a completely new naming convention (e.g., changing from `
 - **`max_duration`**: Specifies a story-level wall-clock timeout.
 - **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
 
-### 5. Unblocker Agent (Cross-Agent Stall Recovery & Dynamic Prompts)
+### 5. Self-Correcting & Dynamic Prompts Framework
 
-The **Unblocker Agent** (`pkg/services/unblocker.go`) is an autonomous daemon goroutine that runs on an independent timer alongside the orchestrator's task-dispatch loop. Unlike the Watchdog (which guards individual command execution) and WatchdogRepair (which heals test failures after completion), the Unblocker operates at the **pipeline level** — it periodically scans `ActiveAgents` and `Tasks` in the shared state to detect situations where the entire pipeline has stalled.
+Noctifab employs a dynamic, context-aware prompt adaptation and self-correcting engine across all agent roles:
 
-**When it fires:** Every `unblocker.poll_interval` (default: `30s`). Configurable per run via `config.yaml` or `--unblocker-poll-interval`.
+#### A. Unblocker Dynamic Prompt Injection & Fast-Path Engine (`pkg/services/unblocker.go`)
+The **Unblocker Agent** runs as an autonomous background goroutine on an independent timer (default `30s` poll interval). When a pipeline stall is detected (`frozen_progress`, `orphaned_task`, `agent_inconsistency`, `conflict_blocked`):
+1. **Live Log Tailing & Secret Scrubbing (`log_tailer.go`)**: Tails standard output logs of stalled tasks and passes snippets through `SanitizeLog` to scrub sensitive API keys and tokens before prompt injection.
+2. **0-Token Fast-Path Regex Classifier (`unblocker_fastpath.go`)**: Matches log snippets against static regex patterns for routine CLI hangs (stdin interactive `y/n` prompts, port binding collisions, test watch mode spinners), unblocking tasks in **< 5ms** with **0 LLM token overhead**.
+3. **10x Progressive Log Window Escalation**: Scales diagnostic log depth based on `task.StallCount` (Level 1: 50 lines $\rightarrow$ Level 2: 500 lines $\rightarrow$ Level 3: 5,000 lines).
+4. **Task Stall Recovery Directives (`[STALL RECOVERY DIRECTIVE]`)**: Attaches `RecoveryDirective` to task state upon reset, injecting instructions into Generator and Tester worker prompts on re-queued attempts to prevent repeating stalling actions.
 
-**What it detects:**
+See [docs/unblocker_agent.md](unblocker_agent.md) for full developer reference.
 
-| Stall Reason | Signal | Threshold |
-|---|---|---|
-| `frozen_progress` | Task `IN_PROGRESS` with `UpdatedAt` stale | > `stall_threshold` (default: 5m) |
-| `orphaned_task` | Task `IN_PROGRESS` but no `WORKING` agent assigned | > `stall_threshold / 2` |
-| `agent_inconsistency` | Agent `WORKING` but its task is not `IN_PROGRESS` | Immediate (any age) |
-| `conflict_blocked` | Task `CONFLICT_BLOCKED` unresolved | > `conflict_threshold` (default: 15m) |
+#### B. Legacy Codebase Scanning & Characterization Mandate (`pkg/usecase/roadmap_generator.go`)
+When initialized in a project directory containing existing source code:
+1. **Workspace Legacy Scanning (`scanLegacyFiles`)**: Detects pre-existing source files while ignoring build outputs, vendor paths, and `.noctifab` metadata.
+2. **Product Manager Legacy Directive (`prompt_templates.go`)**: Injects `LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE` into the PM prompt. The PM automatically generates `roadmap/US-001.md` titled `"Legacy Codebase Characterization & Stabilization"`, requiring unit/integration characterization tests before refactoring or new feature work.
+3. **Dynamic Role Prompt Adaptation**: Planner, Generator, and Tester prompts dynamically adapt with characterization testing requirements and surgical refactoring directives (`edit_file`, `apply_patch`).
 
-**Dynamic Prompt Enhancement & Fast-Path Engine:**
-1. **Live Log Tailing & Secret Scrubbing (`log_tailer.go`)**: Tails standard output logs of stalled tasks and redacts sensitive credentials (API keys, bearer tokens) before prompt injection.
-2. **Fast-Path Regex Classifier (`unblocker_fastpath.go`)**: 0-token deterministic pre-filtering for routine CLI hangs (stdin prompts, port collisions, test watch spinners), unblocking tasks in **< 5ms**.
-3. **10x Progressive Log Window Escalation**: Expands diagnostic log window based on stall count (Level 1: 50 lines $\rightarrow$ Level 2: 500 lines $\rightarrow$ Level 3: 5,000 lines).
-4. **Task Stall Recovery Directives**: Attaches `[STALL RECOVERY DIRECTIVE]` instructions to re-queued task prompts to prevent repeating stalls.
+#### C. Pre-Flight LLM Provider Capability Caching (`openai_adapt.go` & `openai.go`)
+1. **Parameter Rejection Detection**: Tracks provider parameter rejections (e.g. `temperature`, `max_tokens`, `response_format` for reasoning models) upon receiving an initial HTTP 400 error.
+2. **Thread-Safe Capability Cache (`providerCapabilityCache`)**: Records model parameter limitations in RAM across worker goroutines.
+3. **Self-Correcting API Payloads**: Automatically omits unsupported parameters on subsequent API requests without requiring failing roundtrips.
 
-See [docs/unblocker_agent.md](unblocker_agent.md) for the full developer reference.
+#### D. Parallel Context Compaction Engine (`pkg/usecase/prompt_templates.go`)
+For context payloads $> 20$ KB (`20,000` bytes):
+1. **Parallel Worker Compaction**: Parallelizes line block compaction across worker goroutines in `CompactSimpleEnglish` and `CompactCaveman` modes.
+2. **Invariant Preservation**: Cuts token volume by 25%+ while strictly preserving code blocks, JSON schemas, file paths, and technical invariants.
 
 ---
 

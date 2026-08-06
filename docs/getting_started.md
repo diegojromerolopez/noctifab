@@ -78,6 +78,11 @@ Define key entities and structs (e.g. `Quote` struct with `ID`, `Author`, `Text`
 - Zero linter warnings.
 ```
 
+### 💡 Working with Existing / Legacy Codebases
+If you initialize Noctifab in an existing repository with pre-existing code files, Noctifab's **Legacy Codebase Scanning** (`scanLegacyFiles`) automatically detects existing source files. 
+
+The Product Manager agent automatically generates `roadmap/US-001.md` titled **`"Legacy Codebase Characterization & Stabilization"`**. This forces the dark factory loop to write comprehensive characterization tests asserting pre-existing behaviors before attempting surgical refactoring (`edit_file`, `apply_patch`) or implementing new user story features.
+
 ---
 
 ## 🔑 4. Configuring Secrets & LLM Providers
