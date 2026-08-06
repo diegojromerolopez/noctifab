@@ -29,7 +29,7 @@ type diffFileHeader struct {
 }
 
 type diffHunkLine struct {
-	Kind byte   // ' ', '-', '+'
+	Kind byte // ' ', '-', '+'
 	Text string
 }
 

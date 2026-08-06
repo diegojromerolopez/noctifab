@@ -25,6 +25,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	if recentTestsContext != "" {
 		promptContext = append(promptContext, recentTestsContext)
 	}
+	// Add previous stall recovery directive if task was unblocked
+	if task.RecoveryDirective != "" {
+		promptContext = append(promptContext, fmt.Sprintf("### ⚠️ PREVIOUS ATTEMPT STALL RECOVERY DIRECTIVE\n%s", task.RecoveryDirective))
+	}
 	// Add previous failure context if retrying
 	if task.Retries > 0 && task.FailureLog != "" {
 		warning := "WARNING: The previous implementation/refactoring changes from the failed attempt have been preserved in the workspace files. You must inspect the existing code/tests, identify the bugs, and modify the files to fix the failures."

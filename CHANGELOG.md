@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-08-06
+
+### Added
+- **Dynamic Prompt Enhancement via Unblocker Log Injection (`DYNAMIC_PROMPTS.md`)**: Implemented dynamic log tailing, secret sanitization, zero-token fast-path regex unblocking, and 10x progressive log escalation in `UnblockerAgent`:
+  - **Live Log Tailing & Secret Scrubbing (`log_tailer.go`)**: Added `TailLogFile` and `SanitizeLog` to read standard output logs and redact sensitive credentials (API keys, bearer tokens, passwords).
+  - **Fast-Path Regex Classifier (`unblocker_fastpath.go`)**: Added static regex pre-filtering for 0-token unblocking of routine CLI stalls (interactive stdin prompts, port binding collisions, test watch mode spinners).
+  - **10x Progressive Log Escalation**: Configured 3-tier log tail windowing based on `task.StallCount` (50 lines $\rightarrow$ 500 lines $\rightarrow$ 5,000 lines, capped at 3 escalations before failing task).
+  - **Task Recovery Directives**: Attached `RecoveryDirective` to task state upon reset and injected `[STALL RECOVERY DIRECTIVE]` into `Generator` prompts on retry attempts to prevent repeating stalls.
+
 ## [0.21.1] - 2026-08-06
 
 ### Added

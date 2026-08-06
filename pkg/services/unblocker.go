@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,6 +15,31 @@ import (
 // defaultLLMAssessmentCooldown is the minimum interval between LLM
 // re-assessments of the same stall (keyed by task ID + task status).
 const defaultLLMAssessmentCooldown = 5 * time.Minute
+
+func getLogWindowLines(stallCount int) int {
+	switch stallCount {
+	case 0:
+		return 50
+	case 1:
+		return 500
+	default:
+		return 5000
+	}
+}
+
+func fetchTaskLogSnippet(taskID string, stallCount int) []string {
+	lineCount := getLogWindowLines(stallCount)
+	logPath := filepath.Join(".noctifab", "logs", "tasks", taskID+".log")
+	lines, err := TailLogFile(logPath, lineCount)
+	if err != nil || len(lines) == 0 {
+		return nil
+	}
+	sanitized := make([]string, len(lines))
+	for i, l := range lines {
+		sanitized[i] = SanitizeLog(l)
+	}
+	return sanitized
+}
 
 // UnblockerAgent is an autonomous daemon goroutine that periodically scans the
 // shared pipeline state for stalled or blocked tasks and agents, diagnoses the
@@ -137,17 +164,45 @@ func (u *UnblockerAgent) checkAndUnblock(ctx context.Context) {
 		return
 	}
 
-	fmt.Printf("🔍 [UnblockerAgent] Detected %d stall(s). Assessing...\n", len(stalls))
+	// Process Fast-Path Regex & Escalation Hard-Stops
+	var remainingStalls []StalledTask
+	for _, s := range stalls {
+		// Hard-stop check: If task has stalled 3 times (StallCount >= 3), fail it
+		if s.Task.StallCount >= 3 {
+			reason := fmt.Sprintf("unblocker: task %s reached max stall escalations (%d); task unrecoverable", s.Task.ID, s.Task.StallCount)
+			fmt.Printf("❌ [UnblockerAgent] Hard-stop max stall limit reached for task %s\n", s.Task.ID)
+			u.sendCmd(&FailTaskCmd{TaskID: s.Task.ID, Reason: reason})
+			continue
+		}
+
+		// Fast-path regex pre-filter for zero-token unblocking
+		if len(s.RecentLogs) > 0 {
+			combinedLogs := strings.Join(s.RecentLogs, "\n")
+			fp := FastPathClassify(combinedLogs)
+			if fp.Matched {
+				fmt.Printf("⚡ [UnblockerAgent] Fast-path regex hit (%s) for task %s\n", fp.Reason, s.Task.ID)
+				u.sendCmd(&ResetTaskCmd{TaskID: s.Task.ID, Reason: fp.Reason, Directive: fp.Directive})
+				continue
+			}
+		}
+		remainingStalls = append(remainingStalls, s)
+	}
+
+	if len(remainingStalls) == 0 {
+		return
+	}
+
+	fmt.Printf("🔍 [UnblockerAgent] Detected %d stall(s). Assessing...\n", len(remainingStalls))
 
 	if u.llmAssessment && u.llmClient != nil {
-		fresh := u.filterStallsForLLMAssessment(state, stalls)
+		fresh := u.filterStallsForLLMAssessment(state, remainingStalls)
 		if len(fresh) == 0 {
-			fmt.Printf("UnblockerAgent: all %d stall(s) are within the LLM assessment cooldown; skipping re-assessment.\n", len(stalls))
+			fmt.Printf("UnblockerAgent: all %d stall(s) are within the LLM assessment cooldown; skipping re-assessment.\n", len(remainingStalls))
 			return
 		}
 		u.assessWithLLM(ctx, state, fresh)
 	} else {
-		u.assessHeuristic(ctx, stalls)
+		u.assessHeuristic(ctx, remainingStalls)
 	}
 }
 
@@ -238,6 +293,7 @@ func (u *UnblockerAgent) detectStalledTasks(state *domain.State) []StalledTask {
 					ReasonStr:     StallReasonFrozenProgress.String(),
 					StalledFor:    stalledFor,
 					StalledForStr: stalledFor.Round(time.Second).String(),
+					RecentLogs:    fetchTaskLogSnippet(task.ID, task.StallCount),
 				})
 				continue
 			}
@@ -252,6 +308,7 @@ func (u *UnblockerAgent) detectStalledTasks(state *domain.State) []StalledTask {
 						ReasonStr:     StallReasonOrphanedTask.String(),
 						StalledFor:    stalledFor,
 						StalledForStr: stalledFor.Round(time.Second).String(),
+						RecentLogs:    fetchTaskLogSnippet(task.ID, task.StallCount),
 					})
 				}
 			}
@@ -267,6 +324,7 @@ func (u *UnblockerAgent) detectStalledTasks(state *domain.State) []StalledTask {
 					ReasonStr:     StallReasonConflictBlocked.String(),
 					StalledFor:    stalledFor,
 					StalledForStr: stalledFor.Round(time.Second).String(),
+					RecentLogs:    fetchTaskLogSnippet(task.ID, task.StallCount),
 				})
 			}
 		}
@@ -298,6 +356,7 @@ func (u *UnblockerAgent) detectStalledTasks(state *domain.State) []StalledTask {
 				ReasonStr:     StallReasonAgentInconsistency.String(),
 				StalledFor:    stalledFor,
 				StalledForStr: stalledFor.Round(time.Second).String(),
+				RecentLogs:    fetchTaskLogSnippet(affectedTask.ID, affectedTask.StallCount),
 			})
 		}
 	}
@@ -326,8 +385,9 @@ func (u *UnblockerAgent) assessWithLLM(ctx context.Context, state *domain.State,
 			taskID, _ := action.Args["task_id"].(string)
 			reason, _ := action.Args["reason"].(string)
 			if taskID != "" {
+				directive := fmt.Sprintf("Diagnostic Guidance from Unblocker Agent: %s", reason)
 				fmt.Printf("🔧 [UnblockerAgent] Resetting task %s: %s\n", taskID, reason)
-				u.sendCmd(&ResetTaskCmd{TaskID: taskID, Reason: reason})
+				u.sendCmd(&ResetTaskCmd{TaskID: taskID, Reason: reason, Directive: directive})
 			}
 		case "fail_task":
 			taskID, _ := action.Args["task_id"].(string)

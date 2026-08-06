@@ -64,6 +64,19 @@ func (m *CommandMailbox) Wakeup() <-chan struct{} {
 	return m.wakeup
 }
 
+// PopAll drains and returns all currently buffered commands in the mailbox.
+func (m *CommandMailbox) PopAll() []Command {
+	var list []Command
+	for {
+		select {
+		case cmd := <-m.cmds:
+			list = append(list, cmd)
+		default:
+			return list
+		}
+	}
+}
+
 // SleepWithInterrupt sleeps for the given duration or until the context is cancelled
 // or a command notification arrives on the wakeup channel.
 func SleepWithInterrupt(ctx context.Context, duration time.Duration, wakeup <-chan struct{}) error {
