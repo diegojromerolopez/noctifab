@@ -145,8 +145,11 @@ The core engine runs a continuous polling event loop that drives all development
    - **Compile**: Solves syntax issues, missing imports, and compile failures.
    - **Test Logic**: Fixes assertion value mismatches and incorrect test expectations.
    The handler attempts up to **3 consecutive repairs** automatically.
-4. **Safety Circuit Breakers**:
+4. **Formatter Pre-Step Auto-Fix & Linter Cap**: Automatically executes the project's `formatter_command` (`rubocop -A`, `go fmt`, `black`, `cargo fmt`) before running static analysis linter checks to fix auto-correctable style offenses instantly. Capped by `max_linter_retries: 3` to prevent infinite loops.
+5. **Prompt Compaction (`context.compaction`)**: Compress HTTP prompt payloads using `simple_english` (active voice, simplified vocabulary) or `caveman` (telegraphic Markdown compaction) modes to reduce latency and token usage by 25%+.
+6. **Safety Circuit Breakers**:
    - **`max_actions`**: Root config value (default: `100`) that sets a ceiling on the total task execution loops. If the system exceeds this limit, the orchestrator aborts the story to protect the LLM token budget from infinite loops.
+   - **`max_user_stories`**: Ceiling on Product Manager roadmap story generation (default: `5`).
    - **`max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
 
@@ -317,7 +320,7 @@ vcs:
 | **Qwen (DashScope)** | `qwen`, `dashscope` | `DASHSCOPE_API_KEY`, `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | **Together AI** | `together` | `TOGETHER_API_KEY` | `https://api.together.xyz/v1` |
 | **Meta (Llama)** | `llama`, `meta` | `LLAMA_API_KEY`, `META_API_KEY` | `https://api.together.xyz/v1` |
-| **HuggingFace** | `huggingface` | `HUGGINGFACE_API_KEY`, `HF_TOKEN` | `https://api-inference.huggingface.co/v1` |
+| **HuggingFace** | `huggingface` | `HUGGINGFACE_API_KEY` | `https://api-inference.huggingface.co/v1` |
 | **Mistral** | `mistral` | `MISTRAL_API_KEY` | `https://api.mistral.ai/v1` |
 | **DeepSeek** | `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` |
 | **Nous Hermes** | `hermes` | `HERMES_API_KEY` | `https://api.together.xyz/v1` |
@@ -411,17 +414,17 @@ llm:
   providers:
     - name: "deepseek-coder"
       provider: "deepseek"
-      api_key_env: "DEEPSEEK_API_KEY"
+      api_keys: "DEEPSEEK_API_KEY"
       model: "deepseek-coder"
 
     - name: "openai-primary"
       provider: "openai"
-      api_key_env: "OPENAI_API_KEY"
+      api_keys: "OPENAI_API_KEY"
       model: "gpt-4o"
 
     - name: "anthropic-reviewer"
       provider: "anthropic"
-      api_key_env: "ANTHROPIC_API_KEY"
+      api_keys: "ANTHROPIC_API_KEY"
       model: "claude-3-5-sonnet-latest"
 
 # 2. Assign Specialized Models per Agent Phase directly inside agents:
@@ -646,6 +649,8 @@ When the agent asks a clarification question, Noctifab can attempt to auto-answe
 
 The `validation/` directory contains fully containerized, isolated end-to-end integration checks that run `noctifab` autonomously against real project specs — with **zero human intervention** — and verify that the correct source files are produced and all tests pass.
 
+See [`validation/README.md`](validation/README.md) for the full project list, the tier-based effectiveness classification, setup, and credential details.
+
 ### Near-Instantaneous Iterations (Speedup Measures)
 To optimize validation container runs for near-instantaneous development feedback loops, the platform includes:
 - **Warm Compiler Caching:** Persistent mounts for Go modules/build caches and Cargo registries directly from the host.
@@ -657,11 +662,15 @@ To optimize validation container runs for near-instantaneous development feedbac
 
 | Project | Language | User Story | What is Checked |
 | :--- | :--- | :--- | :--- |
-| **`frontpunch`** | Python | `US-001.md` | `frontpunch/worker.py` created/modified and test suite passes |
+| **`frontpunch`** | Python | `SPEC.md` | `frontpunch/worker.py` created/modified and test suite passes |
 | **`todo-cli`** | Go | `US-001.md` | `cmd/todo/main.go` (or `main.go`) created/modified and test suite passes |
 | **`wc`** | Rust | `US-002.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
 | **`calculator`** | Ruby | `SPEC.md` | `calculator.rb` (or under `lib/`) created/modified and test suite passes |
 | **`echo`** | Go | `SPEC.md` | `cmd/echo/main.go` (or `main.go`) created/modified and test suite passes |
+| **`fortune`** | C | `SPEC.md` | `main.c` (or `Makefile`) created/modified and test suite passes |
+| **`t4`** | C | `SPEC.md` | `Makefile` + `docker-compose.yml` + `src/t4.c` created/modified and test suite passes |
+| **`pyedis`** | Python | `SPEC.md` | `app/main.py` + `pyproject.toml` created/modified and test suite passes |
+| **`notebook`** | TypeScript | `SPEC.md` | `src/index.ts` + `package.json` + `docker-compose.yml` created/modified and test suite passes |
 
 The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
 

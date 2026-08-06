@@ -97,7 +97,7 @@ clarification_timeout_action: abort
 - **`architecture`** (String): Execution loop architecture mode. Options: `code_first` (default: Generator implements code first, followed by independent Tester verification turns), `single_pass` (Fast-path single pass co-generating code and tests in 1 turn), or `breadth_first` (Iterative ~80% happy-path generation across all stories first, followed by benevolent judges refining edge cases). Legacy aliases (`code_first_verification_loop`, `single_pass_execution`, `breadth_first_generation`, `cfv`, `spe`, `bfg`) are fully supported.
 - **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls allowed per agent response turn.
 - **`orchestrator`**: Configures Orchestrator agents managing task lifecycle and state synchronization (`number: 1`, `iterations: 2`).
-- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories (`roadmap/US-xxx.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`).
+- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories (`roadmap/US-xxx.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `max_user_stories: 5`). Supports an optional `max_user_stories` setting (e.g. `5`) to hard-cap the number of roadmap user stories generated during specification decomposition. If `max_user_stories` is omitted or 0, the Product Manager agent verifies against `SPEC.md` whether existing stories already implement all specification requirements before creating any new user story.
 - **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs (`number: 1`, `iterations: 2`).
 - **`architect`**: Configures Software Architect agents validating domain boundaries and package structures (`number: 1`, `iterations: 2`).
 - **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 5`).
@@ -154,13 +154,15 @@ llm:
 
     - name: "anthropic-backup"
       provider: "anthropic"
-      api_key_env: "ANTHROPIC_API_KEY"
+      api_keys: "ANTHROPIC_API_KEY"
       model: "claude-3-5-sonnet-latest"
       max_retries: 3
 
     - name: "deepseek-coder"
       provider: "deepseek"
-      api_key_env: "DEEPSEEK_API_KEY"
+      api_keys:
+        - "DEEPSEEK_API_KEY_PRIMARY"
+        - "DEEPSEEK_API_KEY_SECONDARY"
       model: "deepseek-coder"
       url: "https://api.deepseek.com"
 
@@ -199,21 +201,22 @@ agents:
 - **`llm.priority`** (List of Strings): Global ordered provider failover sequence. If an agent role does not define a custom `providers` list, it automatically inherits this global priority list.
 - **`llm.providers`** (List of Provider Specs): Named provider registry.
   - **`name`** (String): Unique identifier for the provider (e.g. `openai-primary`, `anthropic-backup`, `ollama-local`).
-  - **`provider`** (String): LLM provider client backend. Options: `openai`, `anthropic`, `gemini`, `opencode`, `kimi`, `moonshot`, `groq`, `openrouter`, `qwen`, `dashscope`, `together`, `llama`, `meta`, `huggingface`, `mistral`, `deepseek`, `hermes`, `ollama`, `xai`, `perplexity`, `fireworks`, `sambanova`, `cohere`, `cerebras`, `nvidia`, `ai21`, `upstage`.
+  - **`provider`** (String): LLM provider client backend. Options: `openai`, `anthropic`, `gemini`, `opencode`, `kimi`, `moonshot`, `groq`, `openrouter`, `qwen`, `dashscope`, `together`, `llama`, `meta`, `huggingface`, `mistral`, `deepseek`, `hermes`, `ollama`, `xai`, `grok`, `perplexity`, `fireworks`, `sambanova`, `cohere`, `cerebras`, `nvidia`, `ai21`, `upstage`.
   - **`model`** (String): Optional fixed model override (e.g. `claude-3-5-sonnet-latest`, `gpt-4o-mini`). Omit for dynamic capacity auto-selection.
-  - **`api_key`** / **`api_key_env`** (String): API authentication key value or environment variable name.
+  - **`api_key`** / **`api_keys`** (String or List of Strings): API authentication key value, secret reference, or secret name(s) in `secrets.yaml` / environment variables.
   - **`url`** (String): Endpoint URL override (required for self-hosted models or `ollama`).
   - **`max_retries`** / **`retry_backoff`** / **`max_timeout`**: Resilient retries and timeout constraints.
 - **`roles.<agent>.providers`** (List of Agent Provider Refs): Role-specific provider priority list. Allows configuring different model priorities per agent role (`architect`, `planner`, `generator`, `tester`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`).
 - **`max_timeout`** (Duration): Maximum overall completion timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines.
 - **`idle_timeout`** (Duration): Maximum stream/socket inactivity timeout allowed for LLM API calls (e.g. `15s`). Defaults to `15s` to cancel and fail over stalled stream connections without truncating active long responses.
 - **`streaming`** (Boolean): Enable or disable HTTP Server-Sent Events (SSE) token streaming (e.g. `true`). Defaults to `true` to stream completion tokens in real time and enforce sliding socket idle timeouts.
+- **`skip_on_credit_exhausted`** (Boolean): When `true` (default), an HTTP 402 (or a credit/quota-limited 429) is treated as a hard "skip this provider chain" signal: `noctifab` stops retrying and skips lower-model fallback immediately, so the router moves straight to the next provider in `llm.priority`. When `false`, the client rotates to the next `api_keys` pool entry and keeps retrying as usual. Set this to `false` only if you use key pools where a spend-limited key is expected to be superseded by a funded sibling key.
 - **`reset_period`** (String): The timeframe to enforce the budget cap (e.g. `daily`, `monthly`).
 - **`failover`**: Failover parameters:
   - **`enabled`** (Boolean): Auto-route failed calls to alternate providers when true.
   - **`cooldown`** (Duration): Time to temporarily quarantine a failed backend model.
   - **`max_call_limit`** (Integer): Maximum consecutive failover API calls allowed.
-  - **`backends`** (List): Alternate backends definition list (containing `provider`, `model`, `api_key_env`, `url`, `max_retries`).
+  - **`backends`** (List): Alternate backends definition list (containing `provider`, `model`, `api_keys`, `url`, `max_retries`).
 
 ---
 
@@ -322,12 +325,14 @@ sandbox:
 - **`grace_period_seconds`** (Integer): Delay allowed for subprocesses to clean up after receiving `SIGTERM` before sending `SIGKILL`.
 - **`test_command`** (String): Command executed by the Test Validator to run the unit/integration test suites (e.g. `npm test`, `pytest`).
 - **`linter_command`** (String): Command executed to run project static analysis linter tasks.
-- **`formatter_command`** (String): Command executed to run code format checks.
+- **`formatter_command`** (String): Command executed to run code format checks (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_linter` runs this pre-step auto-fixer first before linter diagnostics.
+- **`max_linter_retries`** (Integer): Maximum linter fix retry turns per task (default: `3`). Prevents infinite agent loops on unfixable linter offenses.
 - **`exclude_paths`** (List of Strings): Directory trees ignored by the repository indexer and file walker (e.g. `node_modules/`, `.git/`).
 - **`allowed_commands`** (List of Strings): Whitelist of executable binaries permitted inside the sandbox process runner.
 - **`auto_install_deps`** (Boolean): Allow sandbox to auto-detect and attempt to install missing build dependencies.
 - **`package_managers`** (List of Strings): Authorized tool package managers (e.g. `pip`, `go`, `npm`, `brew`).
 - **`forbidden_patterns`** (List of Strings): Regex patterns disallowed in tool inputs or parameters.
+- **`context.compaction`** (String): Prompt & spec markdown compaction strategy. Options: `none` (default, no compaction), `simple_english` (active voice, simplified vocabulary, stripping conversational preambles), `caveman` (telegraphic markdown compaction stripping dividers and headers). `caveman_compaction: true` is supported as a legacy backward-compatible alias for `caveman`.
 
 ---
 
@@ -541,7 +546,7 @@ llm:
     backends:
       - provider: "openai"
         model: "gpt-4o"
-        api_key_env: "OPENAI_API_KEY"
+        api_keys: "OPENAI_API_KEY"
 
 vcs:
   provider: "github"

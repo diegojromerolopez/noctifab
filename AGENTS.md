@@ -74,6 +74,10 @@ To maintain modularity and high context compatibility, the following guidelines 
 
 To run a fully containerized, isolated, end-to-end (E2E) integration check of `noctifab` implementing features autonomously inside a target project:
 
+> [!TIP]
+> For the recommended project order, tier classification, and failure attribution,
+> see [`validation/projects/TESTING_GUIDE.md`](validation/projects/TESTING_GUIDE.md).
+
 1. **Credentials Setup**:
    Create a `secrets.yaml` file on the host at `validation/projects/<project>/.noctifab/secrets.yaml` containing the necessary LLM API keys:
    ```yaml
@@ -104,4 +108,26 @@ To run a fully containerized, isolated, end-to-end (E2E) integration check of `n
 
 4. **Spec-Driven Validation Rule**:
    Pre-creating or checking in static roadmap user stories (e.g. under `roadmap/`) for validation projects is **strictly forbidden**. Validation projects must be defined and run solely based on `SPEC.md` to verify that `noctifab` is capable of autonomously decomposing specifications into user stories on the fly using its Product Manager Agent.
+
+5. **Monitoring & 60-Second Status Loop**:
+   When executing validation projects in parallel or in the background (e.g. `make validate-all`), agents must monitor the execution status and output a periodic update table every 60 seconds using the `schedule` tool (`DurationSeconds=60`).
+   
+   - **Data Sources**: Inspect container logs (`validation/projects/<project>/output/log/<project>.log` or `.validation-logs/<project>.log`), output source directories, and feedback reports (`<PROJECT>_FEEDBACK.md`).
+   - **Stuck Detection**: Flag a project as stuck (`Stuck? = Yes`) if no log output or file modification has occurred for **> 5 minutes**, or if the agent is caught in an infinite error/retry loop.
+   - **Required Table Columns**:
+     - `Project`: Target project name (e.g. `calculator`, `wc`, `frontpunch`).
+     - `Status`: `Running`, `Completed ✅` (MUST use white check mark emoji `✅` when completed), `Failed ❌`, or `Stuck ⚠️`.
+     - `Stuck?`: `Yes` or `No`.
+     - `Completion (%)`: Percent of total planned user stories / spec tasks finished (e.g., `60% (3/5 stories)`).
+     - `Tests (Passed/Total)`: Count of passing tests vs total unit/integration tests (e.g. `14/14`).
+     - `Current Activity`: Brief commentary of what the agent is currently executing (e.g., `"Decomposing SPEC.md"`, `"Implementing US-002"`, `"Compiling binary"`).
+     - `Elapsed Time`: Duration since validation launch (e.g. `04m 15s`).
+     - `Last Log Activity`: Time elapsed since the last log write (e.g. `12s ago`).
+   
+   **Status Report Table Format**:
+   | Project | Status | Stuck? | Completion (%) | Tests (Passed/Total) | Current Activity | Elapsed Time | Last Log Activity |
+   | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :---: |
+   | `calculator` | Running | No | 60% (3/5 stories) | 8/8 | Writing unit tests for US-003 | 04m 12s | 8s ago |
+   | `wc` | Completed ✅ | No | 100% (4/4 stories) | 12/12 | Final verification passed (PASS) | 08m 45s | 2m 10s ago |
+   | `fortune` | Stuck ⚠️ | **Yes** | 25% (1/4 stories) | 2/5 | Retrying failed scaffold build (no log update > 5m) | 12m 00s | 5m 45s ago |
 

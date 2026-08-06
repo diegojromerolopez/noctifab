@@ -84,12 +84,13 @@ type AgentsConfig struct {
 }
 
 type AgentRoleConfig struct {
-	Number      int                `yaml:"number"`
-	Iterations  int                `yaml:"iterations"`
-	Model       string             `yaml:"model,omitempty"`
-	Temperature float64            `yaml:"temperature,omitempty"`
-	Profile     string             `yaml:"profile,omitempty"`
-	Providers   []AgentProviderRef `yaml:"providers,omitempty"`
+	Number         int                `yaml:"number"`
+	Iterations     int                `yaml:"iterations"`
+	Model          string             `yaml:"model,omitempty"`
+	Temperature    float64            `yaml:"temperature,omitempty"`
+	Profile        string             `yaml:"profile,omitempty"`
+	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
+	MaxUserStories int                `yaml:"max_user_stories,omitempty"`
 }
 
 type StorageConfig struct {
@@ -108,11 +109,42 @@ type FailoverConfig struct {
 type FailoverBackend struct {
 	Provider    string   `yaml:"provider"`
 	Model       string   `yaml:"model"`
-	APIKeyEnv   string   `yaml:"api_key_env"`
+	APIKeys     APIKeys  `yaml:"api_keys"`
 	URL         string   `yaml:"url"`
 	MaxRetries  int      `yaml:"max_retries"`
 	IdleTimeout Duration `yaml:"idle_timeout"`
 	Streaming   *bool    `yaml:"streaming"`
+}
+
+// APIKeys represents one or more API key secret source names, supporting a scalar string or a slice of strings.
+type APIKeys []string
+
+func (a *APIKeys) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		var s string
+		if err := value.Decode(&s); err != nil {
+			return err
+		}
+		if strings.TrimSpace(s) != "" {
+			*a = APIKeys{strings.TrimSpace(s)}
+		}
+		return nil
+	}
+	if value.Kind == yaml.SequenceNode {
+		var list []string
+		if err := value.Decode(&list); err != nil {
+			return err
+		}
+		var clean []string
+		for _, item := range list {
+			if strings.TrimSpace(item) != "" {
+				clean = append(clean, strings.TrimSpace(item))
+			}
+		}
+		*a = APIKeys(clean)
+		return nil
+	}
+	return nil
 }
 
 type ProviderSpec struct {
@@ -120,8 +152,9 @@ type ProviderSpec struct {
 	Provider           string   `yaml:"provider"`
 	Model              string   `yaml:"model,omitempty"`
 	APIKey             string   `yaml:"api_key,omitempty"`
-	APIKeyEnv          string   `yaml:"api_key_env,omitempty"`
+	APIKeys            APIKeys  `yaml:"api_keys,omitempty"`
 	APIKeyValue        string   `yaml:"-"`
+	APIKeyPool         []string `yaml:"-"`
 	URL                string   `yaml:"url,omitempty"`
 	MaxRetries         int      `yaml:"max_retries,omitempty"`
 	RetryBackoff       Duration `yaml:"retry_backoff,omitempty"`
@@ -132,23 +165,25 @@ type ProviderSpec struct {
 }
 
 type LLMConfig struct {
-	Priority           []string       `yaml:"priority,omitempty"`
-	Providers          []ProviderSpec `yaml:"providers,omitempty"`
-	Provider           string         `yaml:"provider"`
-	Model              string         `yaml:"model"`
-	Temperature        float64        `yaml:"temperature"`
-	APIKey             string         `yaml:"api_key"`
-	APIKeyEnv          string         `yaml:"api_key_env"`
-	APIKeyValue        string         `yaml:"-"`
-	URL                string         `yaml:"url"`
-	MaxRetries         int            `yaml:"max_retries"`
-	RetryBackoff       Duration       `yaml:"retry_backoff"`
-	RetryBackoffFactor float64        `yaml:"retry_backoff_factor"`
-	ResetPeriod        string         `yaml:"reset_period"`
-	Failover           FailoverConfig `yaml:"failover"`
-	MaxTimeout         Duration       `yaml:"max_timeout"`
-	IdleTimeout        Duration       `yaml:"idle_timeout"`
-	Streaming          *bool          `yaml:"streaming"`
+	Priority              []string       `yaml:"priority,omitempty"`
+	Providers             []ProviderSpec `yaml:"providers,omitempty"`
+	Provider              string         `yaml:"provider"`
+	Model                 string         `yaml:"model"`
+	Temperature           float64        `yaml:"temperature"`
+	APIKey                string         `yaml:"api_key"`
+	APIKeys               APIKeys        `yaml:"api_keys"`
+	APIKeyValue           string         `yaml:"-"`
+	APIKeyPool            []string       `yaml:"-"`
+	URL                   string         `yaml:"url"`
+	MaxRetries            int            `yaml:"max_retries"`
+	RetryBackoff          Duration       `yaml:"retry_backoff"`
+	RetryBackoffFactor    float64        `yaml:"retry_backoff_factor"`
+	ResetPeriod           string         `yaml:"reset_period"`
+	Failover              FailoverConfig `yaml:"failover"`
+	SkipOnCreditExhausted bool           `yaml:"skip_on_credit_exhausted"`
+	MaxTimeout            Duration       `yaml:"max_timeout"`
+	IdleTimeout           Duration       `yaml:"idle_timeout"`
+	Streaming             *bool          `yaml:"streaming"`
 }
 
 type PullRequestConfig struct {
@@ -195,6 +230,7 @@ type SandboxConfig struct {
 	TestCommand        string   `yaml:"test_command"`
 	LinterCommand      string   `yaml:"linter_command"`
 	FormatterCommand   string   `yaml:"formatter_command"`
+	MaxLinterRetries   int      `yaml:"max_linter_retries"`
 	ExcludePaths       []string `yaml:"exclude_paths"`
 	AllowedCommands    []string `yaml:"allowed_commands"`
 	AutoInstallDeps    bool     `yaml:"auto_install_deps"`
@@ -296,8 +332,21 @@ const (
 )
 
 type ContextConfig struct {
-	Mode            string `yaml:"mode"`
-	DiffWindowLines int    `yaml:"diff_window_lines"`
+	Mode              string `yaml:"mode"`
+	DiffWindowLines   int    `yaml:"diff_window_lines"`
+	CavemanCompaction bool   `yaml:"caveman_compaction"`
+	Compaction        string `yaml:"compaction"` // Options: "none" (default), "simple_english", "caveman"
+}
+
+func (c ContextConfig) GetCompactionMode() string {
+	mode := strings.ToLower(strings.TrimSpace(c.Compaction))
+	if mode != "" {
+		return mode
+	}
+	if c.CavemanCompaction {
+		return "caveman"
+	}
+	return "none"
 }
 
 func (c ContextConfig) GetMode() ContextMode {

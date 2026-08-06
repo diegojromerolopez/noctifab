@@ -21,7 +21,7 @@ This document covers all supported LLM providers, their configuration options, e
 | Qwen / DashScope | `qwen`, `dashscope` | `DASHSCOPE_API_KEY`, `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI-compat |
 | Together AI | `together` | `TOGETHER_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
 | Meta Llama | `llama`, `meta` | `LLAMA_API_KEY`, `META_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
-| HuggingFace | `huggingface` | `HUGGINGFACE_API_KEY`, `HF_TOKEN` | `https://api-inference.huggingface.co/v1` | OpenAI-compat |
+| HuggingFace | `huggingface` | `HUGGINGFACE_API_KEY` | `https://api-inference.huggingface.co/v1` | OpenAI-compat |
 | Mistral | `mistral` | `MISTRAL_API_KEY` | `https://api.mistral.ai/v1` | OpenAI-compat |
 | DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` | OpenAI-compat |
 | Hermes (Nous Research) | `hermes` | `HERMES_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
@@ -56,16 +56,16 @@ llm:
   providers:
     - name: "openai-primary"
       provider: "openai"
-      api_key_env: "OPENAI_API_KEY"
+      api_keys: "OPENAI_API_KEY"
 
     - name: "anthropic-backup"
       provider: "anthropic"
-      api_key_env: "ANTHROPIC_API_KEY"
+      api_keys: "ANTHROPIC_API_KEY"
       model: "claude-3-5-sonnet-latest"
 
     - name: "deepseek-coder"
       provider: "deepseek"
-      api_key_env: "DEEPSEEK_API_KEY"
+      api_keys: "DEEPSEEK_API_KEY"
       model: "deepseek-coder"
 
 # Per-Agent Priority Overrides directly inside agents:
@@ -321,13 +321,13 @@ llm:
 
 ```yaml
 # .noctifab/secrets.yaml
-HF_TOKEN: "hf_..."
+HUGGINGFACE_API_KEY: "hf_..."
 
 # .noctifab/config.yaml
 llm:
   provider: "huggingface"
   model: "meta-llama/Meta-Llama-3.1-70B-Instruct"
-  api_key: "secret:HF_TOKEN"
+  api_key: "secret:HUGGINGFACE_API_KEY"
   streaming: true
 ```
 
@@ -662,6 +662,46 @@ llm:
   url: "https://my-azure-openai.openai.azure.com/openai/deployments/gpt-4o"
   api_key: "secret:AZURE_OPENAI_KEY"
 ```
+
+---
+
+## Dynamic "latest" Model Alias Resolution
+
+Setting `model: "latest"`, `model: "auto"`, or `model: "<provider>-latest"` in `.noctifab/config.yaml` instructs Noctifab to automatically discover and resolve the newest, highest-capability flagship model available from that LLM provider at runtime.
+
+### How the `latest` Model is Computed Per Provider
+
+When `model: "latest"` is configured:
+
+1. **Live `/models` Endpoint Discovery**:
+   - Noctifab issues a `GET` request to the provider's `/models` REST endpoint using the configured API key (or provider-specific headers).
+2. **Specialized & Niche Model Exclusion**:
+   - The provider's model parser applies `ExcludedKeywords` to discard non-chat/completion endpoints:
+     - **OpenAI**: Excludes `embed`, `tts`, `whisper`, `dall-e`, `moderation`, `realtime`, `transcription`, `bison`, `audio`.
+     - **Gemini**: Excludes `robotics`, `embed`, `imagen`, `bison`, `tts`, `stt`, and filters `supportedGenerationMethods` for `"generateContent"`.
+     - **Anthropic / Mistral / DeepSeek / etc.**: Excludes embedding models (`embed`), moderation endpoints, and fine-tuning checkpoints.
+3. **Provider-Specific Capacity & Version Scoring**:
+   - Remaining models are parsed and scored using declarative provider rules:
+     - **Rank Formula**: $\text{Rank} = \text{TierBaseScore} + (\text{Version} \times \text{VersionMultiplier}) + \text{ContextBonus} + \text{ParameterSizeWeight}$
+4. **Top-Ranked Model Selection**:
+   - Noctifab sorts candidate models by Rank (descending) and Version (descending), dynamically binding `model` to the top-ranked model (`parsedModels[0].Name`).
+
+### Provider "latest" Resolution Reference Matrix
+
+| Provider | Configured Model | Discovered `/models` Example | Resolved Flagship Model |
+|---|---|---|---|
+| **OpenAI** | `latest` | `[text-embedding-3, gpt-3.5-turbo, gpt-4o-mini, gpt-4o]` | `gpt-4o` |
+| **Anthropic** | `latest` | `[claude-3-5-haiku, claude-3-5-sonnet, claude-3-opus]` | `claude-3-opus-20240229` / `claude-3-5-sonnet-20241022` |
+| **Google Gemini** | `latest` | `[gemini-embed, gemini-robotics, gemini-1.5-flash, gemini-2.5-flash]` | `gemini-2.5-flash` |
+| **Mistral** | `latest` | `[mistral-embed, mistral-small, mistral-large-latest]` | `mistral-large-latest` |
+| **DeepSeek** | `latest` | `[deepseek-chat, deepseek-coder]` | `deepseek-coder` |
+| **Hermes (Nous)** | `latest` | `[hermes-8b, hermes-70b, hermes-405b]` | `hermes-3-llama-3.1-405b` |
+| **Qwen** | `latest` | `[qwen-turbo, qwen-plus, qwen-max]` | `qwen-max` |
+| **Meta Llama** | `latest` | `[Llama-3.1-8B, Llama-3.3-70B, Llama-3.1-405B]` | `Llama-3.1-405B-Instruct` |
+| **xAI / Grok** | `latest` | `[grok-2-mini, grok-2, grok-3]` | `grok-3` |
+| **Perplexity** | `latest` | `[sonar-small, sonar-pro, sonar-deep-research]` | `sonar-deep-research` |
+| **Kimi / Moonshot** | `latest` | `[kimi-k1.5, kimi-k2.7, kimi-k3]` | `kimi-k3` |
+| **OpenCode** | `latest` | `[glm-4-flash, glm-4, glm-5.2]` | `glm-5.2` |
 
 ---
 

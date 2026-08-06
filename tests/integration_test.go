@@ -130,7 +130,7 @@ vcs:
   token_env: "MOCK_VCS_TOKEN"
 llm:
   provider: "openai"
-  api_key_env: "MOCK_LLM_KEY"
+  api_keys: "MOCK_LLM_KEY"
 `
 	if err := os.WriteFile(filepath.Join(noctifabDir, "config.yaml"), []byte(validYaml), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)

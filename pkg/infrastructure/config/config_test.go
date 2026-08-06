@@ -169,7 +169,7 @@ func TestResolveSecrets(t *testing.T) {
 		defer func() { _ = os.Unsetenv("CUSTOM_LLM_KEY") }()
 
 		cfg := &Config{}
-		cfg.LLM.APIKeyEnv = "CUSTOM_LLM_KEY"
+		cfg.LLM.APIKeys = APIKeys{"CUSTOM_LLM_KEY"}
 		resolveSecrets(cfg)
 
 		if cfg.LLM.APIKeyValue != "custom-llm-val" {

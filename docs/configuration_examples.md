@@ -202,13 +202,13 @@ llm:
     backends:
       - provider: "anthropic"
         model: "claude-3-5-sonnet-latest"
-        api_key_env: "ANTHROPIC_API_KEY"
+        api_keys: "ANTHROPIC_API_KEY"
       - provider: "openai"
         model: "gpt-4o"
-        api_key_env: "OPENAI_API_KEY"
+        api_keys: "OPENAI_API_KEY"
       - provider: "gemini"
         model: "gemini-2.5-flash"
-        api_key_env: "GEMINI_API_KEY"
+        api_keys: "GEMINI_API_KEY"
 
 vcs:
   provider: "github"
@@ -278,20 +278,20 @@ llm:
   providers:
     - name: "openai-primary"
       provider: "openai"
-      api_key_env: "OPENAI_API_KEY"
+      api_keys: "OPENAI_API_KEY"
       max_retries: 5
       retry_backoff: "100ms"
       max_timeout: "60s"
 
     - name: "anthropic-backup"
       provider: "anthropic"
-      api_key_env: "ANTHROPIC_API_KEY"
+      api_keys: "ANTHROPIC_API_KEY"
       model: "claude-3-5-sonnet-latest"
       max_retries: 3
 
     - name: "deepseek-coder"
       provider: "deepseek"
-      api_key_env: "DEEPSEEK_API_KEY"
+      api_keys: "DEEPSEEK_API_KEY"
       model: "deepseek-coder"
       url: "https://api.deepseek.com"
 
@@ -368,7 +368,7 @@ llm:
 
     - name: "anthropic-cloud"
       provider: "anthropic"
-      api_key_env: "ANTHROPIC_API_KEY"
+      api_keys: "ANTHROPIC_API_KEY"
       model: "claude-3-5-sonnet-latest"
 
 roles:
@@ -393,17 +393,17 @@ llm:
   providers:
     - name: "openai-provider"
       provider: "openai"
-      api_key_env: "OPENAI_API_KEY"
+      api_keys: "OPENAI_API_KEY"
       # model omitted -> auto-discovers flagship model (gpt-4o -> gpt-4o-mini)
 
     - name: "anthropic-provider"
       provider: "anthropic"
-      api_key_env: "ANTHROPIC_API_KEY"
+      api_keys: "ANTHROPIC_API_KEY"
       # model omitted -> auto-discovers flagship model (opus -> sonnet -> haiku)
 
     - name: "deepseek-provider"
       provider: "deepseek"
-      api_key_env: "DEEPSEEK_API_KEY"
+      api_keys: "DEEPSEEK_API_KEY"
       # model omitted -> auto-discovers flagship coder model
 
 roles:

@@ -221,7 +221,7 @@ func TestGetNextLowerModel(t *testing.T) {
 			defer server.Close()
 
 			c := &Client{Provider: tt.provider, Model: tt.currentModel, URL: server.URL}
-			got := c.getNextLowerModel(context.Background(), "mockkey")
+			got := c.getNextLowerModel(context.Background(), "mockkey", tt.currentModel)
 			if got != tt.wantModel {
 				t.Errorf("getNextLowerModel(%q, %q) = %q; want %q", tt.provider, tt.currentModel, got, tt.wantModel)
 			}

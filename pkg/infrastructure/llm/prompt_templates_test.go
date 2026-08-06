@@ -13,7 +13,7 @@ func TestPreprocessPrompt(t *testing.T) {
 		if !strings.Contains(processed, "You are acting as the Product Manager Agent.") {
 			t.Errorf("expected Product Manager agent header in prompt, got: %s", processed)
 		}
-		if !strings.Contains(processed, "ROADMAP CONSOLIDATION RULE:") {
+		if !strings.Contains(processed, "ROADMAP CONSOLIDATION & STORY LIMIT RULE:") {
 			t.Errorf("expected roadmap consolidation rule in prompt, got: %s", processed)
 		}
 		if !strings.Contains(processed, "DEFINITION OF DONE (DoD) & CONTRACT MANDATE:") {
@@ -51,6 +51,33 @@ func TestPreprocessPrompt(t *testing.T) {
 		}
 		if !strings.Contains(processed, "GENERATOR SELF-VERIFICATION:") {
 			t.Errorf("expected generator self-verification in prompt, got: %s", processed)
+		}
+	})
+
+	t.Run("CompactSimpleEnglish", func(t *testing.T) {
+		raw := "Please note that we utilize this component to facilitate building features."
+		compacted := CompactSimpleEnglish(raw)
+
+		if strings.Contains(compacted, "Please note that") {
+			t.Errorf("expected conversational fluff to be stripped, got: %s", compacted)
+		}
+		if !strings.Contains(compacted, "use") || !strings.Contains(compacted, "help") {
+			t.Errorf("expected vocabulary simplification, got: %s", compacted)
+		}
+	})
+
+	t.Run("CompactCaveman", func(t *testing.T) {
+		raw := "Please note that this is a feature.\n---\n```go\nfmt.Println(\"hello\")\n```\nIn order to ensure that it works."
+		compacted := CompactCaveman(raw)
+
+		if strings.Contains(compacted, "Please note that") {
+			t.Errorf("expected conversational fluff to be stripped, got: %s", compacted)
+		}
+		if strings.Contains(compacted, "---") {
+			t.Errorf("expected decorative dividers to be stripped, got: %s", compacted)
+		}
+		if !strings.Contains(compacted, "fmt.Println(\"hello\")") {
+			t.Errorf("expected code block to be preserved, got: %s", compacted)
 		}
 	})
 }

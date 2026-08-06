@@ -16,7 +16,7 @@ func init() {
 	RegisterProvider(&ProviderSpec{
 		Name:           "huggingface",
 		BaseURL:        "https://router.huggingface.co/v1",
-		EnvKeys:        []string{"HUGGINGFACE_API_KEY", "HF_TOKEN"},
+		EnvKeys:        []string{"HUGGINGFACE_API_KEY"},
 		ParseModelFunc: parseHuggingFaceModel,
 		Protocol:       "openai",
 		NewClientFunc:  NewHuggingFaceClient,

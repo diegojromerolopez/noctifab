@@ -32,6 +32,108 @@ func preprocessPrompt(prompt string) string {
 	return prompt
 }
 
+// CompactSimpleEnglish compacts prompts using Simple English rules (active voice, simple vocabulary, no conversational fluff)
+// while strictly preserving code blocks, JSON schemas, filepaths, CLI flags, and technical invariants.
+func CompactSimpleEnglish(prompt string) string {
+	lines := strings.Split(prompt, "\n")
+	var cleaned []string
+	inCodeBlock := false
+
+	replacer := strings.NewReplacer(
+		"utilize", "use",
+		"Utilize", "Use",
+		"facilitate", "help",
+		"Facilitate", "Help",
+		"demonstrate", "show",
+		"Demonstrate", "Show",
+		"commence", "start",
+		"Commence", "Start",
+		"terminate", "end",
+		"Terminate", "End",
+		"is required to be", "must be",
+		"has the capability to", "can",
+	)
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "```") {
+			inCodeBlock = !inCodeBlock
+			cleaned = append(cleaned, line)
+			continue
+		}
+
+		if inCodeBlock {
+			cleaned = append(cleaned, line)
+			continue
+		}
+
+		lower := strings.ToLower(trimmed)
+		if lower == "please note that" || lower == "in order to ensure that" || lower == "the purpose of this document is to" {
+			continue
+		}
+
+		if strings.HasPrefix(lower, "please note that ") {
+			line = line[len("Please note that "):]
+		} else if strings.HasPrefix(lower, "in order to ") {
+			line = line[len("In order to "):]
+		}
+
+		simplifiedLine := replacer.Replace(line)
+		cleaned = append(cleaned, simplifiedLine)
+	}
+
+	return strings.Join(cleaned, "\n")
+}
+
+// CompactCaveman performs telegraphic caveman-style compaction on prompts.
+// It removes conversational fluff, polite phrases, and decorative dividers
+// while strictly preserving exact filepaths, code blocks, JSON schemas, CLI flags, and technical invariants.
+func CompactCaveman(prompt string) string {
+	lines := strings.Split(prompt, "\n")
+	var cleaned []string
+	inCodeBlock := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "```") {
+			inCodeBlock = !inCodeBlock
+			cleaned = append(cleaned, line)
+			continue
+		}
+
+		if inCodeBlock {
+			cleaned = append(cleaned, line)
+			continue
+		}
+
+		// Omit empty decorative divider lines or repetitive markdown horizontal rules
+		if trimmed == "---" || trimmed == "***" || trimmed == "===" || trimmed == "___" {
+			continue
+		}
+
+		// Remove common polite/conversational filler phrases in prompts
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "please note that") ||
+			strings.HasPrefix(lower, "as a user, i would like to") ||
+			strings.HasPrefix(lower, "in order to ensure that") ||
+			strings.HasPrefix(lower, "the purpose of this document is to") ||
+			strings.HasPrefix(lower, "it is recommended that you") {
+			continue
+		}
+
+		cleaned = append(cleaned, line)
+	}
+
+	return strings.Join(cleaned, "\n")
+}
+
+// CompactMarkdownSpec performs caveman-style compaction on Markdown specifications and prompts.
+func CompactMarkdownSpec(prompt string) string {
+	return CompactCaveman(prompt)
+}
+
 func buildProductManagerPrompt(specStr string) string {
 	return fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
 You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes.
@@ -48,8 +150,9 @@ If existing user story files are provided in the prompt:
 2. If an existing user story is vague or lacks an explicit Definition of Done (DoD), edge case matrix, error handling rules, or interface contracts, REWRITE and ENRICH it with complete DoD criteria, edge cases, error prefixes, exit codes, and formatting rules.
 3. Emit 'create_story' tool actions with the target filename and the updated markdown content.
 
-ROADMAP CONSOLIDATION RULE:
-For standalone applications, CLI utilities, or specifications expected to be under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/US-001.md") containing all specification requirements. Do NOT over-decompose concise specifications into multiple user stories.
+ROADMAP CONSOLIDATION & STORY LIMIT RULE:
+1. Max User Stories: Do NOT generate more user stories than necessary. For concise applications or specifications under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/US-001.md") containing all specification requirements.
+2. Requirement Coverage Pre-Check: Before creating any new user story, you MUST verify if existing user stories already cover all requirements found in SPEC.md. If existing user stories already implement all SPEC.md requirements, do NOT create additional user stories.
 
 DEFINITION OF DONE (DoD) & CONTRACT MANDATE:
 Every user story content generated or refined MUST include an explicit, language-agnostic "Definition of Done (DoD)" section containing:

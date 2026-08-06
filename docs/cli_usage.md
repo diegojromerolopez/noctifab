@@ -225,7 +225,7 @@ llm:
   model: glm-5.2          # or glm-5.1, kimi-k2.7-code, kimi-k2.6, deepseek-v4-pro, …
   temperature: 0
   api_key: "secret:OPENCODE_API_KEY"
-  api_key_env: OPENCODE_API_KEY
+  api_keys: OPENCODE_API_KEY
   url: ""                  # leave blank to use https://opencode.ai/zen/go/v1
   max_retries: 5
   retry_backoff: 100ms

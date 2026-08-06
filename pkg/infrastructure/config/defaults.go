@@ -17,8 +17,9 @@ func DefaultConfig() *Config {
 			Architecture:        "code_first",
 			MaxToolsPerResponse: 5,
 			ProductManager: AgentRoleConfig{
-				Number:     1,
-				Iterations: 2,
+				Number:         1,
+				Iterations:     2,
+				MaxUserStories: 5,
 			},
 			Planner: AgentRoleConfig{
 				Number:     1,
@@ -70,9 +71,8 @@ func DefaultConfig() *Config {
 		},
 		LLM: LLMConfig{
 			Provider:           "openai",
-			Model:              "gpt-4o",
+			Model:              "latest",
 			Temperature:        0.0,
-			APIKeyEnv:          "",
 			URL:                "",
 			MaxRetries:         5,
 			RetryBackoff:       Duration(100 * time.Millisecond),
@@ -87,6 +87,11 @@ func DefaultConfig() *Config {
 			MaxTimeout:  Duration(60 * time.Second),
 			IdleTimeout: Duration(15 * time.Second),
 			Streaming:   boolPtr(true),
+			// skip_on_credit_exhausted: stop attempting a provider chain the
+			// moment an HTTP 402 credit-limit response is detected, rather than
+			// burning wall-clock time on retries and lower-model fallbacks that
+			// cannot succeed without a funded key.
+			SkipOnCreditExhausted: true,
 		},
 		VCS: VCSConfig{
 			Provider:     "github",
@@ -123,6 +128,7 @@ func DefaultConfig() *Config {
 			TestCommand:        "go test -v ./...",
 			LinterCommand:      "golangci-lint run",
 			FormatterCommand:   "go fmt ./...",
+			MaxLinterRetries:   3,
 			ExcludePaths:       []string{".noctifab"},
 			AllowedCommands:    []string{"go", "git", "npm", "python", "make"},
 			AutoInstallDeps:    false,
@@ -172,6 +178,7 @@ func DefaultConfig() *Config {
 		Context: ContextConfig{
 			Mode:            "full",
 			DiffWindowLines: 15,
+			Compaction:      "none",
 		},
 		LogLevel: "info",
 	}

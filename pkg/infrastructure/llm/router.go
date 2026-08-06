@@ -89,6 +89,10 @@ func NewResilientLLMRouter(cfg *config.Config, budgetStore domain.BudgetStore) *
 			cfg.LLM.Provider, cfg.LLM.Model, cfg.LLM.APIKeyValue,
 			cfg.LLM.MaxRetries, time.Duration(cfg.LLM.RetryBackoff), cfg.LLM.URL,
 		)
+		if dc, ok := defaultClient.(*Client); ok {
+			dc.APIKeys = cfg.LLM.APIKeyPool
+			dc.SkipOnCreditExhausted = cfg.LLM.SkipOnCreditExhausted
+		}
 	}
 
 	var tokenLimit int64
@@ -131,11 +135,11 @@ func (r *ResilientLLMRouter) ResolveCandidatesForRole(roleName string) []RouterC
 			} else if ref.Provider != "" {
 				// Inline provider shorthand
 				spec = config.ProviderSpec{
-					Name:      ref.Provider,
-					Provider:  ref.Provider,
-					APIKeyEnv: strings.ToUpper(ref.Provider) + "_API_KEY",
+					Name:     ref.Provider,
+					Provider: ref.Provider,
+					APIKeys:  config.APIKeys{strings.ToUpper(ref.Provider) + "_API_KEY"},
 				}
-				spec.APIKeyValue = os.Getenv(spec.APIKeyEnv)
+				spec.APIKeyValue = os.Getenv(spec.APIKeys[0])
 				found = true
 			}
 
@@ -183,11 +187,11 @@ func (r *ResilientLLMRouter) ResolveCandidatesForRole(roleName string) []RouterC
 			// Check if pName is a raw provider name (e.g., "openai", "anthropic")
 			if pName != "" {
 				spec = config.ProviderSpec{
-					Name:      pName,
-					Provider:  pName,
-					APIKeyEnv: strings.ToUpper(pName) + "_API_KEY",
+					Name:     pName,
+					Provider: pName,
+					APIKeys:  config.APIKeys{strings.ToUpper(pName) + "_API_KEY"},
 				}
-				spec.APIKeyValue = os.Getenv(spec.APIKeyEnv)
+				spec.APIKeyValue = os.Getenv(spec.APIKeys[0])
 				found = true
 			}
 		}
@@ -297,8 +301,8 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 	}
 
 	apiKey := spec.APIKeyValue
-	if apiKey == "" && spec.APIKeyEnv != "" {
-		apiKey = os.Getenv(spec.APIKeyEnv)
+	if apiKey == "" && len(spec.APIKeys) > 0 {
+		apiKey = os.Getenv(spec.APIKeys[0])
 	}
 
 	maxRetries := spec.MaxRetries
@@ -312,6 +316,9 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 	}
 
 	client := NewClient(spec.Provider, model, apiKey, maxRetries, retryBackoff, spec.URL)
+	if len(spec.APIKeyPool) > 0 {
+		client.APIKeys = spec.APIKeyPool
+	}
 	if spec.MaxTimeout > 0 {
 		client.Timeout = time.Duration(spec.MaxTimeout)
 	} else if r.cfg != nil && r.cfg.LLM.MaxTimeout > 0 {
@@ -329,6 +336,8 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 	} else if r.cfg != nil && r.cfg.LLM.Streaming != nil {
 		client.Streaming = *r.cfg.LLM.Streaming
 	}
+
+	client.SkipOnCreditExhausted = r.cfg == nil || r.cfg.LLM.SkipOnCreditExhausted
 
 	return client
 }

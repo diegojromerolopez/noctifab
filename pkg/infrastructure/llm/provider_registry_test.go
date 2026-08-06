@@ -2,6 +2,8 @@ package llm
 
 import (
 	"testing"
+
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 )
 
 func TestProviderRegistry(t *testing.T) {
@@ -22,6 +24,17 @@ func TestProviderRegistry(t *testing.T) {
 			}
 			if spec.NewClientFunc == nil {
 				t.Errorf("expected NewClientFunc for provider %s, got nil", p)
+			}
+		}
+	})
+
+	t.Run("every registered provider is accepted by config validation", func(t *testing.T) {
+		for name, spec := range RegistrySnapshot() {
+			if spec == nil || spec.Name == "" {
+				continue
+			}
+			if !config.IsValidLLMProvider(name) {
+				t.Errorf("registered provider %q is rejected by config.IsValidLLMProvider; add it to validLLMProviders in pkg/infrastructure/config/config.go", name)
 			}
 		}
 	})

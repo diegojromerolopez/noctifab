@@ -1855,7 +1855,7 @@ llm:
   provider: "gemini"            # Options: gemini (Gemini), anthropic (Claude), openai (ChatGPT/GPT-4o), ollama
   model: "gemini-1.5-pro"       # Target LLM model identifier
   temperature: 0.0              # Default temperature for completions
-  api_key_env: "GEMINI_API_KEY" # Environment variable containing the secret API token/credentials
+  api_keys: "GEMINI_API_KEY" # Environment variable containing the secret API token/credentials
   max_retries: 10               # Max retries for outbound HTTP requests
   retry_backoff: "100ms"        # Base delay time duration for exponential backoff (e.g. retry_backoff * 2^retry)
   retry_backoff_factor: 2.0     # Multiplier factor for exponential backoff retry logic
@@ -1867,7 +1867,7 @@ llm:
     backends:
       - provider: "gemini"
         model: "gemini-2.5-flash"
-        api_key_env: "GEMINI_API_KEY"
+        api_keys: "GEMINI_API_KEY"
 
 vcs:
   provider: "github"            # Options: github, gitlab
@@ -1905,7 +1905,8 @@ sandbox:
   # - Java: Linter="checkstyle", Formatter="google-java-format"
   # - JavaScript/TypeScript: Linter="eslint .", Formatter="prettier --write ."
   linter_command: "golangci-lint run" # Default deterministic linter tool command
-  formatter_command: "go fmt ./..." # Default deterministic code formatter tool command
+  formatter_command: "go fmt ./..." # Default deterministic code formatter tool command (executed as pre-step before linter checks)
+  max_linter_retries: 3         # Max linter retry turns per task (default: 3)
   exclude_paths:                # Scanned path exclusions
     - "node_modules/"
     - "vendor/"
@@ -1960,6 +1961,11 @@ unblocker:
   stall_threshold: "5m"          # Frozen IN_PROGRESS task trigger threshold (default: 5m)
   conflict_threshold: "15m"      # CONFLICT_BLOCKED task trigger threshold (default: 15m)
   llm_assessment: true           # Use LLM for stall diagnosis (false = heuristic-only)
+
+context:
+  mode: "full"                   # Options: full, diff_window, tree_sitter
+  diff_window_lines: 15          # Diff window context line limit
+  compaction: "none"             # Options: none (default), simple_english, caveman (caveman_compaction: true supported as legacy alias)
 ```
 
 #### 3.9.3. Profile Configuration Schema (`.noctifab/profiles/<profile_name>.yaml`)

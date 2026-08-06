@@ -131,6 +131,6 @@ The Go infrastructure client package (`pkg/infrastructure/llm`) instantiates pro
 
 If `llm.api_key` is not explicitly provided, `Client.Complete` resolves authentication tokens in the following order:
 
-1. Provider specific environment variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENCODE_API_KEY`, `KIMI_API_KEY`/`MOONSHOT_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `DASHSCOPE_API_KEY`/`QWEN_API_KEY`, `TOGETHER_API_KEY`, `LLAMA_API_KEY`/`META_API_KEY`, `HUGGINGFACE_API_KEY`/`HF_TOKEN`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `HERMES_API_KEY`, `XAI_API_KEY`/`GROK_API_KEY`, `PERPLEXITY_API_KEY`, `FIREWORKS_API_KEY`, `SAMBANOVA_API_KEY`, `COHERE_API_KEY`/`CO_API_KEY`).
+1. Provider specific environment variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENCODE_API_KEY`, `KIMI_API_KEY`/`MOONSHOT_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `DASHSCOPE_API_KEY`/`QWEN_API_KEY`, `TOGETHER_API_KEY`, `LLAMA_API_KEY`/`META_API_KEY`, `HUGGINGFACE_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `HERMES_API_KEY`, `XAI_API_KEY`/`GROK_API_KEY`, `PERPLEXITY_API_KEY`, `FIREWORKS_API_KEY`, `SAMBANOVA_API_KEY`, `COHERE_API_KEY`/`CO_API_KEY`).
 2. Generic LLM environment override (`NOCTIFAB_LLM_API_KEY`).
 3. `secrets.yaml` reference lookup (e.g. `secret:KIMI_API_KEY`).

@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -20,15 +21,55 @@ import (
 )
 
 type Client struct {
-	Provider    string
-	Model       string
-	APIKey      string
-	MaxRetries  int
-	Backoff     time.Duration
-	URL         string
-	Timeout     time.Duration
-	IdleTimeout time.Duration
-	Streaming   bool
+	Provider              string
+	Model                 string
+	APIKey                string
+	APIKeys               []string
+	keyIndex              uint64
+	MaxRetries            int
+	Backoff               time.Duration
+	URL                   string
+	Timeout               time.Duration
+	IdleTimeout           time.Duration
+	Streaming             bool
+	CavemanCompaction     bool
+	Compaction            string
+	SkipOnCreditExhausted bool
+}
+
+// ErrCreditExhausted is returned when a provider reports an HTTP 402 (or a
+// credit/quota-limited 429) that cannot be resolved by retrying or by falling
+// back to a lower model — the account is out of payable credits. The router
+// treats it as a hard "skip this provider chain" signal so the next provider
+// in priority is attempted immediately instead of burning wall-clock time.
+var ErrCreditExhausted = errors.New("LLM provider credit exhausted")
+
+// isCreditExhausted reports whether err signals provider credit/limit exhaustion.
+// An HTTP 402 from the completion endpoint always qualifies. A 429 is only
+// treated as credit exhaustion when the provider body explicitly mentions
+// "credit" (e.g. OpenRouter's "You have depleted your monthly included
+// credits") — a plain rate-limit 429 still falls through to normal handling.
+func isCreditExhausted(err error) bool {
+	var he *httpError
+	if !errors.As(err, &he) {
+		return false
+	}
+	if he.StatusCode == http.StatusPaymentRequired {
+		return true
+	}
+	if he.StatusCode == http.StatusTooManyRequests {
+		low := strings.ToLower(he.Body)
+		return strings.Contains(low, "credit")
+	}
+	return false
+}
+
+func (c *Client) getNextAPIKey() string {
+	if len(c.APIKeys) > 0 {
+		idx := atomic.AddUint64(&c.keyIndex, 1) - 1
+		return c.APIKeys[idx%uint64(len(c.APIKeys))]
+	}
+	return c.APIKey
 }
 
 var _ domain.LLMClient = (*Client)(nil)
@@ -102,11 +143,21 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 	defer span.End()
 
 	// Preprocess prompt to inject system instructions and schemas based on the target action type
+	switch strings.ToLower(strings.TrimSpace(c.Compaction)) {
+	case "simple_english":
+		prompt = CompactSimpleEnglish(prompt)
+	case "caveman":
+		prompt = CompactCaveman(prompt)
+	default:
+		if c.CavemanCompaction {
+			prompt = CompactCaveman(prompt)
+		}
+	}
 	prompt = preprocessPrompt(prompt)
 
 	spec, _ := GetProviderSpec(c.Provider)
 
-	apiKey := c.APIKey
+	apiKey := c.getNextAPIKey()
 	if apiKey == "" {
 		if spec != nil {
 			for _, envKey := range spec.EnvKeys {
@@ -125,10 +176,20 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		return nil, errors.New("missing API key for LLM provider")
 	}
 
-	originalModel := c.Model
-	defer func() {
-		c.Model = originalModel
-	}()
+	// activeModel carries the concrete model for this call. The shared Client
+	// struct's Model field is never mutated here: Client instances are shared
+	// across concurrent agent calls, so writing c.Model from Complete would be a
+	// data race and would permanently pin a resolved "latest" alias (the alias
+	// would never be re-resolved on later calls once the concrete name leaked
+	// back into the struct). Keep everything on the local variable instead.
+	activeModel := c.Model
+	normModel := strings.ToLower(strings.TrimSpace(activeModel))
+	if normModel == "latest" || normModel == "auto" || strings.HasSuffix(normModel, "-latest") || normModel == "" {
+		if resolved := c.resolveLatestModel(ctx, apiKey); resolved != "" {
+			fmt.Fprintf(os.Stderr, "ℹ Dynamically resolved model alias '%s' for provider %s to latest model: %s\n", activeModel, c.Provider, resolved)
+			activeModel = resolved
+		}
+	}
 
 	for {
 		var responseBody []byte
@@ -150,15 +211,35 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
 		}
 
+		activeKey := apiKey
+		creditExhausted := false
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			responseBody, err = pClient.Call(ctx, c.Model, apiKey, prompt)
+			responseBody, err = pClient.Call(ctx, activeModel, activeKey, prompt)
 			if err == nil {
 				break
 			}
 
+			if isCreditExhausted(err) {
+				creditExhausted = true
+				fmt.Fprintf(os.Stderr, "⚠ LLM provider credit limit reached: %v\n", err)
+				if c.SkipOnCreditExhausted {
+					// Fast-fail: do not retry or fall back to a lower model —
+					// every further attempt & fallback reuses the same spent
+					// account and only delays the provider switch.
+					break
+				}
+				// skip_on_credit_exhausted disabled: rotate to the next key in
+				// the pool (the spent key is pushed to the back) and retry as
+				// usual.
+			}
+
 			fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
-			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") {
+			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") || creditExhausted {
 				fmt.Fprintln(os.Stderr, "⚠ Warning: You have exceeded your LLM API quota (HTTP 429). Please check your plan and billing details.")
+				if len(c.APIKeys) > 1 {
+					activeKey = c.getNextAPIKey()
+					fmt.Fprintf(os.Stderr, "ℹ Switching to next API key in pool for provider %s...\n", c.Provider)
+				}
 			}
 
 			if attempt == maxRetries {
@@ -191,7 +272,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			fmt.Fprintf(os.Stderr, "⚠ LLM response was not a valid JSON envelope (%v). Sending a one-shot format reminder and retrying...\n", parseErr)
 			reminderPrompt := buildJSONReminderPrompt(prompt, responseBody)
 			reminderCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-			reminderBody, rErr := pClient.Call(reminderCtx, c.Model, apiKey, reminderPrompt)
+			reminderBody, rErr := pClient.Call(reminderCtx, activeModel, apiKey, reminderPrompt)
 			cancel()
 			if rErr == nil {
 				resp2, pErr2 := parseAndUnmarshal(reminderBody)
@@ -207,21 +288,32 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 
 		// Unconditionally attempt model fallback across all LLM providers when an error response is returned
 		shouldFallback := true
+		if creditExhausted && c.SkipOnCreditExhausted {
+			// Credit exhaustion is not recoverable with a cheaper model — the
+			// account (or key) is out of payable credits. Skip the fallback
+			// ladder and surface ErrCreditExhausted so the router moves to the
+			// next provider in priority immediately.
+			shouldFallback = false
+		}
 
 		if shouldFallback {
-			nextModel := c.getNextLowerModel(ctx, apiKey)
+			nextModel := c.getNextLowerModel(ctx, apiKey, activeModel)
 			if nextModel != "" {
-				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to lower model: %s...\n", c.Model, err, nextModel)
-				c.Model = nextModel
+				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to lower model: %s...\n", activeModel, err, nextModel)
+				activeModel = nextModel
 				continue
 			}
+		}
+
+		if creditExhausted && c.SkipOnCreditExhausted {
+			return nil, fmt.Errorf("%w (provider %s, model %s): %v", ErrCreditExhausted, c.Provider, activeModel, err)
 		}
 
 		return nil, fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
 	}
 }
 
-func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
+func (c *Client) getNextLowerModel(ctx context.Context, apiKey, currentModel string) string {
 	provider := strings.ToLower(c.Provider)
 
 	var pClient ProviderClient
@@ -253,7 +345,42 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey string) string {
 		return ""
 	}
 
-	return selectLowerModelFromParsed(c.Model, parsedModels)
+	return selectLowerModelFromParsed(currentModel, parsedModels)
+}
+
+func (c *Client) resolveLatestModel(ctx context.Context, apiKey string) string {
+	provider := strings.ToLower(c.Provider)
+
+	var pClient ProviderClient
+	spec, _ := GetProviderSpec(provider)
+	if spec != nil && spec.NewClientFunc != nil {
+		pClient = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
+	} else {
+		pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
+	}
+
+	available, err := pClient.GetAvailableModels(ctx, apiKey)
+	if err != nil || len(available) == 0 {
+		return ""
+	}
+
+	var parsedModels []*ProviderModelInfo
+	parser := parseOpenAIModel
+	if spec != nil && spec.ParseModelFunc != nil {
+		parser = spec.ParseModelFunc
+	}
+	for _, m := range available {
+		if info, parsed := parser(m); parsed && info != nil {
+			parsedModels = append(parsedModels, info)
+		}
+	}
+
+	if len(parsedModels) == 0 {
+		return ""
+	}
+
+	sortProviderModels(parsedModels)
+	return parsedModels[0].Name
 }
 
 // httpError is returned by provider Call methods on non-2xx responses.

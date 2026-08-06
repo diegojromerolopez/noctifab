@@ -8,6 +8,7 @@ agents:
     product_manager:
         number: 1
         iterations: 2
+        max_user_stories: 5
     planner:
         number: 1
         iterations: 2
@@ -50,25 +51,25 @@ storage:
 llm:
     priority:
         - opencode-primary
-        - gemini-primary
+        - openrouter-backup
     providers:
         - name: opencode-primary
           provider: opencode
-          model: glm-5.2
-          api_key_env: OPENCODE_API_KEY
-          max_retries: 5
-          retry_backoff: 100ms
-          max_timeout: 60s
-          idle_timeout: 15s
+          model: qwen3.8-max
+          api_keys: OPENCODE_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 25s
+          idle_timeout: 8s
           streaming: true
-        - name: gemini-primary
-          provider: gemini
-          model: gemini-2.5-flash
-          api_key_env: GEMINI_API_KEY
-          max_retries: 5
-          retry_backoff: 100ms
-          max_timeout: 60s
-          idle_timeout: 15s
+        - name: openrouter-backup
+          provider: openrouter
+          model: deepseek/deepseek-v4-flash-latest
+          api_keys: OPENROUTER_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 25s
+          idle_timeout: 8s
           streaming: true
 vcs:
     provider: github
@@ -93,6 +94,7 @@ sandbox:
     test_command: go test -v ./...
     linter_command: "go vet ./..."
     formatter_command: "go fmt ./..."
+    max_linter_retries: 3
     exclude_paths:
         - node_modules/
         - vendor/
@@ -106,7 +108,7 @@ sandbox:
 input: ""
 auto_commit: false
 max_actions: 100
-max_duration: 0s
+max_duration: 30m
 conversation_mode: sliding-window
 max_history_messages: 10
 compaction_threshold: 15
@@ -128,5 +130,6 @@ telemetry:
 context:
     mode: full
     diff_window_lines: 15
+    compaction: simple_english
 
 
