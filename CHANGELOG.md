@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-08-07
+
+### Added
+- **Parallel Validation Run Feedback Improvements (`VALIDATION_PROJECTS_FEEDBACK.md`)**:
+  - **Pre-Flight Provider Capability Caching (`openai_adapt.go` & `openai.go`)**: Added thread-safe `providerCapabilityCache` that records parameter rejections (`temperature`, `max_tokens`, `response_format`) per model upon first rejection, automatically omitting unsupported parameters on subsequent requests and eliminating unnecessary HTTP 400 rejection roundtrips.
+  - **Makefile Tab Invariant Formatting (`makefile_tab_normalizer.go` & `production_tools.go`)**: Added `normalizeMakefileTabs` to automatically convert space-indented recipe lines in `Makefile` and `*.mk` files into tab-indented (`\t`) recipe lines during `write_file` and `edit_file` tool execution.
+  - **Parallel Prompt Compaction for Large Context Windows (`prompt_templates.go`)**: Updated `CompactSimpleEnglish` and `CompactCaveman` to parallelize line block compaction across worker goroutines for prompt context inputs > 20 KB (`20000` bytes), accelerating token processing speed while preserving code blocks, JSON schemas, filepaths, and technical invariants.
+
 ## [0.24.0] - 2026-08-07
 
 ### Added

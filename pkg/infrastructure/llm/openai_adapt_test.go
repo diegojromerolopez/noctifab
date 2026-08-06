@@ -43,7 +43,7 @@ func TestAdaptOptionsForError(t *testing.T) {
 
 	t.Run("when the server rejects response_format it disables JSON enforcement", func(t *testing.T) {
 		err := &httpError{StatusCode: 400, Body: "response_format is not supported"}
-		got, ok := adaptOptionsForError(base, err)
+		got, ok := adaptOptionsForError(base, err, "test-model")
 		if !ok || got.enforceJSON {
 			t.Errorf("expected enforceJSON disabled, got ok=%v opts=%+v", ok, got)
 		}
@@ -54,7 +54,7 @@ func TestAdaptOptionsForError(t *testing.T) {
 
 	t.Run("when the gateway router is unavailable it strips response_format and max_tokens", func(t *testing.T) {
 		err := &httpError{StatusCode: 500, Body: `{"type":"Router.Unavailable","modelID":"kimi-k3"}`}
-		got, ok := adaptOptionsForError(base, err)
+		got, ok := adaptOptionsForError(base, err, "test-model")
 		if !ok || got.enforceJSON || got.maxTokens != 0 {
 			t.Errorf("expected rf+maxTokens stripped, got ok=%v opts=%+v", ok, got)
 		}
@@ -62,7 +62,7 @@ func TestAdaptOptionsForError(t *testing.T) {
 
 	t.Run("when the model pins its temperature it omits the temperature field", func(t *testing.T) {
 		err := &httpError{StatusCode: 400, Body: "invalid temperature: only 1 is allowed for this model"}
-		got, ok := adaptOptionsForError(base, err)
+		got, ok := adaptOptionsForError(base, err, "test-model")
 		if !ok || got.temperature != nil {
 			t.Errorf("expected temperature omitted, got ok=%v opts=%+v", ok, got)
 		}
@@ -70,13 +70,13 @@ func TestAdaptOptionsForError(t *testing.T) {
 
 	t.Run("when the error is not parameter-induced it does not adapt", func(t *testing.T) {
 		err := &httpError{StatusCode: 500, Body: "internal server error"}
-		if _, ok := adaptOptionsForError(base, err); ok {
+		if _, ok := adaptOptionsForError(base, err, "test-model"); ok {
 			t.Error("expected no adaptation for generic 500")
 		}
 	})
 
 	t.Run("when the error is not an httpError it does not adapt", func(t *testing.T) {
-		if _, ok := adaptOptionsForError(base, fmt.Errorf("dial tcp: timeout")); ok {
+		if _, ok := adaptOptionsForError(base, fmt.Errorf("dial tcp: timeout"), "test-model"); ok {
 			t.Error("expected no adaptation for transport error")
 		}
 	})
@@ -84,7 +84,7 @@ func TestAdaptOptionsForError(t *testing.T) {
 	t.Run("when everything is already relaxed it does not loop", func(t *testing.T) {
 		relaxed := completionOptions{}
 		err := &httpError{StatusCode: 500, Body: `{"type":"Router.Unavailable"}`}
-		if _, ok := adaptOptionsForError(relaxed, err); ok {
+		if _, ok := adaptOptionsForError(relaxed, err, "test-model"); ok {
 			t.Error("expected no adaptation when no options remain to relax")
 		}
 	})
@@ -391,6 +391,48 @@ func TestClientRetryLoopNonRetryable(t *testing.T) {
 		}
 		if elapsed := time.Since(start); elapsed > 3*time.Second {
 			t.Errorf("non-retryable failure took %v; expected fast failover", elapsed)
+		}
+	})
+}
+
+func TestProviderCapabilityCaching(t *testing.T) {
+	t.Run("caches parameter rejections so subsequent calls for the same model omit the parameter on first attempt", func(t *testing.T) {
+		var calls int64
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			count := atomic.AddInt64(&calls, 1)
+			req := decodeChatRequest(t, r)
+			// First request: carrying temperature -> rejected
+			if count == 1 && req.Temperature != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"type":"invalid_request_error","message":"invalid temperature: only 1 is allowed for this model"}`))
+				return
+			}
+			// Second request onwards: temperature must be omitted!
+			if req.Temperature != nil {
+				t.Errorf("request %d carried temperature even though it should be cached as unsupported", count)
+			}
+			writeChatCompletion(w, `{"ok":true}`, "")
+		}))
+		defer server.Close()
+
+		client := newBaseOpenAIClient("opencode", server.URL, server.URL, 5*time.Second, 0, false)
+		testModel := "test-temp-pinned-model"
+
+		// First Call: hits temperature rejection (call 1), adapts, succeeds on retry (call 2)
+		if _, err := client.Call(context.Background(), testModel, "k", "Return json", 0, 0.5); err != nil {
+			t.Fatalf("first call failed: %v", err)
+		}
+		if got := atomic.LoadInt64(&calls); got != 2 {
+			t.Fatalf("expected 2 calls for initial rejection + retry, got %d", got)
+		}
+
+		// Second Call: capability is cached! Must succeed on attempt 1 (call 3 total) without temperature
+		if _, err := client.Call(context.Background(), testModel, "k", "Return json", 0, 0.5); err != nil {
+			t.Fatalf("second call failed: %v", err)
+		}
+		if got := atomic.LoadInt64(&calls); got != 3 {
+			t.Fatalf("expected second call to succeed on first attempt (3 total calls), got %d", got)
 		}
 	})
 }
