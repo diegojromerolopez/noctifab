@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `README.md` and `docs/unblocker_agent.md` with **Dynamic Prompt Enhancement** features, documenting live execution log tailing, secret scrubbing (`log_tailer.go`), 0-token fast-path regex pre-filtering (`unblocker_fastpath.go`), 10x progressive log window escalation (50 $\rightarrow$ 500 $\rightarrow$ 5,000 lines), and task stall recovery directives.
   - Added **Dark Factory Acceleration Engine (5x–10x Speedup)** documentation to `README.md` and `docs/architecture.md`, highlighting parallel DAG task worker pools with Git worktree sandboxing, tiered LLM provider routing, parallel 3x test majority-vote validation, unified diff multi-file patching (`apply_patch`), pre-baked base images, prompt history pruning, and speculative prefetching.
 
+### Fixed
+- **Pre-Flight Provider Banning Name Collision (`start.go`)**: Fixed a bug where pre-flight ping failures appended both provider name (`p.Name`) and provider type (`p.Provider`) to `bannedNames`, causing sibling provider instances sharing the same provider protocol (e.g. `gemini-backup`) to be collateral-banned when `gemini-primary` failed. Provider banning is now strictly scoped by unique instance name (`p.Name`).
+
 ## [0.22.0] - 2026-08-06
 
 ### Added

@@ -116,12 +116,12 @@ var startCmd = &cobra.Command{
 				latency, err := llm.Ping(context.Background(), p.Provider, p.APIKeyValue, p.URL)
 				if err != nil {
 					fmt.Printf("BANNED (unreachable: %v)\n", err)
-					bannedNames = append(bannedNames, p.Name, p.Provider)
+					bannedNames = append(bannedNames, p.Name)
 					continue
 				}
 				if latency > maxAllowedPingLatency {
 					fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", latency.Milliseconds())
-					bannedNames = append(bannedNames, p.Name, p.Provider)
+					bannedNames = append(bannedNames, p.Name)
 					continue
 				}
 				fmt.Printf("OK (%dms)\n", latency.Milliseconds())

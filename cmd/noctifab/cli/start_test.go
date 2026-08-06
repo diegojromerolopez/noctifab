@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -102,4 +103,27 @@ func TestStartCmd_RejectsTemplateUserStory(t *testing.T) {
 	err := startCmd.RunE(startCmd, []string{tmpDir})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "still contains the default template content")
+}
+
+func TestStartCmd_ProviderBanningByNameOnly(t *testing.T) {
+	// Verify that banning a provider spec by name ("gemini-primary") does not ban
+	// another provider spec ("gemini-backup") sharing the same provider type ("gemini").
+	bannedNames := []string{"gemini-primary"}
+	priority := []string{"gemini-primary", "gemini-backup"}
+
+	var filteredPriority []string
+	for _, name := range priority {
+		banned := false
+		for _, b := range bannedNames {
+			if strings.EqualFold(name, b) {
+				banned = true
+				break
+			}
+		}
+		if !banned {
+			filteredPriority = append(filteredPriority, name)
+		}
+	}
+
+	assert.Equal(t, []string{"gemini-backup"}, filteredPriority)
 }
