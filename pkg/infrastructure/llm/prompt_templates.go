@@ -157,6 +157,12 @@ ROADMAP CONSOLIDATION & STORY LIMIT RULE:
 1. Max User Stories: Do NOT generate more user stories than necessary. For concise applications or specifications under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/US-001.md") containing all specification requirements.
 2. Requirement Coverage Pre-Check: Before creating any new user story, you MUST verify if existing user stories already cover all requirements found in SPEC.md. If existing user stories already implement all SPEC.md requirements, do NOT create additional user stories.
 
+LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE:
+If existing legacy code files are detected in the input context:
+1. The FIRST user story created MUST be "roadmap/US-001.md" titled "Legacy Codebase Characterization & Stabilization".
+2. The Definition of Done (DoD) for "roadmap/US-001.md" MUST mandate creating unit and integration characterization tests that verify and lock down existing legacy module interfaces and behaviors before any refactoring or feature additions begin.
+3. Subsequent user stories ("roadmap/US-002.md", etc.) MUST set 'depends_on: ["roadmap/US-001.md"]' and detail how to refactor and extend the legacy codebase to satisfy future requirements while maintaining 100%% pass rates on characterization tests.
+
 TASK ENTITY & ATOMICITY MANDATE:
 1. Entity & Functional Value: Every task created or defined in user stories MUST have concrete functionality entity. NO test-only or coverage-only tasks are allowed.
 2. Co-located Code & Tests: Every task MUST pair concrete application functionality alongside its corresponding unit/integration tests in the SAME task. Never separate functionality from its tests.
@@ -214,7 +220,8 @@ CRITICAL:
 1. You must always specify 'target_files' for each task to inform downstream generator agents of which files they need to work on.
 2. TASK COHESION & ENTITY MANDATE: Every planned task MUST have concrete functionality entity. NO test-only or coverage-only tasks are allowed. Interface/domain model definitions, concrete implementations, and their corresponding co-located unit tests MUST be defined in the SAME task. Downstream tester agents will write tests that execute the implementation immediately; separating interface definitions, implementations, or tests into separate tasks causes test compilation and execution failures.
 3. TASK ATOMICITY: Tasks MUST be as atomic as possible—each task must target a single file/module alongside its co-located tests, implementable in 1-2 turns.
-4. The planned tasks must include enough detail so generator agents have all the instructions they need.
+4. LEGACY CODEBASE STABILIZATION MANDATE: If the user story or specification targets existing legacy code, the first planned tasks MUST focus on creating unit/integration characterization tests covering existing entry points and modules before executing any refactoring or structural modifications.
+5. The planned tasks must include enough detail so generator agents have all the instructions they need.
 
 Return format:
 {
@@ -240,6 +247,7 @@ ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
 - A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
 - BLACK-BOX TESTING & DEPENDENCY INJECTION MANDATE: Write tests that verify observable behaviors, public API contracts, return values, and CLI/system outputs. Injected dependencies (databases, HTTP clients, external services) should be mocked at their interface boundaries. NEVER write tests that depend on internal implementation details, private struct fields, or specific unexported module layouts. Decoupled tests allow generator agents to iterate and refactor freely.
+- LEGACY STABILIZATION TESTING: When writing tests for existing legacy code, write characterization unit and integration tests that verify public interface contracts and observable behaviors without mutating the underlying implementation.
 - If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
 - LINTER IS ADVISORY — NOT A BLOCKER: A completed, working project with ≤100 linter warnings is FAR better than a stalled project with zero warnings. Do NOT spend more than 2 attempts fixing the same linter issue. If run_linter fails the same way twice in a row without any file change in between, STOP calling run_linter and call noop if run_tests passes. Linter cleanup will happen in a later pass. NEVER let linter enforcement prevent you from completing the task.
 - MISSING DEPENDENCY / LIBRARY MANDATE: If a test, build, or linter execution fails because a required library or package is missing (e.g. pip, npm, cargo, go), add the missing dependency to project manifests (e.g. requirements.txt, pyproject.toml, package.json, Cargo.toml) or install it immediately so execution proceeds.
@@ -256,6 +264,7 @@ const antiStallingGenerator = `
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
 - FUNCTIONAL CORRECTNESS FIRST: Focus on writing the simplest working implementation that satisfies all tests. Code does NOT need to be perfect on the first pass. Make it work first—it can be refactored and optimized once tests are passing.
+- LEGACY CODE REFACTORING MANDATE: When implementing tasks on legacy codebases, perform surgical edits using 'edit_file' or 'multi_replace_file_content' to refactor and align legacy logic with user story requirements. Never overwrite legacy files wholesale with 'write_file' if existing business logic or helper methods can be preserved. Ensure characterization tests continue passing.
 - GENERATOR SELF-VERIFICATION: You MUST run 'run_tests' inside your turn sequence before calling 'noop'. If compilation or tests fail, fix the errors immediately in the active turn session to prevent task failure retries.
 - A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
 - C & MAKEFILE GUIDELINES:

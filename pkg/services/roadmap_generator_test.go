@@ -172,3 +172,47 @@ func (p *promptCapturingMockClient) Complete(ctx context.Context, prompt string)
 	*p.capturedPrompt = prompt
 	return p.mockRoadmapLLMClient.Complete(ctx, prompt)
 }
+
+func TestGenerateRoadmap_DetectsLegacyCode(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "noctifab-roadmap-legacy-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	specPath := filepath.Join(tempDir, "SPEC.md")
+	err = os.WriteFile(specPath, []byte("# Project Spec"), 0644)
+	assert.NoError(t, err)
+
+	// Create a legacy source file
+	legacyFilePath := filepath.Join(tempDir, "calculator.py")
+	err = os.WriteFile(legacyFilePath, []byte("def add(a, b): return a + b"), 0644)
+	assert.NoError(t, err)
+
+	var capturedPrompt string
+	mockLLM := &mockRoadmapLLMClient{
+		Response: &domain.LLMResponse{
+			Reasoning: "Generating story with legacy stabilization",
+			Actions: []domain.LLMAction{
+				{
+					Tool: "create_story",
+					Args: map[string]any{
+						"filename": "roadmap/US-001.md",
+						"content":  "# US-001: Legacy Codebase Characterization & Stabilization",
+					},
+				},
+			},
+		},
+	}
+	capturingMock := &promptCapturingMockClient{
+		mockRoadmapLLMClient: mockLLM,
+		capturedPrompt:       &capturedPrompt,
+	}
+
+	err = services.GenerateRoadmap(context.Background(), tempDir, capturingMock)
+	assert.NoError(t, err)
+
+	assert.Contains(t, capturedPrompt, "Existing Legacy Code Files Detected in Workspace:")
+	assert.Contains(t, capturedPrompt, "calculator.py")
+	assert.Contains(t, capturedPrompt, "LEGACY STABILIZATION MANDATE")
+}

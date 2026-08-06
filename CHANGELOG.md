@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-08-07
+
+### Added
+- **Legacy Codebase Stabilization & Characterization Testing**:
+  - **Workspace Legacy Scanning (`roadmap_generator.go`)**: Implemented `scanLegacyFiles` to detect pre-existing legacy source files in project directories, ignoring build outputs, vendor paths, and metadata files.
+  - **Product Manager Legacy Mandate (`prompt_templates.go`)**: Updated Product Manager prompt with `LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE`. Mandates that when existing code is detected in a workspace, the Product Manager creates `roadmap/US-001.md` titled `"Legacy Codebase Characterization & Stabilization"`, requiring unit/integration characterization tests before refactoring or new feature development.
+  - **Planner, Tester, & Generator Legacy Directives**: Added task planning, characterization testing, and surgical refactoring (`edit_file`) directives to `buildPlannerPrompt`, `antiStallingTester`, and `antiStallingGenerator` prompts.
+
 ## [0.23.0] - 2026-08-07
 
 ### Removed
