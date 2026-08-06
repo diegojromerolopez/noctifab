@@ -113,6 +113,7 @@ func (t *WriteFileTool) Execute(ctx context.Context, state *domain.State, args m
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 		return "", err
 	}
+	content = normalizeMakefileTabs(path, content)
 	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
 		return "", err
 	}
@@ -229,7 +230,7 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 		lines = newLines
 	}
 
-	newContent := strings.Join(lines, "\n")
+	newContent := normalizeMakefileTabs(path, strings.Join(lines, "\n"))
 	if err := os.WriteFile(fullPath, []byte(newContent), 0644); err != nil {
 		return "", err
 	}

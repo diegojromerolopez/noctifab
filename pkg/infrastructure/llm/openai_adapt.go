@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/packages/respjson"
@@ -93,11 +94,69 @@ func looksLikeMaxTokensRejection(body string) bool {
 	return strings.Contains(low, "max_tokens") || strings.Contains(low, "max_completion_tokens")
 }
 
+type providerCapabilityCache struct {
+	mu            sync.RWMutex
+	noTemperature map[string]bool
+	noMaxTokens   map[string]bool
+	noJSONMode    map[string]bool
+}
+
+var globalCapabilityCache = &providerCapabilityCache{
+	noTemperature: make(map[string]bool),
+	noMaxTokens:   make(map[string]bool),
+	noJSONMode:    make(map[string]bool),
+}
+
+func (c *providerCapabilityCache) isTemperatureUnsupported(model string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.noTemperature[model]
+}
+
+func (c *providerCapabilityCache) isMaxTokensUnsupported(model string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.noMaxTokens[model]
+}
+
+func (c *providerCapabilityCache) isJSONModeUnsupported(model string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.noJSONMode[model]
+}
+
+func (c *providerCapabilityCache) markTemperatureUnsupported(model string) {
+	if model == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.noTemperature[model] = true
+}
+
+func (c *providerCapabilityCache) markMaxTokensUnsupported(model string) {
+	if model == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.noMaxTokens[model] = true
+}
+
+func (c *providerCapabilityCache) markJSONModeUnsupported(model string) {
+	if model == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.noJSONMode[model] = true
+}
+
 // adaptOptionsForError inspects a provider error and, when the failure is
 // attributable to a specific request option, returns a copy of opts with
 // that single option relaxed and ok=true. It returns ok=false when the error
 // is not recognised as parameter-induced (nothing left to adapt).
-func adaptOptionsForError(opts completionOptions, err error) (completionOptions, bool) {
+func adaptOptionsForError(opts completionOptions, err error, model string) (completionOptions, bool) {
 	var he *httpError
 	if !errors.As(err, &he) {
 		return opts, false
@@ -106,19 +165,24 @@ func adaptOptionsForError(opts completionOptions, err error) (completionOptions,
 	case he.StatusCode == http.StatusBadRequest && opts.enforceJSON && looksLikeResponseFormatRejection(he.Body):
 		fmt.Fprintln(os.Stderr, "⚠ Server rejected response_format; retrying without JSON enforcement.")
 		opts.enforceJSON = false
+		globalCapabilityCache.markJSONModeUnsupported(model)
 		return opts, true
 	case looksLikeRouterUnavailable(he) && (opts.enforceJSON || opts.maxTokens > 0):
 		fmt.Fprintln(os.Stderr, "⚠ Gateway router unavailable for this request shape; retrying without response_format/max_tokens.")
 		opts.enforceJSON = false
 		opts.maxTokens = 0
+		globalCapabilityCache.markJSONModeUnsupported(model)
+		globalCapabilityCache.markMaxTokensUnsupported(model)
 		return opts, true
 	case he.StatusCode == http.StatusBadRequest && opts.temperature != nil && looksLikeInvalidTemperature(he.Body):
 		fmt.Fprintln(os.Stderr, "⚠ Server rejected the temperature value; retrying with the provider default.")
 		opts.temperature = nil
+		globalCapabilityCache.markTemperatureUnsupported(model)
 		return opts, true
 	case he.StatusCode == http.StatusBadRequest && opts.maxTokens > 0 && looksLikeMaxTokensRejection(he.Body):
 		fmt.Fprintln(os.Stderr, "⚠ Server rejected max_tokens parameter; retrying without max_tokens.")
 		opts.maxTokens = 0
+		globalCapabilityCache.markMaxTokensUnsupported(model)
 		return opts, true
 	}
 	return opts, false

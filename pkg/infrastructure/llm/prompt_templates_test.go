@@ -19,6 +19,9 @@ func TestPreprocessPrompt(t *testing.T) {
 		if !strings.Contains(processed, "DEFINITION OF DONE (DoD) & CONTRACT MANDATE:") {
 			t.Errorf("expected Definition of Done mandate in prompt, got: %s", processed)
 		}
+		if !strings.Contains(processed, "LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE:") {
+			t.Errorf("expected legacy codebase stabilization mandate in prompt, got: %s", processed)
+		}
 		if !strings.Contains(processed, "create_story") {
 			t.Errorf("expected create_story tool instruction, got: %s", processed)
 		}
@@ -31,6 +34,9 @@ func TestPreprocessPrompt(t *testing.T) {
 		if !strings.Contains(processed, "You are acting as the Planner Agent.") {
 			t.Errorf("expected Planner agent header in prompt, got: %s", processed)
 		}
+		if !strings.Contains(processed, "LEGACY CODEBASE STABILIZATION MANDATE:") {
+			t.Errorf("expected legacy task planning mandate in prompt, got: %s", processed)
+		}
 	})
 
 	t.Run("Tester Agent Prompt Preprocessing", func(t *testing.T) {
@@ -40,6 +46,9 @@ func TestPreprocessPrompt(t *testing.T) {
 		if !strings.Contains(processed, "BLACK-BOX TESTING & DEPENDENCY INJECTION MANDATE:") {
 			t.Errorf("expected black-box testing mandate in prompt, got: %s", processed)
 		}
+		if !strings.Contains(processed, "LEGACY STABILIZATION TESTING:") {
+			t.Errorf("expected legacy stabilization testing mandate in prompt, got: %s", processed)
+		}
 	})
 
 	t.Run("Generator Agent Prompt Preprocessing", func(t *testing.T) {
@@ -48,6 +57,9 @@ func TestPreprocessPrompt(t *testing.T) {
 
 		if !strings.Contains(processed, "FUNCTIONAL CORRECTNESS FIRST:") {
 			t.Errorf("expected functional correctness first in prompt, got: %s", processed)
+		}
+		if !strings.Contains(processed, "LEGACY CODE REFACTORING MANDATE:") {
+			t.Errorf("expected legacy code refactoring mandate in prompt, got: %s", processed)
 		}
 		if !strings.Contains(processed, "GENERATOR SELF-VERIFICATION:") {
 			t.Errorf("expected generator self-verification in prompt, got: %s", processed)
@@ -78,6 +90,42 @@ func TestPreprocessPrompt(t *testing.T) {
 		}
 		if !strings.Contains(compacted, "fmt.Println(\"hello\")") {
 			t.Errorf("expected code block to be preserved, got: %s", compacted)
+		}
+	})
+
+	t.Run("ParallelCompactionLargeInput", func(t *testing.T) {
+		var sb strings.Builder
+		sb.WriteString("Please note that we utilize this feature.\n")
+		// Build input exceeding parallelCompactionThreshold (20,000 bytes)
+		chunk := "Please note that this is line for testing. Utilize facilitate demonstrate commence terminate.\n"
+		for sb.Len() < 25000 {
+			sb.WriteString(chunk)
+		}
+		sb.WriteString("```go\nfunc utilizeCode() {}\n```\n")
+		sb.WriteString("In order to ensure that final line works.\n")
+
+		raw := sb.String()
+		if len(raw) < 20000 {
+			t.Fatalf("expected prompt > 20000 bytes, got %d", len(raw))
+		}
+
+		compactedSimple := CompactSimpleEnglish(raw)
+		if strings.Contains(compactedSimple, "Please note that") {
+			t.Errorf("expected fluff stripped in parallel CompactSimpleEnglish")
+		}
+		if strings.Contains(compactedSimple, "use this feature") == false {
+			t.Errorf("expected vocabulary replaced in parallel CompactSimpleEnglish")
+		}
+		if !strings.Contains(compactedSimple, "func utilizeCode() {}") {
+			t.Errorf("expected code block preserved in parallel CompactSimpleEnglish")
+		}
+
+		compactedCaveman := CompactCaveman(raw)
+		if strings.Contains(compactedCaveman, "Please note that") {
+			t.Errorf("expected fluff stripped in parallel CompactCaveman")
+		}
+		if !strings.Contains(compactedCaveman, "func utilizeCode() {}") {
+			t.Errorf("expected code block preserved in parallel CompactCaveman")
 		}
 	})
 }

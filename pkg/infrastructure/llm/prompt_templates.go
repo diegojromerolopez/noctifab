@@ -3,6 +3,7 @@ package llm
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // preprocessPrompt injects system instructions and structured JSON schemas
@@ -35,88 +36,134 @@ func preprocessPrompt(prompt string) string {
 	return prompt
 }
 
-// CompactSimpleEnglish compacts prompts using Simple English rules (active voice, simple vocabulary, no conversational fluff)
-// while strictly preserving code blocks, JSON schemas, filepaths, CLI flags, and technical invariants.
-func CompactSimpleEnglish(prompt string) string {
-	lines := strings.Split(prompt, "\n")
-	var cleaned []string
-	inCodeBlock := false
+const parallelCompactionThreshold = 20000
 
-	replacer := strings.NewReplacer(
-		"utilize", "use",
-		"Utilize", "Use",
-		"facilitate", "help",
-		"Facilitate", "Help",
-		"demonstrate", "show",
-		"Demonstrate", "Show",
-		"commence", "start",
-		"Commence", "Start",
-		"terminate", "end",
-		"Terminate", "End",
-		"is required to be", "must be",
-		"has the capability to", "can",
-	)
+type promptBlock struct {
+	isCode bool
+	lines  []string
+}
+
+func parsePromptBlocks(lines []string) []promptBlock {
+	var blocks []promptBlock
+	var current []string
+	inCode := false
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-
 		if strings.HasPrefix(trimmed, "```") {
-			inCodeBlock = !inCodeBlock
-			cleaned = append(cleaned, line)
+			if len(current) > 0 {
+				blocks = append(blocks, promptBlock{isCode: inCode, lines: current})
+				current = nil
+			}
+			inCode = !inCode
+			blocks = append(blocks, promptBlock{isCode: true, lines: []string{line}})
 			continue
 		}
+		current = append(current, line)
+	}
+	if len(current) > 0 {
+		blocks = append(blocks, promptBlock{isCode: inCode, lines: current})
+	}
+	return blocks
+}
 
-		if inCodeBlock {
-			cleaned = append(cleaned, line)
-			continue
+func parallelCompact(prompt string, processLines func(lines []string) []string) string {
+	lines := strings.Split(prompt, "\n")
+	if len(prompt) < parallelCompactionThreshold {
+		var cleaned []string
+		inCodeBlock := false
+		var currentText []string
+
+		flushText := func() {
+			if len(currentText) > 0 {
+				cleaned = append(cleaned, processLines(currentText)...)
+				currentText = nil
+			}
 		}
 
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "```") {
+				flushText()
+				inCodeBlock = !inCodeBlock
+				cleaned = append(cleaned, line)
+				continue
+			}
+			if inCodeBlock {
+				cleaned = append(cleaned, line)
+				continue
+			}
+			currentText = append(currentText, line)
+		}
+		flushText()
+		return strings.Join(cleaned, "\n")
+	}
+
+	blocks := parsePromptBlocks(lines)
+	results := make([][]string, len(blocks))
+
+	var wg sync.WaitGroup
+	for i, b := range blocks {
+		if b.isCode {
+			results[i] = b.lines
+			continue
+		}
+		wg.Add(1)
+		go func(idx int, blk promptBlock) {
+			defer wg.Done()
+			results[idx] = processLines(blk.lines)
+		}(i, b)
+	}
+	wg.Wait()
+
+	var finalLines []string
+	for _, res := range results {
+		finalLines = append(finalLines, res...)
+	}
+	return strings.Join(finalLines, "\n")
+}
+
+var simpleEnglishReplacer = strings.NewReplacer(
+	"utilize", "use",
+	"Utilize", "Use",
+	"facilitate", "help",
+	"Facilitate", "Help",
+	"demonstrate", "show",
+	"Demonstrate", "Show",
+	"commence", "start",
+	"Commence", "Start",
+	"terminate", "end",
+	"Terminate", "End",
+	"is required to be", "must be",
+	"has the capability to", "can",
+)
+
+func processSimpleEnglishLines(lines []string) []string {
+	var cleaned []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
 		lower := strings.ToLower(trimmed)
 		if lower == "please note that" || lower == "in order to ensure that" || lower == "the purpose of this document is to" {
 			continue
 		}
-
 		if strings.HasPrefix(lower, "please note that ") {
 			line = line[len("Please note that "):]
 		} else if strings.HasPrefix(lower, "in order to ") {
 			line = line[len("In order to "):]
 		}
-
-		simplifiedLine := replacer.Replace(line)
+		simplifiedLine := simpleEnglishReplacer.Replace(line)
 		cleaned = append(cleaned, simplifiedLine)
 	}
-
-	return strings.Join(cleaned, "\n")
+	return cleaned
 }
 
-// CompactCaveman performs telegraphic caveman-style compaction on prompts.
-// It removes conversational fluff, polite phrases, and decorative dividers
-// while strictly preserving exact filepaths, code blocks, JSON schemas, CLI flags, and technical invariants.
-func CompactCaveman(prompt string) string {
-	lines := strings.Split(prompt, "\n")
+func processCavemanLines(lines []string) []string {
 	var cleaned []string
-	inCodeBlock := false
-
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-
-		if strings.HasPrefix(trimmed, "```") {
-			inCodeBlock = !inCodeBlock
-			cleaned = append(cleaned, line)
-			continue
-		}
-
-		if inCodeBlock {
-			cleaned = append(cleaned, line)
-			continue
-		}
-
-		// Omit empty decorative divider lines or repetitive markdown horizontal rules
 		if trimmed == "---" || trimmed == "***" || trimmed == "===" || trimmed == "___" {
 			continue
 		}
-
-		// Remove common polite/conversational filler phrases in prompts
 		lower := strings.ToLower(trimmed)
 		if strings.HasPrefix(lower, "please note that") ||
 			strings.HasPrefix(lower, "as a user, i would like to") ||
@@ -125,11 +172,22 @@ func CompactCaveman(prompt string) string {
 			strings.HasPrefix(lower, "it is recommended that you") {
 			continue
 		}
-
 		cleaned = append(cleaned, line)
 	}
+	return cleaned
+}
 
-	return strings.Join(cleaned, "\n")
+// CompactSimpleEnglish compacts prompts using Simple English rules (active voice, simple vocabulary, no conversational fluff)
+// while strictly preserving code blocks, JSON schemas, filepaths, CLI flags, and technical invariants.
+func CompactSimpleEnglish(prompt string) string {
+	return parallelCompact(prompt, processSimpleEnglishLines)
+}
+
+// CompactCaveman performs telegraphic caveman-style compaction on prompts.
+// It removes conversational fluff, polite phrases, and decorative dividers
+// while strictly preserving exact filepaths, code blocks, JSON schemas, CLI flags, and technical invariants.
+func CompactCaveman(prompt string) string {
+	return parallelCompact(prompt, processCavemanLines)
 }
 
 // CompactMarkdownSpec performs caveman-style compaction on Markdown specifications and prompts.
@@ -156,6 +214,12 @@ If existing user story files are provided in the prompt:
 ROADMAP CONSOLIDATION & STORY LIMIT RULE:
 1. Max User Stories: Do NOT generate more user stories than necessary. For concise applications or specifications under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/US-001.md") containing all specification requirements.
 2. Requirement Coverage Pre-Check: Before creating any new user story, you MUST verify if existing user stories already cover all requirements found in SPEC.md. If existing user stories already implement all SPEC.md requirements, do NOT create additional user stories.
+
+LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE:
+If existing legacy code files are detected in the input context:
+1. The FIRST user story created MUST be "roadmap/US-001.md" titled "Legacy Codebase Characterization & Stabilization".
+2. The Definition of Done (DoD) for "roadmap/US-001.md" MUST mandate creating unit and integration characterization tests that verify and lock down existing legacy module interfaces and behaviors before any refactoring or feature additions begin.
+3. Subsequent user stories ("roadmap/US-002.md", etc.) MUST set 'depends_on: ["roadmap/US-001.md"]' and detail how to refactor and extend the legacy codebase to satisfy future requirements while maintaining 100%% pass rates on characterization tests.
 
 TASK ENTITY & ATOMICITY MANDATE:
 1. Entity & Functional Value: Every task created or defined in user stories MUST have concrete functionality entity. NO test-only or coverage-only tasks are allowed.
@@ -214,7 +278,8 @@ CRITICAL:
 1. You must always specify 'target_files' for each task to inform downstream generator agents of which files they need to work on.
 2. TASK COHESION & ENTITY MANDATE: Every planned task MUST have concrete functionality entity. NO test-only or coverage-only tasks are allowed. Interface/domain model definitions, concrete implementations, and their corresponding co-located unit tests MUST be defined in the SAME task. Downstream tester agents will write tests that execute the implementation immediately; separating interface definitions, implementations, or tests into separate tasks causes test compilation and execution failures.
 3. TASK ATOMICITY: Tasks MUST be as atomic as possible—each task must target a single file/module alongside its co-located tests, implementable in 1-2 turns.
-4. The planned tasks must include enough detail so generator agents have all the instructions they need.
+4. LEGACY CODEBASE STABILIZATION MANDATE: If the user story or specification targets existing legacy code, the first planned tasks MUST focus on creating unit/integration characterization tests covering existing entry points and modules before executing any refactoring or structural modifications.
+5. The planned tasks must include enough detail so generator agents have all the instructions they need.
 
 Return format:
 {
@@ -240,6 +305,7 @@ ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
 - A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
 - BLACK-BOX TESTING & DEPENDENCY INJECTION MANDATE: Write tests that verify observable behaviors, public API contracts, return values, and CLI/system outputs. Injected dependencies (databases, HTTP clients, external services) should be mocked at their interface boundaries. NEVER write tests that depend on internal implementation details, private struct fields, or specific unexported module layouts. Decoupled tests allow generator agents to iterate and refactor freely.
+- LEGACY STABILIZATION TESTING: When writing tests for existing legacy code, write characterization unit and integration tests that verify public interface contracts and observable behaviors without mutating the underlying implementation.
 - If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
 - LINTER IS ADVISORY — NOT A BLOCKER: A completed, working project with ≤100 linter warnings is FAR better than a stalled project with zero warnings. Do NOT spend more than 2 attempts fixing the same linter issue. If run_linter fails the same way twice in a row without any file change in between, STOP calling run_linter and call noop if run_tests passes. Linter cleanup will happen in a later pass. NEVER let linter enforcement prevent you from completing the task.
 - MISSING DEPENDENCY / LIBRARY MANDATE: If a test, build, or linter execution fails because a required library or package is missing (e.g. pip, npm, cargo, go), add the missing dependency to project manifests (e.g. requirements.txt, pyproject.toml, package.json, Cargo.toml) or install it immediately so execution proceeds.
@@ -256,6 +322,7 @@ const antiStallingGenerator = `
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
 - FUNCTIONAL CORRECTNESS FIRST: Focus on writing the simplest working implementation that satisfies all tests. Code does NOT need to be perfect on the first pass. Make it work first—it can be refactored and optimized once tests are passing.
+- LEGACY CODE REFACTORING MANDATE: When implementing tasks on legacy codebases, perform surgical edits using 'edit_file' or 'multi_replace_file_content' to refactor and align legacy logic with user story requirements. Never overwrite legacy files wholesale with 'write_file' if existing business logic or helper methods can be preserved. Ensure characterization tests continue passing.
 - GENERATOR SELF-VERIFICATION: You MUST run 'run_tests' inside your turn sequence before calling 'noop'. If compilation or tests fail, fix the errors immediately in the active turn session to prevent task failure retries.
 - A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
 - C & MAKEFILE GUIDELINES:

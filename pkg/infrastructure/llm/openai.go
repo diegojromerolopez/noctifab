@@ -189,11 +189,17 @@ func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
 // ladder can classify them.
 func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) ([]byte, error) {
 	opts := completionOptions{
-		enforceJSON:     true,
-		disableJSONMode: o.disableJSONMode,
+		enforceJSON:     !globalCapabilityCache.isJSONModeUnsupported(model),
+		disableJSONMode: o.disableJSONMode || globalCapabilityCache.isJSONModeUnsupported(model),
 		maxTokens:       maxTokens,
 		temperature:     &temperature,
 		extraBody:       o.extraBody,
+	}
+	if globalCapabilityCache.isTemperatureUnsupported(model) {
+		opts.temperature = nil
+	}
+	if globalCapabilityCache.isMaxTokensUnsupported(model) {
+		opts.maxTokens = 0
 	}
 	var lastErr error
 	for range 3 {
@@ -202,7 +208,7 @@ func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt strin
 			return respBody, nil
 		}
 		lastErr = err
-		adapted, ok := adaptOptionsForError(opts, err)
+		adapted, ok := adaptOptionsForError(opts, err, model)
 		if !ok {
 			return nil, err
 		}

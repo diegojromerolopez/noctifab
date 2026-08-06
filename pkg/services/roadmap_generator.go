@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -30,11 +31,16 @@ func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.L
 		}
 	}
 
+	legacyFiles, _ := scanLegacyFiles(projectPath)
 	var prompt string
 	if len(existingStories) > 0 {
 		prompt = fmt.Sprintf("Audit and refine existing user stories to ensure complete Definition of Done (DoD), edge cases, and interface contracts:\n\nSpecification:\n%s\n\nExisting User Stories:\n%s", string(specBytes), strings.Join(existingStories, "\n"))
 	} else {
 		prompt = fmt.Sprintf("Generate detailed user stories from specification:\n\n%s", string(specBytes))
+	}
+
+	if len(legacyFiles) > 0 {
+		prompt += fmt.Sprintf("\n\nExisting Legacy Code Files Detected in Workspace:\n- %s\n\nLEGACY STABILIZATION MANDATE: Code already exists in the project workspace. Assume it is legacy code with existing functionality. The primary initial goal is to stabilize it by creating unit and integration characterization tests for existing parts in US-001, and leveraging those tests as safety rails when refactoring the code to match future user story requirements.", strings.Join(legacyFiles, "\n- "))
 	}
 	var lastErr error
 
@@ -91,4 +97,62 @@ func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.L
 	}
 
 	return fmt.Errorf("roadmap generation failed: %w", lastErr)
+}
+
+// scanLegacyFiles walks projectPath and returns relative paths of existing legacy source files,
+// ignoring metadata directories, documentation, binary artifacts, and generated roadmap files.
+func scanLegacyFiles(projectPath string) ([]string, error) {
+	ignoredDirs := map[string]bool{
+		".git": true, ".noctifab": true, ".github": true, ".idea": true,
+		".vscode": true, ".gemini": true, ".antigravity": true, "roadmap": true,
+		"output": true, "dist": true, "target": true, "node_modules": true,
+		"vendor": true, "bin": true, "build": true,
+	}
+
+	ignoredFiles := map[string]bool{
+		"spec.md": true, "readme.md": true, "changelog.md": true,
+		"license": true, "version": true, ".gitignore": true,
+	}
+
+	ignoredExts := map[string]bool{
+		".log": true, ".db": true, ".sqlite": true, ".out": true,
+		".o": true, ".exe": true, ".so": true, ".dll": true,
+		".dylib": true, ".tmp": true,
+	}
+
+	var legacyFiles []string
+	err := filepath.WalkDir(projectPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		rel, err := filepath.Rel(projectPath, path)
+		if err != nil {
+			return nil
+		}
+
+		if d.IsDir() {
+			base := filepath.Base(path)
+			if ignoredDirs[strings.ToLower(base)] && rel != "." {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		baseLower := strings.ToLower(filepath.Base(path))
+		if ignoredFiles[baseLower] {
+			return nil
+		}
+
+		extLower := strings.ToLower(filepath.Ext(path))
+		if ignoredExts[extLower] {
+			return nil
+		}
+
+		legacyFiles = append(legacyFiles, rel)
+		return nil
+	})
+
+	sort.Strings(legacyFiles)
+	return legacyFiles, err
 }
