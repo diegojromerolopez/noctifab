@@ -44,6 +44,9 @@ secrets
 
 - **State-Driven Orchestration**: Operates using a stateless agent controlled by a stateful orchestrator. The orchestrator tracks tasks, action execution, and clarifications in a local SQLite or PostgreSQL database.
 - **Topological Task Scheduling**: Automatically constructs a Directed Acyclic Graph (DAG) of task dependencies and runs independent tasks concurrently.
+- **Self-Correcting & Dynamic Prompts Engine**: Dynamically adapts agent prompts using live log tailing, secret scrubbing (`log_tailer.go`), 0-token fast-path regex pre-filtering (`unblocker_fastpath.go`), 10x progressive log escalation, and `[STALL RECOVERY DIRECTIVE]` prompt injection on task retries.
+- **Legacy Codebase Stabilization**: Automatically scans pre-existing workspace code (`scanLegacyFiles`) and dynamically injects `US-001` characterization testing mandates into Product Manager, Planner, Generator, and Tester prompts before refactoring or feature additions.
+- **Pre-Flight Provider Capability Caching**: Thread-safe model parameter capability cache (`providerCapabilityCache`) that records parameter rejections on HTTP 400 and automatically omits unsupported fields on subsequent requests.
 - **Sandboxed Action Execution**: Safely edits code files and runs test suites inside host sandboxes or Docker containers.
 - **Test Validator Verification**: Prevents regression and guarantees code quality by running the project test suite multiple times with majority voting.
 - **Automated VCS Merging**: Manages Git checkouts, worker branch creation, rebase queues, pull request creation, and merges on GitHub and GitLab.
