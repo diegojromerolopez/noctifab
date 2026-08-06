@@ -13,7 +13,7 @@ While Proposals 1–9 in `SPEEDUP.md` focus on high-level concurrency (DAG pools
 | Proposal | Target Area | Estimated Speedup | Implementation Effort | Status | Codebase Target |
 | :--- | :--- | :---: | :---: | :---: | :--- |
 | **10. KV Prompt Cache Prefix Stabilization** | LLM Ingestion Latency | **2.0x–4.0x** (80% TTFT reduction) | Low | **[DONE] ✅** | `pkg/infrastructure/llm/`, `pkg/services/orchestrator_generator.go` |
-| **11. Unified Diff Multi-File Patching Tool (`apply_patch`)** | Output Generation & Turn Count | **2.5x–3.5x** | Medium | **[PLANNED] ⏳** | `pkg/services/production_tools.go` |
+| **11. Unified Diff Multi-File Patching Tool (`apply_patch`)** | Output Generation & Turn Count | **2.5x–3.5x** | Medium | **[DONE] ✅** | `pkg/services/apply_patch_tool.go`, `validator.go` |
 | **12. Selective / Incremental Test Impact Analysis (TIA)** | Intermediate Test Validation | **3.0x–5.0x** | Medium | **[PLANNED] ⏳** | `pkg/services/test_validator.go`, `sandbox_python.go`, `sandbox_docker.go` |
 | **13. Hot Daemonized Test Worker Pool & Process Reuse** | Test Runner Boot Latency | **1.5x–2.0x** | Medium | **[PLANNED] ⏳** | `pkg/services/sandbox.go`, `sandbox_docker.go` |
 | **14. AST-Driven Interface Extraction for Dependency Files** | Prompt Token Ingestion | **1.5x–2.0x** | Low | **[PLANNED] ⏳** | `pkg/services/context_slicer.go`, `orchestrator_execute.go` |
@@ -53,7 +53,7 @@ Proposals 10–20 build directly on top of these foundations to maximize per-tur
 
 ---
 
-### Proposal 11: Fast-Path Direct Multi-File Patching (`apply_patch` / Unified Diff Tool) [PLANNED] ⏳
+### Proposal 11: Fast-Path Direct Multi-File Patching (`apply_patch` / Unified Diff Tool) [DONE] ✅
 * **Codebase Target**: `pkg/services/production_tools.go` (`WriteFileTool`, `EditFileTool`, `MultiReplaceFileContentTool`)
 * **Current Bottleneck**: `WriteFileTool` requires the LLM to rewrite entire 300+ line files to modify 5 lines, generating thousands of slow output tokens. `EditFileTool` requires rigid JSON representations (`ReplacementChunk`) which frequently suffer formatting/escaping retries. Furthermore, modifying 3 separate files takes 3 sequential LLM turns.
 * **Architecture Solution**:
