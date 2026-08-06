@@ -59,10 +59,12 @@ func (c *TaskDiagnosticCache) OnToolExecuted(toolName string, args map[string]an
 
 	switch toolName {
 	case "write_file", "edit_file", "multi_replace_file_content", "delete_file":
-		if err == nil {
-			c.isDirty = true
-			c.inspectionCache = make(map[string]cachedReadResult)
-		}
+		// Invalidate cache regardless of success/failure: even a failed mutation
+		// attempt means the agent is actively trying to change the workspace.
+		// Stale cached diagnostic results (run_linter, run_tests) no longer
+		// reflect the state the agent is reasoning about after any mutation attempt.
+		c.isDirty = true
+		c.inspectionCache = make(map[string]cachedReadResult)
 	case "run_tests":
 		c.lastTestOutput = output
 		c.lastTestErr = err

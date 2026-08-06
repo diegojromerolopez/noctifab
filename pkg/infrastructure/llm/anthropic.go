@@ -48,7 +48,7 @@ func NewAnthropicProviderClient(url string, timeout, idleTimeout time.Duration, 
 	return &anthropicProviderClient{url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
 }
 
-func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt string) ([]byte, error) {
+func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) ([]byte, error) {
 	var url string
 	if a.url != "" {
 		url = a.url
@@ -61,13 +61,16 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	headers["anthropic-version"] = "2023-06-01"
 	headers["Content-Type"] = "application/json"
 
+	if maxTokens <= 0 {
+		maxTokens = 4096
+	}
 	payload := map[string]any{
 		"model": model,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
-		"max_tokens":  4096,
-		"temperature": 0.0,
+		"max_tokens":  maxTokens,
+		"temperature": tempOrDefault(temperature),
 	}
 	reqBody, err := json.Marshal(payload)
 	if err != nil {

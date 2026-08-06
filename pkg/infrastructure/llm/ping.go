@@ -16,21 +16,22 @@ import (
 // real completion). It only verifies: provider name is recognized, base URL is
 // reachable, and the API key authenticates against the models endpoint.
 //
-// Returns nil on success, or a descriptive error on failure (auth, network,
-// unknown provider).
-func Ping(ctx context.Context, provider, apiKey, url string) error {
+// Returns latency duration and nil on success, or a descriptive error on failure
+// (auth, network, unknown provider).
+func Ping(ctx context.Context, provider, apiKey, url string) (time.Duration, error) {
 	pClient, err := newProviderClientForPing(provider, url)
 	if err != nil {
-		return fmt.Errorf("unsupported LLM provider: %s", provider)
+		return 0, fmt.Errorf("unsupported LLM provider: %s", provider)
 	}
 
 	pingCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
+	start := time.Now()
 	if _, err := pClient.GetAvailableModels(pingCtx, apiKey); err != nil {
-		return classifyPingError(provider, err)
+		return 0, classifyPingError(provider, err)
 	}
-	return nil
+	return time.Since(start), nil
 }
 
 // newProviderClientForPing mirrors the dispatch in client.go but returns an

@@ -64,6 +64,19 @@ func (m *CommandMailbox) Wakeup() <-chan struct{} {
 	return m.wakeup
 }
 
+// PopAll drains and returns all currently buffered commands in the mailbox.
+func (m *CommandMailbox) PopAll() []Command {
+	var list []Command
+	for {
+		select {
+		case cmd := <-m.cmds:
+			list = append(list, cmd)
+		default:
+			return list
+		}
+	}
+}
+
 // SleepWithInterrupt sleeps for the given duration or until the context is cancelled
 // or a command notification arrives on the wakeup channel.
 func SleepWithInterrupt(ctx context.Context, duration time.Duration, wakeup <-chan struct{}) error {
@@ -144,6 +157,27 @@ func (c *OverrideMergeCmd) Execute(ctx context.Context, repo domain.StateReposit
 // storyCh is the channel into which story work items are forwarded when the daemon
 // operates in server mode; pass nil when running in single-story mode.
 func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, storyCh chan<- StoryWorkItem, llmClient domain.LLMClient) *http.Server {
+	mux := newDaemonMux(repo, mailbox, storyCh, llmClient)
+
+	// Enforce loopback binding (127.0.0.1)
+	server := &http.Server{
+		Addr:              "127.0.0.1:18080",
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	go func() {
+		_ = server.ListenAndServe()
+	}()
+
+	return server
+}
+
+// newDaemonMux builds the REST API routes for the daemon HTTP server.
+func newDaemonMux(repo domain.StateRepository, mailbox *CommandMailbox, storyCh chan<- StoryWorkItem, llmClient domain.LLMClient) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +196,12 @@ func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, sto
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		// Strip the workspace file index and cap the action log: both can be
+		// large and are not needed for daemon status inspection.
+		state.Files = nil
+		if len(state.LastActions) > 20 {
+			state.LastActions = state.LastActions[len(state.LastActions)-20:]
 		}
 		_ = json.NewEncoder(w).Encode(state)
 	})
@@ -256,119 +296,33 @@ func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, sto
 		_, _ = w.Write([]byte(`{"status":"accepted"}`))
 	})
 
-	// GET /api/v1/status — list status of all user stories
+	// GET /api/v1/status — list lightweight status summaries of all user
+	// stories (no Files, no LastActions, no full task bodies).
 	mux.HandleFunc("/api/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		states, err := repo.LoadAll(r.Context())
+		summaries, err := repo.LoadAllSummaries(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if summaries == nil {
+			summaries = []domain.StateSummary{}
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(states)
+		_ = json.NewEncoder(w).Encode(summaries)
 	})
 
 	// POST /api/v1/pause — pause the active user story
-	mux.HandleFunc("/api/v1/pause", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var err error
-		var state *domain.State
-		for i := 0; i < 5; i++ {
-			state, err = repo.Load(r.Context())
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			state.StoryStatus = domain.StoryPaused
-			err = repo.Save(r.Context(), state)
-			if err == nil {
-				break
-			}
-			if !errors.Is(err, domain.ErrVersionConflict) {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"paused"}`))
-	})
+	mux.HandleFunc("/api/v1/pause", storyStatusHandler(repo, domain.StoryPaused, `{"status":"paused"}`))
 
 	// POST /api/v1/resume — resume the paused user story
-	mux.HandleFunc("/api/v1/resume", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var err error
-		var state *domain.State
-		for i := 0; i < 5; i++ {
-			state, err = repo.Load(r.Context())
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			state.StoryStatus = domain.StoryRunning
-			err = repo.Save(r.Context(), state)
-			if err == nil {
-				break
-			}
-			if !errors.Is(err, domain.ErrVersionConflict) {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"resumed"}`))
-	})
+	mux.HandleFunc("/api/v1/resume", storyStatusHandler(repo, domain.StoryRunning, `{"status":"resumed"}`))
 
 	// POST /api/v1/cancel — cancel the active user story
-	mux.HandleFunc("/api/v1/cancel", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var err error
-		var state *domain.State
-		for i := 0; i < 5; i++ {
-			state, err = repo.Load(r.Context())
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			state.StoryStatus = domain.StoryCancelled
-			err = repo.Save(r.Context(), state)
-			if err == nil {
-				break
-			}
-			if !errors.Is(err, domain.ErrVersionConflict) {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"cancelled"}`))
-	})
+	mux.HandleFunc("/api/v1/cancel", storyStatusHandler(repo, domain.StoryCancelled, `{"status":"cancelled"}`))
 
 	// POST /api/v1/tasks — add a manual task
 	mux.HandleFunc("/api/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
@@ -420,15 +374,5 @@ func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, sto
 		_, _ = w.Write([]byte(`{"status":"accepted"}`))
 	})
 
-	// Enforce loopback binding (127.0.0.1)
-	server := &http.Server{
-		Addr:    "127.0.0.1:18080",
-		Handler: mux,
-	}
-
-	go func() {
-		_ = server.ListenAndServe()
-	}()
-
-	return server
+	return mux
 }

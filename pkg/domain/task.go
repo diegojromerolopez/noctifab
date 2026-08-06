@@ -36,19 +36,21 @@ const (
 
 // Task represents a specific item in the scheduling graph.
 type Task struct {
-	ID               string     `json:"id"`
-	Title            string     `json:"title"`
-	Description      string     `json:"description"`
-	Status           TaskStatus `json:"status"`
-	ChangeType       ChangeType `json:"change_type"`
-	AssignedTo       string     `json:"assigned_to"`
-	Progress         int        `json:"progress"`   // Completion percentage (0 to 100)
-	DependsOn        []string   `json:"depends_on"` // Can store parent task IDs or matching titles
-	TargetFiles      []string   `json:"target_files,omitempty"`
-	PartialChangelog []string   `json:"partial_changelog,omitempty"`
-	FailureLog       string     `json:"failure_log,omitempty"`
-	Retries          int        `json:"retries"`
-	MaxRetries       int        `json:"max_retries"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	ID                string     `json:"id"`
+	Title             string     `json:"title"`
+	Description       string     `json:"description"`
+	Status            TaskStatus `json:"status"`
+	ChangeType        ChangeType `json:"change_type"`
+	AssignedTo        string     `json:"assigned_to"`
+	Progress          int        `json:"progress"`   // Completion percentage (0 to 100)
+	DependsOn         []string   `json:"depends_on"` // Can store parent task IDs or matching titles
+	TargetFiles       []string   `json:"target_files,omitempty"`
+	PartialChangelog  []string   `json:"partial_changelog,omitempty"`
+	FailureLog        string     `json:"failure_log,omitempty"`
+	RecoveryDirective string     `json:"recovery_directive,omitempty"`
+	StallCount        int        `json:"stall_count,omitempty"`
+	Retries           int        `json:"retries"`
+	MaxRetries        int        `json:"max_retries"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }

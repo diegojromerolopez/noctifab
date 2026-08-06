@@ -41,6 +41,14 @@ func (r *inMemoryRepo) LoadAll(_ context.Context) ([]*domain.State, error) {
 	return []*domain.State{r.state}, nil
 }
 
+func (r *inMemoryRepo) LoadAllSummaries(_ context.Context) ([]domain.StateSummary, error) {
+	return []domain.StateSummary{domain.SummarizeState(r.state)}, nil
+}
+
+func (r *inMemoryRepo) PruneFinishedStates(_ context.Context, _ int) (int, error) {
+	return 0, nil
+}
+
 func newTestState(tasks []domain.Task) *domain.State {
 	return &domain.State{
 		ID:           "test-state",

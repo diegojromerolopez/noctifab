@@ -2,9 +2,7 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -13,8 +11,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
-
-const estTokensPerChar = 4
 
 // NamedClient associates an LLM client with a provider and model name for
 // cooldown tracking and cost estimation.
@@ -95,7 +91,7 @@ func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.L
 			continue
 		}
 
-		if err := f.checkBudget(ctx, today, backend.Model); err != nil {
+		if err := f.checkBudget(ctx, today, backend.Model, estimatePromptTokens(prompt)); err != nil {
 			lastErr = err
 			continue
 		}
@@ -126,7 +122,10 @@ func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.L
 	return nil, fmt.Errorf("no LLM backends available")
 }
 
-func (f *FailoverClient) checkBudget(ctx context.Context, date string, model string) error {
+// checkBudget verifies that prior usage plus the estimated cost of the
+// pending request stays within the daily token limit, so a single oversized
+// call cannot sail past the budget.
+func (f *FailoverClient) checkBudget(ctx context.Context, date string, model string, pendingTokens int64) error {
 	if f.budgetStore == nil || f.tokenLimit <= 0 {
 		return nil
 	}
@@ -134,7 +133,7 @@ func (f *FailoverClient) checkBudget(ctx context.Context, date string, model str
 	if err != nil {
 		return fmt.Errorf("token usage check: %w", err)
 	}
-	if used >= f.tokenLimit {
+	if used+pendingTokens > f.tokenLimit {
 		return fmt.Errorf("%w: daily token limit %d exhausted for %s", domain.ErrBudgetExhausted, f.tokenLimit, model)
 	}
 	return nil
@@ -144,9 +143,7 @@ func (f *FailoverClient) recordUsage(ctx context.Context, date string, model str
 	if f.budgetStore == nil {
 		return nil
 	}
-	promptTokens := int64(len(prompt) / estTokensPerChar)
-	completionTokens := int64(estimateCompletionTokens(resp))
-	totalTokens := promptTokens + completionTokens
+	totalTokens := estimateUsageTokens(prompt, resp)
 	if totalTokens <= 0 {
 		return nil
 	}
@@ -154,33 +151,4 @@ func (f *FailoverClient) recordUsage(ctx context.Context, date string, model str
 		return fmt.Errorf("failed to record token usage: %w", err)
 	}
 	return nil
-}
-
-func estimateCompletionTokens(resp *domain.LLMResponse) int {
-	n := len(resp.Reasoning) / estTokensPerChar
-	for _, a := range resp.Actions {
-		n += len(a.Tool) / estTokensPerChar
-		if a.Args != nil {
-			data, err := json.Marshal(a.Args)
-			if err == nil {
-				n += len(data) / estTokensPerChar
-			}
-		}
-	}
-	if n < 1 {
-		n = 1
-	}
-	return n
-}
-
-func isTransientError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "429") ||
-		strings.Contains(msg, "503") ||
-		strings.Contains(msg, "overloaded") ||
-		strings.Contains(msg, "timeout") ||
-		strings.Contains(msg, "deadline exceeded")
 }

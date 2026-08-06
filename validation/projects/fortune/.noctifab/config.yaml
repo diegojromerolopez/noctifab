@@ -9,25 +9,56 @@ agents:
         number: 1
         iterations: 2
         max_user_stories: 5
+        providers:
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     planner:
         number: 1
         iterations: 2
     architect:
         number: 1
         iterations: 2
+        providers:
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     generators:
         number: 4
         iterations: 5
         providers:
-            - name: opencode-primary
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     testers:
         number: 2
         iterations: 3
         providers:
-            - name: huggingface-kimi
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     qa:
         number: 2
         iterations: 2
+        providers:
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     security:
         number: 1
         iterations: 2
@@ -55,36 +86,68 @@ storage:
     json_file_path: .noctifab/data/state.json
 llm:
     priority:
-        - opencode-primary
-        - huggingface-kimi
-        - openrouter-backup
+        - opencode
+        - deepseek-pro
+        - qwen
+        - openai
+        - openrouter
     providers:
-        - name: opencode-primary
-          provider: opencode
+        - name: openai
+          provider: openai
+          model: gpt-5.6-luna
+          api_keys: OPENAI_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
+        - name: deepseek-pro
+          provider: qwencloud
+          model: deepseek-v4-pro
+          api_keys: QWENCLOUD_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
+        - name: qwen
+          provider: qwencloud
           model: qwen3.8-max
-          api_keys: OPENCODE_API_KEY
+          api_keys: QWENCLOUD_API_KEY
           max_retries: 2
           retry_backoff: 50ms
-          max_timeout: 25s
-          idle_timeout: 8s
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
           streaming: true
-        - name: huggingface-kimi
-          provider: huggingface
-          model: latest
-          api_keys: HUGGINGFACE_API_KEY
+          enable_thinking: true
+          thinking_budget: 8192
+        - name: opencode
+          provider: opencode
+          model: glm-5.2
+          api_keys: OPENCODE_ZEN_API_KEY
           max_retries: 2
           retry_backoff: 50ms
-          max_timeout: 25s
-          idle_timeout: 8s
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
           streaming: true
-        - name: openrouter-backup
+        - name: openrouter
           provider: openrouter
-          model: deepseek/deepseek-v4-flash-latest
+          model: deepseek/deepseek-v4-flash-0731
           api_keys: OPENROUTER_API_KEY
           max_retries: 2
           retry_backoff: 50ms
-          max_timeout: 25s
-          idle_timeout: 8s
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
           streaming: true
 vcs:
     provider: github
@@ -117,6 +180,10 @@ sandbox:
         - gcc
         - sqlite3
         - git
+conversation_mode: compaction
+max_history_messages: 20
+compaction_threshold: 25
+max_history_tokens: 32768
 telemetry:
     enabled: false
     exporter: otlp
@@ -128,5 +195,3 @@ context:
     mode: full
     diff_window_lines: 15
     compaction: simple_english
-
-

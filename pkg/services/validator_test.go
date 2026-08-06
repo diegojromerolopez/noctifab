@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -299,5 +300,43 @@ func TestPolicyValidator_ExcludePaths(t *testing.T) {
 				t.Errorf("expected allowed=%t, got allowed=%t (reason: %s)", tc.allowed, res.Allowed, res.Reason)
 			}
 		})
+	}
+}
+
+func TestPolicyValidator_GuidanceFormatting(t *testing.T) {
+	profiles := map[string]ProfileConfig{
+		"generator": {
+			AllowedTools:    []string{"read_file", "write_file", "run_tests"},
+			AllowedCommands: []string{"go"},
+		},
+	}
+	validator := NewPolicyValidator([]string{"*"}, "main", profiles)
+	state := &domain.State{ProjectPath: "/workspace"}
+	ctx := context.WithValue(context.Background(), AgentRoleKey, "generator")
+
+	// 1. Tool blocked -> verify guidance in reason string
+	actionBlockedTool := domain.Action{Tool: "bash"}
+	resTool, err := validator.Validate(ctx, actionBlockedTool, state)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resTool.Allowed {
+		t.Error("expected bash tool to be blocked")
+	}
+	if !strings.Contains(resTool.Reason, "Authorized tools:") {
+		t.Errorf("expected reason to contain authorized tools guidance, got: %s", resTool.Reason)
+	}
+
+	// 2. Command blocked -> verify guidance in reason string
+	actionBlockedCmd := domain.Action{Tool: "run_tests", Args: map[string]any{"command": "make test"}}
+	resCmd, err := validator.Validate(ctx, actionBlockedCmd, state)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resCmd.Allowed {
+		t.Error("expected make command to be blocked")
+	}
+	if !strings.Contains(resCmd.Reason, "Allowed commands:") {
+		t.Errorf("expected reason to contain allowed commands guidance, got: %s", resCmd.Reason)
 	}
 }

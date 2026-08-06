@@ -12,13 +12,13 @@ import (
 
 func (o *Orchestrator) syncWorkspaceFiles(ctx context.Context, state *domain.State) error {
 	// Fast check: if less than 5 seconds elapsed and git status reports no changes, skip walk
-	if time.Since(o.lastWorkspaceSync) < 5*time.Second {
+	if time.Since(o.getLastWorkspaceSync()) < 5*time.Second {
 		status, err := o.git.Run(ctx, false, "status", "--porcelain")
 		if err == nil && strings.TrimSpace(status) == "" {
 			return nil
 		}
 	}
-	o.lastWorkspaceSync = time.Now()
+	o.setLastWorkspaceSync(time.Now())
 
 	var files []domain.FileInfo
 
@@ -62,8 +62,7 @@ func (o *Orchestrator) syncWorkspaceFiles(ctx context.Context, state *domain.Sta
 				})
 			}
 		}
-		state.Files = files
-		return o.repo.Save(ctx, state)
+		return o.saveFileIndexIfChanged(ctx, state, files)
 	}
 
 	// Fallback to WalkDir if git command fails or is not a repo
@@ -115,8 +114,33 @@ func (o *Orchestrator) syncWorkspaceFiles(ctx context.Context, state *domain.Sta
 	if err != nil {
 		return err
 	}
+	return o.saveFileIndexIfChanged(ctx, state, files)
+}
+
+// saveFileIndexIfChanged updates state.Files with the freshly built index and
+// persists the state only when the index actually changed, avoiding a full
+// repository Save on every tick when the workspace is untouched.
+func (o *Orchestrator) saveFileIndexIfChanged(ctx context.Context, state *domain.State, files []domain.FileInfo) error {
+	if fileIndexesEqual(state.Files, files) {
+		state.Files = files
+		return nil
+	}
 	state.Files = files
 	return o.repo.Save(ctx, state)
+}
+
+// fileIndexesEqual reports whether two workspace file indexes are identical
+// (same files, sizes, and modification times in the same order).
+func fileIndexesEqual(a, b []domain.FileInfo) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Path != b[i].Path || a[i].Size != b[i].Size || !a[i].LastModified.Equal(b[i].LastModified) {
+			return false
+		}
+	}
+	return true
 }
 
 func (o *Orchestrator) allTasksFinished(state *domain.State) bool {

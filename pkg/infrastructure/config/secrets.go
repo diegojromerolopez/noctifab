@@ -125,7 +125,7 @@ func applySecretsToConfig(cfg *Config, secrets map[string]string) {
 	for i := range cfg.LLM.Providers {
 		cfg.LLM.Providers[i].APIKey = resolveSecretRef(cfg.LLM.Providers[i].APIKey, secrets)
 		cfg.LLM.Providers[i].URL = resolveSecretRef(cfg.LLM.Providers[i].URL, secrets)
-		
+
 		var keySources []string
 		if len(cfg.LLM.Providers[i].APIKeys) > 0 {
 			keySources = append(keySources, cfg.LLM.Providers[i].APIKeys...)

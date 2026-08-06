@@ -18,7 +18,7 @@ This document covers all supported LLM providers, their configuration options, e
 | Kimi / Moonshot | `kimi`, `moonshot` | `KIMI_API_KEY`, `MOONSHOT_API_KEY` | `https://api.moonshot.ai/v1` | OpenAI-compat |
 | Groq | `groq` | `GROQ_API_KEY` | `https://api.groq.com/openai/v1` | OpenAI-compat |
 | OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` | OpenAI-compat |
-| Qwen / DashScope | `qwen`, `dashscope` | `DASHSCOPE_API_KEY`, `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI-compat |
+| Qwen / QwenCloud / DashScope | `qwencloud`, `qwen`, `dashscope` | `QWENCLOUD_API_KEY`, `DASHSCOPE_API_KEY`, `QWEN_API_KEY` | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | OpenAI-compat |
 | Together AI | `together` | `TOGETHER_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
 | Meta Llama | `llama`, `meta` | `LLAMA_API_KEY`, `META_API_KEY` | `https://api.together.xyz/v1` | OpenAI-compat |
 | HuggingFace | `huggingface` | `HUGGINGFACE_API_KEY` | `https://api-inference.huggingface.co/v1` | OpenAI-compat |
@@ -251,25 +251,37 @@ llm:
 
 ---
 
-### Qwen / DashScope (Alibaba Cloud)
+### Qwen / QwenCloud / DashScope (Alibaba Cloud)
 
-**Models**: `qwen-max`, `qwen-plus`, `qwen-turbo`, `qwen-long`, `qwen-coder-plus`
-**Fallback chain**: `qwen-max` → `qwen-plus` → `qwen-turbo`
+**Models**: `qwen3.8-max`, `qwen-max`, `qwen-plus`, `qwen-turbo`, `qwen-long`, `qwen-coder-plus`
+**Fallback chain**: `qwen3.8-max` → `qwen-max` → `qwen-plus` → `qwen-turbo`
 **Ranking**: tier keyword (`max` > `plus` > `turbo` > `long`) × base score.
+
+#### Configuration Example (Standard & Thinking Models)
 
 ```yaml
 # .noctifab/secrets.yaml
-DASHSCOPE_API_KEY: "sk-..."
+QWENCLOUD_API_KEY: "sk-..."
 
 # .noctifab/config.yaml
 llm:
-  provider: "qwen"
-  model: "qwen-max"
-  api_key: "secret:DASHSCOPE_API_KEY"
-  streaming: true
+  priority:
+    - "qwencloud-max"
+  providers:
+    - name: "qwencloud-max"
+      provider: "qwencloud"
+      model: "qwen3.8-max"
+      api_keys: "QWENCLOUD_API_KEY"
+      streaming: true
+      enable_thinking: true
+      thinking_budget: 8192
 ```
 
-> Both `qwen` and `dashscope` are accepted as provider names.
+> **Thinking Mode Support (`enable_thinking`, `thinking_budget`)**:
+> - `enable_thinking: true` activates Qwen's chain-of-thought reasoning mode (sending `enable_thinking: true` in the API request body).
+> - `thinking_budget`: Caps the reasoning token budget (e.g. `8192`).
+> - When `enable_thinking: true` is configured, `noctifab` automatically bypasses `response_format: json_object` (which is incompatible with DashScope thinking traces) and relies on `ExtractJSONBlock` to extract clean JSON payloads from reasoning streams (`<think>...</think>`).
+> - Valid provider alias names: `qwencloud` (uses `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`), `qwen`, and `dashscope`.
 
 ---
 

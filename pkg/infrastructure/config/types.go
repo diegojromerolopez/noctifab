@@ -44,7 +44,11 @@ type Config struct {
 	Context        ContextConfig            `yaml:"context"`
 	WorkspaceCache WorkspaceCacheConfig     `yaml:"workspace_cache"`
 
-	PollInterval               Duration `yaml:"poll_interval"`
+	PollInterval Duration `yaml:"poll_interval"`
+	// StoryExecInterval is the tick frequency of the story execution loop
+	// (how often RunOnce is retried while a story is executing). Defaults to
+	// 2s; the coarser PollInterval governs server-wide idle polling.
+	StoryExecInterval          Duration `yaml:"story_exec_interval"`
 	MaxClarificationWait       Duration `yaml:"max_clarification_wait"`
 	ClarificationTimeoutAction string   `yaml:"clarification_timeout_action"`
 
@@ -97,6 +101,10 @@ type StorageConfig struct {
 	Provider     string `yaml:"provider"`
 	ConnString   string `yaml:"conn_string"`
 	JSONFilePath string `yaml:"json_file_path"`
+	// KeepFinishedStates bounds how many terminal (SUCCESS/FAILED) story
+	// states are retained; older ones are pruned on daemon startup
+	// (0 = built-in default of 20, negative = never prune).
+	KeepFinishedStates int `yaml:"keep_finished_states"`
 }
 
 type FailoverConfig struct {
@@ -161,7 +169,23 @@ type ProviderSpec struct {
 	RetryBackoffFactor float64  `yaml:"retry_backoff_factor,omitempty"`
 	MaxTimeout         Duration `yaml:"max_timeout,omitempty"`
 	IdleTimeout        Duration `yaml:"idle_timeout,omitempty"`
+	MaxTokens          int      `yaml:"max_tokens,omitempty"`
+	Temperature        float64  `yaml:"temperature,omitempty"`
 	Streaming          *bool    `yaml:"streaming,omitempty"`
+	// DisableJSONMode disables response_format=json_object for this provider.
+	// Required when the provider/model does not support forced JSON mode (e.g.
+	// QwenCloud thinking models, which output a reasoning trace before the JSON
+	// payload and reject the json_object response format). When true, the LLM
+	// client skips the response_format field entirely and relies on
+	// ExtractJSONBlock to parse the JSON envelope from the raw response.
+	DisableJSONMode bool `yaml:"disable_json_mode,omitempty"`
+	// EnableThinking enables chain-of-thought / reasoning output (e.g. QwenCloud thinking mode).
+	EnableThinking *bool `yaml:"enable_thinking,omitempty"`
+	// ThinkingBudget caps the reasoning token budget (e.g. for QwenCloud thinking models).
+	ThinkingBudget *int `yaml:"thinking_budget,omitempty"`
+	// ExtraParams holds provider-specific extra body parameters passed verbatim
+	// in the API request.
+	ExtraParams map[string]string `yaml:"extra_params,omitempty"`
 }
 
 type LLMConfig struct {
@@ -183,7 +207,11 @@ type LLMConfig struct {
 	SkipOnCreditExhausted bool           `yaml:"skip_on_credit_exhausted"`
 	MaxTimeout            Duration       `yaml:"max_timeout"`
 	IdleTimeout           Duration       `yaml:"idle_timeout"`
+	MaxTokens             int            `yaml:"max_tokens"`
 	Streaming             *bool          `yaml:"streaming"`
+	// MaxPromptTokens is a pre-send cap on the estimated token size of
+	// outgoing prompts (0 = built-in default of 262144, negative = disabled).
+	MaxPromptTokens int64 `yaml:"max_prompt_tokens"`
 }
 
 type PullRequestConfig struct {
@@ -223,26 +251,35 @@ type ConventionalCommitConfig struct {
 }
 
 type SandboxConfig struct {
-	Mode               string   `yaml:"mode"`
-	TimeoutSeconds     int      `yaml:"timeout_seconds"`
-	IdleTimeoutSeconds int      `yaml:"idle_timeout_seconds"`
-	GracePeriodSeconds int      `yaml:"grace_period_seconds"`
-	TestCommand        string   `yaml:"test_command"`
-	LinterCommand      string   `yaml:"linter_command"`
-	FormatterCommand   string   `yaml:"formatter_command"`
-	MaxLinterRetries   int      `yaml:"max_linter_retries"`
-	ExcludePaths       []string `yaml:"exclude_paths"`
-	AllowedCommands    []string `yaml:"allowed_commands"`
-	AutoInstallDeps    bool     `yaml:"auto_install_deps"`
-	PackageManagers    []string `yaml:"package_managers"`
-	ForbiddenPatterns  []string `yaml:"forbidden_patterns"`
+	Mode               string `yaml:"mode"`
+	TimeoutSeconds     int    `yaml:"timeout_seconds"`
+	IdleTimeoutSeconds int    `yaml:"idle_timeout_seconds"`
+	GracePeriodSeconds int    `yaml:"grace_period_seconds"`
+	TestCommand        string `yaml:"test_command"`
+	LinterCommand      string `yaml:"linter_command"`
+	FormatterCommand   string `yaml:"formatter_command"`
+	MaxLinterRetries   int    `yaml:"max_linter_retries"`
+	// MaxLinterIssues is the maximum number of linter issues tolerated before
+	// task validation fails. 0 means strict (zero issues allowed). -1 means
+	// disabled (never fail on linter issues). Default is 100, which allows
+	// minor style issues to accumulate without blocking task completion —
+	// a completed project with some linter warnings is preferable to a
+	// permanently stalled task.
+	MaxLinterIssues   int      `yaml:"max_linter_issues"`
+	ExcludePaths      []string `yaml:"exclude_paths"`
+	AllowedCommands   []string `yaml:"allowed_commands"`
+	AutoInstallDeps   bool     `yaml:"auto_install_deps"`
+	PackageManagers   []string `yaml:"package_managers"`
+	ForbiddenPatterns []string `yaml:"forbidden_patterns"`
 }
 
 type AgentProviderRef struct {
-	Name     string   `yaml:"name,omitempty"`
-	Provider string   `yaml:"provider,omitempty"`
-	Model    string   `yaml:"model,omitempty"`
-	Models   []string `yaml:"models,omitempty"`
+	Name           string   `yaml:"name,omitempty"`
+	Provider       string   `yaml:"provider,omitempty"`
+	Model          string   `yaml:"model,omitempty"`
+	Models         []string `yaml:"models,omitempty"`
+	EnableThinking *bool    `yaml:"enable_thinking,omitempty"`
+	ThinkingBudget *int     `yaml:"thinking_budget,omitempty"`
 }
 
 type RoleSetting struct {

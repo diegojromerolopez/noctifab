@@ -110,3 +110,41 @@ func TestTaskDiagnosticCache_Disabled(t *testing.T) {
 		t.Fatalf("expected cache miss when cache is disabled, got hit")
 	}
 }
+
+func TestTaskDiagnosticCache_FailedEditInvalidatesCache(t *testing.T) {
+	cache := NewTaskDiagnosticCache(true)
+
+	// Record a successful linter run — cache is now warm.
+	cache.OnToolExecuted("run_linter", nil, "No lint errors found", nil)
+	_, _, ok := cache.TryGetCachedResult("run_linter")
+	if !ok {
+		t.Fatalf("expected cache hit after run_linter, got miss")
+	}
+
+	// A FAILED edit_file (target_content not found) must also dirty the cache.
+	cache.OnToolExecuted("edit_file", map[string]any{"path": "app/main.py"}, "edit_file failed: target_content not found", errors.New("target_content not found"))
+
+	_, _, ok = cache.TryGetCachedResult("run_linter")
+	if ok {
+		t.Fatalf("expected cache miss after failed edit_file, got stale hit — this was the root cause of the linter lock-in bug")
+	}
+}
+
+func TestTaskDiagnosticCache_FailedWriteInvalidatesCache(t *testing.T) {
+	cache := NewTaskDiagnosticCache(true)
+
+	// Record a successful test run.
+	cache.OnToolExecuted("run_tests", nil, "PASS: 10 tests passed", nil)
+	_, _, ok := cache.TryGetCachedResult("run_tests")
+	if !ok {
+		t.Fatalf("expected cache hit after run_tests, got miss")
+	}
+
+	// A FAILED write_file must also dirty the cache.
+	cache.OnToolExecuted("write_file", map[string]any{"path": "app/foo.py"}, "", errors.New("permission denied"))
+
+	_, _, ok = cache.TryGetCachedResult("run_tests")
+	if ok {
+		t.Fatalf("expected cache miss after failed write_file, got stale hit")
+	}
+}

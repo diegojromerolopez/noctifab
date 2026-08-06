@@ -24,13 +24,13 @@ func TestPing_Success(t *testing.T) {
 
 	// Pass the completions endpoint; ping's provider client will derive
 	// /models from it the same way Client.Complete does in production.
-	if err := Ping(context.Background(), "opencode", "test-key", server.URL+"/chat/completions"); err != nil {
+	if _, err := Ping(context.Background(), "opencode", "test-key", server.URL+"/chat/completions"); err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
 }
 
 func TestPing_UnsupportedProvider(t *testing.T) {
-	err := Ping(context.Background(), "bogus", "key", "")
+	_, err := Ping(context.Background(), "bogus", "key", "")
 	if err == nil {
 		t.Fatal("expected error for unsupported provider, got nil")
 	}
@@ -47,7 +47,7 @@ func TestPing_RegistryProvider(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if err := Ping(context.Background(), "openrouter", "test-key", server.URL+"/v1"); err != nil {
+	if _, err := Ping(context.Background(), "openrouter", "test-key", server.URL+"/v1"); err != nil {
 		t.Fatalf("expected nil error for registry-only provider openrouter, got: %v", err)
 	}
 }
@@ -59,7 +59,7 @@ func TestPing_AuthFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := Ping(context.Background(), "opencode", "bad-key", server.URL+"/models")
+	_, err := Ping(context.Background(), "opencode", "bad-key", server.URL+"/models")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -75,7 +75,7 @@ func TestPing_QuotaFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := Ping(context.Background(), "opencode", "key", server.URL+"/models")
+	_, err := Ping(context.Background(), "opencode", "key", server.URL+"/models")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -89,7 +89,7 @@ func TestPing_Timeout(t *testing.T) {
 	// quickly. Using a short context timeout keeps the test fast.
 	ctx, cancel := context.WithTimeout(context.Background(), 0)
 	defer cancel()
-	err := Ping(ctx, "opencode", "key", "http://192.0.2.1:1/models")
+	_, err := Ping(ctx, "opencode", "key", "http://192.0.2.1:1/models")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

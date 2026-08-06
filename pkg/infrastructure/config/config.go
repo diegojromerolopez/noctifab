@@ -258,6 +258,7 @@ var validLLMProviders = map[string]bool{
 	"ai21":        true,
 	"upstage":     true,
 	"kimi":        true,
+	"qwencloud":   true,
 	"moonshot":    true,
 }
 

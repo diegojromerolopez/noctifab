@@ -65,6 +65,11 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 
+		// Storage retention: prune terminal story states beyond the
+		// configured keep-last bound so the daemon's DB does not grow
+		// monotonically across stories.
+		pruneRetainedStates(context.Background(), repo, cfg.Storage.KeepFinishedStates)
+
 		// Initialize sandbox runner.
 		var sandboxRunner services.Sandbox
 		if cfg.Sandbox.Mode == "docker" {
@@ -95,7 +100,7 @@ var serveCmd = &cobra.Command{
 			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
 		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
-		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand, Timeout: runTimeout})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand, FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.MaxLinterIssues, Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM client with database budget store.
@@ -132,6 +137,7 @@ var serveCmd = &cobra.Command{
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
 		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
 		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
+		evaluator.MaxLinterIssues = cfg.Sandbox.MaxLinterIssues
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
@@ -159,7 +165,8 @@ var serveCmd = &cobra.Command{
 			DevOpsIterations:      cfg.Agents.DevOps.Iterations,
 			PollInterval:          time.Duration(cfg.PollInterval),
 			MaxRetries:            10,
-			Concurrency:           cfg.Agents.Generators.Number,
+			Concurrency:           effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
+			UseWorktrees:          cfg.VCS.UseWorktrees,
 			OCCMaxRetries:         cfg.OCCMaxRetries,
 			OCCBackoffBase:        time.Duration(cfg.OCCBackoffBase),
 			OCCBackoffFactor:      cfg.OCCBackoffFactor,
@@ -214,7 +221,7 @@ var serveCmd = &cobra.Command{
 		fmt.Printf("noctifab daemon started (PID %d). Listening on 127.0.0.1:18080\n", os.Getpid())
 
 		// Server mode: consume stories from the channel and execute each one.
-		return runServerLoop(ctx, orchestrator, repo, storyCh, cfg.VCS.BaseBranch, cfg.VCS.BranchPrefix)
+		return runServerLoop(ctx, orchestrator, repo, storyCh, cfg.VCS.BaseBranch, cfg.VCS.BranchPrefix, storyExecInterval(cfg))
 	},
 }
 
@@ -227,6 +234,7 @@ func runServerLoop(
 	repo domain.StateRepository,
 	storyCh <-chan services.StoryWorkItem,
 	baseBranch, branchPrefix string,
+	execInterval time.Duration,
 ) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -245,7 +253,7 @@ func runServerLoop(
 			return nil
 
 		case item := <-storyCh:
-			if err := processStory(ctx, orchestrator, repo, item, cwd, baseBranch, branchPrefix); err != nil {
+			if err := processStory(ctx, orchestrator, repo, item, cwd, baseBranch, branchPrefix, execInterval); err != nil {
 				fmt.Fprintf(os.Stderr, "noctifab daemon: story %s failed: %v\n", item.Path, err)
 			}
 		}
@@ -260,6 +268,7 @@ func processStory(
 	repo domain.StateRepository,
 	item services.StoryWorkItem,
 	projectPath, baseBranch, branchPrefix string,
+	execInterval time.Duration,
 ) error {
 	// Open per-story log file (.noctifab/logs/roadmap/<story>.log).
 	logFile, err := os.OpenFile(item.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -297,10 +306,9 @@ func processStory(
 	}
 
 	// Execution loop: run until all tasks are done or context is cancelled.
-	// Use 2-second ticker for fast cycles during story execution
-	// (the configured poll_interval is used server-wide; here we need quick turnaround).
-	const storyExecFreq = 2 * time.Second
-	ticker := time.NewTicker(storyExecFreq)
+	// Uses story_exec_interval (default 2s) for fast cycles during story
+	// execution (the coarser poll_interval is used server-wide).
+	ticker := time.NewTicker(execInterval)
 	defer ticker.Stop()
 
 	for {

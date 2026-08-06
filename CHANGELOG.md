@@ -5,6 +5,135 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-08-07
+
+### Removed
+- **Documentation Cleanup**: Consolidated architectural insights, dynamic prompt injection features, and 5x–10x acceleration strategies into primary documentation (`README.md`, `docs/`) and removed obsolete root markdown files (`BOTTLENECKS.md`, `DYNAMIC_PROMPTS.md`, `FAILURE.md`, `LLM_PROVIDERS.md`, `SPEEDUP_EXTENSION.md`, `SPEEDUP.md`).
+
+### Changed
+- **Documentation Consolidation (`README.md` & `docs/`)**:
+  - Updated `README.md` and `docs/unblocker_agent.md` with **Dynamic Prompt Enhancement** features, documenting live execution log tailing, secret scrubbing (`log_tailer.go`), 0-token fast-path regex pre-filtering (`unblocker_fastpath.go`), 10x progressive log window escalation (50 $\rightarrow$ 500 $\rightarrow$ 5,000 lines), and task stall recovery directives.
+  - Added **Dark Factory Acceleration Engine (5x–10x Speedup)** documentation to `README.md` and `docs/architecture.md`, highlighting parallel DAG task worker pools with Git worktree sandboxing, tiered LLM provider routing, parallel 3x test majority-vote validation, unified diff multi-file patching (`apply_patch`), pre-baked base images, prompt history pruning, and speculative prefetching.
+
+### Fixed
+- **Pre-Flight Provider Banning Name Collision (`start.go`)**: Fixed a bug where pre-flight ping failures appended both provider name (`p.Name`) and provider type (`p.Provider`) to `bannedNames`, causing sibling provider instances sharing the same provider protocol (e.g. `gemini-backup`) to be collateral-banned when `gemini-primary` failed. Provider banning is now strictly scoped by unique instance name (`p.Name`).
+
+## [0.22.0] - 2026-08-06
+
+### Added
+- **Dynamic Prompt Enhancement via Unblocker Log Injection (`DYNAMIC_PROMPTS.md`)**: Implemented dynamic log tailing, secret sanitization, zero-token fast-path regex unblocking, and 10x progressive log escalation in `UnblockerAgent`:
+  - **Live Log Tailing & Secret Scrubbing (`log_tailer.go`)**: Added `TailLogFile` and `SanitizeLog` to read standard output logs and redact sensitive credentials (API keys, bearer tokens, passwords).
+  - **Fast-Path Regex Classifier (`unblocker_fastpath.go`)**: Added static regex pre-filtering for 0-token unblocking of routine CLI stalls (interactive stdin prompts, port binding collisions, test watch mode spinners).
+  - **10x Progressive Log Escalation**: Configured 3-tier log tail windowing based on `task.StallCount` (50 lines $\rightarrow$ 500 lines $\rightarrow$ 5,000 lines, capped at 3 escalations before failing task).
+  - **Task Recovery Directives**: Attached `RecoveryDirective` to task state upon reset and injected `[STALL RECOVERY DIRECTIVE]` into `Generator` prompts on retry attempts to prevent repeating stalls.
+
+## [0.21.1] - 2026-08-06
+
+### Added
+- **Unified Diff Multi-File Patching Tool (`apply_patch`, Proposal 11)**: Created `ApplyPatchTool` (`pkg/services/apply_patch_tool.go`) allowing Generator and Tester agents to apply single- or multi-file unified diff patches (`diff -u` / Git patch format) in a single turn. Features fuzzy line matching, file creation/deletion support, in-process syntax checks, and full sandbox security validation. Added `ApplyPatchTool` to `validator.go` role profiles and updated LLM prompt templates in `prompt_templates.go`.
+
+### Changed
+- **Task Entity & Atomicity Mandates**: Updated Product Manager and Planner system prompts in `prompt_templates.go` to enforce strict task entity and atomicity. Prohibited test-only tasks, mandated co-located application functionality and tests in every task, and enforced single-responsibility atomic tasks (1–2 turns).
+- **Dark Factory Acceleration Documentation**: Updated `SPEEDUP.md` and `SPEEDUP_EXTENSION.md` marking completed acceleration proposals (Proposals 1–8, 10, 15, 17, 19, 20) with `[DONE] ✅` status indicators.
+
+## [0.21.0] - 2026-08-06
+
+### Added
+- **SPEEDUP.md Proposals Implementation**: Implemented all 9 dark factory acceleration proposals to achieve **5x–10x** overall code generation throughput speedup:
+  - **Proposal 1: Parallel DAG Worker Pools**: Enabled multi-worker topological task dispatch with per-task file locking, isolated Git worktree execution, and asynchronous `RebaseQueue` branch merging.
+  - **Proposal 2: Tiered LLM Provider Routing**: Updated per-role provider routing defaults to direct deep reasoning models for PM/Planner and high-throughput coding models for Generator/Tester agents.
+  - **Proposal 3: Parallel 3x Majority-Vote Validation**: Parallelized test validation runs in `test_validator.go` using concurrent goroutines and `sync.WaitGroup` to cut test verification latency from ~15s to ~3s.
+  - **Proposal 4: Pre-baked Base Images**: Updated validation Dockerfiles (`pyedis/Dockerfile`) to pre-install common test dependencies (`pytest-asyncio`, `httpx`, `coverage`).
+  - **Proposal 5: Deterministic Mock Clock Invariants**: Added Product Manager DoD prompt invariants in `prompt_templates.go` requiring deterministic mock clock patterns for time- and date-dependent features.
+  - **Proposal 6: Native JSON Schema Enforcement & Parameter Sanitization**: Enforced native JSON schema response formatting and parameter sanitization across OpenAI and compatible providers.
+  - **Proposal 7: Implicit Orchestrator Verification**: Automatically trigger `run_tests` implicitly upon file modification when generator returns `noop`.
+  - **Proposal 8: Aggressive Prompt History Pruning on Retries**: Implemented suffix-only prompt history truncation on retries in `orchestrator_generator.go` to preserve LLM KV prompt cache prefixes.
+  - **Proposal 9: Speculative Next-Task Prefetching**: Prefetched target file contexts for candidate downstream tasks while current task 3x validation executes.
+
+## [0.20.7] - 2026-08-06
+
+### Changed
+- **WC Validation LLM Provider Configuration**: Configured `openai` provider (`OPENAI_API_KEY`) and prioritized high-speed `gemini` (`gemini-2.5-flash`) at #1 priority across global defaults and all agent role provider ladders (`product_manager`, `architect`, `generators`, `testers`, `qa`) in `validation/projects/wc/.noctifab/config.yaml`. Moved error-prone `opencode` and high-latency `openrouter` to last-resort fallbacks.
+
+## [0.20.6] - 2026-08-05
+
+### Fixed
+- **Cross-Story Dependency Resolution**: Added `ResolveTaskDependencies` (`pkg/services/task_dependencies.go`) to validate and resolve task dependencies across story boundaries. Prerequisite user story dependencies (e.g. `US-001`) referencing valid existing story files on disk are recognized as satisfied and omitted from the active DAG, while references to non-existent story files or unknown task IDs fail fast during `ValidatePlannedTasks`.
+- **Orchestrator Deadlock Detection**: Added deadlock detection in `RunOnce` (`pkg/services/orchestrator_dispatch.go`). When 0 ready tasks exist, 0 active workers are working, and 0 tasks are in progress while pending tasks remain, the orchestrator logs detailed diagnostic information for blocked tasks, sets story status to `StoryFailed`, and aborts execution cleanly instead of looping silently.
+- **State Metadata & Active Agent Reset on Story Switch**: Fixed state initialization when switching user stories in `cmd/noctifab/cli/start.go`. Always updates `state.Metadata.FeatureName`, `state.Metadata.InputPath`, and `state.Metadata.IntegrationBranch` to match the active story file, and clears `state.ActiveAgents` and `state.Tasks` between story runs.
+- **Enhanced Execution Tracing Logs**: Added structured cycle tracing logs in `RunOnce` to provide end-to-end visibility of task readiness, active workers, task completions, and story finalization.
+
+## [0.20.5] - 2026-08-05
+
+### Changed
+- **WC Validation LLM Provider Configuration**: Configured `deepseek-pro` (using `qwencloud` provider with `deepseek-v4-pro` model and `QWENCLOUD_API_KEY`) as top default priority. Assigned high-throughput `gemini` (`gemini-2.5-flash`) as the primary provider for `generators`, `testers`, and `qa` agent roles for optimized execution latency.
+
+## [0.20.4] - 2026-08-05
+
+### Added
+- **LLM Provider Evaluation Guide**: Created [LLM_PROVIDERS.md](file:///Users/diegoj/repos/noctifab/LLM_PROVIDERS.md) providing comprehensive benchmarks, JSON formatting accuracy comparisons, latency evaluations, and recommended configuration priority patterns for `qwencloud`, `openrouter`, and `opencode`.
+- **Agent-Level LLM Provider Overrides**: Extended `AgentProviderRef` configuration struct with `enable_thinking` and `thinking_budget` fields, allowing agents (e.g. `generators`, `testers`) to override provider-level thinking modes (e.g., setting `enable_thinking: false` for `qwencloud` to drop completion latency from 180s to ~2s). Added `Scenario 11` unit tests in `router_test.go`.
+- **Worktree Root Manifest Syncing**: Added `syncRootManifests` in `orchestrator_execute.go` to automatically copy project root manifests (`Cargo.toml`, `package.json`, `go.mod`, `Makefile`, etc.) into fresh Git worktrees when initialized.
+- **Enhanced Sandbox Policy Guidance**: Updated `validator.go` to include explicit lists of authorized tools and commands in `ValidationResult.Reason` when an unauthorized action or command is blocked.
+
+### Fixed
+- **Per-Agent Provider Context Resolution**: Added `Scenario 10` & `Scenario 12` unit test coverage verifying role resolution across `agent_role`, `role`, and `RoleContextKey{}` for all agent roles (`product_manager`, `planner`, `architect`, `generators`, `testers`, `unblocker`).
+- **Authorized Tools for Generator & Tester Roles**: Added `delete_file` to `defaultRoleProfiles` for `generator` and `tester` agents in `validator.go`, allowing agents to delete redundant or conflicting files during refactoring tasks (e.g. resolving module path ambiguity between `src/domain.rs` and `src/domain/mod.rs`).
+- **Resilient Planner Story Decomposition**: Added a 3-attempt retry loop to `PlanStory` in `orchestrator_server.go` so transient LLM streaming or formatting glitches during task DAG generation automatically retry instead of failing the story immediately.
+- **Robust LLM Action Field Alias Unmarshaling**: Added custom `UnmarshalJSON` implementation for `Action` in `pkg/domain/action.go` to support LLM field aliases (`cmd`, `name`, `command`) mapping transparently to `Action.Tool`. Added unit test coverage in `pkg/domain/action_test.go`.
+
+## [0.20.3] - 2026-08-04
+
+### Fixed
+- **Batch-Synchronous Dispatch Stalled the Pipeline (Critical, BOTTLENECKS #2)**: `RunOnce` launched all ready tasks and blocked on `wg.Wait()`, so a single slow task (up to the 30-minute cap) prevented newly-unblocked tasks from being scheduled. Replaced with continuous dispatch (`orchestrator_dispatch.go`): on every task completion the orchestrator re-loads state, re-evaluates readiness, and dispatches newly-ready tasks while concurrency slots are free.
+- **Unbounded `State.LastActions` Growth (BOTTLENECKS #3)**: actions are now appended via `domain.AppendAction`, which caps the log at the 200 most recent entries and truncates each `Action.Result` to 4,000 tail characters, keeping OCC saves from degrading over long runs. `syncWorkspaceFiles` also skips the full-state save when the rebuilt workspace file index is unchanged.
+- **Misleading "3x Consensus" Validation (BOTTLENECKS #9)**: `ValidateTask` claimed 3-run flaky consensus but ran the suite once. The run count is now constructor-injected (default 1) with real majority voting when configured >1, and all logs/comments describe the actual behavior.
+- **Untimed Subprocesses Under Global Locks (BOTTLENECKS #5)**: `GitClient.Run` gets a per-command timeout (default 2m) and `GIT_TERMINAL_PROMPT=0`; `DockerSandbox.RunCommand` gets its own max duration (default 5m) plus an in-container `timeout` prefix so processes inside the container are actually killed; `checkPythonSyntax` now uses a 10-second context timeout; the Python isolated runner no longer leaks one goroutine per test file.
+- **Retry/Fallback Amplification (BOTTLENECKS #6)**: model catalogs (`GetAvailableModels`, `latest`/`auto` alias resolution) are cached with a 5-minute TTL; the lower-model fallback ladder is skipped for deterministic 400/401/403/405/422 rejections; the router applies its 5-minute cooldown only to transient errors (429/408/5xx/timeouts); router candidates are memoized per role instead of rebuilding clients and re-scanning `os.Getenv` on every completion; Gemini reuses a shared HTTP transport (connection pooling) instead of a fresh one per call; `NewClient`'s hardcoded 5-second timeout fallback is now 60s.
+- **Inconsistent Token Budget Accounting (BOTTLENECKS #13)**: the router recorded 1 "token" per call while `FailoverClient` recorded estimates — a daily token limit meant different things depending on which client the factory built. Both now share the same estimation helpers (`token_estimate.go`, `estCharsPerToken`), and `FailoverClient` includes the pending request's estimated prompt tokens in the pre-send budget check.
+- **Unbounded Prompt/Memory Growth (BOTTLENECKS #7, #11)**: tool outputs embedded in agent prompts are capped at 8,000 chars and file contexts at 16,000 chars (head+tail truncation); `grep_search` skips files >1MB and binary files, caps results at 200 matches and 500 chars/line; subprocess output buffers (watchdog capturer, docker, python runner) are bounded to a 1MB tail.
+- **Concurrency-Safety Gaps (BOTTLENECKS #8)**: task goroutines receive a deep `State.Clone()` instead of a shallow copy sharing slice backing arrays; `SetMetricsCollector` and `storyStartedAt`/`lastWorkspaceSync` are mutex-guarded; `UnblockerAgent.Start` is idempotent; `RebaseQueue.Push` fails fast when the queue was never started.
+- **Swallowed OCC-Exhaustion Errors (BOTTLENECKS #13)**: all `_ = o.updateStateWithRetry(...)` sites now log failures with context; `markTaskFailed` propagates its error.
+- **Dead Per-Role `iterations` Config (BOTTLENECKS #13)**: generator and tester agent loops now honor `agents.generators.iterations` / `agents.testers.iterations` (default 5) instead of a hardcoded `maxTurns = 5`.
+- **Scheduler O(T²)–O(T³) Dependency Resolution (BOTTLENECKS #10)**: dependency IDs are resolved against a normalization index built once per `GetReadyTasks` call, preserving exact→normalized→substring matching semantics.
+- **Daemon HTTP Hardening (BOTTLENECKS #12, #13)**: the command-channel server sets Read/Write/Idle/ReadHeader timeouts; pause/resume/cancel OCC retries use exponential backoff with jitter instead of fixed 50ms sleeps; `/api/v1/status` returns lightweight per-state summaries instead of every historical state with all relations; `/statusz` strips the file index and caps embedded actions; the Unblocker's LLM assessment is rate-limited to once per 5 minutes per stalled task; the Postgres pool sets `SetConnMaxLifetime(30m)`/`SetConnMaxIdleTime(5m)`.
+
+- **`use_worktrees` Never Reached the Orchestrator (Latent Bug)**: `OrchestratorConfig.UseWorktrees` was never populated from `vcs.use_worktrees` (default `true`), so the orchestrator always ran in the non-worktree shared-workdir mode with concurrency 3 — the exact workspace-corruption hazard flagged in BOTTLENECKS #8. The flag is now plumbed through `serve`/`start`, and task concurrency is clamped to 1 (with a warning) whenever worktrees are disabled.
+- **Full-Rewrite Saves Replaced by Dirty-Group Incremental Saves (BOTTLENECKS #3/#4)**: `Save` previously did a DELETE + per-row re-INSERT of every relation group (tasks, actions, workspace files, …) on every write. Both SQLite and Postgres repositories now fingerprint each relation group and rewrite only the groups whose content changed; fingerprints are updated only after commit and invalidated on any failure or OCC version conflict.
+- **Silently Discarded Merge-Back Errors**: a failed `RebaseQueue.Push` after a successful task left the integration branch missing "successful" work with no trace; the error is now logged loudly. The dashboard's hardcoded fabricated "3x Consensus: PASS (2/3)" badge was removed.
+
+### Added
+- **Storage Retention (`storage.keep_finished_states`)**: terminal (SUCCESS/FAILED) story states beyond the most recent N (default 20; negative disables) are pruned at daemon startup via the new `PruneFinishedStates` repository method, so a long-running daemon's database no longer grows monotonically.
+- **SQL-Level Status Summaries**: new `LoadAllSummaries` repository method computes per-story summaries (status, task counts, timestamps) with GROUP BY queries; `/api/v1/status` no longer loads every historical state with all relations per request.
+- **Configurable Story Tick (`story_exec_interval`)**: the story execution loop frequency (previously hardcoded 2s in `serve`/`start`) is now configurable, defaulting to 2s.
+- **Pre-Send Prompt Size Guard (`llm.max_prompt_tokens`)**: outgoing prompts whose estimated token count exceeds the cap (default 262,144; negative disables) fail fast with `ErrPromptTooLarge` before spending a network call and the retry/fallback ladder.
+
+### Removed
+- **Dead SSE Stream Reader**: `stream_reader.go` (`readSSEResponse`), superseded by the sliding inter-chunk idle timer on the SDK streaming path, was production-dead code and has been deleted.
+
+## [0.20.2] - 2026-08-04
+
+### Fixed
+- **`idle_timeout` Applied as Total-Stream Deadline (Critical)**: the previous fix wrapped the entire SDK stream in `context.WithTimeout(ctx, idleTimeout)`, so any completion streaming longer than `idle_timeout` (e.g. 8s) was aborted mid-flight and transparently re-executed non-streaming — doubling latency and token cost of virtually every code-generation call, and stalling for up to `max_timeout` when gateways (e.g. OpenCode Zen) never return headers for long non-streaming completions. Replaced with a true sliding inter-chunk idle timer: the stream is cancelled only when no chunk arrives for `idle_timeout`; total duration remains governed by `max_timeout`. Regression tests: `TestSlidingIdleTimeout` (steady stream longer than `idle_timeout` survives; stalled stream fails fast with an explicit "stream idle timeout" error).
+- **Deterministic LLM Errors Burned the Full Retry Ladder**: 400/401/403/404/405/422 responses and gateway `Router.Unavailable` 5xxs (deterministic rejections) were retried `max_retries` times with exponential backoff before model fallback, wasting minutes per misconfigured model (observed: 18 consecutive 500s for `kimi-k3`). `client.go` now classifies these as non-retryable (`isNonRetryableHTTPError`) and advances the model/provider fallback ladder immediately. 408/429 and generic 5xxs remain retryable.
+- **Empty `body` on SDK Errors Without `error` Wrapper**: the OpenAI SDK's `Error()` string only embeds the response body's `error` field; gateways returning bare error objects (e.g. OpenCode Zen's `{"type":"Router.Unavailable",...}`) surfaced as empty-bodied errors, hiding the rejection reason from classification and logs. `sdkError` now reads back the SDK's re-populated `Response.Body` and propagates response headers (enabling `Retry-After` parsing on SDK paths).
+- **Streaming HTTP Rejections No Longer Re-Run Non-Streaming**: a structured HTTP error on the streaming path is deterministic — the non-streaming POST receives the identical rejection. `sendCompletion` now surfaces such errors directly instead of doubling the call.
+- **Assistant Text in `reasoning_content` Dropped (glm-5.2 and reasoning-style models)**: some OpenAI-compatible gateways return the whole answer in a non-standard `reasoning_content`/`reasoning` field with `content` empty (observed with glm-5.2 + `response_format: json_object` on OpenCode Zen), producing `contentLen=0` and JSON-envelope retry loops. Both streaming and non-streaming paths now fall back to accumulated reasoning content when `content` is empty.
+
+### Added
+- **Adaptive Request-Shape Fallback (`openai_adapt.go`)**: `baseOpenAIClient.Call` now relaxes exactly one request option per failed attempt (up to 3 attempts) based on the server's rejection: `response_format` rejection → drop JSON enforcement (pre-existing behaviour, now part of the loop); gateway `Router.Unavailable` → strip `response_format` + `max_tokens` (makes kimi-family models usable on OpenCode Zen); "invalid temperature: only N is allowed" 400s → omit the `temperature` field so the provider default applies.
+- **OpenAI-Spec `json` Keyword Guarantee**: when enforcing `response_format: json_object`, the outgoing prompt is guaranteed to contain the word "json" (appending a one-line instruction when absent), as required by the OpenAI spec and enforced by strict upstreams (DashScope/Qwen: "'messages' must contain the word 'json' in some form").
+- **Documentation**: `BOTTLENECKS.md` (codebase-wide bottleneck review) and `WC_ISSUES.md` (issues found running the `wc` validation project, with fix proposals).
+
+## [0.20.1] - 2026-08-04
+
+### Fixed
+- **Layered Retry Amplification (Critical)**: The OpenAI SDK was configured without `option.WithMaxRetries(0)`, causing it to silently add 2 implicit retries on top of `client.go`'s own `max_retries` loop. A single hung upstream call (e.g. OpenCode timing out) could trigger up to 9 total HTTP attempts (3 SDK × 3 client.go), resulting in a 30m34s wall-clock block before failover to the next provider. Fixed by passing `option.WithMaxRetries(0)` in `baseOpenAIClient.sdkClient()` so only `client.go`'s explicit retry loop governs retry cadence. Regression test `TestSDKMaxRetriesDisabled` verifies exactly 1 HTTP attempt is made per `client.go` retry cycle.
+- **`idle_timeout` Dead Config on SDK Streaming Paths (Critical)**: `baseOpenAIClient.sdkHTTPClient()` only set the overall `http.Client.Timeout` (`max_timeout`); the `idle_timeout` field was stored but never applied to the SDK streaming path. A hung upstream that never sent response headers would hold the connection for the full `max_timeout` (e.g. 600s) instead of timing out at `idle_timeout` (e.g. 8s). Fixed by wrapping the streaming context with `context.WithTimeout(ctx, o.idleTimeout)` in `sendCompletionStreaming()`, mirroring the sliding idle timer already present in `readSSEResponse` for the raw-HTTP path. Regression test `TestStreamingIdleTimeoutEnforced` verifies the streaming call fails within `2×idleTimeout` (150ms) instead of `max_timeout` (10s).
+
+### Changed
+- **Validation Project Provider Priority**: Reordered `llm.priority` in all 9 validation project `config.yaml` files (`wc`, `notebook`, `echo`, `frontpunch`, `t4`, `todo-cli`, `pyedis`, `calculator`, `fortune`) to put `openrouter` before `opencode`. OpenRouter pinged successfully pre-run and serves JSON-capable models; OpenCode's `qwen3.8-max` upstream was rejecting `response_format: json_object` and returning 0-byte streamed responses, making it unusable for the dark factory loop.
+
 ## [0.20.0] - 2026-08-03
 
 ### Added

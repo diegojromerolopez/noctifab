@@ -41,6 +41,7 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 			} else if cfg.LLM.Streaming != nil {
 				client.Streaming = *cfg.LLM.Streaming
 			}
+			client.MaxPromptTokens = cfg.LLM.MaxPromptTokens
 			backends = append(backends, NamedClient{
 				Name:   b.Provider + "/" + b.Model,
 				Model:  b.Model,
@@ -80,6 +81,7 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 			} else if cfg.LLM.Streaming != nil {
 				client.Streaming = *cfg.LLM.Streaming
 			}
+			client.MaxPromptTokens = cfg.LLM.MaxPromptTokens
 			backends = append(backends, NamedClient{
 				Name:   b.Provider + "/" + b.Model,
 				Model:  b.Model,
@@ -104,5 +106,6 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 	if cfg.LLM.Streaming != nil {
 		client.Streaming = *cfg.LLM.Streaming
 	}
+	client.MaxPromptTokens = cfg.LLM.MaxPromptTokens
 	return client
 }

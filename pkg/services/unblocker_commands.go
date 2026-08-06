@@ -15,6 +15,8 @@ type ResetTaskCmd struct {
 	TaskID string
 	// Reason is a human-readable diagnostic explanation logged to LastActions.
 	Reason string
+	// Directive is an optional recovery instruction injected into worker prompts on retry.
+	Directive string
 }
 
 // Execute implements Command for ResetTaskCmd.
@@ -32,6 +34,12 @@ func (c *ResetTaskCmd) Execute(ctx context.Context, repo domain.StateRepository)
 			if state.Tasks[i].Status == domain.TaskSuccess || state.Tasks[i].Status == domain.TaskFailed {
 				fmt.Printf("Unblocker: ResetTaskCmd skipped for task %s (already in terminal state %s)\n", c.TaskID, state.Tasks[i].Status)
 				return nil
+			}
+
+			// Increment stall count for progressive escalation
+			state.Tasks[i].StallCount++
+			if c.Directive != "" {
+				state.Tasks[i].RecoveryDirective = c.Directive
 			}
 
 			// Increment retries to avoid infinite reset loops for permanently broken tasks.
@@ -62,7 +70,7 @@ func (c *ResetTaskCmd) Execute(ctx context.Context, repo domain.StateRepository)
 		}
 	}
 
-	state.LastActions = append(state.LastActions, domain.Action{
+	domain.AppendAction(state, domain.Action{
 		Timestamp: time.Now(),
 		Tool:      "unblocker_reset",
 		Success:   true,
@@ -120,7 +128,7 @@ func (c *FailTaskCmd) Execute(ctx context.Context, repo domain.StateRepository) 
 	}
 
 	state.BuildStatus = domain.BuildFailing
-	state.LastActions = append(state.LastActions, domain.Action{
+	domain.AppendAction(state, domain.Action{
 		Timestamp: time.Now(),
 		Tool:      "unblocker_fail",
 		Success:   false,
@@ -145,7 +153,7 @@ func (c *LogUnblockerActionCmd) Execute(ctx context.Context, repo domain.StateRe
 		return fmt.Errorf("LogUnblockerActionCmd: failed to load state: %w", err)
 	}
 
-	state.LastActions = append(state.LastActions, domain.Action{
+	domain.AppendAction(state, domain.Action{
 		Timestamp: time.Now(),
 		Tool:      "unblocker_log",
 		Success:   true,
@@ -177,7 +185,7 @@ func (c *ClearInconsistentAgentCmd) Execute(ctx context.Context, repo domain.Sta
 		}
 	}
 
-	state.LastActions = append(state.LastActions, domain.Action{
+	domain.AppendAction(state, domain.Action{
 		Timestamp: time.Now(),
 		Tool:      "unblocker_clear_agent",
 		Success:   true,

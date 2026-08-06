@@ -56,8 +56,12 @@ To maintain modularity and high context compatibility, the following guidelines 
 6.  **Branching & Commit Guidelines:**
     *   **No Commits on Main**: Never create commits directly on the `main` branch. Always create a new branch with the changes.
     *   **CHANGELOG Updates**: Every commit must contain the corresponding changes documented in `CHANGELOG.md`, incrementing the version accordingly: minor version bump for features, and patch version bump for bug fixes.
-7.  **Resilience to Scaffold Errors:**
-    *   A bad scaffold or failing scaffold verification test must not stop development. It is mandatory for agents to continue making progress on implementing core business requirements even if there are scaffolding or setup errors. It is better to have an imperfect/partial solution that fulfills core requirements than to stall.
+7.  **Resilience & Forced Compilation Mandate:**
+    *   A bad scaffold, failing test, or compiler error must never permanently stop development or leave broken code.
+    *   In case of any persistent or complex error, agents MUST force a compiling and runnable solution (even if simplified, fallback, or imperfect). The codebase MUST compile cleanly and pass tests; leaving a partially broken build or stalling on retries is completely unacceptable.
+8.  **Secrets Handling & Privacy Mandate:**
+    *   It is **completely forbidden** for AI agents to directly open, view, read, print, or leak the contents of `secrets.yaml` files into context or user-facing logs.
+    *   When instructed or required to perform an action using credentials stored in `secrets.yaml` (e.g., executing an HTTP request or testing an API endpoint), you **must write a script or file** that programmatically reads `secrets.yaml`, extracts the needed key, and executes the task. Under no circumstances should raw secrets be printed, echoed, or included in tool parameters/outputs.
 
 ---
 
@@ -107,7 +111,7 @@ To run a fully containerized, isolated, end-to-end (E2E) integration check of `n
    - **Source Code & Binaries**: The generated codebase and compiled executables are placed in `validation/projects/<project>/output/src/` and `validation/projects/<project>/output/dist/` respectively.
 
 4. **Spec-Driven Validation Rule**:
-   Pre-creating or checking in static roadmap user stories (e.g. under `roadmap/`) for validation projects is **strictly forbidden**. Validation projects must be defined and run solely based on `SPEC.md` to verify that `noctifab` is capable of autonomously decomposing specifications into user stories on the fly using its Product Manager Agent.
+   You (the AI coding assistant developing `noctifab`) **must not modify, hand-edit, pre-create, or check in static user stories** under any `validation/projects/<project>/roadmap/` directory. Validation projects exist to verify that `noctifab` autonomously decomposes a project's `SPEC.md` into user stories on the fly via its Product Manager Agent; pre-seeding or mutating those roadmaps from the host side would defeat that test. Having pre-existing roadmap files checked into `validation/projects/<project>/roadmap/` is acceptable (they are test fixtures), and `noctifab` autonomously generating new user stories into the roadmap at runtime is also acceptable — what is forbidden is *you* editing the validation project's roadmap as a shortcut.
 
 5. **Monitoring & 60-Second Status Loop**:
    When executing validation projects in parallel or in the background (e.g. `make validate-all`), agents must monitor the execution status and output a periodic update table every 60 seconds using the `schedule` tool (`DurationSeconds=60`).
@@ -130,4 +134,7 @@ To run a fully containerized, isolated, end-to-end (E2E) integration check of `n
    | `calculator` | Running | No | 60% (3/5 stories) | 8/8 | Writing unit tests for US-003 | 04m 12s | 8s ago |
    | `wc` | Completed ✅ | No | 100% (4/4 stories) | 12/12 | Final verification passed (PASS) | 08m 45s | 2m 10s ago |
    | `fortune` | Stuck ⚠️ | **Yes** | 25% (1/4 stories) | 2/5 | Retrying failed scaffold build (no log update > 5m) | 12m 00s | 5m 45s ago |
+
+6. **Configuration Immutability Mandate**:
+   After being asked to run a validation container, IT IS FORBIDDEN for AI agents to change the project configuration (`.noctifab/config.yaml`). The configuration must remain strictly untouched as defined in the target validation project.
 

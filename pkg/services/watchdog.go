@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os/exec"
@@ -24,9 +23,16 @@ type Watchdog struct {
 	IdleTimeout time.Duration
 }
 
+// outputCapturer records command output while tracking the last write time
+// for idle detection. Output is capped at 1MB, preserving the tail (recent
+// output matters most for test logs).
 type outputCapturer struct {
-	buf        bytes.Buffer
+	buf        *BoundedBuffer
 	lastOutput int64
+}
+
+func newOutputCapturer() *outputCapturer {
+	return &outputCapturer{buf: NewBoundedBuffer(defaultBoundedBufferMax)}
 }
 
 func (c *outputCapturer) Write(p []byte) (int, error) {
@@ -54,7 +60,7 @@ func (w *Watchdog) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 		))
 	defer span.End()
 
-	capturer := &outputCapturer{}
+	capturer := newOutputCapturer()
 	cmd.Stdout = capturer
 	cmd.Stderr = capturer
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

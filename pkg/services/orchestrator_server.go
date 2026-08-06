@@ -35,30 +35,44 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 	}
 
 	prompt := fmt.Sprintf("Decompose specification into tasks:\n\n%s", spec)
-	resp, err := o.llmClient.Complete(ctx, prompt)
-	if err != nil {
-		return fmt.Errorf("LLM planning failed: %w", err)
-	}
+	plannerCtx := context.WithValue(ctx, AgentRoleKey, "planner")
 
-	reg := NewToolRegistry()
-	reg.Register(&AddTaskTool{})
-	for _, action := range resp.Actions {
-		if tool, ok := reg.Get(action.Tool); ok {
-			_, _ = tool.Execute(ctx, state, action.Args)
+	maxAttempts := 3
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		resp, err := o.llmClient.Complete(plannerCtx, prompt)
+		if err != nil {
+			lastErr = fmt.Errorf("LLM planning failed: %w", err)
+			continue
 		}
+
+		reg := NewToolRegistry()
+		reg.Register(&AddTaskTool{})
+		for _, action := range resp.Actions {
+			if tool, ok := reg.Get(action.Tool); ok {
+				_, _ = tool.Execute(ctx, state, action.Args)
+			}
+		}
+
+		// Validate the planned tasks
+		if err := ValidatePlannedTasks(state.Tasks, state.ProjectPath); err != nil {
+			state.Tasks = nil
+			lastErr = err
+			if attempt < maxAttempts {
+				fmt.Printf("⚠️ Planning attempt %d/%d produced no valid tasks (%v). Retrying...\n", attempt, maxAttempts, err)
+			}
+			continue
+		}
+
+		if err := o.repo.Save(ctx, state); err != nil {
+			return fmt.Errorf("failed to persist planned tasks: %w", err)
+		}
+
+		fmt.Printf("📋 Plan created: %d tasks for story %s\n", len(state.Tasks), state.Metadata.FeatureName)
+		return nil
 	}
 
-	// Validate the planned tasks
-	if err := ValidatePlannedTasks(state.Tasks); err != nil {
-		return err
-	}
-
-	if err := o.repo.Save(ctx, state); err != nil {
-		return fmt.Errorf("failed to persist planned tasks: %w", err)
-	}
-
-	fmt.Printf("📋 Plan created: %d tasks for story %s\n", len(state.Tasks), state.Metadata.FeatureName)
-	return nil
+	return lastErr
 }
 
 // RefreshState reloads the current state from the repository.

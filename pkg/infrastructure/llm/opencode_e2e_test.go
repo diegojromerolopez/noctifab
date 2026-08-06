@@ -68,6 +68,7 @@ func TestOpenCodeProviderE2E(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient("opencode", "glm-5.2", "go-test-key", 1, 0, server.URL)
+		c.Streaming = false
 		res, err := c.Complete(context.Background(), "Decompose specification into tasks: add an auth feature")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -112,6 +113,7 @@ func TestOpenCodeProviderE2E(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient("opencode", "glm-5.2", "go-test-key", 5, 0, server.URL)
+		c.Streaming = false
 		res, err := c.Complete(context.Background(), "Execute task: implement feature")
 		if err != nil {
 			t.Fatalf("unexpected error after retry: %v", err)
@@ -170,6 +172,7 @@ func TestOpenCodeProviderE2E(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient("opencode", "glm-5.2", "go-test-key", 1, 0, server.URL)
+		c.Streaming = false
 		res, err := c.Complete(context.Background(), "Execute task: fallback test")
 		if err != nil {
 			t.Fatalf("unexpected error during fallback: %v", err)

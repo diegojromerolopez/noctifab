@@ -1,7 +1,7 @@
 config_version: "1.0"
 agents:
     architecture: code_first
-    max_tools_per_response: 5
+    max_tools_per_response: 10
     orchestrator:
         number: 1
         iterations: 2
@@ -9,21 +9,56 @@ agents:
         number: 1
         iterations: 2
         max_user_stories: 5
+        providers:
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     planner:
         number: 1
         iterations: 2
     architect:
         number: 1
         iterations: 2
+        providers:
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     generators:
         number: 4
         iterations: 5
+        providers:
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     testers:
         number: 2
         iterations: 3
+        providers:
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     qa:
         number: 1
         iterations: 2
+        providers:
+            - name: gemini
+            - name: openai
+            - name: deepseek-pro
+            - name: qwen
+            - name: opencode
+            - name: openrouter
     security:
         number: 1
         iterations: 2
@@ -41,7 +76,7 @@ agents:
         iterations: 2
 workspace_cache:
     enabled: true
-poll_interval: 5m0s
+poll_interval: 10s
 max_clarification_wait: 30m0s
 clarification_timeout_action: abort
 storage:
@@ -50,26 +85,68 @@ storage:
     json_file_path: .noctifab/data/state.json
 llm:
     priority:
-        - opencode-primary
-        - openrouter-backup
+        - openai
+        - deepseek-pro
+        - qwen
+        - opencode
+        - openrouter
     providers:
-        - name: opencode-primary
-          provider: opencode
-          model: qwen3.8-max
-          api_keys: OPENCODE_API_KEY
+        - name: openai
+          provider: openai
+          model: gpt-5.6-luna
+          api_keys: OPENAI_API_KEY
           max_retries: 2
           retry_backoff: 50ms
-          max_timeout: 25s
-          idle_timeout: 8s
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
           streaming: true
-        - name: openrouter-backup
+        - name: deepseek-pro
+          provider: qwencloud
+          model: deepseek-v4-pro
+          api_keys: QWENCLOUD_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
+        - name: qwen
+          provider: qwencloud
+          model: qwen3.8-max
+          api_keys: QWENCLOUD_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
+          enable_thinking: true
+          thinking_budget: 8192
+        - name: opencode
+          provider: opencode
+          model: glm-5.2
+          api_keys: OPENCODE_ZEN_API_KEY
+          max_retries: 2
+          retry_backoff: 50ms
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
+          streaming: true
+        - name: openrouter
           provider: openrouter
-          model: deepseek/deepseek-v4-flash-latest
+          model: deepseek/deepseek-v4-flash-0731
           api_keys: OPENROUTER_API_KEY
           max_retries: 2
           retry_backoff: 50ms
-          max_timeout: 25s
-          idle_timeout: 8s
+          max_timeout: 600s
+          idle_timeout: 600s
+          max_tokens: 32768
+          temperature: 0.3
           streaming: true
 vcs:
     provider: github
@@ -109,10 +186,10 @@ input: ""
 auto_commit: false
 max_actions: 100
 max_duration: 30m
-conversation_mode: sliding-window
-max_history_messages: 10
-compaction_threshold: 15
-max_history_tokens: 4096
+conversation_mode: compaction
+max_history_messages: 20
+compaction_threshold: 25
+max_history_tokens: 32768
 shutdown_grace_period: 30s
 occ_max_retries: 5
 occ_backoff_base: 50ms
@@ -131,5 +208,3 @@ context:
     mode: full
     diff_window_lines: 15
     compaction: simple_english
-
-

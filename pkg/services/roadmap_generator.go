@@ -38,8 +38,12 @@ func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.L
 	}
 	var lastErr error
 
+	// Propagate the product_manager role so the LLM router selects the
+	// correct provider/model override (e.g. qwencloud) for this agent.
+	pmCtx := context.WithValue(ctx, "agent_role", "product_manager") //nolint:staticcheck
+
 	for attempt := 0; attempt < 3; attempt++ {
-		resp, err := llmClient.Complete(ctx, prompt)
+		resp, err := llmClient.Complete(pmCtx, prompt)
 		if err != nil {
 			lastErr = err
 			continue

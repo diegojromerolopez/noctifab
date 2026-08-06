@@ -4,21 +4,47 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
-// GitClient wraps shell git commands with a centralized RWMutex
+// defaultGitCommandTimeout bounds each individual git invocation so a hung
+// git process (stale index lock, credential prompt, etc.) cannot hold the
+// GitClient mutex indefinitely and block all git operations.
+const defaultGitCommandTimeout = 2 * time.Minute
+
+// GitClient wraps shell git commands with a centralized RWMutex.
+// Every command runs with a per-command timeout (default 2 minutes) and with
+// GIT_TERMINAL_PROMPT=0 so git never blocks waiting for credentials.
 type GitClient struct {
-	mu  sync.RWMutex
-	dir string
+	mu             sync.RWMutex
+	dir            string
+	commandTimeout time.Duration
 }
 
-func NewGitClient(dir string) *GitClient {
-	return &GitClient{
+// GitClientOption customizes a GitClient created via NewGitClient.
+type GitClientOption func(*GitClient)
+
+// WithGitCommandTimeout overrides the per-command timeout. Non-positive
+// values keep the 2-minute default.
+func WithGitCommandTimeout(d time.Duration) GitClientOption {
+	return func(g *GitClient) {
+		g.commandTimeout = d
+	}
+}
+
+func NewGitClient(dir string, opts ...GitClientOption) *GitClient {
+	g := &GitClient{
 		dir: dir,
 	}
+	for _, opt := range opts {
+		opt(g)
+	}
+	return g
 }
 
 func (g *GitClient) Run(ctx context.Context, isWrite bool, args ...string) (string, error) {
@@ -30,13 +56,32 @@ func (g *GitClient) Run(ctx context.Context, isWrite bool, args ...string) (stri
 		defer g.mu.RUnlock()
 	}
 
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = g.dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(out), fmt.Errorf("git command failed: %w (output: %s)", err, string(out))
+	timeout := g.commandTimeout
+	if timeout <= 0 {
+		timeout = defaultGitCommandTimeout
 	}
-	return string(out), nil
+	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := runCommandWithTimeout(ctx, timeout, g.dir, env, "git", args...)
+	if err != nil {
+		return out, fmt.Errorf("git command failed: %w (output: %s)", err, out)
+	}
+	return out, nil
+}
+
+// runCommandWithTimeout executes a command bounded by both the caller's ctx
+// and a per-command timeout, returning combined stdout/stderr output.
+func runCommandWithTimeout(ctx context.Context, timeout time.Duration, dir string, env []string, name string, args ...string) (string, error) {
+	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(cmdCtx, name, args...)
+	cmd.Dir = dir
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil && cmdCtx.Err() == context.DeadlineExceeded {
+		return string(out), fmt.Errorf("command timed out after %s: %w", timeout, cmdCtx.Err())
+	}
+	return string(out), err
 }
 
 // RebaseJob represents a request to rebase a branch sequentially
@@ -49,8 +94,9 @@ type RebaseJob struct {
 
 // RebaseQueue serializes git rebases to prevent index lock contention
 type RebaseQueue struct {
-	git  *GitClient
-	jobs chan RebaseJob
+	git     *GitClient
+	jobs    chan RebaseJob
+	started atomic.Bool
 }
 
 func NewRebaseQueue(git *GitClient) *RebaseQueue {
@@ -62,6 +108,7 @@ func NewRebaseQueue(git *GitClient) *RebaseQueue {
 
 // Start spawns the rebase queue consumer loop
 func (q *RebaseQueue) Start(ctx context.Context) {
+	q.started.Store(true)
 	for {
 		select {
 		case <-ctx.Done():
@@ -73,7 +120,14 @@ func (q *RebaseQueue) Start(ctx context.Context) {
 	}
 }
 
+// ErrRebaseQueueNotStarted is returned by Push when the consumer loop
+// (Start) was never launched, so the job would never be processed.
+var ErrRebaseQueueNotStarted = errors.New("rebase queue not started")
+
 func (q *RebaseQueue) Push(ctx context.Context, branch, base string) error {
+	if !q.started.Load() {
+		return ErrRebaseQueueNotStarted
+	}
 	res := make(chan error, 1)
 	select {
 	case <-ctx.Done():

@@ -269,4 +269,122 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 		assert.Equal(t, "gemini-2.5-flash", candidates[0].Model)
 		assert.Equal(t, "fallback-provider", candidates[1].Name)
 	})
+
+	t.Run("Scenario 9: Top-level enable_thinking and thinking_budget fields propagate to Client", func(t *testing.T) {
+		enableThinking := true
+		thinkingBudget := 8192
+		cfg := &config.Config{
+			LLM: config.LLMConfig{
+				Priority: []string{"qwencloud-thinking"},
+				Providers: []config.ProviderSpec{
+					{
+						Name:           "qwencloud-thinking",
+						Provider:       "qwencloud",
+						Model:          "qwen3.8-max",
+						EnableThinking: &enableThinking,
+						ThinkingBudget: &thinkingBudget,
+					},
+				},
+			},
+		}
+
+		router := NewResilientLLMRouter(cfg, nil)
+		clientObj := router.buildClientForSpec(cfg.LLM.Providers[0], "qwen3.8-max")
+
+		client, ok := clientObj.(*Client)
+		require.True(t, ok)
+		require.NotNil(t, client.EnableThinking)
+		assert.True(t, *client.EnableThinking)
+		require.NotNil(t, client.ThinkingBudget)
+		assert.Equal(t, 8192, *client.ThinkingBudget)
+	})
+
+	t.Run("Scenario 10: Role resolution from agent_role context key overrides global priority", func(t *testing.T) {
+		cfg := &config.Config{
+			LLM: config.LLMConfig{
+				Priority: []string{"opencode-primary", "openrouter-secondary", "qwencloud-tertiary"},
+				Providers: []config.ProviderSpec{
+					{Name: "qwencloud-tertiary", Provider: "qwencloud", Model: "qwen3.8-max"},
+					{Name: "opencode-primary", Provider: "opencode", Model: "glm-5.2"},
+					{Name: "openrouter-secondary", Provider: "openrouter", Model: "deepseek-v4"},
+				},
+			},
+			Agents: config.AgentsConfig{
+				ProductManager: config.AgentRoleConfig{
+					Providers: []config.AgentProviderRef{
+						{Name: "qwencloud-tertiary"},
+						{Name: "opencode-primary"},
+					},
+				},
+			},
+		}
+
+		router := NewResilientLLMRouter(cfg, nil)
+
+		// Context with agent_role = "product_manager"
+		ctx := context.WithValue(context.Background(), stringKey("agent_role"), "product_manager")
+		role := GetRoleFromContext(ctx)
+		assert.Equal(t, "product_manager", role)
+
+		candidates := router.ResolveCandidatesForRole(role)
+		require.Len(t, candidates, 3)
+		// Agent specific priority takes precedence
+		assert.Equal(t, "qwencloud-tertiary", candidates[0].Name)
+		assert.Equal(t, "opencode-primary", candidates[1].Name)
+		assert.Equal(t, "openrouter-secondary", candidates[2].Name)
+	})
+
+	t.Run("Scenario 11: Agent-level provider overrides enable_thinking and thinking_budget", func(t *testing.T) {
+		enableFalse := false
+		budget1024 := 1024
+		cfg := &config.Config{
+			LLM: config.LLMConfig{
+				Priority: []string{"qwencloud-thinking"},
+				Providers: []config.ProviderSpec{
+					{
+						Name:           "qwencloud-thinking",
+						Provider:       "qwencloud",
+						Model:          "qwen3.8-max",
+						EnableThinking: pointerToBool(true),
+						ThinkingBudget: pointerToInt(8192),
+					},
+				},
+			},
+			Agents: config.AgentsConfig{
+				Generators: config.AgentRoleConfig{
+					Providers: []config.AgentProviderRef{
+						{
+							Name:           "qwencloud-thinking",
+							EnableThinking: &enableFalse,
+							ThinkingBudget: &budget1024,
+						},
+					},
+				},
+			},
+		}
+
+		router := NewResilientLLMRouter(cfg, nil)
+		candidates := router.ResolveCandidatesForRole("generators")
+		require.Len(t, candidates, 1)
+
+		// Overridden spec inside candidate
+		assert.Equal(t, "qwencloud-thinking", candidates[0].Name)
+	})
+
+	t.Run("Scenario 12: Context role resolution across all role key types and agent roles", func(t *testing.T) {
+		rolesToTest := []string{"architect", "planner", "generators", "testers", "unblocker"}
+		for _, roleName := range rolesToTest {
+			ctx1 := context.WithValue(context.Background(), RoleContextKey{}, roleName)
+			assert.Equal(t, roleName, GetRoleFromContext(ctx1))
+
+			ctx2 := context.WithValue(context.Background(), stringKey("role"), roleName)
+			assert.Equal(t, roleName, GetRoleFromContext(ctx2))
+
+			ctx3 := context.WithValue(context.Background(), stringKey("agent_role"), roleName)
+			assert.Equal(t, roleName, GetRoleFromContext(ctx3))
+		}
+	})
 }
+
+func pointerToBool(b bool) *bool { return &b }
+func pointerToInt(i int) *int    { return &i }

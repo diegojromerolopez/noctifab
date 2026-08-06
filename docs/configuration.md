@@ -206,6 +206,10 @@ agents:
   - **`api_key`** / **`api_keys`** (String or List of Strings): API authentication key value, secret reference, or secret name(s) in `secrets.yaml` / environment variables.
   - **`url`** (String): Endpoint URL override (required for self-hosted models or `ollama`).
   - **`max_retries`** / **`retry_backoff`** / **`max_timeout`**: Resilient retries and timeout constraints.
+  - **`enable_thinking`** (Boolean): Enable chain-of-thought reasoning mode (e.g. `enable_thinking: true` for QwenCloud `qwen3.8-max` models). When enabled, `noctifab` automatically bypasses `response_format: json_object` and parses JSON envelopes directly from reasoning trace outputs.
+  - **`thinking_budget`** (Integer): Token budget cap for reasoning output when `enable_thinking` is enabled (e.g. `8192`).
+  - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when `enable_thinking: true`, but can be explicitly set for third-party gateways that reject forced JSON schemas.
+  - **`extra_params`** (Map of Strings): Custom key-value pairs merged verbatim into the provider request body for provider-specific extensions.
 - **`roles.<agent>.providers`** (List of Agent Provider Refs): Role-specific provider priority list. Allows configuring different model priorities per agent role (`architect`, `planner`, `generator`, `tester`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`).
 - **`max_timeout`** (Duration): Maximum overall completion timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines.
 - **`idle_timeout`** (Duration): Maximum stream/socket inactivity timeout allowed for LLM API calls (e.g. `15s`). Defaults to `15s` to cancel and fail over stalled stream connections without truncating active long responses.

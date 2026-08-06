@@ -2,15 +2,13 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,10 +29,37 @@ type Client struct {
 	URL                   string
 	Timeout               time.Duration
 	IdleTimeout           time.Duration
+	MaxTokens             int
+	Temperature           float64
 	Streaming             bool
 	CavemanCompaction     bool
 	Compaction            string
 	SkipOnCreditExhausted bool
+	// MaxPromptTokens caps the estimated size of an outgoing prompt so an
+	// oversized prompt fails fast with a clear error instead of burning a
+	// network round-trip (and the retry/fallback ladder) on a guaranteed
+	// provider-side rejection. 0 means defaultMaxPromptTokens; a negative
+	// value disables the check.
+	MaxPromptTokens int64
+	// ExtraParams holds provider-specific extra body parameters (e.g.
+	// enable_thinking, thinking_budget for QwenCloud). These are merged
+	// into the extra_body of each completion request as string-typed values.
+	ExtraParams map[string]string
+	// DisableJSONMode disables response_format=json_object for this client.
+	// Set when the provider/model cannot use forced JSON mode (e.g. QwenCloud
+	// thinking models). ExtractJSONBlock parses the JSON envelope instead.
+	DisableJSONMode bool
+	// EnableThinking enables chain-of-thought / reasoning output (e.g. QwenCloud thinking mode).
+	EnableThinking *bool
+	// ThinkingBudget caps the reasoning token budget.
+	ThinkingBudget *int
+	// catalogMu guards catalogCache: a small TTL cache of provider model
+	// catalogs so the fallback ladder and latest-alias resolution do not
+	// re-hit GetAvailableModels (a network call) on every invocation.
+	// catalogTTL <= 0 means defaultCatalogTTL.
+	catalogMu    sync.Mutex
+	catalogCache map[string]catalogEntry
+	catalogTTL   time.Duration
 }
 
 // ErrCreditExhausted is returned when a provider reports an HTTP 402 (or a
@@ -106,7 +131,7 @@ Your previous (rejected) response:
 %s
 
 CRITICAL INSTRUCTION (overrides anything above):
-Respond with ONLY a single JSON object matching this schema. No markdown, no code fences, no prose before or after the JSON. Keys and string values must use double quotes.
+Respond with ONLY a single JSON object matching this schema. Ensure the JSON starts with an opening brace '{' and ends with a closing brace '}'. No markdown, no code fences, no prose before or after the JSON. Keys and string values must use double quotes.
 
 Schema:
 {
@@ -116,18 +141,22 @@ Schema:
   ]
 }
 
-Return the JSON block now and nothing else.`, originalPrompt, tail)
+Return the valid JSON block now and nothing else.`, originalPrompt, tail)
 }
 
 func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Duration, url string) *Client {
 	return &Client{
-		Provider:    provider,
-		Model:       model,
-		APIKey:      apiKey,
-		MaxRetries:  maxRetries,
-		Backoff:     backoff,
-		URL:         url,
-		Timeout:     5 * time.Second,
+		Provider:   provider,
+		Model:      model,
+		APIKey:     apiKey,
+		MaxRetries: maxRetries,
+		Backoff:    backoff,
+		URL:        url,
+		// 60s matches the config default (llm.max_timeout in
+		// pkg/infrastructure/config/defaults.go). A shorter fallback would
+		// silently truncate LLM calls for any client constructed without a
+		// config override.
+		Timeout:     60 * time.Second,
 		IdleTimeout: 15 * time.Second,
 		Streaming:   true,
 	}
@@ -143,17 +172,26 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 	defer span.End()
 
 	// Preprocess prompt to inject system instructions and schemas based on the target action type
+	origPromptLen := len(prompt)
 	switch strings.ToLower(strings.TrimSpace(c.Compaction)) {
 	case "simple_english":
 		prompt = CompactSimpleEnglish(prompt)
+		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with simple_english: %d -> %d bytes\n", origPromptLen, len(prompt))
 	case "caveman":
 		prompt = CompactCaveman(prompt)
+		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with caveman: %d -> %d bytes\n", origPromptLen, len(prompt))
 	default:
 		if c.CavemanCompaction {
 			prompt = CompactCaveman(prompt)
 		}
 	}
 	prompt = preprocessPrompt(prompt)
+
+	// Pre-send size guard: reject prompts that would be refused by the
+	// provider anyway, before spending a network call and the retry ladder.
+	if err := checkPromptSize(prompt, c.MaxPromptTokens); err != nil {
+		return nil, err
+	}
 
 	spec, _ := GetProviderSpec(c.Provider)
 
@@ -204,20 +242,18 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			backoff = 100 * time.Millisecond
 		}
 
-		var pClient ProviderClient
-		if spec != nil && spec.NewClientFunc != nil {
-			pClient = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-		} else {
-			pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-		}
+		pClient := c.providerClient()
 
 		activeKey := apiKey
 		creditExhausted := false
+		attemptStart := time.Now()
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			responseBody, err = pClient.Call(ctx, activeModel, activeKey, prompt)
+			responseBody, err = pClient.Call(ctx, activeModel, activeKey, prompt, c.MaxTokens, c.Temperature)
 			if err == nil {
+				fmt.Fprintf(os.Stderr, "ℹ [llm] %s/%s call OK after %v (attempt %d)\n", c.Provider, activeModel, time.Since(attemptStart), attempt+1)
 				break
 			}
+			fmt.Fprintf(os.Stderr, "⚠ [llm] %s/%s call error after %v (attempt %d/%d): %v\n", c.Provider, activeModel, time.Since(attemptStart), attempt+1, maxRetries+1, err)
 
 			if isCreditExhausted(err) {
 				creditExhausted = true
@@ -231,6 +267,15 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 				// skip_on_credit_exhausted disabled: rotate to the next key in
 				// the pool (the spent key is pushed to the back) and retry as
 				// usual.
+			}
+
+			if isNonRetryableHTTPError(err) {
+				// Deterministic rejection (bad model, invalid params, missing
+				// auth, gateway router unable to serve the shape): retrying
+				// the identical request cannot succeed. Break out so the
+				// model/provider fallback ladder advances immediately.
+				fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s; skipping retries.\n", c.Provider, activeModel)
+				break
 			}
 
 			fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
@@ -272,7 +317,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			fmt.Fprintf(os.Stderr, "⚠ LLM response was not a valid JSON envelope (%v). Sending a one-shot format reminder and retrying...\n", parseErr)
 			reminderPrompt := buildJSONReminderPrompt(prompt, responseBody)
 			reminderCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-			reminderBody, rErr := pClient.Call(reminderCtx, activeModel, apiKey, reminderPrompt)
+			reminderBody, rErr := pClient.Call(reminderCtx, activeModel, apiKey, reminderPrompt, c.MaxTokens, c.Temperature)
 			cancel()
 			if rErr == nil {
 				resp2, pErr2 := parseAndUnmarshal(reminderBody)
@@ -286,13 +331,24 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			return nil, parseErr
 		}
 
-		// Unconditionally attempt model fallback across all LLM providers when an error response is returned
+		// Attempt model fallback across all LLM providers when an error
+		// response is returned, unless the error is deterministic in a way a
+		// cheaper model cannot fix.
 		shouldFallback := true
 		if creditExhausted && c.SkipOnCreditExhausted {
 			// Credit exhaustion is not recoverable with a cheaper model — the
 			// account (or key) is out of payable credits. Skip the fallback
 			// ladder and surface ErrCreditExhausted so the router moves to the
 			// next provider in priority immediately.
+			shouldFallback = false
+		}
+		if shouldSkipModelFallback(err) {
+			// Deterministic non-retryable rejections such as 401/403 (bad
+			// API key) or 400/422 (invalid request) cannot be fixed by a
+			// cheaper model. 404 (model not found) is deliberately NOT
+			// skipped: falling back to another model in the catalog IS the
+			// correct reaction to an unknown model.
+			fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s cannot be fixed by a lower model; skipping fallback ladder.\n", c.Provider, activeModel)
 			shouldFallback = false
 		}
 
@@ -311,160 +367,4 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 
 		return nil, fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
 	}
-}
-
-func (c *Client) getNextLowerModel(ctx context.Context, apiKey, currentModel string) string {
-	provider := strings.ToLower(c.Provider)
-
-	var pClient ProviderClient
-	spec, _ := GetProviderSpec(provider)
-	if spec != nil && spec.NewClientFunc != nil {
-		pClient = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-	} else {
-		pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-	}
-
-	available, err := pClient.GetAvailableModels(ctx, apiKey)
-	if err != nil || len(available) == 0 {
-		fmt.Fprintf(os.Stderr, "⚠ Warning: failed to query available models from %s API endpoint: %v\n", c.Provider, err)
-		return ""
-	}
-
-	var parsedModels []*ProviderModelInfo
-	parser := parseOpenAIModel
-	if spec != nil && spec.ParseModelFunc != nil {
-		parser = spec.ParseModelFunc
-	}
-	for _, m := range available {
-		if info, parsed := parser(m); parsed && info != nil {
-			parsedModels = append(parsedModels, info)
-		}
-	}
-
-	if len(parsedModels) == 0 {
-		return ""
-	}
-
-	return selectLowerModelFromParsed(currentModel, parsedModels)
-}
-
-func (c *Client) resolveLatestModel(ctx context.Context, apiKey string) string {
-	provider := strings.ToLower(c.Provider)
-
-	var pClient ProviderClient
-	spec, _ := GetProviderSpec(provider)
-	if spec != nil && spec.NewClientFunc != nil {
-		pClient = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-	} else {
-		pClient = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, c.Streaming)
-	}
-
-	available, err := pClient.GetAvailableModels(ctx, apiKey)
-	if err != nil || len(available) == 0 {
-		return ""
-	}
-
-	var parsedModels []*ProviderModelInfo
-	parser := parseOpenAIModel
-	if spec != nil && spec.ParseModelFunc != nil {
-		parser = spec.ParseModelFunc
-	}
-	for _, m := range available {
-		if info, parsed := parser(m); parsed && info != nil {
-			parsedModels = append(parsedModels, info)
-		}
-	}
-
-	if len(parsedModels) == 0 {
-		return ""
-	}
-
-	sortProviderModels(parsedModels)
-	return parsedModels[0].Name
-}
-
-// httpError is returned by provider Call methods on non-2xx responses.
-// It carries the raw response body and the HTTP headers that providers use
-// to signal retry timing (e.g. Retry-After, ratelimit).
-type httpError struct {
-	StatusCode int
-	Body       string
-	Header     http.Header
-}
-
-func (e *httpError) Error() string {
-	return fmt.Sprintf("HTTP error %d: %s", e.StatusCode, e.Body)
-}
-
-// hfRatelimitRe matches the HuggingFace `ratelimit` header value, e.g.
-// `"api";r=0;t=55`  — we want the `t=<seconds>` component.
-var hfRatelimitRe = regexp.MustCompile(`t=(\d+)`)
-
-// geminiRetryDelayRe is used to extract retryDelay strings from Gemini JSON
-// bodies without a full unmarshal when the body may already be partially
-// embedded in an error message string.
-type geminiErrorResponse struct {
-	Error struct {
-		Details []struct {
-			Type       string `json:"@type"`
-			RetryDelay string `json:"retryDelay"`
-		} `json:"details"`
-	} `json:"error"`
-}
-
-// parseRetryDelay extracts a provider-specific retry wait duration from an
-// error returned by a provider Call method.  It tries, in order:
-//  1. The Retry-After HTTP header (integer seconds) — used by OpenAI,
-//     Anthropic, Mistral, DeepSeek.
-//  2. The HuggingFace `ratelimit` header  t=<seconds> field.
-//  3. The Gemini JSON body  error.details[].retryDelay  duration string.
-func parseRetryDelay(err error) (time.Duration, bool) {
-	if err == nil {
-		return 0, false
-	}
-
-	// 1. Structured httpError — check headers first.
-	var he *httpError
-	if errors.As(err, &he) {
-		// 1a. Standard Retry-After header (integer seconds).
-		if ra := he.Header.Get("Retry-After"); ra != "" {
-			if secs, e := strconv.ParseFloat(strings.TrimSpace(ra), 64); e == nil {
-				return time.Duration(secs * float64(time.Second)), true
-			}
-		}
-		// 1b. HuggingFace `ratelimit` header — extract t=<seconds>.
-		if rl := he.Header.Get("ratelimit"); rl != "" {
-			if m := hfRatelimitRe.FindStringSubmatch(rl); len(m) == 2 {
-				if secs, e := strconv.Atoi(m[1]); e == nil {
-					return time.Duration(secs) * time.Second, true
-				}
-			}
-		}
-	}
-
-	// 2. Gemini JSON body retryDelay — works whether error is *httpError or
-	//    a plain fmt.Errorf (legacy path).
-	errStr := err.Error()
-	firstBrace := strings.Index(errStr, "{")
-	if firstBrace == -1 {
-		return 0, false
-	}
-	var resp geminiErrorResponse
-	if jsonErr := json.Unmarshal([]byte(errStr[firstBrace:]), &resp); jsonErr != nil {
-		return 0, false
-	}
-	for _, detail := range resp.Error.Details {
-		if detail.RetryDelay == "" {
-			continue
-		}
-		delayStr := strings.TrimSpace(detail.RetryDelay)
-		if d, e := time.ParseDuration(delayStr); e == nil {
-			return d, true
-		}
-		// Numeric seconds without unit suffix.
-		if secs, e := strconv.ParseFloat(delayStr, 64); e == nil {
-			return time.Duration(secs * float64(time.Second)), true
-		}
-	}
-	return 0, false
 }

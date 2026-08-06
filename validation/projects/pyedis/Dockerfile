@@ -21,10 +21,12 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
         "pydantic>=2.10" \
         "uvicorn[standard]>=0.30" \
         "pytest>=8.0" \
+        "pytest-asyncio>=0.23" \
         "httpx>=0.27" \
         "ruff>=0.8" \
         "mypy>=1.13" \
         "coverage>=7.6" \
+        "pytest-cov>=5.0" \
     && rm -rf /root/.cache/pip
 
 # Copy noctifab binary, validation projects, and the validate.sh harness

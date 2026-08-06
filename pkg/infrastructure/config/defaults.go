@@ -62,12 +62,14 @@ func DefaultConfig() *Config {
 			Enabled: boolPtr(true),
 		},
 		PollInterval:               Duration(5 * time.Minute),
+		StoryExecInterval:          Duration(2 * time.Second),
 		MaxClarificationWait:       Duration(30 * time.Minute),
 		ClarificationTimeoutAction: "abort",
 		Storage: StorageConfig{
-			Provider:     "sqlite",
-			ConnString:   ".noctifab/data/noctifab.db",
-			JSONFilePath: ".noctifab/data/state.json",
+			Provider:           "sqlite",
+			ConnString:         ".noctifab/data/noctifab.db",
+			JSONFilePath:       ".noctifab/data/state.json",
+			KeepFinishedStates: 20,
 		},
 		LLM: LLMConfig{
 			Provider:           "openai",
@@ -129,10 +131,14 @@ func DefaultConfig() *Config {
 			LinterCommand:      "golangci-lint run",
 			FormatterCommand:   "go fmt ./...",
 			MaxLinterRetries:   3,
-			ExcludePaths:       []string{".noctifab"},
-			AllowedCommands:    []string{"go", "git", "npm", "python", "make"},
-			AutoInstallDeps:    false,
-			PackageManagers:    []string{"pip", "go", "brew", "curl", "npm"},
+			// MaxLinterIssues: a completed project with ≤100 style warnings is
+			// far better than a permanently stalled task. Projects that need
+			// stricter enforcement can set this to 0.
+			MaxLinterIssues: 100,
+			ExcludePaths:    []string{".noctifab"},
+			AllowedCommands: []string{"go", "git", "npm", "python", "make"},
+			AutoInstallDeps: false,
+			PackageManagers: []string{"pip", "go", "brew", "curl", "npm"},
 		},
 		Roles: RolesConfig{
 			Orchestrator: RoleSetting{Profile: "orchestrator", Temperature: 0.0},

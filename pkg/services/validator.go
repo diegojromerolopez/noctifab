@@ -11,9 +11,9 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-type contextKey string
+type agentRoleKeyType string
 
-const AgentRoleKey contextKey = "agent_role"
+const AgentRoleKey agentRoleKeyType = "agent_role"
 
 // ValidationResult records the outcome of a security check or target validation check.
 type ValidationResult struct {
@@ -47,11 +47,11 @@ var defaultRoleProfiles = map[string]ProfileConfig{
 		AllowedCommands: []string{},
 	},
 	"tester": {
-		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
 		AllowedCommands: []string{},
 	},
 	"generator": {
-		AllowedTools:    []string{"read_file", "write_file", "edit_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "request_test_fix", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "request_test_fix", "noop"},
 		AllowedCommands: []string{},
 	},
 }
@@ -109,6 +109,9 @@ func compileForbiddenPatterns(patterns []string) []*regexp.Regexp {
 func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, state *domain.State) (*ValidationResult, error) {
 	// 1. Role-based dynamic checks
 	role, _ := ctx.Value(AgentRoleKey).(string)
+	if role == "" {
+		role, _ = ctx.Value("agent_role").(string)
+	}
 	if role != "" {
 		// Get default profile for this role
 		profile, exists := defaultRoleProfiles[role]
@@ -139,9 +142,15 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 			}
 		}
 		if !toolAllowed {
+			if strings.TrimSpace(action.Tool) == "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  fmt.Sprintf("Role authorization violation: tool name is empty. Role '%s' is bounded to authorized tools: [%s]. Please specify a valid tool name.", role, strings.Join(profile.AllowedTools, ", ")),
+				}, nil
+			}
 			return &ValidationResult{
 				Allowed: false,
-				Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to call tool '%s'", role, action.Tool),
+				Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to call tool '%s'. Authorized tools: [%s]. Please use allowed tools like read_file, list_directory, write_file, edit_file, or run_tests.", role, action.Tool, strings.Join(profile.AllowedTools, ", ")),
 			}, nil
 		}
 
@@ -162,7 +171,7 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 					if !cmdAllowed {
 						return &ValidationResult{
 							Allowed: false,
-							Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to execute command '%s'", role, binary),
+							Reason:  fmt.Sprintf("Role authorization violation: role '%s' is not authorized to execute command '%s'. Allowed commands: [%s].", role, binary, strings.Join(profile.AllowedCommands, ", ")),
 						}, nil
 					}
 				}
@@ -172,8 +181,13 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 
 	// 2. Global sandbox path checks (always enforced)
 	switch action.Tool {
-	case "write_file", "edit_file", "read_file":
+	case "write_file", "edit_file", "apply_patch", "read_file", "delete_file":
 		path, ok := action.Args["path"].(string)
+		if !ok && action.Tool == "apply_patch" {
+			// apply_patch may specify file paths inside the patch payload itself
+			path = "."
+			ok = true
+		}
 		if !ok {
 			return &ValidationResult{Allowed: false, Reason: "missing path argument"}, nil
 		}
@@ -213,7 +227,7 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 					if cleanExp != "" && part == cleanExp {
 						return &ValidationResult{
 							Allowed: false,
-							Reason:  fmt.Sprintf("Sandbox violation: path '%s' targets excluded path segment '%s'", path, cleanExp),
+							Reason:  fmt.Sprintf("Sandbox violation: path '%s' targets excluded path segment '%s'. Do NOT attempt to create files in this excluded directory, and UPDATE any test files to omit assertions on excluded paths.", path, cleanExp),
 						}, nil
 					}
 				}

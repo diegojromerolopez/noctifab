@@ -54,7 +54,7 @@ func renderEnhancedDashboard(states []*domain.State) string {
 	if primary.BuildStatus == domain.BuildFailing {
 		buildBadge = colorRed + "FAILING" + colorReset
 	}
-	fmt.Fprintf(&sb, "Build Health: %s | 3x Consensus: %sPASS (2/3)%s\r\n", buildBadge, colorGreen, colorReset)
+	fmt.Fprintf(&sb, "Build Health: %s\r\n", buildBadge)
 	elapsed := computeTotalElapsed(states, dashboardStartTime)
 	if elapsed > 0 {
 		fmt.Fprintf(&sb, "Elapsed Time: %s%s%s\r\n", colorCyan, formatDuration(elapsed), colorReset)

@@ -53,21 +53,24 @@ type StalledTask struct {
 	ReasonStr     string        `json:"reason"`
 	StalledFor    time.Duration `json:"-"`
 	StalledForStr string        `json:"stalled_for"`
+	RecentLogs    []string      `json:"recent_logs,omitempty"`
 }
 
 // stalledTaskSummary is the JSON-serialisable view sent to the LLM.
 type stalledTaskSummary struct {
-	TaskID     string `json:"task_id"`
-	TaskTitle  string `json:"task_title"`
-	TaskStatus string `json:"task_status"`
-	Progress   int    `json:"progress"`
-	Retries    int    `json:"retries"`
-	MaxRetries int    `json:"max_retries"`
-	FailureLog string `json:"failure_log,omitempty"`
-	AgentID    string `json:"agent_id,omitempty"`
-	AgentRole  string `json:"agent_role,omitempty"`
-	Reason     string `json:"stall_reason"`
-	StalledFor string `json:"stalled_for"`
+	TaskID     string   `json:"task_id"`
+	TaskTitle  string   `json:"task_title"`
+	TaskStatus string   `json:"task_status"`
+	Progress   int      `json:"progress"`
+	Retries    int      `json:"retries"`
+	MaxRetries int      `json:"max_retries"`
+	StallCount int      `json:"stall_count"`
+	FailureLog string   `json:"failure_log,omitempty"`
+	RecentLogs []string `json:"recent_logs_last_window,omitempty"`
+	AgentID    string   `json:"agent_id,omitempty"`
+	AgentRole  string   `json:"agent_role,omitempty"`
+	Reason     string   `json:"stall_reason"`
+	StalledFor string   `json:"stalled_for"`
 }
 
 func toStalledSummaries(stalls []StalledTask) []stalledTaskSummary {
@@ -80,7 +83,9 @@ func toStalledSummaries(stalls []StalledTask) []stalledTaskSummary {
 			Progress:   s.Task.Progress,
 			Retries:    s.Task.Retries,
 			MaxRetries: s.Task.MaxRetries,
+			StallCount: s.Task.StallCount,
 			FailureLog: s.Task.FailureLog,
+			RecentLogs: s.RecentLogs,
 			Reason:     s.Reason.String(),
 			StalledFor: s.StalledFor.Round(time.Second).String(),
 		}

@@ -44,6 +44,18 @@ func (r *stubStateRepository) Save(_ context.Context, s *domain.State) error {
 	return nil
 }
 
+func (r *stubStateRepository) LoadAllSummaries(ctx context.Context) ([]domain.StateSummary, error) {
+	state, err := r.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return []domain.StateSummary{domain.SummarizeState(state)}, nil
+}
+
+func (r *stubStateRepository) PruneFinishedStates(_ context.Context, _ int) (int, error) {
+	return 0, nil
+}
+
 // --- StartUserStoryCmd tests ---
 
 func TestStartUserStoryCmd_Execute_HappyPath(t *testing.T) {
