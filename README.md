@@ -146,12 +146,27 @@ The core engine runs a continuous polling event loop that drives all development
    - **Test Logic**: Fixes assertion value mismatches and incorrect test expectations.
    The handler attempts up to **3 consecutive repairs** automatically.
 4. **Formatter Pre-Step Auto-Fix & Linter Cap**: Automatically executes the project's `formatter_command` (`rubocop -A`, `go fmt`, `black`, `cargo fmt`) before running static analysis linter checks to fix auto-correctable style offenses instantly. Capped by `max_linter_retries: 3` to prevent infinite loops.
-5. **Prompt Compaction (`context.compaction`)**: Compress HTTP prompt payloads using `simple_english` (active voice, simplified vocabulary) or `caveman` (telegraphic Markdown compaction) modes to reduce latency and token usage by 25%+.
-6. **Safety Circuit Breakers**:
+5. **Dynamic Prompt Enhancement & Unblocker Log Injection**: When a task freezes, the `UnblockerAgent` extracts live execution logs, scrubs sensitive credentials (`log_tailer.go`), and diagnoses the freeze. It uses a **0-token Fast-Path Regex Classifier** (`unblocker_fastpath.go`) for instant resolution of routine CLI hangs (stdin prompts, port collisions, test watch mode spinners) and a **10x Progressive Log Window Escalation** strategy (Level 1: 50 lines $\rightarrow$ Level 2: 500 lines $\rightarrow$ Level 3: 5,000 lines). It attaches `[STALL RECOVERY DIRECTIVE]` instructions to re-queued task prompts to prevent repeating stalls.
+6. **Prompt Compaction (`context.compaction`)**: Compress HTTP prompt payloads using `simple_english` (active voice, simplified vocabulary) or `caveman` (telegraphic Markdown compaction) modes to reduce latency and token usage by 25%+.
+7. **Safety Circuit Breakers**:
    - **`max_actions`**: Root config value (default: `100`) that sets a ceiling on the total task execution loops. If the system exceeds this limit, the orchestrator aborts the story to protect the LLM token budget from infinite loops.
    - **`max_user_stories`**: Ceiling on Product Manager roadmap story generation (default: `5`).
    - **`max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
+
+---
+
+## ⚡ Dark Factory Acceleration Engine (5x–10x Speedup)
+
+`noctifab` incorporates an end-to-end pipelined acceleration engine delivering **5x–10x faster dark factory throughput**:
+
+1. **Parallel DAG Task Worker Pools**: Executes independent tasks concurrently (`scheduler.max_parallel_workers > 1`), assigning each task an isolated Git worktree (`.noctifab/worktrees/task-<id>`) and merging completed worker branches asynchronously via a serialized rebase queue (`pkg/usecase/rebase_queue.go`).
+2. **Tiered LLM Provider Routing**: Directs deep reasoning models to spec decomposition and planning (`product_manager`, `planner`), while routing implementation and test workers (`generators`, `testers`) to high-throughput, low-latency coding models.
+3. **Parallel 3x Majority-Vote Test Validation**: Dispatches 3 test validation runs concurrently using Go goroutines, reducing verification latency from ~15s to ~3s.
+4. **Unified Diff Multi-File Patching (`apply_patch`)**: Enables agents to apply multi-file unified diff patches (`diff -u` / Git format) in a single turn with fuzzy matching and sandbox security validation.
+5. **Spec-Level Deterministic Mock Clocks**: Enforces mock clock invariants (`Store(clock=FakeClock())`) at the Product Manager specification layer (`US-xxx.md`), ensuring time-dependent tests pass deterministically on the first attempt.
+6. **Aggressive Suffix-Only Prompt Pruning**: Truncates prompt history on retries to preserve LLM KV cache prefixes while providing exact failure tracebacks.
+7. **Speculative Next-Task Prefetching**: Prefetches file contexts for candidate downstream tasks while current task verification executes in parallel.
 
 ### Autonomous Agent Roles & Relationship
 To prevent "evaluation gaming" (where code generators approve their own buggy code), `noctifab` partitions cognitive execution into three isolated, specialized agent roles:

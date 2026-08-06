@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-08-07
+
+### Removed
+- **Documentation Cleanup**: Consolidated architectural insights, dynamic prompt injection features, and 5x–10x acceleration strategies into primary documentation (`README.md`, `docs/`) and removed obsolete root markdown files (`BOTTLENECKS.md`, `DYNAMIC_PROMPTS.md`, `FAILURE.md`, `LLM_PROVIDERS.md`, `SPEEDUP_EXTENSION.md`, `SPEEDUP.md`).
+
+### Changed
+- **Documentation Consolidation (`README.md` & `docs/`)**:
+  - Updated `README.md` and `docs/unblocker_agent.md` with **Dynamic Prompt Enhancement** features, documenting live execution log tailing, secret scrubbing (`log_tailer.go`), 0-token fast-path regex pre-filtering (`unblocker_fastpath.go`), 10x progressive log window escalation (50 $\rightarrow$ 500 $\rightarrow$ 5,000 lines), and task stall recovery directives.
+  - Added **Dark Factory Acceleration Engine (5x–10x Speedup)** documentation to `README.md` and `docs/architecture.md`, highlighting parallel DAG task worker pools with Git worktree sandboxing, tiered LLM provider routing, parallel 3x test majority-vote validation, unified diff multi-file patching (`apply_patch`), pre-baked base images, prompt history pruning, and speculative prefetching.
+
 ## [0.22.0] - 2026-08-06
 
 ### Added
