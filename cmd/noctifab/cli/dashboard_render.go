@@ -233,7 +233,6 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%02ds", s)
 }
 
-
 func extractFailureExcerpt(log string, maxLines int) []string {
 	var relevant []string
 	rawLines := strings.Split(log, "\n")

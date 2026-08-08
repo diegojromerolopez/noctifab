@@ -14,6 +14,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// TestRunResult captures the outcome of a single test-suite execution during
+// multi-run validation.
+type TestRunResult struct {
+	RunID  int
+	Passed bool
+	Output string
+}
+
 // TestValidator validates a task by running the project's tests. By default
 // it performs a single validation run; when Runs is configured to a value
 // greater than 1 it runs the suite N times and passes on a strict majority

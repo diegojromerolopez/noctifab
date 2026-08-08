@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.3] - 2026-08-09
+
+### Removed
+- **Dead Code Removal (prompt customization groundwork, Phase 3b)**: Deleted `PromptBuilder` and the language concurrency-invariant constants (`pkg/infrastructure/llm/prompts.go`, `prompts_test.go`), the flaky-test detector (`DetectFlaky`/`BuildFlakyStabilizationPrompt` in `pkg/services/flaky_detector.go`, `flaky_detector_test.go`), and the `IntentDisambiguator` (`pkg/services/intent_disambiguator.go`, `intent_disambiguator_test.go`), plus their subtests in `tests/e2e/scenario_comprehensive_test.go`. All three were verified to have no production call sites; removal is a runtime no-op. The live `TestRunResult` type used by multi-run test validation moved into `pkg/services/test_validator.go`.
+
 ## [0.27.2] - 2026-08-08
 
 ### Fixed
