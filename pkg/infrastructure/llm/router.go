@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -78,6 +79,8 @@ type ResilientLLMRouter struct {
 	cooldowns        map[string]time.Time
 	cooldownDuration time.Duration
 	candidateCache   map[string][]RouterCandidate
+	evictedUntil     map[string]time.Time
+	evictionReasons  map[string]string
 }
 
 // NewResilientLLMRouter constructs a new ResilientLLMRouter.
@@ -134,6 +137,8 @@ func NewResilientLLMRouter(cfg *config.Config, budgetStore domain.BudgetStore) *
 		cooldowns:        make(map[string]time.Time),
 		cooldownDuration: cooldown,
 		candidateCache:   make(map[string][]RouterCandidate),
+		evictedUntil:     make(map[string]time.Time),
+		evictionReasons:  make(map[string]string),
 	}
 }
 
@@ -471,10 +476,15 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 
 	var lastErr error
 	for _, c := range candidates {
-		// Check cooldown
+		// Check eviction & cooldown
 		r.mu.RLock()
+		evictedUntil, isEvicted := r.evictedUntil[c.Name]
 		until, inCooldown := r.cooldowns[c.Name]
 		r.mu.RUnlock()
+
+		if isEvicted && time.Now().Before(evictedUntil) {
+			continue
+		}
 
 		if inCooldown && time.Now().Before(until) {
 			continue
@@ -496,11 +506,13 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 		}
 
 		lastErr = err
-		// Cooldown only helps when the failure is plausibly transient (rate
-		// limit, overload, timeout). Deterministic rejections (bad API key,
-		// invalid params) would not be fixed by waiting, so just move on to
-		// the next candidate without benching this one.
-		if isTransientError(err) {
+		if isEvictionError(err) {
+			r.mu.Lock()
+			r.evictedUntil[c.Name] = time.Now().Add(30 * time.Minute)
+			r.evictionReasons[c.Name] = err.Error()
+			r.mu.Unlock()
+			fmt.Fprintf(os.Stderr, "⚠️ [LLM Provider Evicted] Candidate '%s' (provider '%s') EVICTED for 30 minutes due to depleted credits / auth failure: %v\n", c.Name, c.Provider, err)
+		} else if isTransientError(err) {
 			r.mu.Lock()
 			r.cooldowns[c.Name] = time.Now().Add(r.cooldownDuration)
 			r.mu.Unlock()
@@ -511,5 +523,44 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 		return nil, fmt.Errorf("all LLM provider candidates for role '%s' failed: %w", roleName, lastErr)
 	}
 
-	return nil, fmt.Errorf("all LLM provider candidates for role '%s' are currently in cooldown", roleName)
+	return nil, fmt.Errorf("all LLM provider candidates for role '%s' are currently in cooldown or evicted", roleName)
+}
+
+// isEvictionError reports whether an error signals credit exhaustion or auth failure (401/402).
+func isEvictionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrCreditExhausted) {
+		return true
+	}
+	var he *httpError
+	if errors.As(err, &he) {
+		if he.StatusCode == 401 || he.StatusCode == 402 {
+			return true
+		}
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "creditserror") ||
+		strings.Contains(msg, "insufficient balance") ||
+		strings.Contains(msg, "payment required") ||
+		strings.Contains(msg, "credit exhausted") ||
+		strings.Contains(msg, "401 unauthorized") ||
+		strings.Contains(msg, "402 payment required")
+}
+
+// GetEvictedProviders returns a map of candidate names to their eviction details.
+func (r *ResilientLLMRouter) GetEvictedProviders() map[string]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	res := make(map[string]string)
+	now := time.Now()
+	for name, until := range r.evictedUntil {
+		if now.Before(until) {
+			rem := time.Until(until).Round(time.Second)
+			reason := r.evictionReasons[name]
+			res[name] = fmt.Sprintf("Evicted for %v (Reason: %s)", rem, reason)
+		}
+	}
+	return res
 }

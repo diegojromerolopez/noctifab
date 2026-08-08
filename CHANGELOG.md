@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-08-08
+
+### Added
+- **30-Minute Provider Eviction Circuit-Breaker**: Implemented 30-minute candidate eviction in `ResilientLLMRouter` triggered on HTTP 401/402 or `CreditsError`/credit exhaustion, skipping depleted providers instantly during routing and informing the user in terminal logs and status views.
+- **Asynchronous Background Catalog Refresh**: Updated `availableModelsCached` in `client_catalog.go` to serve model catalogs instantly from cache while refreshing expiring entries asynchronously in background goroutines.
+- **CLI Pre-Flight Health Diagnostic & Credit Exhaustion Notices**: Added sandbox build tool auditing (`go`, `docker`, `python3`, `rustc`, `make`, `gcc`) and explicit credit exhaustion alerts in `noctifab start` and `noctifab validate`.
+- **Flicker-Free Terminal Dashboard**: Added cursor hiding (`\033[?25l`) on dashboard render start to eliminate terminal flicker.
+
 ## [0.26.3] - 2026-08-08
 
 ### Added
