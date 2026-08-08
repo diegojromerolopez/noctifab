@@ -23,6 +23,7 @@ var validateCmd = &cobra.Command{
 		}
 
 		fmt.Println("Validating configuration...")
+		fmt.Println("Configuration is valid.")
 		fmt.Println("✔ Configuration loaded successfully.")
 
 		tools := []string{"go", "docker", "python3", "rustc", "make", "gcc"}
