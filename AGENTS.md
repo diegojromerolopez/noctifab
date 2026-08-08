@@ -103,6 +103,7 @@ To run a fully containerized, isolated, end-to-end (E2E) integration check of `n
      ```bash
      make validate PROJECT=<project> SKIP_BUILD=1
      ```
+   - **Execution Timeout Limit (10-Minute Mandate)**: A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified by the user or task request) MUST be set for each execution of each validation project. If a validation run reaches 10 minutes (or the specified custom limit), agents must terminate the container execution cleanly and record the result.
 
 3. **Output Artifacts**:
    All outputs from the validation run are written directly to the target validation project's output path:

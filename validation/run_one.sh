@@ -58,6 +58,7 @@ case "${PROJECT}" in
   t4)         TARGETS="Makefile;docker-compose.yml;src/t4.c" ;;
   pyedis)     TARGETS="app/main.py;pyproject.toml" ;;
   notebook)   TARGETS="src/index.ts;package.json;docker-compose.yml" ;;
+  djanban)    TARGETS="manage.py;pyproject.toml;djanban/settings.py" ;;
   *)          TARGETS="" ;;
 esac
 

@@ -129,9 +129,8 @@ func TestDashboard_RenderDashboard(t *testing.T) {
 
 		assert.Contains(t, out, "Global Status: FAILED ❌")
 		assert.Contains(t, out, "Build binary")
-		// Last non-blank line of the log is the actual diff content (+), not the header
-		assert.Contains(t, out, "❌ Build binary (0%) — +")
-		assert.NotContains(t, out, "Linter validation failed")
+		assert.Contains(t, out, "Error: Linter validation failed")
+		assert.Contains(t, out, "Press 'd' to open full Log Inspector")
 	})
 
 	t.Run("when active agents and actions log exist, it renders agent visibility and completed work", func(t *testing.T) {

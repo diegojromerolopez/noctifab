@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"golang.org/x/term"
 )
@@ -105,5 +106,80 @@ func HandleClarificationPrompt(ctx context.Context, client *services.DaemonClien
 		fmt.Print("\r\n\033[1;32m✅ Clarification resolved!\033[0m\r\n")
 	}
 	time.Sleep(2 * time.Second)
+	return nil
+}
+
+// HandleLogInspectorModal renders an interactive full log and failure stack trace inspector modal.
+func HandleLogInspectorModal(ctx context.Context, states []*domain.State, fd int, oldState *term.State) error {
+	_ = term.Restore(fd, oldState)
+	defer func() { _, _ = term.MakeRaw(fd) }()
+
+	fmt.Print("\033[H\033[J")
+	fmt.Print("\033[1;36m====================================================================================\033[0m\r\n")
+	fmt.Print("\033[1;36m  🔍 NOCTIFAB FAILURE & LOG INSPECTOR MODAL\033[0m\r\n")
+	fmt.Print("\033[1;36m====================================================================================\033[0m\r\n\r\n")
+
+	if len(states) == 0 {
+		fmt.Print("No active states or failure logs available.\r\n")
+		fmt.Print("\r\nPress Enter or 'q' to return to dashboard...")
+		buf := make([]byte, 1)
+		_, _ = os.Stdin.Read(buf)
+		return nil
+	}
+
+	deduped := deduplicateStates(states)
+	foundFailures := 0
+
+	for _, st := range deduped {
+		if st.StoryError != "" {
+			foundFailures++
+			fmt.Printf("\033[1;31m✖ Story Error [%s]: %s\033[0m\r\n", st.Metadata.FeatureName, st.StoryError)
+		}
+
+		for _, t := range st.Tasks {
+			if t.Status == domain.TaskFailed || t.Status == domain.TaskConflictFailed || t.FailureLog != "" {
+				foundFailures++
+				fmt.Printf("\033[1;33m────────────────────────────────────────────────────────────────────────────────────\033[0m\r\n")
+				fmt.Printf("\033[1;31m❌ Task: %s (Status: %s, Retries: %d)\033[0m\r\n", t.Title, t.Status, t.Retries)
+				if len(t.TargetFiles) > 0 {
+					fmt.Printf("   Target Files: %s\r\n", strings.Join(t.TargetFiles, ", "))
+				}
+				fmt.Printf("\033[1;37m   Full Error Log & Stack Trace Diagnostics:\033[0m\r\n")
+
+				lines := strings.Split(t.FailureLog, "\n")
+				if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
+					fmt.Print("     (no log content captured)\r\n")
+				} else {
+					for _, line := range lines {
+						if strings.Contains(line, "FAIL") || strings.Contains(line, "Error") || strings.Contains(line, "error:") {
+							fmt.Printf("     \033[31m%s\033[0m\r\n", line)
+						} else if strings.Contains(line, "=== RUN") || strings.Contains(line, "---") {
+							fmt.Printf("     \033[36m%s\033[0m\r\n", line)
+						} else {
+							fmt.Printf("     %s\r\n", line)
+						}
+					}
+				}
+				fmt.Print("\r\n")
+			}
+		}
+	}
+
+	if foundFailures == 0 {
+		fmt.Print("\033[1;32m✓ All tasks are passing cleanly! No failure stack traces recorded.\033[0m\r\n\r\n")
+		primary := deduped[0]
+		if len(primary.LastActions) > 0 {
+			fmt.Print("\033[1;36mRecent Completed Actions Output:\033[0m\r\n")
+			for i, act := range primary.LastActions {
+				fmt.Printf(" [%d] Tool: %s (Success: %v)\r\n     Result: %s\r\n", i+1, act.Tool, act.Success, act.Result)
+			}
+		}
+	}
+
+	fmt.Print("\r\n\033[1;30m------------------------------------------------------------------------------------\033[0m\r\n")
+	fmt.Print("\033[1;36mPress Enter, 'q', or Esc to close inspector and return to dashboard...\033[0m ")
+
+	buf := make([]byte, 1)
+	_, _ = os.Stdin.Read(buf)
 	return nil
 }

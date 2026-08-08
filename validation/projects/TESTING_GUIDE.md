@@ -16,8 +16,14 @@ credentials, and the harness mechanics.
 | `fortune` | C + SQLite | Native + embedded DB | Effectiveness |
 | `t4` | C | Network HTTP server, black-box contract | Effectiveness |
 | `pyedis` | Python 3.14 + FastAPI | Typed command API, AOF durability | Effectiveness |
-| `notebook` | TypeScript + Fastify + PostgreSQL | Relational DB service | Usefulness |
+| `notebook` | TypeScript (React + Fastify + PostgreSQL) | Full-stack SPA + REST API + JWT Auth + WebSockets | Usefulness |
 | `frontpunch` | Python + Valkey | Async distributed workers | Usefulness |
+| `djanban` | Python 3.12 + Django 5.x | Legacy codebase modernization | Effectiveness |
+| `stricc` | Rust + LLVM 18 + C | Safe C compiler, GCC/Clang differential testing | Rigor / Safety |
+| `searchthedocs` | Python 3.12 + FastAPI + Redis | Async Queue Scraper + RAG Vector Search Engine | Usefulness / AI |
+| `auth-vault` | Go 1.22+ | OAuth2/OIDC Zero-Trust Authorization Server + PKI Vault | Rigor / Security |
+| `sqlasm` | x86_64 Assembly (NASM) | Pure 64-bit Assembly B-Tree DBMS & SQL-92 Engine | Ultimate Low-Level Rigor |
+| `buffonstream` | Go 1.22+ (gRPC / Protobuf) | Protobuf-Native Storage Engine & Real-Time Bi-Directional Streaming | Usefulness / Streaming |
 
 ## 2. Tier Classification (effectiveness)
 
@@ -27,8 +33,8 @@ time/tokens — the priority ramp to follow when reading results or running a su
 | Tier | Purpose | Projects |
 | :--- | :--- | :--- |
 | **Tier 0 — Baseline smoke** | Cheapest full-loop proof (init → PM → plan → generate → test → merge). Run first, always: if this stalls, nothing else is worth reading. | `echo` |
-| **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service. The core set. | `t4`, `pyedis`, `notebook` |
-| **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains and linter discipline (incl. the known RuboCop self-healing-loop probe). | `calculator`, `wc`, `fortune` |
+| **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service, legacy Django modernization, zero-trust OAuth2/OIDC PKI, Protobuf real-time CDC streaming. The core set. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream` |
+| **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains and linter discipline (incl. compiler correctness, assembly, and safety matrix). | `calculator`, `wc`, `fortune`, `stricc`, `sqlasm` |
 | **Tier 3 — Breadth** | State persistence and distributed/broker seams; heaviest runtime and highest API rate-limit exposure — run last or when targeting those seams specifically. | `todo-cli`, `frontpunch` |
 
 ## 3. Recommended Order to Test noctifab (diagnostic ramp)
@@ -73,6 +79,7 @@ failure attributes cleanly to a specific stage.
   parallelize *within* a wave (e.g. `wc` + `fortune` together). This avoids all nine
   containers failing on a wave-1 breakage and limits API 429 contention (parallel
   runs sharing one key have saturated quotas in the past — watch the `Errors` column).
+- **Maximum Execution Time Limit (10 Minutes)**: A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified for the run) MUST be set for each execution of each validation project.
 - **Reading results:** for each run, inspect the container log, the generated source
   in `output/src/`, and the `<PROJECT>_FEEDBACK.md` report — focusing on story count
   vs. planned, linter-loop iterations, test pass rate at hand-off, and wall-clock time.
@@ -112,7 +119,7 @@ headless containers into a diagnosable run you can act on without reading every 
 | `Tokens / Budget (%)` | Estimated tokens/budget consumed vs. the `token_usage_limit`/run budget. High `%` at low completion = effectively failing even while active. |
 | `Current Activity` | What the agent is doing now, from the last log line (e.g. `"Decomposing SPEC.md"`, `"Implementing US-002"`, `"Compiling binary"`). |
 | `Elapsed Time` | Duration since launch (e.g. `04m 15s`). |
-| `Time Remaining` | Remaining against `max_duration` (default 30m), e.g. `26m left`. |
+| `Time Remaining` | Remaining against `max_duration` (default 10m, unless another time limit is explicitly specified), e.g. `06m left`. |
 | `Last Log Activity` | Time since the last log write (e.g. `12s ago`) — the primary stuck signal. |
 | `Model / Failovers` | LLM in use and any `429`/`403`/fallback events seen. |
 | `Verdict` | Final `PASS`/`FAIL` once the feedback report exists. |

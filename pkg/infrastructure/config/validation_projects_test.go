@@ -9,8 +9,16 @@ import (
 )
 
 func TestLoadValidationProjectConfigs(t *testing.T) {
-	projects := []string{"calculator", "echo", "fortune", "frontpunch", "notebook", "pyedis", "t4", "todo-cli", "wc"}
-	for _, project := range projects {
+	projectsDir := filepath.Join("..", "..", "..", "validation", "projects")
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		t.Fatalf("failed to read projects directory: %v", err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		project := entry.Name()
 		t.Run(project, func(t *testing.T) {
 			projectDir := filepath.Join("..", "..", "..", "validation", "projects", project, ".noctifab")
 			configPath := filepath.Join(projectDir, "config.yaml")

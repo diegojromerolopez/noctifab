@@ -23,7 +23,7 @@ const (
 
 func renderEnhancedDashboard(states []*domain.State) string {
 	var sb strings.Builder
-	sb.WriteString("\033[H\033[J")
+	sb.WriteString("\033[?25l\033[H\033[J")
 
 	if len(states) == 0 {
 		sb.WriteString("No active user stories found in the daemon.")
@@ -120,9 +120,13 @@ func renderEnhancedDashboard(states []*domain.State) string {
 				retryBadge = fmt.Sprintf(" [Retry #%d]", t.Retries)
 			}
 
-			if t.Status == domain.TaskFailed && t.FailureLog != "" {
-				reason := extractFailureTailReason(t.FailureLog)
-				fmt.Fprintf(&sb, "  %s %s (%d%%)%s — %s\r\n", emoji, t.Title, t.Progress, retryBadge, reason)
+			if (t.Status == domain.TaskFailed || t.Status == domain.TaskConflictFailed) && t.FailureLog != "" {
+				fmt.Fprintf(&sb, "  %s %s (%d%%)%s\r\n", emoji, t.Title, t.Progress, retryBadge)
+				lines := extractFailureExcerpt(t.FailureLog, 3)
+				for _, line := range lines {
+					fmt.Fprintf(&sb, colorRed+"     ├─ Error: %s\r\n"+colorReset, line)
+				}
+				fmt.Fprintf(&sb, colorYellow+"     └─ [Press 'd' to open full Log Inspector]\r\n"+colorReset)
 			} else {
 				fmt.Fprintf(&sb, "  %s %s (%d%%)%s\r\n", emoji, t.Title, t.Progress, retryBadge)
 			}
@@ -174,18 +178,20 @@ func renderEnhancedDashboard(states []*domain.State) string {
 
 	// 6. Interactive Controls & Live Refresh Footer
 	nowStr := time.Now().Format("15:04:05")
-	sb.WriteString(colorGray + "------------------------------------------------------------------------------------" + colorReset + "\r\n")
+	fmt.Fprintf(&sb, "%s------------------------------------------------------------------------------------%s\r\n", colorGray, colorReset)
 	footerExtra := ""
 	if elapsed > 0 {
 		footerExtra = " | Elapsed: " + formatDuration(elapsed)
 	}
-	sb.WriteString(colorBold + "Controls: " + colorReset +
-		"[" + colorGreen + "q" + colorReset + "] Quit | " +
-		"[" + colorYellow + "p" + colorReset + "] Pause/Resume | " +
-		"[" + colorRed + "x" + colorReset + "] Cancel | " +
-		"[" + colorCyan + "n" + colorReset + "] New Order/Prompt | " +
-		"[" + colorPurple + "c" + colorReset + "] Resolve Clarifications " +
-		colorGray + "| Refreshed: " + nowStr + footerExtra + colorReset)
+	fmt.Fprintf(&sb, "%sControls: %s[%sq%s] Quit | [%sp%s] Pause/Resume | [%sx%s] Cancel | [%sn%s] New Order/Prompt | [%sc%s] Resolve Clarifications | [%sd%s] Inspect Log/Failures %s| Refreshed: %s%s%s",
+		colorBold, colorReset,
+		colorGreen, colorReset,
+		colorYellow, colorReset,
+		colorRed, colorReset,
+		colorCyan, colorReset,
+		colorPurple, colorReset,
+		colorCyan, colorReset,
+		colorGray, nowStr, footerExtra, colorReset)
 
 	return sb.String()
 }
@@ -227,15 +233,31 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%02ds", s)
 }
 
-func extractFailureTailReason(log string) string {
-	reason := ""
-	for _, line := range strings.Split(log, "\n") {
-		if trimmed := strings.TrimSpace(line); trimmed != "" {
-			reason = trimmed
+
+func extractFailureExcerpt(log string, maxLines int) []string {
+	var relevant []string
+	rawLines := strings.Split(log, "\n")
+	for _, l := range rawLines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed == "" {
+			continue
+		}
+		if strings.Contains(trimmed, "error") || strings.Contains(trimmed, "Error") || strings.Contains(trimmed, "FAIL") || strings.Contains(trimmed, "panic") || strings.Contains(trimmed, "assert") {
+			relevant = append(relevant, trimmed)
 		}
 	}
-	if reason == "" {
-		return "Task failure detected"
+	if len(relevant) == 0 {
+		for i := len(rawLines) - 1; i >= 0; i-- {
+			if trimmed := strings.TrimSpace(rawLines[i]); trimmed != "" {
+				relevant = append([]string{trimmed}, relevant...)
+				if len(relevant) >= maxLines {
+					break
+				}
+			}
+		}
 	}
-	return reason
+	if len(relevant) > maxLines {
+		return relevant[len(relevant)-maxLines:]
+	}
+	return relevant
 }

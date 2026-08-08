@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.2] - 2026-08-08
+
+### Fixed
+- **Flaky `TestOrchestrator_ConcurrentWorktreeIsolation`**: Made `mockRepo.Save` in `pkg/services/orchestrator_test.go` enforce the same optimistic concurrency contract as the real Postgres/SQLite repositories (rejecting stale `state.Version` writes with `domain.ErrVersionConflict` and bumping the version on success). Concurrent `executeTask` goroutines now exercise the production OCC retry path instead of silently losing state updates, eliminating the timing-dependent `SUCCESS`/`IN_PROGRESS` assertion failure in CI.
+
+## [0.27.1] - 2026-08-08
+
+### Fixed
+- **Validate Command Output Contract**: Restored the `Configuration is valid.` output line in `noctifab validate` (`cmd/noctifab/cli/validate.go`), fixing the E2E test `TestE2E_Validate_Configuration` which asserts this public CLI output string.
+
+## [0.27.0] - 2026-08-08
+
+### Added
+- **30-Minute Provider Eviction Circuit-Breaker**: Implemented 30-minute candidate eviction in `ResilientLLMRouter` triggered on HTTP 401/402 or `CreditsError`/credit exhaustion, skipping depleted providers instantly during routing and informing the user in terminal logs and status views.
+- **Asynchronous Background Catalog Refresh**: Updated `availableModelsCached` in `client_catalog.go` to serve model catalogs instantly from cache while refreshing expiring entries asynchronously in background goroutines.
+- **CLI Pre-Flight Health Diagnostic & Credit Exhaustion Notices**: Added sandbox build tool auditing (`go`, `docker`, `python3`, `rustc`, `make`, `gcc`) and explicit credit exhaustion alerts in `noctifab start` and `noctifab validate`.
+- **Flicker-Free Terminal Dashboard**: Added cursor hiding (`\033[?25l`) on dashboard render start to eliminate terminal flicker.
+- **Decoupled Interactive Dashboard Prompt Overlay**: Decoupled keyboard input prompts into floating screen overlays (`cmd/noctifab/cli/dashboard.go`), allowing background status polling and dashboard UI renders to continue uninterrupted while input prompts are active.
+- **Interactive Log & Failure Inspector Modal**: Implemented interactive modal (`HandleLogInspectorModal`) accessible via `d` in the TUI dashboard, rendering full error logs, colorized stack traces, and assertion diffs inline.
+
+## [0.26.3] - 2026-08-08
+
+### Added
+- **Serial Execution Mode & Project Selection Parameters**: Added `--serial` (`-s`) and `--projects` (`-p`) flags to `validation/run_all.sh` and updated `Makefile` (`SERIAL=1`, `PROJECT=...`), allowing serial execution (one project at a time) and explicit project list selection.
+
+## [0.26.2] - 2026-08-08
+
+### Fixed
+- **Deprecated `temperature` Parameter Removal**: Stripped the `temperature` parameter from Anthropic requests (`pkg/infrastructure/llm/anthropic.go`) and automatically omitted `temperature` for all Claude (`claude*`) and OpenAI reasoning (`o1*`, `o3*`) models in the OpenAI adapter (`pkg/infrastructure/llm/openai_adapt.go`), resolving HTTP 400 rejection errors on newer Opus/Sonnet models.
+- **`sqlasm` Container Architecture Alignment**: Updated `validation/projects/sqlasm/Dockerfile` to `alpine:3.21` with `nasm`, `gcc`, `make`, `valgrind`, `musl-dev`, fixing cross-architecture `Exec format error`.
+
+## [0.26.1] - 2026-08-08
+
+### Added
+- **Validation Projects 10-Minute Execution Timeout Mandate**: Documented the strict 10-minute maximum execution time limit rule per validation project execution across `AGENTS.md`, `validation/projects/TESTING_GUIDE.md`, and `validation/README.md`.
+
+## [0.26.0] - 2026-08-08
+
+### Added
+- **Validation Projects Matrix**: Added technical specifications (`SPEC.md`), container definitions (`Dockerfile`, `docker-compose.yml`), and configuration profiles (`.noctifab/config.yaml`) for validation projects: `auth-vault`, `buffonstream`, `djanban`, `searchreadthedocs`, `searchthedocs`, `sqlasm`, and `stricc`.
+- **LLM Provider Prioritization**: Standardized top-tier LLM provider fallback hierarchy (`claude`, `gemini`, `openai`, `deepseek-pro`, `qwen`, `opencode`, `openrouter`) across all 15 validation projects.
+- **Architectural Reviews & Hardening Guidelines**: Audited and hardened all `SPEC.md` files for Dark Factory autonomous execution by lower-level LLMs.
+
+## [0.25.4] - 2026-08-07
+
+### Enhanced
+- **`djanban` Validation SPEC.md**: Expanded [`validation/projects/djanban/SPEC.md`](file:///Users/diegoj/repos/noctifab/validation/projects/djanban/SPEC.md) with explicit domain calculators (`WIPCalculator`, `RegressionTracker`, `PlusForTrelloParser`, `LeadCycleCalculator`, `ScheduleAnalyzer`), strict wire contract schemas (`/api/v1/...`), number precision invariants, and DI interfaces.
+
+## [0.25.3] - 2026-08-07
+
+### Added
+- **`djanban` Validation Project**: Added the `djanban` legacy modernization project (`validation/projects/djanban/`) to test `noctifab` upgrading outdated Python/Django codebases to Python 3.12+ and Django 5.x while deprecating legacy AngularJS frontends.
+
+## [0.25.2] - 2026-08-07
+
+### Added
+- **Comma-Separated Project Validation (`Makefile` & `run_all.sh`)**: Updated `Makefile` `validate` target and `validation/run_all.sh` to accept comma-separated project lists (e.g., `make validate PROJECT=pyedis,echo,calculator`).
+
 ## [0.25.1] - 2026-08-07
 
 ### Documentation

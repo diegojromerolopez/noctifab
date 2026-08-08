@@ -96,17 +96,28 @@ func (c *Client) availableModelsCached(ctx context.Context, pClient ProviderClie
 	}
 
 	c.catalogMu.Lock()
-	if entry, ok := c.catalogCache[key]; ok && time.Now().Before(entry.expires) {
+	entry, ok := c.catalogCache[key]
+	if ok && len(entry.models) > 0 {
+		now := time.Now()
+		// Serve from cache instantly. If expiring soon (< 20% TTL) or expired, refresh asynchronously in background.
+		if entry.expires.Sub(now) < ttl/5 {
+			go c.refreshCatalogAsync(pClient, apiKey)
+		}
 		c.catalogMu.Unlock()
 		return entry.models, nil
 	}
 	c.catalogMu.Unlock()
 
+	return c.fetchAndCacheCatalog(ctx, pClient, apiKey, ttl)
+}
+
+func (c *Client) fetchAndCacheCatalog(ctx context.Context, pClient ProviderClient, apiKey string, ttl time.Duration) ([]string, error) {
 	models, err := pClient.GetAvailableModels(ctx, apiKey)
 	if err != nil || len(models) == 0 {
 		return models, err
 	}
 
+	key := c.catalogCacheKey()
 	c.catalogMu.Lock()
 	if c.catalogCache == nil {
 		c.catalogCache = make(map[string]catalogEntry)
@@ -114,6 +125,16 @@ func (c *Client) availableModelsCached(ctx context.Context, pClient ProviderClie
 	c.catalogCache[key] = catalogEntry{models: models, expires: time.Now().Add(ttl)}
 	c.catalogMu.Unlock()
 	return models, nil
+}
+
+func (c *Client) refreshCatalogAsync(pClient ProviderClient, apiKey string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ttl := c.catalogTTL
+	if ttl <= 0 {
+		ttl = defaultCatalogTTL
+	}
+	_, _ = c.fetchAndCacheCatalog(ctx, pClient, apiKey, ttl)
 }
 
 // clearCatalogCache drops all cached catalogs. Exposed for tests.

@@ -83,9 +83,22 @@ func (m *mockRepo) PruneFinishedStates(ctx context.Context, keepLast int) (int, 
 	return 0, nil
 }
 
+// Save mirrors the optimistic concurrency contract of the real
+// repositories (Postgres/SQLite): a stale state.Version is rejected with
+// domain.ErrVersionConflict so callers exercise the same OCC retry path as
+// in production, and a successful save bumps the version on both the
+// stored state and the caller's object.
 func (m *mockRepo) Save(ctx context.Context, s *domain.State) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	currentVersion := 0
+	if m.state != nil && m.state.ID == s.ID {
+		currentVersion = m.state.Version
+	}
+	if s.Version != currentVersion {
+		return domain.ErrVersionConflict
+	}
+	s.Version = currentVersion + 1
 	m.state = m.cloneState(s)
 	return nil
 }
