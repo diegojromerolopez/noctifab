@@ -79,6 +79,7 @@ failure attributes cleanly to a specific stage.
   parallelize *within* a wave (e.g. `wc` + `fortune` together). This avoids all nine
   containers failing on a wave-1 breakage and limits API 429 contention (parallel
   runs sharing one key have saturated quotas in the past — watch the `Errors` column).
+- **Maximum Execution Time Limit (10 Minutes)**: A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified for the run) MUST be set for each execution of each validation project.
 - **Reading results:** for each run, inspect the container log, the generated source
   in `output/src/`, and the `<PROJECT>_FEEDBACK.md` report — focusing on story count
   vs. planned, linter-loop iterations, test pass rate at hand-off, and wall-clock time.
@@ -118,7 +119,7 @@ headless containers into a diagnosable run you can act on without reading every 
 | `Tokens / Budget (%)` | Estimated tokens/budget consumed vs. the `token_usage_limit`/run budget. High `%` at low completion = effectively failing even while active. |
 | `Current Activity` | What the agent is doing now, from the last log line (e.g. `"Decomposing SPEC.md"`, `"Implementing US-002"`, `"Compiling binary"`). |
 | `Elapsed Time` | Duration since launch (e.g. `04m 15s`). |
-| `Time Remaining` | Remaining against `max_duration` (default 30m), e.g. `26m left`. |
+| `Time Remaining` | Remaining against `max_duration` (default 10m, unless another time limit is explicitly specified), e.g. `06m left`. |
 | `Last Log Activity` | Time since the last log write (e.g. `12s ago`) — the primary stuck signal. |
 | `Model / Failovers` | LLM in use and any `429`/`403`/fallback events seen. |
 | `Verdict` | Final `PASS`/`FAIL` once the feedback report exists. |

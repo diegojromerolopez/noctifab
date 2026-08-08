@@ -171,6 +171,9 @@ make validate PROJECT=todo-cli
 ./validation/run_one.sh wc
 ```
 
+### Execution Timeout Limit (10-Minute Mandate)
+A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified by the user or task request) MUST be set for each execution of each validation project. If a validation execution reaches 10 minutes (or the specified custom limit), agents must terminate the container run cleanly and record the results.
+
 ### 4. Output artifacts
 - `validation/projects/<project>/log/<project>.log` — full combined stdout/stderr of the container.
 - `validation/projects/<project>/log/<project>.wrap.log` — `run_one.sh` build/launch/exit trace.
