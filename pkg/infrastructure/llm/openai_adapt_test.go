@@ -13,6 +13,28 @@ import (
 	"time"
 )
 
+func TestIsNoTemperatureModel(t *testing.T) {
+	cases := []struct {
+		model string
+		want  bool
+	}{
+		{"claude-3-5-sonnet", true},
+		{"claude-opus-5", true},
+		{"anthropic/claude-3-7-sonnet-latest", true},
+		{"o1-mini", true},
+		{"o3-mini", true},
+		{"gpt-4o", false},
+		{"deepseek-r1", false},
+	}
+	for _, tc := range cases {
+		t.Run("model "+tc.model, func(t *testing.T) {
+			if got := isNoTemperatureModel(tc.model); got != tc.want {
+				t.Errorf("isNoTemperatureModel(%q) = %v, want %v", tc.model, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestEnsureJSONKeyword(t *testing.T) {
 	t.Run("when the prompt already mentions JSON it is unchanged", func(t *testing.T) {
 		p := "Return a JSON envelope."

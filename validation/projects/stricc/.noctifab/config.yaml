@@ -1,0 +1,240 @@
+config_version: '1.0'
+agents:
+  architecture: breadth_first
+  max_tools_per_response: 10
+  orchestrator:
+    number: 1
+    iterations: 2
+  product_manager:
+    number: 1
+    iterations: 2
+    max_user_stories: 5
+    providers:
+    - name: claude
+    - name: openai
+    - name: gemini
+    - name: deepseek-pro
+    - name: qwen
+    - name: opencode
+    - name: openrouter
+  planner:
+    number: 1
+    iterations: 2
+  architect:
+    number: 1
+    iterations: 2
+    providers:
+    - name: claude
+    - name: openai
+    - name: gemini
+    - name: deepseek-pro
+    - name: qwen
+    - name: opencode
+    - name: openrouter
+  generators:
+    number: 4
+    iterations: 5
+    providers:
+    - name: claude
+    - name: openai
+    - name: gemini
+    - name: deepseek-pro
+    - name: qwen
+    - name: opencode
+    - name: openrouter
+  testers:
+    number: 2
+    iterations: 3
+    providers:
+    - name: claude
+    - name: openai
+    - name: gemini
+    - name: deepseek-pro
+    - name: qwen
+    - name: opencode
+    - name: openrouter
+  qa:
+    number: 1
+    iterations: 2
+    providers:
+    - name: claude
+    - name: openai
+    - name: gemini
+    - name: deepseek-pro
+    - name: qwen
+    - name: opencode
+    - name: openrouter
+  security:
+    number: 1
+    iterations: 2
+  performance:
+    number: 1
+    iterations: 2
+  docs:
+    number: 1
+    iterations: 2
+  devops:
+    number: 1
+    iterations: 2
+  unblocker:
+    number: 1
+    iterations: 2
+workspace_cache:
+  enabled: true
+poll_interval: 10s
+max_clarification_wait: 30m0s
+clarification_timeout_action: continue
+storage:
+  provider: sqlite
+  conn_string: .noctifab/data/noctifab.db
+  json_file_path: .noctifab/data/state.json
+llm:
+  priority:
+  - claude
+  - openai
+  - gemini
+  - qwen
+  - deepseek-pro
+  - opencode
+  - openrouter
+  providers:
+  - name: claude
+    provider: anthropic
+    model: claude-3-7-sonnet-latest
+    api_keys: CLAUDE_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: openai
+    provider: openai
+    model: gpt-5.6-luna
+    api_keys: OPENAI_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: gemini
+    provider: gemini
+    model: gemini-2.5-pro
+    api_keys: GEMINI_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: deepseek-pro
+    provider: qwencloud
+    model: deepseek-v4-pro
+    api_keys: QWENCLOUD_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: qwen
+    provider: qwencloud
+    model: qwen3.8-max
+    api_keys: QWENCLOUD_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+    enable_thinking: true
+    thinking_budget: 8192
+  - name: opencode
+    provider: opencode
+    model: glm-5.2
+    api_keys: OPENCODE_ZEN_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: openrouter
+    provider: openrouter
+    model: deepseek/deepseek-v4-flash-0731
+    api_keys: OPENROUTER_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+vcs:
+  provider: github
+  repository: diegojromerolopez/stricc
+  base_branch: main
+  branch_prefix: noctifab/
+  use_worktrees: true
+  token: secret:GITHUB_TOKEN
+  token_env: GITHUB_TOKEN
+  conventional_commits:
+    enabled: true
+    default_scope: core
+  git_mutex_timeout: 30s
+  git_operation_retries: 3
+  git_retry_backoff: 500ms
+sandbox:
+  mode: host
+  timeout_seconds: 600
+  grace_period_seconds: 30
+  test_command: cargo test --workspace
+  linter_command: cargo fmt --check && cargo clippy -- -D warnings
+  formatter_command: cargo fmt
+  max_linter_retries: 3
+  exclude_paths:
+  - target/
+  - .noctifab/
+  - .git/
+  allowed_commands:
+  - cargo
+  - rustc
+  - gcc
+  - clang
+  - git
+  - make
+  forbidden_patterns:
+  - \bunsafe\s*\{
+input: ''
+auto_commit: false
+max_actions: 100
+max_duration: 30m
+conversation_mode: compaction
+max_history_messages: 20
+compaction_threshold: 25
+max_history_tokens: 32768
+shutdown_grace_period: 30s
+occ_max_retries: 5
+occ_backoff_base: 50ms
+occ_backoff_factor: 2
+token_usage_limit: 0
+log_level: info
+log_file: ''
+telemetry:
+  enabled: false
+  exporter: otlp
+  endpoint: ''
+  service_name: noctifab
+  metrics:
+    enabled: true
+context:
+  mode: full
+  diff_window_lines: 15
+  compaction: simple_english

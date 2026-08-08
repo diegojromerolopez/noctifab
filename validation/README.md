@@ -13,6 +13,7 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 7. **`t4`**: Checks out the base `main` branch of a simplified, bucket-less S3-style object store spec and executes `SPEC.md`. Validates that a C17 HTTP server with a pinned black-box contract (PUT/GET/HEAD/DELETE/list/`Range`, deterministic `ETag`) is planned and implemented, with `src/t4.c`, a `Makefile`, and a `docker-compose.yml` e2e harness present and tests passing.
 8. **`pyedis`**: Checks out the base `main` branch of an HTTP key-value store spec and executes `SPEC.md`. Validates that a Redis-flavored command API is planned and implemented in Python 3.14 + FastAPI with type hints throughout (`mypy --strict`), with `app/main.py` and `pyproject.toml` present and tests passing.
 9. **`notebook`**: Checks out the base `main` branch of a notes REST API spec and executes `SPEC.md`. Validates that a TypeScript (strict) + Fastify service on PostgreSQL is planned and implemented, with `src/index.ts`, `package.json`, and a `docker-compose.yml` e2e harness present and tests passing.
+10. **`stricc`**: Checks out the base `main` branch of a C compiler spec written in Rust and executes `SPEC.md`. Validates that a defined-behavior safe C compiler with an LLVM 18 backend is planned and implemented in safe Rust (`#![deny(unsafe_code)]`), validated against GCC and Clang differential test suites.
 
 ### Project Tiers (effectiveness classification)
 
@@ -23,7 +24,7 @@ time/tokens** — the priority ramp to follow when reading results or running a 
 | :--- | :--- | :--- |
 | **Tier 0 — Baseline smoke** | Cheapest full-loop proof (init → PM → plan → generate → test → merge). Run first, always: if this stalls, nothing else is worth reading. | `echo` |
 | **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service. The core set. | `t4`, `pyedis`, `notebook` |
-| **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains and linter discipline (incl. the known RuboCop self-healing-loop probe). | `calculator`, `wc`, `fortune` |
+| **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains and linter discipline (incl. compiler correctness and safety matrix). | `calculator`, `wc`, `fortune`, `stricc` |
 | **Tier 3 — Breadth** | State persistence and distributed/broker seams; heaviest runtime and highest API rate-limit exposure — run last or when targeting those seams specifically. | `todo-cli`, `frontpunch` |
 
 **Quick triage run:** `echo t4 pyedis notebook` covers the four major seams; add
@@ -50,7 +51,8 @@ validation/
     ├── fortune/{Dockerfile, SPEC.md, .noctifab/}
     ├── t4/{Dockerfile, SPEC.md, .noctifab/}
     ├── pyedis/{Dockerfile, SPEC.md, .noctifab/}
-    └── notebook/{Dockerfile, SPEC.md, .noctifab/}
+    ├── notebook/{Dockerfile, SPEC.md, .noctifab/}
+    └── stricc/{Dockerfile, SPEC.md, .noctifab/}
 ```
 
 Each project owns its own `Dockerfile` that layers the language toolchain it
@@ -67,6 +69,7 @@ needs on top of the shared `noctifab-validation:base` image:
 | `t4`        | `alpine:3.21` (+ base)       | gcc, make, clang-format, clang-tidy | `Makefile`, `docker-compose.yml`, `src/t4.c` |
 | `pyedis`| `python:3.14-alpine` (+ base)| python3.14, fastapi, pytest, ruff, mypy | `app/main.py`, `pyproject.toml` |
 | `notebook`   | `node:22-alpine` (+ base)    | node22/npm, typescript, eslint, prettier, vitest, postgresql | `src/index.ts`, `package.json`, `docker-compose.yml` |
+| `stricc`     | `rust:alpine` (+ base)       | rustc, cargo, llvm18, gcc, clang | `Cargo.toml`, `stricc/src/main.rs`, `runtime/src/lib.rs` |
 
 The base image (`Dockerfile.validation`) is a multi-stage build: a
 `golang:1.25-alpine` builder compiles the `noctifab` binary, which is then
@@ -143,23 +146,28 @@ project workspace so noctifab resolves `secret:OPENCODE_API_KEY` from it.
 No `OPENCODE_API_KEY` env var or `-e` flag is required.
 Override the path with `NOCTIFAB_SECRETS_FILE=<path>`.
 
-### 2. Run all projects in parallel
+### 2. Run projects (Parallel or Serial)
+Run all projects in parallel:
 ```bash
 make validate-all
 ```
-This builds (or reuses) the shared base image, builds each per-project image,
-launches one container per project in parallel, waits for all of them, and
-writes one `<PROJECT>_FEEDBACK.md` per project at the repo root. The target
-exits non-zero if any project fails.
+
+Run projects sequentially (serial mode, one after the other):
+```bash
+make validate-all SERIAL=1
+./validation/run_all.sh --serial
+```
+
+Run a specific subset of validation projects (parallel or serial):
+```bash
+make validate-all PROJECT=echo,wc,t4
+make validate-all SERIAL=1 PROJECT=echo,t4
+./validation/run_all.sh --serial --projects echo,wc,t4
+```
 
 Skip the image build step (reuse existing `noctifab-validation:*` images):
 ```bash
 make validate-all SKIP_BUILD=1
-```
-
-Run a subset:
-```bash
-./validation/run_all.sh wc todo-cli
 ```
 
 ### 3. Run a single project
@@ -167,6 +175,9 @@ Run a subset:
 make validate PROJECT=todo-cli
 ./validation/run_one.sh wc
 ```
+
+### Execution Timeout Limit (10-Minute Mandate)
+A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified by the user or task request) MUST be set for each execution of each validation project. If a validation execution reaches 10 minutes (or the specified custom limit), agents must terminate the container run cleanly and record the results.
 
 ### 4. Output artifacts
 - `validation/projects/<project>/log/<project>.log` — full combined stdout/stderr of the container.

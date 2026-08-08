@@ -23,7 +23,7 @@ const (
 
 func renderEnhancedDashboard(states []*domain.State) string {
 	var sb strings.Builder
-	sb.WriteString("\033[H\033[J")
+	sb.WriteString("\033[?25l\033[H\033[J")
 
 	if len(states) == 0 {
 		sb.WriteString("No active user stories found in the daemon.")

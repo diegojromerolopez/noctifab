@@ -28,6 +28,10 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
+			if _, exists := req["temperature"]; exists {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)

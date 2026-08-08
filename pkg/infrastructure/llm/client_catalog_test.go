@@ -44,6 +44,7 @@ func TestCatalogCache(t *testing.T) {
 		time.Sleep(2 * time.Millisecond)
 		_, err = client.availableModelsCached(context.Background(), pc, "key")
 		require.NoError(t, err)
+		time.Sleep(50 * time.Millisecond) // Allow background async refresh to complete
 
 		assert.Equal(t, 2, pc.calls)
 	})

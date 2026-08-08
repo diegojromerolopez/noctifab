@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -105,6 +106,14 @@ var startCmd = &cobra.Command{
 		fmt.Println("Running pre-flight checks...")
 		fmt.Println("- Git CLI: OK")
 		fmt.Printf("- Database connectivity (%s): OK\n", cfg.Storage.Provider)
+		tools := []string{"go", "docker", "python3", "rustc", "make", "gcc"}
+		var foundTools []string
+		for _, t := range tools {
+			if _, err := exec.LookPath(t); err == nil {
+				foundTools = append(foundTools, t)
+			}
+		}
+		fmt.Printf("- Sandbox build tools available: %s\n", strings.Join(foundTools, ", "))
 		const maxAllowedPingLatency = 10 * time.Second
 
 		if len(cfg.LLM.Providers) > 0 {
@@ -115,7 +124,12 @@ var startCmd = &cobra.Command{
 				fmt.Printf("- LLM provider (%s / %s) ping: ", p.Name, p.Provider)
 				latency, err := llm.Ping(context.Background(), p.Provider, p.APIKeyValue, p.URL)
 				if err != nil {
-					fmt.Printf("BANNED (unreachable: %v)\n", err)
+					low := strings.ToLower(err.Error())
+					if strings.Contains(low, "401") || strings.Contains(low, "402") || strings.Contains(low, "credit") || strings.Contains(low, "unauthorized") {
+						fmt.Printf("BANNED ⚠️ (CREDIT EXHAUSTED / AUTH ERROR: %v)\n", err)
+					} else {
+						fmt.Printf("BANNED (unreachable: %v)\n", err)
+					}
 					bannedNames = append(bannedNames, p.Name)
 					continue
 				}
