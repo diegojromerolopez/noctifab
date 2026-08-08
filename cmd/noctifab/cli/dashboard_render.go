@@ -178,19 +178,20 @@ func renderEnhancedDashboard(states []*domain.State) string {
 
 	// 6. Interactive Controls & Live Refresh Footer
 	nowStr := time.Now().Format("15:04:05")
-	sb.WriteString(colorGray + "------------------------------------------------------------------------------------" + colorReset + "\r\n")
+	fmt.Fprintf(&sb, "%s------------------------------------------------------------------------------------%s\r\n", colorGray, colorReset)
 	footerExtra := ""
 	if elapsed > 0 {
 		footerExtra = " | Elapsed: " + formatDuration(elapsed)
 	}
-	sb.WriteString(colorBold + "Controls: " + colorReset +
-		"[" + colorGreen + "q" + colorReset + "] Quit | " +
-		"[" + colorYellow + "p" + colorReset + "] Pause/Resume | " +
-		"[" + colorRed + "x" + colorReset + "] Cancel | " +
-		"[" + colorCyan + "n" + colorReset + "] New Order/Prompt | " +
-		"[" + colorPurple + "c" + colorReset + "] Resolve Clarifications | " +
-		"[" + colorCyan + "d" + colorReset + "] Inspect Log/Failures " +
-		colorGray + "| Refreshed: " + nowStr + footerExtra + colorReset)
+	fmt.Fprintf(&sb, "%sControls: %s[%sq%s] Quit | [%sp%s] Pause/Resume | [%sx%s] Cancel | [%sn%s] New Order/Prompt | [%sc%s] Resolve Clarifications | [%sd%s] Inspect Log/Failures %s| Refreshed: %s%s%s",
+		colorBold, colorReset,
+		colorGreen, colorReset,
+		colorYellow, colorReset,
+		colorRed, colorReset,
+		colorCyan, colorReset,
+		colorPurple, colorReset,
+		colorCyan, colorReset,
+		colorGray, nowStr, footerExtra, colorReset)
 
 	return sb.String()
 }
