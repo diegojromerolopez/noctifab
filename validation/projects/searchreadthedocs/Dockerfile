@@ -3,7 +3,7 @@ FROM noctifab-validation:base AS noctifab-artifacts
 
 FROM python:3.12-alpine
 
-RUN apk add --no-cache git bash docker-cli curl build-base linux-headers
+RUN apk add --no-cache git bash docker-cli curl build-base linux-headers postgresql-dev
 
 COPY --from=noctifab-artifacts /usr/local/bin/noctifab /usr/local/bin/noctifab
 COPY --from=noctifab-artifacts /app/projects /app/projects

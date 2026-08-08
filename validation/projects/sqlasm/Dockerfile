@@ -1,18 +1,14 @@
-FROM --platform=linux/amd64 amd64/debian:bookworm-slim
+# syntax=docker/dockerfile:1.6
+FROM noctifab-validation:base AS noctifab-artifacts
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nasm \
-    gcc \
-    libc6-dev \
-    make \
-    valgrind \
-    gdb \
-    && rm -rf /var/lib/apt/lists/*
+FROM alpine:3.21
+
+RUN apk add --no-cache nasm gcc musl-dev make valgrind git bash curl docker-cli
+
+COPY --from=noctifab-artifacts /usr/local/bin/noctifab /usr/local/bin/noctifab
+COPY --from=noctifab-artifacts /app/projects /app/projects
+COPY --from=noctifab-artifacts /app/validate.sh /app/validate.sh
+RUN chmod +x /app/validate.sh
 
 WORKDIR /app
-
-COPY . .
-
-RUN make build || true
-
-ENTRYPOINT ["/app/bin/sqlasm"]
+CMD ["/app/validate.sh"]

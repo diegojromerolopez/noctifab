@@ -1,26 +1,14 @@
-FROM golang:1.22-alpine AS builder
+# syntax=docker/dockerfile:1.6
+FROM noctifab-validation:base AS noctifab-artifacts
 
-RUN apk add --no-cache protobuf-dev protoc
+FROM golang:alpine
 
-WORKDIR /app
+RUN apk add --no-cache git bash docker-cli curl make protobuf protobuf-dev
 
-COPY go.mod ./
-RUN go mod download || true
-
-COPY . .
-
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
-    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/buffonstream main.go
-
-FROM alpine:latest
-
-RUN apk add --no-network --no-cache ca-certificates
+COPY --from=noctifab-artifacts /usr/local/bin/noctifab /usr/local/bin/noctifab
+COPY --from=noctifab-artifacts /app/projects /app/projects
+COPY --from=noctifab-artifacts /app/validate.sh /app/validate.sh
+RUN chmod +x /app/validate.sh
 
 WORKDIR /app
-COPY --from=builder /app/buffonstream /app/buffonstream
-
-EXPOSE 50051
-
-ENTRYPOINT ["/app/buffonstream"]
+CMD ["/app/validate.sh"]

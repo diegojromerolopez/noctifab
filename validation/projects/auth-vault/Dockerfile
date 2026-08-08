@@ -1,21 +1,14 @@
-FROM golang:1.22-alpine AS builder
+# syntax=docker/dockerfile:1.6
+FROM noctifab-validation:base AS noctifab-artifacts
+
+FROM golang:alpine
+
+RUN apk add --no-cache git bash docker-cli curl make
+
+COPY --from=noctifab-artifacts /usr/local/bin/noctifab /usr/local/bin/noctifab
+COPY --from=noctifab-artifacts /app/projects /app/projects
+COPY --from=noctifab-artifacts /app/validate.sh /app/validate.sh
+RUN chmod +x /app/validate.sh
 
 WORKDIR /app
-
-COPY go.mod ./
-RUN go mod download || true
-
-COPY . .
-
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/auth-vault main.go
-
-FROM alpine:latest
-
-RUN apk add --no-network --no-cache ca-certificates
-
-WORKDIR /app
-COPY --from=builder /app/auth-vault /app/auth-vault
-
-EXPOSE 8080
-
-ENTRYPOINT ["/app/auth-vault"]
+CMD ["/app/validate.sh"]

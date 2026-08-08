@@ -69,8 +69,7 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
-		"max_tokens":  maxTokens,
-		"temperature": tempOrDefault(temperature),
+		"max_tokens": maxTokens,
 	}
 	reqBody, err := json.Marshal(payload)
 	if err != nil {

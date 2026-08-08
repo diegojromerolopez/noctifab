@@ -34,6 +34,17 @@ type completionOptions struct {
 	extraBody map[string]interface{}
 }
 
+func isNoTemperatureModel(model string) bool {
+	low := strings.ToLower(model)
+	if strings.Contains(low, "claude") {
+		return true
+	}
+	if strings.HasPrefix(low, "o1") || strings.HasPrefix(low, "o3") {
+		return true
+	}
+	return false
+}
+
 // buildChatParams assembles SDK request params from completionOptions.
 func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCompletionNewParams {
 	params := openai.ChatCompletionNewParams{
@@ -42,7 +53,7 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 			openai.UserMessage(prompt),
 		},
 	}
-	if opts.temperature != nil {
+	if opts.temperature != nil && !isNoTemperatureModel(model) && !globalCapabilityCache.isTemperatureUnsupported(model) {
 		params.Temperature = openai.Float(tempOrDefault(*opts.temperature))
 	}
 	if opts.maxTokens > 0 {
