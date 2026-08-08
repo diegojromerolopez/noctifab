@@ -232,18 +232,6 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%02ds", s)
 }
 
-func extractFailureTailReason(log string) string {
-	reason := ""
-	for _, line := range strings.Split(log, "\n") {
-		if trimmed := strings.TrimSpace(line); trimmed != "" {
-			reason = trimmed
-		}
-	}
-	if reason == "" {
-		return "Task failure detected"
-	}
-	return reason
-}
 
 func extractFailureExcerpt(log string, maxLines int) []string {
 	var relevant []string
