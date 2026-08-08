@@ -72,11 +72,11 @@ validate:
 # non-zero on failure; the aggregate target exits non-zero if any project
 # failed. Pass SKIP_BUILD=1 to reuse existing noctifab-validation:* images.
 validate-all:
-	@if [ "$(SKIP_BUILD)" = "1" ]; then \
-		./validation/run_all.sh --skip-build; \
-	else \
-		./validation/run_all.sh; \
-	fi
+	@FLAGS=""; \
+	if [ "$(SKIP_BUILD)" = "1" ]; then FLAGS="$$FLAGS --skip-build"; fi; \
+	if [ "$(SERIAL)" = "1" ]; then FLAGS="$$FLAGS --serial"; fi; \
+	if [ -n "$(PROJECT)" ]; then FLAGS="$$FLAGS --projects=$(PROJECT)"; fi; \
+	./validation/run_all.sh $$FLAGS
 
 # Build base + all per-project validation Docker images
 validate-images:

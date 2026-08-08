@@ -146,23 +146,28 @@ project workspace so noctifab resolves `secret:OPENCODE_API_KEY` from it.
 No `OPENCODE_API_KEY` env var or `-e` flag is required.
 Override the path with `NOCTIFAB_SECRETS_FILE=<path>`.
 
-### 2. Run all projects in parallel
+### 2. Run projects (Parallel or Serial)
+Run all projects in parallel:
 ```bash
 make validate-all
 ```
-This builds (or reuses) the shared base image, builds each per-project image,
-launches one container per project in parallel, waits for all of them, and
-writes one `<PROJECT>_FEEDBACK.md` per project at the repo root. The target
-exits non-zero if any project fails.
+
+Run projects sequentially (serial mode, one after the other):
+```bash
+make validate-all SERIAL=1
+./validation/run_all.sh --serial
+```
+
+Run a specific subset of validation projects (parallel or serial):
+```bash
+make validate-all PROJECT=echo,wc,t4
+make validate-all SERIAL=1 PROJECT=echo,t4
+./validation/run_all.sh --serial --projects echo,wc,t4
+```
 
 Skip the image build step (reuse existing `noctifab-validation:*` images):
 ```bash
 make validate-all SKIP_BUILD=1
-```
-
-Run a subset:
-```bash
-./validation/run_all.sh wc todo-cli
 ```
 
 ### 3. Run a single project
