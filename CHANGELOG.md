@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI Pre-Flight Health Diagnostic & Credit Exhaustion Notices**: Added sandbox build tool auditing (`go`, `docker`, `python3`, `rustc`, `make`, `gcc`) and explicit credit exhaustion alerts in `noctifab start` and `noctifab validate`.
 - **Flicker-Free Terminal Dashboard**: Added cursor hiding (`\033[?25l`) on dashboard render start to eliminate terminal flicker.
 - **Decoupled Interactive Dashboard Prompt Overlay**: Decoupled keyboard input prompts into floating screen overlays (`cmd/noctifab/cli/dashboard.go`), allowing background status polling and dashboard UI renders to continue uninterrupted while input prompts are active.
+- **Interactive Log & Failure Inspector Modal**: Implemented interactive modal (`HandleLogInspectorModal`) accessible via `d` in the TUI dashboard, rendering full error logs, colorized stack traces, and assertion diffs inline.
 
 ## [0.26.3] - 2026-08-08
 

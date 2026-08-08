@@ -209,6 +209,19 @@ var dashboardCmd = &cobra.Command{
 				activeOverlay = ""
 				mu.Unlock()
 			}
+
+			if char == 'd' || char == 'D' {
+				mu.Lock()
+				activeOverlay = "\033[1;36m🔍 Opening Failure Log Inspector...\033[0m"
+				mu.Unlock()
+
+				states, _ := client.GetStatusAll(ctx)
+				_ = HandleLogInspectorModal(ctx, states, fd, oldState)
+
+				mu.Lock()
+				activeOverlay = ""
+				mu.Unlock()
+			}
 		}
 
 		return nil

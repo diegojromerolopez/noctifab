@@ -41,33 +41,18 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ---
 
-## 3. Terminal User Interface (TUI) & UX Enhancements
+## 3. Architecture & Reliability Refinements
 
-### 3.1 Interactive Failure Stack Inspector & Colorized Diagnostics
-
-#### 🟡 Issue 3: Truncated Failure Visibility in Dashboard
-* **Location:** [`cmd/noctifab/cli/dashboard_render.go`](cmd/noctifab/cli/dashboard_render.go#L123-L128)
-* **Root Cause:** Failed tasks in the dashboard only display a single truncated tail line via `extractFailureTailReason()`.
-* **Impact:** Users cannot diagnose compilation errors or test failures without leaving the dashboard to inspect raw log files on disk.
-* **Proposed Solution:**
-  1. Add an interactive **Log Inspector Modal** to the dashboard TUI.
-  2. Pressing `<Enter>` or `d` on a failed task opens a scrollable, syntax-highlighted modal displaying the full error log, assertion diff, and stack trace.
-
----
-
-## 4. Architecture & Reliability Refinements
-
-### 4.1 Automated Stack Autodetection & Pre-flight Runner Bootstrap (Clarification)
+### 3.1 Automated Stack Autodetection & Pre-flight Runner Bootstrap (Clarification)
 * **Location:** [`pkg/services/sandbox.go`](pkg/services/sandbox.go#L1-L100) & [`pkg/services/test_validator.go`](pkg/services/test_validator.go#L1-L100)
 * **Clarification:** This proposal **does NOT generate dummy or trivial test files** (e.g. `assert 1 == 1`). Real, meaningful unit and integration test logic is always written autonomously by LLM Dark Factory agents according to `SPEC.md`.
 * **Purpose:** On legacy or newly-initialized projects that possess source code but lack a top-level `Makefile` or test entrypoint script, Noctifab automatically identifies the target programming language and build framework (`go.mod` $\rightarrow$ `go test ./...`, `Cargo.toml` $\rightarrow$ `cargo test`, `pyproject.toml` $\rightarrow$ `pytest`, `package.json` $\rightarrow$ `npm test`) so `TestValidator` can execute project test suites cleanly from turn 1.
 
 ---
 
-## 5. Prioritized Implementation Roadmap
+## 4. Prioritized Implementation Roadmap
 
 | Priority | Area | Improvement Title | Target Files | Est. Impact |
 | :---: | :---: | :--- | :--- | :--- |
 | **P1** | Speed | **Git Subprocess Overhead Reduction & Worktree Prune Batching** | [`pkg/services/orchestrator_execute.go`](pkg/services/orchestrator_execute.go#L96-L175) | Reduces per-task overhead by 2–5 seconds |
 | **P1** | Performance | **Workspace File Tree Caching & System Prompt Pre-population** | [`pkg/services/search_tools.go`](pkg/services/search_tools.go#L1-L100), [`orchestrator_generator.go`](pkg/services/orchestrator_generator.go#L1-L100) | Cuts redundant directory listing tool turns by 40% |
-| **P2** | UX | **Interactive TUI Stack Trace / Log Inspector Modal** | [`cmd/noctifab/cli/dashboard.go`](cmd/noctifab/cli/dashboard.go#L1-L100), [`dashboard_render.go`](cmd/noctifab/cli/dashboard_render.go#L123-L128) | Allows immediate in-TUI debugging of failed tasks |

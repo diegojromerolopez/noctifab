@@ -120,9 +120,13 @@ func renderEnhancedDashboard(states []*domain.State) string {
 				retryBadge = fmt.Sprintf(" [Retry #%d]", t.Retries)
 			}
 
-			if t.Status == domain.TaskFailed && t.FailureLog != "" {
-				reason := extractFailureTailReason(t.FailureLog)
-				fmt.Fprintf(&sb, "  %s %s (%d%%)%s — %s\r\n", emoji, t.Title, t.Progress, retryBadge, reason)
+			if (t.Status == domain.TaskFailed || t.Status == domain.TaskConflictFailed) && t.FailureLog != "" {
+				fmt.Fprintf(&sb, "  %s %s (%d%%)%s\r\n", emoji, t.Title, t.Progress, retryBadge)
+				lines := extractFailureExcerpt(t.FailureLog, 3)
+				for _, line := range lines {
+					fmt.Fprintf(&sb, colorRed+"     ├─ Error: %s\r\n"+colorReset, line)
+				}
+				fmt.Fprintf(&sb, colorYellow+"     └─ [Press 'd' to open full Log Inspector]\r\n"+colorReset)
 			} else {
 				fmt.Fprintf(&sb, "  %s %s (%d%%)%s\r\n", emoji, t.Title, t.Progress, retryBadge)
 			}
@@ -184,7 +188,8 @@ func renderEnhancedDashboard(states []*domain.State) string {
 		"[" + colorYellow + "p" + colorReset + "] Pause/Resume | " +
 		"[" + colorRed + "x" + colorReset + "] Cancel | " +
 		"[" + colorCyan + "n" + colorReset + "] New Order/Prompt | " +
-		"[" + colorPurple + "c" + colorReset + "] Resolve Clarifications " +
+		"[" + colorPurple + "c" + colorReset + "] Resolve Clarifications | " +
+		"[" + colorCyan + "d" + colorReset + "] Inspect Log/Failures " +
 		colorGray + "| Refreshed: " + nowStr + footerExtra + colorReset)
 
 	return sb.String()
@@ -238,4 +243,32 @@ func extractFailureTailReason(log string) string {
 		return "Task failure detected"
 	}
 	return reason
+}
+
+func extractFailureExcerpt(log string, maxLines int) []string {
+	var relevant []string
+	rawLines := strings.Split(log, "\n")
+	for _, l := range rawLines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed == "" {
+			continue
+		}
+		if strings.Contains(trimmed, "error") || strings.Contains(trimmed, "Error") || strings.Contains(trimmed, "FAIL") || strings.Contains(trimmed, "panic") || strings.Contains(trimmed, "assert") {
+			relevant = append(relevant, trimmed)
+		}
+	}
+	if len(relevant) == 0 {
+		for i := len(rawLines) - 1; i >= 0; i-- {
+			if trimmed := strings.TrimSpace(rawLines[i]); trimmed != "" {
+				relevant = append([]string{trimmed}, relevant...)
+				if len(relevant) >= maxLines {
+					break
+				}
+			}
+		}
+	}
+	if len(relevant) > maxLines {
+		return relevant[len(relevant)-maxLines:]
+	}
+	return relevant
 }
