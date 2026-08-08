@@ -55,24 +55,12 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ---
 
-### 3.2 Interactive Modal Overlays for Dashboard Prompts
-
-#### 🟡 Issue 4: TUI UI Freeze During Input Prompts
-* **Location:** [`cmd/noctifab/cli/dashboard.go`](cmd/noctifab/cli/dashboard.go#L149-L216)
-* **Root Cause:** When a user triggers an interactive action (`p` for pause, `n` for new order, `c` for clarification), the background dashboard refresh loop is blocked by acquiring `mu.Lock()`.
-* **Impact:** The dashboard stops updating agent status and progress while the user is typing an input response.
-* **Proposed Solution:**
-  1. Decouple input prompting into floating overlay regions.
-  2. Maintain background status polling and render updates continuously around the active input prompt modal.
-
----
-
 ## 4. Architecture & Reliability Refinements
 
-### 4.1 Automated Stack Autodetection & Pre-flight Bootstrap
+### 4.1 Automated Stack Autodetection & Pre-flight Runner Bootstrap (Clarification)
 * **Location:** [`pkg/services/sandbox.go`](pkg/services/sandbox.go#L1-L100) & [`pkg/services/test_validator.go`](pkg/services/test_validator.go#L1-L100)
-* **Observation:** In projects without a pre-existing `Makefile` or test configuration, initial test validation invocations fail before the agent writes a characterization test suite.
-* **Improvement:** Implement an automatic **Project Tech Stack Classifier** during PM roadmap generation. If standard test runners (e.g. `Cargo.toml`, `pyproject.toml`, `package.json`, `go.mod`) are detected without a test script, Noctifab can auto-synthesize default build/test wrappers before starting Task 1.
+* **Clarification:** This proposal **does NOT generate dummy or trivial test files** (e.g. `assert 1 == 1`). Real, meaningful unit and integration test logic is always written autonomously by LLM Dark Factory agents according to `SPEC.md`.
+* **Purpose:** On legacy or newly-initialized projects that possess source code but lack a top-level `Makefile` or test entrypoint script, Noctifab automatically identifies the target programming language and build framework (`go.mod` $\rightarrow$ `go test ./...`, `Cargo.toml` $\rightarrow$ `cargo test`, `pyproject.toml` $\rightarrow$ `pytest`, `package.json` $\rightarrow$ `npm test`) so `TestValidator` can execute project test suites cleanly from turn 1.
 
 ---
 
@@ -83,4 +71,3 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 | **P1** | Speed | **Git Subprocess Overhead Reduction & Worktree Prune Batching** | [`pkg/services/orchestrator_execute.go`](pkg/services/orchestrator_execute.go#L96-L175) | Reduces per-task overhead by 2–5 seconds |
 | **P1** | Performance | **Workspace File Tree Caching & System Prompt Pre-population** | [`pkg/services/search_tools.go`](pkg/services/search_tools.go#L1-L100), [`orchestrator_generator.go`](pkg/services/orchestrator_generator.go#L1-L100) | Cuts redundant directory listing tool turns by 40% |
 | **P2** | UX | **Interactive TUI Stack Trace / Log Inspector Modal** | [`cmd/noctifab/cli/dashboard.go`](cmd/noctifab/cli/dashboard.go#L1-L100), [`dashboard_render.go`](cmd/noctifab/cli/dashboard_render.go#L123-L128) | Allows immediate in-TUI debugging of failed tasks |
-| **P2** | UX | **Decoupled Input Prompt Overlay in Dashboard TUI** | [`cmd/noctifab/cli/dashboard.go`](cmd/noctifab/cli/dashboard.go#L149-L216) | Prevents UI freeze during interactive prompts |

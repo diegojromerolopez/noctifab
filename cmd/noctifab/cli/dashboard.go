@@ -74,9 +74,9 @@ var dashboardCmd = &cobra.Command{
 		defer func() { _ = term.Restore(fd, oldState) }()
 
 		var mu sync.Mutex
-		promptActive := false
+		var activeOverlay string
 
-		// 1-second ticker loop to update dashboard
+		// 1-second ticker loop to update dashboard continuously without UI freezing
 		go func() {
 			ticker := time.NewTicker(1 * time.Second)
 			defer ticker.Stop()
@@ -84,19 +84,21 @@ var dashboardCmd = &cobra.Command{
 				select {
 				case <-ticker.C:
 					mu.Lock()
-					if promptActive {
-						mu.Unlock()
-						continue
-					}
+					overlay := activeOverlay
+					mu.Unlock()
+
 					states, err := client.GetStatusAll(ctx)
 					if err != nil {
-						// Print error to terminal
 						fmt.Print("\033[H\033[J")
 						fmt.Printf("Error fetching dashboard status: %v\n", err)
-						mu.Unlock()
 						continue
 					}
-					fmt.Print(renderDashboard(states))
+					
+					rendered := renderDashboard(states)
+					if overlay != "" {
+						rendered += "\r\n" + overlay + " "
+					}
+					fmt.Print(rendered)
 
 					// Auto-exit if stories exist and all are completed
 					allFinished := true
@@ -107,12 +109,10 @@ var dashboardCmd = &cobra.Command{
 						}
 					}
 					if allFinished && len(states) > 0 {
-						mu.Unlock()
 						time.Sleep(2 * time.Second)
 						cancel()
 						return
 					}
-					mu.Unlock()
 				case <-ctx.Done():
 					return
 				}
@@ -148,11 +148,9 @@ var dashboardCmd = &cobra.Command{
 
 			if char == 'p' {
 				mu.Lock()
-				promptActive = true
+				activeOverlay = "\033[1;33m⚠️  Are you sure you want to pause/resume execution? (y/n):\033[0m"
 				mu.Unlock()
 
-				// Print confirmation banner
-				fmt.Print("\r\n\033[1;33m⚠️  Are you sure you want to pause/resume execution? (y/n):\033[0m ")
 				confirmBuf := make([]byte, 1)
 				_, _ = os.Stdin.Read(confirmBuf)
 				if confirmBuf[0] == 'y' || confirmBuf[0] == 'Y' {
@@ -168,17 +166,15 @@ var dashboardCmd = &cobra.Command{
 				}
 
 				mu.Lock()
-				promptActive = false
+				activeOverlay = ""
 				mu.Unlock()
 			}
 
 			if char == 'x' {
 				mu.Lock()
-				promptActive = true
+				activeOverlay = "\033[1;31m⚠️  Are you sure you want to cancel the active execution? (y/n):\033[0m"
 				mu.Unlock()
 
-				// Print confirmation banner
-				fmt.Print("\r\n\033[1;31m⚠️  Are you sure you want to cancel the active execution? (y/n):\033[0m ")
 				confirmBuf := make([]byte, 1)
 				_, _ = os.Stdin.Read(confirmBuf)
 				if confirmBuf[0] == 'y' || confirmBuf[0] == 'Y' {
@@ -186,31 +182,31 @@ var dashboardCmd = &cobra.Command{
 				}
 
 				mu.Lock()
-				promptActive = false
+				activeOverlay = ""
 				mu.Unlock()
 			}
 
 			if char == 'n' || char == 'N' || char == 'a' || char == 'A' {
 				mu.Lock()
-				promptActive = true
+				activeOverlay = "\033[1;36m📝 Enter new feature specification order:\033[0m"
 				mu.Unlock()
 
 				_ = HandleNewOrderPrompt(ctx, client, fd, oldState)
 
 				mu.Lock()
-				promptActive = false
+				activeOverlay = ""
 				mu.Unlock()
 			}
 
 			if char == 'c' || char == 'C' {
 				mu.Lock()
-				promptActive = true
+				activeOverlay = "\033[1;35m💬 Enter clarification response:\033[0m"
 				mu.Unlock()
 
 				_ = HandleClarificationPrompt(ctx, client, fd, oldState)
 
 				mu.Lock()
-				promptActive = false
+				activeOverlay = ""
 				mu.Unlock()
 			}
 		}
