@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoadValidationProjectConfigs(t *testing.T) {
-	projects := []string{"calculator", "echo", "fortune", "frontpunch", "notebook", "pyedis", "t4", "todo-cli", "wc"}
+	projects := []string{"calculator", "djanban", "echo", "fortune", "frontpunch", "notebook", "pyedis", "stricc", "t4", "todo-cli", "wc"}
 	for _, project := range projects {
 		t.Run(project, func(t *testing.T) {
 			projectDir := filepath.Join("..", "..", "..", "validation", "projects", project, ".noctifab")

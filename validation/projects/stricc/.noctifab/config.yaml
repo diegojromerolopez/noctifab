@@ -1,6 +1,6 @@
 config_version: '1.0'
 agents:
-  architecture: code_first
+  architecture: breadth_first
   max_tools_per_response: 10
   orchestrator:
     number: 1
@@ -11,8 +11,8 @@ agents:
     max_user_stories: 5
     providers:
     - name: claude
-    - name: gemini
     - name: openai
+    - name: gemini
     - name: deepseek-pro
     - name: qwen
     - name: opencode
@@ -25,8 +25,8 @@ agents:
     iterations: 2
     providers:
     - name: claude
-    - name: gemini
     - name: openai
+    - name: gemini
     - name: deepseek-pro
     - name: qwen
     - name: opencode
@@ -36,8 +36,8 @@ agents:
     iterations: 5
     providers:
     - name: claude
-    - name: gemini
     - name: openai
+    - name: gemini
     - name: deepseek-pro
     - name: qwen
     - name: opencode
@@ -47,8 +47,8 @@ agents:
     iterations: 3
     providers:
     - name: claude
-    - name: gemini
     - name: openai
+    - name: gemini
     - name: deepseek-pro
     - name: qwen
     - name: opencode
@@ -58,8 +58,8 @@ agents:
     iterations: 2
     providers:
     - name: claude
-    - name: gemini
     - name: openai
+    - name: gemini
     - name: deepseek-pro
     - name: qwen
     - name: opencode
@@ -83,7 +83,7 @@ workspace_cache:
   enabled: true
 poll_interval: 10s
 max_clarification_wait: 30m0s
-clarification_timeout_action: abort
+clarification_timeout_action: continue
 storage:
   provider: sqlite
   conn_string: .noctifab/data/noctifab.db
@@ -91,8 +91,8 @@ storage:
 llm:
   priority:
   - claude
-  - gemini
   - openai
+  - gemini
   - qwen
   - deepseek-pro
   - opencode
@@ -109,10 +109,10 @@ llm:
     max_tokens: 32768
     temperature: 0.3
     streaming: true
-  - name: gemini
-    provider: gemini
-    model: gemini-2.5-pro
-    api_keys: GEMINI_API_KEY
+  - name: openai
+    provider: openai
+    model: gpt-5.6-luna
+    api_keys: OPENAI_API_KEY
     max_retries: 2
     retry_backoff: 50ms
     max_timeout: 600s
@@ -120,10 +120,10 @@ llm:
     max_tokens: 32768
     temperature: 0.3
     streaming: true
-  - name: openai
-    provider: openai
-    model: gpt-5.6-luna
-    api_keys: OPENAI_API_KEY
+  - name: gemini
+    provider: gemini
+    model: gemini-2.5-pro
+    api_keys: GEMINI_API_KEY
     max_retries: 2
     retry_backoff: 50ms
     max_timeout: 600s
@@ -179,7 +179,7 @@ llm:
     streaming: true
 vcs:
   provider: github
-  repository: diegojromerolopez/todo-cli
+  repository: diegojromerolopez/stricc
   base_branch: main
   branch_prefix: noctifab/
   use_worktrees: true
@@ -193,22 +193,25 @@ vcs:
   git_retry_backoff: 500ms
 sandbox:
   mode: host
-  timeout_seconds: 300
+  timeout_seconds: 600
   grace_period_seconds: 30
-  test_command: go mod tidy && go test ./...
-  linter_command: go mod tidy && go vet ./...
-  formatter_command: go fmt ./...
+  test_command: cargo test --workspace
+  linter_command: cargo fmt --check && cargo clippy -- -D warnings
+  formatter_command: cargo fmt
   max_linter_retries: 3
   exclude_paths:
-  - node_modules/
-  - vendor/
-  - bin/
-  - dist/
+  - target/
   - .noctifab/
   - .git/
   allowed_commands:
-  - go
+  - cargo
+  - rustc
+  - gcc
+  - clang
   - git
+  - make
+  forbidden_patterns:
+  - \bunsafe\s*\{
 input: ''
 auto_commit: false
 max_actions: 100

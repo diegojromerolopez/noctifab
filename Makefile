@@ -39,33 +39,33 @@ help:
 	@echo "  test            - Run the Go unit test suite"
 	@echo "  test-e2e        - Run the containerized E2E test suite"
 	@echo "  lint            - Run static analysis lint checks using Docker"
-	@echo "  validate        - Run autonomous E2E check for one project inside Docker"
+	@echo "  validate        - Run autonomous E2E check for one or more projects inside Docker (e.g. PROJECT=pyedis,echo)"
 	@echo "  validate-all    - Run all validation projects in parallel inside Docker"
 	@echo "  validate-images - Build base + all per-project validation Docker images"
 
 # Which project validate-runs by default when no PROJECT is passed.
 PROJECT ?= frontpunch
 
-# Validate a single project. Uses validation/run_one.sh which builds the
-# per-project image (or reuses it), launches the container, captures the log
-# to .validation-logs/<project>.log, and writes <PROJECT>_FEEDBACK.md.
-#
-# No host LLM credentials are required: each per-project image already
-# contains `secrets.yaml` (baked in at `docker build` time from
-# `validation/projects/<project>/.noctifab/secrets.yaml`), and noctifab
-# resolves `secret:OPENCODE_API_KEY` from it at config load time. The
-# `validate.sh` harness sets a dummy `GITHUB_TOKEN` for pre-flight checks.
+comma := ,
+empty :=
+space := $(empty) $(empty)
+
+# Validate one or more projects (comma or space separated). Uses validation/run_one.sh
+# which builds the per-project image (or reuses it), launches the container,
+# captures the log to output/log/<project>.log, and writes <PROJECT>_FEEDBACK.md.
 validate:
 	@if [ "$(INTERACTIVE)" = "1" ]; then \
 		INTERACTIVE_FLAG="-i"; \
 	else \
 		INTERACTIVE_FLAG=""; \
 	fi; \
-	if [ "$(SKIP_BUILD)" = "1" ]; then \
-		NOCTIFAB_SKIP_BUILD=1 ./validation/run_one.sh $$INTERACTIVE_FLAG "$(PROJECT)"; \
-	else \
-		./validation/run_one.sh $$INTERACTIVE_FLAG "$(PROJECT)"; \
-	fi
+	for proj in $(subst $(comma),$(space),$(PROJECT)); do \
+		if [ "$(SKIP_BUILD)" = "1" ]; then \
+			NOCTIFAB_SKIP_BUILD=1 ./validation/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
+		else \
+			./validation/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
+		fi; \
+	done
 
 # Validate every project in validation/projects/ in parallel. Each project
 # runs in its own container, writes its own <PROJECT>_FEEDBACK.md, and exits

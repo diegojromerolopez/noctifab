@@ -179,7 +179,7 @@ llm:
     streaming: true
 vcs:
   provider: github
-  repository: diegojromerolopez/todo-cli
+  repository: diegojromerolopez/searchreadthedocs
   base_branch: main
   branch_prefix: noctifab/
   use_worktrees: true
@@ -191,13 +191,15 @@ vcs:
   git_mutex_timeout: 30s
   git_operation_retries: 3
   git_retry_backoff: 500ms
+  pull_request:
+    auto_create: false
 sandbox:
   mode: host
   timeout_seconds: 300
   grace_period_seconds: 30
-  test_command: go mod tidy && go test ./...
-  linter_command: go mod tidy && go vet ./...
-  formatter_command: go fmt ./...
+  test_command: make test
+  linter_command: make lint
+  formatter_command: make format
   max_linter_retries: 3
   exclude_paths:
   - node_modules/
@@ -206,9 +208,19 @@ sandbox:
   - dist/
   - .noctifab/
   - .git/
+  - data/
   allowed_commands:
-  - go
+  - make
+  - python
+  - pip
+  - pytest
+  - ruff
+  - mypy
   - git
+  - sh
+  - bash
+  - curl
+  - docker
 input: ''
 auto_commit: false
 max_actions: 100

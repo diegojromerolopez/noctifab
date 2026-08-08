@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-08-08
+
+### Added
+- **Validation Projects Matrix**: Added technical specifications (`SPEC.md`), container definitions (`Dockerfile`, `docker-compose.yml`), and configuration profiles (`.noctifab/config.yaml`) for validation projects: `auth-vault`, `buffonstream`, `djanban`, `searchreadthedocs`, `searchthedocs`, `sqlasm`, and `stricc`.
+- **LLM Provider Prioritization**: Standardized top-tier LLM provider fallback hierarchy (`claude`, `gemini`, `openai`, `deepseek-pro`, `qwen`, `opencode`, `openrouter`) across all 15 validation projects.
+- **Architectural Reviews & Hardening Guidelines**: Audited and hardened all `SPEC.md` files for Dark Factory autonomous execution by lower-level LLMs.
+
+## [0.25.4] - 2026-08-07
+
+### Enhanced
+- **`djanban` Validation SPEC.md**: Expanded [`validation/projects/djanban/SPEC.md`](file:///Users/diegoj/repos/noctifab/validation/projects/djanban/SPEC.md) with explicit domain calculators (`WIPCalculator`, `RegressionTracker`, `PlusForTrelloParser`, `LeadCycleCalculator`, `ScheduleAnalyzer`), strict wire contract schemas (`/api/v1/...`), number precision invariants, and DI interfaces.
+
+## [0.25.3] - 2026-08-07
+
+### Added
+- **`djanban` Validation Project**: Added the `djanban` legacy modernization project (`validation/projects/djanban/`) to test `noctifab` upgrading outdated Python/Django codebases to Python 3.12+ and Django 5.x while deprecating legacy AngularJS frontends.
+
+## [0.25.2] - 2026-08-07
+
+### Added
+- **Comma-Separated Project Validation (`Makefile` & `run_all.sh`)**: Updated `Makefile` `validate` target and `validation/run_all.sh` to accept comma-separated project lists (e.g., `make validate PROJECT=pyedis,echo,calculator`).
+
 ## [0.25.1] - 2026-08-07
 
 ### Documentation

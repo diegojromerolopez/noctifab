@@ -30,7 +30,13 @@ else
 fi
 
 if [ "$#" -gt 0 ]; then
-  PROJECTS=("$@")
+  PROJECTS=()
+  for arg in "$@"; do
+    IFS=',' read -ra split_args <<< "${arg}"
+    for p in "${split_args[@]}"; do
+      [ -n "${p}" ] && PROJECTS+=("${p}")
+    done
+  done
 else
   PROJECTS=()
   for d in "${ROOT}/validation/projects"/*/; do

@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  auth-vault:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - ISSUER=http://auth-vault:8080
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/.well-known/openid-configuration"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  e2e-runner:
+    image: alpine:latest
+    depends_on:
+      auth-vault:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache curl jq openssl
+        set -e
+        echo "========================================================="
+        echo " 1. OIDC Discovery & JWKS Verification"
+        echo "========================================================="
+        curl -sS http://auth-vault:8080/.well-known/openid-configuration | jq .
+        curl -sS http://auth-vault:8080/.well-known/jwks.json | jq .
+
+        echo "========================================================="
+        echo " 2. OAuth2 Client Credentials Flow"
+        echo "========================================================="
+        TOKEN_RESP=$(curl -sS -X POST http://auth-vault:8080/oauth/token \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "grant_type=client_credentials&client_id=test-client&client_secret=test-secret&scope=read")
+        echo "Token Response: $TOKEN_RESP"
+        ACCESS_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token')
+        
+        if [ "$ACCESS_TOKEN" = "null" ] || [ -z "$ACCESS_TOKEN" ]; then
+          echo "ERROR: Failed to retrieve access_token via client_credentials"
+          exit 1
+        fi
+
+        echo "========================================================="
+        echo " 3. Token Introspection"
+        echo "========================================================="
+        INTROSPECT_RESP=$(curl -sS -X POST http://auth-vault:8080/oauth/introspect \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "token=$ACCESS_TOKEN")
+        echo "Introspection Response: $INTROSPECT_RESP"
+        ACTIVE=$(echo "$INTROSPECT_RESP" | jq -r '.active')
+        
+        if [ "$ACTIVE" != "true" ]; then
+          echo "ERROR: Introspection failed, active != true"
+          exit 1
+        fi
+
+        echo "========================================================="
+        echo " 4. Token Revocation"
+        echo "========================================================="
+        curl -sS -X POST http://auth-vault:8080/oauth/revoke \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "token=$ACCESS_TOKEN"
+
+        REVOKED_RESP=$(curl -sS -X POST http://auth-vault:8080/oauth/introspect \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "token=$ACCESS_TOKEN")
+        echo "Post-Revocation Introspection Response: $REVOKED_RESP"
+        REVOKED_ACTIVE=$(echo "$REVOKED_RESP" | jq -r '.active')
+        
+        if [ "$REVOKED_ACTIVE" != "false" ]; then
+          echo "ERROR: Token revocation failed, active is still true"
+          exit 1
+        fi
+
+        echo "========================================================="
+        echo " SUCCESS: Full OAuth2 & OIDC Authentication Flow Passed!"
+        echo "========================================================="
