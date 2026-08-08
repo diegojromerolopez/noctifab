@@ -11,7 +11,7 @@
 
 `noctifab` is a dark factory autonomous coding engine designed around a stateless agent / stateful orchestrator architecture. The system features multi-provider LLM routing, DAG-based task execution, automated test validation, self-healing code generation, and terminal-based monitoring.
 
-Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (LLM, Storage, Config), `pkg/services` (Orchestrator, Unblocker, Sandbox, Tools), and `cmd/noctifab/cli` (TUI Dashboard), alongside empirical findings from the 16-project validation matrix (`make validate-all`), this document outlines concrete recommendations to maximize **execution speed**, **provider resilience**, and **user experience (UX)**.
+Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (LLM, Storage, Config), `pkg/services` (Orchestrator, Unblocker, Sandbox, Tools), and `cmd/noctifab/cli` (TUI Dashboard), this document outlines open, concrete recommendations to maximize **execution speed**, **provider resilience**, and **user experience (UX)**.
 
 ---
 
@@ -28,23 +28,7 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
   2. When any client returns HTTP 401 (depleted/invalid API key) or HTTP 402 (payment required), flag that provider instance as `EVICTED` in the router for the remainder of the daemon session (or a TTL of 30 minutes).
   3. Evicted providers are skipped instantly during candidate resolution without attempting network calls.
 
-#### 🟢 Issue 2: Deprecated LLM Parameter Rejection (`temperature` in Anthropic & Reasoning Models)
-* **Location:** [`pkg/infrastructure/llm/anthropic.go`](pkg/infrastructure/llm/anthropic.go#L67-L74) & [`pkg/infrastructure/llm/openai_adapt.go`](pkg/infrastructure/llm/openai_adapt.go#L37-L45)
-* **Status:** Implemented in `v0.26.2`.
-* **Root Cause:** Anthropic deprecated the `temperature` parameter for newer Claude 3.5/3.7 and Opus models, returning `HTTP 400: "temperature is deprecated for this model"`. Similarly, OpenAI reasoning models (`o1`, `o3`) reject explicit temperature values.
-* **Solution Implemented:**
-  1. Stripped `"temperature"` key from direct Anthropic API request payloads.
-  2. Added `isNoTemperatureModel(model)` predicate in `openai_adapt.go` to automatically omit `temperature` when routing `claude*` or `o1*`/`o3*` models via OpenAI-compatible endpoints or OpenRouter.
-
-#### 🟢 Issue 3: Concurrent API Rate Limit Contention (`HTTP 429`) & Wave Execution
-* **Location:** [`validation/run_all.sh`](validation/run_all.sh) & [`Makefile`](Makefile#L74-L79)
-* **Status:** Implemented in `v0.26.3`.
-* **Root Cause:** Launching 16 validation containers simultaneously sharing a single API key causes all instances to hit API rate limits (`429 Too Many Requests`) concurrently, inducing exponential backoff delays.
-* **Solution Implemented:**
-  1. Added `--serial` (`-s`) mode support to `run_all.sh` and `Makefile` (`SERIAL=1`), running projects sequentially.
-  2. Added `--projects` (`-p`) parameter support (`PROJECT=...`) to select specific validation project subsets or execution waves.
-
-#### 🟡 Issue 4: Synchronous Catalog Discovery Latency
+#### 🟡 Issue 2: Synchronous Catalog Discovery Latency
 * **Location:** [`pkg/infrastructure/llm/client.go`](pkg/infrastructure/llm/client.go#L226-L230)
 * **Root Cause:** `resolveLatestModel()` performs a synchronous network request to discover available models when encountering aliases like `latest` or `auto`. While catalog results are cached with a short TTL, cache misses block prompt completion.
 * **Impact:** Incurs an extra 300ms–1200ms latency penalty on initial prompt dispatches.
@@ -57,7 +41,7 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ### 2.2 Orchestration Engine & Git Subprocess Overhead
 
-#### 🔴 Issue 5: Subprocess Fork Overhead for Git Task Lifecycle
+#### 🔴 Issue 3: Subprocess Fork Overhead for Git Task Lifecycle
 * **Location:** [`pkg/services/orchestrator_execute.go`](pkg/services/orchestrator_execute.go#L96-L175) & [`pkg/services/rebase_queue.go`](pkg/services/rebase_queue.go#L1-L100)
 * **Root Cause:** `executeTask()` executes up to 12–15 synchronous Git CLI subprocesses (`git show-ref`, `git checkout`, `git branch`, `git worktree add`, `git status`, `git diff`, `git add`, `git commit`, `git worktree remove`, `git worktree prune`) for every single task.
 * **Impact:** In a 10-task story, Git subprocess invocation overhead accounts for 2–5 seconds per task (~20–50 seconds total per story) spent strictly in OS process fork/exec cycles.
@@ -69,7 +53,7 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ### 2.3 State Management & Storage Lock Contention
 
-#### 🟡 Issue 6: High-Frequency SQLite Transaction Contention
+#### 🟡 Issue 4: High-Frequency SQLite Transaction Contention
 * **Location:** [`pkg/infrastructure/storage/sqlite_repository.go`](pkg/infrastructure/storage/sqlite_repository.go#L69-L98) & [`pkg/services/orchestrator_execute.go`](pkg/services/orchestrator_execute.go#L61-L75)
 * **Root Cause:** `updateStateWithRetry()` triggers full Optimistic Concurrency Control (OCC) version checks and full transaction saves (`saveTx`) to SQLite on minor progress updates (e.g. progress 10% -> 25% -> 50%).
 * **Impact:** Under parallel execution (e.g. breadth-first mode or concurrent agents), SQLite single-writer lock contention causes transaction rollbacks and write retries.
@@ -81,7 +65,7 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ### 2.4 Tool Execution & Workspace Context Caching
 
-#### 🟡 Issue 7: Redundant Workspace Directory Scanning
+#### 🟡 Issue 5: Redundant Workspace Directory Scanning
 * **Location:** [`pkg/services/search_tools.go`](pkg/services/search_tools.go#L1-L100) & [`pkg/services/production_tools.go`](pkg/services/production_tools.go#L1-L100)
 * **Root Cause:** Generator and Tester agents frequently execute 50+ repeated `list_directory` and `find_files` tool calls within the same task turn to inspect workspace layouts (e.g., `pyedis` executed 198 tool calls, including 97 list/find calls).
 * **Impact:** Consumes unnecessary LLM turn budget and token bandwidth re-reading directory structures that have not changed.
@@ -91,21 +75,11 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ---
 
-### 2.5 Validation Container Architecture Alignment
-
-#### 🟢 Issue 8: Container Architecture Mismatch (`sqlasm`)
-* **Location:** [`validation/projects/sqlasm/Dockerfile`](validation/projects/sqlasm/Dockerfile)
-* **Status:** Implemented in `v0.26.2`.
-* **Root Cause:** `sqlasm/Dockerfile` used `FROM debian:bookworm-slim` (amd64), which failed executing the Noctifab ARM64 binary compiled on Apple Silicon macOS hosts with `Exec format error`.
-* **Solution Implemented:** Standardized `sqlasm` Dockerfile on `alpine:3.21` + `nasm`, `gcc`, `make`, `valgrind`, matching all other validation project harness containers.
-
----
-
 ## 3. Terminal User Interface (TUI) & UX Enhancements
 
 ### 3.1 Terminal Render Double-Buffering & Flicker Elimination
 
-#### 🔴 Issue 9: Terminal Redraw Screen Flicker
+#### 🔴 Issue 6: Terminal Redraw Screen Flicker
 * **Location:** [`cmd/noctifab/cli/dashboard_render.go`](cmd/noctifab/cli/dashboard_render.go#L24-L27)
 * **Root Cause:** The dashboard renders updates by outputting clear-screen ANSI escape codes (`\033[H\033[J`) followed by streaming the whole rendered string to stdout every 1 second.
 * **Impact:** Screen flickering occurs on fast refresh rates, especially over SSH connections or inside terminal multiplexers (`tmux`, `zellij`).
@@ -117,7 +91,7 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ### 3.2 Pre-Flight LLM & Sandbox Credential Diagnostics
 
-#### 🔴 Issue 10: Late Failure Discovery on CLI Launch
+#### 🔴 Issue 7: Late Failure Discovery on CLI Launch
 * **Location:** [`cmd/noctifab/cli/start.go`](cmd/noctifab/cli/start.go#L1-L100) & [`cmd/noctifab/cli/init.go`](cmd/noctifab/cli/init.go#L1-L100)
 * **Root Cause:** `noctifab start` launches daemon tasks without first validating that configured LLM API keys are active/funded or that target build tools (`cargo`, `pytest`, `go`, `docker`) are available in the sandbox.
 * **Impact:** Users wait 5–10 minutes into execution before discovering a missing dependency or an invalid API key.
@@ -135,7 +109,7 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ### 3.3 Interactive Failure Stack Inspector & Colorized Diagnostics
 
-#### 🟡 Issue 11: Truncated Failure Visibility in Dashboard
+#### 🟡 Issue 8: Truncated Failure Visibility in Dashboard
 * **Location:** [`cmd/noctifab/cli/dashboard_render.go`](cmd/noctifab/cli/dashboard_render.go#L123-L128)
 * **Root Cause:** Failed tasks in the dashboard only display a single truncated tail line via `extractFailureTailReason()`.
 * **Impact:** Users cannot diagnose compilation errors or test failures without leaving the dashboard to inspect raw log files on disk.
@@ -147,7 +121,7 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ### 3.4 Interactive Modal Overlays for Dashboard Prompts
 
-#### 🟡 Issue 12: TUI UI Freeze During Input Prompts
+#### 🟡 Issue 9: TUI UI Freeze During Input Prompts
 * **Location:** [`cmd/noctifab/cli/dashboard.go`](cmd/noctifab/cli/dashboard.go#L149-L216)
 * **Root Cause:** When a user triggers an interactive action (`p` for pause, `n` for new order, `c` for clarification), the background dashboard refresh loop is blocked by acquiring `mu.Lock()`.
 * **Impact:** The dashboard stops updating agent status and progress while the user is typing an input response.
@@ -168,13 +142,10 @@ Following a thorough codebase audit across `pkg/domain`, `pkg/infrastructure` (L
 
 ## 5. Prioritized Implementation Roadmap
 
-| Priority | Area | Improvement Title | Target Files | Status / Est. Impact |
+| Priority | Area | Improvement Title | Target Files | Est. Impact |
 | :---: | :---: | :--- | :--- | :--- |
 | **P0** | Resilience | **Depleted API Key Circuit Breaker (HTTP 401/402 Eviction)** | [`pkg/infrastructure/llm/router.go`](pkg/infrastructure/llm/router.go#L473-L508), [`client.go`](pkg/infrastructure/llm/client.go#L258-L278) | Eliminates execution freezes on multi-provider setups |
-| **P0** | Resilience | **Deprecated LLM Parameter Removal (`temperature` Strip)** | [`pkg/infrastructure/llm/anthropic.go`](pkg/infrastructure/llm/anthropic.go), [`openai_adapt.go`](pkg/infrastructure/llm/openai_adapt.go) | **Done (v0.26.2)** — Resolves HTTP 400 errors on Claude models |
 | **P0** | UX / DX | **CLI Pre-Flight Health & Credential Diagnostic** | [`cmd/noctifab/cli/start.go`](cmd/noctifab/cli/start.go#L1-L100), [`validate.go`](cmd/noctifab/cli/validate.go#L1-L50) | Prevents starting jobs with dead API keys or missing tools |
-| **P1** | Harness | **Serial Mode & Subset Wave Execution (`run_all.sh`)** | [`validation/run_all.sh`](validation/run_all.sh), [`Makefile`](Makefile) | **Done (v0.26.3)** — Prevents single API key rate-limit (`429`) saturation |
-| **P1** | Harness | **Multi-Arch Container Base Alignment (`sqlasm`)** | [`validation/projects/sqlasm/Dockerfile`](validation/projects/sqlasm/Dockerfile) | **Done (v0.26.2)** — Resolves `Exec format error` |
 | **P1** | UX | **TUI Double-Buffering & Cursor Hide (Flicker Fix)** | [`cmd/noctifab/cli/dashboard_render.go`](cmd/noctifab/cli/dashboard_render.go#L24-L27) | Delivers smooth, flicker-free terminal monitoring |
 | **P1** | Speed | **Git Subprocess Overhead Reduction & Worktree Prune Batching** | [`pkg/services/orchestrator_execute.go`](pkg/services/orchestrator_execute.go#L96-L175) | Reduces per-task overhead by 2–5 seconds |
 | **P1** | Performance | **Workspace File Tree Caching & System Prompt Pre-population** | [`pkg/services/search_tools.go`](pkg/services/search_tools.go#L1-L100), [`orchestrator_generator.go`](pkg/services/orchestrator_generator.go#L1-L100) | Cuts redundant directory listing tool turns by 40% |
