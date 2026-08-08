@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.2] - 2026-08-08
+
+### Fixed
+- **Flaky `TestOrchestrator_ConcurrentWorktreeIsolation`**: Made `mockRepo.Save` in `pkg/services/orchestrator_test.go` enforce the same optimistic concurrency contract as the real Postgres/SQLite repositories (rejecting stale `state.Version` writes with `domain.ErrVersionConflict` and bumping the version on success). Concurrent `executeTask` goroutines now exercise the production OCC retry path instead of silently losing state updates, eliminating the timing-dependent `SUCCESS`/`IN_PROGRESS` assertion failure in CI.
+
 ## [0.27.1] - 2026-08-08
 
 ### Fixed
