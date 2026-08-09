@@ -39,9 +39,6 @@ func validateQAConfig(cfg *Config) error {
 	if qa.MaxOutputBytes < 1024 || qa.MaxOutputBytes > 1048576 {
 		return fmt.Errorf("agents.qa.max_output_bytes must be between 1024 and 1048576, got %d", qa.MaxOutputBytes)
 	}
-	if !isNonnegativeDecimal(qa.MaxCostUSD) {
-		return fmt.Errorf("agents.qa.max_cost_usd must be a non-negative decimal, got %q", qa.MaxCostUSD)
-	}
 	if len(qa.BuildCommand) == 0 || strings.TrimSpace(qa.BuildCommand[0]) == "" {
 		return fmt.Errorf("agents.qa.build_command must contain a non-empty executable")
 	}
@@ -62,23 +59,6 @@ func validateQAConfig(cfg *Config) error {
 		}
 	}
 	return nil
-}
-
-func isNonnegativeDecimal(value string) bool {
-	if value == "" {
-		return false
-	}
-	dot := -1
-	for i, r := range value {
-		if r == '.' && dot < 0 {
-			dot = i
-			continue
-		}
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return dot != 0 && dot != len(value)-1
 }
 
 func isCleanRelativeExecutable(value string) bool {

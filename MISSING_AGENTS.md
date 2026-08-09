@@ -425,7 +425,6 @@ agents:
   qa:
     enabled: false      # default false; explicit opt-in for the experiment
     iterations: 1       # maximum model calls per review phase, 1..3
-    max_cost_usd: "0"   # decimal USD; "0" uses the global budget
     max_duration: "2m"
     max_scenarios: 8
     max_review_rounds: 2
@@ -438,8 +437,8 @@ agents:
 ```
 
 There is no `disabled` compatibility alias because QA is not yet shipped. YAML
-containing it must fail as an unknown field. Validate decimal budget syntax,
-positive duration and limits, `max_review_rounds` in `1..5`,
+containing it must fail as an unknown field. Validate positive duration and
+limits, `max_review_rounds` in `1..5`,
 `max_output_bytes` in `1024..1048576`, `network` equal to `none`, non-empty
 clean relative validation commands without arguments, and that enabled QA uses
 `agents.architecture: code_first` and `vcs.use_worktrees: true`; other modes are
@@ -454,7 +453,6 @@ The production config types are:
 type QAConfig struct {
 	Enabled            bool               `yaml:"enabled"`
 	Iterations         int                `yaml:"iterations"`
-	MaxCostUSD         string             `yaml:"max_cost_usd"`
 	MaxDuration        Duration           `yaml:"max_duration"`
 	MaxScenarios       int                `yaml:"max_scenarios"`
 	MaxReviewRounds    int                `yaml:"max_review_rounds"`

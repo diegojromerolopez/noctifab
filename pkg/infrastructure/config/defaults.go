@@ -36,7 +36,6 @@ func DefaultConfig() *Config {
 			QA: QAConfig{
 				Enabled:            false,
 				Iterations:         1,
-				MaxCostUSD:         "0",
 				MaxDuration:        Duration(2 * time.Minute),
 				MaxScenarios:       8,
 				MaxReviewRounds:    2,

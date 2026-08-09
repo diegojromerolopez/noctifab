@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -170,9 +169,6 @@ func (q *QARuntimeCoordinator) deriveAndExecute(ctx context.Context, request QAR
 	}
 	var scenarios []domain.QAScenario
 	for turn := 0; turn < q.cfg.Iterations; turn++ {
-		if budget, ok := new(big.Rat).SetString(q.cfg.MaxCostUSD); ok && budget.Sign() > 0 {
-			return q.finish(result, domain.ReviewBudgetExhausted, "budget_exhausted")
-		}
 		response, completeErr := q.llm.Complete(context.WithValue(ctx, AgentRoleKey, "qa"), rendered.Full())
 		if completeErr != nil {
 			if errors.Is(completeErr, domain.ErrBudgetExhausted) {

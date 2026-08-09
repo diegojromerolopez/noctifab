@@ -165,16 +165,6 @@ func TestQARuntimeBudgetManifestPromptAndSourceChecks(t *testing.T) {
 			t.Fatalf("got %s/%s", result.Phase.Status, result.Phase.TerminalReason)
 		}
 	})
-	t.Run("positive exact cost limit fails closed without usage", func(t *testing.T) {
-		llm := &qaLLMFake{response: scenarioResponse(false)}
-		coordinator := newQATestCoordinator(llm, &qaWorkspaceFake{}, &qaBuilderFake{}, &qaSandboxFake{})
-		coordinator.cfg.MaxCostUSD = "0.01"
-		request := qaRequest()
-		result := coordinator.Review(context.Background(), request, coordinator.Begin(request)).Result
-		if result.Phase.Status != domain.ReviewBudgetExhausted || llm.calls != 0 {
-			t.Fatalf("status=%s calls=%d", result.Phase.Status, llm.calls)
-		}
-	})
 	t.Run("manifest persists and full state is omitted", func(t *testing.T) {
 		llm := &qaLLMFake{response: scenarioResponse(false)}
 		coordinator := newQATestCoordinator(llm, &qaWorkspaceFake{}, &qaBuilderFake{},

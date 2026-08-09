@@ -26,7 +26,6 @@ func TestQAConfigValidation(t *testing.T) {
 			cfg.Agents.QA.Iterations = 3
 			cfg.Agents.QA.MaxReviewRounds = 5
 			cfg.Agents.QA.MaxOutputBytes = 1048576
-			cfg.Agents.QA.MaxCostUSD = "00012.3400"
 			cfg.Agents.QA.ValidationCommands = []string{"bin/app", "./dist/tool"}
 			cfg.Agents.QA.TesterPathPrefixes = []string{"test", "./specs/"}
 		}},
@@ -43,12 +42,6 @@ func TestQAConfigValidation(t *testing.T) {
 		{name: "too many review rounds", edit: func(cfg *Config) { cfg.Agents.QA.MaxReviewRounds = 6 }, want: "max_review_rounds"},
 		{name: "output below minimum", edit: func(cfg *Config) { cfg.Agents.QA.MaxOutputBytes = 1023 }, want: "max_output_bytes"},
 		{name: "output above maximum", edit: func(cfg *Config) { cfg.Agents.QA.MaxOutputBytes = 1048577 }, want: "max_output_bytes"},
-		{name: "empty budget", edit: func(cfg *Config) { cfg.Agents.QA.MaxCostUSD = "" }, want: "max_cost_usd"},
-		{name: "negative budget", edit: func(cfg *Config) { cfg.Agents.QA.MaxCostUSD = "-1" }, want: "max_cost_usd"},
-		{name: "signed budget", edit: func(cfg *Config) { cfg.Agents.QA.MaxCostUSD = "+1" }, want: "max_cost_usd"},
-		{name: "exponent budget", edit: func(cfg *Config) { cfg.Agents.QA.MaxCostUSD = "1e3" }, want: "max_cost_usd"},
-		{name: "multiple decimal points", edit: func(cfg *Config) { cfg.Agents.QA.MaxCostUSD = "1.2.3" }, want: "max_cost_usd"},
-		{name: "missing decimal digits", edit: func(cfg *Config) { cfg.Agents.QA.MaxCostUSD = "1." }, want: "max_cost_usd"},
 		{name: "empty build command", edit: func(cfg *Config) { cfg.Agents.QA.BuildCommand = nil }, want: "build_command"},
 		{name: "blank build executable", edit: func(cfg *Config) { cfg.Agents.QA.BuildCommand = []string{"  "} }, want: "build_command"},
 		{name: "empty validation list", edit: func(cfg *Config) { cfg.Agents.QA.ValidationCommands = nil }, want: "validation_commands"},

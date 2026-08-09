@@ -101,7 +101,6 @@ type AgentsConfig struct {
 type QAConfig struct {
 	Enabled            bool               `yaml:"enabled"`
 	Iterations         int                `yaml:"iterations"`
-	MaxCostUSD         string             `yaml:"max_cost_usd"`
 	MaxDuration        Duration           `yaml:"max_duration"`
 	MaxScenarios       int                `yaml:"max_scenarios"`
 	MaxReviewRounds    int                `yaml:"max_review_rounds"`
