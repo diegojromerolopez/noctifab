@@ -226,6 +226,15 @@ func NewWatchdogRepair(llmClient domain.LLMClient, sandbox Sandbox, tools map[st
 	}
 }
 
+// AttemptRepair runs the LLM-driven repair loop for a hung or failing test
+// suite: categorize the failure, send the diagnostic prompt, execute the
+// returned tool actions, re-validate, and retry with fresh failure context
+// until the suite passes or maxRetries is exhausted.
+//
+// DORMANT: WatchdogRepair is injected into the orchestrator in start.go and
+// serve.go, but no production code path invokes AttemptRepair — only tests
+// do. Wire it into the task-failure path or remove it; tracked in
+// https://github.com/diegojromerolopez/noctifab/issues/15.
 func (wr *WatchdogRepair) AttemptRepair(
 	ctx context.Context,
 	state *domain.State,

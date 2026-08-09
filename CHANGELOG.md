@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.8] - 2026-08-09
+
+### Changed
+- **WatchdogRepair dormant-state tracking**: the injected-but-never-invoked `WatchdogRepair.AttemptRepair` flow is now tracked in [issue #15](https://github.com/diegojromerolopez/noctifab/issues/15) (wire it into the task-failure path or remove it), replacing the vague "revisit if the flow is ever triggered" note. Added a DORMANT doc comment on `AttemptRepair` and updated the CUSTOM_PROMPTS.md assessment table to reference the issue. No behavior change.
+
 ## [0.28.7] - 2026-08-09
 
 ### Added

@@ -111,8 +111,8 @@ Verdicts: **Customize** (becomes `<AGENT>/<ACTION>.tmpl`), **Hardcode**
 | `generator` | `implement_breadth_first` | `orchestrator_execute_breadth_first.go:18` | live | **Customize** | Same family (breadth_first architecture); currently broken by §1.1 |
 | `generator` | `implement_breadth_first_fix` | `orchestrator_execute_breadth_first.go:59` | live | **Customize** | Same family (breadth_first retry); currently broken by §1.1 |
 | `reader` | `inspect` | `orchestrator_helper.go:184` | live | **Hardcode** | ~90% fixed tool schema + generic "gather context" instruction; role name is injected data; no methodology worth user control |
-| `repair` | `diagnose` | `watchdog_repair.go:181,57` | dormant | **Hardcode** | `WatchdogRepair` is injected (`start.go:348`, `serve.go:146`) but `AttemptRepair` has no production call site; revisit if the flow is ever triggered |
-| `repair` | `retry` | `watchdog_repair.go:118` | dormant | **Hardcode** | Same as above |
+| `repair` | `diagnose` | `watchdog_repair.go:181,57` | dormant | **Hardcode** | `WatchdogRepair` is injected (`start.go:348`, `serve.go:146`) but `AttemptRepair` has no production call site; wire-or-remove decision tracked in [#15](https://github.com/diegojromerolopez/noctifab/issues/15) |
+| `repair` | `retry` | `watchdog_repair.go:118` | dormant | **Hardcode** | Same as above ([#15](https://github.com/diegojromerolopez/noctifab/issues/15)) |
 | `unblocker` | `assess` | `unblocker_prompt.go:125` | live | **Hardcode** | Body is ~80% fixed corrective-action schema (`reset_task`/`fail_task`/`log_message`/`noop`) + state JSON; semantics are code-coupled to `unblocker_commands.go`; almost no user-tunable methodology |
 | `listener` | `interpret` | `listener.go:19,117` | live | **Hardcode** | `listenerSystemPrompt` maps free-form operator commands onto a fixed command schema; protocol machinery code-coupled to the listener dispatcher, no user-tunable methodology |
 | — (`llm.Client`) | `json_reminder` | `client.go:120` | live | **Hardcode** | Schema-repair machinery; letting users edit the repair mechanism is a circular risk |
