@@ -62,7 +62,7 @@ Two construction patterns exist:
    (invoked at `pkg/infrastructure/llm/client.go:188`) wraps it in the role
    body (persona, rules, tool list, JSON schema).
 2. **Inline prompts**: direct `fmt.Sprintf` at each call site (reader,
-   unblocker, watchdog, flaky, disambiguator, json_reminder).
+   unblocker, watchdog, listener, flaky, disambiguator, json_reminder).
 
 ### 1.1 Prefix-dispatch bug found during inventory
 
@@ -108,6 +108,7 @@ Verdicts: **Customize** (becomes `<AGENT>/<ACTION>.tmpl`), **Hardcode**
 | `repair` | `diagnose` | `watchdog_repair.go:181,57` | dormant | **Hardcode** | `WatchdogRepair` is injected (`start.go:348`, `serve.go:146`) but `AttemptRepair` has no production call site; revisit if the flow is ever triggered |
 | `repair` | `retry` | `watchdog_repair.go:118` | dormant | **Hardcode** | Same as above |
 | `unblocker` | `assess` | `unblocker_prompt.go:125` | live | **Hardcode** | Body is ~80% fixed corrective-action schema (`reset_task`/`fail_task`/`log_message`/`noop`) + state JSON; semantics are code-coupled to `unblocker_commands.go`; almost no user-tunable methodology |
+| `listener` | `interpret` | `listener.go:19,117` | live | **Hardcode** | `listenerSystemPrompt` maps free-form operator commands onto a fixed command schema; protocol machinery code-coupled to the listener dispatcher, no user-tunable methodology |
 | — (`llm.Client`) | `json_reminder` | `client.go:120` | live | **Hardcode** | Schema-repair machinery; letting users edit the repair mechanism is a circular risk |
 | tester/generator loops | turn continuation wrapper | `orchestrator_generator.go:199`, `orchestrator_helper.go:399` | live | **Hardcode** | Turn scaffolding/protocol (`TOOL OUTPUTS FROM PREVIOUS TURN...`), not a persona prompt |
 | all agents | context fragments (recovery directive, failure summary, tool outputs) | various | live | **Hardcode** | Small data fragments injected into prompts, not standalone templates |
@@ -512,7 +513,8 @@ Mandate — the feature is opt-in).
 
 - No customization surface for hardcoded prompts: `reader/inspect`,
   `repair/diagnose` + `repair/retry` (dormant flow), `unblocker/assess`,
-  `json_reminder`, the turn continuation wrapper, and context fragments. They
+  `listener/interpret`, `json_reminder`, the turn continuation wrapper, and
+  context fragments. They
   stay as Go code; if a future need emerges, each can be promoted to
   `<AGENT>/<ACTION>.tmpl` following this plan's pattern.
 - No templates for dead-code prompts: `invariants_*` / `PromptBuilder`,

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.2] - 2026-08-09
+
+### Fixed
+- **Prompt inventory completeness**: Added the live `listener/interpret` prompt (`listenerSystemPrompt`, `pkg/services/listener.go`) to the CUSTOM_PROMPTS.md assessment table and non-goals as a Hardcode entry; it was missing from the "full inventory" claim. No code change — the listener prompt stays hardcoded protocol machinery.
+
 ## [0.28.1] - 2026-08-09
 
 ### Fixed
