@@ -16,7 +16,7 @@ func (o *Orchestrator) executeTaskBreadthFirst(ctx context.Context, task *domain
 	if task.Retries == 0 {
 		// 1. Generator Agent turn: 80% happy path implementation
 		o.updateTaskProgress(ctx, taskID, 25)
-		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "breadth_first")
+		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "implement_breadth_first")
 
 		statusOut, _ := taskGit.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
@@ -50,7 +50,7 @@ func (o *Orchestrator) executeTaskBreadthFirst(ctx context.Context, task *domain
 	} else {
 		// Retries > 0: Benevolent refinement pass addressing defects while preserving zero regressions
 		o.updateTaskProgress(ctx, taskID, 50)
-		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "breadth_first_fix")
+		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "implement_breadth_first_fix")
 
 		statusOut, _ := taskGit.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {

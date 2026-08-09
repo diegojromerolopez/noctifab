@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.5] - 2026-08-09
+
+### Changed
+- **Consistent breadth-first prompt action naming**: renamed the generator prompt actions `breadth_first` → `implement_breadth_first` and `breadth_first_fix` → `implement_breadth_first_fix` for symmetry with `tester/write_breadth_first` (`<base>_breadth_first` convention). Action names are the public customization contract (template directory names, config keys, CLI arguments); renamed before first release of the feature.
+
 ## [0.28.4] - 2026-08-09
 
 ### Added

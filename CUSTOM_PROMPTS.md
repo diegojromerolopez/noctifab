@@ -19,6 +19,12 @@
   running after wrapping); it is now appended after the fully rendered prompt.
   First-turn prompts are byte-identical; continuation turns carry the same
   content with the wrapper at the end instead of mid-body.
+- **Generator breadth-first action naming.** The generator actions were
+  renamed `breadth_first` → `implement_breadth_first` and `breadth_first_fix`
+  → `implement_breadth_first_fix` for symmetry with
+  `tester/write_breadth_first` (`<base>_breadth_first` convention). Action
+  names are the public contract (directory names, config keys, CLI args), so
+  the rename happened before the first release of the feature.
 - **Byte-identical extraction is machine-verified**: the golden tests render
   each default against a verbatim test-only copy of the legacy builders
   (`golden_legacy_test.go`) instead of static golden files.
@@ -102,8 +108,8 @@ Verdicts: **Customize** (becomes `<AGENT>/<ACTION>.tmpl`), **Hardcode**
 | `generator` | `fix` | `orchestrator_execute.go:325` | live | **Customize** | Same family (code_first retry path) |
 | `generator` | `single_pass` | `orchestrator_execute_single_pass.go:16` | live | **Customize** | Same family (single_pass architecture) |
 | `generator` | `single_pass_fix` | `orchestrator_execute_single_pass.go:33` | live | **Customize** | Same family (single_pass retry path) |
-| `generator` | `breadth_first` | `orchestrator_execute_breadth_first.go:18` | live | **Customize** | Same family (breadth_first architecture); currently broken by §1.1 |
-| `generator` | `breadth_first_fix` | `orchestrator_execute_breadth_first.go:59` | live | **Customize** | Same family (breadth_first retry); currently broken by §1.1 |
+| `generator` | `implement_breadth_first` | `orchestrator_execute_breadth_first.go:18` | live | **Customize** | Same family (breadth_first architecture); currently broken by §1.1 |
+| `generator` | `implement_breadth_first_fix` | `orchestrator_execute_breadth_first.go:59` | live | **Customize** | Same family (breadth_first retry); currently broken by §1.1 |
 | `reader` | `inspect` | `orchestrator_helper.go:184` | live | **Hardcode** | ~90% fixed tool schema + generic "gather context" instruction; role name is injected data; no methodology worth user control |
 | `repair` | `diagnose` | `watchdog_repair.go:181,57` | dormant | **Hardcode** | `WatchdogRepair` is injected (`start.go:348`, `serve.go:146`) but `AttemptRepair` has no production call site; revisit if the flow is ever triggered |
 | `repair` | `retry` | `watchdog_repair.go:118` | dormant | **Hardcode** | Same as above |
@@ -166,8 +172,8 @@ One directory per agent, one self-contained template per action:
     fix.tmpl                  # optional override
     single_pass.tmpl          # optional override
     single_pass_fix.tmpl      # optional override
-    breadth_first.tmpl        # optional override
-    breadth_first_fix.tmpl    # optional override
+    implement_breadth_first.tmpl      # optional override
+    implement_breadth_first_fix.tmpl  # optional override
 ```
 
 Every action supports the same pair of files: `<ACTION>.tmpl` (full-template
@@ -371,8 +377,8 @@ pkg/infrastructure/prompts/
       fix.tmpl
       single_pass.tmpl
       single_pass_fix.tmpl
-      breadth_first.tmpl
-      breadth_first_fix.tmpl
+      implement_breadth_first.tmpl
+      implement_breadth_first_fix.tmpl
   keys.go                      # (agent, action) catalog: 14 keys / 4 agents + validation
   data.go                      # typed template data structs (public contract)
   resolver.go                  # 3-level resolution: config path -> convention -> embedded

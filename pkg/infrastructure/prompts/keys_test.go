@@ -33,8 +33,8 @@ func TestCatalog(t *testing.T) {
 		if err := ValidateKey("tester", "write"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !IsValidKey("generator", "breadth_first_fix") {
-			t.Error("expected generator/breadth_first_fix to be valid")
+		if !IsValidKey("generator", "implement_breadth_first_fix") {
+			t.Error("expected generator/implement_breadth_first_fix to be valid")
 		}
 	})
 

@@ -108,8 +108,8 @@ func TestGoldenFixedVariants_ReceiveRoleBodyAndContract(t *testing.T) {
 		agent, action, persona, instruction string
 	}{
 		{AgentTester, "write_breadth_first", "You are acting as the Tester Agent.", "Write baseline acceptance tests verifying the primary happy-path scenarios for the core functionality."},
-		{AgentGenerator, "breadth_first", "You are acting as the Generator Agent.", "Focus on implementing the ~80% core happy-path functionality to make the feature functional end-to-end."},
-		{AgentGenerator, "breadth_first_fix", "You are acting as the Generator Agent.", "Address previous execution failures or missing edge cases. Ensure all existing happy-path tests continue to pass with zero regressions."},
+		{AgentGenerator, "implement_breadth_first", "You are acting as the Generator Agent.", "Focus on implementing the ~80% core happy-path functionality to make the feature functional end-to-end."},
+		{AgentGenerator, "implement_breadth_first_fix", "You are acting as the Generator Agent.", "Address previous execution failures or missing edge cases. Ensure all existing happy-path tests continue to pass with zero regressions."},
 		{AgentTester, "refactor", "You are acting as the Tester Agent.", "Refactor and fix the tests to resolve the previous failures and align them with the updated code."},
 	}
 	for _, tc := range cases {

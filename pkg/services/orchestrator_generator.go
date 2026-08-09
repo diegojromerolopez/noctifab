@@ -13,7 +13,7 @@ import (
 // RunGeneratorAgent runs the generator agent to implement task functionality.
 // action selects the generator prompt template (see the prompts package
 // catalog: implement, refactor, fix, single_pass, single_pass_fix,
-// breadth_first, breadth_first_fix).
+// implement_breadth_first, implement_breadth_first_fix).
 func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, recentTestsContext string, action string) {
 	// Fail fast on unknown actions before doing any reader-phase work.
 	if err := prompts.ValidateKey(prompts.AgentGenerator, action); err != nil {

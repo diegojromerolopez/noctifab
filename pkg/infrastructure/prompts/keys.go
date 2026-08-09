@@ -35,7 +35,7 @@ var catalog = map[string][]string{
 	AgentGenerator: {
 		"implement", "refactor", "fix",
 		"single_pass", "single_pass_fix",
-		"breadth_first", "breadth_first_fix",
+		"implement_breadth_first", "implement_breadth_first_fix",
 	},
 }
 

@@ -13,7 +13,7 @@ There are **14 customizable templates across 4 agents**:
 | `product_manager` | `generate`, `audit` |
 | `planner` | `decompose` |
 | `tester` | `write`, `fix`, `refactor`, `write_breadth_first` |
-| `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `breadth_first`, `breadth_first_fix` |
+| `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `implement_breadth_first`, `implement_breadth_first_fix` |
 
 Run `noctifab prompts list` to see the catalog with each action's effective
 source.
