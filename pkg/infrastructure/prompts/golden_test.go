@@ -89,10 +89,35 @@ func TestGoldenDefaults_ByteIdenticalToLegacyAssembly(t *testing.T) {
 			}
 			got := rendered.Full()
 			want := legacyPreprocessPrompt(tc.legacy)
+			if tc.agent == AgentProductManager {
+				for _, needle := range []string{"exactly one fenced `noctifab-contract` JSON block", "```noctifab-contract", `"allowed_executables"`} {
+					if !strings.Contains(got, needle) {
+						t.Errorf("product manager prompt missing %q", needle)
+					}
+				}
+				return
+			}
 			if got != want {
 				t.Fatalf("rendered prompt differs from legacy assembly.\n--- got:\n%s\n--- want:\n%s\n--- first divergence at byte %d", got, want, firstDiff(got, want))
 			}
 		})
+	}
+}
+
+func TestGoldenQAContract(t *testing.T) {
+	rendered, err := NewDefaultRenderer().Render(AgentQA, "acceptance", QAPromptData{
+		State:              `{"id":"state-1"}`,
+		StoryContract:      `{"story_id":"US-001"}`,
+		ValidationCommands: []string{"./dist/example"},
+		MaxScenarios:       8,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, needle := range []string{"stateless QA acceptance agent", "untrusted data", "at most 8", "exactly one 'propose_scenarios'", `"command": ["./dist/example"`} {
+		if !strings.Contains(rendered.Full(), needle) {
+			t.Errorf("QA prompt missing %q", needle)
+		}
 	}
 }
 

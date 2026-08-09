@@ -31,7 +31,7 @@ These settings are defined at the root level of the configuration file.
 
 ## Agent Settings (`agents`)
 
-Configures multi-agent team concurrency, turn iterations, architecture mode, and audit/release panels. Setting `number: 0` disables any agent type.
+Configures implemented agent concurrency, turn iterations, architecture mode, and the retained experimental QA capability.
 
 ```yaml
 agents:
@@ -50,10 +50,6 @@ agents:
     number: 1
     iterations: 2
 
-  architect:
-    number: 1
-    iterations: 2
-
   generators:
     number: 3
     iterations: 5
@@ -63,24 +59,8 @@ agents:
     iterations: 3
 
   qa:
-    number: 1
-    iterations: 2
-
-  security:
-    number: 1
-    iterations: 2
-
-  performance:
-    number: 1
-    iterations: 2
-
-  docs:
-    number: 1
-    iterations: 2
-
-  devops:
-    number: 1
-    iterations: 2
+    enabled: false
+    iterations: 1
 
   unblocker:
     number: 1
@@ -99,14 +79,9 @@ clarification_timeout_action: abort
 - **`orchestrator`**: Configures Orchestrator agents managing task lifecycle and state synchronization (`number: 1`, `iterations: 2`).
 - **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories (`roadmap/US-xxx.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `max_user_stories: 5`). Supports an optional `max_user_stories` setting (e.g. `5`) to hard-cap the number of roadmap user stories generated during specification decomposition. If `max_user_stories` is omitted or 0, the Product Manager agent verifies against `SPEC.md` whether existing stories already implement all specification requirements before creating any new user story.
 - **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs (`number: 1`, `iterations: 2`).
-- **`architect`**: Configures Software Architect agents validating domain boundaries and package structures (`number: 1`, `iterations: 2`).
 - **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 5`).
 - **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 3`).
-- **`qa`**: Configures QA Auditor agents auditing code & test quality by feature domain (`number: 1`, `iterations: 2`).
-- **`security`**: Configures Security Auditor agents running SAST scanners & auditing code vulnerabilities (`number: 1`, `iterations: 2`).
-- **`performance`**: Configures Performance & Benchmark agents running profilers & leak detection (`number: 1`, `iterations: 2`).
-- **`docs`**: Configures Documentation agents maintaining OpenAPI specs, READMEs & docstrings (`number: 1`, `iterations: 2`).
-- **`devops`**: Configures DevOps & Release agents generating Dockerfiles, Makefiles & CI workflows (`number: 1`, `iterations: 2`).
+- **`qa`**: Reserves the experimental QA capability. It defaults to `enabled: false`; Phase 0 reports its capability but does not run QA.
 - **`unblocker`**: Configures Unblocker agents monitoring pipelines for stalls and re-dispatching tasks (`number: 1`, `iterations: 2`).
 - **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.
 - **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve a task clarification.
@@ -505,7 +480,7 @@ agents:
 Below is a complete, annotated example configuration demonstrating all options in a typical spec-driven (Level 3.5) setup:
 
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 input: "./roadmap/US-001.md"
 auto_commit: true
 max_actions: 100
@@ -647,4 +622,3 @@ sast:
     - "gosec"
   fail_on_severity: "high"
 ```
-

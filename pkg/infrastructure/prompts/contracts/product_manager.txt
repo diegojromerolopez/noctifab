@@ -2,7 +2,7 @@
 You may only use the 'create_story' tool.
 'create_story' tool arguments:
 - filename: Relative filepath (e.g. "roadmap/US-001.md")
-- content: Complete markdown user story with title, requirements, definition of done (DoD), validation criteria, depends_on: [], and change_type: "new"
+- content: Complete markdown user story with title, requirements, definition of done (DoD), validation criteria, depends_on: [], change_type: "new", and exactly one fenced noctifab-contract JSON block
 
 Return format:
 {

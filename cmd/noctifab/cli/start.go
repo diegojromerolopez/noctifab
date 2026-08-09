@@ -224,6 +224,9 @@ var startCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if _, err := services.NewQARecoveryService(repo, services.SystemQAClock{}).Recover(cmd.Context()); err != nil {
+			return fmt.Errorf("recover interrupted QA phases: %w", err)
+		}
 
 		// Initialize sandbox runner
 		var sandboxRunner services.Sandbox
@@ -357,34 +360,23 @@ var startCmd = &cobra.Command{
 		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
 
 		orchConfig := services.OrchestratorConfig{
-			Architecture:          cfg.Agents.Architecture,
-			ArchitectNumber:       cfg.Agents.Architect.Number,
-			ArchitectIterations:   cfg.Agents.Architect.Iterations,
-			GeneratorsNumber:      cfg.Agents.Generators.Number,
-			GeneratorsIterations:  cfg.Agents.Generators.Iterations,
-			TestersNumber:         cfg.Agents.Testers.Number,
-			TestersIterations:     cfg.Agents.Testers.Iterations,
-			QAAgentsNumber:        cfg.Agents.QA.Number,
-			QAAgentsIterations:    cfg.Agents.QA.Iterations,
-			SecurityNumber:        cfg.Agents.Security.Number,
-			SecurityIterations:    cfg.Agents.Security.Iterations,
-			PerformanceNumber:     cfg.Agents.Performance.Number,
-			PerformanceIterations: cfg.Agents.Performance.Iterations,
-			DocsNumber:            cfg.Agents.Docs.Number,
-			DocsIterations:        cfg.Agents.Docs.Iterations,
-			DevOpsNumber:          cfg.Agents.DevOps.Number,
-			DevOpsIterations:      cfg.Agents.DevOps.Iterations,
-			PollInterval:          time.Duration(cfg.PollInterval),
-			MaxRetries:            10,
-			Concurrency:           effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
-			UseWorktrees:          cfg.VCS.UseWorktrees,
-			OCCMaxRetries:         cfg.OCCMaxRetries,
-			OCCBackoffBase:        time.Duration(cfg.OCCBackoffBase),
-			OCCBackoffFactor:      cfg.OCCBackoffFactor,
-			MaxDuration:           time.Duration(cfg.MaxDuration),
-			AutoCreatePR:          cfg.VCS.PullRequest.AutoCreate,
-			ExcludePaths:          cfg.Sandbox.ExcludePaths,
-			WorkspaceCache:        cfg.GetWorkspaceCache(),
+			Architecture:         cfg.Agents.Architecture,
+			GeneratorsNumber:     cfg.Agents.Generators.Number,
+			GeneratorsIterations: cfg.Agents.Generators.Iterations,
+			TestersNumber:        cfg.Agents.Testers.Number,
+			TestersIterations:    cfg.Agents.Testers.Iterations,
+			PollInterval:         time.Duration(cfg.PollInterval),
+			MaxRetries:           10,
+			Concurrency:          effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
+			UseWorktrees:         cfg.VCS.UseWorktrees,
+			OCCMaxRetries:        cfg.OCCMaxRetries,
+			OCCBackoffBase:       time.Duration(cfg.OCCBackoffBase),
+			OCCBackoffFactor:     cfg.OCCBackoffFactor,
+			MaxDuration:          time.Duration(cfg.MaxDuration),
+			AutoCreatePR:         cfg.VCS.PullRequest.AutoCreate,
+			ExcludePaths:         cfg.Sandbox.ExcludePaths,
+			WorkspaceCache:       cfg.GetWorkspaceCache(),
+			QA:                   cfg.Agents.QA,
 		}
 
 		mailbox := services.NewCommandMailbox(repo)
@@ -452,7 +444,7 @@ var startCmd = &cobra.Command{
 				orchestrator := services.NewOrchestrator(
 					repo, reg, llmClient, validator, scheduler,
 					gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox, repairHandler,
-					promptRenderer,
+					promptRenderer, qaDependencies(cfg)...,
 				)
 
 				if cfg.Unblocker.Enabled {

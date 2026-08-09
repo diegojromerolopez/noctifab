@@ -34,6 +34,8 @@ const (
 	AgentRoleGenerator AgentRole = "GENERATOR"
 	// AgentRoleTester writes tests and validates output.
 	AgentRoleTester AgentRole = "TESTER"
+	// AgentRoleQA derives and executes bounded black-box acceptance scenarios.
+	AgentRoleQA AgentRole = "QA"
 	// AgentRoleResolver resolves source code merge conflicts.
 	AgentRoleResolver AgentRole = "RESOLVER"
 	// AgentRoleUnblocker monitors the pipeline for stalled tasks and agents and
@@ -124,4 +126,8 @@ type State struct {
 	Metadata           StateMetadata         `json:"metadata"`
 	StoryStatus        StoryStatus           `json:"story_status"`
 	StoryError         string                `json:"story_error,omitempty"`
+	StoryContracts     []StoryContract       `json:"story_contracts,omitempty"`
+	ReviewPhases       []ReviewPhase         `json:"review_phases,omitempty"`
+	QAScenarios        []QAScenario          `json:"qa_scenarios,omitempty"`
+	QAFindings         []QAFinding           `json:"qa_findings,omitempty"`
 }

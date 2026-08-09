@@ -26,6 +26,8 @@ func (r *PostgresRepository) rewriteRelationGroup(ctx context.Context, tx *sql.T
 		return r.saveValidationCriteria(ctx, tx, state)
 	case groupActiveAgents:
 		return r.saveActiveAgents(ctx, tx, state)
+	case groupQAReviews:
+		return r.saveQAReviews(ctx, tx, state)
 	default:
 		return fmt.Errorf("unknown relation group: %s", group)
 	}

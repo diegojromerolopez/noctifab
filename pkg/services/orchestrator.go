@@ -27,38 +27,36 @@ type PromptRenderer interface {
 }
 
 type OrchestratorConfig struct {
-	Architecture          string
-	ArchitectNumber       int
-	ArchitectIterations   int
-	GeneratorsNumber      int
-	GeneratorsIterations  int
-	TestersNumber         int
-	TestersIterations     int
-	QAAgentsNumber        int
-	QAAgentsIterations    int
-	SecurityNumber        int
-	SecurityIterations    int
-	PerformanceNumber     int
-	PerformanceIterations int
-	DocsNumber            int
-	DocsIterations        int
-	DevOpsNumber          int
-	DevOpsIterations      int
-	PollInterval          time.Duration
-	MaxRetries            int
-	Concurrency           int
-	UseWorktrees          bool
-	OCCMaxRetries         int
-	OCCBackoffBase        time.Duration
-	OCCBackoffFactor      float64
-	MaxDuration           time.Duration
-	AutoCreatePR          bool
-	MaxActions            int
-	ExcludePaths          []string
-	MetricsEnabled        bool
-	MetricsOutputPath     string
-	Context               config.ContextConfig
-	WorkspaceCache        config.WorkspaceCacheConfig
+	Architecture         string
+	GeneratorsNumber     int
+	GeneratorsIterations int
+	TestersNumber        int
+	TestersIterations    int
+	PollInterval         time.Duration
+	MaxRetries           int
+	Concurrency          int
+	UseWorktrees         bool
+	OCCMaxRetries        int
+	OCCBackoffBase       time.Duration
+	OCCBackoffFactor     float64
+	MaxDuration          time.Duration
+	AutoCreatePR         bool
+	MaxActions           int
+	ExcludePaths         []string
+	MetricsEnabled       bool
+	MetricsOutputPath    string
+	Context              config.ContextConfig
+	WorkspaceCache       config.WorkspaceCacheConfig
+	QA                   config.QAConfig
+}
+
+// QADependencies contains the optional infrastructure used only when QA is enabled.
+type QADependencies struct {
+	WorkspaceFactory ReviewWorkspaceFactory
+	ArtifactBuilder  QAArtifactBuilder
+	Sandbox          QASandboxRunner
+	FileSystem       QAFileSystem
+	Clock            QAClock
 }
 
 func (c OrchestratorConfig) GetWorkspaceCache() config.WorkspaceCacheConfig {
@@ -82,6 +80,7 @@ type Orchestrator struct {
 	metricsMu         sync.RWMutex
 	metricsCollector  *MetricsCollector
 	unblocker         *UnblockerAgent
+	qa                *QARuntimeCoordinator
 	timesMu           sync.Mutex
 	storyStartedAt    time.Time
 	totalActions      int64
@@ -107,6 +106,7 @@ func NewOrchestrator(
 	mailbox *CommandMailbox,
 	watchdogRepair RepairHandler,
 	promptRenderer PromptRenderer,
+	qaDependencies ...QADependencies,
 ) *Orchestrator {
 	if promptRenderer == nil {
 		// Safety net for tests and legacy call sites: fall back to the
@@ -131,6 +131,11 @@ func NewOrchestrator(
 		taskCompletedChan: make(chan struct{}, 100),
 	}
 	o.executeTaskFn = o.executeTask
+	if len(qaDependencies) > 0 {
+		deps := qaDependencies[0]
+		o.qa = NewQARuntimeCoordinator(cfg.QA, client, promptRenderer, deps.WorkspaceFactory,
+			deps.ArtifactBuilder, deps.Sandbox, deps.FileSystem, deps.Clock)
+	}
 	return o
 }
 

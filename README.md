@@ -183,7 +183,7 @@ To prevent "evaluation gaming" (where code generators approve their own buggy co
 
 ### Agent Architecture Modes & Team Configuration (`agents:`)
 
-`noctifab` supports unified multi-agent team configuration under the **`agents:`** section in `.noctifab/config.yaml`. Setting `number: 0` disables any agent type.
+`noctifab` supports unified configuration for its implemented roles under the **`agents:`** section in `.noctifab/config.yaml`. QA is retained as an experimental capability and is disabled by default.
 
 ```yaml
 agents:
@@ -201,10 +201,6 @@ agents:
     number: 1      # Task DAG decomposition (default: 1)
     iterations: 2
 
-  architect:
-    number: 1      # Software Architect pre-flight agents (default: 1)
-    iterations: 2
-
   generators:
     number: 3      # Number of parallel Generator agents (default: 3)
     iterations: 5  # Maximum LLM repair turns per task (default: 5)
@@ -214,24 +210,8 @@ agents:
     iterations: 3  # Maximum LLM turns per task (default: 3)
 
   qa:
-    number: 1      # QA Auditor agents auditing code/tests (default: 1)
-    iterations: 2  # Maximum QA refactor review iterations per feature (default: 2)
-
-  security:
-    number: 1      # SAST & security auditor agents (default: 1)
-    iterations: 2
-
-  performance:
-    number: 1      # Benchmark & memory leak profiler agents (default: 1)
-    iterations: 2
-
-  docs:
-    number: 1      # OpenAPI & docstrings generator agents (default: 1)
-    iterations: 2
-
-  devops:
-    number: 1      # Dockerfile & CI pipeline release agents (default: 1)
-    iterations: 2
+    enabled: false # Experimental; no QA runtime is active in Phase 0
+    iterations: 1
 
   unblocker:
     number: 1      # Autonomous pipeline stall detection & task re-dispatch (default: 1)
@@ -241,7 +221,7 @@ agents:
 1. **`code_first` (`cfv`)** (Default): Generator implements code first, followed by independent Tester verification turns.
 2. **`single_pass` (`spe`)**: Fast-path execution where a single Generator Agent pass co-generates implementation code and tests in one turn.
 3. **`breadth_first` (`bfg`)**: Iterative ~80% happy-path generation across all user stories first, followed by benevolent judges refining edge cases and enforcing zero regressions.
-4. **Multi-Agent Quality & Release Panel**: Specialized agents (`product_manager`, `planner`, `architect`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`) refine specs with explicit Definition of Done (DoD) API contracts, design DAGs, audit code quality, document, and heal pipeline stalls autonomously.
+4. **Explicit Quality Tasks**: Architecture, security, performance, documentation, and infrastructure concerns are ordinary planner tasks verified by deterministic validators. They are not separate agent roles.
 
 ---
 
@@ -422,7 +402,7 @@ Assigning specialized AI models to different execution phases is an essential be
 2. **Model Specialization:** Use fast syntax models for code generation, reasoning heavyweights for test design, and premier analytical models for code review and security audits.
 
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 
 # 1. Named LLM Provider Registry & Global Failover
 llm:
@@ -464,17 +444,11 @@ agents:
       - name: "anthropic-reviewer"
 
   qa:
-    number: 1
-    iterations: 2
+    enabled: false
+    iterations: 1
     providers:
       - name: "anthropic-reviewer"
       - name: "openai-primary"
-
-  security:
-    number: 1
-    iterations: 2
-    providers:
-      - name: "anthropic-reviewer"
 ```
 
 > [!TIP]

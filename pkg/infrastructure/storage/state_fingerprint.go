@@ -18,11 +18,27 @@ const (
 	groupWorkspaceFiles     = "workspace_files"
 	groupValidationCriteria = "validation_criteria"
 	groupActiveAgents       = "active_agents"
+	groupQAReviews          = "qa_reviews"
 )
 
 // stateRelationGroups lists every relation group persisted alongside the
 // state row, in the canonical write order used by Save and by prune deletes.
 var stateRelationGroups = []string{
+	groupTasks,
+	groupClarifications,
+	groupActions,
+	groupWorkspaceFiles,
+	groupValidationCriteria,
+	groupActiveAgents,
+	groupQAReviews,
+}
+
+// stateRelationTables lists physical child tables in foreign-key-safe delete order.
+var stateRelationTables = []string{
+	"qa_findings",
+	"qa_scenarios",
+	"review_phases",
+	"story_contracts",
 	groupTasks,
 	groupClarifications,
 	groupActions,
@@ -49,6 +65,12 @@ func computeStateFingerprints(state *domain.State) (stateFingerprints, error) {
 		groupWorkspaceFiles:     state.Files,
 		groupValidationCriteria: state.ValidationCriteria,
 		groupActiveAgents:       state.ActiveAgents,
+		groupQAReviews: struct {
+			StoryContracts []domain.StoryContract
+			ReviewPhases   []domain.ReviewPhase
+			QAScenarios    []domain.QAScenario
+			QAFindings     []domain.QAFinding
+		}{state.StoryContracts, state.ReviewPhases, state.QAScenarios, state.QAFindings},
 	}
 	fingerprints := make(stateFingerprints, len(groups))
 	for name, rows := range groups {

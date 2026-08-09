@@ -74,7 +74,7 @@ func setupCleanTestDir(t *testing.T) (tmpDir string, noctifabDir string, teardow
 	}
 
 	configYaml := `
-config_version: "1.0"
+config_version: "2.0"
 vcs:
   repository: "owner/repo"
 `

@@ -1,4 +1,4 @@
-config_version: '1.0'
+config_version: '2.0'
 agents:
   architecture: breadth_first
   max_tools_per_response: 10
@@ -20,17 +20,6 @@ agents:
   planner:
     number: 1
     iterations: 2
-  architect:
-    number: 1
-    iterations: 2
-    providers:
-    - name: claude
-    - name: openai
-    - name: gemini
-    - name: deepseek-pro
-    - name: qwen
-    - name: opencode
-    - name: openrouter
   generators:
     number: 4
     iterations: 5
@@ -54,7 +43,7 @@ agents:
     - name: opencode
     - name: openrouter
   qa:
-    number: 1
+    enabled: false
     iterations: 2
     providers:
     - name: claude
@@ -64,18 +53,6 @@ agents:
     - name: qwen
     - name: opencode
     - name: openrouter
-  security:
-    number: 1
-    iterations: 2
-  performance:
-    number: 1
-    iterations: 2
-  docs:
-    number: 1
-    iterations: 2
-  devops:
-    number: 1
-    iterations: 2
   unblocker:
     number: 1
     iterations: 2

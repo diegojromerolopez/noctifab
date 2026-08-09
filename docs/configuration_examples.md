@@ -9,7 +9,7 @@ This document provides complete, production-ready configuration examples for var
 A standard local development setup for Go projects using a local SQLite database and host-level sandbox isolation.
 
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 log_level: "info"
 
 storage:
@@ -27,9 +27,6 @@ agents:
   planner:
     number: 1      # Task DAG decomposition
     iterations: 2
-  architect:
-    number: 1      # Pre-flight architecture pass (default: 1)
-    iterations: 2
   generators:
     number: 3      # Number of parallel Generator agents (default: 3)
     iterations: 5  # Maximum turns per task (default: 5)
@@ -37,20 +34,8 @@ agents:
     number: 2      # Number of parallel Tester agents (default: 2)
     iterations: 3  # Maximum turns per task (default: 3)
   qa:
-    number: 1      # QA Auditor agents auditing code/tests (default: 1)
-    iterations: 2  # Maximum QA refactor review iterations per feature (default: 2)
-  security:
-    number: 1      # SAST & security auditor agents (default: 1)
-    iterations: 2
-  performance:
-    number: 1      # Profiling & benchmark agents (default: 1)
-    iterations: 2
-  docs:
-    number: 1      # OpenAPI & docstring generator agents (default: 1)
-    iterations: 2
-  devops:
-    number: 1      # Dockerfile & CI pipeline release agents (default: 1)
-    iterations: 2
+    enabled: false # Experimental capability; no Phase 0 runtime
+    iterations: 1
   unblocker:
     number: 1      # Stall detection & task re-dispatch (default: 1)
     iterations: 2
@@ -96,7 +81,7 @@ sandbox:
 An isolated development setup for Python projects. It executes tests and linters inside a Docker sandbox and automatically installs missing library dependencies (like `pytest` or `ruff`) using `pip`.
 
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 log_level: "info"
 
 storage:
@@ -133,7 +118,7 @@ sandbox:
 A JavaScript/TypeScript repository configuration. It enables **CI Auto-Fix**, allowing `noctifab` to listen for GitHub Action failures, check out the task branch, and prompt the Generator agent to fix compile or test issues autonomously.
 
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 auto_commit: true
 log_level: "info"
 
@@ -177,7 +162,7 @@ sandbox:
 A highly resilient configuration for enterprise-grade autonomous software factories. It uses a centralized PostgreSQL database, multi-provider LLM failover, token cost budgeting, and security vulnerability scanning.
 
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 max_actions: 150
 max_duration: "2h"
 log_level: "info"
@@ -261,11 +246,11 @@ Configure a multi-vendor LLM pool (`llm.providers`) with global default failover
 Assigning different models to generate code, write tests, and review code prevents self-confirmation bias and maximizes model specialization:
 - **Generators (`roles.generator`):** `deepseek-coder` for fast, syntax-accurate code implementation.
 - **Testers (`roles.tester`):** `openai-primary` (`gpt-4o`) for thorough unit test creation and boundary condition assertions.
-- **QA & Security (`roles.qa`, `roles.security`):** `anthropic-backup` (`claude-3-5-sonnet-latest`) acting as a staff engineer for deep code reviews, refactoring audits, and SAST vulnerability analysis.
-- **Orchestrator, Docs & Unblocker (`roles.orchestrator`, `roles.docs`, `roles.unblocker`):** `openai-primary` (`gpt-4o-mini`) for ultra-fast, low-cost state loop checks and diagnostics.
+- **QA (`roles.qa`):** `anthropic-backup` (`claude-3-5-sonnet-latest`) is reserved for the disabled experimental QA capability.
+- **Orchestrator & Unblocker (`roles.orchestrator`, `roles.unblocker`):** `openai-primary` (`gpt-4o-mini`) for ultra-fast, low-cost state loop checks and diagnostics.
 
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 log_level: "info"
 
 # 1. Named LLM Provider Registry & Global Failover
@@ -323,24 +308,11 @@ agents:
       - name: "anthropic-backup"
 
   qa:
-    number: 1
-    iterations: 2
+    enabled: false
+    iterations: 1
     providers:
       - name: "anthropic-backup" # Audit code quality with Sonnet
       - name: "openai-primary"
-
-  security:
-    number: 1
-    iterations: 2
-    providers:
-      - name: "anthropic-backup" # Vulnerability analysis with Sonnet
-      - name: "openai-primary"
-
-  docs:
-    temperature: 0.2
-    providers:
-      - name: "openai-primary"
-        model: "gpt-4o-mini" # Docstrings & OpenAPI generation
 
   unblocker:
     temperature: 0.0
@@ -351,11 +323,11 @@ agents:
 ```
 
 ### 5.2. Local-First Privacy Setup (Ollama Default + Cloud Planning)
-- **Local Workers:** Generators, Testers, QA, Security, Docs, DevOps, and Orchestrator run locally on Ollama (`llama3.1:70b` / `qwen2.5-coder`).
+- **Local Workers:** Generators, Testers, the retained disabled QA route, and Orchestrator use local Ollama (`llama3.1:70b` / `qwen2.5-coder`).
 - **Cloud Escalation:** Only `planner` uses cloud Claude Sonnet for story decomposition.
 
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 
 llm:
   priority:
@@ -382,7 +354,7 @@ roles:
 Omit hardcoded model version strings entirely (`model: ""`). Bind `generator` to OpenAI, `tester` to DeepSeek Coder, and `qa` to Anthropic Claude. At runtime, `noctifab` queries `/models` to auto-discover the highest capacity flagship model for each provider and steps down through lower-ranked tiers automatically if rate limits occur.
 
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 
 llm:
   priority:
@@ -425,11 +397,4 @@ roles:
     providers:
       - name: "anthropic-provider"
 
-  security:
-    temperature: 0.0
-    providers:
-      - name: "anthropic-provider"
 ```
-
-
-

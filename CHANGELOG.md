@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-08-09
+
+### Added
+- **Experimental QA agent** (opt-in, `qa.enabled: true`): end-to-end acceptance review of completed tasks against generated user stories. Enforcing config validation restricts QA to `code_first` architectures with `vcs.use_worktrees: true`, `blocking: true`, and `network: "none"`. QA runs in hardened Docker sandboxes with read-only source mounts, ephemeral per-review workspaces (build/tester/QA worktrees verified against the source commit manifest), generated scenarios and findings persisted with fingerprints (SQLite/PostgreSQL migration `0006`), bounded generator fix rounds, global token budget enforcement, and a crash-recovery service that resumes or fails reviews after interruption.
+- **`StoryContract` extraction** (`noctifab-contract` fenced JSON block parsed from generated user stories, `pkg/services/story_contract.go`): explicit public API signatures, binary paths, and I/O invariants that QA verifies against.
+- **Static QA reporting** via the capability registry: `role qa: experimental-disabled` / `experimental-enabled`.
+
+### Changed
+- **Config schema version 2.0**: `config_version` now defaults to `2.0`; version `1.0` configuration files fail with the exact error `unsupported config_version "1.0": migrate to "2.0"`. All bundled fixtures and validation project configs updated.
+- **Dead placeholder roles removed**: `architect`, `security`, `performance`, `docs`, and `devops` agents are deleted from the config, router, CLI, documentation, and validation project configs; they fail with `unsupported agent role %q: delete the %s.%s section`. The `resolver` role is retained for conflict-resolution.
+
 ## [0.28.9] - 2026-08-09
 
 ### Fixed

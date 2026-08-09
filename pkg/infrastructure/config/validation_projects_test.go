@@ -9,6 +9,12 @@ import (
 )
 
 func TestLoadValidationProjectConfigs(t *testing.T) {
+	for _, key := range []string{
+		"CLAUDE_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "QWENCLOUD_API_KEY",
+		"OPENCODE_ZEN_API_KEY", "OPENROUTER_API_KEY", "GITHUB_TOKEN",
+	} {
+		t.Setenv(key, "test-key")
+	}
 	projectsDir := filepath.Join("..", "..", "..", "validation", "projects")
 	entries, err := os.ReadDir(projectsDir)
 	if err != nil {
@@ -21,20 +27,23 @@ func TestLoadValidationProjectConfigs(t *testing.T) {
 		project := entry.Name()
 		t.Run(project, func(t *testing.T) {
 			projectDir := filepath.Join("..", "..", "..", "validation", "projects", project, ".noctifab")
-			configPath := filepath.Join(projectDir, "config.yaml")
-			if _, err := os.Stat(configPath); err != nil {
+			sourcePath := filepath.Join(projectDir, "config.yaml")
+			data, err := os.ReadFile(sourcePath)
+			if os.IsNotExist(err) {
 				t.Skipf("config not present: %v", err)
 			}
-			// secrets.yaml is gitignored and mounted only at runtime, so the
-			// full load (VCS/LLM key resolution) only runs locally.
-			if _, err := os.Stat(filepath.Join(projectDir, "secrets.yaml")); err != nil {
-				t.Skipf("secrets.yaml not present, skipping full load: %v", err)
+			if err != nil {
+				t.Fatalf("read config: %v", err)
 			}
-
+			configPath := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(configPath, data, 0600); err != nil {
+				t.Fatalf("copy config: %v", err)
+			}
 			cmd := &cobra.Command{Use: "test"}
 			cmd.Flags().String("config", configPath, "")
 			_ = cmd.Flags().Set("config", configPath)
 
+			t.Setenv("NOCTIFAB_E2E", "true")
 			cfg, err := Load(cmd)
 			if err != nil {
 				t.Fatalf("Load(%s) failed: %v", project, err)

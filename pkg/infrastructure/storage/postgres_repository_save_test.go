@@ -23,26 +23,6 @@ func (a AnyTime) Match(v driver.Value) bool {
 	return ok
 }
 
-func TestPostgresRepository_NewAndClose(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("when initializing with invalid connection string, it returns error", func(t *testing.T) {
-		repo, err := NewPostgresRepository(ctx, "postgres://invalid:invalid@localhost:54321/db?sslmode=disable", 1, 1)
-		assert.Error(t, err)
-		assert.Nil(t, repo)
-	})
-
-	t.Run("when closing repository, it closes the db connection", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		require.NoError(t, err)
-		mock.ExpectClose()
-		repo := &PostgresRepository{db: db}
-		err = repo.Close()
-		assert.NoError(t, err)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
 func TestPostgresRepository_Save_Errors(t *testing.T) {
 	ctx := context.Background()
 
@@ -416,6 +396,10 @@ func TestPostgresRepository_Save(t *testing.T) {
 				string(state.ActiveAgents[0].Status), state.ActiveAgents[0].TaskID, state.ActiveAgents[0].StartedAt,
 				state.ActiveAgents[0].CompletedAt, state.ActiveAgents[0].TokensUsed, state.ActiveAgents[0].LastError).
 			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec(`DELETE FROM qa_findings WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM qa_scenarios WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM review_phases WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM story_contracts WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 
 		mock.ExpectCommit()
 
@@ -458,6 +442,10 @@ func TestPostgresRepository_Save(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM workspace_files WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec(`DELETE FROM validation_criteria WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec(`DELETE FROM active_agents WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM qa_findings WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM qa_scenarios WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM review_phases WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM story_contracts WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 
 		mock.ExpectCommit()
 

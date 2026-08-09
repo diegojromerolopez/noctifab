@@ -24,6 +24,13 @@ func (m *mockLLMClient) Complete(ctx context.Context, prompt string) (*domain.LL
 }
 
 func TestResilientLLMRouter_Scenarios(t *testing.T) {
+	t.Run("removed roles cannot resolve an LLM candidate", func(t *testing.T) {
+		router := NewResilientLLMRouter(config.DefaultConfig(), nil)
+		for _, role := range []string{"architect", "security", "performance", "docs", "devops"} {
+			assert.Empty(t, router.ResolveCandidatesForRole(role), role)
+		}
+	})
+
 	t.Run("Scenario 1: Agent without providers uses global llm.priority", func(t *testing.T) {
 		cfg := &config.Config{
 			LLM: config.LLMConfig{

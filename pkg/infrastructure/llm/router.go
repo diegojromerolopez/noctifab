@@ -147,6 +147,9 @@ func NewResilientLLMRouter(cfg *config.Config, budgetStore domain.BudgetStore) *
 // solely from static configuration and environment variables, so rebuilding
 // clients (and re-scanning os.Getenv) on every completion is wasted work.
 func (r *ResilientLLMRouter) ResolveCandidatesForRole(roleName string) []RouterCandidate {
+	if config.IsRemovedAgentRole(roleName) {
+		return nil
+	}
 	r.mu.RLock()
 	if cached, ok := r.candidateCache[roleName]; ok {
 		r.mu.RUnlock()
@@ -311,22 +314,15 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 			agentRole = r.cfg.Agents.ProductManager
 		case "planner":
 			agentRole = r.cfg.Agents.Planner
-		case "architect":
-			agentRole = r.cfg.Agents.Architect
 		case "generator", "generators":
 			agentRole = r.cfg.Agents.Generators
 		case "tester", "testers":
 			agentRole = r.cfg.Agents.Testers
 		case "qa":
-			agentRole = r.cfg.Agents.QA
-		case "security":
-			agentRole = r.cfg.Agents.Security
-		case "performance":
-			agentRole = r.cfg.Agents.Performance
-		case "docs":
-			agentRole = r.cfg.Agents.Docs
-		case "devops":
-			agentRole = r.cfg.Agents.DevOps
+			qa := r.cfg.Agents.QA
+			if len(qa.Providers) > 0 {
+				return config.RoleSetting{Model: qa.Model, Temperature: qa.Temperature, Profile: qa.Profile, Providers: qa.Providers}
+			}
 		case "unblocker":
 			agentRole = r.cfg.Agents.Unblocker
 		}
@@ -347,22 +343,12 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 		return config.RoleSetting{}
 	case "planner":
 		return r.roles.Planner
-	case "architect":
-		return r.roles.Architect
 	case "generator", "generators":
 		return r.roles.Generator
 	case "tester", "testers":
 		return r.roles.Tester
 	case "qa":
 		return r.roles.QA
-	case "security":
-		return r.roles.Security
-	case "performance":
-		return r.roles.Performance
-	case "docs":
-		return r.roles.Docs
-	case "devops":
-		return r.roles.DevOps
 	case "unblocker":
 		return r.roles.Unblocker
 	default:

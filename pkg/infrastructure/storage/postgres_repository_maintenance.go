@@ -66,7 +66,7 @@ func (r *PostgresRepository) PruneFinishedStates(ctx context.Context, keepLast i
 	}
 	placeholders := strings.Join(placeholderList, ", ")
 
-	for _, table := range stateRelationGroups {
+	for _, table := range stateRelationTables {
 		query := fmt.Sprintf("DELETE FROM %s WHERE state_id IN (%s)", table, placeholders) // #nosec G201 -- table names come from a fixed constant list
 		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return 0, err

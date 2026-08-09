@@ -82,7 +82,7 @@ func TestWriteDefaultConfig(t *testing.T) {
 		t.Fatalf("failed to unmarshal written config: %v", err)
 	}
 
-	if cfg.ConfigVersion != "1.0" {
+	if cfg.ConfigVersion != "2.0" {
 		t.Errorf("expected config_version 1.0, got %s", cfg.ConfigVersion)
 	}
 

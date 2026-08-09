@@ -22,8 +22,6 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		trace.WithAttributes(attribute.String("task.id", taskID)))
 	defer span.End()
 
-	// Spawns worker branch, performs checkouts, updates task PENDING -> IN_PROGRESS,
-	// runs Tester & Generator, validates tests, merges back if success, and cleans worktrees.
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 
@@ -43,7 +41,6 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		return
 	}
 
-	// Inherit target files recursively from dependencies
 	task.TargetFiles = collectTargetFilesRecursively(*task, state.Tasks)
 
 	fmt.Printf("Orchestrator: Task %s (%s) is starting...\n", taskID, task.Title)
@@ -57,7 +54,6 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		integrationBranch = fmt.Sprintf("noctifab/feature-%s", state.ID[:8])
 	}
 
-	// Update task status
 	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		for i := range st.Tasks {
 			if st.Tasks[i].ID == taskID {
@@ -78,12 +74,10 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	var statusOut, stagedOut string
 
 	if !o.cfg.UseWorktrees {
-		// Ensure working directory is clean of any leftovers from previous failed repair/execution attempts
 		_, _ = o.git.Run(ctx, true, "reset", "--hard")
 		_, _ = o.git.Run(ctx, true, "clean", "-fd")
 	}
 
-	// Ensure integration branch exists on the main repo
 	isFreshStart := true
 	for _, t := range state.Tasks {
 		if t.Status == domain.TaskSuccess {
@@ -102,7 +96,6 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	_, err = o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
 	if err != nil {
-		// Does not exist, create it from base branch
 		if _, err := o.git.Run(ctx, true, "checkout", baseBranch); err != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout base branch %s: %v\n", baseBranch, err)
 			_ = o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout base branch: %v", err))
@@ -122,15 +115,12 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	var taskGit *GitClient
 	if o.cfg.UseWorktrees {
 		worktreeDir = filepath.Join(state.ProjectPath, ".noctifab", "worktrees", fmt.Sprintf("task-%s", taskID))
-		// Remove any existing worktree metadata first to be clean
 		_, _ = o.git.Run(ctx, true, "worktree", "remove", "--force", worktreeDir)
 		_ = os.RemoveAll(worktreeDir)
 		_ = os.MkdirAll(filepath.Dir(worktreeDir), 0755)
 
-		// Create worktree bound to worker branch off integrationBranch
 		_, err = o.git.Run(ctx, true, "worktree", "add", "-b", branchName, worktreeDir, integrationBranch)
 		if err != nil {
-			// Fallback if branch already exists from retry
 			_, _ = o.git.Run(ctx, true, "worktree", "add", worktreeDir, branchName)
 		}
 		taskGit = NewGitClient(worktreeDir)
@@ -143,7 +133,6 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}()
 	} else {
 		taskGit = o.git
-		// Switch to integration branch first to branch off accumulative state
 		if _, err := o.git.Run(ctx, true, "checkout", integrationBranch); err != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator: Failed to checkout integration branch %s: %v\n", integrationBranch, err)
 			_ = o.markTaskFailed(ctx, taskID, fmt.Sprintf("Failed to checkout integration branch: %v", err))
@@ -177,13 +166,11 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	// Clone state for this task execution to isolate state.ProjectPath if using worktrees
 	taskState := *state.Clone()
 	if o.cfg.UseWorktrees {
 		taskState.ProjectPath = worktreeDir
 	}
 
-	// Inject target files context
 	var fileContexts []string
 	for _, file := range task.TargetFiles {
 		fullPath, err := resolveSandboxPath(taskState.ProjectPath, file)
@@ -195,6 +182,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	}
 
 	arch := strings.ToLower(strings.TrimSpace(o.cfg.Architecture))
+	qaBlocked := ""
 	if arch == "single_pass" || arch == "single_pass_execution" || arch == "spe" {
 		o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
 	} else if arch == "breadth_first" || arch == "breadth_first_generation" || arch == "bfg" || arch == "big" {
@@ -235,7 +223,6 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				}
 			}
 		}
-
 		// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
 		recentTestsContext := ""
 		diffOut, diffErr := taskGit.Run(ctx, false, "show", "--name-only", "--format=", "HEAD")
@@ -259,6 +246,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 		// 3. Run Generator Agent (role "generator") to refactor/improve the implementation to pass the tests
 		o.updateTaskProgress(ctx, taskID, 75)
+		generatorHeadBefore, generatorHeadErr := taskGit.Run(ctx, false, "rev-parse", "HEAD")
 		o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, recentTestsContext, "refactor")
 
 		// Stage and commit refactoring changes
@@ -271,10 +259,15 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				_, commitErr := taskGit.Run(ctx, true, "commit", "-m", commitMsg)
 				if commitErr != nil {
 					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s refactor: %v\n", taskID, commitErr)
+					qaBlocked = "generator_commit_failed"
 				}
 			}
 		}
-
+		generatorHeadAfter, generatorAfterErr := taskGit.Run(ctx, false, "rev-parse", "HEAD")
+		if o.cfg.QA.Enabled && (generatorHeadErr != nil || generatorAfterErr != nil ||
+			strings.TrimSpace(generatorHeadBefore) == strings.TrimSpace(generatorHeadAfter)) {
+			qaBlocked = "generator_commit_failed"
+		}
 	} else {
 		// Retries loop: Tester runs first to fix tests, then Generator runs to make them pass
 
@@ -319,6 +312,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 		// 2. Run Generator Agent to fix/refactor implementation to pass the tests
 		o.updateTaskProgress(ctx, taskID, 70)
+		generatorHeadBefore, generatorHeadErr := taskGit.Run(ctx, false, "rev-parse", "HEAD")
 		o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, recentTestsContext, "fix")
 
 		// Stage and commit fixes
@@ -331,14 +325,26 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				_, commitErr := taskGit.Run(ctx, true, "commit", "-m", commitMsg)
 				if commitErr != nil {
 					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s fix implementation: %v\n", taskID, commitErr)
+					qaBlocked = "generator_commit_failed"
 				}
 			}
+		}
+		generatorHeadAfter, generatorAfterErr := taskGit.Run(ctx, false, "rev-parse", "HEAD")
+		if o.cfg.QA.Enabled && (generatorHeadErr != nil || generatorAfterErr != nil ||
+			strings.TrimSpace(generatorHeadBefore) == strings.TrimSpace(generatorHeadAfter)) {
+			qaBlocked = "generator_commit_failed"
 		}
 	}
 
 	fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
 	// Run test suite validation
 	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, &taskState, *task)
+	if passed && qaBlocked == "" {
+		qaBlocked = o.runQAGate(ctx, &taskState, *task, taskGit, fileContexts)
+	}
+	if qaBlocked != "" {
+		passed, logMsg = false, "QA blocked task: "+qaBlocked
+	}
 
 	var permanentlyFailed bool
 	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
@@ -445,28 +451,5 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	select {
 	case o.taskCompletedChan <- struct{}{}:
 	default:
-	}
-}
-
-// syncRootManifests copies root project manifests into a worktree if missing.
-func syncRootManifests(srcDir, dstDir string) {
-	manifests := []string{
-		"Cargo.toml", "Cargo.lock",
-		"package.json", "package-lock.json",
-		"go.mod", "go.sum",
-		"Makefile", "CMakeLists.txt",
-		"pyproject.toml", "requirements.txt",
-	}
-	for _, file := range manifests {
-		srcPath := filepath.Join(srcDir, file)
-		dstPath := filepath.Join(dstDir, file)
-		if _, err := os.Stat(srcPath); err == nil {
-			if _, errDst := os.Stat(dstPath); os.IsNotExist(errDst) {
-				data, errRead := os.ReadFile(srcPath)
-				if errRead == nil {
-					_ = os.WriteFile(dstPath, data, 0644)
-				}
-			}
-		}
 	}
 }

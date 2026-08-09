@@ -275,5 +275,5 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 		state.ActiveAgents = append(state.ActiveAgents, agent)
 	}
 
-	return nil
+	return r.loadQAReviews(ctx, state)
 }

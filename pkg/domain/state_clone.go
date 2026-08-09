@@ -34,7 +34,54 @@ func (s *State) Clone() *State {
 			clone.LastActions[i] = cloneAction(a)
 		}
 	}
+	if s.StoryContracts != nil {
+		clone.StoryContracts = make([]StoryContract, len(s.StoryContracts))
+		for i, contract := range s.StoryContracts {
+			clone.StoryContracts[i] = cloneStoryContract(contract)
+		}
+	}
+	if s.ReviewPhases != nil {
+		clone.ReviewPhases = make([]ReviewPhase, len(s.ReviewPhases))
+		for i, phase := range s.ReviewPhases {
+			clone.ReviewPhases[i] = phase
+			clone.ReviewPhases[i].ArtifactManifest = append([]ArtifactManifestEntry(nil), phase.ArtifactManifest...)
+		}
+	}
+	if s.QAScenarios != nil {
+		clone.QAScenarios = make([]QAScenario, len(s.QAScenarios))
+		for i, scenario := range s.QAScenarios {
+			clone.QAScenarios[i] = cloneQAScenario(scenario)
+		}
+	}
+	if s.QAFindings != nil {
+		clone.QAFindings = append([]QAFinding(nil), s.QAFindings...)
+	}
 	return &clone
+}
+
+func cloneStoryContract(contract StoryContract) StoryContract {
+	clone := contract
+	clone.PublicContracts = make([]PublicContract, len(contract.PublicContracts))
+	for i, publicContract := range contract.PublicContracts {
+		clone.PublicContracts[i] = publicContract
+		clone.PublicContracts[i].ApplicablePathPrefixes = append([]string(nil), publicContract.ApplicablePathPrefixes...)
+		clone.PublicContracts[i].AllowedExecutables = append([]string(nil), publicContract.AllowedExecutables...)
+		clone.PublicContracts[i].ExitCodes = append([]int(nil), publicContract.ExitCodes...)
+		clone.PublicContracts[i].StdoutContains = append([]string(nil), publicContract.StdoutContains...)
+		clone.PublicContracts[i].StderrPrefixes = append([]string(nil), publicContract.StderrPrefixes...)
+	}
+	return clone
+}
+
+func cloneQAScenario(scenario QAScenario) QAScenario {
+	clone := scenario
+	clone.Steps = make([]QAStep, len(scenario.Steps))
+	for i, step := range scenario.Steps {
+		clone.Steps[i] = step
+		clone.Steps[i].Command = append([]string(nil), step.Command...)
+		clone.Steps[i].StdoutContains = append([]string(nil), step.StdoutContains...)
+	}
+	return clone
 }
 
 func cloneTask(t Task) Task {

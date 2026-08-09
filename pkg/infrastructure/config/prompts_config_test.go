@@ -14,7 +14,7 @@ func writePromptsTestConfig(t *testing.T, promptsSection string) *cobra.Command 
 	tmpDir := t.TempDir()
 
 	configYaml := `
-config_version: "1.0"
+config_version: "2.0"
 vcs:
   repository: "myorg/myrepo"
   token: "secret:MY_VCS_TOKEN"
