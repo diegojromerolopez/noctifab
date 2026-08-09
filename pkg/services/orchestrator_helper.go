@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 )
 
 // ValidatePlannedTasks checks if the Planner Agent provided enough task details and enforces cohesion
@@ -248,12 +249,22 @@ Return format:
 	return gatheredContext
 }
 
-// RunTesterAgent runs the test writer agent for the task
-func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, customPrompt string) {
+// RunTesterAgent runs the test writer agent for the task. action selects the
+// tester prompt template (see the prompts package catalog: write, fix,
+// refactor, write_breadth_first); feedback carries the generator's test-fix
+// feedback for the fix action (empty otherwise).
+func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, action string, feedback string) {
+	// Fail fast on unknown actions before doing any reader-phase work.
+	if err := prompts.ValidateKey(prompts.AgentTester, action); err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] invalid prompt action: %v\n", task.ID, err)
+		o.registerAgentStart(ctx, "tester", task.ID)
+		o.registerAgentComplete(ctx, "tester", task.ID, err)
+		return
+	}
+
 	// Reader Phase: collect inspection context first! (Requirement 5)
 	readerContexts := o.RunReaderPhase(ctx, "tester", task, state)
 
-	testPrompt := customPrompt
 	var promptContext []string
 	if len(fileContexts) > 0 {
 		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(fileContexts, "\n\n")))
@@ -266,8 +277,24 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 		summary := summarizeFailureLog(task.FailureLog)
 		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the tests to address these specific errors.", warning, summary))
 	}
+	contextBlock := ""
 	if len(promptContext) > 0 {
-		testPrompt = fmt.Sprintf("%s\n\n%s", customPrompt, strings.Join(promptContext, "\n\n"))
+		contextBlock = "\n\n" + strings.Join(promptContext, "\n\n")
+	}
+
+	testPrompt, err := o.promptRenderer.Render(prompts.AgentTester, action, prompts.TaskPromptData{
+		Title:             task.Title,
+		Description:       task.Description,
+		Context:           contextBlock,
+		Feedback:          feedback,
+		RecoveryDirective: task.RecoveryDirective,
+		TargetFiles:       task.TargetFiles,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] prompt rendering failed for action %q: %v\n", task.ID, action, err)
+		o.registerAgentStart(ctx, "tester", task.ID)
+		o.registerAgentComplete(ctx, "tester", task.ID, err)
+		return
 	}
 
 	testerCtx := context.WithValue(ctx, AgentRoleKey, "tester")

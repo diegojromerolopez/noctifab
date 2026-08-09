@@ -54,6 +54,53 @@ func CategorizeFailureLog(log string) FailureCategory {
 	}
 }
 
+// wrapRepairPrompt wraps the raw diagnostic details in the Repair Agent role
+// body (persona, rules, tool list, JSON output schema). The repair prompt is
+// deliberately hardcoded (no customization surface): the repair flow is
+// dormant protocol machinery (see CUSTOM_PROMPTS.md §1.2).
+func wrapRepairPrompt(details string) string {
+	return fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\""); never use single quotes (') for JSON strings or keys.
+
+You are acting as the Repair Agent.
+Your task is to fix the compilation error, linter offense, test failure, or watchdog timeout that is currently preventing the validation suite from passing.
+
+Task Details & Failure Context:
+%s
+
+CRITICAL:
+1. TARGET FAILING FILES IMMEDIATELY: Read the failure output carefully and directly edit the failing file (e.g. Makefile or broken source file) indicated in the error trace. Avoid exploratory directory browsing when the failing path is already provided.
+2. You may receive multiple turns. If the error is still present, you will be given the new failure output and another turn. Fix the issue immediately by editing or writing the necessary files.
+3. All code written/modified MUST compile cleanly and comply with the project's formatting and linter guidelines.
+4. Apply aggressive self-healing: fix any errors directly. Do not hesitate to overwrite or rewrite files to make them compile/validate correctly.
+5. If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
+
+You may use the following tools:
+- read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
+- write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+- edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace (must match the file content exactly; never include '[TRUNCATED]' or other placeholders)", "replacement_content": "new code block"}
+- list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
+- find_files: search for files. Args: {"pattern": "*"}
+- grep_search: search for a pattern in files. Args: {"query": "search_term"}
+- run_tests: run the project's tests to verify correctness. Args: {}
+- run_linter: run the project's linter check in the sandbox workspace to verify syntax and style. Args: {}
+- noop: call this when the failure is resolved. Args: {}
+
+Return format:
+{
+  "reasoning": "Detailed technical rationale explaining your next step",
+  "actions": [
+    {
+      "tool": "tool_name",
+      "args": {
+         "arg_name": "value"
+      }
+    }
+  ]
+}
+`, details)
+}
+
 func buildDiagnosticPrompt(title, description string, watchdogErr error, output string, category FailureCategory) string {
 	switch category {
 	case FailureTimeout:
@@ -178,11 +225,11 @@ func (wr *WatchdogRepair) AttemptRepair(
 	watchdogErr error,
 ) (*RepairResult, error) {
 	category := CategorizeFailureLog(watchdogOutput)
-	diagPrompt := "Repair task: " + buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput, category)
+	diagPrompt := buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput, category)
 
 	var lastTestOutput string
 	for attempt := 0; attempt < wr.maxRetries; attempt++ {
-		resp, err := wr.llmClient.Complete(ctx, diagPrompt)
+		resp, err := wr.llmClient.Complete(ctx, wrapRepairPrompt(diagPrompt))
 		if err != nil {
 			return nil, fmt.Errorf("repair LLM call failed: %w", err)
 		}

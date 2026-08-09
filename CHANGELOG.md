@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-08-09
+
+### Added
+- **Per-Agent Prompt Customization System**: New `pkg/infrastructure/prompts` package with 14 customizable `(agent, action)` prompt templates across 4 agents (`product_manager`, `planner`, `tester`, `generator`), embedded via `go:embed` and resolved per key: config `prompts.<agent>.<action>.path` > convention file `.noctifab/prompts/<agent>/<action>.tmpl` > embedded default. Small additions supported via `append` (config string or `<action>.append.tmpl`), always applied to the default body, never to an override. The JSON/tool output contract is a non-overridable block appended by code after rendering. Invalid overrides fail fast at startup with file-named errors.
+- **`noctifab prompts` CLI**: New command group with `list` (agent/action tree + effective source), `show <agent> <action>` (effective template + contract), `init [agent] [action]` (materialize embedded defaults, never overwriting), and `validate` (parse + test-render all effective templates).
+- **Prompts documentation**: New `docs/prompts.md` readthedocs page (registered in the `index.md` toctree) covering the resolution order, the append mechanism, per-agent template data contracts, hardcoded prompts, and CLI usage.
+
+### Fixed
+- **Prefix-dispatch prompt bypass (CUSTOM_PROMPTS.md §1.1)**: Four live prompt variants (tester code_first retry, tester breadth_first write, generator breadth_first implement/refine) matched no `preprocessPrompt()` prefix and were silently sent WITHOUT their role body (no persona, no tool list, no JSON output schema). Prompts are now rendered by explicit `(agent, action)` key — never by prefix matching — so these variants receive the full role body and output contract. `preprocessPrompt()` is deleted; golden tests assert byte-identical default output to the legacy assembly for the 10 unaffected variants.
+
+### Changed
+- **`services.NewOrchestrator` and `services.GenerateRoadmap`** now take a `PromptRenderer` (nil falls back to embedded defaults). The Repair Agent role body moved from the deleted prefix dispatch into `pkg/services/watchdog_repair.go` (byte-identical, still hardcoded).
+
 ## [0.27.3] - 2026-08-09
 
 ### Removed

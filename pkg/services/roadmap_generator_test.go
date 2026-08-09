@@ -57,7 +57,7 @@ func TestGenerateRoadmap_Success(t *testing.T) {
 		},
 	}
 
-	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLM)
+	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLM, nil)
 	assert.NoError(t, err)
 
 	// Verify the roadmap files were written
@@ -84,7 +84,7 @@ func TestGenerateRoadmap_MissingSpec(t *testing.T) {
 	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	mockLL := &mockRoadmapLLMClient{}
-	err = services.GenerateRoadmap(context.Background(), tempDir, mockLL)
+	err = services.GenerateRoadmap(context.Background(), tempDir, mockLL, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "SPEC.md not found")
 }
@@ -106,7 +106,7 @@ func TestGenerateRoadmap_NoValidActions(t *testing.T) {
 			Actions:   []domain.LLMAction{},
 		},
 	}
-	err = services.GenerateRoadmap(context.Background(), tempDir, mockLL)
+	err = services.GenerateRoadmap(context.Background(), tempDir, mockLL, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "did not return any valid create_story actions")
 }
@@ -152,7 +152,7 @@ func TestGenerateRoadmap_RefineExistingStories(t *testing.T) {
 		capturedPrompt:       &capturedPrompt,
 	}
 
-	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLMWithPromptCapture)
+	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLMWithPromptCapture, nil)
 	assert.NoError(t, err)
 
 	assert.Contains(t, capturedPrompt, "Audit and refine existing user stories")
@@ -209,7 +209,7 @@ func TestGenerateRoadmap_DetectsLegacyCode(t *testing.T) {
 		capturedPrompt:       &capturedPrompt,
 	}
 
-	err = services.GenerateRoadmap(context.Background(), tempDir, capturingMock)
+	err = services.GenerateRoadmap(context.Background(), tempDir, capturingMock, nil)
 	assert.NoError(t, err)
 
 	assert.Contains(t, capturedPrompt, "Existing Legacy Code Files Detected in Workspace:")

@@ -95,7 +95,7 @@ func TestOrchestrator_ConcurrentWorktreeIsolation(t *testing.T) {
 		UseWorktrees: true,
 	}
 
-	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -167,7 +167,7 @@ func TestExecuteTask_FastAbortOnSandboxFailure(t *testing.T) {
 		UseWorktrees: true,
 	}
 
-	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 	orch.executeTask(context.Background(), "state-sandbox-fail", "task-env-fail")
 
 	updatedState, err := repo.Load(context.Background())

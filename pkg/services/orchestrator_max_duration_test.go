@@ -36,7 +36,7 @@ func TestRunOnce_MaxDurationExceeded(t *testing.T) {
 		Concurrency:  1,
 		MaxDuration:  1 * time.Nanosecond, // effectively immediate
 	}
-	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 	// Pre-seed the start time so the very next RunOnce is past the limit.
 	orch.storyStartedAt = time.Now().Add(-1 * time.Hour)
 
@@ -95,7 +95,7 @@ func TestRunOnce_MaxDurationEnforcedWhileRunning(t *testing.T) {
 		Concurrency:  1,
 		MaxDuration:  1 * time.Nanosecond, // effectively immediate
 	}
-	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 	orch.storyStartedAt = time.Now().Add(-1 * time.Hour)
 
 	if _, err := orch.RunOnce(context.Background()); err != nil {
@@ -137,7 +137,7 @@ func TestRunOnce_MaxDurationZero_Disabled(t *testing.T) {
 		Concurrency:  1,
 		MaxDuration:  0, // disabled
 	}
-	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 	orch.storyStartedAt = time.Now().Add(-1 * time.Hour)
 
 	_, _ = orch.RunOnce(context.Background())

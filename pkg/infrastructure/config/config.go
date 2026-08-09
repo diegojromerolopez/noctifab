@@ -7,9 +7,27 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
+
+// PromptOverrides converts the config prompts section into the prompts
+// package's override map, ready for prompts.NewRenderer.
+func (cfg *Config) PromptOverrides() map[string]map[string]prompts.Override {
+	if len(cfg.Prompts) == 0 {
+		return nil
+	}
+	out := make(map[string]map[string]prompts.Override, len(cfg.Prompts))
+	for agent, actions := range cfg.Prompts {
+		byAction := make(map[string]prompts.Override, len(actions))
+		for action, ov := range actions {
+			byAction[action] = prompts.Override{Path: ov.Path, Append: ov.Append}
+		}
+		out[agent] = byAction
+	}
+	return out
+}
 
 // Load loads the configuration from file (if exists), environment variables, and CLI flags.
 func Load(cmd *cobra.Command) (*Config, error) {
@@ -188,6 +206,14 @@ func (cfg *Config) Validate() error {
 	} else {
 		if !IsValidLLMProvider(cfg.LLM.Provider) {
 			return fmt.Errorf("invalid LLM provider: %s", cfg.LLM.Provider)
+		}
+	}
+
+	for agent, actions := range cfg.Prompts {
+		for action := range actions {
+			if err := prompts.ValidateKey(agent, action); err != nil {
+				return fmt.Errorf("invalid prompts configuration: %w", err)
+			}
 		}
 	}
 

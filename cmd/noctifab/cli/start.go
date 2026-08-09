@@ -15,6 +15,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
@@ -286,7 +287,15 @@ var startCmd = &cobra.Command{
 		} else {
 			fmt.Printf("No user stories found in %s/roadmap. Spawning Product Manager Agent to generate roadmap from SPEC.md...\n", targetDir)
 		}
-		if genErr := services.GenerateRoadmap(context.Background(), targetDir, llmClient); genErr != nil {
+		// Build the prompt renderer: config path overrides > workspace
+		// convention files (.noctifab/prompts/) > embedded defaults. A broken
+		// override aborts startup here with a file-named error (fail fast).
+		promptRenderer, rendErr := prompts.NewRenderer(targetDir, cfg.PromptOverrides())
+		if rendErr != nil {
+			return fmt.Errorf("invalid prompt templates: %w", rendErr)
+		}
+
+		if genErr := services.GenerateRoadmap(context.Background(), targetDir, llmClient, promptRenderer); genErr != nil {
 			fmt.Printf("Warning: Product Manager Agent story refinement skipped: %v\n", genErr)
 		}
 		storyFiles = nil
@@ -443,6 +452,7 @@ var startCmd = &cobra.Command{
 				orchestrator := services.NewOrchestrator(
 					repo, reg, llmClient, validator, scheduler,
 					gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox, repairHandler,
+					promptRenderer,
 				)
 
 				if cfg.Unblocker.Enabled {

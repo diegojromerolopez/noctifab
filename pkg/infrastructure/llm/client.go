@@ -171,7 +171,9 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		))
 	defer span.End()
 
-	// Preprocess prompt to inject system instructions and schemas based on the target action type
+	// Prompts arrive fully assembled (rendered by pkg/infrastructure/prompts
+	// or built inline by their hardcoded call sites); only compaction and the
+	// size guard apply here.
 	origPromptLen := len(prompt)
 	switch strings.ToLower(strings.TrimSpace(c.Compaction)) {
 	case "simple_english":
@@ -185,7 +187,6 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			prompt = CompactCaveman(prompt)
 		}
 	}
-	prompt = preprocessPrompt(prompt)
 
 	// Pre-send size guard: reject prompts that would be refused by the
 	// provider anyway, before spending a network call and the retry ladder.

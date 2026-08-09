@@ -43,6 +43,10 @@ type Config struct {
 	Unblocker      UnblockerConfig          `yaml:"unblocker"`
 	Context        ContextConfig            `yaml:"context"`
 	WorkspaceCache WorkspaceCacheConfig     `yaml:"workspace_cache"`
+	// Prompts holds per-agent, per-action prompt customizations
+	// (agent -> action -> override). See pkg/infrastructure/prompts for the
+	// (agent, action) catalog and docs/prompts.md for usage.
+	Prompts map[string]map[string]PromptOverride `yaml:"prompts,omitempty"`
 
 	PollInterval Duration `yaml:"poll_interval"`
 	// StoryExecInterval is the tick frequency of the story execution loop
@@ -67,6 +71,16 @@ type Config struct {
 	TokenUsageLimit     int64    `yaml:"token_usage_limit"`
 	LogLevel            string   `yaml:"log_level"`
 	LogFile             string   `yaml:"log_file"`
+}
+
+// PromptOverride customizes the prompt template of one agent action.
+type PromptOverride struct {
+	// Path is a full-template override file (absolute or relative to the
+	// project workspace). It replaces the entire default prompt body.
+	Path string `yaml:"path,omitempty"`
+	// Append is a string appended verbatim to the END of the default prompt
+	// body. It never applies to a full-template override.
+	Append string `yaml:"append,omitempty"`
 }
 
 type AgentsConfig struct {

@@ -156,8 +156,8 @@ func (c *OverrideMergeCmd) Execute(ctx context.Context, repo domain.StateReposit
 // StartDaemonServer sets up local loopback REST API bindings.
 // storyCh is the channel into which story work items are forwarded when the daemon
 // operates in server mode; pass nil when running in single-story mode.
-func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, storyCh chan<- StoryWorkItem, llmClient domain.LLMClient) *http.Server {
-	mux := newDaemonMux(repo, mailbox, storyCh, llmClient)
+func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, storyCh chan<- StoryWorkItem, llmClient domain.LLMClient, renderer PromptRenderer) *http.Server {
+	mux := newDaemonMux(repo, mailbox, storyCh, llmClient, renderer)
 
 	// Enforce loopback binding (127.0.0.1)
 	server := &http.Server{
@@ -177,7 +177,7 @@ func StartDaemonServer(repo domain.StateRepository, mailbox *CommandMailbox, sto
 }
 
 // newDaemonMux builds the REST API routes for the daemon HTTP server.
-func newDaemonMux(repo domain.StateRepository, mailbox *CommandMailbox, storyCh chan<- StoryWorkItem, llmClient domain.LLMClient) *http.ServeMux {
+func newDaemonMux(repo domain.StateRepository, mailbox *CommandMailbox, storyCh chan<- StoryWorkItem, llmClient domain.LLMClient, renderer PromptRenderer) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -287,9 +287,9 @@ func newDaemonMux(repo domain.StateRepository, mailbox *CommandMailbox, storyCh 
 			}
 		}
 		if isDir {
-			mailbox.Send(&StartDirectoryCmd{DirPath: payload.Path, StoryCh: storyCh, LLMClient: llmClient})
+			mailbox.Send(&StartDirectoryCmd{DirPath: payload.Path, StoryCh: storyCh, LLMClient: llmClient, Renderer: renderer})
 		} else {
-			mailbox.Send(&StartUserStoryCmd{Path: payload.Path, StoryCh: storyCh, LLMClient: llmClient})
+			mailbox.Send(&StartUserStoryCmd{Path: payload.Path, StoryCh: storyCh, LLMClient: llmClient, Renderer: renderer})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)

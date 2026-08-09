@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -34,7 +35,10 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		return nil
 	}
 
-	prompt := fmt.Sprintf("Decompose specification into tasks:\n\n%s", spec)
+	prompt, err := o.promptRenderer.Render(prompts.AgentPlanner, "decompose", prompts.PlannerPromptData{Spec: spec})
+	if err != nil {
+		return fmt.Errorf("planner prompt rendering failed: %w", err)
+	}
 	plannerCtx := context.WithValue(ctx, AgentRoleKey, "planner")
 
 	maxAttempts := 3

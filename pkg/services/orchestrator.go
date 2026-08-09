@@ -12,11 +12,18 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 )
 
 // RepairHandler defines the contract for automatic repair of hung/failed test suites.
 type RepairHandler interface {
 	AttemptRepair(ctx context.Context, state *domain.State, task domain.Task, watchdogOutput string, watchdogErr error) (*RepairResult, error)
+}
+
+// PromptRenderer renders the effective prompt for an (agent, action) key.
+// Implemented by *prompts.Renderer; injected so tests can substitute it.
+type PromptRenderer interface {
+	Render(agent, action string, data any) (string, error)
 }
 
 type OrchestratorConfig struct {
@@ -71,6 +78,7 @@ type Orchestrator struct {
 	cfg               OrchestratorConfig
 	mailbox           *CommandMailbox
 	watchdogRepair    RepairHandler
+	promptRenderer    PromptRenderer
 	metricsMu         sync.RWMutex
 	metricsCollector  *MetricsCollector
 	unblocker         *UnblockerAgent
@@ -98,7 +106,13 @@ func NewOrchestrator(
 	cfg OrchestratorConfig,
 	mailbox *CommandMailbox,
 	watchdogRepair RepairHandler,
+	promptRenderer PromptRenderer,
 ) *Orchestrator {
+	if promptRenderer == nil {
+		// Safety net for tests and legacy call sites: fall back to the
+		// embedded default templates (no workspace overrides).
+		promptRenderer = prompts.NewDefaultRenderer()
+	}
 	o := &Orchestrator{
 		repo:              repo,
 		registry:          reg,
@@ -112,6 +126,7 @@ func NewOrchestrator(
 		cfg:               cfg,
 		mailbox:           mailbox,
 		watchdogRepair:    watchdogRepair,
+		promptRenderer:    promptRenderer,
 		metricsCollector:  NewMetricsCollector(cfg.MetricsEnabled),
 		taskCompletedChan: make(chan struct{}, 100),
 	}
