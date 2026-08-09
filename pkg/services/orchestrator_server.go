@@ -35,11 +35,14 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		return nil
 	}
 
-	prompt, err := o.promptRenderer.Render(prompts.AgentPlanner, "decompose", prompts.PlannerPromptData{Spec: spec})
+	rendered, err := o.promptRenderer.Render(prompts.AgentPlanner, "decompose", prompts.PlannerPromptData{Spec: spec})
 	if err != nil {
 		return fmt.Errorf("planner prompt rendering failed: %w", err)
 	}
+	prompt := rendered.Full()
 	plannerCtx := context.WithValue(ctx, AgentRoleKey, "planner")
+	// Compaction must never rewrite the output contract at the end of the prompt.
+	plannerCtx = domain.WithUncompactableTail(plannerCtx, len(rendered.Contract))
 
 	maxAttempts := 3
 	var lastErr error

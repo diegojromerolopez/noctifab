@@ -83,10 +83,11 @@ func TestGoldenDefaults_ByteIdenticalToLegacyAssembly(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run("when rendering the default "+tc.name+" template it matches the legacy assembly byte for byte", func(t *testing.T) {
-			got, err := r.Render(tc.agent, tc.action, tc.data)
+			rendered, err := r.Render(tc.agent, tc.action, tc.data)
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
+			got := rendered.Full()
 			want := legacyPreprocessPrompt(tc.legacy)
 			if got != want {
 				t.Fatalf("rendered prompt differs from legacy assembly.\n--- got:\n%s\n--- want:\n%s\n--- first divergence at byte %d", got, want, firstDiff(got, want))
@@ -113,10 +114,11 @@ func TestGoldenFixedVariants_ReceiveRoleBodyAndContract(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run("when rendering "+tc.agent+"/"+tc.action+" it contains persona, instruction and contract", func(t *testing.T) {
-			got, err := r.Render(tc.agent, tc.action, data)
+			rendered, err := r.Render(tc.agent, tc.action, data)
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
+			got := rendered.Full()
 			for _, needle := range []string{tc.persona, tc.instruction, "ANTI-STALLING MANDATE:", "Return format", `"reasoning"`} {
 				if !strings.Contains(got, needle) {
 					t.Errorf("rendered prompt missing %q", needle)

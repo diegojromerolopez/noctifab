@@ -23,7 +23,7 @@ type RepairHandler interface {
 // PromptRenderer renders the effective prompt for an (agent, action) key.
 // Implemented by *prompts.Renderer; injected so tests can substitute it.
 type PromptRenderer interface {
-	Render(agent, action string, data any) (string, error)
+	Render(agent, action string, data any) (prompts.Rendered, error)
 }
 
 type OrchestratorConfig struct {

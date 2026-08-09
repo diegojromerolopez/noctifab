@@ -46,7 +46,7 @@ func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.L
 	if len(existingStories) > 0 {
 		action = "audit"
 	}
-	prompt, err := renderer.Render(prompts.AgentProductManager, action, prompts.ProductManagerPromptData{
+	rendered, err := renderer.Render(prompts.AgentProductManager, action, prompts.ProductManagerPromptData{
 		Spec:            string(specBytes),
 		ExistingStories: strings.Join(existingStories, "\n"),
 		LegacyFiles:     legacyBlock,
@@ -54,11 +54,14 @@ func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.L
 	if err != nil {
 		return fmt.Errorf("product manager prompt rendering failed: %w", err)
 	}
+	prompt := rendered.Full()
 	var lastErr error
 
 	// Propagate the product_manager role so the LLM router selects the
 	// correct provider/model override (e.g. qwencloud) for this agent.
 	pmCtx := context.WithValue(ctx, "agent_role", "product_manager") //nolint:staticcheck
+	// Compaction must never rewrite the output contract at the end of the prompt.
+	pmCtx = domain.WithUncompactableTail(pmCtx, len(rendered.Contract))
 
 	for attempt := 0; attempt < 3; attempt++ {
 		resp, err := llmClient.Complete(pmCtx, prompt)

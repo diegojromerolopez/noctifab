@@ -28,10 +28,11 @@ func TestRenderer_ResolutionPrecedence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := r.Render("generator", "implement", data)
+		rendered, err := r.Render("generator", "implement", data)
 		if err != nil {
 			t.Fatal(err)
 		}
+		got := rendered.Full()
 		if !strings.Contains(got, "You are acting as the Generator Agent.") {
 			t.Error("expected embedded default body")
 		}
@@ -48,10 +49,11 @@ func TestRenderer_ResolutionPrecedence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := r.Render("generator", "implement", data)
+		rendered, err := r.Render("generator", "implement", data)
 		if err != nil {
 			t.Fatal(err)
 		}
+		got := rendered.Full()
 		if !strings.HasPrefix(got, "CUSTOM BODY T\n") {
 			t.Errorf("expected convention override body, got: %q", got[:40])
 		}
@@ -77,7 +79,8 @@ func TestRenderer_ResolutionPrecedence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, _ := r.Render("generator", "implement", data)
+		renderedP, _ := r.Render("generator", "implement", data)
+		got := renderedP.Full()
 		if !strings.HasPrefix(got, "CONFIG BODY T\n") {
 			t.Errorf("expected config override body, got: %q", got[:40])
 		}
@@ -99,7 +102,8 @@ func TestRenderer_ResolutionPrecedence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, _ := r.Render("planner", "decompose", PlannerPromptData{Spec: "s"})
+		renderedP, _ := r.Render("planner", "decompose", PlannerPromptData{Spec: "s"})
+		got := renderedP.Full()
 		if !strings.HasPrefix(got, "ABS BODY\n") {
 			t.Error("expected absolute-path override body")
 		}
@@ -157,7 +161,8 @@ func TestRenderer_AppendSemantics(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, _ := r.Render("tester", "write", data)
+		renderedP, _ := r.Render("tester", "write", data)
+		got := renderedP.Full()
 		if !strings.HasSuffix(got, "Prefer table-driven tests."+Contract("tester")) {
 			t.Error("expected append between default body and contract")
 		}
@@ -174,7 +179,8 @@ func TestRenderer_AppendSemantics(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, _ := r.Render("tester", "write", data)
+		renderedP, _ := r.Render("tester", "write", data)
+		got := renderedP.Full()
 		if !strings.HasSuffix(got, "EXTRA RULE\n"+Contract("tester")) {
 			t.Error("expected append file content before contract")
 		}
@@ -196,7 +202,8 @@ func TestRenderer_AppendSemantics(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, _ := r.Render("tester", "write", data)
+		renderedP, _ := r.Render("tester", "write", data)
+		got := renderedP.Full()
 		if !strings.Contains(got, "CONFIG APPEND") || strings.Contains(got, "FILE APPEND") {
 			t.Error("expected config append to win over the append file")
 		}
@@ -216,7 +223,8 @@ func TestRenderer_AppendSemantics(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, _ := r.Render("tester", "write", data)
+		renderedP, _ := r.Render("tester", "write", data)
+		got := renderedP.Full()
 		if strings.Contains(got, "APPEND CONTENT") {
 			t.Error("append must not apply to an override")
 		}
@@ -235,11 +243,11 @@ func TestRenderer_ContractAlwaysAppended(t *testing.T) {
 		r := NewDefaultRenderer()
 		for _, agent := range Agents() {
 			for _, action := range Actions(agent) {
-				got, err := r.Render(agent, action, FixtureData(agent))
+				rendered, err := r.Render(agent, action, FixtureData(agent))
 				if err != nil {
 					t.Fatalf("Render %s/%s failed: %v", agent, action, err)
 				}
-				if !strings.HasSuffix(got, Contract(agent)) {
+				if !strings.HasSuffix(rendered.Full(), Contract(agent)) {
 					t.Errorf("%s/%s: rendered prompt does not end with the output contract", agent, action)
 				}
 			}
@@ -253,7 +261,8 @@ func TestRenderer_ContractAlwaysAppended(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, _ := r.Render("generator", "fix", TaskPromptData{})
+		renderedP, _ := r.Render("generator", "fix", TaskPromptData{})
+		got := renderedP.Full()
 		if got != "SHORT CUSTOM BODY\n"+Contract("generator") {
 			t.Error("expected override body + contract, nothing else")
 		}

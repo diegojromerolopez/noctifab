@@ -101,18 +101,34 @@ func NewDefaultRenderer() *Renderer {
 	return r
 }
 
+// Rendered is the result of rendering one (agent, action) prompt: the
+// overridable body and the non-overridable output contract. Callers send
+// Full() to the LLM; keeping the parts separate lets the compaction layer
+// skip the contract and lets multi-turn loops keep the contract at the end
+// of continuation prompts.
+type Rendered struct {
+	// Body is the rendered (possibly user-overridden) action body.
+	Body string
+	// Contract is the non-overridable output contract block for the agent.
+	Contract string
+}
+
+// Full returns the complete prompt: body followed by the output contract.
+func (p Rendered) Full() string { return p.Body + p.Contract }
+
 // Render renders the effective template for (agent, action) with the given
-// data and appends the non-overridable output contract block for the agent.
-func (r *Renderer) Render(agent, action string, data any) (string, error) {
+// data. The returned Rendered carries the body and the non-overridable
+// output contract block for the agent.
+func (r *Renderer) Render(agent, action string, data any) (Rendered, error) {
 	tmpl, ok := r.templates[key(agent, action)]
 	if !ok {
-		return "", ValidateKey(agent, action)
+		return Rendered{}, ValidateKey(agent, action)
 	}
 	var sb strings.Builder
 	if err := tmpl.Execute(&sb, data); err != nil {
-		return "", fmt.Errorf("prompt template %s/%s failed to render: %w", agent, action, err)
+		return Rendered{}, fmt.Errorf("prompt template %s/%s failed to render: %w", agent, action, err)
 	}
-	return sb.String() + Contract(agent), nil
+	return Rendered{Body: sb.String(), Contract: Contract(agent)}, nil
 }
 
 // Describe returns the effective-template description for one key.

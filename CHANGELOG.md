@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.1] - 2026-08-09
+
+### Fixed
+- **Compaction can no longer rewrite the prompt output contract**: `CompactCaveman`/`CompactSimpleEnglish` in `llm.Client` now skip the non-overridable JSON/tool contract block at the end of rendered prompts (the renderer reports the contract length via `domain.WithUncompactableTail`), so the machine-readable schema always reaches the model verbatim. Multi-turn continuation prompts now keep the output contract at the END of the prompt (tool outputs are inserted before it), instead of appending turn outputs after the schema.
+
 ## [0.28.0] - 2026-08-09
 
 ### Added

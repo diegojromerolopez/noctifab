@@ -26,6 +26,27 @@ func (m *promptCapturingLLM) Complete(_ context.Context, prompt string) (*domain
 	return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "noop"}}}, nil
 }
 
+// multiTurnCapturingLLM writes a file on turn 1 (forcing a second turn) and
+// noops afterwards, capturing every prompt.
+type multiTurnCapturingLLM struct {
+	mu      sync.Mutex
+	prompts []string
+}
+
+func (m *multiTurnCapturingLLM) Complete(_ context.Context, prompt string) (*domain.LLMResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if strings.Contains(prompt, "Context Gathering phase") {
+		// Reader phase: no inspection needed.
+		return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "noop"}}}, nil
+	}
+	m.prompts = append(m.prompts, prompt)
+	if len(m.prompts) == 1 {
+		return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "run_tests", Args: map[string]any{}}}}, nil
+	}
+	return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "noop"}}}, nil
+}
+
 func newPromptTestOrchestrator(t *testing.T, tempDir string, llm domain.LLMClient, renderer PromptRenderer) *Orchestrator {
 	t.Helper()
 	state := &domain.State{ProjectPath: tempDir}
@@ -121,6 +142,27 @@ func TestOrchestratorPromptRendering(t *testing.T) {
 
 		if len(llm.prompts) != 0 {
 			t.Errorf("expected no LLM calls for unknown actions, got %d", len(llm.prompts))
+		}
+	})
+
+	t.Run("when the generator takes multiple turns the contract stays at the end of continuation prompts", func(t *testing.T) {
+		tempDir := t.TempDir()
+		llm := &multiTurnCapturingLLM{}
+		orch := newPromptTestOrchestrator(t, tempDir, llm, nil)
+		state := &domain.State{ProjectPath: tempDir}
+		task := domain.Task{ID: "t1", Title: "T", Description: "D"}
+
+		orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "implement")
+
+		if len(llm.prompts) < 2 {
+			t.Fatalf("expected at least 2 turns, got %d", len(llm.prompts))
+		}
+		turn2 := llm.prompts[1]
+		if !strings.Contains(turn2, "TOOL OUTPUTS FROM PREVIOUS TURN") {
+			t.Error("continuation prompt missing turn wrapper")
+		}
+		if !strings.HasSuffix(turn2, prompts.Contract(prompts.AgentGenerator)) {
+			t.Error("continuation prompt must end with the output contract")
 		}
 	})
 

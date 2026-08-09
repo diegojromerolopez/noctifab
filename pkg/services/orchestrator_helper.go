@@ -282,7 +282,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 		contextBlock = "\n\n" + strings.Join(promptContext, "\n\n")
 	}
 
-	testPrompt, err := o.promptRenderer.Render(prompts.AgentTester, action, prompts.TaskPromptData{
+	rendered, err := o.promptRenderer.Render(prompts.AgentTester, action, prompts.TaskPromptData{
 		Title:             task.Title,
 		Description:       task.Description,
 		Context:           contextBlock,
@@ -296,8 +296,11 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 		o.registerAgentComplete(ctx, "tester", task.ID, err)
 		return
 	}
+	testPrompt := rendered.Full()
 
 	testerCtx := context.WithValue(ctx, AgentRoleKey, "tester")
+	// Compaction must never rewrite the output contract at the end of the prompt.
+	testerCtx = domain.WithUncompactableTail(testerCtx, len(rendered.Contract))
 	o.registerAgentStart(ctx, "tester", task.ID)
 
 	currentPrompt := testPrompt
@@ -422,11 +425,14 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 			}
 		}
 
-		// Append errors and tool outputs to currentPrompt for the next turn
-		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.",
-			testPrompt, turn+1, maxTurns,
+		// Append errors and tool outputs to the body for the next turn. The
+		// non-overridable output contract stays at the END of the prompt so
+		// the JSON schema is the last thing the model reads.
+		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.\n%s",
+			rendered.Body, turn+1, maxTurns,
 			joinCappedToolOutputs(turnToolOutputs),
-			maxTurns-turn-1)
+			maxTurns-turn-1,
+			rendered.Contract)
 	}
 
 	o.registerAgentComplete(ctx, "tester", task.ID, lastErr)
