@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.7] - 2026-08-09
+
+### Added
+- **Explicit regression test for the product_manager audit prefix quirk** (`pkg/infrastructure/prompts/audit_quirk_test.go`): the legacy pipeline trimmed the dispatch prefix for `generate` but kept the whole raw prompt for `audit`, so the audit instruction line intentionally sits inside the `INPUT CONTEXT:` section of `audit.tmpl`. Previously this was only covered implicitly by the byte-identical golden comparison against the legacy replica (a transitional artifact); the new self-documenting test survives any future removal of that replica and explains why the asymmetry must not be "cleaned up".
+
 ## [0.28.6] - 2026-08-09
 
 ### Fixed
