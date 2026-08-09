@@ -87,7 +87,7 @@ func TestSQLiteRepositoryPruneFinishedStates(t *testing.T) {
 
 		// The 3 oldest finished states are gone, relation rows included.
 		for _, id := range finished[:3] {
-			for _, table := range stateRelationGroups {
+			for _, table := range stateRelationTables {
 				assert.Equal(t, 0, countRows(t, repo, table, id), "expected %s rows of %s to be deleted", table, id)
 			}
 			_, err := repo.LoadByID(ctx, id)

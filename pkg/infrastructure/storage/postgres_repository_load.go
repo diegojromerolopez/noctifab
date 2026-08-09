@@ -287,5 +287,5 @@ func (r *PostgresRepository) loadPostgresStateRelations(ctx context.Context, sta
 		state.ActiveAgents = append(state.ActiveAgents, agent)
 	}
 
-	return nil
+	return r.loadQAReviews(ctx, state)
 }

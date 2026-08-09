@@ -1837,7 +1837,7 @@ The daemon initializes and operates inside a dedicated `.noctifab/` directory at
 
 #### 3.9.2. YAML Configuration Schema (`.noctifab/config.yaml`)
 ```yaml
-config_version: "1.0"
+config_version: "2.0"
 
 orchestrator:
   max_tools_per_response: 5     # Maximum parallel tool calls allowed per LLM response
@@ -2535,4 +2535,3 @@ The following glossary defines key software engineering, version control, and di
 | **Quarantine Branch** | A temporary Git branch prefix (e.g. `noctifab-quarantine/`) where failing or conflicting tasks are isolated for manual developer investigation. | Specified in §3.6.6 (Auto-Rollback Policies) to avoid polluting clean release branches. |
 | **Compaction** | A context management technique that summarizes preceding conversation turns to fit within context limits instead of hard truncation. | Described in §3.3.1 (Conversation History & Context Management) to optimize token costs for long-running debugging iterations. |
 | **OCC Livelock** | A failure state where concurrent update threads repeatedly conflict, abort, and retry in lockstep, blocking overall progress. | Prevented in §3.5.3 (DB-backed State Coordination & Optimistic Concurrency Engine) using exponential backoff with full jitter and retry bounds. |
-

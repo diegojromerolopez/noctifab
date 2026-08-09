@@ -260,6 +260,28 @@ Define acceptance criteria 1.
 
 #### AC-2
 Define acceptance criteria 2.
+
+## Definition of Done (DoD)
+
+- Replace the example interface, executable, paths, and observable expectations below with exact public behavior for this story.
+- All configured tests and linters complete with zero failures.
+
+` + "```noctifab-contract" + `
+{
+  "story_id": "US-001",
+  "public_contracts": [
+    {
+      "id": "cli.example",
+      "interface": "CLI ./dist/my-app",
+      "applicable_path_prefixes": ["cmd/", "pkg/"],
+      "allowed_executables": ["./dist/my-app"],
+      "exit_codes": [0],
+      "stdout_contains": ["expected output"],
+      "stderr_prefixes": []
+    }
+  ]
+}
+` + "```" + `
 `
 			if err := os.WriteFile(us1Path, []byte(us1Content), 0644); err != nil {
 				return false, fmt.Errorf("failed to create roadmap/US-001.md: %w", err)

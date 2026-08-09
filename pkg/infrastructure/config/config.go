@@ -50,6 +50,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
 		if len(bytes.TrimSpace(data)) > 0 {
+			if err := validateYAMLContract(data); err != nil {
+				return nil, err
+			}
 			decoder := yaml.NewDecoder(bytes.NewReader(data))
 			decoder.KnownFields(true)
 			if err := decoder.Decode(cfg); err != nil {
@@ -59,6 +62,9 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		if len(cfg.LLMs) > 0 {
 			cfg.LLM = cfg.LLMs[0]
 		}
+	}
+	if err := validateConfigVersion(cfg.ConfigVersion); err != nil {
+		return nil, err
 	}
 
 	// 2a. Load secrets.yaml (optional) from the same directory as config.yaml.
@@ -150,6 +156,10 @@ func resolveSingleLLMSecret(llm *LLMConfig) {
 
 // Validate checks the configuration for correctness.
 func (cfg *Config) Validate() error {
+	if err := validateConfigVersion(cfg.ConfigVersion); err != nil {
+		return err
+	}
+
 	p := strings.ToLower(cfg.Storage.Provider)
 	if p != "sqlite" && p != "postgres" && p != "mysql" && p != "json" {
 		return fmt.Errorf("invalid storage provider: %s", cfg.Storage.Provider)
@@ -162,6 +172,9 @@ func (cfg *Config) Validate() error {
 		}
 		cfg.Agents.Architecture = norm
 	}
+	if err := validateQAConfig(cfg); err != nil {
+		return err
+	}
 
 	if cfg.Agents.MaxToolsPerResponse < 0 {
 		return fmt.Errorf("max_tools_per_response must be non-negative, got %d", cfg.Agents.MaxToolsPerResponse)
@@ -171,17 +184,10 @@ func (cfg *Config) Validate() error {
 		"orchestrator":    cfg.Agents.Orchestrator,
 		"product_manager": cfg.Agents.ProductManager,
 		"planner":         cfg.Agents.Planner,
-		"architect":       cfg.Agents.Architect,
 		"generators":      cfg.Agents.Generators,
 		"testers":         cfg.Agents.Testers,
-		"qa":              cfg.Agents.QA,
-		"security":        cfg.Agents.Security,
-		"performance":     cfg.Agents.Performance,
-		"docs":            cfg.Agents.Docs,
-		"devops":          cfg.Agents.DevOps,
 		"unblocker":       cfg.Agents.Unblocker,
 	}
-
 	for roleName, roleCfg := range roles {
 		if roleCfg.Number < 0 {
 			return fmt.Errorf("agent role %s number must be non-negative, got %d", roleName, roleCfg.Number)
@@ -248,6 +254,58 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
+	return nil
+}
+
+func validateConfigVersion(version string) error {
+	if version == "1.0" {
+		return fmt.Errorf("unsupported config_version %q: migrate to %q", version, "2.0")
+	}
+	if version != "2.0" {
+		return fmt.Errorf("unsupported config_version %q: supported version is %q", version, "2.0")
+	}
+	return nil
+}
+
+var removedAgentRoles = map[string]struct{}{
+	"architect":   {},
+	"security":    {},
+	"performance": {},
+	"docs":        {},
+	"devops":      {},
+}
+
+// IsRemovedAgentRole reports whether role was deleted from the version 2 schema.
+func IsRemovedAgentRole(role string) bool {
+	_, removed := removedAgentRoles[strings.ToLower(strings.TrimSpace(role))]
+	return removed
+}
+
+func validateYAMLContract(data []byte) error {
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return err
+	}
+	if len(document.Content) == 0 || document.Content[0].Kind != yaml.MappingNode {
+		return nil
+	}
+	root := document.Content[0]
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		section := root.Content[i].Value
+		if section != "agents" && section != "roles" {
+			continue
+		}
+		mapping := root.Content[i+1]
+		if mapping.Kind != yaml.MappingNode {
+			continue
+		}
+		for j := 0; j+1 < len(mapping.Content); j += 2 {
+			role := mapping.Content[j].Value
+			if IsRemovedAgentRole(role) {
+				return fmt.Errorf("unsupported agent role %q: delete the %s.%s section", role, section, role)
+			}
+		}
+	}
 	return nil
 }
 

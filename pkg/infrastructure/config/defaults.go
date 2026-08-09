@@ -12,7 +12,7 @@ import (
 // DefaultConfig returns a new Config populated with baseline default settings.
 func DefaultConfig() *Config {
 	return &Config{
-		ConfigVersion: "1.0",
+		ConfigVersion: "2.0",
 		Agents: AgentsConfig{
 			Architecture:        "code_first",
 			MaxToolsPerResponse: 5,
@@ -25,10 +25,6 @@ func DefaultConfig() *Config {
 				Number:     1,
 				Iterations: 2,
 			},
-			Architect: AgentRoleConfig{
-				Number:     1,
-				Iterations: 2,
-			},
 			Generators: AgentRoleConfig{
 				Number:     3,
 				Iterations: 5,
@@ -37,25 +33,19 @@ func DefaultConfig() *Config {
 				Number:     2,
 				Iterations: 3,
 			},
-			QA: AgentRoleConfig{
-				Number:     1,
-				Iterations: 2,
-			},
-			Security: AgentRoleConfig{
-				Number:     1,
-				Iterations: 2,
-			},
-			Performance: AgentRoleConfig{
-				Number:     1,
-				Iterations: 2,
-			},
-			Docs: AgentRoleConfig{
-				Number:     1,
-				Iterations: 2,
-			},
-			DevOps: AgentRoleConfig{
-				Number:     1,
-				Iterations: 2,
+			QA: QAConfig{
+				Enabled:            false,
+				Iterations:         1,
+				MaxCostUSD:         "0",
+				MaxDuration:        Duration(2 * time.Minute),
+				MaxScenarios:       8,
+				MaxReviewRounds:    2,
+				MaxOutputBytes:     65536,
+				Blocking:           true,
+				Network:            "none",
+				BuildCommand:       []string{"make", "build"},
+				ValidationCommands: nil,
+				TesterPathPrefixes: []string{"test/", "tests/", "spec/", "specs/"},
 			},
 		},
 		WorkspaceCache: WorkspaceCacheConfig{

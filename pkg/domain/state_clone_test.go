@@ -89,4 +89,23 @@ func TestStateClone(t *testing.T) {
 			t.Error("original clarifications/criteria mutated through clone")
 		}
 	})
+
+	t.Run("when cloning QA records, nested contract and scenario slices are independent", func(t *testing.T) {
+		s := &State{
+			StoryContracts: []StoryContract{{PublicContracts: []PublicContract{{AllowedExecutables: []string{"./app"}}}}},
+			ReviewPhases:   []ReviewPhase{{ArtifactManifest: []ArtifactManifestEntry{{Path: "dist/app", SHA256: "original"}}}},
+			QAScenarios:    []QAScenario{{Steps: []QAStep{{Command: []string{"./app"}, StdoutContains: []string{"ok"}}}}},
+		}
+		c := s.Clone()
+		c.StoryContracts[0].PublicContracts[0].AllowedExecutables[0] = "./changed"
+		c.ReviewPhases[0].ArtifactManifest[0].SHA256 = "changed"
+		c.QAScenarios[0].Steps[0].Command[0] = "./changed"
+		c.QAScenarios[0].Steps[0].StdoutContains[0] = "changed"
+
+		if s.StoryContracts[0].PublicContracts[0].AllowedExecutables[0] != "./app" ||
+			s.ReviewPhases[0].ArtifactManifest[0].SHA256 != "original" ||
+			s.QAScenarios[0].Steps[0].Command[0] != "./app" || s.QAScenarios[0].Steps[0].StdoutContains[0] != "ok" {
+			t.Error("original QA nested slices mutated through clone")
+		}
+	})
 }

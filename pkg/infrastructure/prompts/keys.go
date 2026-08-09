@@ -24,6 +24,7 @@ const (
 	AgentPlanner        = "planner"
 	AgentTester         = "tester"
 	AgentGenerator      = "generator"
+	AgentQA             = "qa"
 )
 
 // catalog maps each agent to its customizable actions. It is the single
@@ -31,6 +32,7 @@ const (
 var catalog = map[string][]string{
 	AgentProductManager: {"generate", "audit"},
 	AgentPlanner:        {"decompose"},
+	AgentQA:             {"acceptance"},
 	AgentTester:         {"write", "fix", "refactor", "write_breadth_first"},
 	AgentGenerator: {
 		"implement", "refactor", "fix",

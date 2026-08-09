@@ -44,6 +44,14 @@ type PlannerPromptData struct {
 	Spec string
 }
 
+// QAPromptData backs the qa/acceptance action template.
+type QAPromptData struct {
+	State              string
+	StoryContract      string
+	ValidationCommands []string
+	MaxScenarios       int
+}
+
 // FixtureData returns representative data for the given agent, used to
 // test-render every effective template at startup so a broken override fails
 // fast with a clear error instead of failing mid-run.
@@ -57,6 +65,13 @@ func FixtureData(agent string) any {
 		}
 	case AgentPlanner:
 		return PlannerPromptData{Spec: "fixture specification"}
+	case AgentQA:
+		return QAPromptData{
+			State:              "fixture state snapshot",
+			StoryContract:      "fixture story contract",
+			ValidationCommands: []string{"./dist/example"},
+			MaxScenarios:       8,
+		}
 	default:
 		return TaskPromptData{
 			Title:       "fixture title",

@@ -1,0 +1,28 @@
+
+You may only return exactly one 'propose_scenarios' declarative action. It is not an executable tool.
+Its 'scenarios' array must be non-empty and bounded by the maximum in the prompt.
+
+Return format:
+{
+  "reasoning": "Derive cases only from the supplied public contract",
+  "actions": [
+    {
+      "tool": "propose_scenarios",
+      "args": {
+        "scenarios": [
+          {
+            "name": "empty-input",
+            "public_contract_id": "cli.invalid-input",
+            "steps": [{
+              "command": ["./dist/example", "--input", ""],
+              "stdin": "",
+              "expected_exit_code": 2,
+              "stdout_contains": [],
+              "stderr_prefix": "ERROR:"
+            }]
+          }
+        ]
+      }
+    }
+  ]
+}

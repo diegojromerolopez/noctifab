@@ -89,16 +89,32 @@ type AgentsConfig struct {
 	Orchestrator        AgentRoleConfig      `yaml:"orchestrator"`
 	ProductManager      AgentRoleConfig      `yaml:"product_manager"`
 	Planner             AgentRoleConfig      `yaml:"planner"`
-	Architect           AgentRoleConfig      `yaml:"architect"`
 	Generators          AgentRoleConfig      `yaml:"generators"`
 	Testers             AgentRoleConfig      `yaml:"testers"`
-	QA                  AgentRoleConfig      `yaml:"qa"`
-	Security            AgentRoleConfig      `yaml:"security"`
-	Performance         AgentRoleConfig      `yaml:"performance"`
-	Docs                AgentRoleConfig      `yaml:"docs"`
-	DevOps              AgentRoleConfig      `yaml:"devops"`
+	QA                  QAConfig             `yaml:"qa"`
 	Unblocker           AgentRoleConfig      `yaml:"unblocker"`
 	WorkspaceCache      WorkspaceCacheConfig `yaml:"workspace_cache"`
+}
+
+// QAConfig reserves the bounded configuration contract for the experimental QA role.
+// Phase 0 exposes capability state only; QA runtime behavior is implemented later.
+type QAConfig struct {
+	Enabled            bool               `yaml:"enabled"`
+	Iterations         int                `yaml:"iterations"`
+	MaxCostUSD         string             `yaml:"max_cost_usd"`
+	MaxDuration        Duration           `yaml:"max_duration"`
+	MaxScenarios       int                `yaml:"max_scenarios"`
+	MaxReviewRounds    int                `yaml:"max_review_rounds"`
+	MaxOutputBytes     int                `yaml:"max_output_bytes"`
+	Blocking           bool               `yaml:"blocking"`
+	Network            string             `yaml:"network"`
+	BuildCommand       []string           `yaml:"build_command"`
+	ValidationCommands []string           `yaml:"validation_commands"`
+	TesterPathPrefixes []string           `yaml:"tester_path_prefixes"`
+	Model              string             `yaml:"model,omitempty"`
+	Temperature        float64            `yaml:"temperature,omitempty"`
+	Profile            string             `yaml:"profile,omitempty"`
+	Providers          []AgentProviderRef `yaml:"providers,omitempty"`
 }
 
 type AgentRoleConfig struct {
@@ -306,14 +322,9 @@ type RoleSetting struct {
 type RolesConfig struct {
 	Orchestrator RoleSetting `yaml:"orchestrator"`
 	Planner      RoleSetting `yaml:"planner"`
-	Architect    RoleSetting `yaml:"architect"`
 	Generator    RoleSetting `yaml:"generator"`
 	Tester       RoleSetting `yaml:"tester"`
 	QA           RoleSetting `yaml:"qa"`
-	Security     RoleSetting `yaml:"security"`
-	Performance  RoleSetting `yaml:"performance"`
-	Docs         RoleSetting `yaml:"docs"`
-	DevOps       RoleSetting `yaml:"devops"`
 	Unblocker    RoleSetting `yaml:"unblocker"`
 }
 

@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sync"
@@ -11,43 +12,64 @@ import (
 
 // MetricsSummary represents the snapshot of metrics gathered during dark factory execution.
 type MetricsSummary struct {
-	Enabled               bool             `json:"enabled"`
-	StartTime             time.Time        `json:"start_time"`
-	TotalExecutionSec     float64          `json:"total_execution_sec"`
-	TimeToFileFirstCommit *float64         `json:"time_to_first_commit_sec,omitempty"`
-	PhaseLatenciesMs      map[string]int64 `json:"phase_latencies_ms"`
-	LLMWaitDurationMs     int64            `json:"llm_wait_duration_ms"`
-	LLMCalls              int64            `json:"llm_calls"`
-	TotalTokensGenerated  int64            `json:"total_tokens_generated"`
-	TokensPerSecond       float64          `json:"tokens_per_second"`
-	SandboxDurationMs     int64            `json:"sandbox_duration_ms"`
-	SandboxRuns           int64            `json:"sandbox_runs"`
-	TotalRetries          int64            `json:"total_retries"`
+	Enabled                bool             `json:"enabled"`
+	StartTime              time.Time        `json:"start_time"`
+	TotalExecutionSec      float64          `json:"total_execution_sec"`
+	TimeToFileFirstCommit  *float64         `json:"time_to_first_commit_sec,omitempty"`
+	PhaseLatenciesMs       map[string]int64 `json:"phase_latencies_ms"`
+	LLMWaitDurationMs      int64            `json:"llm_wait_duration_ms"`
+	LLMCalls               int64            `json:"llm_calls"`
+	TotalTokensGenerated   int64            `json:"total_tokens_generated"`
+	TokensPerSecond        float64          `json:"tokens_per_second"`
+	SandboxDurationMs      int64            `json:"sandbox_duration_ms"`
+	SandboxRuns            int64            `json:"sandbox_runs"`
+	TotalRetries           int64            `json:"total_retries"`
+	QAPhaseCalls           int64            `json:"qa_phase_calls"`
+	QATokensUsed           int64            `json:"qa_tokens_used"`
+	QACostUSD              string           `json:"qa_cost_usd"`
+	QALatencyMs            int64            `json:"qa_latency_ms"`
+	QASkippedReasons       map[string]int64 `json:"qa_skipped_reasons"`
+	QADuplicatesSuppressed int64            `json:"qa_duplicates_suppressed"`
+	QAFixRounds            int64            `json:"qa_fix_rounds"`
+	QARegressionsFound     int64            `json:"qa_regressions_found"`
+	QAFindingDispositions  map[string]int64 `json:"qa_finding_dispositions"`
 }
 
 // MetricsCollector tracks real-time performance and speed metrics in a thread-safe manner.
 type MetricsCollector struct {
-	mu                   sync.RWMutex
-	enabled              bool
-	startTime            time.Time
-	firstCommitTime      *time.Time
-	phaseStarts          map[string]time.Time
-	phaseLatenciesMs     map[string]int64
-	llmWaitDurationMs    int64
-	llmCalls             int64
-	totalTokensGenerated int64
-	sandboxDurationMs    int64
-	sandboxRuns          int64
-	totalRetries         int64
+	mu                     sync.RWMutex
+	enabled                bool
+	startTime              time.Time
+	firstCommitTime        *time.Time
+	phaseStarts            map[string]time.Time
+	phaseLatenciesMs       map[string]int64
+	llmWaitDurationMs      int64
+	llmCalls               int64
+	totalTokensGenerated   int64
+	sandboxDurationMs      int64
+	sandboxRuns            int64
+	totalRetries           int64
+	qaPhaseCalls           int64
+	qaTokensUsed           int64
+	qaCostUSD              *big.Rat
+	qaLatencyMs            int64
+	qaSkippedReasons       map[string]int64
+	qaDuplicatesSuppressed int64
+	qaFixRounds            int64
+	qaRegressionsFound     int64
+	qaFindingDispositions  map[string]int64
 }
 
 // NewMetricsCollector initializes a thread-safe metrics collector.
 func NewMetricsCollector(enabled bool) *MetricsCollector {
 	return &MetricsCollector{
-		enabled:          enabled,
-		startTime:        time.Now(),
-		phaseStarts:      make(map[string]time.Time),
-		phaseLatenciesMs: make(map[string]int64),
+		enabled:               enabled,
+		startTime:             time.Now(),
+		phaseStarts:           make(map[string]time.Time),
+		phaseLatenciesMs:      make(map[string]int64),
+		qaCostUSD:             new(big.Rat),
+		qaSkippedReasons:      make(map[string]int64),
+		qaFindingDispositions: make(map[string]int64),
 	}
 }
 
@@ -136,6 +158,83 @@ func (m *MetricsCollector) RecordRetry() {
 	m.totalRetries++
 }
 
+// RecordQAPhase registers one bounded QA review invocation and its resource totals.
+func (m *MetricsCollector) RecordQAPhase(duration time.Duration, tokens int64, costUSD string) {
+	if m == nil || !m.IsEnabled() {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.qaPhaseCalls++
+	m.qaLatencyMs += duration.Milliseconds()
+	if tokens > 0 {
+		m.qaTokensUsed += tokens
+	}
+	if cost, ok := new(big.Rat).SetString(costUSD); ok && cost.Sign() >= 0 {
+		m.qaCostUSD.Add(m.qaCostUSD, cost)
+	}
+}
+
+// RecordQASkipped increments the bounded skip-reason counter.
+func (m *MetricsCollector) RecordQASkipped(reason string) {
+	if m == nil || !m.IsEnabled() {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	switch reason {
+	case "disabled", "missing_story_contract", "not_applicable":
+	default:
+		reason = "other"
+	}
+	m.qaSkippedReasons[reason]++
+}
+
+// RecordQADuplicateSuppressed records a duplicate QA scenario that was not executed.
+func (m *MetricsCollector) RecordQADuplicateSuppressed() {
+	if m == nil || !m.IsEnabled() {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.qaDuplicatesSuppressed++
+}
+
+// RecordQAFixRound records a generator fix round caused by QA findings.
+func (m *MetricsCollector) RecordQAFixRound() {
+	if m == nil || !m.IsEnabled() {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.qaFixRounds++
+}
+
+// RecordQARegressionFound records a reproducible public-contract regression.
+func (m *MetricsCollector) RecordQARegressionFound() {
+	if m == nil || !m.IsEnabled() {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.qaRegressionsFound++
+}
+
+// RecordQAFindingDisposition records a finding's terminal disposition.
+func (m *MetricsCollector) RecordQAFindingDisposition(disposition string) {
+	if m == nil || !m.IsEnabled() {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	switch disposition {
+	case "OPEN", "FIXED", "STALE", "FALSE_POSITIVE":
+	default:
+		disposition = "UNKNOWN"
+	}
+	m.qaFindingDispositions[disposition]++
+}
+
 // ExportSummary generates a thread-safe snapshot of all metrics collected so far.
 func (m *MetricsCollector) ExportSummary() MetricsSummary {
 	if m == nil {
@@ -157,6 +256,14 @@ func (m *MetricsCollector) ExportSummary() MetricsSummary {
 	for k, v := range m.phaseLatenciesMs {
 		latencies[k] = v
 	}
+	qaSkippedReasons := make(map[string]int64, len(m.qaSkippedReasons))
+	for reason, count := range m.qaSkippedReasons {
+		qaSkippedReasons[reason] = count
+	}
+	qaFindingDispositions := make(map[string]int64, len(m.qaFindingDispositions))
+	for disposition, count := range m.qaFindingDispositions {
+		qaFindingDispositions[disposition] = count
+	}
 
 	llmSec := float64(m.llmWaitDurationMs) / 1000.0
 	var tokensPerSec float64
@@ -165,18 +272,27 @@ func (m *MetricsCollector) ExportSummary() MetricsSummary {
 	}
 
 	return MetricsSummary{
-		Enabled:               m.enabled,
-		StartTime:             m.startTime,
-		TotalExecutionSec:     totalSec,
-		TimeToFileFirstCommit: ttfc,
-		PhaseLatenciesMs:      latencies,
-		LLMWaitDurationMs:     m.llmWaitDurationMs,
-		LLMCalls:              m.llmCalls,
-		TotalTokensGenerated:  m.totalTokensGenerated,
-		TokensPerSecond:       tokensPerSec,
-		SandboxDurationMs:     m.sandboxDurationMs,
-		SandboxRuns:           m.sandboxRuns,
-		TotalRetries:          m.totalRetries,
+		Enabled:                m.enabled,
+		StartTime:              m.startTime,
+		TotalExecutionSec:      totalSec,
+		TimeToFileFirstCommit:  ttfc,
+		PhaseLatenciesMs:       latencies,
+		LLMWaitDurationMs:      m.llmWaitDurationMs,
+		LLMCalls:               m.llmCalls,
+		TotalTokensGenerated:   m.totalTokensGenerated,
+		TokensPerSecond:        tokensPerSec,
+		SandboxDurationMs:      m.sandboxDurationMs,
+		SandboxRuns:            m.sandboxRuns,
+		TotalRetries:           m.totalRetries,
+		QAPhaseCalls:           m.qaPhaseCalls,
+		QATokensUsed:           m.qaTokensUsed,
+		QACostUSD:              m.qaCostUSD.FloatString(5),
+		QALatencyMs:            m.qaLatencyMs,
+		QASkippedReasons:       qaSkippedReasons,
+		QADuplicatesSuppressed: m.qaDuplicatesSuppressed,
+		QAFixRounds:            m.qaFixRounds,
+		QARegressionsFound:     m.qaRegressionsFound,
+		QAFindingDispositions:  qaFindingDispositions,
 	}
 }
 

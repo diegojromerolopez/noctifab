@@ -6,9 +6,9 @@ import (
 )
 
 func TestCatalog(t *testing.T) {
-	t.Run("when listing agents it returns the 4 catalog agents sorted", func(t *testing.T) {
+	t.Run("when listing agents it returns the 5 catalog agents sorted", func(t *testing.T) {
 		agents := Agents()
-		want := []string{"generator", "planner", "product_manager", "tester"}
+		want := []string{"generator", "planner", "product_manager", "qa", "tester"}
 		if len(agents) != len(want) {
 			t.Fatalf("expected %d agents, got %v", len(want), agents)
 		}
@@ -19,13 +19,13 @@ func TestCatalog(t *testing.T) {
 		}
 	})
 
-	t.Run("when counting catalog keys it totals 14 actions", func(t *testing.T) {
+	t.Run("when counting catalog keys it totals 15 actions", func(t *testing.T) {
 		total := 0
 		for _, agent := range Agents() {
 			total += len(Actions(agent))
 		}
-		if total != 14 {
-			t.Fatalf("expected 14 (agent, action) keys, got %d", total)
+		if total != 15 {
+			t.Fatalf("expected 15 (agent, action) keys, got %d", total)
 		}
 	})
 
@@ -35,6 +35,9 @@ func TestCatalog(t *testing.T) {
 		}
 		if !IsValidKey("generator", "implement_breadth_first_fix") {
 			t.Error("expected generator/implement_breadth_first_fix to be valid")
+		}
+		if !IsValidKey("qa", "acceptance") {
+			t.Error("expected qa/acceptance to be valid")
 		}
 	})
 
@@ -76,6 +79,9 @@ func TestFixtureData(t *testing.T) {
 		}
 		if _, ok := FixtureData("generator").(TaskPromptData); !ok {
 			t.Error("expected TaskPromptData for generator")
+		}
+		if _, ok := FixtureData("qa").(QAPromptData); !ok {
+			t.Error("expected QAPromptData for qa")
 		}
 	})
 }

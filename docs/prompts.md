@@ -6,7 +6,7 @@ and one action; the effective template is resolved per `(agent, action)` key.
 
 ## The (agent, action) catalog
 
-There are **14 customizable templates across 4 agents**:
+There are **15 customizable templates across 5 agents**:
 
 | Agent | Actions |
 | --- | --- |
@@ -14,6 +14,7 @@ There are **14 customizable templates across 4 agents**:
 | `planner` | `decompose` |
 | `tester` | `write`, `fix`, `refactor`, `write_breadth_first` |
 | `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `implement_breadth_first`, `implement_breadth_first_fix` |
+| `qa` | `acceptance` |
 
 Run `noctifab prompts list` to see the catalog with each action's effective
 source.
@@ -114,6 +115,17 @@ with named placeholders. The available placeholders per agent:
 | Placeholder | Content |
 | --- | --- |
 | `{{.Spec}}` | The user story / specification content to decompose |
+
+### `qa/acceptance` — QAPromptData
+
+| Placeholder | Content |
+| --- | --- |
+| `{{.State}}` | Immutable state snapshot supplied for review |
+| `{{.StoryContract}}` | Parsed machine-readable public story contract |
+| `{{.ValidationCommands}}` | Exact executable allowlist |
+| `{{.MaxScenarios}}` | Maximum scenarios accepted for the review |
+
+The QA contract permits exactly one declarative `propose_scenarios` action. It does not grant an executable tool or workspace mutation access.
 
 ### Strictness and escaping
 

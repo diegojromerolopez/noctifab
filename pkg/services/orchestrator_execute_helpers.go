@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -49,6 +50,24 @@ func collectTargetFilesRecursively(task domain.Task, tasks []domain.Task) []stri
 	}
 	sort.Strings(uniqueFiles)
 	return uniqueFiles
+}
+
+// syncRootManifests copies root project manifests into a worktree if missing.
+func syncRootManifests(srcDir, dstDir string) {
+	manifests := []string{
+		"Cargo.toml", "Cargo.lock", "package.json", "package-lock.json", "go.mod", "go.sum",
+		"Makefile", "CMakeLists.txt", "pyproject.toml", "requirements.txt",
+	}
+	for _, file := range manifests {
+		srcPath, dstPath := filepath.Join(srcDir, file), filepath.Join(dstDir, file)
+		if _, err := os.Stat(srcPath); err == nil {
+			if _, errDst := os.Stat(dstPath); os.IsNotExist(errDst) {
+				if data, readErr := os.ReadFile(srcPath); readErr == nil {
+					_ = os.WriteFile(dstPath, data, 0o644)
+				}
+			}
+		}
+	}
 }
 
 func (o *Orchestrator) updateTaskProgress(ctx context.Context, taskID string, progress int) {

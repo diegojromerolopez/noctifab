@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -15,6 +16,30 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func captureStdout(t *testing.T, run func()) string {
+	t.Helper()
+	old := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = writer
+	defer func() { os.Stdout = old }()
+
+	run()
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if _, err := output.ReadFrom(reader); err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.String()
+}
 
 func TestInitCommand(t *testing.T) {
 	// Set required environment variables for validation inside commands
@@ -124,7 +149,7 @@ func TestSubcommands_Success(t *testing.T) {
 	}
 
 	validYaml := `
-config_version: "1.0"
+config_version: "2.0"
 vcs:
   repository: "owner/repo"
   token_env: "MOCK_VCS_TOKEN"
@@ -180,7 +205,7 @@ func TestSubcommands_ValidationError(t *testing.T) {
 	}
 
 	invalidYaml := `
-config_version: "1.0"
+config_version: "2.0"
 vcs:
   repository: ""
 `
@@ -194,6 +219,35 @@ vcs:
 	err := cli.RootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
+	}
+}
+
+func TestValidatePrintsRoleCapabilities(t *testing.T) {
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte("config_version: \"2.0\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	output := captureStdout(t, func() {
+		cli.RootCmd.SetArgs([]string{"validate", "--config", configPath})
+		if err := cli.RootCmd.Execute(); err != nil {
+			t.Fatalf("validate failed: %v", err)
+		}
+	})
+	for _, line := range []string{
+		"role generator: implemented",
+		"role orchestrator: deterministic-controller",
+		"role planner: implemented",
+		"role product_manager: implemented",
+		"role qa: experimental-disabled",
+		"role tester: implemented",
+		"role unblocker: implemented",
+	} {
+		if !strings.Contains(output, line) {
+			t.Errorf("validate output missing %q:\n%s", line, output)
+		}
 	}
 }
 
@@ -354,7 +408,7 @@ func TestCleanCommand_DaemonIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	configYaml := `
-config_version: "1.0"
+config_version: "2.0"
 vcs:
   repository: "owner/repo"
 `

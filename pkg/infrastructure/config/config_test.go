@@ -298,7 +298,7 @@ func TestLoad_SecretsFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	configYaml := `
-config_version: "1.0"
+config_version: "2.0"
 vcs:
   provider: "github"
   repository: "owner/repo"

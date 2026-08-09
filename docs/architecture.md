@@ -84,22 +84,19 @@ The mailbox exposes a **Wakeup channel** that fires whenever a command is enqueu
 
 ## Multi-Agent Roles & Team Pipeline
 
-Noctifab organizes execution into 12 specialized agent roles:
+Noctifab exposes the following implemented roles and retained experimental capability:
 
 | Role Key | Agent Name | Domain Scope & Responsibility |
 | :--- | :--- | :--- |
 | **`orchestrator`** | Orchestrator Agent | Coordinates state persistence, VCS branch rebasing, task assignment, and PR creation. |
 | **`product_manager`** | Product Manager Agent | Analyzes `SPEC.md` and existing user stories in `roadmap/`. Generates new User Stories or audits and enriches existing ones with explicit Definitions of Done (DoD), language-agnostic interface contracts, I/O formatting invariants, error prefixes, exit codes, and comprehensive edge-case scenario matrices before task planning starts. |
 | **`planner`** | Task Planner Agent | Decomposes User Stories into a Directed Acyclic Graph (DAG) of executable technical tasks. |
-| **`architect`** | Software Architect Agent | Audits package boundaries, system design, and cross-cutting architectural constraints. |
 | **`generators`** | Generator Agent | Writes production source code and initial feature logic in task branches. |
 | **`testers`** | Tester Agent | Independently writes black-box test suites (unit, integration, e2e) against public contracts. |
-| **`qa`** | QA Auditor Agent | Audits code/test quality by domain and executes refactoring passes. |
-| **`security`** | Security Auditor Agent | Executes SAST scanning and security vulnerability audits. |
-| **`performance`** | Performance Agent | Runs profilers, benchmark suites, and memory leak detection. |
-| **`docs`** | Documentation Agent | Maintains OpenAPI specs, README documentation, and inline code docstrings. |
-| **`devops`** | DevOps Release Agent | Generates Dockerfiles, Makefiles, and CI/CD release pipeline workflows. |
+| **`qa`** | Experimental QA capability | Retained but disabled in Phase 0; no QA runtime executes. |
 | **`unblocker`** | Unblocker Daemon Agent | Continuously monitors execution pipelines for stalls, deadlocks, and task re-queueing. |
+
+Architecture, security, performance, documentation, and infrastructure work is represented by explicit planner tasks and deterministic validators, not specialist agents.
 
 ---
 
@@ -352,19 +349,16 @@ The **Single-Pass Execution** mode optimizes for maximum generation speed and mi
 ### 3. `breadth_first` (Legacy alias `breadth_first_generation`, `bfg`)
 The **Breadth-First Generation** mode optimizes for rapid end-to-end prototype delivery across all user stories:
 * **Pass 1 (Broad Foundation / ~80% Feature Coverage)**: Generator and Tester implement core happy-path functionality across all tasks first, explicitly deferring cosmetic formatting, linter nitpicks, and obscure corner cases.
-* **Benevolent Judges (QA, Security, DevOps)**: Evaluates candidates based on functional happy paths and enforces the non-negotiable **Zero Regressions** rule.
+* **Deterministic Validation**: Evaluates candidates based on functional happy paths and enforces the non-negotiable **Zero Regressions** rule.
 * **Iterative Refinement (Passes 2..N)**: Progressive passes expand edge-case coverage, error handling, linter compliance, and performance hardening.
 
-### 4. Specialized Multi-Agent Audit & Release Panel
+### 4. Explicit Quality Concerns
 
 Configured via `agents:` in `.noctifab/config.yaml`:
 ```yaml
 agents:
   architecture: code_first
 
-  architect:
-    number: 1      # Pre-flight architecture pass (default: 1)
-    iterations: 2
   generators:
     number: 3      # Parallel Generator agents (default: 3)
     iterations: 5
@@ -372,31 +366,9 @@ agents:
     number: 2      # Parallel Tester agents (default: 2)
     iterations: 3
   qa:
-    number: 1      # QA Auditor agents (default: 1)
-    iterations: 2
-  security:
-    number: 1      # Security & SAST auditor agents (default: 1)
-    iterations: 2
-  performance:
-    number: 1      # Benchmark & profiler agents (default: 1)
-    iterations: 2
-  docs:
-    number: 1      # OpenAPI & docstring agents (default: 1)
-    iterations: 2
-  devops:
-    number: 1      # Dockerfile & CI pipeline agents (default: 1)
-    iterations: 2
+    enabled: false # Experimental; no Phase 0 runtime
+    iterations: 1
 ```
 
-#### Chronological Parallelization Pipeline
-- **Stage 1 (Pre-Flight):** `architect` runs on `SPEC.md` before story planning to validate domain boundaries and package layout.
-- **Stage 2 (Planning):** `planner` decomposes `SPEC.md` into the topological DAG task dependency graph.
-- **Stage 3 (Task Workers):** `testers` and `generators` execute concurrently in parallel Git Worktree sandboxes (`concurrency = generators.number`).
-- **Stage 4 (Parallel Audits):** `qa`, `security`, and `performance` run **in parallel background goroutines** on completed feature branches:
-  - `qa` catches tautological tests (`assert(true)`) and fragile mocks.
-  - `security` runs SAST scanners (`gosec`, `semgrep`) & checks memory safety.
-  - `performance` runs benchmark suites & memory leak profiling.
-- **Stage 5 (Release Assets):** `docs` (maintaining OpenAPI specs & docstrings) and `devops` (generating Dockerfiles & CI workflows) run right before final Git branch merge and PR creation.
-
-
+Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.
 

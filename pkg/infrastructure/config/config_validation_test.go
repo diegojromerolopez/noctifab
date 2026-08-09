@@ -22,7 +22,7 @@ func TestOrchestratorArchitectureConfig(t *testing.T) {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configYaml := `
-config_version: "1.0"
+config_version: "2.0"
 agents:
   architecture: "single_pass"
 vcs:
@@ -86,34 +86,16 @@ func TestNormalizeArchitecture(t *testing.T) {
 
 func TestAgentRolesConfig(t *testing.T) {
 	def := DefaultConfig()
-	if def.Agents.Architect.Number != 1 || def.Agents.Architect.Iterations != 2 {
-		t.Errorf("unexpected Architect defaults: %+v", def.Agents.Architect)
-	}
-	if def.Agents.QA.Number != 1 || def.Agents.QA.Iterations != 2 {
+	if def.Agents.QA.Enabled || def.Agents.QA.Iterations != 1 {
 		t.Errorf("unexpected QA defaults: %+v", def.Agents.QA)
-	}
-	if def.Agents.Security.Number != 1 || def.Agents.Security.Iterations != 2 {
-		t.Errorf("unexpected Security defaults: %+v", def.Agents.Security)
-	}
-	if def.Agents.Performance.Number != 1 || def.Agents.Performance.Iterations != 2 {
-		t.Errorf("unexpected Performance defaults: %+v", def.Agents.Performance)
-	}
-	if def.Agents.Docs.Number != 1 || def.Agents.Docs.Iterations != 2 {
-		t.Errorf("unexpected Docs defaults: %+v", def.Agents.Docs)
-	}
-	if def.Agents.DevOps.Number != 1 || def.Agents.DevOps.Iterations != 2 {
-		t.Errorf("unexpected DevOps defaults: %+v", def.Agents.DevOps)
 	}
 
 	tmpDir := t.TempDir()
 
 	configYaml := `
-config_version: "1.0"
+config_version: "2.0"
 agents:
-  architecture: "single_pass_execution"
-  architect:
-    number: 1
-    iterations: 2
+  architecture: "code_first"
   generators:
     number: 4
     iterations: 6
@@ -121,20 +103,9 @@ agents:
     number: 3
     iterations: 4
   qa:
-    number: 2
+    enabled: true
     iterations: 2
-  security:
-    number: 1
-    iterations: 2
-  performance:
-    number: 1
-    iterations: 2
-  docs:
-    number: 1
-    iterations: 2
-  devops:
-    number: 1
-    iterations: 2
+    validation_commands: ["./dist/example"]
 vcs:
   repository: "myorg/myrepo"
   token: "secret:MY_VCS_TOKEN"
@@ -162,9 +133,6 @@ llm:
 		t.Fatalf("Load() failed: %v", err)
 	}
 
-	if cfg.Agents.Architect.Number != 1 || cfg.Agents.Architect.Iterations != 2 {
-		t.Errorf("expected Agents.Architect number=1, iterations=2, got %+v", cfg.Agents.Architect)
-	}
 	if cfg.Agents.Generators.Number != 4 {
 		t.Errorf("expected Agents.Generators.Number to be 4, got %d", cfg.Agents.Generators.Number)
 	}
@@ -177,24 +145,59 @@ llm:
 	if cfg.Agents.Testers.Iterations != 4 {
 		t.Errorf("expected Agents.Testers.Iterations to be 4, got %d", cfg.Agents.Testers.Iterations)
 	}
-	if cfg.Agents.QA.Number != 2 {
-		t.Errorf("expected Agents.QA.Number to be 2, got %d", cfg.Agents.QA.Number)
+	if !cfg.Agents.QA.Enabled {
+		t.Error("expected Agents.QA.Enabled to be true")
 	}
 	if cfg.Agents.QA.Iterations != 2 {
 		t.Errorf("expected Agents.QA.Iterations to be 2, got %d", cfg.Agents.QA.Iterations)
 	}
-	if cfg.Agents.Security.Number != 1 || cfg.Agents.Security.Iterations != 2 {
-		t.Errorf("expected Agents.Security number=1, iterations=2, got %+v", cfg.Agents.Security)
+}
+
+func TestConfigVersionErrors(t *testing.T) {
+	t.Setenv("NOCTIFAB_E2E", "true")
+	for _, tc := range []struct {
+		version string
+		want    string
+	}{
+		{version: "1.0", want: `unsupported config_version "1.0": migrate to "2.0"`},
+		{version: "3.0", want: `unsupported config_version "3.0": supported version is "2.0"`},
+		{version: "", want: `unsupported config_version "": supported version is "2.0"`},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			cmd := writeConfigCommand(t, "config_version: \""+tc.version+"\"\n")
+			_, err := Load(cmd)
+			if err == nil || err.Error() != tc.want {
+				t.Fatalf("expected %q, got %v", tc.want, err)
+			}
+		})
 	}
-	if cfg.Agents.Performance.Number != 1 || cfg.Agents.Performance.Iterations != 2 {
-		t.Errorf("expected Agents.Performance number=1, iterations=2, got %+v", cfg.Agents.Performance)
+}
+
+func TestRemovedAgentRolesFailBeforeStrictDecode(t *testing.T) {
+	for _, section := range []string{"agents", "roles"} {
+		for _, role := range []string{"architect", "security", "performance", "docs", "devops"} {
+			t.Run(section+"_"+role, func(t *testing.T) {
+				cmd := writeConfigCommand(t, "config_version: \"2.0\"\n"+section+":\n  "+role+":\n    unknown: true\n")
+				_, err := Load(cmd)
+				want := `unsupported agent role "` + role + `": delete the ` + section + `.` + role + ` section`
+				if err == nil || err.Error() != want {
+					t.Fatalf("expected %q, got %v", want, err)
+				}
+			})
+		}
 	}
-	if cfg.Agents.Docs.Number != 1 || cfg.Agents.Docs.Iterations != 2 {
-		t.Errorf("expected Agents.Docs number=1, iterations=2, got %+v", cfg.Agents.Docs)
+}
+
+func writeConfigCommand(t *testing.T, content string) *cobra.Command {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if cfg.Agents.DevOps.Number != 1 || def.Agents.DevOps.Iterations != 2 {
-		t.Errorf("expected Agents.DevOps number=1, iterations=2, got %+v", cfg.Agents.DevOps)
-	}
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("config", path, "")
+	_ = cmd.Flags().Set("config", path)
+	return cmd
 }
 
 func TestIsValidLLMProvider(t *testing.T) {
@@ -232,70 +235,70 @@ func TestConfigValidation_Comprehensive(t *testing.T) {
 	}{
 		{
 			name:        "Unknown/Misspelled YAML attribute",
-			yamlContent: "config_version: \"1.0\"\nunknown_attribute: \"value\"\n",
+			yamlContent: "config_version: \"2.0\"\nunknown_attribute: \"value\"\n",
 			wantErr:     true,
 			errContains: "failed to parse YAML config",
 		},
 		{
 			name:        "Invalid agent architecture mode",
-			yamlContent: "config_version: \"1.0\"\nagents:\n  architecture: \"invalid_mode\"\n",
+			yamlContent: "config_version: \"2.0\"\nagents:\n  architecture: \"invalid_mode\"\n",
 			wantErr:     true,
 			errContains: "invalid agent architecture mode",
 		},
 		{
 			name:        "Negative generator agent count",
-			yamlContent: "config_version: \"1.0\"\nagents:\n  generators:\n    number: -5\n",
+			yamlContent: "config_version: \"2.0\"\nagents:\n  generators:\n    number: -5\n",
 			wantErr:     true,
 			errContains: "agent role generators number must be non-negative",
 		},
 		{
 			name:        "Negative tester agent iterations",
-			yamlContent: "config_version: \"1.0\"\nagents:\n  testers:\n    iterations: -1\n",
+			yamlContent: "config_version: \"2.0\"\nagents:\n  testers:\n    iterations: -1\n",
 			wantErr:     true,
 			errContains: "agent role testers iterations must be non-negative",
 		},
 		{
 			name:        "Negative max tools per response",
-			yamlContent: "config_version: \"1.0\"\nagents:\n  max_tools_per_response: -1\n",
+			yamlContent: "config_version: \"2.0\"\nagents:\n  max_tools_per_response: -1\n",
 			wantErr:     true,
 			errContains: "max_tools_per_response must be non-negative",
 		},
 		{
 			name:        "Invalid storage provider",
-			yamlContent: "config_version: \"1.0\"\nstorage:\n  provider: \"oracle\"\n",
+			yamlContent: "config_version: \"2.0\"\nstorage:\n  provider: \"oracle\"\n",
 			wantErr:     true,
 			errContains: "invalid storage provider",
 		},
 		{
 			name:        "Invalid LLM provider name",
-			yamlContent: "config_version: \"1.0\"\nllm:\n  provider: \"super_ai_provider\"\n",
+			yamlContent: "config_version: \"2.0\"\nllm:\n  provider: \"super_ai_provider\"\n",
 			wantErr:     true,
 			errContains: "invalid LLM provider",
 		},
 		{
 			name:        "Valid registered providers accepted",
-			yamlContent: "config_version: \"1.0\"\nllm:\n  provider: \"openrouter\"\n  api_key: \"sk-test\"\n",
+			yamlContent: "config_version: \"2.0\"\nllm:\n  provider: \"openrouter\"\n  api_key: \"sk-test\"\n",
 			wantErr:     false,
 		},
 		{
 			name:        "Valid grok provider accepted",
-			yamlContent: "config_version: \"1.0\"\nllm:\n  provider: \"grok\"\n  api_key: \"sk-test\"\n",
+			yamlContent: "config_version: \"2.0\"\nllm:\n  provider: \"grok\"\n  api_key: \"sk-test\"\n",
 			wantErr:     false,
 		},
 		{
 			name:        "Valid provider in providers list accepted",
-			yamlContent: "config_version: \"1.0\"\nllm:\n  providers:\n    - name: openrouter-backup\n      provider: openrouter\n      api_key: \"sk-test\"\n",
+			yamlContent: "config_version: \"2.0\"\nllm:\n  providers:\n    - name: openrouter-backup\n      provider: openrouter\n      api_key: \"sk-test\"\n",
 			wantErr:     false,
 		},
 		{
 			name:        "Invalid provider in providers list rejected",
-			yamlContent: "config_version: \"1.0\"\nllm:\n  providers:\n    - name: some-backup\n      provider: super_ai_provider\n      api_key: \"sk-test\"\n",
+			yamlContent: "config_version: \"2.0\"\nllm:\n  providers:\n    - name: some-backup\n      provider: super_ai_provider\n      api_key: \"sk-test\"\n",
 			wantErr:     true,
 			errContains: "invalid LLM provider in providers list",
 		},
 		{
 			name:        "Invalid VCS provider name",
-			yamlContent: "config_version: \"1.0\"\nvcs:\n  provider: \"svn\"\n",
+			yamlContent: "config_version: \"2.0\"\nvcs:\n  provider: \"svn\"\n",
 			wantErr:     true,
 			errContains: "invalid VCS provider",
 		},

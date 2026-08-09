@@ -25,6 +25,9 @@ var validateCmd = &cobra.Command{
 		fmt.Println("Validating configuration...")
 		fmt.Println("Configuration is valid.")
 		fmt.Println("✔ Configuration loaded successfully.")
+		for _, role := range config.RoleCapabilities(cfg) {
+			fmt.Printf("role %s: %s\n", role.Name, role.Capability)
+		}
 
 		tools := []string{"go", "docker", "python3", "rustc", "make", "gcc"}
 		var foundTools []string
