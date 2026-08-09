@@ -212,28 +212,27 @@ func TestRenderer_AppendSemantics(t *testing.T) {
 		}
 	})
 
-	t.Run("when a full override is active every append is ignored with a warning", func(t *testing.T) {
+	t.Run("when a full override and an append coexist construction fails fast", func(t *testing.T) {
 		ws := t.TempDir()
 		writeWorkspaceTemplate(t, ws, "tester", "write", ".tmpl", "OVERRIDE BODY\n")
 		writeWorkspaceTemplate(t, ws, "tester", "write", ".append.tmpl", "APPEND CONTENT\n")
-		var warnings []string
-		r, err := newRenderer(ws, nil, func(format string, args ...any) {
-			warnings = append(warnings, format)
-		})
-		if err != nil {
+		_, err := NewRenderer(ws, nil)
+		if err == nil || !strings.Contains(err.Error(), "tester/write") {
+			t.Fatalf("expected key-named conflict error, got: %v", err)
+		}
+	})
+
+	t.Run("when a config path override and a config append coexist construction fails fast", func(t *testing.T) {
+		ws := t.TempDir()
+		path := filepath.Join(ws, "custom.tmpl")
+		if err := os.WriteFile(path, []byte("BODY\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		renderedP, _ := r.Render("tester", "write", data)
-		got := renderedP.Full()
-		if strings.Contains(got, "APPEND CONTENT") {
-			t.Error("append must not apply to an override")
-		}
-		if len(warnings) == 0 {
-			t.Error("expected a warning about the ignored append")
-		}
-		d, _ := r.Describe("tester", "write")
-		if d.IgnoredAppend == "" {
-			t.Error("expected Describe to expose the ignored append")
+		_, err := NewRenderer(ws, map[string]map[string]Override{
+			"tester": {"write": {Path: path, Append: "extra"}},
+		})
+		if err == nil || !strings.Contains(err.Error(), "conflict") {
+			t.Fatalf("expected conflict error, got: %v", err)
 		}
 	})
 }

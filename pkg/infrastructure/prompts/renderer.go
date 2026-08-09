@@ -25,9 +25,6 @@ type Description struct {
 	// AppendSource is "config" or "convention" when an append is applied to
 	// the default body, empty otherwise.
 	AppendSource string
-	// IgnoredAppend is "config" or "convention" when an append exists but was
-	// ignored because a full-template override is active.
-	IgnoredAppend string
 	// Text is the effective template body text (placeholders unexpanded).
 	Text string
 }
@@ -77,12 +74,11 @@ func newRenderer(workspaceDir string, overrides map[string]map[string]Override, 
 			}
 			r.templates[key(agent, action)] = tmpl
 			r.info[key(agent, action)] = Description{
-				Agent:         agent,
-				Action:        action,
-				Source:        res.source,
-				AppendSource:  res.appendSource,
-				IgnoredAppend: res.ignoredAppend,
-				Text:          res.text,
+				Agent:        agent,
+				Action:       action,
+				Source:       res.source,
+				AppendSource: res.appendSource,
+				Text:         res.text,
 			}
 		}
 	}

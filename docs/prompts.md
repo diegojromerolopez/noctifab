@@ -65,8 +65,10 @@ For a small addition (one extra rule, one project-specific mandate) use an
 Rules:
 
 1. **Every append applies to the embedded DEFAULT body, never to an
-   override.** If a full-template override is active for the action, the
-   append is ignored and a warning is logged.
+   override.** Configuring both a full-template override and an append for
+   the same action is a **startup error** — both are explicit opt-ins, and
+   silently ignoring one would mask a configuration mistake. Remove one of
+   the two.
 2. If both the config `append` string and an `.append.tmpl` file exist, the
    config string wins (consistent with the config > convention order) and a
    warning is logged.

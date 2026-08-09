@@ -43,9 +43,6 @@ type resolved struct {
 	// appendSource describes the applied append origin: "config", "convention"
 	// or "" when no append is in effect.
 	appendSource string
-	// ignoredAppend is non-empty when an append existed but was ignored
-	// because a full-template override is active.
-	ignoredAppend string
 }
 
 // conventionDir returns the workspace convention directory for prompts.
@@ -61,6 +58,16 @@ func conventionPath(workspaceDir, agent, action string) string {
 // conventionAppendPath returns the convention append path for a key.
 func conventionAppendPath(workspaceDir, agent, action string) string {
 	return filepath.Join(conventionDir(workspaceDir), agent, action+".append.tmpl")
+}
+
+// appendConflictError builds the fail-fast error for the forbidden
+// combination of a full-template override and an append on the same action.
+// Appends apply to the DEFAULT body only; silently ignoring one of two
+// explicit user opt-ins would mask a configuration mistake.
+func appendConflictError(agent, action, appendSource, override string) error {
+	return fmt.Errorf(
+		"prompt configuration conflict for %s/%s: a full-template override (%s) and an append (%s) are both configured; appends apply to the default body only — remove one of the two",
+		agent, action, override, appendSource)
 }
 
 // DefaultTemplate returns the embedded default template body for a key.
@@ -103,6 +110,9 @@ func resolveKey(workspaceDir, agent, action string, ov Override, warn func(forma
 
 	// 1. Explicit config path override.
 	if ov.Path != "" {
+		if appendSource != "" {
+			return resolved{}, appendConflictError(agent, action, appendSource, "config path override")
+		}
 		path := ov.Path
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(workspaceDir, path)
@@ -111,23 +121,16 @@ func resolveKey(workspaceDir, agent, action string, ov Override, warn func(forma
 		if rErr != nil {
 			return resolved{}, fmt.Errorf("prompt override for %s/%s: cannot read template path %q: %w", agent, action, ov.Path, rErr)
 		}
-		res := resolved{text: string(data), source: SourceConfig}
-		if appendSource != "" {
-			warn("prompts: %s/%s append (%s) ignored: a full-template override is active; appends apply to the default body only", agent, action, appendSource)
-			res.ignoredAppend = appendSource
-		}
-		return res, nil
+		return resolved{text: string(data), source: SourceConfig}, nil
 	}
 
 	// 2. Convention file override.
 	convPath := conventionPath(workspaceDir, agent, action)
 	if data, rErr := os.ReadFile(convPath); rErr == nil {
-		res := resolved{text: string(data), source: SourceConvention}
 		if appendSource != "" {
-			warn("prompts: %s/%s append (%s) ignored: a full-template override is active; appends apply to the default body only", agent, action, appendSource)
-			res.ignoredAppend = appendSource
+			return resolved{}, appendConflictError(agent, action, appendSource, "convention file "+convPath)
 		}
-		return res, nil
+		return resolved{text: string(data), source: SourceConvention}, nil
 	}
 
 	// 3. Embedded default (+ optional append).

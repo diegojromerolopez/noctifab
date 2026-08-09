@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.3] - 2026-08-09
+
+### Changed
+- **Append/override conflicts now fail fast at startup**: configuring both a full-template override (config `path` or convention `.tmpl`) and an append (config `append` or `.append.tmpl`) for the same prompt action is now a startup error naming the key, instead of silently ignoring the append with a log warning. Both mechanisms are explicit opt-ins; ignoring one would mask a configuration mistake. `prompts validate` reports the conflict with a non-zero exit code.
+
 ## [0.28.2] - 2026-08-09
 
 ### Fixed

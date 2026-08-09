@@ -302,9 +302,12 @@ verbatim to the END of the **embedded default** body, never to an overridden
 template. Precedence and interaction rules:
 
 1. If a full-template override is active for the action (config `path` or
-   convention `<ACTION>.tmpl`), all appends for that action are **ignored**
-   and a warning is logged — the override is the complete body, and appending
-   to it would be surprising.
+   convention `<ACTION>.tmpl`), configuring an append for the same action is
+   a **fail-fast startup error** — the override is the complete body, and
+   both mechanisms are explicit opt-ins, so silently ignoring one would mask
+   a configuration mistake. *(Amended during implementation from the original
+   "ignore with warning" design, for consistency with the §2.3 fail-fast
+   principle.)*
 2. If both the config `append` string and an `<ACTION>.append.tmpl` file
    exist, the **config string wins** (consistent with the config > convention
    resolution order in §2.1) and a warning is logged.

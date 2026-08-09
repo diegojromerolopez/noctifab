@@ -84,9 +84,6 @@ var promptsListCmd = &cobra.Command{
 				if d.AppendSource != "" {
 					status += " + append(" + d.AppendSource + ")"
 				}
-				if d.IgnoredAppend != "" {
-					status += " [append(" + d.IgnoredAppend + ") IGNORED: override active]"
-				}
 				_, _ = fmt.Fprintf(out, "  %-22s %s\n", action, status)
 			}
 		}
