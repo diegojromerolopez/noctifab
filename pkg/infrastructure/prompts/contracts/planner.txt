@@ -1,0 +1,17 @@
+
+Return format:
+{
+  "reasoning": "Detailed technical rationale explaining your next step",
+  "actions": [
+    {
+      "tool": "add_task",
+      "args": {
+        "title": "Task title",
+        "description": "Task description...",
+        "change_type": "FEATURE",
+        "depends_on": [],
+        "target_files": ["main.go"]
+      }
+    }
+  ]
+}

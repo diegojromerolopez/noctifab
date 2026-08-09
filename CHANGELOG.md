@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.9] - 2026-08-09
+
+### Fixed
+- **Prompt CLI config-path consistency**: `promptsWorkspace` and `loadPromptOverrides` now share one config-path resolver, preventing convention templates and config overrides from being loaded from different paths.
+
+## [0.28.8] - 2026-08-09
+
+### Changed
+- **WatchdogRepair dormant-state tracking**: the injected-but-never-invoked `WatchdogRepair.AttemptRepair` flow is now tracked in [issue #15](https://github.com/diegojromerolopez/noctifab/issues/15) (wire it into the task-failure path or remove it), replacing the vague "revisit if the flow is ever triggered" note. Added a DORMANT doc comment on `AttemptRepair` and updated the CUSTOM_PROMPTS.md assessment table to reference the issue. No behavior change.
+
+## [0.28.7] - 2026-08-09
+
+### Added
+- **Explicit regression test for the product_manager audit prefix quirk** (`pkg/infrastructure/prompts/audit_quirk_test.go`): the legacy pipeline trimmed the dispatch prefix for `generate` but kept the whole raw prompt for `audit`, so the audit instruction line intentionally sits inside the `INPUT CONTEXT:` section of `audit.tmpl`. Previously this was only covered implicitly by the byte-identical golden comparison against the legacy replica (a transitional artifact); the new self-documenting test survives any future removal of that replica and explains why the asymmetry must not be "cleaned up".
+
+## [0.28.6] - 2026-08-09
+
+### Fixed
+- **Compaction protection extended to all hardcoded prompts with schema suffixes**: the Repair Agent (`repairPromptTail`), Reader/context-gathering (`readerPromptTail`), and Unblocker (`unblockerPromptTail`) prompts now keep their tool-list/JSON-schema suffixes as separate constants and mark them via `domain.WithUncompactableTail`, so `caveman`/`simple_english` compaction can never rewrite their output contracts (completing the v0.28.1 fix, which only covered renderer-produced prompts). The listener prompt is exempt by design: its schema sits mid-prompt with the dynamic operator command as the suffix.
+
+## [0.28.5] - 2026-08-09
+
+### Changed
+- **Consistent breadth-first prompt action naming**: renamed the generator prompt actions `breadth_first` → `implement_breadth_first` and `breadth_first_fix` → `implement_breadth_first_fix` for symmetry with `tester/write_breadth_first` (`<base>_breadth_first` convention). Action names are the public customization contract (template directory names, config keys, CLI arguments); renamed before first release of the feature.
+
+## [0.28.4] - 2026-08-09
+
+### Added
+- **Strict template placeholder validation**: prompt templates are now parsed with `missingkey=error`, and combined with the startup fixture render, a typo'd placeholder in a user override (e.g. `{{.Titel}}`) aborts startup with a key-named error instead of silently rendering `<no value>` into live prompts. Documented brace escaping (`{{"{{"}}`) in `docs/prompts.md`.
+
+## [0.28.3] - 2026-08-09
+
+### Changed
+- **Append/override conflicts now fail fast at startup**: configuring both a full-template override (config `path` or convention `.tmpl`) and an append (config `append` or `.append.tmpl`) for the same prompt action is now a startup error naming the key, instead of silently ignoring the append with a log warning. Both mechanisms are explicit opt-ins; ignoring one would mask a configuration mistake. `prompts validate` reports the conflict with a non-zero exit code.
+
+## [0.28.2] - 2026-08-09
+
+### Fixed
+- **Prompt inventory completeness**: Added the live `listener/interpret` prompt (`listenerSystemPrompt`, `pkg/services/listener.go`) to the CUSTOM_PROMPTS.md assessment table and non-goals as a Hardcode entry; it was missing from the "full inventory" claim. No code change — the listener prompt stays hardcoded protocol machinery.
+
+## [0.28.1] - 2026-08-09
+
+### Fixed
+- **Compaction can no longer rewrite the prompt output contract**: `CompactCaveman`/`CompactSimpleEnglish` in `llm.Client` now skip the non-overridable JSON/tool contract block at the end of rendered prompts (the renderer reports the contract length via `domain.WithUncompactableTail`), so the machine-readable schema always reaches the model verbatim. Multi-turn continuation prompts now keep the output contract at the END of the prompt (tool outputs are inserted before it), instead of appending turn outputs after the schema.
+
+## [0.28.0] - 2026-08-09
+
+### Added
+- **Per-Agent Prompt Customization System**: New `pkg/infrastructure/prompts` package with 14 customizable `(agent, action)` prompt templates across 4 agents (`product_manager`, `planner`, `tester`, `generator`), embedded via `go:embed` and resolved per key: config `prompts.<agent>.<action>.path` > convention file `.noctifab/prompts/<agent>/<action>.tmpl` > embedded default. Small additions supported via `append` (config string or `<action>.append.tmpl`), always applied to the default body, never to an override. The JSON/tool output contract is a non-overridable block appended by code after rendering. Invalid overrides fail fast at startup with file-named errors.
+- **`noctifab prompts` CLI**: New command group with `list` (agent/action tree + effective source), `show <agent> <action>` (effective template + contract), `init [agent] [action]` (materialize embedded defaults, never overwriting), and `validate` (parse + test-render all effective templates).
+- **Prompts documentation**: New `docs/prompts.md` readthedocs page (registered in the `index.md` toctree) covering the resolution order, the append mechanism, per-agent template data contracts, hardcoded prompts, and CLI usage.
+
+### Fixed
+- **Prefix-dispatch prompt bypass (CUSTOM_PROMPTS.md §1.1)**: Four live prompt variants (tester code_first retry, tester breadth_first write, generator breadth_first implement/refine) matched no `preprocessPrompt()` prefix and were silently sent WITHOUT their role body (no persona, no tool list, no JSON output schema). Prompts are now rendered by explicit `(agent, action)` key — never by prefix matching — so these variants receive the full role body and output contract. `preprocessPrompt()` is deleted; golden tests assert byte-identical default output to the legacy assembly for the 10 unaffected variants.
+
+### Changed
+- **`services.NewOrchestrator` and `services.GenerateRoadmap`** now take a `PromptRenderer` (nil falls back to embedded defaults). The Repair Agent role body moved from the deleted prefix dispatch into `pkg/services/watchdog_repair.go` (byte-identical, still hardcoded).
+
+## [0.27.3] - 2026-08-09
+
+### Removed
+- **Dead Code Removal (prompt customization groundwork, Phase 3b)**: Deleted `PromptBuilder` and the language concurrency-invariant constants (`pkg/infrastructure/llm/prompts.go`, `prompts_test.go`), the flaky-test detector (`DetectFlaky`/`BuildFlakyStabilizationPrompt` in `pkg/services/flaky_detector.go`, `flaky_detector_test.go`), and the `IntentDisambiguator` (`pkg/services/intent_disambiguator.go`, `intent_disambiguator_test.go`), plus their subtests in `tests/e2e/scenario_comprehensive_test.go`. All three were verified to have no production call sites; removal is a runtime no-op. The live `TestRunResult` type used by multi-run test validation moved into `pkg/services/test_validator.go`.
+
 ## [0.27.2] - 2026-08-08
 
 ### Fixed
@@ -791,4 +854,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added a release workflow (`release.yml`) for multi-platform binary compilation.
   - Created `Makefile` target configurations for compilation, testing, and linting.
   - Ignored `/dist/` build output folder in `.gitignore` and added `.readthedocs.yaml`.
-

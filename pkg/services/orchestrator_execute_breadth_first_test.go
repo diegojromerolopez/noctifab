@@ -54,7 +54,7 @@ func TestOrchestrator_BreadthFirstExecutionMode(t *testing.T) {
 	defer cancel()
 	go rebaseQueue.Start(ctx)
 
-	orch := NewOrchestrator(repo, reg, llmClient, validator, sched, gitClient, rebaseQueue, evaluator, nil, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, llmClient, validator, sched, gitClient, rebaseQueue, evaluator, nil, cfg, nil, nil, nil)
 
 	orch.executeTask(ctx, state.ID, "task-bfg-1")
 

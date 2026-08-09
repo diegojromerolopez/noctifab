@@ -83,7 +83,7 @@ func TestRunReaderPhase_HeuristicSkip(t *testing.T) {
 	vcsClient := &mockVCS{}
 	cfg := OrchestratorConfig{PollInterval: 10 * time.Millisecond}
 
-	orch := NewOrchestrator(repo, reg, mockLLMClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, mockLLMClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 
 	ctx := context.Background()
 	gathered := orch.RunReaderPhase(ctx, "generator", task, state)
@@ -126,9 +126,9 @@ func TestRunGeneratorAgent_NoopAutoExecutesRunTests(t *testing.T) {
 	vcsClient := &mockVCS{}
 	cfg := OrchestratorConfig{PollInterval: 10 * time.Millisecond}
 
-	orch := NewOrchestrator(repo, reg, mockLLMClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, mockLLMClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 
-	orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "Execute task")
+	orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "implement")
 
 	assert.Equal(t, 1, mockLLMClient.callCount, "Agent should exit on turn 1 when returning noop")
 	assert.True(t, testRunnerCalled, "run_tests must be auto-triggered on noop signal")
@@ -172,9 +172,9 @@ func TestRunGeneratorAgent_LimitRequestTestFix(t *testing.T) {
 	vcsClient := &mockVCS{}
 	cfg := OrchestratorConfig{PollInterval: 10 * time.Millisecond}
 
-	orch := NewOrchestrator(repo, reg, mockLLMClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, mockLLMClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 
-	orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "Execute task")
+	orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "implement")
 
 	assert.Equal(t, 1, mockLLMClient.testerAgentInvokeCount, "request_test_fix should be limited to 1 call per task execution")
 }

@@ -93,7 +93,7 @@ var dashboardCmd = &cobra.Command{
 						fmt.Printf("Error fetching dashboard status: %v\n", err)
 						continue
 					}
-					
+
 					rendered := renderDashboard(states)
 					if overlay != "" {
 						rendered += "\r\n" + overlay + " "

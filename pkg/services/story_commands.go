@@ -35,6 +35,9 @@ type StartUserStoryCmd struct {
 	StoryCh chan<- StoryWorkItem
 	// LLMClient is used to generate the roadmap dynamically if missing.
 	LLMClient domain.LLMClient
+	// Renderer renders the Product Manager prompt when the roadmap must be
+	// generated. Nil falls back to the embedded default templates.
+	Renderer PromptRenderer
 }
 
 // Execute reads the user story markdown file and sends the work item to the story channel.
@@ -51,7 +54,7 @@ func (c *StartUserStoryCmd) Execute(ctx context.Context, repo domain.StateReposi
 		specPath := filepath.Join(projectPath, "SPEC.md")
 		if _, specErr := os.Stat(specPath); specErr == nil && c.LLMClient != nil {
 			fmt.Printf("Story file %q not found, but SPEC.md exists. Generating roadmap...\n", absPath)
-			if genErr := GenerateRoadmap(ctx, projectPath, c.LLMClient); genErr == nil {
+			if genErr := GenerateRoadmap(ctx, projectPath, c.LLMClient, c.Renderer); genErr == nil {
 				// Retry reading the story file!
 				data, err = os.ReadFile(absPath)
 			}
@@ -83,6 +86,9 @@ type StartDirectoryCmd struct {
 	StoryCh chan<- StoryWorkItem
 	// LLMClient is used to generate the roadmap dynamically if missing.
 	LLMClient domain.LLMClient
+	// Renderer renders the Product Manager prompt when the roadmap must be
+	// generated. Nil falls back to the embedded default templates.
+	Renderer PromptRenderer
 }
 
 // Execute walks the directory, finds all *.md files (sorted), reads each, and sends work items.
@@ -118,7 +124,7 @@ func (c *StartDirectoryCmd) Execute(ctx context.Context, repo domain.StateReposi
 		specPath := filepath.Join(projectPath, "SPEC.md")
 		if _, specErr := os.Stat(specPath); specErr == nil {
 			fmt.Printf("No user stories found in %q, but SPEC.md exists. Generating roadmap...\n", absDir)
-			if genErr := GenerateRoadmap(ctx, projectPath, c.LLMClient); genErr == nil {
+			if genErr := GenerateRoadmap(ctx, projectPath, c.LLMClient, c.Renderer); genErr == nil {
 				// Re-scan directory
 				mdFiles, walkErr = findMdFiles()
 				if walkErr != nil {

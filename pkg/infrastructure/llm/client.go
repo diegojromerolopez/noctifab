@@ -162,6 +162,32 @@ func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Dura
 	}
 }
 
+// compactPrompt applies the configured compaction mode to the prompt. When
+// the context marks a non-compactable tail (the machine-readable output
+// contract at the end of prompts rendered by pkg/infrastructure/prompts),
+// compaction applies only to the bytes before it: the JSON schema and tool
+// list must reach the model verbatim.
+func (c *Client) compactPrompt(ctx context.Context, prompt string) string {
+	head, tail := prompt, ""
+	if n := domain.UncompactableTailLen(ctx); n > 0 && n < len(prompt) {
+		head, tail = prompt[:len(prompt)-n], prompt[len(prompt)-n:]
+	}
+	origPromptLen := len(prompt)
+	switch strings.ToLower(strings.TrimSpace(c.Compaction)) {
+	case "simple_english":
+		prompt = CompactSimpleEnglish(head) + tail
+		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with simple_english: %d -> %d bytes\n", origPromptLen, len(prompt))
+	case "caveman":
+		prompt = CompactCaveman(head) + tail
+		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with caveman: %d -> %d bytes\n", origPromptLen, len(prompt))
+	default:
+		if c.CavemanCompaction {
+			prompt = CompactCaveman(head) + tail
+		}
+	}
+	return prompt
+}
+
 func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "Complete",
 		trace.WithAttributes(
@@ -171,21 +197,10 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		))
 	defer span.End()
 
-	// Preprocess prompt to inject system instructions and schemas based on the target action type
-	origPromptLen := len(prompt)
-	switch strings.ToLower(strings.TrimSpace(c.Compaction)) {
-	case "simple_english":
-		prompt = CompactSimpleEnglish(prompt)
-		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with simple_english: %d -> %d bytes\n", origPromptLen, len(prompt))
-	case "caveman":
-		prompt = CompactCaveman(prompt)
-		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with caveman: %d -> %d bytes\n", origPromptLen, len(prompt))
-	default:
-		if c.CavemanCompaction {
-			prompt = CompactCaveman(prompt)
-		}
-	}
-	prompt = preprocessPrompt(prompt)
+	// Prompts arrive fully assembled (rendered by pkg/infrastructure/prompts
+	// or built inline by their hardcoded call sites); only compaction and the
+	// size guard apply here.
+	prompt = c.compactPrompt(ctx, prompt)
 
 	// Pre-send size guard: reject prompts that would be refused by the
 	// provider anyway, before spending a network call and the retry ladder.

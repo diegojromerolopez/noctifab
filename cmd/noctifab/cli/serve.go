@@ -12,6 +12,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
@@ -145,6 +146,14 @@ var serveCmd = &cobra.Command{
 
 		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
 
+		// Build the prompt renderer: config path overrides > workspace
+		// convention files (.noctifab/prompts/) > embedded defaults. A broken
+		// override aborts startup here with a file-named error (fail fast).
+		promptRenderer, rendErr := prompts.NewRenderer(".", cfg.PromptOverrides())
+		if rendErr != nil {
+			return fmt.Errorf("invalid prompt templates: %w", rendErr)
+		}
+
 		orchConfig := services.OrchestratorConfig{
 			Architecture:          cfg.Agents.Architecture,
 			ArchitectNumber:       cfg.Agents.Architect.Number,
@@ -183,6 +192,7 @@ var serveCmd = &cobra.Command{
 		orchestrator := services.NewOrchestrator(
 			repo, reg, llmClient, validator, scheduler,
 			gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, mailbox, repairHandler,
+			promptRenderer,
 		)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -215,7 +225,7 @@ var serveCmd = &cobra.Command{
 		go mailbox.Start(ctx)
 
 		// Start REST HTTP server (loopback only, passes storyCh for /api/v1/stories).
-		server := services.StartDaemonServer(repo, mailbox, storyCh, llmClient)
+		server := services.StartDaemonServer(repo, mailbox, storyCh, llmClient, promptRenderer)
 		defer func() { _ = server.Close() }()
 
 		fmt.Printf("noctifab daemon started (PID %d). Listening on 127.0.0.1:18080\n", os.Getpid())

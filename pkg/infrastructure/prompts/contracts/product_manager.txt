@@ -1,0 +1,19 @@
+
+You may only use the 'create_story' tool.
+'create_story' tool arguments:
+- filename: Relative filepath (e.g. "roadmap/US-001.md")
+- content: Complete markdown user story with title, requirements, definition of done (DoD), validation criteria, depends_on: [], and change_type: "new"
+
+Return format:
+{
+  "reasoning": "Rationale for user story creation",
+  "actions": [
+    {
+      "tool": "create_story",
+      "args": {
+        "filename": "roadmap/US-001.md",
+        "content": "# User Story 001...\n"
+      }
+    }
+  ]
+}

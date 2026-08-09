@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 )
 
 // ValidatePlannedTasks checks if the Planner Agent provided enough task details and enforces cohesion
@@ -96,6 +97,31 @@ func (o *Orchestrator) registerAgentComplete(ctx context.Context, role string, t
 		fmt.Fprintf(os.Stderr, "Orchestrator: failed to register agent completion for role %s task %s: %v\n", role, taskID, updateErr)
 	}
 }
+
+// readerPromptTail is the static suffix of the Reader (context gathering)
+// prompt: inspection tool list and JSON output schema. Kept as a separate
+// constant so the compaction layer can be told to never rewrite it
+// (domain.WithUncompactableTail).
+const readerPromptTail = `You may call the following inspection tools:
+- read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
+- list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
+- find_files: search for files. Args: {"pattern": "*.py"}
+- grep_search: search for a pattern in files. Args: {"query": "search_term"}
+- noop: call this if you have enough context and do not need to read any more files.
+
+Return format:
+{
+  "reasoning": "Explain what context you need to gather",
+  "actions": [
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "frontpunch/existing_file.py"
+      }
+    }
+  ]
+}
+`
 
 // RunReaderPhase runs the pre-step to collect workspace context before execution
 func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task domain.Task, state *domain.State) []string {
@@ -194,28 +220,11 @@ Description: %s
 Below is a list of target files for this task:
 %v
 %s
-You may call the following inspection tools:
-- read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
-- list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
-- find_files: search for files. Args: {"pattern": "*.py"}
-- grep_search: search for a pattern in files. Args: {"query": "search_term"}
-- noop: call this if you have enough context and do not need to read any more files.
-
-Return format:
-{
-  "reasoning": "Explain what context you need to gather",
-  "actions": [
-    {
-      "tool": "read_file",
-      "args": {
-        "path": "frontpunch/existing_file.py"
-      }
-    }
-  ]
-}
-`, role, task.Title, task.Description, task.TargetFiles, availableFilesMsg)
+`, role, task.Title, task.Description, task.TargetFiles, availableFilesMsg) + readerPromptTail
 
 	readerCtx := context.WithValue(ctx, AgentRoleKey, role)
+	// Compaction must never rewrite the tool-list/JSON-schema suffix.
+	readerCtx = domain.WithUncompactableTail(readerCtx, len(readerPromptTail))
 	resp, err := o.llmClient.Complete(readerCtx, prompt)
 	if err != nil {
 		fmt.Printf("Orchestrator: Task [Reader] phase failed for role %s: %v. Continuing without extra context.\n", role, err)
@@ -248,12 +257,22 @@ Return format:
 	return gatheredContext
 }
 
-// RunTesterAgent runs the test writer agent for the task
-func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, customPrompt string) {
+// RunTesterAgent runs the test writer agent for the task. action selects the
+// tester prompt template (see the prompts package catalog: write, fix,
+// refactor, write_breadth_first); feedback carries the generator's test-fix
+// feedback for the fix action (empty otherwise).
+func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, action string, feedback string) {
+	// Fail fast on unknown actions before doing any reader-phase work.
+	if err := prompts.ValidateKey(prompts.AgentTester, action); err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] invalid prompt action: %v\n", task.ID, err)
+		o.registerAgentStart(ctx, "tester", task.ID)
+		o.registerAgentComplete(ctx, "tester", task.ID, err)
+		return
+	}
+
 	// Reader Phase: collect inspection context first! (Requirement 5)
 	readerContexts := o.RunReaderPhase(ctx, "tester", task, state)
 
-	testPrompt := customPrompt
 	var promptContext []string
 	if len(fileContexts) > 0 {
 		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(fileContexts, "\n\n")))
@@ -266,11 +285,30 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 		summary := summarizeFailureLog(task.FailureLog)
 		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the tests to address these specific errors.", warning, summary))
 	}
+	contextBlock := ""
 	if len(promptContext) > 0 {
-		testPrompt = fmt.Sprintf("%s\n\n%s", customPrompt, strings.Join(promptContext, "\n\n"))
+		contextBlock = "\n\n" + strings.Join(promptContext, "\n\n")
 	}
 
+	rendered, err := o.promptRenderer.Render(prompts.AgentTester, action, prompts.TaskPromptData{
+		Title:             task.Title,
+		Description:       task.Description,
+		Context:           contextBlock,
+		Feedback:          feedback,
+		RecoveryDirective: task.RecoveryDirective,
+		TargetFiles:       task.TargetFiles,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] prompt rendering failed for action %q: %v\n", task.ID, action, err)
+		o.registerAgentStart(ctx, "tester", task.ID)
+		o.registerAgentComplete(ctx, "tester", task.ID, err)
+		return
+	}
+	testPrompt := rendered.Full()
+
 	testerCtx := context.WithValue(ctx, AgentRoleKey, "tester")
+	// Compaction must never rewrite the output contract at the end of the prompt.
+	testerCtx = domain.WithUncompactableTail(testerCtx, len(rendered.Contract))
 	o.registerAgentStart(ctx, "tester", task.ID)
 
 	currentPrompt := testPrompt
@@ -395,11 +433,14 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 			}
 		}
 
-		// Append errors and tool outputs to currentPrompt for the next turn
-		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.",
-			testPrompt, turn+1, maxTurns,
+		// Append errors and tool outputs to the body for the next turn. The
+		// non-overridable output contract stays at the END of the prompt so
+		// the JSON schema is the last thing the model reads.
+		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.\n%s",
+			rendered.Body, turn+1, maxTurns,
 			joinCappedToolOutputs(turnToolOutputs),
-			maxTurns-turn-1)
+			maxTurns-turn-1,
+			rendered.Contract)
 	}
 
 	o.registerAgentComplete(ctx, "tester", task.ID, lastErr)

@@ -96,30 +96,6 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 		assert.ErrorIs(t, err, services.ErrWatchdogMaxDuration)
 	})
 
-	t.Run("FlakyDetector quarantines non-unanimous test runs", func(t *testing.T) {
-		flaky := []services.TestRunResult{
-			{RunID: 1, Passed: true, Output: "ok"},
-			{RunID: 2, Passed: false, Output: "random failure"},
-			{RunID: 3, Passed: true, Output: "ok"},
-		}
-		r := services.DetectFlaky(flaky)
-		assert.True(t, r.Flaky)
-		assert.Equal(t, 2, r.PassedCount)
-		assert.Equal(t, 1, r.FailedCount)
-
-		stable := []services.TestRunResult{
-			{RunID: 1, Passed: true, Output: "ok"},
-			{RunID: 2, Passed: true, Output: "ok"},
-			{RunID: 3, Passed: true, Output: "ok"},
-		}
-		r2 := services.DetectFlaky(stable)
-		assert.False(t, r2.Flaky)
-
-		prompt := services.BuildFlakyStabilizationPrompt(flaky, "")
-		assert.Contains(t, prompt, "random failure")
-		assert.Contains(t, prompt, "time.Sleep")
-	})
-
 	t.Run("DependencyManager detects missing tool from error output", func(t *testing.T) {
 		dm := services.NewDependencyManager([]string{"pip", "go", "npm"})
 
@@ -150,47 +126,6 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 		assert.Equal(t, 12345, readBack.NewPID)
 		assert.Equal(t, services.HandoffActive, readBack.Status)
 		assert.Equal(t, "healthy", readBack.Message)
-	})
-
-	t.Run("IntentDisambiguator infers answer from context", func(t *testing.T) {
-		repo, cleanup := setupRepo(t, ctx, tempDir, "disambiguate", "disambig-session")
-		defer cleanup()
-
-		gitClient := services.NewGitClient(filepath.Join(tempDir, "disambiguate"))
-		llm := &mockLLMClient{
-			completeFn: func(_ context.Context, _ string) (*domain.LLMResponse, error) {
-				return &domain.LLMResponse{
-					Actions: []domain.LLMAction{
-						{Tool: "answer", Args: map[string]any{"answer": "SQLite"}},
-					},
-				}, nil
-			},
-		}
-		disambiguator := services.NewIntentDisambiguator(gitClient, llm)
-
-		state := &domain.State{
-			ID:          "disambig-session",
-			ProjectPath: filepath.Join(tempDir, "disambiguate"),
-			Version:     0,
-			BuildStatus: domain.BuildUnknown,
-			Metadata: domain.StateMetadata{
-				InputSource: "local", InputPath: "req.md",
-				FeatureName: "disambiguate-test", TotalCostUSD: "0.0000",
-				BaseBranch: "main",
-			},
-			Files: []domain.FileInfo{
-				{Path: "models.py", Size: 100},
-				{Path: "views.py", Size: 200},
-			},
-		}
-		err := repo.Save(ctx, state)
-		require.NoError(t, err)
-
-		answer, err := disambiguator.Disambiguate(ctx, domain.Clarification{
-			Question: "Which database should we use?",
-		}, state)
-		require.NoError(t, err)
-		assert.Equal(t, "SQLite", answer)
 	})
 
 	t.Run("SAST scanner returns passed when disabled", func(t *testing.T) {

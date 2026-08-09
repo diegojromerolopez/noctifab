@@ -136,7 +136,7 @@ func TestOrchestrator_Initialization(t *testing.T) {
 		Concurrency:  1,
 	}
 
-	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 	if orch == nil {
 		t.Fatal("expected orchestrator instance, got nil")
 		return
@@ -178,7 +178,7 @@ func TestOrchestrator_RepairIntegration(t *testing.T) {
 		vcsClient := &mockVCS{}
 		cfg := OrchestratorConfig{PollInterval: 10 * time.Millisecond, Concurrency: 1}
 
-		orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+		orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 		if orch.watchdogRepair != nil {
 			t.Error("expected watchdogRepair to be nil")
 		}
@@ -206,7 +206,7 @@ func TestOrchestrator_RepairIntegration(t *testing.T) {
 		vcsClient := &mockVCS{}
 		cfg := OrchestratorConfig{PollInterval: 10 * time.Millisecond, Concurrency: 1}
 
-		orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, mockRepair)
+		orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, mockRepair, nil)
 		if orch.watchdogRepair == nil {
 			t.Error("expected watchdogRepair to be set")
 		}
@@ -290,7 +290,7 @@ func TestOrchestrator_InstantWakeupOnTaskCompletion(t *testing.T) {
 	vcsClient := &mockVCS{}
 	cfg := OrchestratorConfig{PollInterval: 5 * time.Minute}
 
-	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -329,7 +329,7 @@ func TestUpdateStateWithRetry_JitterAndTargetedUpdate(t *testing.T) {
 		OCCBackoffFactor: 2.0,
 	}
 
-	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
 
 	start := time.Now()
 	err := orch.updateStateWithRetry(context.Background(), func(st *domain.State) error {

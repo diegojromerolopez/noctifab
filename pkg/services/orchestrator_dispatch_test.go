@@ -22,7 +22,7 @@ func newDispatchTestOrchestrator(t *testing.T, state *domain.State, concurrency 
 		PollInterval: 10 * time.Millisecond,
 		Concurrency:  concurrency,
 	}
-	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, &mockVCS{}, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, &mockLLM{}, validator, scheduler, git, queue, evaluator, &mockVCS{}, cfg, nil, nil, nil)
 	return orch, repo
 }
 

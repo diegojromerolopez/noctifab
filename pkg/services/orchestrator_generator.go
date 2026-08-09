@@ -7,14 +7,25 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 )
 
-// RunGeneratorAgent runs the generator agent to implement task functionality
-func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, recentTestsContext string, customPrompt string) {
+// RunGeneratorAgent runs the generator agent to implement task functionality.
+// action selects the generator prompt template (see the prompts package
+// catalog: implement, refactor, fix, single_pass, single_pass_fix,
+// implement_breadth_first, implement_breadth_first_fix).
+func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, recentTestsContext string, action string) {
+	// Fail fast on unknown actions before doing any reader-phase work.
+	if err := prompts.ValidateKey(prompts.AgentGenerator, action); err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] invalid prompt action: %v\n", task.ID, err)
+		o.registerAgentStart(ctx, "generator", task.ID)
+		o.registerAgentComplete(ctx, "generator", task.ID, err)
+		return
+	}
+
 	// Reader Phase: collect inspection context first!
 	readerContexts := o.RunReaderPhase(ctx, "generator", task, state)
 
-	genPrompt := customPrompt
 	var promptContext []string
 	if len(fileContexts) > 0 {
 		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(fileContexts, "\n\n")))
@@ -36,11 +47,30 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the code to address these specific errors.", warning, summary))
 	}
 
+	contextBlock := ""
 	if len(promptContext) > 0 {
-		genPrompt = fmt.Sprintf("%s\n\n%s", customPrompt, strings.Join(promptContext, "\n\n"))
+		contextBlock = "\n\n" + strings.Join(promptContext, "\n\n")
 	}
 
+	rendered, err := o.promptRenderer.Render(prompts.AgentGenerator, action, prompts.TaskPromptData{
+		Title:              task.Title,
+		Description:        task.Description,
+		Context:            contextBlock,
+		RecentTestsContext: recentTestsContext,
+		RecoveryDirective:  task.RecoveryDirective,
+		TargetFiles:        task.TargetFiles,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] prompt rendering failed for action %q: %v\n", task.ID, action, err)
+		o.registerAgentStart(ctx, "generator", task.ID)
+		o.registerAgentComplete(ctx, "generator", task.ID, err)
+		return
+	}
+	genPrompt := rendered.Full()
+
 	genCtx := context.WithValue(ctx, AgentRoleKey, "generator")
+	// Compaction must never rewrite the output contract at the end of the prompt.
+	genCtx = domain.WithUncompactableTail(genCtx, len(rendered.Contract))
 	o.registerAgentStart(ctx, "generator", task.ID)
 
 	currentPrompt := genPrompt
@@ -158,8 +188,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				feedback, _ := action.Args["feedback"].(string)
 				fmt.Printf("Orchestrator: Task %s [Generator] requested test fix (count %d): %s\n", task.ID, testFixRequestCount, feedback)
 
-				testerPrompt := fmt.Sprintf("Fix the tests for task: %s - %s\n\nFeedback from generator agent:\n%s\n\nCorrect the test files to resolve this issue.", task.Title, task.Description, feedback)
-				o.RunTesterAgent(ctx, task, state, fileContexts, testerPrompt)
+				o.RunTesterAgent(ctx, task, state, fileContexts, "fix", feedback)
 
 				// Stage and commit test fixes
 				statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
@@ -195,11 +224,14 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			}
 		}
 
-		// Append errors and tool outputs to currentPrompt for the next turn
-		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.",
-			genPrompt, turn+1, maxTurns,
+		// Append errors and tool outputs to the body for the next turn. The
+		// non-overridable output contract stays at the END of the prompt so
+		// the JSON schema is the last thing the model reads.
+		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.\n%s",
+			rendered.Body, turn+1, maxTurns,
 			joinCappedToolOutputs(turnToolOutputs),
-			maxTurns-turn-1)
+			maxTurns-turn-1,
+			rendered.Contract)
 	}
 
 	o.registerAgentComplete(ctx, "generator", task.ID, lastErr)

@@ -13,9 +13,8 @@ import (
 // tests are co-generated together in a single generator turn.
 func (o *Orchestrator) executeTaskSinglePass(ctx context.Context, task *domain.Task, taskState *domain.State, taskGit *GitClient, fileContexts []string, taskID string) {
 	if task.Retries == 0 {
-		singlePassPrompt := fmt.Sprintf("Execute task: %s - %s\n\nImplement the feature AND write corresponding unit/integration tests immediately in a single pass. Ensure both code and tests are created together.", task.Title, task.Description)
 		o.updateTaskProgress(ctx, taskID, 50)
-		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", singlePassPrompt)
+		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "single_pass")
 
 		statusOut, _ := taskGit.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {
@@ -30,9 +29,8 @@ func (o *Orchestrator) executeTaskSinglePass(ctx context.Context, task *domain.T
 			}
 		}
 	} else {
-		fixSinglePassPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFix both the implementation and the tests to resolve previous failures and ensure all tests pass. MANDATE: If an error or dependency issue persists, force a working solution (even if simplified) so the code compiles cleanly and tests pass. Leaving non-compiling code is unacceptable.", task.Title, task.Description)
 		o.updateTaskProgress(ctx, taskID, 50)
-		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", fixSinglePassPrompt)
+		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "single_pass_fix")
 
 		statusOut, _ := taskGit.Run(ctx, false, "status", "--porcelain")
 		if strings.TrimSpace(statusOut) != "" {

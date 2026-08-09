@@ -201,9 +201,8 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
 	} else if task.Retries == 0 {
 		// 1. Run Generator Agent (role "generator") to implement minimal functionality
-		minimalGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nFocus on creating the minimal implementation/functionality to fulfill the task requirements. The tests will be written in a later phase.", task.Title, task.Description)
 		o.updateTaskProgress(ctx, taskID, 25)
-		o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, "", minimalGenPrompt)
+		o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, "", "implement")
 
 		// Stage and commit minimal implementation
 		statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
@@ -220,9 +219,8 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 
 		// 2. Run Test Writer Agent (role "tester") to write tests against the minimal implementation
-		testerPrompt := fmt.Sprintf("Write tests for task: %s - %s\n\nThe minimal implementation has already been created. Write tests to verify this implementation, including unit and integration tests as specified in the guidelines.", task.Title, task.Description)
 		o.updateTaskProgress(ctx, taskID, 50)
-		o.RunTesterAgent(ctx, *task, &taskState, fileContexts, testerPrompt)
+		o.RunTesterAgent(ctx, *task, &taskState, fileContexts, "write", "")
 
 		// Stage and commit tests
 		statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
@@ -260,9 +258,8 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 
 		// 3. Run Generator Agent (role "generator") to refactor/improve the implementation to pass the tests
-		refactorGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nRefactor the implementation to make the code better and ensure it passes all tests. You may update both the implementation files and the test files if needed.", task.Title, task.Description)
 		o.updateTaskProgress(ctx, taskID, 75)
-		o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, recentTestsContext, refactorGenPrompt)
+		o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, recentTestsContext, "refactor")
 
 		// Stage and commit refactoring changes
 		statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
@@ -282,9 +279,8 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		// Retries loop: Tester runs first to fix tests, then Generator runs to make them pass
 
 		// 1. Run Test Writer Agent to fix/refactor tests to align with updated implementation/failures
-		fixTestPrompt := fmt.Sprintf("Write/Refactor tests for task: %s - %s\n\nRefactor and fix the tests to resolve the previous failures and align them with the updated code.", task.Title, task.Description)
 		o.updateTaskProgress(ctx, taskID, 40)
-		o.RunTesterAgent(ctx, *task, &taskState, fileContexts, fixTestPrompt)
+		o.RunTesterAgent(ctx, *task, &taskState, fileContexts, "refactor", "")
 
 		// Stage and commit test fixes
 		statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
@@ -322,9 +318,8 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 
 		// 2. Run Generator Agent to fix/refactor implementation to pass the tests
-		fixGenPrompt := fmt.Sprintf("Execute task: %s - %s\n\nRefactor and fix the implementation to resolve the previous failures and ensure all tests pass.", task.Title, task.Description)
 		o.updateTaskProgress(ctx, taskID, 70)
-		o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, recentTestsContext, fixGenPrompt)
+		o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, recentTestsContext, "fix")
 
 		// Stage and commit fixes
 		statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")

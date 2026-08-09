@@ -93,7 +93,7 @@ func TestAPIStatusEndpointReturnsLightweightSummaries(t *testing.T) {
 		Metadata:    domain.StateMetadata{FeatureName: "feat", IntegrationBranch: "noctifab/feature-x", BaseBranch: "main"},
 	}
 	repo := &mockRepo{state: state}
-	mux := newDaemonMux(repo, NewCommandMailbox(repo), nil, &mockLLM{})
+	mux := newDaemonMux(repo, NewCommandMailbox(repo), nil, &mockLLM{}, nil)
 
 	t.Run("when GET /api/v1/status is called, it returns summaries without files, actions, or task bodies", func(t *testing.T) {
 		rec := httptest.NewRecorder()
@@ -135,7 +135,7 @@ func TestAPIStatusEndpointReturnsLightweightSummaries(t *testing.T) {
 	t.Run("when GET /api/v1/status is called, it serves repository summaries instead of loading full states", func(t *testing.T) {
 		summariesRepo := &cannedSummariesRepo{mockRepo: mockRepo{state: state}}
 		summariesRepo.summaries = []domain.StateSummary{{ID: "canned-1", StoryStatus: "RUNNING", TaskCounts: map[string]int{}}}
-		summariesMux := newDaemonMux(summariesRepo, NewCommandMailbox(summariesRepo), nil, &mockLLM{})
+		summariesMux := newDaemonMux(summariesRepo, NewCommandMailbox(summariesRepo), nil, &mockLLM{}, nil)
 
 		rec := httptest.NewRecorder()
 		summariesMux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
@@ -153,7 +153,7 @@ func TestAPIStatusEndpointReturnsLightweightSummaries(t *testing.T) {
 
 	t.Run("when the repository summary query fails, it returns 500", func(t *testing.T) {
 		failRepo := &failingSummariesRepo{mockRepo: mockRepo{state: state}}
-		failMux := newDaemonMux(failRepo, NewCommandMailbox(failRepo), nil, &mockLLM{})
+		failMux := newDaemonMux(failRepo, NewCommandMailbox(failRepo), nil, &mockLLM{}, nil)
 
 		rec := httptest.NewRecorder()
 		failMux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
@@ -200,7 +200,7 @@ func TestStoryStatusHandlers(t *testing.T) {
 	newMux := func(t *testing.T) (*http.ServeMux, *mockRepo) {
 		t.Helper()
 		repo := &mockRepo{state: &domain.State{ID: "s1", StoryStatus: domain.StoryRunning}}
-		return newDaemonMux(repo, NewCommandMailbox(repo), nil, &mockLLM{}), repo
+		return newDaemonMux(repo, NewCommandMailbox(repo), nil, &mockLLM{}, nil), repo
 	}
 
 	cases := []struct {
@@ -238,7 +238,7 @@ func TestStoryStatusHandlers(t *testing.T) {
 func TestDaemonServerHasTimeouts(t *testing.T) {
 	t.Run("when the daemon server is built, it has read/write/idle timeouts", func(t *testing.T) {
 		repo := &mockRepo{state: &domain.State{ID: "s1"}}
-		server := StartDaemonServer(repo, NewCommandMailbox(repo), nil, &mockLLM{})
+		server := StartDaemonServer(repo, NewCommandMailbox(repo), nil, &mockLLM{}, nil)
 		defer func() { _ = server.Close() }()
 
 		if server.ReadHeaderTimeout != 5*time.Second {

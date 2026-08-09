@@ -44,7 +44,7 @@ func newIterationsTestOrchestrator(t *testing.T, llm domain.LLMClient, cfg Orche
 	git := NewGitClient(state.ProjectPath)
 	queue := NewRebaseQueue(git)
 	evaluator := NewTestValidator(nil, false, llm, nil)
-	orch := NewOrchestrator(repo, reg, llm, validator, scheduler, git, queue, evaluator, &mockVCS{}, cfg, nil, nil)
+	orch := NewOrchestrator(repo, reg, llm, validator, scheduler, git, queue, evaluator, &mockVCS{}, cfg, nil, nil, nil)
 	return orch, state
 }
 
@@ -57,7 +57,7 @@ func TestAgentLoopIterationsConfig(t *testing.T) {
 			PollInterval:         10 * time.Millisecond,
 			GeneratorsIterations: 2,
 		})
-		orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "Execute task")
+		orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "implement")
 		if got := llm.turns(); got != 2 {
 			t.Errorf("expected 2 generator turns, got %d", got)
 		}
@@ -68,7 +68,7 @@ func TestAgentLoopIterationsConfig(t *testing.T) {
 		orch, state := newIterationsTestOrchestrator(t, llm, OrchestratorConfig{
 			PollInterval: 10 * time.Millisecond,
 		})
-		orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "Execute task")
+		orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "implement")
 		if got := llm.turns(); got != 5 {
 			t.Errorf("expected default 5 generator turns, got %d", got)
 		}
@@ -80,7 +80,7 @@ func TestAgentLoopIterationsConfig(t *testing.T) {
 			PollInterval:      10 * time.Millisecond,
 			TestersIterations: 3,
 		})
-		orch.RunTesterAgent(context.Background(), task, state, nil, "Write tests")
+		orch.RunTesterAgent(context.Background(), task, state, nil, "write", "")
 		if got := llm.turns(); got != 3 {
 			t.Errorf("expected 3 tester turns, got %d", got)
 		}
@@ -92,7 +92,7 @@ func TestAgentLoopIterationsConfig(t *testing.T) {
 			PollInterval:      10 * time.Millisecond,
 			TestersIterations: -1,
 		})
-		orch.RunTesterAgent(context.Background(), task, state, nil, "Write tests")
+		orch.RunTesterAgent(context.Background(), task, state, nil, "write", "")
 		if got := llm.turns(); got != 5 {
 			t.Errorf("expected default 5 tester turns, got %d", got)
 		}

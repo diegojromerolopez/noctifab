@@ -9,12 +9,17 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 )
 
 // GenerateRoadmap reads SPEC.md from projectPath and any existing user stories under roadmap/,
 // invokes the Product Manager Agent to generate or audit/refine user stories with explicit Definitions of Done,
 // and saves the updated markdown files to projectPath/roadmap/.
-func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.LLMClient) error {
+// renderer may be nil, in which case the embedded default templates are used.
+func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer) error {
+	if renderer == nil {
+		renderer = prompts.NewDefaultRenderer()
+	}
 	specPath := filepath.Join(projectPath, "SPEC.md")
 	specBytes, err := os.ReadFile(specPath)
 	if err != nil {
@@ -32,21 +37,31 @@ func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.L
 	}
 
 	legacyFiles, _ := scanLegacyFiles(projectPath)
-	var prompt string
-	if len(existingStories) > 0 {
-		prompt = fmt.Sprintf("Audit and refine existing user stories to ensure complete Definition of Done (DoD), edge cases, and interface contracts:\n\nSpecification:\n%s\n\nExisting User Stories:\n%s", string(specBytes), strings.Join(existingStories, "\n"))
-	} else {
-		prompt = fmt.Sprintf("Generate detailed user stories from specification:\n\n%s", string(specBytes))
+	legacyBlock := ""
+	if len(legacyFiles) > 0 {
+		legacyBlock = fmt.Sprintf("\n\nExisting Legacy Code Files Detected in Workspace:\n- %s\n\nLEGACY STABILIZATION MANDATE: Code already exists in the project workspace. Assume it is legacy code with existing functionality. The primary initial goal is to stabilize it by creating unit and integration characterization tests for existing parts in US-001, and leveraging those tests as safety rails when refactoring the code to match future user story requirements.", strings.Join(legacyFiles, "\n- "))
 	}
 
-	if len(legacyFiles) > 0 {
-		prompt += fmt.Sprintf("\n\nExisting Legacy Code Files Detected in Workspace:\n- %s\n\nLEGACY STABILIZATION MANDATE: Code already exists in the project workspace. Assume it is legacy code with existing functionality. The primary initial goal is to stabilize it by creating unit and integration characterization tests for existing parts in US-001, and leveraging those tests as safety rails when refactoring the code to match future user story requirements.", strings.Join(legacyFiles, "\n- "))
+	action := "generate"
+	if len(existingStories) > 0 {
+		action = "audit"
 	}
+	rendered, err := renderer.Render(prompts.AgentProductManager, action, prompts.ProductManagerPromptData{
+		Spec:            string(specBytes),
+		ExistingStories: strings.Join(existingStories, "\n"),
+		LegacyFiles:     legacyBlock,
+	})
+	if err != nil {
+		return fmt.Errorf("product manager prompt rendering failed: %w", err)
+	}
+	prompt := rendered.Full()
 	var lastErr error
 
 	// Propagate the product_manager role so the LLM router selects the
 	// correct provider/model override (e.g. qwencloud) for this agent.
 	pmCtx := context.WithValue(ctx, "agent_role", "product_manager") //nolint:staticcheck
+	// Compaction must never rewrite the output contract at the end of the prompt.
+	pmCtx = domain.WithUncompactableTail(pmCtx, len(rendered.Contract))
 
 	for attempt := 0; attempt < 3; attempt++ {
 		resp, err := llmClient.Complete(pmCtx, prompt)
