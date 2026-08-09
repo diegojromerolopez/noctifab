@@ -6,7 +6,53 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
+
+func TestPromptConfigPath(t *testing.T) {
+	t.Run("when config flag is set it takes precedence over the environment", func(t *testing.T) {
+		envPath := filepath.Join(t.TempDir(), "env", "config.yaml")
+		flagPath := filepath.Join(t.TempDir(), "flag", "config.yaml")
+		t.Setenv("NOCTIFAB_CONFIG", envPath)
+
+		cmd := &cobra.Command{}
+		cmd.Flags().String("config", ".noctifab/config.yaml", "")
+		if err := cmd.Flags().Set("config", flagPath); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := promptConfigPath(cmd); got != flagPath {
+			t.Fatalf("expected flag config path %q, got %q", flagPath, got)
+		}
+		if got := promptsWorkspace(cmd); got != filepath.Dir(filepath.Dir(flagPath)) {
+			t.Fatalf("expected workspace derived from flag path, got %q", got)
+		}
+	})
+
+	t.Run("when config flag is unset it uses the environment", func(t *testing.T) {
+		envDir := filepath.Join(t.TempDir(), "env")
+		envPath := filepath.Join(envDir, "config.yaml")
+		t.Setenv("NOCTIFAB_CONFIG", envPath)
+		if err := os.MkdirAll(envDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(envPath, []byte("prompts:\n  tester:\n    write:\n      append: custom\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		cmd := &cobra.Command{}
+		cmd.Flags().String("config", ".noctifab/config.yaml", "")
+
+		if got := promptConfigPath(cmd); got != envPath {
+			t.Fatalf("expected environment config path %q, got %q", envPath, got)
+		}
+		overrides := loadPromptOverrides(cmd)
+		if got := overrides["tester"]["write"].Append; got != "custom" {
+			t.Fatalf("expected overrides loaded from environment config, got %q", got)
+		}
+	})
+}
 
 func runPromptsCmd(t *testing.T, workspace string, args ...string) (string, error) {
 	t.Helper()

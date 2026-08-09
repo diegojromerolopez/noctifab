@@ -11,29 +11,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// promptsWorkspace returns the workspace directory used by the prompts
-// commands (the directory containing .noctifab/, derived from --config).
-func promptsWorkspace(cmd *cobra.Command) string {
+func promptConfigPath(cmd *cobra.Command) string {
 	configPath := ".noctifab/config.yaml"
 	if flag := cmd.Flags().Lookup("config"); flag != nil && flag.Changed {
 		configPath = flag.Value.String()
 	} else if envVal, exists := os.LookupEnv("NOCTIFAB_CONFIG"); exists {
 		configPath = envVal
 	}
-	return filepath.Dir(filepath.Dir(configPath))
+	return configPath
+}
+
+// promptsWorkspace returns the workspace directory used by the prompts
+// commands (the directory containing .noctifab/, derived from --config).
+func promptsWorkspace(cmd *cobra.Command) string {
+	return filepath.Dir(filepath.Dir(promptConfigPath(cmd)))
 }
 
 // loadPromptOverrides reads only the prompts: section of the config file
 // (leniently: other sections and validation errors are ignored so the
 // prompts commands work in partially configured workspaces).
 func loadPromptOverrides(cmd *cobra.Command) map[string]map[string]prompts.Override {
-	configPath := ".noctifab/config.yaml"
-	if flag := cmd.Flags().Lookup("config"); flag != nil && flag.Changed {
-		configPath = flag.Value.String()
-	} else if envVal, exists := os.LookupEnv("NOCTIFAB_CONFIG"); exists {
-		configPath = envVal
-	}
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(promptConfigPath(cmd))
 	if err != nil {
 		return nil
 	}
