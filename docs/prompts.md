@@ -115,6 +115,20 @@ with named placeholders. The available placeholders per agent:
 | --- | --- |
 | `{{.Spec}}` | The user story / specification content to decompose |
 
+### Strictness and escaping
+
+- Templates are rendered with `missingkey=error` and **test-rendered at
+  startup** with fixture data: a typo'd placeholder (e.g. `{{.Titel}}`)
+  aborts startup with an error naming the `agent/action` key — it never
+  silently renders `<no value>` into a live prompt.
+- Single braces need no escaping: JSON examples like `{"reasoning": ...}`
+  are fine as-is. Only the literal sequence `{{` is special. If your prompt
+  text must contain a literal `{{`, escape it as:
+
+  ```
+  {{"{{"}}
+  ```
+
 Example custom `tester/write.tmpl`:
 
 ```

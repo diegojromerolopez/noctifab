@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.4] - 2026-08-09
+
+### Added
+- **Strict template placeholder validation**: prompt templates are now parsed with `missingkey=error`, and combined with the startup fixture render, a typo'd placeholder in a user override (e.g. `{{.Titel}}`) aborts startup with a key-named error instead of silently rendering `<no value>` into live prompts. Documented brace escaping (`{{"{{"}}`) in `docs/prompts.md`.
+
 ## [0.28.3] - 2026-08-09
 
 ### Changed

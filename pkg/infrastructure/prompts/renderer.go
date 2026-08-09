@@ -64,7 +64,10 @@ func newRenderer(workspaceDir string, overrides map[string]map[string]Override, 
 			if err != nil {
 				return nil, err
 			}
-			tmpl, err := template.New(key(agent, action)).Parse(res.text)
+			// missingkey=error: a typo'd placeholder in a user override must
+			// fail the startup fixture render below with a clear error, never
+			// silently render "<no value>" into a live prompt.
+			tmpl, err := template.New(key(agent, action)).Option("missingkey=error").Parse(res.text)
 			if err != nil {
 				return nil, fmt.Errorf("prompt template %s/%s (source: %s) failed to parse: %w", agent, action, res.source, err)
 			}

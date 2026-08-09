@@ -118,6 +118,31 @@ func TestRenderer_ResolutionPrecedence(t *testing.T) {
 		}
 	})
 
+	t.Run("when an override references a nonexistent placeholder it fails fast at construction", func(t *testing.T) {
+		ws := t.TempDir()
+		writeWorkspaceTemplate(t, ws, "tester", "write", ".tmpl", "BODY {{.Titel}}\n") // typo'd field
+		_, err := NewRenderer(ws, nil)
+		if err == nil || !strings.Contains(err.Error(), "tester/write") {
+			t.Fatalf("expected key-named render error for typo'd placeholder, got: %v", err)
+		}
+	})
+
+	t.Run("when an override contains literal braces in prose it renders fine", func(t *testing.T) {
+		ws := t.TempDir()
+		writeWorkspaceTemplate(t, ws, "tester", "write", ".tmpl", "Respond with {\"reasoning\": ...} for {{.Title}}\n")
+		r, err := NewRenderer(ws, nil)
+		if err != nil {
+			t.Fatalf("single braces must not require escaping: %v", err)
+		}
+		rendered, err := r.Render("tester", "write", data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(rendered.Body, `{"reasoning": ...} for T`) {
+			t.Error("expected literal braces preserved")
+		}
+	})
+
 	t.Run("when an override has a template parse error it fails fast naming the key", func(t *testing.T) {
 		ws := t.TempDir()
 		writeWorkspaceTemplate(t, ws, "tester", "write", ".tmpl", "BROKEN {{.Title\n")
