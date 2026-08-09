@@ -368,6 +368,8 @@ func (u *UnblockerAgent) detectStalledTasks(state *domain.State) []StalledTask {
 func (u *UnblockerAgent) assessWithLLM(ctx context.Context, state *domain.State, stalls []StalledTask) {
 	prompt := buildUnblockerPrompt(state, stalls)
 	unblockerCtx := context.WithValue(ctx, AgentRoleKey, "unblocker")
+	// Compaction must never rewrite the JSON-schema suffix of the prompt.
+	unblockerCtx = domain.WithUncompactableTail(unblockerCtx, len(unblockerPromptTail))
 	resp, err := u.llmClient.Complete(unblockerCtx, prompt)
 	if err != nil {
 		fmt.Printf("UnblockerAgent: LLM assessment failed: %v. Falling back to heuristic.\n", err)

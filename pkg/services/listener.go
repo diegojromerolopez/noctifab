@@ -114,6 +114,10 @@ func (a *ListenerAgent) interpretCommand(ctx context.Context, rawInput string) (
 	ctx, span := telemetry.Tracer().Start(ctx, "interpretCommand",
 		trace.WithAttributes(attribute.Int("input_length", len(rawInput))))
 	defer span.End()
+	// Note: no uncompactable-tail marker here — the listener's JSON schema
+	// lives mid-prompt (the dynamic operator command is the suffix), so tail
+	// protection does not apply. The schema lines contain none of the
+	// patterns the compaction passes rewrite.
 	llmResp, err := a.llmClient.Complete(ctx, listenerSystemPrompt+"\n\nOperator command: "+rawInput)
 	if err != nil {
 		return a.ruleBasedParse(rawInput), nil

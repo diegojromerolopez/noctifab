@@ -54,19 +54,21 @@ func CategorizeFailureLog(log string) FailureCategory {
 	}
 }
 
-// wrapRepairPrompt wraps the raw diagnostic details in the Repair Agent role
-// body (persona, rules, tool list, JSON output schema). The repair prompt is
-// deliberately hardcoded (no customization surface): the repair flow is
-// dormant protocol machinery (see CUSTOM_PROMPTS.md §1.2).
-func wrapRepairPrompt(details string) string {
-	return fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
-You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json`+"`"+` or `+"`"+`) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\""); never use single quotes (') for JSON strings or keys.
+// repairPromptHead is the static prefix of the Repair Agent role body.
+const repairPromptHead = `You are a software factory automation agent operating in a restricted workspace sandbox.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like ` + "`" + `json` + "`" + ` or ` + "`" + `) outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes (\""); never use single quotes (') for JSON strings or keys.
 
 You are acting as the Repair Agent.
 Your task is to fix the compilation error, linter offense, test failure, or watchdog timeout that is currently preventing the validation suite from passing.
 
 Task Details & Failure Context:
-%s
+`
+
+// repairPromptTail is the static suffix of the Repair Agent role body: rules,
+// tool list, and the JSON output schema. It is kept as a separate constant so
+// the compaction layer can be told to never rewrite it
+// (domain.WithUncompactableTail).
+const repairPromptTail = `
 
 CRITICAL:
 1. TARGET FAILING FILES IMMEDIATELY: Read the failure output carefully and directly edit the failing file (e.g. Makefile or broken source file) indicated in the error trace. Avoid exploratory directory browsing when the failing path is already provided.
@@ -98,7 +100,14 @@ Return format:
     }
   ]
 }
-`, details)
+`
+
+// wrapRepairPrompt wraps the raw diagnostic details in the Repair Agent role
+// body (persona, rules, tool list, JSON output schema). The repair prompt is
+// deliberately hardcoded (no customization surface): the repair flow is
+// dormant protocol machinery (see CUSTOM_PROMPTS.md §1.2).
+func wrapRepairPrompt(details string) string {
+	return repairPromptHead + details + repairPromptTail
 }
 
 func buildDiagnosticPrompt(title, description string, watchdogErr error, output string, category FailureCategory) string {
@@ -227,9 +236,12 @@ func (wr *WatchdogRepair) AttemptRepair(
 	category := CategorizeFailureLog(watchdogOutput)
 	diagPrompt := buildDiagnosticPrompt(task.Title, task.Description, watchdogErr, watchdogOutput, category)
 
+	// Compaction must never rewrite the rules/tool-list/JSON-schema suffix.
+	repairCtx := domain.WithUncompactableTail(ctx, len(repairPromptTail))
+
 	var lastTestOutput string
 	for attempt := 0; attempt < wr.maxRetries; attempt++ {
-		resp, err := wr.llmClient.Complete(ctx, wrapRepairPrompt(diagPrompt))
+		resp, err := wr.llmClient.Complete(repairCtx, wrapRepairPrompt(diagPrompt))
 		if err != nil {
 			return nil, fmt.Errorf("repair LLM call failed: %w", err)
 		}

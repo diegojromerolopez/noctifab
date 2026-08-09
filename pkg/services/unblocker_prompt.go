@@ -146,7 +146,20 @@ Current Pipeline State:
 
 Stalled Tasks/Agents Detected (%d stall(s)):
 %s
+`,
+		string(state.StoryStatus),
+		string(state.BuildStatus),
+		totalTasks, pendingCount, inProgressCount, successCount, failedCount,
+		len(state.ActiveAgents),
+		len(stalls),
+		string(stallsJSON),
+	) + unblockerPromptTail
+}
 
+// unblockerPromptTail is the static JSON-output-schema suffix of the
+// unblocker prompt. Kept as a separate constant so the compaction layer can
+// be told to never rewrite it (domain.WithUncompactableTail).
+const unblockerPromptTail = `
 Return format:
 {
   "reasoning": "Explain your diagnosis of each stall and why you chose each action",
@@ -157,12 +170,4 @@ Return format:
     { "tool": "noop",         "args": {} }
   ]
 }
-`,
-		string(state.StoryStatus),
-		string(state.BuildStatus),
-		totalTasks, pendingCount, inProgressCount, successCount, failedCount,
-		len(state.ActiveAgents),
-		len(stalls),
-		string(stallsJSON),
-	)
-}
+`

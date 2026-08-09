@@ -98,6 +98,31 @@ func (o *Orchestrator) registerAgentComplete(ctx context.Context, role string, t
 	}
 }
 
+// readerPromptTail is the static suffix of the Reader (context gathering)
+// prompt: inspection tool list and JSON output schema. Kept as a separate
+// constant so the compaction layer can be told to never rewrite it
+// (domain.WithUncompactableTail).
+const readerPromptTail = `You may call the following inspection tools:
+- read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
+- list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
+- find_files: search for files. Args: {"pattern": "*.py"}
+- grep_search: search for a pattern in files. Args: {"query": "search_term"}
+- noop: call this if you have enough context and do not need to read any more files.
+
+Return format:
+{
+  "reasoning": "Explain what context you need to gather",
+  "actions": [
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "frontpunch/existing_file.py"
+      }
+    }
+  ]
+}
+`
+
 // RunReaderPhase runs the pre-step to collect workspace context before execution
 func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task domain.Task, state *domain.State) []string {
 	var gatheredContext []string
@@ -195,28 +220,11 @@ Description: %s
 Below is a list of target files for this task:
 %v
 %s
-You may call the following inspection tools:
-- read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
-- list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
-- find_files: search for files. Args: {"pattern": "*.py"}
-- grep_search: search for a pattern in files. Args: {"query": "search_term"}
-- noop: call this if you have enough context and do not need to read any more files.
-
-Return format:
-{
-  "reasoning": "Explain what context you need to gather",
-  "actions": [
-    {
-      "tool": "read_file",
-      "args": {
-        "path": "frontpunch/existing_file.py"
-      }
-    }
-  ]
-}
-`, role, task.Title, task.Description, task.TargetFiles, availableFilesMsg)
+`, role, task.Title, task.Description, task.TargetFiles, availableFilesMsg) + readerPromptTail
 
 	readerCtx := context.WithValue(ctx, AgentRoleKey, role)
+	// Compaction must never rewrite the tool-list/JSON-schema suffix.
+	readerCtx = domain.WithUncompactableTail(readerCtx, len(readerPromptTail))
 	resp, err := o.llmClient.Complete(readerCtx, prompt)
 	if err != nil {
 		fmt.Printf("Orchestrator: Task [Reader] phase failed for role %s: %v. Continuing without extra context.\n", role, err)

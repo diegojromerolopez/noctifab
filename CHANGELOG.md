@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.6] - 2026-08-09
+
+### Fixed
+- **Compaction protection extended to all hardcoded prompts with schema suffixes**: the Repair Agent (`repairPromptTail`), Reader/context-gathering (`readerPromptTail`), and Unblocker (`unblockerPromptTail`) prompts now keep their tool-list/JSON-schema suffixes as separate constants and mark them via `domain.WithUncompactableTail`, so `caveman`/`simple_english` compaction can never rewrite their output contracts (completing the v0.28.1 fix, which only covered renderer-produced prompts). The listener prompt is exempt by design: its schema sits mid-prompt with the dynamic operator command as the suffix.
+
 ## [0.28.5] - 2026-08-09
 
 ### Changed
