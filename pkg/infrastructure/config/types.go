@@ -71,6 +71,7 @@ type Config struct {
 	TokenUsageLimit     int64    `yaml:"token_usage_limit"`
 	LogLevel            string   `yaml:"log_level"`
 	LogFile             string   `yaml:"log_file"`
+	ExecutionReport     string   `yaml:"execution_report,omitempty"`
 }
 
 // PromptOverride customizes the prompt template of one agent action.

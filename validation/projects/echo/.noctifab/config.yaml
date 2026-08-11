@@ -1,4 +1,5 @@
 config_version: '2.0'
+execution_report: "/app/report_mount/execution_report.md"
 agents:
   architecture: code_first
   max_tools_per_response: 10

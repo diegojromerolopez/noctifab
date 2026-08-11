@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+
+
 # 1. Resolve or compile the noctifab binary
 if command -v noctifab >/dev/null 2>&1; then
   echo "Using existing noctifab binary from PATH..." >&2

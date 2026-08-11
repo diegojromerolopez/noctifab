@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-08-11
+
+### Added
+- **Structured Execution Reports & Logs** (`execution_report: ".noctifab/reports/execution_report.md"`): deterministic execution measurements and Markdown diagnostic artifact documenting process and story timings, active vs. waiting breakdown by agent role, deterministic bottlenecks (`BN-*`), evidence-backed issues (`ISSUE-*`), fallback recommendations (`PROP-*`), and single bounded read-only model analysis without parsing raw container logs.
+- **Documentation**: added [`docs/execution_report.md`](file:///Users/diegoj/repos/noctifab/docs/execution_report.md), updated [`docs/index.md`](file:///Users/diegoj/repos/noctifab/docs/index.md), and updated [`README.md`](file:///Users/diegoj/repos/noctifab/README.md) with comprehensive guides on execution reporting, path resolution, and telemetry event streams.
+- **Domain Refactoring**: split event telemetry model (`ExecutionEvent`) into [`pkg/domain/execution_event.go`](file:///Users/diegoj/repos/noctifab/pkg/domain/execution_event.go) and synthesized diagnostic report model (`ExecutionReport`) into [`pkg/domain/execution_report.go`](file:///Users/diegoj/repos/noctifab/pkg/domain/execution_report.go).
+- **Validation Harness Integration**: updated `run_one.sh`, `validate.sh`, and `gen_feedback.py` to consume host-mounted `execution_report.md` diagnostic reports.
+
 ## [0.29.0] - 2026-08-09
 
 ### Added

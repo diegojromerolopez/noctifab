@@ -32,6 +32,7 @@ A "Dark Factory" (in a software engineering context) is a fully automated reposi
 getting_started
 cli_usage
 configuration
+execution_report
 prompts
 architecture
 developer_guide
@@ -44,6 +45,7 @@ secrets
 ## Features & Capabilities
 
 - **State-Driven Orchestration**: Operates using a stateless agent controlled by a stateful orchestrator. The orchestrator tracks tasks, action execution, and clarifications in a local SQLite or PostgreSQL database.
+- **Structured Execution Reports & Logs**: Captures fine-grained `execution_log` timeline events during runs and synthesizes Markdown `execution_report.md` artifacts documenting process timings, agent performance, deterministic bottlenecks (`BN-*`), evidence-backed issues (`ISSUE-*`), and proposals.
 - **Topological Task Scheduling**: Automatically constructs a Directed Acyclic Graph (DAG) of task dependencies and runs independent tasks concurrently.
 - **Self-Correcting & Dynamic Prompts Engine**: Dynamically adapts agent prompts using live log tailing, secret scrubbing (`log_tailer.go`), 0-token fast-path regex pre-filtering (`unblocker_fastpath.go`), 10x progressive log escalation, and `[STALL RECOVERY DIRECTIVE]` prompt injection on task retries.
 - **Legacy Codebase Stabilization**: Automatically scans pre-existing workspace code (`scanLegacyFiles`) and dynamically injects `US-001` characterization testing mandates into Product Manager, Planner, Generator, and Tester prompts before refactoring or feature additions.

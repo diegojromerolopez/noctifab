@@ -86,10 +86,61 @@ type Orchestrator struct {
 	totalActions      int64
 	taskCompletedChan chan struct{}
 	lastWorkspaceSync time.Time
+	observer          domain.ExecutionObserver
 	// executeTaskFn is the task execution entry point used by the dispatch
 	// loop. It defaults to (*Orchestrator).executeTask and exists as an
 	// injection seam for unit tests.
 	executeTaskFn func(ctx context.Context, stateID, taskID string)
+}
+
+type OrchestratorRuntimeDependencies struct {
+	Mailbox        *CommandMailbox
+	WatchdogRepair RepairHandler
+	PromptRenderer PromptRenderer
+	QA             *QARuntimeCoordinator
+	Observer       domain.ExecutionObserver
+}
+
+func NewOrchestratorWithRuntime(
+	repo domain.StateRepository,
+	reg Registry,
+	client domain.LLMClient,
+	val Validator,
+	sched *Scheduler,
+	git *GitClient,
+	queue *RebaseQueue,
+	eval *TestValidator,
+	vcsClient domain.VCSClient,
+	cfg OrchestratorConfig,
+	runtime OrchestratorRuntimeDependencies,
+) *Orchestrator {
+	if runtime.PromptRenderer == nil {
+		runtime.PromptRenderer = prompts.NewDefaultRenderer()
+	}
+	if runtime.Observer == nil {
+		runtime.Observer = &NoopExecutionReporter{}
+	}
+	o := &Orchestrator{
+		repo:              repo,
+		registry:          reg,
+		llmClient:         client,
+		validator:         val,
+		scheduler:         sched,
+		git:               git,
+		rebaseQueue:       queue,
+		evaluator:         eval,
+		vcsClient:         vcsClient,
+		cfg:               cfg,
+		mailbox:           runtime.Mailbox,
+		watchdogRepair:    runtime.WatchdogRepair,
+		promptRenderer:    runtime.PromptRenderer,
+		qa:                runtime.QA,
+		metricsCollector:  NewMetricsCollector(cfg.MetricsEnabled),
+		taskCompletedChan: make(chan struct{}, 100),
+		observer:          runtime.Observer,
+	}
+	o.executeTaskFn = o.executeTask
+	return o
 }
 
 func NewOrchestrator(
@@ -108,35 +159,19 @@ func NewOrchestrator(
 	promptRenderer PromptRenderer,
 	qaDependencies ...QADependencies,
 ) *Orchestrator {
-	if promptRenderer == nil {
-		// Safety net for tests and legacy call sites: fall back to the
-		// embedded default templates (no workspace overrides).
-		promptRenderer = prompts.NewDefaultRenderer()
-	}
-	o := &Orchestrator{
-		repo:              repo,
-		registry:          reg,
-		llmClient:         client,
-		validator:         val,
-		scheduler:         sched,
-		git:               git,
-		rebaseQueue:       queue,
-		evaluator:         eval,
-		vcsClient:         vcsClient,
-		cfg:               cfg,
-		mailbox:           mailbox,
-		watchdogRepair:    watchdogRepair,
-		promptRenderer:    promptRenderer,
-		metricsCollector:  NewMetricsCollector(cfg.MetricsEnabled),
-		taskCompletedChan: make(chan struct{}, 100),
-	}
-	o.executeTaskFn = o.executeTask
+	var qaCoord *QARuntimeCoordinator
 	if len(qaDependencies) > 0 {
 		deps := qaDependencies[0]
-		o.qa = NewQARuntimeCoordinator(cfg.QA, client, promptRenderer, deps.WorkspaceFactory,
+		qaCoord = NewQARuntimeCoordinator(cfg.QA, client, promptRenderer, deps.WorkspaceFactory,
 			deps.ArtifactBuilder, deps.Sandbox, deps.FileSystem, deps.Clock)
 	}
-	return o
+	return NewOrchestratorWithRuntime(repo, reg, client, val, sched, git, queue, eval, vcsClient, cfg, OrchestratorRuntimeDependencies{
+		Mailbox:        mailbox,
+		WatchdogRepair: watchdogRepair,
+		PromptRenderer: promptRenderer,
+		QA:             qaCoord,
+		Observer:       &NoopExecutionReporter{},
+	})
 }
 
 // Metrics returns the MetricsCollector instance associated with the Orchestrator.

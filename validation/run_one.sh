@@ -97,11 +97,14 @@ if [ ! -f "${SECRETS_FILE}" ]; then
   exit 2
 fi
 
-# Ensure host mount points exist for source code and compiled binaries
+# Ensure host mount points exist for source code, compiled binaries, and execution report
 SRC_DIR="${ROOT}/validation/projects/${PROJECT}/output/src"
 DIST_DIR="${ROOT}/validation/projects/${PROJECT}/output/dist"
+REPORT_DIR="${ROOT}/validation/projects/${PROJECT}/output/report"
 mkdir -p "${SRC_DIR}"
 mkdir -p "${DIST_DIR}"
+mkdir -p "${REPORT_DIR}"
+rm -f "${REPORT_DIR}"/* || true
 
 # Prepare cache directories on host to speed up compiler and package manager resolution
 CACHE_ARGS=()
@@ -128,7 +131,7 @@ sleep 1
 
 # Run with --rm so the container is cleaned up after exit; capture combined
 # stdout/stderr to the log file. The bind-mounts include the read-only
-# secrets.yaml, and read-write source/dist folders.
+# secrets.yaml, and read-write source/dist/report folders.
 set +e
 if [ "${INTERACTIVE}" = "1" ]; then
   echo "Interactive validation run for ${PROJECT}. Console output printed to terminal." >"${LOG_FILE}"
@@ -140,6 +143,7 @@ if [ "${INTERACTIVE}" = "1" ]; then
     -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
     -v "${SRC_DIR}:/app/src_mount" \
     -v "${DIST_DIR}:/app/dist_mount" \
+    -v "${REPORT_DIR}:/app/report_mount" \
     -e PROJECT="${PROJECT}" \
     -e MODE="${MODE:-start}" \
     -e NOCTIFAB_INTERACTIVE="${INTERACTIVE}" \
@@ -153,6 +157,7 @@ else
     -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
     -v "${SRC_DIR}:/app/src_mount" \
     -v "${DIST_DIR}:/app/dist_mount" \
+    -v "${REPORT_DIR}:/app/report_mount" \
     -e PROJECT="${PROJECT}" \
     -e MODE="${MODE:-start}" \
     -e NOCTIFAB_INTERACTIVE="${INTERACTIVE}" \
@@ -164,9 +169,12 @@ set -e
 TS="$(date +%H:%M:%S)"
 echo "[${TS}] ${CONTAINER} exited (code=${EXIT_CODE}). Log: ${LOG_FILE}"
 
-# 3. Generate the markdown feedback file from the captured log.
+# 3. Generate the markdown feedback file from the structured report or fallback log.
 PY="${PYTHON:-python3}"
 "${PY}" "${SCRIPT_DIR}/gen_feedback.py" \
+  --execution-report "${REPORT_DIR}/execution_report.md" \
+  --log-fallback "${LOG_FILE}" \
+  --output "${ROOT}/validation/projects/${PROJECT}/output/feedback/${PROJECT:+"$(tr '[:lower:]' '[:upper:]' <<< ${PROJECT:0:1})${PROJECT:1}"}_FEEDBACK.md" \
   "${LOG_FILE}" \
   "${PROJECT}" \
   "${TARGETS}" \

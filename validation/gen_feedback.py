@@ -347,30 +347,61 @@ def render(project, targets, exit_code, lines):
 
 
 def main(argv):
-    if len(argv) < 4:
-        sys.stderr.write(
-            "usage: gen_feedback.py <log_path> <project> <target_filespec> "
-            "<repo_root> [exit_code]\n"
-        )
-        return 2
-    log_path = argv[0]
-    project = argv[1]
-    targets = [t for t in argv[2].split(";") if t]
-    repo_root = Path(argv[3])
-    exit_code = int(argv[4]) if len(argv) >= 5 else -1
+    exec_report_path = None
+    harness_result_path = None
+    log_fallback_path = None
+    output_path = None
 
-    lines = load_lines(log_path)
-    cleaned = clean_log_lines(lines)
-    body = render(project, targets, exit_code, cleaned)
+    pos_args = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--execution-report" and i + 1 < len(argv):
+            exec_report_path = argv[i + 1]
+            i += 2
+        elif arg == "--log-fallback" and i + 1 < len(argv):
+            log_fallback_path = argv[i + 1]
+            i += 2
+        elif arg == "--output" and i + 1 < len(argv):
+            output_path = argv[i + 1]
+            i += 2
+        else:
+            pos_args.append(arg)
+            i += 1
 
-    out_dir = repo_root / "validation" / "projects" / project / "output" / "feedback"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / feedback_filename(project)
+    if len(pos_args) >= 4:
+        log_path = pos_args[0]
+        project = pos_args[1]
+        targets = [t for t in pos_args[2].split(";") if t]
+        repo_root = Path(pos_args[3])
+        exit_code = int(pos_args[4]) if len(pos_args) >= 5 else -1
+    else:
+        log_path = log_fallback_path or ""
+        project = "project"
+        targets = []
+        repo_root = Path(".")
+        exit_code = -1
+
+    if exec_report_path and os.path.exists(exec_report_path):
+        with open(exec_report_path, "r", encoding="utf-8", errors="replace") as fh:
+            report_text = fh.read()
+
+        body = f"# {feedback_filename(project).replace('_FEEDBACK.md', '')} Structured Feedback Report\n\n## Execution Report\n\n{report_text}"
+    else:
+        lines = load_lines(log_path) if log_path and os.path.exists(log_path) else []
+        cleaned = clean_log_lines(lines)
+        body = render(project, targets, exit_code, cleaned)
+
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        out_dir = repo_root / "validation" / "projects" / project / "output" / "feedback"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / feedback_filename(project)
+
     out_path.write_text(body, encoding="utf-8")
-    verdict = "PASS" if (exit_code == 0 and not detect_artifact(cleaned, targets)[1]) else "FAIL"
-    rel = out_path.relative_to(repo_root) if repo_root in out_path.parents else out_path
-    print(f"wrote {rel} ({verdict})")
-    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] wrote {rel}")
+    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] wrote {out_path}")
     return 0
 
 
