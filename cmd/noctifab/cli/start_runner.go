@@ -219,7 +219,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Warning: prompt template rendering initialization failed: %v\n", rendErr)
 	}
 
-	if genErr := services.GenerateRoadmap(context.Background(), targetDir, llmClient, promptRenderer); genErr != nil {
+	if genErr := services.GenerateRoadmap(domain.WithObserver(context.Background(), executionReporter), targetDir, llmClient, promptRenderer); genErr != nil {
 		fmt.Printf("Warning: Product Manager Agent story refinement skipped: %v\n", genErr)
 	}
 
@@ -242,6 +242,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	if cmdCtx == nil {
 		cmdCtx = context.Background()
 	}
+	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
 	go rebaseQueue.Start(cmdCtx)
 
 	profilesMap := make(map[string]services.ProfileConfig)

@@ -323,6 +323,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		if err == nil {
 			resp, parseErr := parseAndUnmarshal(responseBody)
 			if parseErr == nil {
+				emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), resp, nil)
 				return resp, nil
 			}
 			// Defensive one-shot format-reminder retry: when the model
@@ -337,12 +338,15 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			if rErr == nil {
 				resp2, pErr2 := parseAndUnmarshal(reminderBody)
 				if pErr2 == nil {
+					emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), resp2, nil)
 					return resp2, nil
 				}
 				fmt.Fprintf(os.Stderr, "⚠ One-shot format reminder did not yield a parseable JSON response: %v\n", pErr2)
+				emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), nil, pErr2)
 				return nil, pErr2
 			}
 			fmt.Fprintf(os.Stderr, "⚠ Format reminder call failed: %v\n", rErr)
+			emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), nil, parseErr)
 			return nil, parseErr
 		}
 
@@ -377,9 +381,34 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		}
 
 		if creditExhausted && c.SkipOnCreditExhausted {
-			return nil, fmt.Errorf("%w (provider %s, model %s): %v", ErrCreditExhausted, c.Provider, activeModel, err)
+			errResult := fmt.Errorf("%w (provider %s, model %s): %v", ErrCreditExhausted, c.Provider, activeModel, err)
+			emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), nil, errResult)
+			return nil, errResult
 		}
 
-		return nil, fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
+		errResult := fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
+		emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), nil, errResult)
+		return nil, errResult
 	}
+}
+
+func emitLLMEvent(ctx context.Context, provider, model string, duration time.Duration, resp *domain.LLMResponse, err error) {
+	obs := domain.ObserverFromContext(ctx)
+	if obs == nil {
+		return
+	}
+	durMS := duration.Milliseconds()
+	outcome := domain.OutcomeSuccess
+	if err != nil {
+		outcome = domain.OutcomeFailed
+	}
+	event := domain.ExecutionEvent{
+		Kind:           domain.EventLLMCallFinished,
+		At:             time.Now().UTC(),
+		Provider:       provider,
+		Model:          model,
+		DurationMillis: &durMS,
+		Outcome:        outcome,
+	}
+	obs.Observe(ctx, event)
 }

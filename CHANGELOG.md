@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-08-12
+
+### Added
+- **Fine-Grained Telemetry Instrumentation (`Observe`)**: wired structured `ExecutionEvent` emission across `LLMClient` (`EventLLMCallFinished`), `Sandbox` (`EventSandboxFinished`), `ProductManager` (`EventAgentStarted`/`EventAgentFinished`), and `Orchestrator` (`EventTaskAttemptStarted`/`EventTaskAttemptFinished`) for fine-grained reporting metrics without performance overhead.
+- **Context Propagation**: added `WithObserver` and `ObserverFromContext` helper primitives to `pkg/domain/execution_event.go`.
+- **Validation Monitoring Updates**: updated `AGENTS.md` and `validation/projects/TESTING_GUIDE.md` to rely on the automatically generated execution report (`validation/projects/<project>/output/report/*.md`) instead of token-heavy 60-second polling loops.
+
 ## [0.30.0] - 2026-08-11
 
 ### Added

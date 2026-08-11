@@ -180,9 +180,10 @@ make validate PROJECT=todo-cli
 A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified by the user or task request) MUST be set for each execution of each validation project. If a validation execution reaches 10 minutes (or the specified custom limit), agents must terminate the container run cleanly and record the results.
 
 ### 4. Output artifacts
-- `validation/projects/<project>/log/<project>.log` — full combined stdout/stderr of the container.
-- `validation/projects/<project>/log/<project>.wrap.log` — `run_one.sh` build/launch/exit trace.
-- `validation/projects/<project>/feedback/<PROJECT>_FEEDBACK.md` — structured review of the run.
+- `validation/projects/<project>/output/report/*.md` — live atomic execution report updated during execution.
+- `validation/projects/<project>/output/log/<project>.log` — full combined stdout/stderr of the container.
+- `validation/projects/<project>/output/log/<project>.wrap.log` — `run_one.sh` build/launch/exit trace.
+- `validation/projects/<project>/output/feedback/<PROJECT>_FEEDBACK.md` — structured review of the run.
 - `.validation-logs/run_all.<timestamp>.log` — `run_all.sh` global aggregate log.
-  These feedback and log files are git-ignored (see `.gitignore`) as they are local analysis artifacts, not source.
+  These feedback, report, and log files are git-ignored (see `.gitignore`) as they are local analysis artifacts, not source.
 

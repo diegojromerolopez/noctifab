@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
@@ -16,7 +17,31 @@ import (
 // invokes the Product Manager Agent to generate or audit/refine user stories with explicit Definitions of Done,
 // and saves the updated markdown files to projectPath/roadmap/.
 // renderer may be nil, in which case the embedded default templates are used.
-func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer) error {
+func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer) (lastErr error) {
+	pmStart := time.Now()
+	if obs := domain.ObserverFromContext(ctx); obs != nil {
+		obs.Observe(ctx, domain.ExecutionEvent{
+			Kind:      domain.EventAgentStarted,
+			AgentRole: "product_manager",
+			At:        pmStart.UTC(),
+		})
+	}
+	defer func() {
+		durMS := time.Since(pmStart).Milliseconds()
+		if obs := domain.ObserverFromContext(ctx); obs != nil {
+			outcome := domain.OutcomeSuccess
+			if lastErr != nil {
+				outcome = domain.OutcomeFailed
+			}
+			obs.Observe(ctx, domain.ExecutionEvent{
+				Kind:           domain.EventAgentFinished,
+				AgentRole:      "product_manager",
+				At:             time.Now().UTC(),
+				DurationMillis: &durMS,
+				Outcome:        outcome,
+			})
+		}
+	}()
 	if renderer == nil {
 		renderer = prompts.NewDefaultRenderer()
 	}
@@ -55,7 +80,6 @@ func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.L
 		return fmt.Errorf("product manager prompt rendering failed: %w", err)
 	}
 	prompt := rendered.Full()
-	var lastErr error
 
 	// Propagate the product_manager role so the LLM router selects the
 	// correct provider/model override (e.g. qwencloud) for this agent.

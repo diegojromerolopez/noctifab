@@ -89,3 +89,25 @@ type ExecutionReporter interface {
 	EndStory(ctx context.Context, storyID string, outcome ExecutionOutcome)
 	Finish(ctx context.Context, outcome ExecutionOutcome)
 }
+
+type observerContextKey struct{}
+
+// WithObserver attaches an ExecutionObserver to context.
+func WithObserver(ctx context.Context, obs ExecutionObserver) context.Context {
+	if obs == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, observerContextKey{}, obs)
+}
+
+// ObserverFromContext extracts an ExecutionObserver from context, returning nil if absent.
+func ObserverFromContext(ctx context.Context) ExecutionObserver {
+	if ctx == nil {
+		return nil
+	}
+	if obs, ok := ctx.Value(observerContextKey{}).(ExecutionObserver); ok {
+		return obs
+	}
+	return nil
+}
+

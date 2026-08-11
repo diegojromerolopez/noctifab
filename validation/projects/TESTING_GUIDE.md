@@ -84,60 +84,19 @@ failure attributes cleanly to a specific stage.
   in `output/src/`, and the `<PROJECT>_FEEDBACK.md` report — focusing on story count
   vs. planned, linter-loop iterations, test pass rate at hand-off, and wall-clock time.
 
-## 5. Monitoring & Status Reporting (60-Second Loop)
+## 5. Monitoring & Execution Report Inspection
 
 While validation projects run in parallel or in the background (e.g. `make validate-all`),
-**poll their status every 60 seconds** and output a status table. The loop turns a set of
-headless containers into a diagnosable run you can act on without reading every log line.
+agents **must rely on the generated execution report (`validation/projects/<project>/output/report/*.md`)** and background task completion notifications instead of running periodic 60-second polling loops or schedule timers.
 
-### 5.1 Data sources (check at each poll)
+### 5.1 Data sources
+- Execution Report: `validation/projects/<project>/output/report/*.md` (live atomic report written during execution).
 - Container console log: `validation/projects/<project>/output/log/<project>.log`
   (also mirrored at `.validation-logs/<project>.log`).
 - Wrapper trace: `<project>.wrap.log` (build/launch/exit).
-- Aggregate: `.validation-logs/run_all.<timestamp>.log`.
-- Progress: story files under `output/src/roadmap/` (`US-001.md`, …) — count of files
-  written ≈ completed stories; a `SPEC.md` without a `roadmap/` yet means the Product
-  Manager is still decomposing.
 - Feedback: `<PROJECT>_FEEDBACK.md` (verdict, phase activity, failures, spec ambiguity)
-  is written only when the run finishes.
+  is written when the run finishes.
 - Source/binary artifacts: `output/src/` and `output/dist/`.
-
-### 5.2 Status table columns
-
-| Column | What it tracks |
-| :--- | :--- |
-| `Project` | Target project name (`calculator`, `wc`, …). |
-| `Status` | `Running`, `Completed ✅`, `Failed ❌`, or `Stuck ⚠️`. |
-| `Stuck?` | `Yes`/`No` — flag per §5.3. |
-| `Completion (%)` | Stories done / planned, e.g. `60% (3/5 stories)`. |
-| `User Stories` | Exact story count, e.g. `3/5` — which files exist under `roadmap/`. |
-| `Tests (Passed/Total)` | `–` = not yet run; `0/5` = 5 ran and 0 passed (a real failure signal); `14/14` = green. |
-| `Progress Δ (60s)` | Stories or `%` gained since the previous poll. Flat across 2+ polls while logs keep writing = slow run or stall. |
-| `Pace (time/story)` | `Elapsed Time` ÷ completed stories; the trend (not the value) tells you if the run is accelerating or degrading. |
-| `Loop Count` | Repeated linter/retry iterations on the same issue (e.g. `3× RuboCop fix`). > 3 = thrashing, not working. |
-| `Errors` | Tool errors, test failures, and LLM retries so far (e.g. `HTTP 429 ×4`, `build fail ×2`). |
-| `Tokens / Budget (%)` | Estimated tokens/budget consumed vs. the `token_usage_limit`/run budget. High `%` at low completion = effectively failing even while active. |
-| `Current Activity` | What the agent is doing now, from the last log line (e.g. `"Decomposing SPEC.md"`, `"Implementing US-002"`, `"Compiling binary"`). |
-| `Elapsed Time` | Duration since launch (e.g. `04m 15s`). |
-| `Time Remaining` | Remaining against `max_duration` (default 10m, unless another time limit is explicitly specified), e.g. `06m left`. |
-| `Last Log Activity` | Time since the last log write (e.g. `12s ago`) — the primary stuck signal. |
-| `Model / Failovers` | LLM in use and any `429`/`403`/fallback events seen. |
-| `Verdict` | Final `PASS`/`FAIL` once the feedback report exists. |
-
-### 5.3 Stuck detection (flag `Stuck? = Yes`)
-- No log output **or** file modification for **> 5 minutes**.
-- An infinite error/retry loop: the same error or the same edit repeated 3+ times
-  (e.g. RuboCop file-naming retries, non-JSON envelope reminders, HTTP 429 backoffs).
-- No progress between two consecutive 60-second polls (story count and `Last Log
-  Activity` unchanged).
-
-### 5.4 Status table format
-
-| Project | Status | Stuck? | Completion (%) | User Stories | Tests (Passed/Total) | Current Activity | Elapsed Time | Last Log Activity | Model / Failovers | Verdict |
-| :--- | :--- | :---: | :---: | :---: | :---: | :--- | :---: | :---: | :--- | :--- |
-| `calculator` | Running | No | 60% (3/5 stories) | 3/5 | 8/8 | Writing unit tests for US-003 | 04m 12s | 8s ago | `qwen3.8-max` | — |
-| `wc` | Completed ✅ | No | 100% (4/4 stories) | 4/4 | 12/12 | Final verification passed (PASS) | 08m 45s | 2m 10s ago | `qwen3.8-max` | PASS |
-| `fortune` | Stuck ⚠️ | **Yes** | 25% (1/4 stories) | 1/4 | 2/5 | Retrying failed scaffold build (no log update > 5m) | 12m 00s | 5m 45s ago | `gemini-3.1-pro-preview` | — |
 | `frontpunch` | Running | No | 41% (11/27 stories) | 11/27 | 0/0 | Product Manager decomposing SPEC (over-decomposition risk) | 18m 30s | 21s ago | `glm-5.2` | — |
 
 ### 5.5 Known failure signatures to watch for

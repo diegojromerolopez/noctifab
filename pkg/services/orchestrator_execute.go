@@ -45,6 +45,33 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	fmt.Printf("Orchestrator: Task %s (%s) is starting...\n", taskID, task.Title)
 
+	taskStart := time.Now()
+	if o.observer != nil {
+		o.observer.Observe(ctx, domain.ExecutionEvent{
+			Kind:   domain.EventTaskAttemptStarted,
+			TaskID: taskID,
+			Name:   task.Title,
+			At:     taskStart.UTC(),
+		})
+	}
+	defer func() {
+		durMS := time.Since(taskStart).Milliseconds()
+		if o.observer != nil {
+			outcome := domain.OutcomeSuccess
+			if err != nil {
+				outcome = domain.OutcomeFailed
+			}
+			o.observer.Observe(ctx, domain.ExecutionEvent{
+				Kind:           domain.EventTaskAttemptFinished,
+				TaskID:         taskID,
+				Name:           task.Title,
+				At:             time.Now().UTC(),
+				DurationMillis: &durMS,
+				Outcome:        outcome,
+			})
+		}
+	}()
+
 	baseBranch := state.Metadata.BaseBranch
 	if baseBranch == "" {
 		baseBranch = "main"
