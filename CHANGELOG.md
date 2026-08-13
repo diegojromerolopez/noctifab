@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Aggressive Circuit-Breaker for HTTP 429 Rate Limits**: updated `pkg/infrastructure/llm/client.go` to immediately skip retries on HTTP 429 quota exhaustion when no short `Retry-After` header is supplied, triggering instant model/provider fallback.
 - **Concurrent DAG Task Worker Dispatch**: updated `pkg/services/orchestrator_dispatch.go` to default concurrency to `GeneratorsNumber` (default 3) when unset, executing independent ready tasks in parallel worker goroutines.
 - **Configurable Task Execution Order & Pre-Seeded Stub Generation**: added `agents.task_execution_order` setting (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 `run_tests` compiles cleanly.
+- **Black-Box Contract Scenario Prompt Injection**: updated `orchestrator_execute.go` and `story_contract.go` to parse and inject machine-readable contract expectations (`AllowedExecutables`, `ExitCodes`, `StderrPrefixes`, `StdoutContains`) into Generator and Tester agent prompts.
+- **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: added `--resume` flag to `noctifab start` and created dedicated `noctifab resume` CLI command in `cmd/noctifab/cli/resume.go` to skip already completed stories and resume execution from the first pending/failed story.
 
 ### Removed
 - **Validation Project Feedback Report (`gen_feedback.py`)**: removed legacy `gen_feedback.py` script and `*_FEEDBACK.md` artifact generation in favor of Noctifab's native, structured Execution Report (`validation/projects/<project>/output/report/*.md`).

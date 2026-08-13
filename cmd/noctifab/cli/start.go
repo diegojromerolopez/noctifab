@@ -43,5 +43,6 @@ func isTemplateStory(content string) bool {
 
 func init() {
 	startCmd.Flags().StringP("spec", "s", "SPEC.md", "Path to feature specification file")
+	startCmd.Flags().Bool("resume", false, "Resume execution from the first incomplete user story, skipping completed stories")
 	RootCmd.AddCommand(startCmd)
 }

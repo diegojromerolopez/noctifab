@@ -212,6 +212,15 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
+	// Inject Black-Box Contract Scenarios if story contract is present
+	if state.Metadata.InputPath != "" {
+		if storyContent, err := os.ReadFile(state.Metadata.InputPath); err == nil {
+			if contractCtx := FormatContractPromptContext(state.Metadata.InputPath, string(storyContent)); contractCtx != "" {
+				fileContexts = append(fileContexts, contractCtx)
+			}
+		}
+	}
+
 	arch := strings.ToLower(strings.TrimSpace(o.cfg.Architecture))
 	qaBlocked := ""
 	if arch == "single_pass" || arch == "single_pass_execution" || arch == "spe" {

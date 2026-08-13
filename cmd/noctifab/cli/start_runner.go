@@ -282,6 +282,8 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	if executionReporter != nil {
 		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "story_execution", At: time.Now().UTC()})
 	}
+	resumeRequested, _ := cmd.Flags().GetBool("resume")
+
 	for idx, currentStoryFile := range storyFiles {
 		storyID := fmt.Sprintf("story-%04d", idx+1)
 		storyTitle := extractStoryTitle(currentStoryFile)
@@ -294,6 +296,15 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			StartedAt:   time.Now().UTC(),
 		}
 		executionReporter.BeginStory(cmdCtx, storyMeta)
+
+		if resumeRequested {
+			if st, err := repo.Load(cmdCtx); err == nil && st != nil {
+				if st.Metadata.InputPath == currentStoryFile && st.StoryStatus == domain.StorySuccess && allTasksFinished(st) {
+					fmt.Printf("ℹ [Resume] Skipping already completed story %s (%s) — all tasks succeeded\n", storyID, storyTitle)
+					continue
+				}
+			}
+		}
 
 		storyErr := func(currentStoryFile string) error {
 			specBytes, err := os.ReadFile(currentStoryFile)
