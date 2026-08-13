@@ -29,7 +29,8 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	// Executive Summary
 	sb.WriteString("## Executive Summary\n\n")
 	if snapshot.Report != nil && snapshot.Report.Summary != "" {
-		sb.WriteString(r.sanitizeCell(snapshot.Report.Summary) + "\n\n")
+		sb.WriteString(r.sanitizeCell(snapshot.Report.Summary))
+		sb.WriteString("\n\n")
 	} else {
 		fmt.Fprintf(&sb, "Process execution %s after %s. %d errors, %d retries observed.\n\n",
 			strings.ToLower(string(snapshot.Status)), r.formatDuration(snapshot.ExecutionWallMS), snapshot.ErrorCount, snapshot.RetryCount)
