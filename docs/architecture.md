@@ -100,6 +100,25 @@ Architecture, security, performance, documentation, and infrastructure work is r
 
 ---
 
+## Specification-Based Complexity Units ($CU$)
+
+To prevent micro-tasks and oversized monolithic user stories during spec decomposition, `noctifab` uses a **Unified Composite Complexity Unit ($CU$)** metric.
+
+The $CU$ metric synthesizes three specification-driven dimensions directly from natural language text (`SPEC.md`):
+
+$$\text{CU} = \underbrace{\text{Data Movements}}_{\text{COSMIC (Entry, Exit, Read, Write)}} + \underbrace{\text{Domain Concepts}}_{\text{DDD (Structs, Entities, State)}} + \underbrace{\text{Contract Invariants}}_{\text{RPA (Flags, Exit Codes, Output Rules)}}$$
+
+### Sizing Boundaries & Decomposition Rules
+1. **Product Manager Sizing (`generate.tmpl`):**
+   - For concise specifications ($CU_{\text{total}} < 25$, such as `wc`, `echo`, `calculator`), the Product Manager Agent is mandated to create **exactly 1 User Story**.
+   - For larger specifications, User Stories are sized to target windows ($15 \le CU_{\text{story}} \le 30$).
+2. **Planner Task Sizing (`decompose.tmpl`):**
+   - User stories are decomposed into tasks bounded by $CU_{\text{task}} \in [4, 8]$.
+3. **Task Cohesion Validation (`pkg/services/task_cohesion.go`):**
+   - Programmatically enforces task cohesion: rejecting micro-tasks ($CU < 4$) and splitting oversized tasks ($CU > 8$).
+
+---
+
 ## Self-Healing & Anti-Stalling Resiliency
 
 To prevent execution stalls and guarantee progress under validation failures, `noctifab` implements self-healing at two distinct layers:
