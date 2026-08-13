@@ -108,6 +108,22 @@ The $CU$ metric synthesizes three specification-driven dimensions directly from 
 
 $$\text{CU} = \underbrace{\text{Data Movements}}_{\text{COSMIC (Entry, Exit, Read, Write)}} + \underbrace{\text{Domain Concepts}}_{\text{DDD (Structs, Entities, State)}} + \underbrace{\text{Contract Invariants}}_{\text{RPA (Flags, Exit Codes, Output Rules)}}$$
 
+### Theoretical Foundations & Academic References
+
+The Unified Composite $CU$ Metric synthesizes three established specification-driven standards:
+
+1. **COSMIC Function Points (ISO/IEC 19761:2011):**
+   - Measures **Data Movements** directly from natural language text: **Entry (E)** (arguments, stdin, requests), **Exit (X)** (stdout, status codes, responses), **Read (R)** (filesystem/db reads), and **Write (W)** (file/db writes).
+   - *Reference:* [ISO/IEC 19761:2011 — COSMIC Measurement Method](https://www.iso.org/standard/55222.html) and [COSMIC Measurement Manual v5.0](https://cosmic-sizing.org/publications/measurement-manual-v5-0/).
+
+2. **Domain & Object Model Complexity (DDD & Chidamber-Kemerer):**
+   - Evaluates domain structural complexity from requirement prose: core **Entities**, **Value Objects**, **Domain Services**, and **State Machines**.
+   - *Reference:* [Chidamber & Kemerer (IEEE TSE, 1994) — A Metrics Suite for Object Oriented Design](https://doi.org/10.1109/32.295895) and [MIT Sloan Working Paper 3233-90](https://dspace.mit.edu/handle/1721.1/48493).
+
+3. **Requirement Invariants & Imperatives (NASA ARM & RFC 2119):**
+   - Measures contract invariants and interface surface area: CLI options, error conditions, exit code specifications, and imperative rules (`MUST`, `SHALL`).
+   - *Reference:* [NASA Technical Memorandum 104640 (ARM Tool)](https://ntrs.nasa.gov/citations/19970024095) and [IETF RFC 2119 Requirement Levels](https://datatracker.ietf.org/doc/html/rfc2119).
+
 ### Sizing Boundaries & Decomposition Rules
 1. **Product Manager Sizing (`generate.tmpl`):**
    - For concise specifications ($CU_{\text{total}} < 25$, such as `wc`, `echo`, `calculator`), the Product Manager Agent is mandated to create **exactly 1 User Story**.
