@@ -38,9 +38,8 @@ Tiers 2–3 when validating depth rather than as the default feedback loop.
 validation/
 ├── Dockerfile.validation          # Shared base image (noctifab binary + projects + validate.sh)
 ├── validate.sh                    # Per-project harness, runs inside the container
-├── run_one.sh                     # Build + run one project, capture log, write feedback .md
+├── run_one.sh                     # Build + run one project, capture log and execution report
 ├── run_all.sh                     # Run every project in parallel, aggregate exit codes
-├── gen_feedback.py                # Parse a captured log into a <PROJECT>_FEEDBACK.md report
 ├── README.md                      # This file
 └── projects/
     ├── frontpunch/{Dockerfile, SPEC.md, roadmap/, .noctifab/}

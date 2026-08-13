@@ -164,16 +164,4 @@ set -e
 TS="$(date +%H:%M:%S)"
 echo "[${TS}] ${CONTAINER} exited (code=${EXIT_CODE}). Log: ${LOG_FILE}"
 
-# 3. Generate the markdown feedback file from the structured report or fallback log.
-PY="${PYTHON:-python3}"
-"${PY}" "${SCRIPT_DIR}/gen_feedback.py" \
-  --execution-report "${REPORT_DIR}/execution_report.md" \
-  --log-fallback "${LOG_FILE}" \
-  --output "${ROOT}/validation/projects/${PROJECT}/output/feedback/${PROJECT:+"$(tr '[:lower:]' '[:upper:]' <<< ${PROJECT:0:1})${PROJECT:1}"}_FEEDBACK.md" \
-  "${LOG_FILE}" \
-  "${PROJECT}" \
-  "${TARGETS}" \
-  "${ROOT}" \
-  "${EXIT_CODE}"
-
 exit ${EXIT_CODE}
