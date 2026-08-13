@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.1] - 2026-08-13
+
+### Changed
+- **Validation Projects Consolidation**: Consolidated `searchreadthedocs` into `searchthedocs`, standardizing on Python 3.15 + FastAPI + PostgreSQL `pgvector` HNSW index architecture for RAG documentation search validation.
+
 ## [0.32.0] - 2026-08-13
 
 ### Added
@@ -165,7 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.26.0] - 2026-08-08
 
 ### Added
-- **Validation Projects Matrix**: Added technical specifications (`SPEC.md`), container definitions (`Dockerfile`, `docker-compose.yml`), and configuration profiles (`.noctifab/config.yaml`) for validation projects: `auth-vault`, `buffonstream`, `djanban`, `searchreadthedocs`, `searchthedocs`, `sqlasm`, and `stricc`.
+- **Validation Projects Matrix**: Added technical specifications (`SPEC.md`), container definitions (`Dockerfile`, `docker-compose.yml`), and configuration profiles (`.noctifab/config.yaml`) for validation projects: `auth-vault`, `buffonstream`, `djanban`, `searchthedocs`, `sqlasm`, and `stricc`.
 - **LLM Provider Prioritization**: Standardized top-tier LLM provider fallback hierarchy (`claude`, `gemini`, `openai`, `deepseek-pro`, `qwen`, `opencode`, `openrouter`) across all 15 validation projects.
 - **Architectural Reviews & Hardening Guidelines**: Audited and hardened all `SPEC.md` files for Dark Factory autonomous execution by lower-level LLMs.
 

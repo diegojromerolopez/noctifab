@@ -156,7 +156,7 @@ llm:
     streaming: true
 vcs:
   provider: github
-  repository: diegojromerolopez/searchthedocs
+  repository: diegojromerolopez/searchreadthedocs
   base_branch: main
   branch_prefix: noctifab/
   use_worktrees: true

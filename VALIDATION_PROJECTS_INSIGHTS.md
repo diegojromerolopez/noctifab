@@ -19,8 +19,7 @@ This report summarizes empirical results, performance bottlenecks, and architect
 | **`frontpunch`** | Python + Valkey | Tier 3 | Terminated (10m) | In Progress | Multi-threaded worker queue daemon. Executed sidekiq-compatible middleware & worker task generation. |
 | **`djanban`** | Python 3.12 + Django 5 | Tier 1 | Terminated (10m) | In Progress | Legacy Django modernization. Active domain calculator implementation (`WIPCalculator`, `RegressionTracker`). |
 | **`stricc`** | Rust + LLVM 18 | Tier 2 | Terminated (10m) | In Progress | Safe C compiler AST & FFI shadow metadata. OpenRouter provider failover active. |
-| **`searchreadthedocs`**| Python 3.15 + pgvector | Tier 1 | Terminated (10m) | In Progress | RAG vector search & worker scraper queue. Active `pgvector` HNSW indexer planning. |
-| **`searchreadthedocs`** | Python 3.12 + FastAPI | Tier 1 | Terminated (10m) | In Progress | RAG documentation search baseline. Prompt compaction active. |
+| **`searchthedocs`**| Python 3.15 + pgvector | Tier 1 | Terminated (10m) | In Progress | RAG vector search & worker scraper queue. Active `pgvector` HNSW indexer planning. |
 | **`auth-vault`** | Go 1.22 | Tier 1 | Terminated (10m) | In Progress | Zero-trust OAuth2 / OIDC server & PKI. Active token introspection & JWKS key rotation planning. |
 | **`buffonstream`** | Go 1.22 gRPC | Tier 1 | Terminated (10m) | In Progress | Protobuf length-prefixed storage engine (`.pbdb`) & gRPC CDC streaming. Active protobuf handler generation. |
 | **`sqlasm`** | x86_64 NASM Assembly | Tier 2 | Completed | **FAIL ❌** | **Architecture Mismatch**: Docker container image (`debian:bookworm-slim` amd64) failed executing Noctifab host binary (`Exec format error`). |
@@ -76,7 +75,7 @@ Based on these validation insights, the following concrete improvements are prop
 * **Fix**: Update `run_all.sh` to execute validation projects in **3 sequential waves** (as defined in `TESTING_GUIDE.md`):
   - **Wave 1 (Loop Smoke)**: `echo`, `t4`, `calculator`
   - **Wave 2 (Strict Discipline & Seams)**: `wc`, `fortune`, `pyedis`, `todo-cli`
-  - **Wave 3 (Heavy Integration & Microservices)**: `notebook`, `frontpunch`, `djanban`, `auth-vault`, `buffonstream`, `stricc`, `searchreadthedocs`, `sqlasm`
+  - **Wave 3 (Heavy Integration & Microservices)**: `notebook`, `frontpunch`, `djanban`, `auth-vault`, `buffonstream`, `stricc`, `searchthedocs`, `sqlasm`
 
 ### Proposal C: Standardize Dockerfile Base Architecture (`sqlasm`)
 * **Problem**: `sqlasm` failed startup due to `Exec format error` between host ARM64 binary and container AMD64 image.
