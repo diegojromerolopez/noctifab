@@ -216,3 +216,37 @@ func TestGenerateRoadmap_DetectsLegacyCode(t *testing.T) {
 	assert.Contains(t, capturedPrompt, "calculator.py")
 	assert.Contains(t, capturedPrompt, "LEGACY STABILIZATION MANDATE")
 }
+
+func TestGenerateRoadmapWithPasses_MultiPass(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "noctifab-roadmap-multipass-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	specPath := filepath.Join(tempDir, "SPEC.md")
+	err = os.WriteFile(specPath, []byte("# MultiPass Spec"), 0644)
+	assert.NoError(t, err)
+
+	mockLLM := &mockRoadmapLLMClient{
+		Response: &domain.LLMResponse{
+			Reasoning: "Generating multi-pass roadmap",
+			Actions: []domain.LLMAction{
+				{
+					Tool: "create_story",
+					Args: map[string]any{
+						"filename": "roadmap/US-001.md",
+						"content":  "# US-001: Initial Story\n",
+					},
+				},
+			},
+		},
+	}
+
+	err = services.GenerateRoadmapWithPasses(context.Background(), tempDir, mockLLM, nil, 3)
+	assert.NoError(t, err)
+
+	us1Path := filepath.Join(tempDir, "roadmap", "US-001.md")
+	_, err = os.Stat(us1Path)
+	assert.NoError(t, err)
+}

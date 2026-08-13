@@ -10,6 +10,7 @@ agents:
     number: 1
     iterations: 2
     max_user_stories: 5
+    passes: 3
     providers:
     - name: claude
     - name: gemini

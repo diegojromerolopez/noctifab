@@ -21,6 +21,7 @@ func DefaultConfig() *Config {
 				Number:         1,
 				Iterations:     2,
 				MaxUserStories: 5,
+				Passes:         2,
 			},
 			Planner: AgentRoleConfig{
 				Number:     1,

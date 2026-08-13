@@ -126,6 +126,7 @@ type AgentRoleConfig struct {
 	Profile        string             `yaml:"profile,omitempty"`
 	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
 	MaxUserStories int                `yaml:"max_user_stories,omitempty"`
+	Passes         int                `yaml:"passes,omitempty"`
 }
 
 type StorageConfig struct {
