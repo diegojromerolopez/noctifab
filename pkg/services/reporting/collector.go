@@ -1,8 +1,15 @@
 package reporting
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -430,5 +437,115 @@ func (c *Collector) Snapshot() ReportSnapshot {
 		snap.PhaseIntervals[k] = invs
 	}
 
+	if snap.Churn.FilesChanged == 0 && snap.Run.ProjectPath != "" {
+		snap.Churn = computeWorkspaceChurn(snap.Run.ProjectPath)
+	}
+	if snap.Run.ProjectPath != "" {
+		snap.PublicContracts = collectStoryContracts(snap.Run.ProjectPath)
+	}
+
 	return snap
+}
+
+var storyContractBlockRE = regexp.MustCompile("(?s)```noctifab-contract[ \\t]*\\r?\\n(.*?)\\r?\\n```")
+
+func collectStoryContracts(projectPath string) []domain.PublicContract {
+	roadmapDir := filepath.Join(projectPath, "roadmap")
+	entries, err := os.ReadDir(roadmapDir)
+	if err != nil {
+		return nil
+	}
+
+	var contracts []domain.PublicContract
+	seen := make(map[string]bool)
+
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+			fullPath := filepath.Join(roadmapDir, entry.Name())
+			content, rErr := os.ReadFile(fullPath)
+			if rErr != nil {
+				continue
+			}
+			matches := storyContractBlockRE.FindAllStringSubmatch(string(content), -1)
+			for _, match := range matches {
+				var payload struct {
+					PublicContracts []domain.PublicContract `json:"public_contracts"`
+				}
+				if jsonErr := json.Unmarshal([]byte(match[1]), &payload); jsonErr == nil {
+					for _, pc := range payload.PublicContracts {
+						if pc.ID != "" && !seen[pc.ID] {
+							seen[pc.ID] = true
+							contracts = append(contracts, pc)
+						}
+					}
+				}
+			}
+		}
+	}
+	return contracts
+}
+
+func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
+	var churn CodeChurnSummary
+	if projectPath == "" {
+		return churn
+	}
+
+	cmd := exec.Command("git", "diff", "--shortstat", "HEAD")
+	cmd.Dir = projectPath
+	if out, err := cmd.Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
+		parseGitShortstat(string(out), &churn)
+	}
+
+	cmdStatus := exec.Command("git", "status", "--porcelain")
+	cmdStatus.Dir = projectPath
+	if outStatus, errStatus := cmdStatus.Output(); errStatus == nil {
+		lines := strings.Split(strings.TrimSpace(string(outStatus)), "\n")
+		untrackedFiles := int64(0)
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "??") || strings.HasPrefix(line, "A ") {
+				untrackedFiles++
+				filePath := strings.TrimSpace(line[2:])
+				fullPath := filepath.Join(projectPath, filePath)
+				if content, rErr := os.ReadFile(fullPath); rErr == nil {
+					lineCount := int64(bytes.Count(content, []byte("\n")))
+					if len(content) > 0 && !bytes.HasSuffix(content, []byte("\n")) {
+						lineCount++
+					}
+					churn.LinesAdded += lineCount
+				}
+			}
+		}
+		if churn.FilesChanged == 0 && len(lines) > 0 && lines[0] != "" {
+			churn.FilesChanged = int64(len(lines))
+		} else if untrackedFiles > 0 {
+			churn.FilesChanged += untrackedFiles
+		}
+	}
+
+	return churn
+}
+
+func parseGitShortstat(stat string, churn *CodeChurnSummary) {
+	parts := strings.Split(strings.TrimSpace(stat), ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if strings.Contains(part, "file") {
+			var n int64
+			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
+				churn.FilesChanged = n
+			}
+		} else if strings.Contains(part, "insertion") {
+			var n int64
+			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
+				churn.LinesAdded = n
+			}
+		} else if strings.Contains(part, "deletion") {
+			var n int64
+			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
+				churn.LinesDeleted = n
+			}
+		}
+	}
 }

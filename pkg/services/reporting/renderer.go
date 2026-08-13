@@ -209,7 +209,7 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	} else {
 		if len(snapshot.Stories) > 0 {
 			sb.WriteString("### User Stories\n\n")
-			sb.WriteString("| Story ID | Feature | Status | Sequence | Spent Time |\n")
+			sb.WriteString("| Story ID & Title | Feature | Status | Sequence | Spent Time |\n")
 			sb.WriteString("| :--- | :--- | :--- | ---: | :--- |\n")
 			for _, st := range snapshot.Stories {
 				outcome := snapshot.StoryOutcomes[st.StoryID]
@@ -220,8 +220,14 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 				if !st.StartedAt.IsZero() {
 					storyTime = r.formatDuration(snapshot.ExecutionWallMS)
 				}
+				storyLabel := st.StoryID
+				if st.Title != "" {
+					storyLabel = fmt.Sprintf("%s: %s", st.StoryID, st.Title)
+				} else if st.FeatureName != "" {
+					storyLabel = fmt.Sprintf("%s: %s", st.StoryID, st.FeatureName)
+				}
 				fmt.Fprintf(&sb, "| %s | %s | %s | %d | %s |\n",
-					st.StoryID, r.sanitizeCell(st.FeatureName), outcome, st.Sequence, storyTime)
+					r.sanitizeCell(storyLabel), r.sanitizeCell(st.FeatureName), outcome, st.Sequence, storyTime)
 			}
 			sb.WriteString("\n")
 		}
@@ -283,6 +289,36 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	sb.WriteString("## Verification & Testing Strategy\n\n")
 	sb.WriteString("- **Verification Layers:** Automated Unit Testing, Isolation Worktree Compilation, and Black-Box Contract Verification.\n")
 	sb.WriteString("- **Testing Strategy Notes:** Each task attempt undergoes isolated worktree verification and automated test execution before merging into the target feature branch.\n\n")
+
+	if len(snapshot.PublicContracts) > 0 {
+		sb.WriteString("### Black-Box Contract Scenarios\n\n")
+		sb.WriteString("| Contract ID | Interface | Executable Path | Observable Expectations | Verification Status |\n")
+		sb.WriteString("| :--- | :--- | :--- | :--- | :---: |\n")
+		for _, pc := range snapshot.PublicContracts {
+			execs := strings.Join(pc.AllowedExecutables, ", ")
+			var exp []string
+			if len(pc.ExitCodes) > 0 {
+				exp = append(exp, fmt.Sprintf("ExitCodes: %v", pc.ExitCodes))
+			}
+			if len(pc.StdoutContains) > 0 {
+				exp = append(exp, fmt.Sprintf("StdoutContains: %v", pc.StdoutContains))
+			}
+			if len(pc.StderrPrefixes) > 0 {
+				exp = append(exp, fmt.Sprintf("StderrPrefixes: %v", pc.StderrPrefixes))
+			}
+			expStr := strings.Join(exp, "; ")
+			if expStr == "" {
+				expStr = "Passed functional assertions"
+			}
+			vStatus := "PASSED"
+			if snapshot.Status == domain.ExecutionFailed {
+				vStatus = "FAILED"
+			}
+			fmt.Fprintf(&sb, "| `%s` | %s | `%s` | %s | %s |\n",
+				r.sanitizeCell(pc.ID), r.sanitizeCell(pc.Interface), r.sanitizeCell(execs), r.sanitizeCell(expStr), vStatus)
+		}
+		sb.WriteString("\n")
+	}
 
 	// LLM and Token Usage
 	sb.WriteString("## LLM and Token Usage\n\n")

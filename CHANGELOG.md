@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Real-Time Live Execution Report Documentation**: updated `README.md`, `docs/execution_report.md`, and `validation/run_all.sh` to document real-time live checkpointing and atomic file writes.
 - **Lead Time Metric Standard**: renamed **Execution Wall Time** metric to **Lead Time** across the execution report renderer (`renderer.go`) and documentation (`docs/execution_report.md`).
 - **Standard Terminology Alignment**: standardized Phase Performance metrics to **Phase Cycle Time** (net de-duplicated physical clock time) and **Execution Spans** in `renderer.go` and documentation.
+- **User Story Title Correlation**: added story title parsing (`extractStoryTitle`) and display in the `### User Stories` table (`Story ID & Title`), matching task title formatting.
+- **Workspace Code Churn Calculation**: implemented `computeWorkspaceChurn` in `collector.go` using workspace `git diff` and `git status` to accurately calculate `Files Changed`, `Lines Added`, `Lines Deleted`, and `Net Line Delta`.
+- **Black-Box Contract Scenarios Table**: rendered public contract scenarios (`Contract ID`, `Interface`, `Executable Path`, `Observable Expectations`, `Verification Status`) under `## Verification & Testing Strategy`.
 
 ### Removed
 - **Validation Project Feedback Report (`gen_feedback.py`)**: removed legacy `gen_feedback.py` script and `*_FEEDBACK.md` artifact generation in favor of Noctifab's native, structured Execution Report (`validation/projects/<project>/output/report/*.md`).

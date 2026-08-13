@@ -283,10 +283,12 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 	for idx, currentStoryFile := range storyFiles {
 		storyID := fmt.Sprintf("story-%04d", idx+1)
+		storyTitle := extractStoryTitle(currentStoryFile)
 		storyMeta := domain.StoryMetadata{
 			StoryID:     storyID,
 			Source:      currentStoryFile,
 			FeatureName: filepath.Base(currentStoryFile),
+			Title:       storyTitle,
 			Sequence:    idx + 1,
 			StartedAt:   time.Now().UTC(),
 		}
@@ -372,4 +374,20 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	finalOutcome = domain.ExecutionSuccess
 	return nil
+}
+
+func extractStoryTitle(filePath string) string {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "# ") {
+			title := strings.TrimPrefix(line, "# ")
+			return strings.TrimSpace(title)
+		}
+	}
+	return ""
 }

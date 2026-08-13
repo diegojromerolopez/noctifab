@@ -18,6 +18,7 @@ type StoryMetadata struct {
 	StoryID     string    `json:"story_id"`
 	Source      string    `json:"source"`
 	FeatureName string    `json:"feature_name"`
+	Title       string    `json:"title,omitempty"`
 	StateID     string    `json:"state_id,omitempty"`
 	Sequence    int       `json:"sequence"`
 	StartedAt   time.Time `json:"started_at"`

@@ -104,6 +104,7 @@ type ReportSnapshot struct {
 	OperationSumMS   map[string]int64                   `json:"operation_sum_ms"`
 	Churn            CodeChurnSummary                   `json:"churn"`
 	SelfCorrection   SelfCorrectionSummary              `json:"self_correction"`
+	PublicContracts  []domain.PublicContract            `json:"public_contracts,omitempty"`
 	MeasuredTokens   int64                              `json:"measured_tokens"`
 	EstimatedTokens  int64                              `json:"estimated_tokens"`
 	TotalCostUSD     string                             `json:"total_cost_usd"`
