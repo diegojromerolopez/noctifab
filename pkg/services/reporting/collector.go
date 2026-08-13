@@ -491,10 +491,25 @@ func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 		return churn
 	}
 
-	cmd := exec.Command("git", "diff", "--shortstat", "HEAD")
-	cmd.Dir = projectPath
-	if out, err := cmd.Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
-		parseGitShortstat(string(out), &churn)
+	// Find the root commit of the repository
+	rootCmd := exec.Command("git", "rev-list", "--max-parents=0", "HEAD")
+	rootCmd.Dir = projectPath
+	if rootOut, rErr := rootCmd.Output(); rErr == nil && len(bytes.TrimSpace(rootOut)) > 0 {
+		rootHash := strings.TrimSpace(string(rootOut))
+		diffCmd := exec.Command("git", "diff", "--shortstat", rootHash)
+		diffCmd.Dir = projectPath
+		if out, err := diffCmd.Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
+			parseGitShortstat(string(out), &churn)
+		}
+	}
+
+	// Fallback to git diff HEAD if root commit diff yielded nothing
+	if churn.FilesChanged == 0 {
+		cmd := exec.Command("git", "diff", "--shortstat", "HEAD")
+		cmd.Dir = projectPath
+		if out, err := cmd.Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
+			parseGitShortstat(string(out), &churn)
+		}
 	}
 
 	cmdStatus := exec.Command("git", "status", "--porcelain")
