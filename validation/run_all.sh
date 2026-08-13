@@ -2,8 +2,8 @@
 # Run the noctifab validation matrix (parallel or serial): one container per
 # validation project. Each project builds its own image on top of the shared
 # `noctifab-validation:base` base image, runs a validate.sh harness container,
-# captures its log to .validation-logs/<project>.log, and writes a
-# <PROJECT>_FEEDBACK.md file at the repository root.
+# captures its log to .validation-logs/<project>.log, and writes an
+# execution report under validation/projects/<project>/output/report/.
 #
 # Usage:
 #   run_all.sh                           # parallel run for all projects

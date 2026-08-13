@@ -183,16 +183,18 @@ To prevent "evaluation gaming" (where code generators approve their own buggy co
 
 ---
 
-## 📊 Structured Execution Reports & Telemetry Logs
+## 📊 Structured Real-Time Execution Reports & Telemetry Logs
 
-`noctifab` provides a structured execution reporting and telemetry subsystem that records fine-grained events during autonomous runs and synthesizes a deterministic, human-and-machine-readable Markdown **Execution Report** (`execution_report.md`) without requiring external tools to parse raw logs.
+`noctifab` provides a native, structured execution reporting and telemetry subsystem that records fine-grained events during autonomous runs and synthesizes a deterministic, human-and-machine-readable Markdown **Execution Report** (`<TIMESTAMP>_<PROJECT>.md`) without requiring external tools to parse raw logs.
 
-### Core Concepts
+### Core Concepts & Real-Time Live Checkpointing
 
 - **`execution_log` (Event Stream & Telemetry)**:
   A concurrency-safe stream of structured timeline events (`ExecutionEvent` / `ExecutionLog`) captured during orchestrator, planner, generator, tester, and unblocker agent activities (storing timestamps, agent roles, phase transitions, task attempts, millisecond duration measurements, token usage, errors, and retries).
-- **`execution_report` (`execution_report.md`)**:
-  The synthesized Markdown report artifact generated from snapshot aggregation. Contains executive summaries, live status tables, role active/waiting metrics, deterministic bottlenecks (`BN-*`), evidence-backed issues (`ISSUE-*`), actionable proposals (`PROP-*`), and read-only model hypotheses.
+- **`execution_report` (`<TIMESTAMP>_<PROJECT>.md`)**:
+  The synthesized Markdown report artifact generated continuously during execution.
+  * **Real-Time Live Updates**: Flushed atomically to disk every **5 seconds** (and instantly on phase/story transitions), allowing developers to watch live progress, active worker spans, token counts, and task attempt states in real time without polling.
+  * **Structured Sections**: Includes executive summaries, live status tables, active agent performance spans (omitting zero units like `17s 116ms`), phase execution windows, human-readable bottleneck diagnoses, error breakdown tables, task titles linked to parent story IDs, and deliverables.
 
 ### Configuration
 
@@ -203,7 +205,7 @@ config_version: "2.0"
 execution_report: ".noctifab/reports/execution_report.md"
 ```
 
-Report paths are resolved within workspace boundaries, timestamped (`YYYYMMDD_HHMMSS_<folder_name>.md`), and written atomically using exclusive temporary files with `0600` permissions. For detailed documentation, see [docs/execution_report.md](file:///Users/diegoj/repos/noctifab/docs/execution_report.md).
+Report paths are resolved strictly within workspace boundaries, timestamped with the canonical project folder name (`YYYYMMDD_HHMMSS_<project>.md`), and written atomically using exclusive temporary files with `0600` permissions. For detailed documentation, see [docs/execution_report.md](file:///Users/diegoj/repos/noctifab/docs/execution_report.md).
 
 ---
 
