@@ -403,7 +403,20 @@ Configured via `agents.task_execution_order` in `.noctifab/config.yaml`:
 agents:
   architecture: code_first
   task_execution_order: generator_first # "generator_first" (default) or "tester_first"
+  product_manager:
+    passes: 2 # 1 = Fast, 2 = Standard 2-Pass Refinement (default), 3 = Deep Contract Audit
 ```
+
+### 6. Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)
+The Product Manager Agent executes a multi-pass specification decomposition and audit loop:
+* **Pass 1 (Decomposition & Drafting)**: Renders `generate` prompt, creating initial user stories in `roadmap/US-xxx.md`.
+* **Pass 2+ (Cross-Story Audit & Contract Alignment)**: Renders `audit` prompt with existing generated stories as context, verifying cross-story dependencies, contract IDs, and `SPEC.md` requirement coverage.
+
+### 7. Black-Box Contract Scenario Prompt Injection
+Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks (`AllowedExecutables`, `ExitCodes`, `StderrPrefixes`, `StdoutContains`) are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
+
+### 8. Standardized Sandbox Path Normalization (`resolveSandboxPath`)
+The sandbox resolution layer cleans, trims whitespace, converts Windows backslashes `\` to `/`, and strips leading `./` prefixes before verifying sandbox boundary jail rules and blacklisted directory policy (`.noctifab`, `.git`).
 
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.
 

@@ -50,13 +50,23 @@ noctifab validate
 ```
 
 ### 3. `start`
-Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-i` / `--interactive` to launch the live TUI dashboard interface.
+Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-i` / `--interactive` to launch the live TUI dashboard interface. Pass `--resume` to skip already completed user stories and resume execution from the first incomplete story.
 ```bash
 # Run in current directory
 noctifab start -i
 
 # Run on a target project folder
 noctifab start /path/to/my-project -i
+
+# Resume execution, skipping completed user stories
+noctifab start --resume
+```
+
+### 4. `resume`
+Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story.
+```bash
+# Resume execution in target project folder
+noctifab resume /path/to/my-project
 ```
 
 ### 5. `dashboard`
