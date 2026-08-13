@@ -94,7 +94,7 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 
 	// Time Spent
 	sb.WriteString("## Time Spent\n\n")
-	fmt.Fprintf(&sb, "- **Execution Wall Time:** %s *(Physical clock time elapsed from start to completion)*\n", elapsedStr)
+	fmt.Fprintf(&sb, "- **Lead Time:** %s *(Total physical clock time elapsed from start to completion)*\n", elapsedStr)
 	fmt.Fprintf(&sb, "- **Report Overhead Time:** %s\n\n", r.formatDuration(snapshot.ReportOverheadMS))
 
 	// Agent Performance

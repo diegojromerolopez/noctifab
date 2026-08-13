@@ -50,7 +50,7 @@ The generated `<TIMESTAMP>_<PROJECT>.md` contains the following structured secti
 | **Executive Summary** | Concise, synthesized summary of run outcome, elapsed physical time, error count, and retries. |
 | **Live Status** | Real-time status table showing stories completed, tasks passed, errors, token usage, elapsed time, and active LLM provider. |
 | **Run Metadata** | Execution command, project path, canonical report path, start timestamp, and Noctifab version. |
-| **Time Spent** | **Execution Wall Time** (physical clock time elapsed) and reporting overhead. |
+| **Time Spent** | **Lead Time** (total physical clock time elapsed from start to completion) and reporting overhead. |
 | **Agent Performance** | Breakdown of agent invocations per role, story, task, active execution span (omitting zero units, e.g. `17s 116ms`), and outcome. |
 | **Phase Performance** | **Union Wall Time** (de-duplicated clock time) and **Execution Windows** across pipeline phases (Roadmap Generation, Story Execution). |
 | **Code Churn & Workspace Impact** | Files modified, lines added/deleted, and net line delta. |
