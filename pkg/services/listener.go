@@ -88,6 +88,9 @@ func (a *ListenerAgent) Start(ctx context.Context) {
 		}
 
 		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				_, _ = fmt.Fprintf(a.out, "⚠ Error reading input: %v\n", err)
+			}
 			return
 		}
 
