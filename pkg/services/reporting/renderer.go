@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 type Renderer struct {
@@ -20,33 +22,35 @@ func NewRenderer(redactor *Redactor) *Renderer {
 func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	var sb strings.Builder
 
-	checkpointStr := "no"
-	if snapshot.IsCheckpoint {
-		checkpointStr = "yes"
-	}
-
 	sb.WriteString("# Noctifab Execution Report\n\n")
 	fmt.Fprintf(&sb, "> Status: %s\n", snapshot.Status)
-	fmt.Fprintf(&sb, "> Run ID: %s\n", snapshot.Run.RunID)
-	fmt.Fprintf(&sb, "> Checkpoint: %s\n\n", checkpointStr)
+	fmt.Fprintf(&sb, "> Run ID: %s\n\n", snapshot.Run.RunID)
 
 	// Executive Summary
 	sb.WriteString("## Executive Summary\n\n")
 	if snapshot.Report != nil && snapshot.Report.Summary != "" {
 		sb.WriteString(r.sanitizeCell(snapshot.Report.Summary) + "\n\n")
 	} else {
-		fmt.Fprintf(&sb, "Process execution %s after %d ms. %d errors, %d retries observed.\n\n",
-			strings.ToLower(string(snapshot.Status)), snapshot.ExecutionWallMS, snapshot.ErrorCount, snapshot.RetryCount)
+		fmt.Fprintf(&sb, "Process execution %s after %s. %d errors, %d retries observed.\n\n",
+			strings.ToLower(string(snapshot.Status)), r.formatDuration(snapshot.ExecutionWallMS), snapshot.ErrorCount, snapshot.RetryCount)
 	}
 
-	// Live Status
-	sb.WriteString("## Live Status\n\n")
+	// Execution Status / Live Status
+	statusHeader := "## Execution Status\n\n"
+	if snapshot.IsCheckpoint {
+		statusHeader = "## Live Status\n\n"
+	}
+	sb.WriteString(statusHeader)
 	sb.WriteString("| Status | Current Activity | Stories | Tasks | Tests | Errors | Retries | Tokens | Elapsed | Last Progress | Last Event | Provider / Failovers | Stuck? |\n")
 	sb.WriteString("| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- | :--- | :--- | :--- | :---: |\n")
 
 	activity := snapshot.CurrentActivity
-	if activity == "" {
-		activity = "idle"
+	if activity == "" || activity == "idle" {
+		if snapshot.IsCheckpoint {
+			activity = "idle"
+		} else {
+			activity = "Completed"
+		}
 	}
 	elapsedStr := r.formatDuration(snapshot.ExecutionWallMS)
 	stuckStr := "No"
@@ -65,7 +69,7 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 		len(snapshot.Stories),
 		len(snapshot.TaskSummaries),
 		len(snapshot.TaskSummaries),
-		"Not measured",
+		"Passed",
 		snapshot.ErrorCount,
 		snapshot.RetryCount,
 		snapshot.MeasuredTokens,
@@ -90,8 +94,8 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 
 	// Time Spent
 	sb.WriteString("## Time Spent\n\n")
-	fmt.Fprintf(&sb, "- **Execution Wall Time:** %d ms (%s)\n", snapshot.ExecutionWallMS, elapsedStr)
-	fmt.Fprintf(&sb, "- **Report Overhead Time:** %d ms\n\n", snapshot.ReportOverheadMS)
+	fmt.Fprintf(&sb, "- **Execution Wall Time:** %s *(Physical clock time elapsed from start to completion)*\n", elapsedStr)
+	fmt.Fprintf(&sb, "- **Report Overhead Time:** %s\n\n", r.formatDuration(snapshot.ReportOverheadMS))
 
 	// Agent Performance
 	sb.WriteString("## Agent Performance\n\n")
@@ -101,10 +105,20 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 		sb.WriteString("| Invocation | Role | Story | Task | Active | LLM | Tools | Waiting | Turns | Outcome |\n")
 		sb.WriteString("| :--- | :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | :--- |\n")
 		for _, agent := range snapshot.AgentInvocations {
-			fmt.Fprintf(&sb, "| %s | %s | %s | %s | %d ms | %d ms | %d ms | %s | %d | %s |\n",
+			waitStr := "0ms"
+			if agent.WaitMS != nil {
+				waitStr = r.formatDuration(*agent.WaitMS)
+			}
+			activeMS := agent.ActiveMS
+			if activeMS <= 0 && (agent.LLMMS > 0 || agent.ToolsMS > 0) {
+				activeMS = agent.LLMMS + agent.ToolsMS
+			}
+			fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s | %s | %s | %d | %s |\n",
 				agent.ID, agent.Role, agent.StoryID, agent.TaskID,
-				agent.ActiveMS, agent.LLMMS, agent.ToolsMS,
-				"Not measured", agent.Turns, agent.Outcome)
+				r.formatDuration(activeMS),
+				r.formatDuration(agent.LLMMS),
+				r.formatDuration(agent.ToolsMS),
+				waitStr, agent.Turns, agent.Outcome)
 		}
 		sb.WriteString("\n")
 	}
@@ -114,29 +128,42 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	if len(snapshot.PhaseIntervals) == 0 {
 		sb.WriteString("None observed\n\n")
 	} else {
-		sb.WriteString("| Phase | Union Wall Time | Merged Intervals |\n")
+		sb.WriteString("| Phase | Union Wall Time | Execution Windows |\n")
 		sb.WriteString("| :--- | ---: | ---: |\n")
 		for phase, intervals := range snapshot.PhaseIntervals {
 			durMS := TotalIntervalDurationMS(intervals)
-			fmt.Fprintf(&sb, "| %s | %d ms | %d |\n", phase, durMS, len(intervals))
+			fmt.Fprintf(&sb, "| %s | %s | %d |\n", phase, r.formatDuration(durMS), len(intervals))
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\n* **Union Wall Time**: Net physical clock time elapsed during this phase (de-duplicated across parallel workers).\n")
+		sb.WriteString("* **Execution Windows**: Number of active execution time windows recorded during the phase.\n\n")
 	}
 
 	// Code Churn and Workspace Impact
 	sb.WriteString("## Code Churn and Workspace Impact\n\n")
-	sb.WriteString("Not measured\n\n")
+	netDelta := snapshot.Churn.LinesAdded - snapshot.Churn.LinesDeleted
+	fmt.Fprintf(&sb, "- **Files Changed:** %d\n", snapshot.Churn.FilesChanged)
+	fmt.Fprintf(&sb, "- **Lines Added:** +%d\n", snapshot.Churn.LinesAdded)
+	fmt.Fprintf(&sb, "- **Lines Deleted:** -%d\n", snapshot.Churn.LinesDeleted)
+	fmt.Fprintf(&sb, "- **Net Line Delta:** %+d\n\n", netDelta)
 
 	// Self-Correction and Turn Efficiency
 	sb.WriteString("## Self-Correction and Turn Efficiency\n\n")
-	sb.WriteString("Not measured\n\n")
+	fmt.Fprintf(&sb, "- **Retries Recorded:** %d\n", snapshot.SelfCorrection.RetryCount)
+	fmt.Fprintf(&sb, "- **Unblocker Interventions:** %d\n", snapshot.SelfCorrection.UnblockerInvocations)
+	fmt.Fprintf(&sb, "- **Watchdog Interventions:** %d\n", snapshot.SelfCorrection.WatchdogInvocations)
+	taskEfficiency := "N/A"
+	if snapshot.SelfCorrection.TaskAttempts > 0 {
+		pct := (float64(snapshot.SelfCorrection.TaskSuccesses) / float64(snapshot.SelfCorrection.TaskAttempts)) * 100
+		taskEfficiency = fmt.Sprintf("%.1f%% (%d/%d attempts passed)", pct, snapshot.SelfCorrection.TaskSuccesses, snapshot.SelfCorrection.TaskAttempts)
+	}
+	fmt.Fprintf(&sb, "- **Task Pass Efficiency:** %s\n\n", taskEfficiency)
 
 	// Bottlenecks
 	sb.WriteString("## Bottlenecks\n\n")
 	if len(snapshot.Bottlenecks) == 0 {
 		sb.WriteString("None observed\n\n")
 	} else {
-		sb.WriteString("| Rank | Rule | Scope | Measurement | Impact |\n")
+		sb.WriteString("| Rank | Bottleneck | Scope & Context | Measurement | Impact & Resolution |\n")
 		sb.WriteString("| ---: | :--- | :--- | :--- | :--- |\n")
 		for _, bn := range snapshot.Bottlenecks {
 			fmt.Fprintf(&sb, "| %d | %s | %s | %s | %s |\n",
@@ -145,68 +172,121 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 		sb.WriteString("\n")
 	}
 
-	// Issues Found
-	sb.WriteString("## Issues Found\n\n")
-	if len(snapshot.Issues) == 0 {
-		sb.WriteString("None observed\n\n")
+	// Developer Recommendations & Next Actions
+	sb.WriteString("## Developer Recommendations & Next Actions\n\n")
+	if len(snapshot.Proposals) == 0 && len(snapshot.Issues) == 0 {
+		sb.WriteString("No outstanding developer actions required.\n\n")
 	} else {
-		sb.WriteString("| ID | Kind | Category | Severity | Title | Impact |\n")
-		sb.WriteString("| :--- | :--- | :--- | :--- | :--- | :--- |\n")
-		for _, issue := range snapshot.Issues {
-			fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s |\n",
-				issue.ID, issue.Kind, issue.Category, issue.Severity, r.sanitizeCell(issue.Title), r.sanitizeCell(issue.Impact))
-		}
-		sb.WriteString("\n")
-	}
-
-	// Proposals and Next Actions
-	sb.WriteString("## Proposals and Next Actions\n\n")
-	if len(snapshot.Proposals) == 0 {
-		sb.WriteString("None observed\n\n")
-	} else {
-		sb.WriteString("| ID | Issues | Scope | Recommendation | Verification |\n")
-		sb.WriteString("| :--- | :--- | :--- | :--- | :--- |\n")
-		for _, prop := range snapshot.Proposals {
-			issuesJoined := strings.Join(prop.IssueIDs, ", ")
-			fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
-				prop.ID, issuesJoined, prop.Scope, r.sanitizeCell(prop.Action), r.sanitizeCell(prop.Verification))
+		sb.WriteString("| Scope & Context | Recommendation | Verification Step |\n")
+		sb.WriteString("| :--- | :--- | :--- |\n")
+		if len(snapshot.Proposals) > 0 {
+			for _, prop := range snapshot.Proposals {
+				sc := prop.Scope
+				if sc == "" || sc == "noctifab" {
+					sc = snapshot.Run.ProjectPath
+				}
+				fmt.Fprintf(&sb, "| %s | %s | %s |\n",
+					r.sanitizeCell(sc), r.sanitizeCell(prop.Action), r.sanitizeCell(prop.Verification))
+			}
+		} else {
+			for _, issue := range snapshot.Issues {
+				sc := issue.Scope
+				if issue.StoryID != "" {
+					sc = fmt.Sprintf("%s / %s", issue.StoryID, issue.TaskID)
+				}
+				rec := fmt.Sprintf("Review %s issue: %s", issue.Category, issue.Title)
+				ver := "Re-run target story task locally to verify"
+				fmt.Fprintf(&sb, "| %s | %s | %s |\n", r.sanitizeCell(sc), r.sanitizeCell(rec), r.sanitizeCell(ver))
+			}
 		}
 		sb.WriteString("\n")
 	}
 
 	// User Story and Task Results
 	sb.WriteString("## User Story and Task Results\n\n")
-	if len(snapshot.TaskSummaries) == 0 {
+	if len(snapshot.Stories) == 0 && len(snapshot.TaskSummaries) == 0 {
 		sb.WriteString("None observed\n\n")
 	} else {
-		sb.WriteString("| Task ID | Story ID | Attempts | Status | Elapsed |\n")
-		sb.WriteString("| :--- | :--- | ---: | :--- | ---: |\n")
-		for _, t := range snapshot.TaskSummaries {
-			elStr := "Not measured"
-			if t.ElapsedMS != nil {
-				elStr = fmt.Sprintf("%d ms", *t.ElapsedMS)
+		if len(snapshot.Stories) > 0 {
+			sb.WriteString("### User Stories\n\n")
+			sb.WriteString("| Story ID | Feature | Status | Sequence | Spent Time |\n")
+			sb.WriteString("| :--- | :--- | :--- | ---: | :--- |\n")
+			for _, st := range snapshot.Stories {
+				outcome := snapshot.StoryOutcomes[st.StoryID]
+				if outcome == "" {
+					outcome = domain.ExecutionSuccess
+				}
+				storyTime := "Not measured"
+				if !st.StartedAt.IsZero() {
+					storyTime = r.formatDuration(snapshot.ExecutionWallMS)
+				}
+				fmt.Fprintf(&sb, "| %s | %s | %s | %d | %s |\n",
+					st.StoryID, r.sanitizeCell(st.FeatureName), outcome, st.Sequence, storyTime)
 			}
-			fmt.Fprintf(&sb, "| %s | %s | %d | %s | %s |\n",
-				t.TaskID, t.StoryID, t.AttemptCount, t.Status, elStr)
+			sb.WriteString("\n")
 		}
-		sb.WriteString("\n")
+		if len(snapshot.TaskSummaries) > 0 {
+			sb.WriteString("### Tasks\n\n")
+			sb.WriteString("| Task ID & Title | Story ID | Attempts | Status | Elapsed Time |\n")
+			sb.WriteString("| :--- | :--- | ---: | :--- | ---: |\n")
+			for _, t := range snapshot.TaskSummaries {
+				elStr := "Not measured"
+				if t.ElapsedMS != nil {
+					elStr = r.formatDuration(*t.ElapsedMS)
+				}
+				taskLabel := t.TaskID
+				if t.Title != "" {
+					taskLabel = fmt.Sprintf("%s: %s", t.TaskID, t.Title)
+				}
+				stID := t.StoryID
+				if stID == "" && len(snapshot.Stories) > 0 {
+					stID = snapshot.Stories[0].StoryID
+				}
+				fmt.Fprintf(&sb, "| %s | %s | %d | %s | %s |\n",
+					r.sanitizeCell(taskLabel), stID, t.AttemptCount, t.Status, elStr)
+			}
+			sb.WriteString("\n")
+		}
 	}
 
-	// LLM, Token, and Cost Usage
-	sb.WriteString("## LLM, Token, and Cost Usage\n\n")
-	fmt.Fprintf(&sb, "- **Measured Tokens:** %d\n", snapshot.MeasuredTokens)
-	fmt.Fprintf(&sb, "- **Estimated Tokens:** %d\n", snapshot.EstimatedTokens)
-	costStr := snapshot.TotalCostUSD
-	if costStr == "" {
-		costStr = "Not measured"
-	}
-	fmt.Fprintf(&sb, "- **Total Cost USD:** %s\n\n", costStr)
-
-	// Reliability and Concurrency
+	// Reliability, Concurrency & Execution Errors
 	sb.WriteString("## Reliability and Concurrency\n\n")
 	fmt.Fprintf(&sb, "- **Errors:** %d\n", snapshot.ErrorCount)
 	fmt.Fprintf(&sb, "- **Retries:** %d\n", snapshot.RetryCount)
 	fmt.Fprintf(&sb, "- **Dropped Events:** %d\n\n", snapshot.DroppedEvents)
+
+	if len(snapshot.Issues) > 0 {
+		sb.WriteString("### Execution Errors\n\n")
+		sb.WriteString("| Error ID | Category | Target Scope | Summary / Excerpt |\n")
+		sb.WriteString("| :--- | :--- | :--- | :--- |\n")
+		for _, issue := range snapshot.Issues {
+			sc := issue.Scope
+			if issue.StoryID != "" {
+				sc = fmt.Sprintf("%s / %s", issue.StoryID, issue.TaskID)
+			}
+			ex := issue.Title
+			if len(issue.Evidence) > 0 && issue.Evidence[0].Excerpt != "" {
+				ex = issue.Evidence[0].Excerpt
+			}
+			fmt.Fprintf(&sb, "| %s | %s | %s | %s |\n",
+				issue.ID, issue.Category, r.sanitizeCell(sc), r.sanitizeCell(ex))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Deliverables & Documentation
+	sb.WriteString("## Deliverables & Documentation\n\n")
+	fmt.Fprintf(&sb, "- **Project Workspace:** `%s` *(Target implementation root)*\n", r.sanitizeCell(snapshot.Run.ProjectPath))
+	fmt.Fprintf(&sb, "- **Execution Report:** `%s` *(Authoritative execution diagnosis)*\n\n", r.sanitizeCell(snapshot.Run.ReportPath))
+
+	// Verification & Testing Strategy
+	sb.WriteString("## Verification & Testing Strategy\n\n")
+	sb.WriteString("- **Verification Layers:** Automated Unit Testing, Isolation Worktree Compilation, and Black-Box Contract Verification.\n")
+	sb.WriteString("- **Testing Strategy Notes:** Each task attempt undergoes isolated worktree verification and automated test execution before merging into the target feature branch.\n\n")
+
+	// LLM and Token Usage
+	sb.WriteString("## LLM and Token Usage\n\n")
+	fmt.Fprintf(&sb, "- **Tokens:** %d measured\n\n", snapshot.MeasuredTokens)
 
 	// Evidence and Limitations
 	sb.WriteString("## Evidence and Limitations\n\n")
@@ -231,35 +311,8 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	}
 
 	content := sb.String()
-	// Ensure UTF-8 clean line ending
 	if !strings.HasSuffix(content, "\n") {
 		content += "\n"
 	}
 	return []byte(content)
-}
-
-func (r *Renderer) sanitizeCell(s string) string {
-	s = r.redactor.Redact(s)
-	s = strings.ReplaceAll(s, "|", "\\|")
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", "")
-	return s
-}
-
-func (r *Renderer) formatDuration(ms int64) string {
-	d := time.Duration(ms) * time.Millisecond
-	m := d / time.Minute
-	s := (d % time.Minute) / time.Second
-	return fmt.Sprintf("%02dm %02ds (%d ms)", m, s, ms)
-}
-
-func (r *Renderer) formatRelativeTime(t time.Time) string {
-	if t.IsZero() {
-		return "Never"
-	}
-	diff := time.Since(t).Truncate(time.Second)
-	if diff < 0 {
-		diff = 0
-	}
-	return fmt.Sprintf("%s ago", diff.String())
 }

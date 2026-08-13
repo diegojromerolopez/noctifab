@@ -110,4 +110,3 @@ func ObserverFromContext(ctx context.Context) ExecutionObserver {
 	}
 	return nil
 }
-

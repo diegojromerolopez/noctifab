@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-08-13
+
+### Added
+- **Complexity Unit ($CU$) Roadmap Sizing & Micro-Task Prevention**: incorporated Function Point Analysis and multi-dimensional Complexity Units ($CU$) into Product Manager prompt templates (`generate.tmpl`) and Planner prompt templates (`decompose.tmpl`) to enforce proportional story/task granularity ($CU_{\text{story}} \in [15, 30]$, $CU_{\text{task}} \in [4, 8]$) and eliminate micro-tasks for concise specs ($CU < 25$).
+- **Turn 1 Context Enrichment**: updated Reader Phase (`RunReaderPhase` in `pkg/services/orchestrator_helper.go`) to automatically pre-load the workspace file tree (`git ls-files`) and project manifests (`Cargo.toml`, `go.mod`, `package.json`, `pyproject.toml`, `Makefile`, `CMakeLists.txt`) before Turn 1 code generation, eliminating import path guesses and retries.
+- **`git diff` Task Retry Context**: enriched Generator Agent task retries in `RunGeneratorAgent` with formatted `git diff` output from failed attempts so agents fix syntax and logic errors in 1 turn.
+- **Project-Agnostic Execution Report Formatting**: enhanced `pkg/services/reporting/renderer.go` with unified duration formatting (omitting zero units), clear Phase Performance Execution Windows explanations, task title & story correlation, detailed error breakdown tables, and project/language-agnostic engineering insights.
+- **Unified Parent Cache Volume Mounts**: updated `validation/run_one.sh` to consolidate host package/compiler cache mounts under `${HOME}/.noctifab/cache`.
+
 ## [0.31.0] - 2026-08-12
 
 ### Added

@@ -16,14 +16,14 @@ else
   NOCTIFAB_BIN="$(pwd)/bin/noctifab"
 fi
 
-# 2. Setup a temporary directory
-TMP_DIR="$(pwd)/tmp_verify_autonomy"
+# 2. Setup temporary workspace directory named after project
+PROJECT="${PROJECT:-frontpunch}"
+TMP_DIR="$(pwd)/${PROJECT}"
+echo "Validating project: ${PROJECT}..." >&2
 echo "Setting up temporary workspace at ${TMP_DIR}..." >&2
 rm -rf "${TMP_DIR}"
 
 # 3. Copy the project copy into the workspace
-PROJECT="${PROJECT:-frontpunch}"
-echo "Validating project: ${PROJECT}..." >&2
 PROJECT_SRC="/app/projects/${PROJECT}"
 if [ ! -d "${PROJECT_SRC}" ]; then
   PROJECT_SRC="$(pwd)/validation/projects/${PROJECT}"

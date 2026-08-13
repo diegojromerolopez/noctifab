@@ -47,6 +47,15 @@ func ValidatePlannedTasks(tasks []domain.Task, projectPath ...string) error {
 func (o *Orchestrator) registerAgentStart(ctx context.Context, role string, taskID string) {
 	agentID := fmt.Sprintf("agent-%s-%s", role, taskID)
 	name := fmt.Sprintf("%s-%s", role, taskID)
+	if o.observer != nil {
+		o.observer.Observe(ctx, domain.ExecutionEvent{
+			Kind:              domain.EventAgentStarted,
+			AgentInvocationID: agentID,
+			AgentRole:         role,
+			TaskID:            taskID,
+			At:                time.Now().UTC(),
+		})
+	}
 	updateErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		found := false
 		for i := range st.ActiveAgents {
@@ -78,6 +87,20 @@ func (o *Orchestrator) registerAgentStart(ctx context.Context, role string, task
 
 func (o *Orchestrator) registerAgentComplete(ctx context.Context, role string, taskID string, err error) {
 	agentID := fmt.Sprintf("agent-%s-%s", role, taskID)
+	if o.observer != nil {
+		outcome := domain.OutcomeSuccess
+		if err != nil {
+			outcome = domain.OutcomeFailed
+		}
+		o.observer.Observe(ctx, domain.ExecutionEvent{
+			Kind:              domain.EventAgentFinished,
+			AgentInvocationID: agentID,
+			AgentRole:         role,
+			TaskID:            taskID,
+			Outcome:           outcome,
+			At:                time.Now().UTC(),
+		})
+	}
 	updateErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		for i := range st.ActiveAgents {
 			if st.ActiveAgents[i].ID == agentID {
@@ -116,7 +139,7 @@ Return format:
     {
       "tool": "read_file",
       "args": {
-        "path": "frontpunch/existing_file.py"
+        "path": "src/module.ext"
       }
     }
   ]
@@ -129,25 +152,52 @@ func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task dom
 
 	slicer := NewContextSlicer(o.cfg.Context)
 
-	// Heuristic Context Loading: automatically read target files if they exist to save an LLM turn
-	if len(task.TargetFiles) > 0 {
-		rfTool, ok := o.registry.Get("read_file")
-		if ok {
-			for _, tf := range task.TargetFiles {
-				if tf == "" {
-					continue
-				}
-				args := map[string]any{"path": tf}
-				out, err := rfTool.Execute(ctx, state, args)
-				if err == nil && out != "" {
-					slicedCtx := slicer.SliceFileContext(tf, out, "")
-					gatheredContext = append(gatheredContext, slicedCtx)
-				}
+	// Always append workspace file tree and manifests to prevent file duplication and import mismatch
+	var availableFilesMsg string
+	if files, err := o.git.Run(ctx, false, "ls-files"); err == nil {
+		lines := strings.Split(files, "\n")
+		var filtered []string
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, ".noctifab") || strings.HasPrefix(line, ".git") {
+				continue
+			}
+			filtered = append(filtered, line)
+		}
+		if len(filtered) > 0 {
+			availableFilesMsg = fmt.Sprintf("Workspace file structure:\n%s", strings.Join(filtered, "\n"))
+			gatheredContext = append(gatheredContext, availableFilesMsg)
+		}
+	}
+
+	// Read workspace project manifest if present
+	manifestCandidates := []string{"Cargo.toml", "go.mod", "package.json", "pyproject.toml", "Makefile", "CMakeLists.txt"}
+	rfTool, hasRf := o.registry.Get("read_file")
+	if hasRf {
+		for _, m := range manifestCandidates {
+			mOut, mErr := rfTool.Execute(ctx, state, map[string]any{"path": m})
+			if mErr == nil && strings.TrimSpace(mOut) != "" {
+				gatheredContext = append(gatheredContext, fmt.Sprintf("Project Manifest (%s):\n```\n%s\n```", m, strings.TrimSpace(mOut)))
+				break
 			}
 		}
-		// If we successfully gathered context heuristically, skip the LLM call entirely
-		if len(gatheredContext) > 0 {
-			fmt.Printf("Orchestrator: [Reader] role %s using heuristically loaded context for %d target file(s), skipping LLM call\n", role, len(gatheredContext))
+	}
+
+	// Heuristic Context Loading: automatically read target files if they exist to save an LLM turn
+	if len(task.TargetFiles) > 0 && hasRf {
+		for _, tf := range task.TargetFiles {
+			if tf == "" {
+				continue
+			}
+			args := map[string]any{"path": tf}
+			out, err := rfTool.Execute(ctx, state, args)
+			if err == nil && out != "" {
+				slicedCtx := slicer.SliceFileContext(tf, out, "")
+				gatheredContext = append(gatheredContext, slicedCtx)
+			}
+		}
+		if len(gatheredContext) > 1 {
+			fmt.Printf("Orchestrator: [Reader] role %s using heuristically loaded context for %d target file(s), skipping LLM call\n", role, len(task.TargetFiles))
 			return gatheredContext
 		}
 	}
@@ -168,12 +218,11 @@ func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task dom
 		}
 	}
 
-	if len(gatheredContext) > 0 {
-		fmt.Printf("Orchestrator: [Reader] role %s loaded %d file(s) from description heuristics, skipping LLM call\n", role, len(gatheredContext))
+	if len(gatheredContext) > 1 {
+		fmt.Printf("Orchestrator: [Reader] role %s loaded file(s) from description heuristics, skipping LLM call\n", role)
 		return gatheredContext
 	}
 
-	var availableFilesMsg string
 	if files, err := o.git.Run(ctx, false, "ls-files"); err == nil {
 		lines := strings.Split(files, "\n")
 		var filtered []string

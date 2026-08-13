@@ -30,7 +30,7 @@ func TestReportingPipeline(t *testing.T) {
 	writer := reportfs.NewAtomicWriter(reportfs.OSFileSystem{})
 
 	t.Run("when running complete execution report pipeline", func(t *testing.T) {
-		t.Run("it produces required section headings and status", func(t *testing.T) {
+		t.Run("it produces required section headings, status, and human readable durations", func(t *testing.T) {
 			agent, err := reporting.NewReporterAgent(reportPath, clock, writer, nil, nil)
 			require.NoError(t, err)
 
@@ -51,14 +51,18 @@ func TestReportingPipeline(t *testing.T) {
 			}
 			agent.BeginStory(context.Background(), story)
 
+			pTokens := int64(100)
+			cTokens := int64(50)
 			agent.Observe(context.Background(), domain.ExecutionEvent{
-				ID:             "event-001",
-				RunID:          "run-test-01",
-				StoryID:        "story-0001",
-				TaskID:         "task-01",
-				Kind:           domain.EventTaskAttemptFinished,
-				Outcome:        domain.OutcomeSuccess,
-				DurationMillis: pointerInt64(1200),
+				ID:               "event-001",
+				RunID:            "run-test-01",
+				StoryID:          "story-0001",
+				TaskID:           "task-01",
+				Kind:             domain.EventTaskAttemptFinished,
+				Outcome:          domain.OutcomeSuccess,
+				DurationMillis:   pointerInt64(1200),
+				PromptTokens:     &pTokens,
+				CompletionTokens: &cTokens,
 			})
 
 			agent.EndStory(context.Background(), "story-0001", domain.ExecutionSuccess)
@@ -71,11 +75,18 @@ func TestReportingPipeline(t *testing.T) {
 			assert.Contains(t, content, "# Noctifab Execution Report")
 			assert.Contains(t, content, "> Status: SUCCESS")
 			assert.Contains(t, content, "> Run ID: run-test-01")
+			assert.NotContains(t, content, "Checkpoint:")
 			assert.Contains(t, content, "## Executive Summary")
-			assert.Contains(t, content, "## Live Status")
-			assert.Contains(t, content, "## Bottlenecks")
-			assert.Contains(t, content, "## Issues Found")
-			assert.Contains(t, content, "## Proposals and Next Actions")
+			assert.Contains(t, content, "## Execution Status")
+			assert.Contains(t, content, "## Agent Performance")
+			assert.Contains(t, content, "## Phase Performance")
+			assert.Contains(t, content, "## Code Churn and Workspace Impact")
+			assert.Contains(t, content, "## Self-Correction and Turn Efficiency")
+			assert.Contains(t, content, "## User Story and Task Results")
+			assert.Contains(t, content, "## LLM and Token Usage")
+			assert.Contains(t, content, "- **Tokens:** 150")
+			assert.NotContains(t, content, "Total Cost USD")
+			assert.Contains(t, content, "1s 200ms")
 		})
 	})
 }

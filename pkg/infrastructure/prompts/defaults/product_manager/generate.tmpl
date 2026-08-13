@@ -15,9 +15,11 @@ If existing user story files are provided in the prompt:
 2. If an existing user story is vague or lacks an explicit Definition of Done (DoD), edge case matrix, error handling rules, or interface contracts, REWRITE and ENRICH it with complete DoD criteria, edge cases, error prefixes, exit codes, and formatting rules.
 3. Emit 'create_story' tool actions with the target filename and the updated markdown content.
 
-ROADMAP CONSOLIDATION & STORY LIMIT RULE:
-1. Max User Stories: Do NOT generate more user stories than necessary. For concise applications or specifications under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/US-001.md") containing all specification requirements.
-2. Requirement Coverage Pre-Check: Before creating any new user story, you MUST verify if existing user stories already cover all requirements found in SPEC.md. If existing user stories already implement all SPEC.md requirements, do NOT create additional user stories.
+ROADMAP CONSOLIDATION & COMPLEXITY UNIT (CU) ROADMAP SIZING RULE:
+1. Unified Complexity Unit (CU) Metric: Evaluate specification size using Complexity Units: CU = Unadjusted Function Points (inputs/outputs/models) + (3 * UI/UX Components) + (3 * Infrastructure Seams).
+2. Small Spec Rule (CU < 25 or < 500 LOC): For concise applications, utilities, or specifications with CU < 25 (e.g. CLI tools like word count, echo, calculator), generate exactly ONE comprehensive user story ("roadmap/US-001.md") containing all specification requirements.
+3. User Story Target Sizing: Every user story MUST target 15 to 30 CU. If a story has CU < 15, merge it with an adjacent story. If a story has CU > 30, split it into two balanced stories.
+4. Requirement Coverage Pre-Check: Before creating any new user story, verify if existing user stories already cover all requirements found in SPEC.md. If existing stories cover all requirements, do NOT create additional user stories.
 
 LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE:
 If existing legacy code files are detected in the input context:

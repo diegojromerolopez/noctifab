@@ -11,13 +11,13 @@ agents:
     iterations: 2
     max_user_stories: 5
     providers:
-    - name: claude
     - name: gemini
     - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
     - name: openrouter
+    - name: claude
   planner:
     number: 1
     iterations: 2
@@ -25,35 +25,35 @@ agents:
     number: 4
     iterations: 5
     providers:
-    - name: claude
     - name: gemini
     - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
     - name: openrouter
+    - name: claude
   testers:
     number: 2
     iterations: 3
     providers:
-    - name: claude
     - name: gemini
     - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
     - name: openrouter
+    - name: claude
   qa:
     enabled: false
     iterations: 2
     providers:
-    - name: claude
     - name: gemini
     - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
     - name: openrouter
+    - name: claude
   unblocker:
     number: 1
     iterations: 2
@@ -68,13 +68,13 @@ storage:
   json_file_path: .noctifab/data/state.json
 llm:
   priority:
-  - claude
   - gemini
   - openai
   - qwen
   - deepseek-pro
   - opencode
   - openrouter
+  - claude
   providers:
   - name: claude
     provider: anthropic

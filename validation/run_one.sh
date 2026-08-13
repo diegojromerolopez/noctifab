@@ -109,21 +109,16 @@ rm -f "${REPORT_DIR}"/* || true
 # Prepare cache directories on host to speed up compiler and package manager resolution
 CACHE_ARGS=()
 if [ -n "${HOME:-}" ] && [ -d "${HOME}" ]; then
-  # Go Cache mounts
-  mkdir -p "${HOME}/go/pkg/mod" "${HOME}/.cache/go-build"
+  PARENT_CACHE="${HOME}/.noctifab/cache"
+  mkdir -p "${PARENT_CACHE}/cargo/registry" "${PARENT_CACHE}/cargo/git" \
+           "${PARENT_CACHE}/go-build" "${PARENT_CACHE}/go-mod" \
+           "${PARENT_CACHE}/pip" "${PARENT_CACHE}/npm" "${PARENT_CACHE}/m2"
   CACHE_ARGS+=(
-    -v "${HOME}/go/pkg/mod:/go/pkg/mod"
-    -v "${HOME}/.cache/go-build:/root/.cache/go-build"
+    -v "${PARENT_CACHE}:/root/.cache"
+    -v "${PARENT_CACHE}/cargo/registry:/usr/local/cargo/registry"
+    -v "${PARENT_CACHE}/cargo/git:/usr/local/cargo/git"
+    -v "${PARENT_CACHE}/go-mod:/go/pkg/mod"
   )
-  
-  # Cargo Cache mounts (for Rust projects)
-  if [ "${PROJECT}" = "wc" ]; then
-    mkdir -p "${HOME}/.cargo/registry" "${HOME}/.cargo/git"
-    CACHE_ARGS+=(
-      -v "${HOME}/.cargo/registry:/usr/local/cargo/registry"
-      -v "${HOME}/.cargo/git:/usr/local/cargo/git"
-    )
-  fi
 fi
 
 # Add brief sleep to guarantee Docker Desktop filesystem mount synchronization

@@ -214,13 +214,25 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("No user stories found in %s/roadmap. Spawning Product Manager Agent to generate roadmap from SPEC.md...\n", targetDir)
 	}
 
+	cmdCtx := cmd.Context()
+	if cmdCtx == nil {
+		cmdCtx = context.Background()
+	}
+	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
+
 	promptRenderer, rendErr := prompts.NewRenderer(targetDir, cfg.PromptOverrides())
 	if rendErr != nil {
 		fmt.Printf("Warning: prompt template rendering initialization failed: %v\n", rendErr)
 	}
 
-	if genErr := services.GenerateRoadmap(domain.WithObserver(context.Background(), executionReporter), targetDir, llmClient, promptRenderer); genErr != nil {
+	if executionReporter != nil {
+		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "roadmap_generation", At: time.Now().UTC()})
+	}
+	if genErr := services.GenerateRoadmap(cmdCtx, targetDir, llmClient, promptRenderer); genErr != nil {
 		fmt.Printf("Warning: Product Manager Agent story refinement skipped: %v\n", genErr)
+	}
+	if executionReporter != nil {
+		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "roadmap_generation", At: time.Now().UTC()})
 	}
 
 	var storyFiles []string
@@ -238,11 +250,6 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	gitClient := services.NewGitClient(".")
 	rebaseQueue := services.NewRebaseQueue(gitClient)
-	cmdCtx := cmd.Context()
-	if cmdCtx == nil {
-		cmdCtx = context.Background()
-	}
-	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
 	go rebaseQueue.Start(cmdCtx)
 
 	profilesMap := make(map[string]services.ProfileConfig)
@@ -271,6 +278,9 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	mailbox := services.NewCommandMailbox(repo)
 	go mailbox.Start(cmdCtx)
 
+	if executionReporter != nil {
+		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "story_execution", At: time.Now().UTC()})
+	}
 	for idx, currentStoryFile := range storyFiles {
 		storyID := fmt.Sprintf("story-%04d", idx+1)
 		storyMeta := domain.StoryMetadata{
@@ -290,7 +300,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			featName := filepath.Base(currentStoryFile)
 			integrationBranch := "noctifab/feature-" + strings.TrimSuffix(featName, filepath.Ext(featName))
 
-			state, err := repo.Load(context.Background())
+			state, err := repo.Load(cmdCtx)
 			if err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
 					state = &domain.State{
@@ -314,7 +324,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			state.Metadata.InputPath = currentStoryFile
 			state.Tasks = nil
 			state.StoryStatus = domain.StoryRunning
-			_ = repo.Save(context.Background(), state)
+			_ = repo.Save(cmdCtx, state)
 
 			orchRuntime := services.OrchestratorRuntimeDependencies{
 				Mailbox:        mailbox,
@@ -323,7 +333,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			}
 			orchestrator := services.NewOrchestratorWithRuntime(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, orchRuntime)
 
-			if err := orchestrator.PlanStory(context.Background(), state, string(specBytes)); err != nil {
+			if err := orchestrator.PlanStory(cmdCtx, state, string(specBytes)); err != nil {
 				return err
 			}
 
@@ -334,8 +344,8 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 				case <-cmdCtx.Done():
 					return cmdCtx.Err()
 				case <-ticker.C:
-					_, _ = orchestrator.RunOnce(context.Background())
-					st, err := repo.Load(context.Background())
+					_, _ = orchestrator.RunOnce(cmdCtx)
+					st, err := repo.Load(cmdCtx)
 					if err != nil {
 						return err
 					}
@@ -348,9 +358,16 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 		if storyErr != nil {
 			executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionFailed)
+			if executionReporter != nil {
+				executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "story_execution", At: time.Now().UTC()})
+			}
 			return storyErr
 		}
 		executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionSuccess)
+	}
+
+	if executionReporter != nil {
+		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "story_execution", At: time.Now().UTC()})
 	}
 
 	finalOutcome = domain.ExecutionSuccess

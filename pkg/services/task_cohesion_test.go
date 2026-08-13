@@ -42,3 +42,19 @@ func TestValidateTaskCohesion_InvalidInterfaceOnlyTask(t *testing.T) {
 		t.Fatalf("expected task cohesion validation error for interface-only task, got nil")
 	}
 }
+
+func TestValidateTaskCohesion_InvalidMicroTask(t *testing.T) {
+	tasks := []domain.Task{
+		{
+			ID:          "task-micro",
+			Title:       "Define struct CountStats",
+			Description: "Create struct",
+			TargetFiles: []string{"src/stats.rs"},
+		},
+	}
+
+	err := ValidateTaskCohesion(tasks)
+	if err == nil {
+		t.Fatalf("expected task cohesion error for micro-task, got nil")
+	}
+}

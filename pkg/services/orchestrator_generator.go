@@ -40,11 +40,16 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	if task.RecoveryDirective != "" {
 		promptContext = append(promptContext, fmt.Sprintf("### ⚠️ PREVIOUS ATTEMPT STALL RECOVERY DIRECTIVE\n%s", task.RecoveryDirective))
 	}
-	// Add previous failure context if retrying
-	if task.Retries > 0 && task.FailureLog != "" {
-		warning := "WARNING: The previous implementation/refactoring changes from the failed attempt have been preserved in the workspace files. You must inspect the existing code/tests, identify the bugs, and modify the files to fix the failures."
-		summary := summarizeFailureLog(task.FailureLog)
-		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the code to address these specific errors.", warning, summary))
+	// Add previous failure context and git diff if retrying
+	if task.Retries > 0 {
+		if task.FailureLog != "" {
+			warning := "WARNING: The previous implementation/refactoring changes from the failed attempt have been preserved in the workspace files. You must inspect the existing code/tests, identify the bugs, and modify the files to fix the failures."
+			summary := summarizeFailureLog(task.FailureLog)
+			promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the code to address these specific errors.", warning, summary))
+		}
+		if diffOut, dErr := o.git.Run(ctx, false, "diff"); dErr == nil && strings.TrimSpace(diffOut) != "" {
+			promptContext = append(promptContext, fmt.Sprintf("### 🔍 FAILED ATTEMPT GIT DIFF\nThe following diff shows the exact changes made in the failed attempt:\n```diff\n%s\n```", strings.TrimSpace(diffOut)))
+		}
 	}
 
 	contextBlock := ""

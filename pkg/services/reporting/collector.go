@@ -159,6 +159,26 @@ func (c *Collector) Observe(ctx context.Context, event domain.ExecutionEvent) {
 	}
 	if event.Kind == domain.EventRetryRecorded {
 		c.snapshot.RetryCount++
+		c.snapshot.SelfCorrection.RetryCount++
+	}
+
+	// Churn metrics
+	if event.FilesChanged != nil {
+		c.snapshot.Churn.FilesChanged += *event.FilesChanged
+	}
+	if event.LinesAdded != nil {
+		c.snapshot.Churn.LinesAdded += *event.LinesAdded
+	}
+	if event.LinesDeleted != nil {
+		c.snapshot.Churn.LinesDeleted += *event.LinesDeleted
+	}
+
+	// Self-correction agent tracking
+	if event.AgentRole == string(domain.AgentRoleUnblocker) {
+		c.snapshot.SelfCorrection.UnblockerInvocations++
+	}
+	if event.AgentRole == "watchdog" || event.Name == "watchdog_repair" {
+		c.snapshot.SelfCorrection.WatchdogInvocations++
 	}
 
 	// Track spans & durations
@@ -185,24 +205,204 @@ func (c *Collector) Observe(ctx context.Context, event domain.ExecutionEvent) {
 			})
 			delete(c.activeSpan, event.Name)
 		}
+	case domain.EventTaskAttemptStarted:
+		c.snapshot.SelfCorrection.TaskAttempts++
+		stID := event.StoryID
+		if stID == "" {
+			stID = c.activeStoryID
+		}
+		found := false
+		for i := range c.snapshot.TaskSummaries {
+			if c.snapshot.TaskSummaries[i].TaskID == event.TaskID {
+				c.snapshot.TaskSummaries[i].AttemptCount++
+				c.snapshot.TaskSummaries[i].Status = domain.OutcomeUnknown
+				if event.Name != "" {
+					c.snapshot.TaskSummaries[i].Title = event.Name
+				}
+				if c.snapshot.TaskSummaries[i].StoryID == "" {
+					c.snapshot.TaskSummaries[i].StoryID = stID
+				}
+				found = true
+				break
+			}
+		}
+		if !found && event.TaskID != "" {
+			c.snapshot.TaskSummaries = append(c.snapshot.TaskSummaries, TaskExecutionSummary{
+				TaskID:       event.TaskID,
+				Title:        event.Name,
+				StoryID:      stID,
+				AttemptCount: 1,
+				Status:       domain.OutcomeUnknown,
+			})
+		}
+	case domain.EventTaskAttemptFinished:
+		stID := event.StoryID
+		if stID == "" {
+			stID = c.activeStoryID
+		}
+		found := false
+		for i := range c.snapshot.TaskSummaries {
+			if c.snapshot.TaskSummaries[i].TaskID == event.TaskID {
+				c.snapshot.TaskSummaries[i].Status = event.Outcome
+				c.snapshot.TaskSummaries[i].ElapsedMS = event.DurationMillis
+				c.snapshot.TaskSummaries[i].Evidence = event.Evidence
+				if event.Name != "" && c.snapshot.TaskSummaries[i].Title == "" {
+					c.snapshot.TaskSummaries[i].Title = event.Name
+				}
+				if c.snapshot.TaskSummaries[i].StoryID == "" {
+					c.snapshot.TaskSummaries[i].StoryID = stID
+				}
+				found = true
+				break
+			}
+		}
+		if !found && event.TaskID != "" {
+			c.snapshot.TaskSummaries = append(c.snapshot.TaskSummaries, TaskExecutionSummary{
+				TaskID:       event.TaskID,
+				Title:        event.Name,
+				StoryID:      stID,
+				AttemptCount: 1,
+				Status:       event.Outcome,
+				ElapsedMS:    event.DurationMillis,
+				Evidence:     event.Evidence,
+			})
+		}
+		if event.Outcome == domain.OutcomeSuccess {
+			c.snapshot.SelfCorrection.TaskSuccesses++
+		}
+	case domain.EventAgentStarted:
+		invID := event.AgentInvocationID
+		if invID == "" {
+			invID = fmt.Sprintf("inv-%s-%s", event.AgentRole, event.TaskID)
+		}
+		c.activeSpan["agent:"+invID] = event
 	}
 
-	// Record deterministic issues for failed tasks
-	if event.Kind == domain.EventTaskAttemptFinished && event.Outcome == domain.OutcomeFailed {
-		issueID := c.issueEng.GenerateIssueID("functional", string(domain.OutcomeFailed), event.StoryID, event.TaskID, "execution", event.Name)
-		c.snapshot.Issues = append(c.snapshot.Issues, domain.ReportIssue{
-			ID:       issueID,
-			Category: "functional",
-			Severity: "high",
-			Kind:     "confirmed",
-			Title:    fmt.Sprintf("Task %s attempt failed", event.TaskID),
-			Impact:   "Delayed story progress",
-			Scope:    "noctifab",
-			StoryID:  event.StoryID,
-			TaskID:   event.TaskID,
-			Evidence: []domain.EvidenceRef{{EventID: event.ID, Excerpt: event.Evidence}},
-		})
+	// Track agent invocations
+	if event.AgentRole != "" || event.AgentInvocationID != "" {
+		invID := event.AgentInvocationID
+		if invID == "" {
+			// Find existing unfinished invocation for role/task
+			for _, inv := range c.snapshot.AgentInvocations {
+				if !inv.Finished && inv.Role == event.AgentRole && inv.TaskID == event.TaskID {
+					invID = inv.ID
+					break
+				}
+			}
+			if invID == "" {
+				invID = fmt.Sprintf("inv-%s-%s", event.AgentRole, event.TaskID)
+			}
+		}
+		stID := event.StoryID
+		if stID == "" {
+			stID = c.activeStoryID
+		}
+		found := false
+		for i := range c.snapshot.AgentInvocations {
+			if c.snapshot.AgentInvocations[i].ID == invID {
+				inv := &c.snapshot.AgentInvocations[i]
+				if inv.StoryID == "" {
+					inv.StoryID = stID
+				}
+				if event.DurationMillis != nil {
+					inv.ActiveMS += *event.DurationMillis
+				}
+				if event.Kind == domain.EventLLMCallFinished && event.DurationMillis != nil {
+					inv.LLMMS += *event.DurationMillis
+				}
+				if (event.Kind == domain.EventToolFinished || event.Kind == domain.EventSandboxFinished || event.Kind == domain.EventValidationFinished || event.Kind == domain.EventVCSFinished) && event.DurationMillis != nil {
+					inv.ToolsMS += *event.DurationMillis
+				}
+				if event.Kind == domain.EventWaitFinished && event.DurationMillis != nil {
+					if inv.WaitMS == nil {
+						zero := int64(0)
+						inv.WaitMS = &zero
+					}
+					*inv.WaitMS += *event.DurationMillis
+				}
+				if event.Turn > inv.Turns {
+					inv.Turns = event.Turn
+				}
+				if event.Kind == domain.EventAgentFinished {
+					inv.Finished = true
+					inv.Outcome = event.Outcome
+					if startEv, ok := c.activeSpan["agent:"+invID]; ok {
+						dur := event.At.Sub(startEv.At).Milliseconds()
+						if dur > inv.ActiveMS {
+							inv.ActiveMS = dur
+						}
+						delete(c.activeSpan, "agent:"+invID)
+					}
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			var activeMS, llmMS, toolsMS int64
+			if event.DurationMillis != nil {
+				activeMS = *event.DurationMillis
+			}
+			if event.Kind == domain.EventLLMCallFinished && event.DurationMillis != nil {
+				llmMS = *event.DurationMillis
+			}
+			if (event.Kind == domain.EventToolFinished || event.Kind == domain.EventSandboxFinished || event.Kind == domain.EventValidationFinished || event.Kind == domain.EventVCSFinished) && event.DurationMillis != nil {
+				toolsMS = *event.DurationMillis
+			}
+			var waitMS *int64
+			if event.Kind == domain.EventWaitFinished && event.DurationMillis != nil {
+				w := *event.DurationMillis
+				waitMS = &w
+			}
+			c.snapshot.AgentInvocations = append(c.snapshot.AgentInvocations, AgentInvocationSummary{
+				ID:        invID,
+				Role:      event.AgentRole,
+				StoryID:   stID,
+				TaskID:    event.TaskID,
+				ActiveMS:  activeMS,
+				LLMMS:     llmMS,
+				ToolsMS:   toolsMS,
+				WaitMS:    waitMS,
+				Turns:     event.Turn,
+				Outcome:   event.Outcome,
+				StartedAt: event.At,
+				Finished:  event.Kind == domain.EventAgentFinished,
+			})
+		}
 	}
+
+	// Record deterministic issues for failed events or retries
+	if event.Outcome == domain.OutcomeFailed || event.Outcome == domain.OutcomeTimeout || event.Outcome == domain.OutcomeBlocked || event.Kind == domain.EventRetryRecorded {
+		title := fmt.Sprintf("Event %s failed (%s)", event.Kind, event.Name)
+		if event.Kind == domain.EventTaskAttemptFinished && event.Outcome == domain.OutcomeFailed {
+			title = fmt.Sprintf("Task %s attempt failed", event.TaskID)
+		} else if event.Kind == domain.EventRetryRecorded {
+			title = fmt.Sprintf("Retry recorded for %s", event.Name)
+		}
+		issueID := c.issueEng.GenerateIssueID("functional", string(event.Outcome), event.StoryID, event.TaskID, "execution", title)
+		issueFound := false
+		for _, iss := range c.snapshot.Issues {
+			if iss.ID == issueID {
+				issueFound = true
+				break
+			}
+		}
+		if !issueFound {
+			c.snapshot.Issues = append(c.snapshot.Issues, domain.ReportIssue{
+				ID:       issueID,
+				Category: "functional",
+				Severity: "high",
+				Kind:     "confirmed",
+				Title:    title,
+				Impact:   "Delayed execution progress",
+				Scope:    "noctifab",
+				StoryID:  event.StoryID,
+				TaskID:   event.TaskID,
+				Evidence: []domain.EvidenceRef{{EventID: event.ID, Excerpt: event.Evidence}},
+			})
+		}
+	}
+
 }
 
 func (c *Collector) Snapshot() ReportSnapshot {

@@ -18,6 +18,10 @@ import (
 func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) {
 	atomic.AddInt64(&o.totalActions, 1)
 
+	if o.observer != nil {
+		ctx = domain.WithObserver(ctx, o.observer)
+	}
+
 	ctx, span := telemetry.Tracer().Start(ctx, "executeTask",
 		trace.WithAttributes(attribute.String("task.id", taskID)))
 	defer span.End()

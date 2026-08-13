@@ -65,11 +65,26 @@ type AgentInvocationSummary struct {
 
 type TaskExecutionSummary struct {
 	TaskID       string              `json:"task_id"`
+	Title        string              `json:"title,omitempty"`
 	StoryID      string              `json:"story_id"`
 	AttemptCount int                 `json:"attempt_count"`
 	Status       domain.EventOutcome `json:"status"`
 	ElapsedMS    *int64              `json:"elapsed_ms,omitempty"`
 	Evidence     string              `json:"evidence,omitempty"`
+}
+
+type CodeChurnSummary struct {
+	FilesChanged int64 `json:"files_changed"`
+	LinesAdded   int64 `json:"lines_added"`
+	LinesDeleted int64 `json:"lines_deleted"`
+}
+
+type SelfCorrectionSummary struct {
+	RetryCount           int `json:"retry_count"`
+	UnblockerInvocations int `json:"unblocker_invocations"`
+	WatchdogInvocations  int `json:"watchdog_invocations"`
+	TaskAttempts         int `json:"task_attempts"`
+	TaskSuccesses        int `json:"task_successes"`
 }
 
 type ReportSnapshot struct {
@@ -87,6 +102,8 @@ type ReportSnapshot struct {
 	PhaseIntervals   map[string][]TimeInterval          `json:"phase_intervals"`
 	RoleActiveMS     map[string]int64                   `json:"role_active_ms"`
 	OperationSumMS   map[string]int64                   `json:"operation_sum_ms"`
+	Churn            CodeChurnSummary                   `json:"churn"`
+	SelfCorrection   SelfCorrectionSummary              `json:"self_correction"`
 	MeasuredTokens   int64                              `json:"measured_tokens"`
 	EstimatedTokens  int64                              `json:"estimated_tokens"`
 	TotalCostUSD     string                             `json:"total_cost_usd"`
