@@ -52,7 +52,7 @@ The generated `<TIMESTAMP>_<PROJECT>.md` contains the following structured secti
 | **Run Metadata** | Execution command, project path, canonical report path, start timestamp, and Noctifab version. |
 | **Time Spent** | **Lead Time** (total physical clock time elapsed from start to completion) and reporting overhead. |
 | **Agent Performance** | Breakdown of agent invocations per role, story, task, active execution span (omitting zero units, e.g. `17s 116ms`), and outcome. |
-| **Phase Performance** | **Union Wall Time** (de-duplicated clock time) and **Execution Windows** across pipeline phases (Roadmap Generation, Story Execution). |
+| **Phase Performance** | **Phase Cycle Time** (de-duplicated phase clock time) and **Execution Spans** across pipeline phases (Roadmap Generation, Story Execution). |
 | **Code Churn & Workspace Impact** | Files modified, lines added/deleted, and net line delta. |
 | **Self-Correction & Turn Efficiency** | Retries recorded, unblocker interventions, watchdog interventions, and task pass efficiency rate. |
 | **Bottlenecks** | Human-readable bottleneck diagnoses detailing scope, measurement, and resolution impact. |

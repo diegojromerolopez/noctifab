@@ -128,14 +128,14 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	if len(snapshot.PhaseIntervals) == 0 {
 		sb.WriteString("None observed\n\n")
 	} else {
-		sb.WriteString("| Phase | Union Wall Time | Execution Windows |\n")
+		sb.WriteString("| Phase | Phase Cycle Time | Execution Spans |\n")
 		sb.WriteString("| :--- | ---: | ---: |\n")
 		for phase, intervals := range snapshot.PhaseIntervals {
 			durMS := TotalIntervalDurationMS(intervals)
 			fmt.Fprintf(&sb, "| %s | %s | %d |\n", phase, r.formatDuration(durMS), len(intervals))
 		}
-		sb.WriteString("\n* **Union Wall Time**: Net physical clock time elapsed during this phase (de-duplicated across parallel workers).\n")
-		sb.WriteString("* **Execution Windows**: Number of active execution time windows recorded during the phase.\n\n")
+		sb.WriteString("\n* **Phase Cycle Time**: Net physical clock time elapsed during this phase (de-duplicated across parallel workers).\n")
+		sb.WriteString("* **Execution Spans**: Number of active execution time spans recorded during the phase.\n\n")
 	}
 
 	// Code Churn and Workspace Impact

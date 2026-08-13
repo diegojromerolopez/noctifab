@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unified Parent Cache Volume Mounts**: updated `validation/run_one.sh` to consolidate host package/compiler cache mounts under `${HOME}/.noctifab/cache`.
 - **Real-Time Live Execution Report Documentation**: updated `README.md`, `docs/execution_report.md`, and `validation/run_all.sh` to document real-time live checkpointing and atomic file writes.
 - **Lead Time Metric Standard**: renamed **Execution Wall Time** metric to **Lead Time** across the execution report renderer (`renderer.go`) and documentation (`docs/execution_report.md`).
+- **Standard Terminology Alignment**: standardized Phase Performance metrics to **Phase Cycle Time** (net de-duplicated physical clock time) and **Execution Spans** in `renderer.go` and documentation.
 
 ### Removed
 - **Validation Project Feedback Report (`gen_feedback.py`)**: removed legacy `gen_feedback.py` script and `*_FEEDBACK.md` artifact generation in favor of Noctifab's native, structured Execution Report (`validation/projects/<project>/output/report/*.md`).
