@@ -80,7 +80,7 @@ func TestReportingPipeline(t *testing.T) {
 			assert.Contains(t, content, "## Execution Status")
 			assert.Contains(t, content, "## Agent Performance")
 			assert.Contains(t, content, "## Phase Performance")
-			assert.Contains(t, content, "## Code Churn and Workspace Impact")
+			assert.Contains(t, content, "## Codebase Changes & Workspace Impact")
 			assert.Contains(t, content, "## Self-Correction and Turn Efficiency")
 			assert.Contains(t, content, "## User Story and Task Results")
 			assert.Contains(t, content, "## LLM and Token Usage")

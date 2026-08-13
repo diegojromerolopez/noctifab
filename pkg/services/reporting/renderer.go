@@ -138,8 +138,8 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 		sb.WriteString("* **Execution Spans**: Number of active execution time spans recorded during the phase.\n\n")
 	}
 
-	// Code Churn and Workspace Impact
-	sb.WriteString("## Code Churn and Workspace Impact\n\n")
+	// Codebase Changes & Workspace Impact
+	sb.WriteString("## Codebase Changes & Workspace Impact\n\n")
 	netDelta := snapshot.Churn.LinesAdded - snapshot.Churn.LinesDeleted
 	fmt.Fprintf(&sb, "- **Files Changed:** %d\n", snapshot.Churn.FilesChanged)
 	fmt.Fprintf(&sb, "- **Lines Added:** +%d\n", snapshot.Churn.LinesAdded)
