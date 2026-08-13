@@ -159,6 +159,7 @@ var serveCmd = &cobra.Command{
 
 		orchConfig := services.OrchestratorConfig{
 			Architecture:         cfg.Agents.Architecture,
+			TaskExecutionOrder:   cfg.Agents.TaskExecutionOrder,
 			GeneratorsNumber:     cfg.Agents.Generators.Number,
 			GeneratorsIterations: cfg.Agents.Generators.Iterations,
 			TestersNumber:        cfg.Agents.Testers.Number,

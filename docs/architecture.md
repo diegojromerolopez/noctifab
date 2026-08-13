@@ -393,23 +393,18 @@ The **Breadth-First Generation** mode optimizes for rapid end-to-end prototype d
 * **Deterministic Validation**: Evaluates candidates based on functional happy paths and enforces the non-negotiable **Zero Regressions** rule.
 * **Iterative Refinement (Passes 2..N)**: Progressive passes expand edge-case coverage, error handling, linter compliance, and performance hardening.
 
-### 4. Explicit Quality Concerns
+### 5. Task Execution Ordering (`agents.task_execution_order`)
 
-Configured via `agents:` in `.noctifab/config.yaml`:
+Configured via `agents.task_execution_order` in `.noctifab/config.yaml`:
+* **`generator_first` (Default)**: Generator Agent implements feature code on Turn 1; Tester Agent writes QA tests on Turn 2. Prevents Turn 1 compilation errors and guarantees 0 wasted turns.
+* **`tester_first` (TDD Mode)**: Tester Agent writes tests on Turn 1; Generator Agent implements feature code on Turn 2. When `tester_first` is enabled, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 `run_tests` compiles cleanly.
+
 ```yaml
 agents:
   architecture: code_first
-
-  generators:
-    number: 3      # Parallel Generator agents (default: 3)
-    iterations: 5
-  testers:
-    number: 2      # Parallel Tester agents (default: 2)
-    iterations: 3
-  qa:
-    enabled: false # Experimental; no Phase 0 runtime
-    iterations: 1
+  task_execution_order: generator_first # "generator_first" (default) or "tester_first"
 ```
 
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.
+
 

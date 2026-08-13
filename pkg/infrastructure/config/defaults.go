@@ -15,6 +15,7 @@ func DefaultConfig() *Config {
 		ConfigVersion: "2.0",
 		Agents: AgentsConfig{
 			Architecture:        "code_first",
+			TaskExecutionOrder:  "generator_first",
 			MaxToolsPerResponse: 5,
 			ProductManager: AgentRoleConfig{
 				Number:         1,

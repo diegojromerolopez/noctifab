@@ -28,6 +28,7 @@ type PromptRenderer interface {
 
 type OrchestratorConfig struct {
 	Architecture         string
+	TaskExecutionOrder   string
 	GeneratorsNumber     int
 	GeneratorsIterations int
 	TestersNumber        int

@@ -266,13 +266,14 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
 
 	orchConfig := services.OrchestratorConfig{
-		Architecture:     cfg.Agents.Architecture,
-		GeneratorsNumber: cfg.Agents.Generators.Number,
-		TestersNumber:    cfg.Agents.Testers.Number,
-		PollInterval:     time.Duration(cfg.PollInterval),
-		MaxRetries:       10,
-		Concurrency:      effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
-		UseWorktrees:     cfg.VCS.UseWorktrees,
+		Architecture:       cfg.Agents.Architecture,
+		TaskExecutionOrder: cfg.Agents.TaskExecutionOrder,
+		GeneratorsNumber:   cfg.Agents.Generators.Number,
+		TestersNumber:      cfg.Agents.Testers.Number,
+		PollInterval:       time.Duration(cfg.PollInterval),
+		MaxRetries:         10,
+		Concurrency:        effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
+		UseWorktrees:       cfg.VCS.UseWorktrees,
 	}
 
 	mailbox := services.NewCommandMailbox(repo)

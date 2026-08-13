@@ -86,6 +86,7 @@ type PromptOverride struct {
 
 type AgentsConfig struct {
 	Architecture        string               `yaml:"architecture"`
+	TaskExecutionOrder  string               `yaml:"task_execution_order,omitempty"`
 	MaxToolsPerResponse int                  `yaml:"max_tools_per_response"`
 	Orchestrator        AgentRoleConfig      `yaml:"orchestrator"`
 	ProductManager      AgentRoleConfig      `yaml:"product_manager"`
