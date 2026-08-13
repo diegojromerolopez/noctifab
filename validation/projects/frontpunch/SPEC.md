@@ -235,3 +235,11 @@ Tests must be organized into the following three directories:
     *   Using a real/mocked Redis server interface, enqueue a test task, run the worker program, and verify that the task executes successfully.
     *   Test that raising an exception in a task correctly retries the job and increments the retry count in Redis.
     *   Test scheduled execution by scheduling a job, verifying it is not run immediately, and verifying it runs after its scheduled timestamp has passed.
+
+
+## 5. Definition of Done (DoD)
+
+To consider `frontpunch` fully implemented, the generated Python framework must satisfy:
+1. **Public API & CLI:** `frontpunch.task`, `.delay()`, `.perform_in()`, `.perform_at()` client APIs work seamlessly, and `frontpunch worker` daemon runs concurrent background processing with graceful shutdown.
+2. **Linting Invariant:** Zero linter findings under `ruff check . && mypy .`.
+3. **Verification Criteria:** 100% test pass rate and 100% unit coverage under `coverage run --source=frontpunch -m unittest discover -s tests && coverage report --fail-under=100`.

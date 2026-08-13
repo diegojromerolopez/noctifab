@@ -171,3 +171,8 @@ The project MUST include a `docker-compose.e2e.yml` configuration that spins up 
 3. **PKCE S256 Enforcement**: Mismatched SHA256 verifiers return HTTP 400 `invalid_grant`.
 4. **JWKS Rotation**: Key rotation adds a new active key while preserving old keys in JWKS.
 5. **Zero Linter Findings** on `go vet ./...`.
+
+
+### 3.4. Architectural & Design Guidelines
+* **SOLID & Domain-Driven Design:** Keep domain logic isolated from HTTP/storage transport layers.
+* **Dependency Injection (DI):** Supply all collaborators (DB connection pools, token signers, key stores, clock providers) strictly through constructors; global singletons or direct instantiation inline are forbidden.

@@ -467,3 +467,11 @@ The black-box E2E test runner container executes standard `curl` and Node.js Web
 ## 10. Documentation (`README.md`)
 
 `README.md` must document: monorepo directory layout, installation (`make install`), running locally (`make start`), REST & WebSocket contracts, database schema, and test execution (`make test`, `make lint`, `make e2e`).
+
+
+## 5. Definition of Done (DoD)
+
+To consider `notebook` fully implemented, the full-stack TypeScript project must satisfy:
+1. **Public API & Web UI:** Fastify REST API, React SPA dashboard, PostgreSQL database migrations, JWT authentication, and WebSocket live updates function as specified.
+2. **Linting Invariant:** Zero TypeScript compilation errors (`tsc --noEmit`) and zero linter warnings under `eslint .`.
+3. **Verification Criteria:** 100% test pass rate executing `make test`.

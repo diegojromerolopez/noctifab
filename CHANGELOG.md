@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.3] - 2026-08-13
+
+### Changed
+- **Validation Projects Audit & Standardization**: Standardized `execution_report: "/app/report_mount/execution_report.md"` across all 15 validation projects (`auth-vault`, `buffonstream`, `djanban`, `fortune`, `frontpunch`, `searchthedocs`, `sqlasm`, `stricc`, `todo-cli`, `calculator`, `echo`, `notebook`, `pyedis`, `t4`, `wc`).
+- **Validation Project Specifications**: Added explicit Definition of Done (DoD) sections, SOLID & Dependency Injection guidelines, and mandatory linter constraints across `SPEC.md` files.
+- **`frontpunch` Sandbox Configuration**: Updated `linter_command` (`ruff check . && mypy .`) and `test_command` to enforce 100% test coverage gate.
+
 ## [0.32.2] - 2026-08-13
 
 ### Fixed

@@ -214,3 +214,11 @@ volumes:
 
 `README.md` must document: install/run, the command API table, reply/error
 envelopes, the AOF format, `make test`/`lint`/`e2e`, and the e2e compose usage.
+
+
+## 5. Definition of Done (DoD)
+
+To consider `pyedis` fully implemented, the Python database server must satisfy:
+1. **Public API & CLI:** Redis-compatible command parser, AOF durability engine, and FastAPI monitoring API function correctly with precise protocol responses.
+2. **Linting Invariant:** Zero linter findings under `ruff check . && mypy --strict .`.
+3. **Verification Criteria:** 100% test pass rate executing `make test`.

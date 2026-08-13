@@ -1,4 +1,5 @@
 config_version: '2.0'
+execution_report: "/app/report_mount/execution_report.md"
 agents:
   architecture: code_first
   max_tools_per_response: 10
@@ -203,3 +204,15 @@ occ_backoff_base: 50ms
 occ_backoff_factor: 2
 token_usage_limit: 0
 log_level: info
+log_file: ''
+telemetry:
+  enabled: false
+  exporter: otlp
+  endpoint: ''
+  service_name: noctifab
+  metrics:
+    enabled: true
+context:
+  mode: full
+  diff_window_lines: 15
+  compaction: simple_english

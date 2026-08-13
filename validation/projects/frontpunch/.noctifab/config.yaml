@@ -1,4 +1,5 @@
 config_version: '2.0'
+execution_report: "/app/report_mount/execution_report.md"
 agents:
   architecture: code_first
   max_tools_per_response: 10
@@ -172,8 +173,8 @@ sandbox:
   mode: host
   timeout_seconds: 300
   grace_period_seconds: 30
-  test_command: python -m unittest discover -s tests
-  linter_command: ''
+  test_command: 'coverage run --source=frontpunch -m unittest discover -s tests && coverage report --fail-under=100'
+  linter_command: 'ruff check . && mypy .'
   formatter_command: black --line-length 120 .
   max_linter_retries: 3
   exclude_paths:

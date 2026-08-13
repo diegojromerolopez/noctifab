@@ -165,3 +165,11 @@ The modernized repository MUST produce at minimum:
 - `djanban/domain/`: Pure domain calculators and value objects (WIP, time tracking, Lead/Cycle math).
 - `djanban/api/`: Django REST API views and serializers mapping to `/api/v1/...`.
 - `tests/`: Unit and integration test suite.
+
+
+## 5. Definition of Done (DoD)
+
+To consider `djanban` fully modernized and operational, the codebase must satisfy:
+1. **Public API & Web Interfaces:** All Django endpoints and UI views for board/card/column management execute correctly with proper HTTP status codes, CSRF handling, and authentication.
+2. **Linting Invariant:** Zero static analysis errors or warnings under `ruff check . && mypy --strict .`.
+3. **Verification Criteria:** 100% test pass rate executing `pytest`.

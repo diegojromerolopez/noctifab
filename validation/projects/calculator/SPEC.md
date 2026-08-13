@@ -108,3 +108,16 @@ JSON Schema:
     }
   ]
 }
+
+
+### 3.3. Architectural Guidelines
+* **SOLID Principles:** Single-responsibility lexer, parser, and evaluator modules.
+* **Dependency Injection:** Provide evaluator components and I/O streams via constructor injection.
+
+
+## 4. Definition of Done (DoD)
+
+To consider `calculator` fully implemented, the generated codebase must satisfy:
+1. **Public Binary / Interface:** The REPL and CLI executable (`bin/calculator` or `bundle exec calculator`) correctly evaluates standard arithmetic expressions, handles operator precedence, handles syntax errors gracefully, and returns exit code `0` on success and exit code `1` on invalid arguments.
+2. **Linting Invariant:** Zero linter findings under `rubocop`.
+3. **Verification Criteria:** 100% test pass rate under `rspec spec/`.

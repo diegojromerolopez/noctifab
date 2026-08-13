@@ -39,6 +39,11 @@ No Go source code file may exceed 500 lines of code.
 
 ---
 
+
+### 2.4. Architectural Guidelines
+* **SOLID Principles:** Separate CLI parsing in `cmd/echo/main.go` from string processing logic in `pkg/echoer`.
+* **Dependency Injection:** Pass command line arguments explicitly into domain functions rather than relying on package-level state.
+
 ## 3. Verification Criteria & Testing
 
 ### 3.1. Unit Tests
@@ -52,6 +57,14 @@ No Go source code file may exceed 500 lines of code.
   ```bash
   go test -v ./...
   ```
+
+
+## 5. Definition of Done (DoD)
+
+To consider `echo` fully implemented, the codebase must satisfy:
+1. **Public Binary:** `echo-cli` binary compiled in `cmd/echo/main.go` that outputs the first CLI argument followed by `\n` (or single `\n` if no arguments provided) and exits with exit code `0`.
+2. **Linting Invariant:** Zero warnings under `go vet ./...` and strictly formatted with `go fmt`.
+3. **Verification Criteria:** 100% test pass rate executing `go test -v ./...`.
 
 ## 4. Product Manager Instructions
 

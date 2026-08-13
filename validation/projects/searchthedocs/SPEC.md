@@ -624,3 +624,11 @@ echo "==> All E2E assertions passed successfully!"
 ## 9. Documentation (`README.md`)
 
 `README.md` must document: setup (`make install`), running locally (`make start`), DDD architecture layers, OpenAI-compatible LLM configuration, PostgreSQL + `pgvector` setup, REST API contract, Redis queue architecture, HNSW vector search implementation, UI features, and test execution (`make test`, `make lint`, `make e2e`).
+
+
+## 5. Definition of Done (DoD)
+
+To consider `searchthedocs` fully implemented, the search engine project must satisfy:
+1. **Public API & Service:** FastAPI documentation ingestion pipelines, Redis task queues, vector embeddings, and search query API respond accurately with expected JSON schemas.
+2. **Linting Invariant:** Zero linter findings under `ruff check . && mypy .`.
+3. **Verification Criteria:** 100% test pass rate executing `make test`.
