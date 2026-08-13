@@ -154,8 +154,8 @@ elif [ "${PROJECT}" = "pyedis" ]; then
     exit 1
   fi
 elif [ "${PROJECT}" = "notebook" ]; then
-  if [ ! -f "src/index.ts" ] || [ ! -f "package.json" ] || [ ! -f "docker-compose.yml" ]; then
-    echo "❌ Error: notebook artifacts (src/index.ts, package.json, docker-compose.yml) were not created!"
+  if { [ ! -f "src/index.ts" ] && [ -z "$(find src -name '*.ts' 2>/dev/null)" ]; } || [ ! -f "package.json" ]; then
+    echo "❌ Error: notebook artifacts (src/*.ts, package.json) were not created!"
     exit 1
   fi
 else

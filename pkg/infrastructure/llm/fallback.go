@@ -36,18 +36,24 @@ func selectLowerModelFromParsed(currentModel string, parsedModels []*ProviderMod
 	for i, m := range parsedModels {
 		normM := strings.TrimPrefix(strings.ToLower(m.Name), "models/")
 		if normM == normCurrent {
-			if i+1 < len(parsedModels) {
-				return parsedModels[i+1].Name
+			for j := i + 1; j < len(parsedModels); j++ {
+				if !IsModelBlacklisted(parsedModels[j].Name) {
+					return parsedModels[j].Name
+				}
 			}
-			// Current model is already the lowest-ranked — no further fallback.
+			// Current model is already the lowest non-blacklisted model — no further fallback.
 			return ""
 		}
 	}
 
 	// The current model was not found in the parsed list (unrecognised model name).
-	// As a fault-tolerant safety valve, return the lowest-ranked model from the
-	// parsed list so that execution can continue rather than failing immediately.
-	return parsedModels[len(parsedModels)-1].Name
+	// As a fault-tolerant safety valve, return the lowest non-blacklisted model.
+	for j := len(parsedModels) - 1; j >= 0; j-- {
+		if !IsModelBlacklisted(parsedModels[j].Name) && strings.TrimPrefix(strings.ToLower(parsedModels[j].Name), "models/") != normCurrent {
+			return parsedModels[j].Name
+		}
+	}
+	return ""
 }
 
 // normalizeModelID strips provider routing prefixes (e.g. OpenRouter's `~`

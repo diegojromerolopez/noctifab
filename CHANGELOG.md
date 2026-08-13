@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **User Story Title Correlation**: added story title parsing (`extractStoryTitle`) and display in the `### User Stories` table (`Story ID & Title`), matching task title formatting.
 - **Codebase Changes & Workspace Impact**: renamed Code Churn section to **Codebase Changes & Workspace Impact** across `renderer.go` and `docs/execution_report.md`, computing full cumulative line deltas against the root commit.
 - **Black-Box Contract Scenarios Table**: rendered public contract scenarios (`Contract ID`, `Interface`, `Executable Path`, `Observable Expectations`, `Verification Status`) under `## Verification & Testing Strategy`.
+- **Permanent Model 404 Deprecation Blacklisting**: added thread-safe `BlacklistModel` and `IsModelBlacklisted` registry in `pkg/infrastructure/llm/` to permanently skip HTTP 404 / deprecated models across all future LLM fallback ladder selections.
+- **Soft DAG Dependency Pruning**: updated `ResolveTaskDependencies` in `pkg/services/task_dependencies.go` to prune unknown/hallucinated task dependencies with a warning log to `os.Stderr` instead of failing execution.
+- **Flexible Validation Artifact Matching**: updated `validation/validate.sh` to accept alternative TypeScript entry points in `src/` (e.g. `src/server.ts`, `src/app.ts`) for `notebook`.
+- **Language-Independent Standard Library First Prompt Mandate**: updated 11 prompt templates across `pkg/infrastructure/prompts/defaults/` to enforce standard library primitives over un-scaffolded external packages unless explicitly required by `SPEC.md`.
+- **Tool Sandboxing & Package Resolution Documentation**: updated `docs/architecture.md` and `docs/prompts.md` documenting agent tool permissions (`exec` disabled), manifest editing vs terminal package installation, and standard library fallback behavior.
 
 ### Removed
 - **Validation Project Feedback Report (`gen_feedback.py`)**: removed legacy `gen_feedback.py` script and `*_FEEDBACK.md` artifact generation in favor of Noctifab's native, structured Execution Report (`validation/projects/<project>/output/report/*.md`).

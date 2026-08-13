@@ -268,7 +268,10 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 				fmt.Fprintf(os.Stderr, "ℹ [llm] %s/%s call OK after %v (attempt %d)\n", c.Provider, activeModel, time.Since(attemptStart), attempt+1)
 				break
 			}
-			fmt.Fprintf(os.Stderr, "⚠ [llm] %s/%s call error after %v (attempt %d/%d): %v\n", c.Provider, activeModel, time.Since(attemptStart), attempt+1, maxRetries+1, err)
+
+			if isModelNotFoundOrDeprecated(err) {
+				BlacklistModel(activeModel)
+			}
 
 			if isCreditExhausted(err) {
 				creditExhausted = true
@@ -292,8 +295,6 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 				fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s; skipping retries.\n", c.Provider, activeModel)
 				break
 			}
-
-			fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
 			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") || creditExhausted {
 				fmt.Fprintln(os.Stderr, "⚠ Warning: You have exceeded your LLM API quota (HTTP 429). Please check your plan and billing details.")
 				if len(c.APIKeys) > 1 {

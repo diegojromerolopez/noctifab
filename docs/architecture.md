@@ -60,6 +60,12 @@ Tasks can define dependencies on other tasks (e.g., Task B depends on Task A). T
 ### 3. Policy Validator (`pkg/services/validator.go`)
 Acts as a security checkpoint before any LLM-proposed tool is executed. It matches tools and command patterns against role profiles defined in `.noctifab/profiles/` to prevent directory traversal attacks, illegal network requests, or host command escapes.
 
+#### Tool Sandboxing & Hermetic Package Resolution
+Noctifab restricts agent capabilities to guarantee deterministic execution and security:
+- **No Direct Terminal Execution (`exec` Disabled)**: Neither `generator` nor `tester` agents are granted access to terminal execution tools (`exec`). Agents cannot directly invoke shell installation commands such as `pip install`, `npm install`, `cargo add`, or `go get`.
+- **Manifest File Declarations**: Generator agents **can** modify project manifest files (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) using `write_file` or `edit_file`. If a package is pre-cached or listed in `SPEC.md`, `run_tests` will link it cleanly.
+- **Hermetic Offline Failures & Standard Library Preference**: In containerized, offline, or dark-factory validation environments, introducing un-cached third-party dependencies causes `run_tests` to fail with module import errors (e.g. `ModuleNotFoundError`). All agent prompts enforce a **Standard Library First Mandate**: if `run_tests` fails on an uninstalled package, the agent is instructed to immediately refactor the implementation to use built-in standard library primitives (e.g. `asyncio`, `net/http`, `node:fs`, `socket`) rather than burning retries on un-fetchable imports.
+
 ### 4. Sandboxed Runner (`pkg/services/sandbox.go`)
 Executes shell commands and test suites. It supports two modes:
 - **Host Sandbox**: Executes commands directly on the host using jail-like path boundary validations.

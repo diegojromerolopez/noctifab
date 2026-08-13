@@ -172,6 +172,19 @@ The following prompts are deliberately **not** customizable:
 | JSON format reminder | The mechanism that repairs schema violations; letting users edit the repair mechanism is a circular risk |
 | Turn continuation wrapper | Turn scaffolding (`TOOL OUTPUTS FROM PREVIOUS TURN...`), not a persona prompt |
 
+## Hermetic Workspace & Standard Library First Mandate
+
+All embedded default templates for `generator/*` and `tester/*` include a built-in resilience directive:
+
+> **HERMETIC WORKSPACE & STANDARD LIBRARY FIRST MANDATE**: You operate in a hermetic, offline workspace where external runtime package downloads are disabled. Always prefer solutions that DO NOT DEPEND on external packages and rely strictly on built-in language standard libraries (across any language, e.g. stdlib file/network/process I/O), UNLESS a specific package is explicitly required by `SPEC.md` or is a universally adopted standard recommended by language maintainers already pre-baked in the environment. Do not introduce uninstalled third-party dependencies. If `run_tests` or `run_linter` fails due to an uninstalled package or missing module import error (e.g. `ModuleNotFoundError`, `ImportError`, `Cannot find module`), DO NOT repeat the uninstalled import; immediately refactor the code/tests to use language standard library alternatives.
+
+### Key Rules Implied by the Mandate:
+1. **Manifest Declarations**: Generator agents **can** update manifest files (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) to declare packages specified in `SPEC.md` or pre-baked in the container.
+2. **No Terminal Package Installation (`exec` Disabled)**: Agents cannot run shell package managers (`pip install`, `npm install`, `cargo add`, `go get`) directly because `exec` is forbidden by policy sandbox (`pkg/services/validator.go`).
+3. **Immediate Fallback on Import Errors**: If `run_tests` fails because an imported package is not available in the environment, the agent must immediately rewrite the code using standard library primitives (`asyncio`, `socket`, `net/http`, `node:fs`, etc.) instead of burning retries on un-fetchable imports.
+
+---
+
 ## CLI
 
 | Command | Behavior |
