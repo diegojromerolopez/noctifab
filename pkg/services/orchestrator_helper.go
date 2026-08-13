@@ -443,7 +443,6 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				fmt.Printf("🛠️  [Tool Executed] task=%s role=TESTER tool=%s success=%t\n", task.ID, action.Tool, execErr == nil)
 				if execErr != nil {
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
-					hasNoop = false
 					// Track linter consecutive failures.
 					if action.Tool == "run_linter" {
 						consecutiveLinterFailures++
@@ -451,6 +450,9 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 							linterDeferred = true
 							fmt.Fprintf(os.Stderr, "⚠ [Tester] Linter failed %d consecutive times without file changes for task %s — deferring linter enforcement. Tests are the primary quality gate.\n", consecutiveLinterFailures, task.ID)
 						}
+					}
+					if action.Tool != "run_linter" || !linterDeferred {
+						hasNoop = false
 					}
 				} else {
 					executed++

@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Flexible Validation Artifact Matching**: updated `validation/validate.sh` to accept alternative TypeScript entry points in `src/` (e.g. `src/server.ts`, `src/app.ts`) for `notebook`.
 - **Language-Independent Standard Library First Prompt Mandate**: updated 11 prompt templates across `pkg/infrastructure/prompts/defaults/` to enforce standard library primitives over un-scaffolded external packages unless explicitly required by `SPEC.md`.
 - **Tool Sandboxing & Package Resolution Documentation**: updated `docs/architecture.md` and `docs/prompts.md` documenting agent tool permissions (`exec` disabled), manifest editing vs terminal package installation, and standard library fallback behavior.
+- **Advisory Linter Soft-Pass**: updated task turn evaluation in `pkg/services/orchestrator_generator.go` and `orchestrator_helper.go` to complete tasks as `SUCCESS` with an advisory log warning when unit/integration tests pass 100% and linter failures occur 2+ consecutive times.
+- **Aggressive Circuit-Breaker for HTTP 429 Rate Limits**: updated `pkg/infrastructure/llm/client.go` to immediately skip retries on HTTP 429 quota exhaustion when no short `Retry-After` header is supplied, triggering instant model/provider fallback.
+- **Concurrent DAG Task Worker Dispatch**: updated `pkg/services/orchestrator_dispatch.go` to default concurrency to `GeneratorsNumber` (default 3) when unset, executing independent ready tasks in parallel worker goroutines.
 
 ### Removed
 - **Validation Project Feedback Report (`gen_feedback.py`)**: removed legacy `gen_feedback.py` script and `*_FEEDBACK.md` artifact generation in favor of Noctifab's native, structured Execution Report (`validation/projects/<project>/output/report/*.md`).
