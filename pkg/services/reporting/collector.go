@@ -485,30 +485,73 @@ func collectStoryContracts(projectPath string) []domain.PublicContract {
 	return contracts
 }
 
+func isVendorOrArtifactPath(filePath string) bool {
+	filePath = filepath.ToSlash(strings.TrimSpace(filePath))
+	parts := strings.Split(filePath, "/")
+	ignoredDirs := map[string]bool{
+		"node_modules": true, "vendor": true, "dist": true,
+		"target": true, ".next": true, "build": true, "bin": true,
+		"__pycache__": true, "venv": true, ".venv": true,
+		".noctifab": true, ".git": true, "output": true,
+	}
+	for _, part := range parts {
+		if ignoredDirs[strings.ToLower(part)] {
+			return true
+		}
+	}
+	return false
+}
+
 func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 	var churn CodeChurnSummary
 	if projectPath == "" {
 		return churn
 	}
 
-	// Find the root commit of the repository
+	// Helper to parse git diff --numstat lines filtered by source code boundaries
+	parseNumstat := func(output string) {
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.Fields(line)
+			if len(parts) < 3 {
+				continue
+			}
+			filePath := parts[2]
+			if isVendorOrArtifactPath(filePath) {
+				continue
+			}
+			var added, deleted int64
+			_, _ = fmt.Sscanf(parts[0], "%d", &added)
+			_, _ = fmt.Sscanf(parts[1], "%d", &deleted)
+
+			churn.FilesChanged++
+			churn.LinesAdded += added
+			churn.LinesDeleted += deleted
+		}
+	}
+
+	// Find root commit of repository
 	rootCmd := exec.Command("git", "rev-list", "--max-parents=0", "HEAD")
 	rootCmd.Dir = projectPath
 	if rootOut, rErr := rootCmd.Output(); rErr == nil && len(bytes.TrimSpace(rootOut)) > 0 {
 		rootHash := strings.TrimSpace(string(rootOut))
-		diffCmd := exec.Command("git", "diff", "--shortstat", rootHash)
+		diffCmd := exec.Command("git", "diff", "--numstat", rootHash)
 		diffCmd.Dir = projectPath
 		if out, err := diffCmd.Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
-			parseGitShortstat(string(out), &churn)
+			parseNumstat(string(out))
 		}
 	}
 
-	// Fallback to git diff HEAD if root commit diff yielded nothing
+	// Fallback to git diff --numstat HEAD if root commit diff yielded nothing
 	if churn.FilesChanged == 0 {
-		cmd := exec.Command("git", "diff", "--shortstat", "HEAD")
+		cmd := exec.Command("git", "diff", "--numstat", "HEAD")
 		cmd.Dir = projectPath
 		if out, err := cmd.Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
-			parseGitShortstat(string(out), &churn)
+			parseNumstat(string(out))
 		}
 	}
 
@@ -516,12 +559,16 @@ func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 	cmdStatus.Dir = projectPath
 	if outStatus, errStatus := cmdStatus.Output(); errStatus == nil {
 		lines := strings.Split(strings.TrimSpace(string(outStatus)), "\n")
-		untrackedFiles := int64(0)
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
 			if strings.HasPrefix(line, "??") || strings.HasPrefix(line, "A ") {
-				untrackedFiles++
 				filePath := strings.TrimSpace(line[2:])
+				if isVendorOrArtifactPath(filePath) {
+					continue
+				}
 				fullPath := filepath.Join(projectPath, filePath)
 				if content, rErr := os.ReadFile(fullPath); rErr == nil {
 					lineCount := int64(bytes.Count(content, []byte("\n")))
@@ -529,38 +576,11 @@ func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 						lineCount++
 					}
 					churn.LinesAdded += lineCount
+					churn.FilesChanged++
 				}
 			}
-		}
-		if churn.FilesChanged == 0 && len(lines) > 0 && lines[0] != "" {
-			churn.FilesChanged = int64(len(lines))
-		} else if untrackedFiles > 0 {
-			churn.FilesChanged += untrackedFiles
 		}
 	}
 
 	return churn
-}
-
-func parseGitShortstat(stat string, churn *CodeChurnSummary) {
-	parts := strings.Split(strings.TrimSpace(stat), ",")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if strings.Contains(part, "file") {
-			var n int64
-			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
-				churn.FilesChanged = n
-			}
-		} else if strings.Contains(part, "insertion") {
-			var n int64
-			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
-				churn.LinesAdded = n
-			}
-		} else if strings.Contains(part, "deletion") {
-			var n int64
-			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
-				churn.LinesDeleted = n
-			}
-		}
-	}
 }
