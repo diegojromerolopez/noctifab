@@ -16,14 +16,8 @@ else
   NOCTIFAB_BIN="$(pwd)/bin/noctifab"
 fi
 
-# 2. Setup temporary workspace directory named after project
+# 2. Setup workspace directory
 PROJECT="${PROJECT:-frontpunch}"
-TMP_DIR="$(pwd)/${PROJECT}"
-echo "Validating project: ${PROJECT}..." >&2
-echo "Setting up temporary workspace at ${TMP_DIR}..." >&2
-rm -rf "${TMP_DIR}"
-
-# 3. Copy the project copy into the workspace
 PROJECT_SRC="/app/projects/${PROJECT}"
 if [ ! -d "${PROJECT_SRC}" ]; then
   PROJECT_SRC="$(pwd)/validation/projects/${PROJECT}"
@@ -32,7 +26,21 @@ if [ ! -d "${PROJECT_SRC}" ]; then
   echo "❌ Error: Project ${PROJECT} does not exist in /app/projects/ or validation/projects/"
   exit 1
 fi
-cp -R "${PROJECT_SRC}" "${TMP_DIR}"
+
+if [ -d "/app/src_mount" ]; then
+  TMP_DIR="/app/src_mount"
+  echo "Validating project: ${PROJECT} (real-time mounted workspace at ${TMP_DIR})..." >&2
+  rm -rf "${TMP_DIR:?}"/* "${TMP_DIR}"/.[!.]* "${TMP_DIR}"/..?* 2>/dev/null || true
+else
+  TMP_DIR="$(pwd)/${PROJECT}"
+  echo "Validating project: ${PROJECT}..." >&2
+  echo "Setting up temporary workspace at ${TMP_DIR}..." >&2
+  rm -rf "${TMP_DIR}"
+  mkdir -p "${TMP_DIR}"
+fi
+
+# 3. Copy project files into workspace
+cp -a "${PROJECT_SRC}/." "${TMP_DIR}/"
 cd "${TMP_DIR}"
 
 # Mount the secret file from the runtime Docker secret into the workspace.
@@ -71,7 +79,7 @@ git commit -m "initial project structures and gitignore"
 
 # Set up a local "origin" bare repository inside the workspace to allow git pushes
 echo "Setting up local git origin remote..." >&2
-ORIGIN_DIR="$(pwd)/../origin.git"
+ORIGIN_DIR="/tmp/${PROJECT}_origin.git"
 rm -rf "${ORIGIN_DIR}"
 git init --bare "${ORIGIN_DIR}"
 git remote add origin "${ORIGIN_DIR}"
@@ -164,8 +172,8 @@ fi
 
 echo "✅ Success: Noctifab executed autonomously, implemented US-001 features, and passed validation for ${PROJECT}!"
 
-# Copy the generated code to the src mount if present
-if [ -d "/app/src_mount" ]; then
+# Copy the generated code to the src mount if present and not already working directly inside it
+if [ -d "/app/src_mount" ] && [ "${TMP_DIR}" != "/app/src_mount" ]; then
   echo "Copying generated code to src mount..."
   rm -rf /app/src_mount/*
   cp -a . /app/src_mount/
@@ -222,5 +230,7 @@ if [ -d "/app/dist_mount" ]; then
   fi
 fi
 
-cd ..
-rm -rf "${TMP_DIR}"
+cd /app
+if [ "${TMP_DIR}" != "/app/src_mount" ]; then
+  rm -rf "${TMP_DIR}"
+fi

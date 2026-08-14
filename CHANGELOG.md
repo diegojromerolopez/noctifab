@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-08-14
+
+### Added
+- **Real-Time Validation Source Code Workspace**: Updated `validation/validate.sh` to initialize and execute Noctifab directly inside `/app/src_mount` when mounted, enabling live streaming of generated source code changes to `validation/projects/<project>/output/src/` on the host machine in real-time.
+- **Validation Documentation**: Updated `AGENTS.md`, `validation/README.md`, and `validation/projects/TESTING_GUIDE.md` to detail real-time source code visibility during execution.
+- **Validation Containers Execution Registry**: Added `VALIDATION_CONTAINERS_REGISTRY.md` to track validation runs and execution metrics.
+
 ## [0.32.5] - 2026-08-14
 
 ### Removed

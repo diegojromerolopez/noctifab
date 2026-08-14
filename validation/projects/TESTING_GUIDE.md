@@ -80,9 +80,7 @@ failure attributes cleanly to a specific stage.
   containers failing on a wave-1 breakage and limits API 429 contention (parallel
   runs sharing one key have saturated quotas in the past — watch the `Errors` column).
 - **Maximum Execution Time Limit (10 Minutes)**: A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified for the run) MUST be set for each execution of each validation project.
-- **Reading results:** for each run, inspect the container log, the generated source
-  in `output/src/`, and the `<PROJECT>_FEEDBACK.md` report — focusing on story count
-  vs. planned, linter-loop iterations, test pass rate at hand-off, and wall-clock time.
+- **Reading results:** for each run, inspect the container log, the live generated source in `output/src/` (updated in real time as Noctifab creates and modifies files), and the `<PROJECT>_FEEDBACK.md` report — focusing on story count vs. planned, linter-loop iterations, test pass rate at hand-off, and wall-clock time.
 
 ## 5. Monitoring & Execution Report Inspection
 
@@ -91,12 +89,13 @@ agents **must rely on the generated execution report (`validation/projects/<proj
 
 ### 5.1 Data sources
 - Execution Report: `validation/projects/<project>/output/report/*.md` (live atomic report written during execution).
+- Live Source Code: `validation/projects/<project>/output/src/` (updated in real time as Noctifab writes code).
 - Container console log: `validation/projects/<project>/output/log/<project>.log`
   (also mirrored at `.validation-logs/<project>.log`).
 - Wrapper trace: `<project>.wrap.log` (build/launch/exit).
 - Feedback: `<PROJECT>_FEEDBACK.md` (verdict, phase activity, failures, spec ambiguity)
   is written when the run finishes.
-- Source/binary artifacts: `output/src/` and `output/dist/`.
+- Binary artifacts: `output/dist/`.
 | `frontpunch` | Running | No | 41% (11/27 stories) | 11/27 | 0/0 | Product Manager decomposing SPEC (over-decomposition risk) | 18m 30s | 21s ago | `glm-5.2` | — |
 
 ### 5.5 Known failure signatures to watch for
