@@ -71,6 +71,9 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		},
 		"max_tokens": maxTokens,
 	}
+	if temperature > 0 {
+		payload["temperature"] = temperature
+	}
 	reqBody, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
@@ -122,9 +125,33 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	if !ok || len(content) == 0 {
 		return nil, fmt.Errorf("unexpected Anthropic response: %s", string(respBody))
 	}
-	item := content[0].(map[string]any)
-	text, _ := item["text"].(string)
-	return []byte(text), nil
+
+	var textBlocks []string
+	var fallbackTextBlocks []string
+
+	for _, elem := range content {
+		item, isMap := elem.(map[string]any)
+		if !isMap {
+			continue
+		}
+		blockType, _ := item["type"].(string)
+		txt, _ := item["text"].(string)
+
+		if blockType == "text" && txt != "" {
+			textBlocks = append(textBlocks, txt)
+		} else if txt != "" && blockType != "thinking" {
+			fallbackTextBlocks = append(fallbackTextBlocks, txt)
+		}
+	}
+
+	if len(textBlocks) > 0 {
+		return []byte(strings.Join(textBlocks, "\n")), nil
+	}
+	if len(fallbackTextBlocks) > 0 {
+		return []byte(strings.Join(fallbackTextBlocks, "\n")), nil
+	}
+
+	return nil, fmt.Errorf("unexpected Anthropic response content: %s", string(respBody))
 }
 
 func (a *anthropicProviderClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {

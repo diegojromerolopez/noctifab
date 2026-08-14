@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.1] - 2026-08-14
+
+### Fixed
+- **Anthropic Provider Client Multi-Block Resilience**: Fixed `anthropicProviderClient` (`pkg/infrastructure/llm/anthropic.go`) to iterate across all response `content` blocks, filtering out `type: "thinking"` blocks and concatenating all `type: "text"` blocks into a unified output string. Added support for passing `"temperature": temperature` in payload when specified.
+- **Anthropic Test Suite Expansion**: Added comprehensive unit test suite in `pkg/infrastructure/llm/anthropic_test.go` covering single/multi-block text, thinking blocks, temperature parameters, empty content payloads, HTTP status errors, and model listing endpoints.
+
 ## [0.33.0] - 2026-08-14
 
 ### Added
