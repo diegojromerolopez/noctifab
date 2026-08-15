@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.4] - 2026-08-15
+
+### Fixed
+- **Legacy File Scanning & Prompt Mandate**: Added Dockerfile, compose, Makefile, and Read the Docs config files to `scanLegacyFiles` ignored files in `pkg/services/roadmap_generator.go` so build configs aren't misidentified as legacy source code. Updated Product Manager prompt templates (`generate.tmpl` and `audit.tmpl`) to mandate preserving pinned directory layouts and required file paths from `SPEC.md` in user story Definitions of Done.
+
 ## [0.33.3] - 2026-08-15
 
 ### Changed

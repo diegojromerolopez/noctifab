@@ -166,6 +166,8 @@ func scanLegacyFiles(projectPath string) ([]string, error) {
 	ignoredFiles := map[string]bool{
 		"spec.md": true, "readme.md": true, "changelog.md": true,
 		"license": true, "version": true, ".gitignore": true,
+		"dockerfile": true, "docker-compose.yml": true, "docker-compose.yaml": true,
+		"makefile": true, ".readthedocs.yaml": true, ".readthedocs.yml": true,
 	}
 
 	ignoredExts := map[string]bool{
