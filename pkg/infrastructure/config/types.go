@@ -71,6 +71,7 @@ type Config struct {
 	TokenUsageLimit     int64    `yaml:"token_usage_limit"`
 	LogLevel            string   `yaml:"log_level"`
 	LogFile             string   `yaml:"log_file"`
+	ExecutionReport     string   `yaml:"execution_report,omitempty"`
 }
 
 // PromptOverride customizes the prompt template of one agent action.
@@ -85,6 +86,7 @@ type PromptOverride struct {
 
 type AgentsConfig struct {
 	Architecture        string               `yaml:"architecture"`
+	TaskExecutionOrder  string               `yaml:"task_execution_order,omitempty"`
 	MaxToolsPerResponse int                  `yaml:"max_tools_per_response"`
 	Orchestrator        AgentRoleConfig      `yaml:"orchestrator"`
 	ProductManager      AgentRoleConfig      `yaml:"product_manager"`
@@ -124,6 +126,7 @@ type AgentRoleConfig struct {
 	Profile        string             `yaml:"profile,omitempty"`
 	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
 	MaxUserStories int                `yaml:"max_user_stories,omitempty"`
+	Passes         int                `yaml:"passes,omitempty"`
 }
 
 type StorageConfig struct {

@@ -90,9 +90,21 @@ func TestGoldenDefaults_ByteIdenticalToLegacyAssembly(t *testing.T) {
 			got := rendered.Full()
 			want := legacyPreprocessPrompt(tc.legacy)
 			if tc.agent == AgentProductManager {
-				for _, needle := range []string{"exactly one fenced `noctifab-contract` JSON block", "```noctifab-contract", `"allowed_executables"`} {
+				needles := []string{"exactly one fenced `noctifab-contract` JSON block", "```noctifab-contract", `"allowed_executables"`}
+				if tc.action == "generate" {
+					needles = append(needles, "COMPLEXITY UNIT (CU) ROADMAP SIZING RULE")
+				}
+				for _, needle := range needles {
 					if !strings.Contains(got, needle) {
 						t.Errorf("product manager prompt missing %q", needle)
+					}
+				}
+				return
+			}
+			if tc.agent == AgentPlanner {
+				for _, needle := range []string{"TASK COHESION & ENTITY MANDATE", "TASK GRANULARITY & MICRO-TASK PREVENTION"} {
+					if !strings.Contains(got, needle) {
+						t.Errorf("planner prompt missing %q", needle)
 					}
 				}
 				return

@@ -60,6 +60,12 @@ Tasks can define dependencies on other tasks (e.g., Task B depends on Task A). T
 ### 3. Policy Validator (`pkg/services/validator.go`)
 Acts as a security checkpoint before any LLM-proposed tool is executed. It matches tools and command patterns against role profiles defined in `.noctifab/profiles/` to prevent directory traversal attacks, illegal network requests, or host command escapes.
 
+#### Tool Sandboxing & Hermetic Package Resolution
+Noctifab restricts agent capabilities to guarantee deterministic execution and security:
+- **No Direct Terminal Execution (`exec` Disabled)**: Neither `generator` nor `tester` agents are granted access to terminal execution tools (`exec`). Agents cannot directly invoke shell installation commands such as `pip install`, `npm install`, `cargo add`, or `go get`.
+- **Manifest File Declarations**: Generator agents **can** modify project manifest files (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) using `write_file` or `edit_file`. If a package is pre-cached or listed in `SPEC.md`, `run_tests` will link it cleanly.
+- **Hermetic Offline Failures & Standard Library Preference**: In containerized, offline, or dark-factory validation environments, introducing un-cached third-party dependencies causes `run_tests` to fail with module import errors (e.g. `ModuleNotFoundError`). All agent prompts enforce a **Standard Library First Mandate**: if `run_tests` fails on an uninstalled package, the agent is instructed to immediately refactor the implementation to use built-in standard library primitives (e.g. `asyncio`, `net/http`, `node:fs`, `socket`) rather than burning retries on un-fetchable imports.
+
 ### 4. Sandboxed Runner (`pkg/services/sandbox.go`)
 Executes shell commands and test suites. It supports two modes:
 - **Host Sandbox**: Executes commands directly on the host using jail-like path boundary validations.
@@ -97,6 +103,41 @@ Noctifab exposes the following implemented roles and retained experimental capab
 | **`unblocker`** | Unblocker Daemon Agent | Continuously monitors execution pipelines for stalls, deadlocks, and task re-queueing. |
 
 Architecture, security, performance, documentation, and infrastructure work is represented by explicit planner tasks and deterministic validators, not specialist agents.
+
+---
+
+## Specification-Based Complexity Units ($CU$)
+
+To prevent micro-tasks and oversized monolithic user stories during spec decomposition, `noctifab` uses a **Unified Composite Complexity Unit ($CU$)** metric.
+
+The $CU$ metric synthesizes three specification-driven dimensions directly from natural language text (`SPEC.md`):
+
+$$\text{CU} = \underbrace{\text{Data Movements}}_{\text{COSMIC (Entry, Exit, Read, Write)}} + \underbrace{\text{Domain Concepts}}_{\text{DDD (Structs, Entities, State)}} + \underbrace{\text{Contract Invariants}}_{\text{RPA (Flags, Exit Codes, Output Rules)}}$$
+
+### Theoretical Foundations & Academic References
+
+The Unified Composite $CU$ Metric synthesizes three established specification-driven standards:
+
+1. **COSMIC Function Points (ISO/IEC 19761:2011):**
+   - Measures **Data Movements** directly from natural language text: **Entry (E)** (arguments, stdin, requests), **Exit (X)** (stdout, status codes, responses), **Read (R)** (filesystem/db reads), and **Write (W)** (file/db writes).
+   - *Reference:* [ISO/IEC 19761:2011 — COSMIC Measurement Method](https://www.iso.org/standard/55222.html) and [COSMIC Measurement Manual v5.0](https://cosmic-sizing.org/publications/measurement-manual-v5-0/).
+
+2. **Domain & Object Model Complexity (DDD & Chidamber-Kemerer):**
+   - Evaluates domain structural complexity from requirement prose: core **Entities**, **Value Objects**, **Domain Services**, and **State Machines**.
+   - *Reference:* [Chidamber & Kemerer (IEEE TSE, 1994) — A Metrics Suite for Object Oriented Design](https://doi.org/10.1109/32.295895) and [MIT Sloan Working Paper 3233-90](https://dspace.mit.edu/handle/1721.1/48493).
+
+3. **Requirement Invariants & Imperatives (NASA ARM & RFC 2119):**
+   - Measures contract invariants and interface surface area: CLI options, error conditions, exit code specifications, and imperative rules (`MUST`, `SHALL`).
+   - *Reference:* [NASA Technical Memorandum 104640 (ARM Tool)](https://ntrs.nasa.gov/citations/19970024095) and [IETF RFC 2119 Requirement Levels](https://datatracker.ietf.org/doc/html/rfc2119).
+
+### Sizing Boundaries & Decomposition Rules
+1. **Product Manager Sizing (`generate.tmpl`):**
+   - For concise specifications ($CU_{\text{total}} < 25$, such as `wc`, `echo`, `calculator`), the Product Manager Agent is mandated to create **exactly 1 User Story**.
+   - For larger specifications, User Stories are sized to target windows ($15 \le CU_{\text{story}} \le 30$).
+2. **Planner Task Sizing (`decompose.tmpl`):**
+   - User stories are decomposed into tasks bounded by $CU_{\text{task}} \in [4, 8]$.
+3. **Task Cohesion Validation (`pkg/services/task_cohesion.go`):**
+   - Programmatically enforces task cohesion: rejecting micro-tasks ($CU < 4$) and splitting oversized tasks ($CU > 8$).
 
 ---
 
@@ -352,23 +393,31 @@ The **Breadth-First Generation** mode optimizes for rapid end-to-end prototype d
 * **Deterministic Validation**: Evaluates candidates based on functional happy paths and enforces the non-negotiable **Zero Regressions** rule.
 * **Iterative Refinement (Passes 2..N)**: Progressive passes expand edge-case coverage, error handling, linter compliance, and performance hardening.
 
-### 4. Explicit Quality Concerns
+### 5. Task Execution Ordering (`agents.task_execution_order`)
 
-Configured via `agents:` in `.noctifab/config.yaml`:
+Configured via `agents.task_execution_order` in `.noctifab/config.yaml`:
+* **`generator_first` (Default)**: Generator Agent implements feature code on Turn 1; Tester Agent writes QA tests on Turn 2. Prevents Turn 1 compilation errors and guarantees 0 wasted turns.
+* **`tester_first` (TDD Mode)**: Tester Agent writes tests on Turn 1; Generator Agent implements feature code on Turn 2. When `tester_first` is enabled, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 `run_tests` compiles cleanly.
+
 ```yaml
 agents:
   architecture: code_first
-
-  generators:
-    number: 3      # Parallel Generator agents (default: 3)
-    iterations: 5
-  testers:
-    number: 2      # Parallel Tester agents (default: 2)
-    iterations: 3
-  qa:
-    enabled: false # Experimental; no Phase 0 runtime
-    iterations: 1
+  task_execution_order: generator_first # "generator_first" (default) or "tester_first"
+  product_manager:
+    passes: 2 # 1 = Fast, 2 = Standard 2-Pass Refinement (default), 3 = Deep Contract Audit
 ```
 
+### 6. Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)
+The Product Manager Agent executes a multi-pass specification decomposition and audit loop:
+* **Pass 1 (Decomposition & Drafting)**: Renders `generate` prompt, creating initial user stories in `roadmap/US-xxx.md`.
+* **Pass 2+ (Cross-Story Audit & Contract Alignment)**: Renders `audit` prompt with existing generated stories as context, verifying cross-story dependencies, contract IDs, and `SPEC.md` requirement coverage.
+
+### 7. Black-Box Contract Scenario Prompt Injection
+Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks (`AllowedExecutables`, `ExitCodes`, `StderrPrefixes`, `StdoutContains`) are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
+
+### 8. Standardized Sandbox Path Normalization (`resolveSandboxPath`)
+The sandbox resolution layer cleans, trims whitespace, converts Windows backslashes `\` to `/`, and strips leading `./` prefixes before verifying sandbox boundary jail rules and blacklisted directory policy (`.noctifab`, `.git`).
+
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.
+
 

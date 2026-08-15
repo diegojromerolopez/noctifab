@@ -44,6 +44,7 @@ go.work.sum
 
 # Feedback notes (local analysis artifacts, not source)
 *_FEEDBACK.md
+VALIDATION_CONTAINERS_REGISTRY.md
 
 
 

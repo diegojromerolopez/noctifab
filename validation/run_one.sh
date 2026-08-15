@@ -37,8 +37,8 @@ ROOT="${NOCTIFAB_BUILD_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 # Clean up output directory contents from previous runs, preserving base directories
 # to avoid Docker Desktop mount synchronization race conditions on macOS hosts.
 if [ -d "${ROOT}/validation/projects/${PROJECT}/output" ]; then
-  find "${ROOT}/validation/projects/${PROJECT}/output" -mindepth 1 -maxdepth 1 -not -name "log" -exec rm -rf {} + || true
-  rm -f "${ROOT}/validation/projects/${PROJECT}/output/log"/* || true
+  find "${ROOT}/validation/projects/${PROJECT}/output" -mindepth 1 -maxdepth 1 -not -name "log" -not -name "report" -not -name ".noctifab" -exec rm -rf {} + || true
+  rm -rf "${ROOT}/validation/projects/${PROJECT}/output/log"/* || true
 else
   mkdir -p "${ROOT}/validation/projects/${PROJECT}/output"
 fi
@@ -56,7 +56,7 @@ case "${PROJECT}" in
   echo)       TARGETS="cmd/echo/main.go" ;;
   fortune)    TARGETS="main.c;Makefile" ;;
   t4)         TARGETS="Makefile;docker-compose.yml;src/t4.c" ;;
-  pyedis)     TARGETS="app/main.py;pyproject.toml" ;;
+  pyedis)     TARGETS="src/main.py;pyproject.toml" ;;
   notebook)   TARGETS="src/index.ts;package.json;docker-compose.yml" ;;
   djanban)    TARGETS="manage.py;pyproject.toml;djanban/settings.py" ;;
   *)          TARGETS="" ;;
@@ -97,30 +97,28 @@ if [ ! -f "${SECRETS_FILE}" ]; then
   exit 2
 fi
 
-# Ensure host mount points exist for source code and compiled binaries
-SRC_DIR="${ROOT}/validation/projects/${PROJECT}/output/src"
+# Ensure host mount points exist for source code, compiled binaries, and execution report
+SRC_DIR="${ROOT}/validation/projects/${PROJECT}/output"
 DIST_DIR="${ROOT}/validation/projects/${PROJECT}/output/dist"
+REPORT_DIR="${ROOT}/validation/projects/${PROJECT}/output/report"
 mkdir -p "${SRC_DIR}"
 mkdir -p "${DIST_DIR}"
+mkdir -p "${REPORT_DIR}"
+rm -f "${REPORT_DIR}"/* || true
 
 # Prepare cache directories on host to speed up compiler and package manager resolution
 CACHE_ARGS=()
 if [ -n "${HOME:-}" ] && [ -d "${HOME}" ]; then
-  # Go Cache mounts
-  mkdir -p "${HOME}/go/pkg/mod" "${HOME}/.cache/go-build"
+  PARENT_CACHE="${HOME}/.noctifab/cache"
+  mkdir -p "${PARENT_CACHE}/cargo/registry" "${PARENT_CACHE}/cargo/git" \
+           "${PARENT_CACHE}/go-build" "${PARENT_CACHE}/go-mod" \
+           "${PARENT_CACHE}/pip" "${PARENT_CACHE}/npm" "${PARENT_CACHE}/m2"
   CACHE_ARGS+=(
-    -v "${HOME}/go/pkg/mod:/go/pkg/mod"
-    -v "${HOME}/.cache/go-build:/root/.cache/go-build"
+    -v "${PARENT_CACHE}:/root/.cache"
+    -v "${PARENT_CACHE}/cargo/registry:/usr/local/cargo/registry"
+    -v "${PARENT_CACHE}/cargo/git:/usr/local/cargo/git"
+    -v "${PARENT_CACHE}/go-mod:/go/pkg/mod"
   )
-  
-  # Cargo Cache mounts (for Rust projects)
-  if [ "${PROJECT}" = "wc" ]; then
-    mkdir -p "${HOME}/.cargo/registry" "${HOME}/.cargo/git"
-    CACHE_ARGS+=(
-      -v "${HOME}/.cargo/registry:/usr/local/cargo/registry"
-      -v "${HOME}/.cargo/git:/usr/local/cargo/git"
-    )
-  fi
 fi
 
 # Add brief sleep to guarantee Docker Desktop filesystem mount synchronization
@@ -128,7 +126,7 @@ sleep 1
 
 # Run with --rm so the container is cleaned up after exit; capture combined
 # stdout/stderr to the log file. The bind-mounts include the read-only
-# secrets.yaml, and read-write source/dist folders.
+# secrets.yaml, and read-write source/dist/report folders.
 set +e
 if [ "${INTERACTIVE}" = "1" ]; then
   echo "Interactive validation run for ${PROJECT}. Console output printed to terminal." >"${LOG_FILE}"
@@ -140,6 +138,7 @@ if [ "${INTERACTIVE}" = "1" ]; then
     -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
     -v "${SRC_DIR}:/app/src_mount" \
     -v "${DIST_DIR}:/app/dist_mount" \
+    -v "${REPORT_DIR}:/app/report_mount" \
     -e PROJECT="${PROJECT}" \
     -e MODE="${MODE:-start}" \
     -e NOCTIFAB_INTERACTIVE="${INTERACTIVE}" \
@@ -153,6 +152,7 @@ else
     -v "${SECRETS_FILE}:/run/secrets/noctifab-secrets.yaml:ro" \
     -v "${SRC_DIR}:/app/src_mount" \
     -v "${DIST_DIR}:/app/dist_mount" \
+    -v "${REPORT_DIR}:/app/report_mount" \
     -e PROJECT="${PROJECT}" \
     -e MODE="${MODE:-start}" \
     -e NOCTIFAB_INTERACTIVE="${INTERACTIVE}" \
@@ -163,14 +163,5 @@ set -e
 
 TS="$(date +%H:%M:%S)"
 echo "[${TS}] ${CONTAINER} exited (code=${EXIT_CODE}). Log: ${LOG_FILE}"
-
-# 3. Generate the markdown feedback file from the captured log.
-PY="${PYTHON:-python3}"
-"${PY}" "${SCRIPT_DIR}/gen_feedback.py" \
-  "${LOG_FILE}" \
-  "${PROJECT}" \
-  "${TARGETS}" \
-  "${ROOT}" \
-  "${EXIT_CODE}"
 
 exit ${EXIT_CODE}

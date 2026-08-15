@@ -48,26 +48,32 @@ func TestResolveTaskDependencies_ExistingStoryDependencySatisfied(t *testing.T) 
 	}
 }
 
-func TestResolveTaskDependencies_NonExistentStoryDependencyFails(t *testing.T) {
+func TestResolveTaskDependencies_NonExistentStoryDependencyPruned(t *testing.T) {
 	tmpDir := t.TempDir()
 	tasks := []domain.Task{
 		{ID: "task-1", Title: "Core counting", DependsOn: []string{"US-999"}},
 	}
 
-	_, err := ResolveTaskDependencies(tasks, tmpDir)
-	if err == nil {
-		t.Fatal("expected error for non-existent story dependency, got nil")
+	resolved, err := ResolveTaskDependencies(tasks, tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resolved[0].DependsOn) != 0 {
+		t.Errorf("expected non-existent story dependency pruned, got: %v", resolved[0].DependsOn)
 	}
 }
 
-func TestResolveTaskDependencies_UnknownTaskDependencyFails(t *testing.T) {
+func TestResolveTaskDependencies_UnknownTaskDependencyPruned(t *testing.T) {
 	tmpDir := t.TempDir()
 	tasks := []domain.Task{
 		{ID: "task-1", Title: "Core counting", DependsOn: []string{"non-existent-task-id"}},
 	}
 
-	_, err := ResolveTaskDependencies(tasks, tmpDir)
-	if err == nil {
-		t.Fatal("expected error for unknown task dependency, got nil")
+	resolved, err := ResolveTaskDependencies(tasks, tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resolved[0].DependsOn) != 0 {
+		t.Errorf("expected unknown task dependency pruned, got: %v", resolved[0].DependsOn)
 	}
 }

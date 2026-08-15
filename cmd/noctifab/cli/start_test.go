@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 )
 
 func TestStartCmd_AutoInitializeMissingWorkspace(t *testing.T) {
@@ -126,4 +128,25 @@ func TestStartCmd_ProviderBanningByNameOnly(t *testing.T) {
 	}
 
 	assert.Equal(t, []string{"gemini-backup"}, filteredPriority)
+}
+
+func TestRunPreFlightChecks_UnreachableProvider(t *testing.T) {
+	cfg := &config.Config{
+		LLM: config.LLMConfig{
+			Provider:    "openai",
+			APIKeyValue: "invalid-key",
+			URL:         "http://127.0.0.1:59999/v1",
+		},
+		Sandbox: config.SandboxConfig{
+			Mode: "host",
+		},
+	}
+	err := runPreFlightChecks(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pre-flight LLM provider ping failed")
+}
+
+func TestResumeCmd_Setup(t *testing.T) {
+	assert.Equal(t, "resume", resumeCmd.Name())
+	assert.NotNil(t, resumeCmd.Flags().Lookup("spec"))
 }

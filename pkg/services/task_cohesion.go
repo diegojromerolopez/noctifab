@@ -8,12 +8,16 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-// ValidateTaskCohesion enforces that no DAG task is defined purely for interfaces
-// or abstractions without including its corresponding concrete implementation file.
+// ValidateTaskCohesion enforces that no DAG task is defined purely for interfaces,
+// isolated typedefs/micro-structs, or abstractions without including its corresponding
+// concrete implementation file and co-located tests.
 func ValidateTaskCohesion(tasks []domain.Task) error {
 	for _, task := range tasks {
 		if isInterfaceOnlyTask(task) {
 			return fmt.Errorf("task cohesion violation in task %q (%s): interface definitions must be paired with implementation files in target_files", task.ID, task.Title)
+		}
+		if isMicroTaskViolation(task) {
+			return fmt.Errorf("task granularity violation in task %q (%s): task is a micro-task (< 4 CU) and must be merged into an adjacent implementation task", task.ID, task.Title)
 		}
 	}
 	return nil
@@ -54,4 +58,19 @@ func isInterfaceFilename(base string) bool {
 		base == "interface.go" ||
 		base == "interfaces.go" ||
 		strings.HasSuffix(base, "_stub.go")
+}
+
+func isMicroTaskViolation(task domain.Task) bool {
+	titleLower := strings.ToLower(task.Title)
+
+	isTypeDefTitle := strings.HasPrefix(titleLower, "define struct") ||
+		strings.HasPrefix(titleLower, "create struct") ||
+		strings.HasPrefix(titleLower, "define typedef") ||
+		strings.HasPrefix(titleLower, "create type definition") ||
+		strings.HasPrefix(titleLower, "define interface")
+
+	if isTypeDefTitle && len(task.Description) < 100 && len(task.TargetFiles) <= 1 {
+		return true
+	}
+	return false
 }

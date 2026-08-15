@@ -89,3 +89,11 @@ IDs are integers, assigned by the repository as `max(existing IDs) + 1` (or `1` 
 
 ### 4.2. Out of Scope
 The AGENTS.md `docker compose` Postgres stack is NOT used by this project (state so explicitly to avoid an agent spinning it up).
+
+
+## 5. Definition of Done (DoD)
+
+To consider `todo-cli` fully implemented, the Go CLI application must satisfy:
+1. **Public Binary:** `todo-cli` executable correctly parses subcommands (`add`, `list`, `complete`, `delete`), persists items to a JSON file store, and returns exit code `0` on success.
+2. **Linting Invariant:** Zero warnings under `go vet ./...` and cleanly formatted via `go fmt ./...`.
+3. **Verification Criteria:** 100% test pass rate executing `go test ./...`.

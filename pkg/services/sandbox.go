@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -195,6 +196,7 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 	cmd.Dir = targetDir
 
 	watchdog := Watchdog{IdleTimeout: s.IdleTimeout}
+	start := time.Now()
 	output, err := watchdog.Run(ctx, cmd)
 	if err != nil && s.DepMgr != nil {
 		if tool, found := s.DepMgr.DetectMissingTool(string(output)); found {
@@ -204,12 +206,36 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 				watchdog2 := Watchdog{IdleTimeout: s.IdleTimeout}
 				output2, err2 := watchdog2.Run(ctx, cmd)
 				if err2 == nil {
+					durMS := time.Since(start).Milliseconds()
+					if obs := domain.ObserverFromContext(ctx); obs != nil {
+						obs.Observe(ctx, domain.ExecutionEvent{
+							Kind:           domain.EventSandboxFinished,
+							Name:           cmdStr,
+							At:             time.Now().UTC(),
+							DurationMillis: &durMS,
+							Outcome:        domain.OutcomeSuccess,
+						})
+					}
 					return string(output2), nil
 				}
 			} else {
 				fmt.Printf("❌ [Tool Auto-Install Failure] Failed to install %q: %v\n", tool, installErr)
 			}
 		}
+	}
+	durMS := time.Since(start).Milliseconds()
+	if obs := domain.ObserverFromContext(ctx); obs != nil {
+		outcome := domain.OutcomeSuccess
+		if err != nil {
+			outcome = domain.OutcomeFailed
+		}
+		obs.Observe(ctx, domain.ExecutionEvent{
+			Kind:           domain.EventSandboxFinished,
+			Name:           cmdStr,
+			At:             time.Now().UTC(),
+			DurationMillis: &durMS,
+			Outcome:        outcome,
+		})
 	}
 	if err != nil {
 		return string(output), fmt.Errorf("command execution failed: %w (output: %s)", err, string(output))

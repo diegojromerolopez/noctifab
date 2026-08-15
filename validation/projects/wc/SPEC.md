@@ -202,3 +202,11 @@ Exit code: `1`
 *   **End-to-End CLI Checks:** Execute the compiled CLI binary as a subprocess against actual files on disk and standard input.
 *   **Large File Test:** Verify execution on large input streams (e.g. piping 1GB+ generated streams) to confirm memory usage remains constant ($O(1)$) and does not leak or crash.
 *   **Exit Status:** Check that errors (missing files or invalid flags) return non-zero exit codes.
+
+
+## 5. Definition of Done (DoD)
+
+To consider `wc` fully implemented, the Rust CLI tool must satisfy:
+1. **Public Binary:** `wc-cli` binary correctly counts bytes (`-c`), lines (`-l`), words (`-w`), and characters (`-m`) from stdin or files, matching standard POSIX `wc` behavior and exiting code `0`.
+2. **Linting Invariant:** Zero warnings under `cargo fmt --check` and `cargo clippy -- -D warnings`.
+3. **Verification Criteria:** 100% test pass rate executing `cargo test`.

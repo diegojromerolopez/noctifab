@@ -159,6 +159,7 @@ var serveCmd = &cobra.Command{
 
 		orchConfig := services.OrchestratorConfig{
 			Architecture:         cfg.Agents.Architecture,
+			TaskExecutionOrder:   cfg.Agents.TaskExecutionOrder,
 			GeneratorsNumber:     cfg.Agents.Generators.Number,
 			GeneratorsIterations: cfg.Agents.Generators.Iterations,
 			TestersNumber:        cfg.Agents.Testers.Number,
@@ -223,13 +224,18 @@ var serveCmd = &cobra.Command{
 		fmt.Printf("noctifab daemon started (PID %d). Listening on 127.0.0.1:18080\n", os.Getpid())
 
 		// Server mode: consume stories from the channel and execute each one.
-		return runServerLoop(ctx, orchestrator, repo, storyCh, cfg.VCS.BaseBranch, cfg.VCS.BranchPrefix, storyExecInterval(cfg))
+		storyWorkers := cfg.Agents.Generators.Number
+		if storyWorkers <= 0 {
+			storyWorkers = 4
+		}
+		return runServerLoop(ctx, orchestrator, repo, storyCh, cfg.VCS.BaseBranch, cfg.VCS.BranchPrefix, storyExecInterval(cfg), storyWorkers)
 	},
 }
 
-// runServerLoop processes user stories from the queue one at a time.
-// For each story it creates a fresh State, runs the full orchestration loop, finalizes with a PR,
-// then writes a per-story completion entry and loops back.
+// runServerLoop processes user stories from the queue concurrently using StoryDAGScheduler.
+// When stories are enqueued in rapid succession (e.g. from batch or directory submissions),
+// a 100ms drain window groups burst-enqueued stories into a single batch for concurrent DAG execution
+// across up to maxStoryWorkers parallel slots.
 func runServerLoop(
 	ctx context.Context,
 	orchestrator *services.Orchestrator,
@@ -237,7 +243,12 @@ func runServerLoop(
 	storyCh <-chan services.StoryWorkItem,
 	baseBranch, branchPrefix string,
 	execInterval time.Duration,
+	maxStoryWorkers ...int,
 ) error {
+	workers := 4
+	if len(maxStoryWorkers) > 0 && maxStoryWorkers[0] > 0 {
+		workers = maxStoryWorkers[0]
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "."
@@ -254,9 +265,44 @@ func runServerLoop(
 			fmt.Fprintln(os.Stderr, "noctifab daemon: state saved. Goodbye.")
 			return nil
 
-		case item := <-storyCh:
-			if err := processStory(ctx, orchestrator, repo, item, cwd, baseBranch, branchPrefix, execInterval); err != nil {
-				fmt.Fprintf(os.Stderr, "noctifab daemon: story %s failed: %v\n", item.Path, err)
+		case item, ok := <-storyCh:
+			if !ok {
+				return nil
+			}
+
+			// Collect all story items currently buffered in storyCh (e.g. from directory command)
+			items := []services.StoryWorkItem{item}
+			drainTimer := time.NewTimer(100 * time.Millisecond)
+			draining := true
+			for draining {
+				select {
+				case nextItem, open := <-storyCh:
+					if open {
+						items = append(items, nextItem)
+					} else {
+						draining = false
+					}
+				case <-drainTimer.C:
+					draining = false
+				}
+			}
+			drainTimer.Stop()
+
+			if len(items) == 1 {
+				if err := processStory(ctx, orchestrator, repo, items[0], cwd, baseBranch, branchPrefix, execInterval); err != nil {
+					fmt.Fprintf(os.Stderr, "noctifab daemon: story %s failed: %v\n", items[0].Path, err)
+				}
+			} else {
+				scheduler := services.NewStoryDAGScheduler(workers)
+				for _, it := range items {
+					scheduler.AddStory(it)
+				}
+
+				if err := scheduler.Execute(ctx, func(storyCtx context.Context, it services.StoryWorkItem) error {
+					return processStory(storyCtx, orchestrator, repo, it, cwd, baseBranch, branchPrefix, execInterval)
+				}); err != nil {
+					fmt.Fprintf(os.Stderr, "noctifab daemon: story DAG execution finished with error: %v\n", err)
+				}
 			}
 		}
 	}

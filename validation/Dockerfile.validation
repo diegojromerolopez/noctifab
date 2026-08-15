@@ -16,7 +16,8 @@ FROM golang:1.25-alpine AS go-builder
 RUN apk add --no-cache git bash build-base
 WORKDIR /app
 COPY . .
-RUN go build -o bin/noctifab cmd/noctifab/main.go
+RUN --mount=type=cache,target=/root/.cache \
+    go build -o bin/noctifab cmd/noctifab/main.go
 
 FROM alpine:3.21
 RUN apk add --no-cache git bash docker-cli curl

@@ -159,6 +159,11 @@ The core engine runs a continuous polling event loop that drives all development
    - **`max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
 
+16. **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: Enables resuming interrupted or partially completed project executions, skipping completed stories (`StorySuccess`) and picking up execution at the first incomplete story.
+17. **Configurable Task Execution Order (`agents.task_execution_order`)**: Configurable verification sequence mode (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
+18. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
+19. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
+
 ---
 
 ## ⚡ Dark Factory Acceleration Engine (5x–10x Speedup)
@@ -180,6 +185,34 @@ To prevent "evaluation gaming" (where code generators approve their own buggy co
 3. **Generator Agent**: Sandbox-restricted worker executing in a task-specific Git branch. Writes/edits code to satisfy the written tests. Low temperature setting for deterministic code generation.
 
 **Inter-Agent Relationship**: The Generator Agent and Tester Agent are coordinated sequentially by the orchestrator. The Generator Agent implements the functionality, while the Tester Agent writes the tests. By keeping these roles separate and preventing the Generator from writing its own test suite from scratch without verification, `noctifab` ensures that tests act as an objective quality gate. If the Generator Agent discovers a bug in the test definitions, it can request test modifications using the orchestrator's inter-agent communication channel (`request_test_fix`).
+
+---
+
+## 📊 Structured Real-Time Execution Reports & Telemetry Logs
+
+`noctifab` provides a native, structured execution reporting and telemetry subsystem that records fine-grained events during autonomous runs and synthesizes a deterministic, human-and-machine-readable Markdown **Execution Report** (`<TIMESTAMP>_<PROJECT>.md`) without requiring external tools to parse raw logs.
+
+### Core Concepts & Real-Time Live Checkpointing
+
+- **`execution_log` (Event Stream & Telemetry)**:
+  A concurrency-safe stream of structured timeline events (`ExecutionEvent` / `ExecutionLog`) captured during orchestrator, planner, generator, tester, and unblocker agent activities (storing timestamps, agent roles, phase transitions, task attempts, millisecond duration measurements, token usage, errors, and retries).
+- **`execution_report` (`<TIMESTAMP>_<PROJECT>.md`)**:
+  The synthesized Markdown report artifact generated continuously during execution.
+  * **Real-Time Live Updates**: Flushed atomically to disk every **5 seconds** (and instantly on phase/story transitions), allowing developers to watch live progress, active worker spans, token counts, and task attempt states in real time without polling.
+  * **Structured Sections**: Includes executive summaries, live status tables, active agent performance spans (omitting zero units like `17s 116ms`), phase execution windows, human-readable bottleneck diagnoses, error breakdown tables, task titles linked to parent story IDs, and deliverables.
+
+### Configuration
+
+Enable execution reporting in your project's `.noctifab/config.yaml`:
+
+```yaml
+config_version: "2.0"
+execution_report: ".noctifab/reports/execution_report.md"
+```
+
+Report paths are resolved strictly within workspace boundaries, timestamped with the canonical project folder name (`YYYYMMDD_HHMMSS_<project>.md`), and written atomically using exclusive temporary files with `0600` permissions. For detailed documentation, see [docs/execution_report.md](file:///Users/diegoj/repos/noctifab/docs/execution_report.md).
+
+---
 
 ### Agent Architecture Modes & Team Configuration (`agents:`)
 

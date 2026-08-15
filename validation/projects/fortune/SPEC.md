@@ -100,3 +100,11 @@ JSON Schema:
     }
   ]
 }
+
+
+## 5. Definition of Done (DoD)
+
+To consider `fortune` fully implemented, the generated native project must satisfy:
+1. **Public Executable:** `fortune` binary built via `make` that queries SQLite database for fortune cookies, prints formatted output, and exits with code `0`.
+2. **Linting Invariant:** Zero build warnings under strict `gcc` flags (`-Wall -Wextra -Werror`) and clean output under `make lint`.
+3. **Verification Criteria:** 100% test pass rate executing `make test`.

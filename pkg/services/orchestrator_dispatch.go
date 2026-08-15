@@ -41,7 +41,14 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 	}
 
 	// 2. Scheduler check: find ready tasks
-	ready := o.scheduler.GetReadyTasks(state, o.cfg.Concurrency)
+	concurrencyLimit := o.cfg.Concurrency
+	if concurrencyLimit <= 0 {
+		concurrencyLimit = o.cfg.GeneratorsNumber
+	}
+	if concurrencyLimit <= 0 {
+		concurrencyLimit = 3
+	}
+	ready := o.scheduler.GetReadyTasks(state, concurrencyLimit)
 
 	// 2a. Global max_actions enforcement.
 	currentActions := atomic.LoadInt64(&o.totalActions)
@@ -192,7 +199,10 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 func (o *Orchestrator) dispatchContinuously(ctx context.Context, stateID string, initial []domain.Task) {
 	concurrency := o.cfg.Concurrency
 	if concurrency <= 0 {
-		concurrency = 1
+		concurrency = o.cfg.GeneratorsNumber
+	}
+	if concurrency <= 0 {
+		concurrency = 3
 	}
 
 	inflight := make(map[string]bool)

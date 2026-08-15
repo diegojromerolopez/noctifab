@@ -5,11 +5,63 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
+
+var blacklistedModels sync.Map
+
+// BlacklistModel permanently blacklists a model so Noctifab never attempts to call it again.
+func BlacklistModel(model string) {
+	if model != "" {
+		if _, loaded := blacklistedModels.LoadOrStore(strings.ToLower(strings.TrimSpace(model)), true); !loaded {
+			fmt.Fprintf(os.Stderr, "⛔ Blacklisted deprecated/unavailable model %q permanently.\n", model)
+		}
+	}
+}
+
+// IsModelBlacklisted reports whether a model has been blacklisted.
+func IsModelBlacklisted(model string) bool {
+	if model == "" {
+		return false
+	}
+	_, ok := blacklistedModels.Load(strings.ToLower(strings.TrimSpace(model)))
+	return ok
+}
+
+// ResetModelBlacklist clears all blacklisted models from memory.
+// Primarily used for unit test cleanup and state resets.
+func ResetModelBlacklist() {
+	blacklistedModels.Range(func(key, _ any) bool {
+		blacklistedModels.Delete(key)
+		return true
+	})
+}
+
+// isModelNotFoundOrDeprecated reports whether an error indicates a model is 404, deprecated, or no longer available.
+func isModelNotFoundOrDeprecated(err error) bool {
+	if err == nil {
+		return false
+	}
+	var he *httpError
+	if errors.As(err, &he) {
+		if he.StatusCode == http.StatusNotFound {
+			return true
+		}
+		bodyLower := strings.ToLower(he.Body)
+		if strings.Contains(bodyLower, "no longer available") || strings.Contains(bodyLower, "model_not_found") {
+			return true
+		}
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "no longer available") ||
+		strings.Contains(errStr, "model_not_found") ||
+		strings.Contains(errStr, "404 not found")
+}
 
 // httpError is returned by provider Call methods on non-2xx responses.
 // It carries the raw response body and the HTTP headers that providers use

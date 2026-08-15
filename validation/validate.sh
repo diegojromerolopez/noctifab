@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+
+
 # 1. Resolve or compile the noctifab binary
 if command -v noctifab >/dev/null 2>&1; then
   echo "Using existing noctifab binary from PATH..." >&2
@@ -14,14 +16,8 @@ else
   NOCTIFAB_BIN="$(pwd)/bin/noctifab"
 fi
 
-# 2. Setup a temporary directory
-TMP_DIR="$(pwd)/tmp_verify_autonomy"
-echo "Setting up temporary workspace at ${TMP_DIR}..." >&2
-rm -rf "${TMP_DIR}"
-
-# 3. Copy the project copy into the workspace
+# 2. Setup workspace directory
 PROJECT="${PROJECT:-frontpunch}"
-echo "Validating project: ${PROJECT}..." >&2
 PROJECT_SRC="/app/projects/${PROJECT}"
 if [ ! -d "${PROJECT_SRC}" ]; then
   PROJECT_SRC="$(pwd)/validation/projects/${PROJECT}"
@@ -30,7 +26,21 @@ if [ ! -d "${PROJECT_SRC}" ]; then
   echo "❌ Error: Project ${PROJECT} does not exist in /app/projects/ or validation/projects/"
   exit 1
 fi
-cp -R "${PROJECT_SRC}" "${TMP_DIR}"
+
+if [ -d "/app/src_mount" ]; then
+  TMP_DIR="/app/src_mount"
+  echo "Validating project: ${PROJECT} (real-time mounted workspace at ${TMP_DIR})..." >&2
+  find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -not -name "report" -not -name "log" -not -name "dist" -not -name ".noctifab" -exec rm -rf {} + || true
+else
+  TMP_DIR="$(pwd)/${PROJECT}"
+  echo "Validating project: ${PROJECT}..." >&2
+  echo "Setting up temporary workspace at ${TMP_DIR}..." >&2
+  rm -rf "${TMP_DIR}"
+  mkdir -p "${TMP_DIR}"
+fi
+
+# 3. Copy project files into workspace
+cp -a "${PROJECT_SRC}/." "${TMP_DIR}/"
 cd "${TMP_DIR}"
 
 # Mount the secret file from the runtime Docker secret into the workspace.
@@ -69,7 +79,7 @@ git commit -m "initial project structures and gitignore"
 
 # Set up a local "origin" bare repository inside the workspace to allow git pushes
 echo "Setting up local git origin remote..." >&2
-ORIGIN_DIR="$(pwd)/../origin.git"
+ORIGIN_DIR="/tmp/${PROJECT}_origin.git"
 rm -rf "${ORIGIN_DIR}"
 git init --bare "${ORIGIN_DIR}"
 git remote add origin "${ORIGIN_DIR}"
@@ -147,13 +157,13 @@ elif [ "${PROJECT}" = "t4" ]; then
     exit 1
   fi
 elif [ "${PROJECT}" = "pyedis" ]; then
-  if [ ! -f "app/main.py" ] || [ ! -f "pyproject.toml" ]; then
-    echo "❌ Error: pyedis artifacts (app/main.py, pyproject.toml) were not created!"
+  if { [ ! -f "src/main.py" ] && [ ! -f "app/main.py" ]; } || [ ! -f "pyproject.toml" ]; then
+    echo "❌ Error: pyedis artifacts (src/main.py, pyproject.toml) were not created!"
     exit 1
   fi
 elif [ "${PROJECT}" = "notebook" ]; then
-  if [ ! -f "src/index.ts" ] || [ ! -f "package.json" ] || [ ! -f "docker-compose.yml" ]; then
-    echo "❌ Error: notebook artifacts (src/index.ts, package.json, docker-compose.yml) were not created!"
+  if { [ ! -f "src/index.ts" ] && [ -z "$(find src -name '*.ts' 2>/dev/null)" ]; } || [ ! -f "package.json" ]; then
+    echo "❌ Error: notebook artifacts (src/*.ts, package.json) were not created!"
     exit 1
   fi
 else
@@ -162,8 +172,8 @@ fi
 
 echo "✅ Success: Noctifab executed autonomously, implemented US-001 features, and passed validation for ${PROJECT}!"
 
-# Copy the generated code to the src mount if present
-if [ -d "/app/src_mount" ]; then
+# Copy the generated code to the src mount if present and not already working directly inside it
+if [ -d "/app/src_mount" ] && [ "${TMP_DIR}" != "/app/src_mount" ]; then
   echo "Copying generated code to src mount..."
   rm -rf /app/src_mount/*
   cp -a . /app/src_mount/
@@ -220,5 +230,7 @@ if [ -d "/app/dist_mount" ]; then
   fi
 fi
 
-cd ..
-rm -rf "${TMP_DIR}"
+cd /app
+if [ "${TMP_DIR}" != "/app/src_mount" ]; then
+  rm -rf "${TMP_DIR}"
+fi

@@ -5,6 +5,189 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.2] - 2026-08-16
+
+### Fixed
+- **Pre-Flight Diagnostics & LLM Provider Ping**:
+  - Restored pre-flight provider ping/ban diagnostic checks in `cmd/noctifab/cli/preflight.go` to validate LLM connectivity, credit exhaustion, and latency before orchestrator launch.
+- **QA Recovery & Unblocker Agent Wiring**:
+  - Restored interrupted QA phase recovery (`NewQARecoveryService(...).Recover`) and `UnblockerAgent` startup in `start_runner.go`.
+- **Model Blacklist Isolation & Reset Helper**:
+  - Added `ResetModelBlacklist()` in `pkg/infrastructure/llm/http_error.go` to prevent global blacklist state pollution across unit tests and process resets.
+- **State Persistence Error Handling**:
+  - Fixed discarded `repo.Save` error check in `start_runner.go` story execution loop to prevent proceeding on unpersisted state.
+- **CLI Resume Command Consistency**:
+  - Cleaned up redundant `--resume` flag definition and force-set in `cmd/noctifab/cli/resume.go`, unifying command dispatch through `runStartCommand`.
+- **Daemon Concurrency & Worker Bounds**:
+  - Derived story worker concurrency from configuration (`cfg.Agents.Generators.Number`) in `runServerLoop` (`cmd/noctifab/cli/serve.go`) and documented the 100ms batch drain window heuristic.
+
+## [0.34.1] - 2026-08-16
+
+### Changed
+- **Flat Workspace Output Layout & `src/` Application Directory Convention**:
+  - Restructured validation output (`validation/projects/<project>/output/`) so that output is directly the project workspace root.
+  - Standardized application source code convention to `src/` (e.g. `src/main.py`) instead of `app/`.
+  - Moved Noctifab execution reports to `.noctifab/reports/` and console logs to `.noctifab/logs/`.
+  - Updated validation harness (`run_one.sh`, `validate.sh`) and prompt templates to support the flat workspace layout.
+
+## [0.34.0] - 2026-08-15
+
+### Added
+- **Automatic Task Markdown File Serialization (`roadmap/tasks/`)**:
+  - Implemented `WriteTaskMarkdown` in `pkg/services/task_writer.go` to serialize task entities as markdown files in `roadmap/tasks/`.
+  - Formatted task filenames as `roadmap/tasks/US-XXX-TASK-YYY-title-slug.md` (e.g. `roadmap/tasks/US-001-task-035acd76-project-scaffolding.md`).
+  - Integrated `WriteTaskMarkdown` into `AddTaskTool.Execute` (`pkg/services/bootstrap_tools.go`) and `AddTaskCmd.Execute` (`pkg/services/command_channel.go`).
+- **User Story DAG Scheduler (Cross-Story Parallel Execution)**:
+  - Added `StoryDAGScheduler` (`pkg/services/story_dag_scheduler.go`) to parse `depends_on` dependencies from User Story markdown frontmatter.
+  - Implemented concurrent dispatch of all unblocked user stories across worker slots, dynamically unblocking child stories as parent stories complete.
+  - Updated `runServerLoop` in `cmd/noctifab/cli/serve.go` to process queued story batches via `StoryDAGScheduler`.
+- **Structured Roadmap Subdirectories & Title Slug Filename Convention**:
+  - Organized user story files into `roadmap/user-stories/` and tasks into `roadmap/tasks/` subdirectories.
+  - Added title slug formatting to user story filenames (`roadmap/user-stories/US-XXX-title-slug.md`).
+  - Updated Product Manager agent prompt contracts and templates (`product_manager.txt`, `generate.tmpl`, `audit.tmpl`) to emit user story actions into `roadmap/user-stories/`.
+  - Updated `GenerateRoadmap` and `StartDirectoryCmd` to discover user stories across `roadmap/user-stories/` and legacy `roadmap/`, sorting story execution by numerical story ID.
+  - Enhanced `storyExists` in `task_dependencies.go` to resolve dependencies against `roadmap/user-stories/` and slugged story file paths.
+
+## [0.33.8] - 2026-08-15
+
+### Changed
+- **Validation Projects Speed & Token Optimization (Proposals 1B, 1C, 2A, 2D)**:
+  - **Proposal 1B (Hybrid Model Allocation)**: Configured high-throughput `gemini-3.6-flash` model (`gemini-flash`) as top priority for `generators` and `testers`, reserving `gemini-3.6-pro` for high-level PM and planning tasks.
+  - **Proposal 1C (Generator Concurrency)**: Increased concurrent generator worker count from 4 to 6 across all validation project configurations.
+  - **Proposal 2A (`caveman` Context Compaction)**: Updated `context.compaction` to `caveman` mode in all validation project `.noctifab/config.yaml` files to compress conversation history.
+  - **Proposal 2D (LLM Prompt Caching)**: Added Anthropic prompt caching headers (`anthropic-beta: prompt-caching-2024-07-31`) and `cache_control: {"type": "ephemeral"}` payload markers for prompts over 2048 bytes (`pkg/infrastructure/llm/anthropic.go`).
+
+## [0.33.7] - 2026-08-15
+
+### Changed
+- **Validation Projects Gemini Model Configuration**:
+  - Updated Gemini model configuration across all 15 validation project `.noctifab/config.yaml` files from `gemini-2.5-pro` (deprecated by Google API) to `gemini-3.6-pro`.
+- **`pyedis` Standard Library `unittest` Mandate**:
+  - Updated `validation/projects/pyedis/SPEC.md` to forbid `pytest` and mandate Python standard library `unittest` (`unittest.TestCase`, `unittest.IsolatedAsyncioTestCase`) for unit/integration testing (`python3 -m unittest discover -s tests`).
+- **Execution Report File List De-duplication**:
+  - Removed redundant `### Modified & Created Files` and `### Created & Modified Artifacts` bullet lists from execution reports (`pkg/services/reporting/renderer.go`). File modifications are now presented once in the `### Filesystem Hierarchy` tree view.
+
+## [0.33.6] - 2026-08-15
+
+### Changed
+- **`pyedis` Specification & Redis Parity Conformance Matrix**:
+  - Revamped `validation/projects/pyedis/SPEC.md` with an exhaustive Staff Engineer Redis feature-parity testset covering RESP2/RESP3 wire framing envelopes, TCP stream reassembly, command pipelining, binary safety, command case-insensitivity, and deterministic error message envelopes.
+  - Specified absolute Unix epoch timestamps (`expire_at`) for AOF durability records to prevent expired keys from reviving after server restarts.
+  - Defined explicit multi-client concurrency invariants (50+ parallel workers with atomic increments) and black-box E2E validation against `redis-cli` and `redis-py` (v5+).
+  - Updated `validation/projects/pyedis/Dockerfile`, `validation/projects/TESTING_GUIDE.md`, and `validation/README.md` to align toolchains and eliminate outdated references to FastAPI.
+
+## [0.33.5] - 2026-08-15
+
+### Fixed
+- **Execution Report Created Artifacts & Project Filename Resolution**:
+  - Fixed execution report filename resolution in `pkg/infrastructure/config/report_path.go` to resolve `PROJECT` and `PROJECT_NAME` environment variables when running in mounted container workspaces (`/app/src_mount`), formatting report files with the project name (e.g. `_pyedis.md`) instead of `_src_mount.md`.
+  - Fixed workspace churn and artifact collection in `pkg/services/reporting/churn.go` to capture all untracked created files and perform a workspace directory scan, ensuring 100% of created artifacts and files are included in `snapshot.Churn.ChangedFiles` and rendered in the report markdown.
+  - Added `RenderFilesystemTree` ASCII directory tree generator in `pkg/services/reporting/renderer_helpers.go` and rendered `### Filesystem Hierarchy` under `Deliverables & Documentation` in execution reports.
+  - Extracted helper functions from `pkg/services/reporting/collector.go` into `churn.go` to maintain strict adherence to the 500-lines-per-file repository constraint.
+
+## [0.33.4] - 2026-08-15
+
+### Fixed
+- **Legacy File Scanning & Prompt Mandates**: Added Dockerfile, compose, Makefile, and Read the Docs config files to `scanLegacyFiles` ignored files in `pkg/services/roadmap_generator.go` so build configs aren't misidentified as legacy source code. Updated Product Manager (`generate.tmpl`, `audit.tmpl`) and Generator (`implement_breadth_first.tmpl`) prompt templates to explicitly mandate creating all required manifest and source files (e.g. `pyproject.toml`, `Cargo.toml`, `app/main.py`) specified by `SPEC.md` or user story Definitions of Done.
+
+## [0.33.3] - 2026-08-15
+
+### Changed
+- **Execution Report Formatting Enhancements**: Updated `pkg/services/reporting/renderer.go`, `collector.go`, and `snapshot.go` to list created/modified workspace file paths under Codebase Changes, add explanatory note to Task Pass Efficiency, add Resolution/Status column to Execution Errors table, include README in deliverables, render individual black-box contract scenarios on dedicated rows, remove generic Developer Recommendations section, and omit empty sections.
+- **`pyedis` Specification Update**: Updated `validation/projects/pyedis/SPEC.md` to mandate `README.md`, `docs/` documentation folder, and `.readthedocs.yaml` configuration at root level.
+
+## [0.33.2] - 2026-08-14
+
+### Changed
+- **Validation Container Registry Ignore**: Untracked `VALIDATION_CONTAINERS_REGISTRY.md` from Git repository tracking and added it to `.gitignore` so local validation registry artifacts remain local.
+
+## [0.33.1] - 2026-08-14
+
+### Fixed
+- **Anthropic Provider Client Multi-Block Resilience**: Fixed `anthropicProviderClient` (`pkg/infrastructure/llm/anthropic.go`) to iterate across all response `content` blocks, filtering out `type: "thinking"` blocks and concatenating all `type: "text"` blocks into a unified output string. Added support for passing `"temperature": temperature` in payload when specified.
+- **Anthropic Test Suite Expansion**: Added comprehensive unit test suite in `pkg/infrastructure/llm/anthropic_test.go` covering single/multi-block text, thinking blocks, temperature parameters, empty content payloads, HTTP status errors, and model listing endpoints.
+
+## [0.33.0] - 2026-08-14
+
+### Added
+- **Real-Time Validation Source Code Workspace**: Updated `validation/validate.sh` to initialize and execute Noctifab directly inside `/app/src_mount` when mounted, enabling live streaming of generated source code changes to `validation/projects/<project>/output/src/` on the host machine in real-time.
+- **Validation Documentation**: Updated `AGENTS.md`, `validation/README.md`, and `validation/projects/TESTING_GUIDE.md` to detail real-time source code visibility during execution.
+- **Validation Containers Execution Registry**: Added `VALIDATION_CONTAINERS_REGISTRY.md` to track validation runs and execution metrics.
+
+## [0.32.5] - 2026-08-14
+
+### Removed
+- **Obsolete Validation Insights**: Deleted `VALIDATION_PROJECTS_INSIGHTS.md` whose proposals (adaptive parameter sanitization, serial execution harness, `sqlasm` Dockerfile alignment) are fully implemented.
+
+## [0.32.4] - 2026-08-14
+
+### Removed
+- **Obsolete Specification Files**: Deleted fully implemented root specification documents (`CUSTOM_PROMPTS.md`, `EXECUTION_REPORT.md`, `IMPROVEMENTS.md`, and `MISSING_AGENTS.md`).
+
+## [0.32.3] - 2026-08-13
+
+### Changed
+- **Validation Projects Audit & Standardization**: Standardized `execution_report: "/app/report_mount/execution_report.md"` across all 15 validation projects (`auth-vault`, `buffonstream`, `djanban`, `fortune`, `frontpunch`, `searchthedocs`, `sqlasm`, `stricc`, `todo-cli`, `calculator`, `echo`, `notebook`, `pyedis`, `t4`, `wc`).
+- **Validation Project Specifications**: Added explicit Definition of Done (DoD) sections, SOLID & Dependency Injection guidelines, and mandatory linter constraints across `SPEC.md` files.
+- **`frontpunch` Sandbox Configuration**: Updated `linter_command` (`ruff check . && mypy .`) and `test_command` to enforce 100% test coverage gate.
+
+## [0.32.2] - 2026-08-13
+
+### Fixed
+- **Listener Input Error Handling**: Added missing `scanner.Err()` check to the input scanning loop in `ListenerAgent.Start` (`pkg/services/listener.go`) to properly report scanner errors before exiting.
+
+## [0.32.1] - 2026-08-13
+
+### Changed
+- **Validation Projects Consolidation**: Consolidated `searchreadthedocs` into `searchthedocs`, standardizing on Python 3.15 + FastAPI + PostgreSQL `pgvector` HNSW index architecture for RAG documentation search validation.
+
+## [0.32.0] - 2026-08-13
+
+### Added
+- **Complexity Unit ($CU$) Roadmap Sizing & Micro-Task Prevention**: incorporated Function Point Analysis and multi-dimensional Complexity Units ($CU$) into Product Manager prompt templates (`generate.tmpl`) and Planner prompt templates (`decompose.tmpl`) to enforce proportional story/task granularity ($CU_{\text{story}} \in [15, 30]$, $CU_{\text{task}} \in [4, 8]$) and eliminate micro-tasks for concise specs ($CU < 25$).
+- **Turn 1 Context Enrichment**: updated Reader Phase (`RunReaderPhase` in `pkg/services/orchestrator_helper.go`) to automatically pre-load the workspace file tree (`git ls-files`) and project manifests (`Cargo.toml`, `go.mod`, `package.json`, `pyproject.toml`, `Makefile`, `CMakeLists.txt`) before Turn 1 code generation, eliminating import path guesses and retries.
+- **`git diff` Task Retry Context**: enriched Generator Agent task retries in `RunGeneratorAgent` with formatted `git diff` output from failed attempts so agents fix syntax and logic errors in 1 turn.
+- **Project-Agnostic Execution Report Formatting**: enhanced `pkg/services/reporting/renderer.go` with unified duration formatting (omitting zero units), clear Phase Performance Execution Windows explanations, task title & story correlation, detailed error breakdown tables, and project/language-agnostic engineering insights.
+- **Unified Parent Cache Volume Mounts**: updated `validation/run_one.sh` to consolidate host package/compiler cache mounts under `${HOME}/.noctifab/cache`.
+- **Real-Time Live Execution Report Documentation**: updated `README.md`, `docs/execution_report.md`, and `validation/run_all.sh` to document real-time live checkpointing and atomic file writes.
+- **Lead Time Metric Standard**: renamed **Execution Wall Time** metric to **Lead Time** across the execution report renderer (`renderer.go`) and documentation (`docs/execution_report.md`).
+- **Standard Terminology Alignment**: standardized Phase Performance metrics to **Phase Cycle Time** (net de-duplicated physical clock time) and **Execution Spans** in `renderer.go` and documentation.
+- **User Story Title Correlation**: added story title parsing (`extractStoryTitle`) and display in the `### User Stories` table (`Story ID & Title`), matching task title formatting.
+- **Codebase Changes & Workspace Impact**: renamed Code Churn section to **Codebase Changes & Workspace Impact** across `renderer.go` and `docs/execution_report.md`, computing full cumulative line deltas against the root commit.
+- **Black-Box Contract Scenarios Table**: rendered public contract scenarios (`Contract ID`, `Interface`, `Executable Path`, `Observable Expectations`, `Verification Status`) under `## Verification & Testing Strategy`.
+- **Permanent Model 404 Deprecation Blacklisting**: added thread-safe `BlacklistModel` and `IsModelBlacklisted` registry in `pkg/infrastructure/llm/` to permanently skip HTTP 404 / deprecated models across all future LLM fallback ladder selections.
+- **Soft DAG Dependency Pruning**: updated `ResolveTaskDependencies` in `pkg/services/task_dependencies.go` to prune unknown/hallucinated task dependencies with a warning log to `os.Stderr` instead of failing execution.
+- **Flexible Validation Artifact Matching**: updated `validation/validate.sh` to accept alternative TypeScript entry points in `src/` (e.g. `src/server.ts`, `src/app.ts`) for `notebook`.
+- **Language-Independent Standard Library First Prompt Mandate**: updated 11 prompt templates across `pkg/infrastructure/prompts/defaults/` to enforce standard library primitives over un-scaffolded external packages unless explicitly required by `SPEC.md`.
+- **Tool Sandboxing & Package Resolution Documentation**: updated `docs/architecture.md` and `docs/prompts.md` documenting agent tool permissions (`exec` disabled), manifest editing vs terminal package installation, and standard library fallback behavior.
+- **Advisory Linter Soft-Pass**: updated task turn evaluation in `pkg/services/orchestrator_generator.go` and `orchestrator_helper.go` to complete tasks as `SUCCESS` with an advisory log warning when unit/integration tests pass 100% and linter failures occur 2+ consecutive times.
+- **Aggressive Circuit-Breaker for HTTP 429 Rate Limits**: updated `pkg/infrastructure/llm/client.go` to immediately skip retries on HTTP 429 quota exhaustion when no short `Retry-After` header is supplied, triggering instant model/provider fallback.
+- **Concurrent DAG Task Worker Dispatch**: updated `pkg/services/orchestrator_dispatch.go` to default concurrency to `GeneratorsNumber` (default 3) when unset, executing independent ready tasks in parallel worker goroutines.
+- **Configurable Task Execution Order & Pre-Seeded Stub Generation**: added `agents.task_execution_order` setting (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 `run_tests` compiles cleanly.
+- **Black-Box Contract Scenario Prompt Injection**: updated `orchestrator_execute.go` and `story_contract.go` to parse and inject machine-readable contract expectations (`AllowedExecutables`, `ExitCodes`, `StderrPrefixes`, `StdoutContains`) into Generator and Tester agent prompts.
+- **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: added `--resume` flag to `noctifab start` and created dedicated `noctifab resume` CLI command in `cmd/noctifab/cli/resume.go` to skip already completed stories and resume execution from the first pending/failed story.
+- **Configurable Product Manager Passes (`agents.product_manager.passes`)**: added `passes` setting (default `2`) to `AgentRoleConfig` and `GenerateRoadmapWithPasses`, enabling multi-pass roadmap refinement (Pass 1: Decomposition; Pass 2+: Cross-story contract and dependency audit). Configured `passes: 2` / `passes: 3` across `t4`, `notebook`, `pyedis`, and `calculator` validation project configurations.
+- **Source-Code-Only Line Delta Filter**: updated `computeWorkspaceChurn` in `pkg/services/reporting/collector.go` to exclude third-party vendor and build artifact directories (`node_modules/`, `vendor/`, `dist/`, `.next/`, `venv/`, `__pycache__`, `target/`) from git diff and untracked line churn calculations.
+- **Standardized Sandbox Path Normalization**: updated `resolveSandboxPath` in `pkg/services/production_tools.go` to normalize backslashes `\`, strip leading `./` prefixes, and clean paths before verifying sandbox boundaries.
+
+### Removed
+- **Validation Project Feedback Report (`gen_feedback.py`)**: removed legacy `gen_feedback.py` script and `*_FEEDBACK.md` artifact generation in favor of Noctifab's native, structured Execution Report (`validation/projects/<project>/output/report/*.md`).
+
+## [0.31.0] - 2026-08-12
+
+### Added
+- **Fine-Grained Telemetry Instrumentation (`Observe`)**: wired structured `ExecutionEvent` emission across `LLMClient` (`EventLLMCallFinished`), `Sandbox` (`EventSandboxFinished`), `ProductManager` (`EventAgentStarted`/`EventAgentFinished`), and `Orchestrator` (`EventTaskAttemptStarted`/`EventTaskAttemptFinished`) for fine-grained reporting metrics without performance overhead.
+- **Context Propagation**: added `WithObserver` and `ObserverFromContext` helper primitives to `pkg/domain/execution_event.go`.
+- **Validation Monitoring Updates**: updated `AGENTS.md` and `validation/projects/TESTING_GUIDE.md` to rely on the automatically generated execution report (`validation/projects/<project>/output/report/*.md`) instead of token-heavy 60-second polling loops.
+
+## [0.30.0] - 2026-08-11
+
+### Added
+- **Structured Execution Reports & Logs** (`execution_report: ".noctifab/reports/execution_report.md"`): deterministic execution measurements and Markdown diagnostic artifact documenting process and story timings, active vs. waiting breakdown by agent role, deterministic bottlenecks (`BN-*`), evidence-backed issues (`ISSUE-*`), fallback recommendations (`PROP-*`), and single bounded read-only model analysis without parsing raw container logs.
+- **Documentation**: added [`docs/execution_report.md`](file:///Users/diegoj/repos/noctifab/docs/execution_report.md), updated [`docs/index.md`](file:///Users/diegoj/repos/noctifab/docs/index.md), and updated [`README.md`](file:///Users/diegoj/repos/noctifab/README.md) with comprehensive guides on execution reporting, path resolution, and telemetry event streams.
+- **Domain Refactoring**: split event telemetry model (`ExecutionEvent`) into [`pkg/domain/execution_event.go`](file:///Users/diegoj/repos/noctifab/pkg/domain/execution_event.go) and synthesized diagnostic report model (`ExecutionReport`) into [`pkg/domain/execution_report.go`](file:///Users/diegoj/repos/noctifab/pkg/domain/execution_report.go).
+- **Validation Harness Integration**: updated `run_one.sh`, `validate.sh`, and `gen_feedback.py` to consume host-mounted `execution_report.md` diagnostic reports.
+
 ## [0.29.0] - 2026-08-09
 
 ### Added
@@ -118,7 +301,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.26.0] - 2026-08-08
 
 ### Added
-- **Validation Projects Matrix**: Added technical specifications (`SPEC.md`), container definitions (`Dockerfile`, `docker-compose.yml`), and configuration profiles (`.noctifab/config.yaml`) for validation projects: `auth-vault`, `buffonstream`, `djanban`, `searchreadthedocs`, `searchthedocs`, `sqlasm`, and `stricc`.
+- **Validation Projects Matrix**: Added technical specifications (`SPEC.md`), container definitions (`Dockerfile`, `docker-compose.yml`), and configuration profiles (`.noctifab/config.yaml`) for validation projects: `auth-vault`, `buffonstream`, `djanban`, `searchthedocs`, `sqlasm`, and `stricc`.
 - **LLM Provider Prioritization**: Standardized top-tier LLM provider fallback hierarchy (`claude`, `gemini`, `openai`, `deepseek-pro`, `qwen`, `opencode`, `openrouter`) across all 15 validation projects.
 - **Architectural Reviews & Hardening Guidelines**: Audited and hardened all `SPEC.md` files for Dark Factory autonomous execution by lower-level LLMs.
 

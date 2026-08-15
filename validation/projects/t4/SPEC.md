@@ -215,3 +215,11 @@ volumes:
 `README.md` must document: build (`make build`), run (`./bin/t4` and flags),
 the full API contract table, the ETag format, and how to run unit/integration
 (`make test`) and e2e (`make e2e`) suites.
+
+
+## 5. Definition of Done (DoD)
+
+To consider `t4` fully implemented, the C HTTP server project must satisfy:
+1. **Public HTTP Server:** `t4` binary runs an HTTP server supporting standard status codes, headers, `Range` byte requests, and binary downloads, exiting code `0` on clean shutdown.
+2. **Linting Invariant:** Zero compiler or static analyzer warnings under `clang-tidy` and strict `gcc` (`-Wall -Wextra -Werror`).
+3. **Verification Criteria:** 100% test pass rate executing `make test`.

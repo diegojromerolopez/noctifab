@@ -59,17 +59,33 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	headers := make(map[string]string)
 	headers["X-API-Key"] = apiKey
 	headers["anthropic-version"] = "2023-06-01"
+	headers["anthropic-beta"] = "prompt-caching-2024-07-31"
 	headers["Content-Type"] = "application/json"
 
 	if maxTokens <= 0 {
 		maxTokens = 4096
 	}
+
+	var messageContent any = prompt
+	if len(prompt) > 2048 {
+		messageContent = []map[string]any{
+			{
+				"type":          "text",
+				"text":          prompt,
+				"cache_control": map[string]string{"type": "ephemeral"},
+			},
+		}
+	}
+
 	payload := map[string]any{
 		"model": model,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
+		"messages": []map[string]any{
+			{"role": "user", "content": messageContent},
 		},
 		"max_tokens": maxTokens,
+	}
+	if temperature > 0 {
+		payload["temperature"] = temperature
 	}
 	reqBody, err := json.Marshal(payload)
 	if err != nil {
@@ -122,9 +138,33 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	if !ok || len(content) == 0 {
 		return nil, fmt.Errorf("unexpected Anthropic response: %s", string(respBody))
 	}
-	item := content[0].(map[string]any)
-	text, _ := item["text"].(string)
-	return []byte(text), nil
+
+	var textBlocks []string
+	var fallbackTextBlocks []string
+
+	for _, elem := range content {
+		item, isMap := elem.(map[string]any)
+		if !isMap {
+			continue
+		}
+		blockType, _ := item["type"].(string)
+		txt, _ := item["text"].(string)
+
+		if blockType == "text" && txt != "" {
+			textBlocks = append(textBlocks, txt)
+		} else if txt != "" && blockType != "thinking" {
+			fallbackTextBlocks = append(fallbackTextBlocks, txt)
+		}
+	}
+
+	if len(textBlocks) > 0 {
+		return []byte(strings.Join(textBlocks, "\n")), nil
+	}
+	if len(fallbackTextBlocks) > 0 {
+		return []byte(strings.Join(fallbackTextBlocks, "\n")), nil
+	}
+
+	return nil, fmt.Errorf("unexpected Anthropic response content: %s", string(respBody))
 }
 
 func (a *anthropicProviderClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {

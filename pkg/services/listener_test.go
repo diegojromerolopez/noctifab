@@ -218,3 +218,31 @@ func TestListenerAgent_EmptyLine_ShowsPromptAgain(t *testing.T) {
 		assert.Contains(t, output, ">")
 	})
 }
+
+type errorReader struct {
+	err error
+}
+
+func (e *errorReader) Read(_ []byte) (int, error) {
+	return 0, e.err
+}
+
+func TestListenerAgent_ScannerError(t *testing.T) {
+	t.Run("when scanner encounters a read error, it prints error message before exiting", func(t *testing.T) {
+		fd := &fakeDaemon{}
+		srv := newFakeDaemon(t, fd)
+		defer srv.Close()
+
+		llm := &mockLLMClient{err: assert.AnError}
+		client := services.NewDaemonClientWithBase(srv.URL)
+		var out bytes.Buffer
+		in := &errorReader{err: assert.AnError}
+		agent := services.NewListenerAgent(llm, client, in, &out)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		agent.Start(ctx)
+
+		assert.Contains(t, out.String(), "Error reading input")
+	})
+}

@@ -144,3 +144,34 @@ func storyContractError(format string, args ...any) error {
 	_, _ = fmt.Fprintf(&message, format, args...)
 	return fmt.Errorf("story contract: %s", message.String())
 }
+
+// FormatContractPromptContext renders a machine-readable summary of public contract expectations
+// for injection into Generator and Tester agent prompts.
+func FormatContractPromptContext(sourcePath, markdown string) string {
+	contract, err := ParseStoryContract(sourcePath, markdown)
+	if err != nil || len(contract.PublicContracts) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)\n\n")
+	sb.WriteString("The implementation MUST satisfy the following public observable expectations:\n\n")
+
+	for _, pc := range contract.PublicContracts {
+		fmt.Fprintf(&sb, "- **Contract ID:** `%s`\n", pc.ID)
+		if len(pc.AllowedExecutables) > 0 {
+			fmt.Fprintf(&sb, "  - **Allowed Executables:** `%s`\n", strings.Join(pc.AllowedExecutables, "`, `"))
+		}
+		if len(pc.ExitCodes) > 0 {
+			fmt.Fprintf(&sb, "  - **Expected Exit Codes:** `%v`\n", pc.ExitCodes)
+		}
+		if len(pc.StderrPrefixes) > 0 {
+			fmt.Fprintf(&sb, "  - **Expected Stderr Prefixes:** `%q`\n", pc.StderrPrefixes)
+		}
+		if len(pc.StdoutContains) > 0 {
+			fmt.Fprintf(&sb, "  - **Expected Stdout Substrings:** `%q`\n", pc.StdoutContains)
+		}
+	}
+
+	return sb.String()
+}

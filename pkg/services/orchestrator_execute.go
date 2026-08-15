@@ -18,6 +18,10 @@ import (
 func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) {
 	atomic.AddInt64(&o.totalActions, 1)
 
+	if o.observer != nil {
+		ctx = domain.WithObserver(ctx, o.observer)
+	}
+
 	ctx, span := telemetry.Tracer().Start(ctx, "executeTask",
 		trace.WithAttributes(attribute.String("task.id", taskID)))
 	defer span.End()
@@ -44,6 +48,33 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	task.TargetFiles = collectTargetFilesRecursively(*task, state.Tasks)
 
 	fmt.Printf("Orchestrator: Task %s (%s) is starting...\n", taskID, task.Title)
+
+	taskStart := time.Now()
+	if o.observer != nil {
+		o.observer.Observe(ctx, domain.ExecutionEvent{
+			Kind:   domain.EventTaskAttemptStarted,
+			TaskID: taskID,
+			Name:   task.Title,
+			At:     taskStart.UTC(),
+		})
+	}
+	defer func() {
+		durMS := time.Since(taskStart).Milliseconds()
+		if o.observer != nil {
+			outcome := domain.OutcomeSuccess
+			if err != nil {
+				outcome = domain.OutcomeFailed
+			}
+			o.observer.Observe(ctx, domain.ExecutionEvent{
+				Kind:           domain.EventTaskAttemptFinished,
+				TaskID:         taskID,
+				Name:           task.Title,
+				At:             time.Now().UTC(),
+				DurationMillis: &durMS,
+				Outcome:        outcome,
+			})
+		}
+	}()
 
 	baseBranch := state.Metadata.BaseBranch
 	if baseBranch == "" {
@@ -181,6 +212,15 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
+	// Inject Black-Box Contract Scenarios if story contract is present
+	if state.Metadata.InputPath != "" {
+		if storyContent, err := os.ReadFile(state.Metadata.InputPath); err == nil {
+			if contractCtx := FormatContractPromptContext(state.Metadata.InputPath, string(storyContent)); contractCtx != "" {
+				fileContexts = append(fileContexts, contractCtx)
+			}
+		}
+	}
+
 	arch := strings.ToLower(strings.TrimSpace(o.cfg.Architecture))
 	qaBlocked := ""
 	if arch == "single_pass" || arch == "single_pass_execution" || arch == "spe" {
@@ -188,38 +228,81 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	} else if arch == "breadth_first" || arch == "breadth_first_generation" || arch == "bfg" || arch == "big" {
 		o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
 	} else if task.Retries == 0 {
-		// 1. Run Generator Agent (role "generator") to implement minimal functionality
-		o.updateTaskProgress(ctx, taskID, 25)
-		o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, "", "implement")
+		execOrder := strings.ToLower(strings.TrimSpace(o.cfg.TaskExecutionOrder))
+		if execOrder == "tester_first" {
+			// Ensure minimal compilation stub files exist before running tester on Turn 1
+			o.ensureTargetStubFilesExist(taskState.ProjectPath, task)
 
-		// Stage and commit minimal implementation
-		statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
-		if strings.TrimSpace(statusOut) != "" {
-			_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
-			stagedOut, _ = taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
-			if strings.TrimSpace(stagedOut) != "" {
-				commitMsg := fmt.Sprintf("feat(core): implement minimal functionality for task %s - %s", taskID, task.Title)
-				_, commitErr := taskGit.Run(ctx, true, "commit", "-m", commitMsg)
-				if commitErr != nil {
-					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s minimal implementation: %v\n", taskID, commitErr)
+			// 1. Run Test Writer Agent (role "tester") to write tests first
+			o.updateTaskProgress(ctx, taskID, 25)
+			o.RunTesterAgent(ctx, *task, &taskState, fileContexts, "write", "")
+
+			// Stage and commit tests
+			statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
+			if strings.TrimSpace(statusOut) != "" {
+				_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+				stagedOut, _ = taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
+				if strings.TrimSpace(stagedOut) != "" {
+					commitMsg := fmt.Sprintf("test(core): write tests for task %s - %s", taskID, task.Title)
+					_, commitErr := taskGit.Run(ctx, true, "commit", "-m", commitMsg)
+					if commitErr != nil {
+						fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s tests: %v\n", taskID, commitErr)
+					}
 				}
 			}
-		}
 
-		// 2. Run Test Writer Agent (role "tester") to write tests against the minimal implementation
-		o.updateTaskProgress(ctx, taskID, 50)
-		o.RunTesterAgent(ctx, *task, &taskState, fileContexts, "write", "")
+			// 2. Run Generator Agent (role "generator") to implement feature functionality to pass tests
+			o.updateTaskProgress(ctx, taskID, 50)
+			o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, "", "implement")
 
-		// Stage and commit tests
-		statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
-		if strings.TrimSpace(statusOut) != "" {
-			_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
-			stagedOut, _ = taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
-			if strings.TrimSpace(stagedOut) != "" {
-				commitMsg := fmt.Sprintf("test(core): write tests for task %s - %s", taskID, task.Title)
-				_, commitErr := taskGit.Run(ctx, true, "commit", "-m", commitMsg)
-				if commitErr != nil {
-					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s tests: %v\n", taskID, commitErr)
+			// Stage and commit minimal implementation
+			statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
+			if strings.TrimSpace(statusOut) != "" {
+				_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+				stagedOut, _ = taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
+				if strings.TrimSpace(stagedOut) != "" {
+					commitMsg := fmt.Sprintf("feat(core): implement minimal functionality for task %s - %s", taskID, task.Title)
+					_, commitErr := taskGit.Run(ctx, true, "commit", "-m", commitMsg)
+					if commitErr != nil {
+						fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s minimal implementation: %v\n", taskID, commitErr)
+					}
+				}
+			}
+		} else {
+			// Default: "generator_first"
+			// 1. Run Generator Agent (role "generator") to implement minimal functionality
+			o.updateTaskProgress(ctx, taskID, 25)
+			o.RunGeneratorAgent(ctx, *task, &taskState, fileContexts, "", "implement")
+
+			// Stage and commit minimal implementation
+			statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
+			if strings.TrimSpace(statusOut) != "" {
+				_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+				stagedOut, _ = taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
+				if strings.TrimSpace(stagedOut) != "" {
+					commitMsg := fmt.Sprintf("feat(core): implement minimal functionality for task %s - %s", taskID, task.Title)
+					_, commitErr := taskGit.Run(ctx, true, "commit", "-m", commitMsg)
+					if commitErr != nil {
+						fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s minimal implementation: %v\n", taskID, commitErr)
+					}
+				}
+			}
+
+			// 2. Run Test Writer Agent (role "tester") to write tests against the minimal implementation
+			o.updateTaskProgress(ctx, taskID, 50)
+			o.RunTesterAgent(ctx, *task, &taskState, fileContexts, "write", "")
+
+			// Stage and commit tests
+			statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
+			if strings.TrimSpace(statusOut) != "" {
+				_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+				stagedOut, _ = taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
+				if strings.TrimSpace(stagedOut) != "" {
+					commitMsg := fmt.Sprintf("test(core): write tests for task %s - %s", taskID, task.Title)
+					_, commitErr := taskGit.Run(ctx, true, "commit", "-m", commitMsg)
+					if commitErr != nil {
+						fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s tests: %v\n", taskID, commitErr)
+					}
 				}
 			}
 		}

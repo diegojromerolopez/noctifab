@@ -41,6 +41,10 @@ func checkPythonSyntax(ctx context.Context, path string) error {
 
 // resolveSandboxPath checks prefix path jail and blacklists .noctifab
 func resolveSandboxPath(projectPath, targetPath string) (string, error) {
+	targetPath = strings.TrimSpace(targetPath)
+	targetPath = strings.ReplaceAll(targetPath, "\\", "/")
+	targetPath = strings.TrimPrefix(targetPath, "./")
+
 	var absPath string
 	if filepath.IsAbs(targetPath) {
 		absPath = filepath.Clean(targetPath)
@@ -57,7 +61,7 @@ func resolveSandboxPath(projectPath, targetPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	parts := strings.Split(rel, string(filepath.Separator))
+	parts := strings.Split(filepath.ToSlash(rel), "/")
 	for _, part := range parts {
 		if part == ".noctifab" || part == ".git" {
 			return "", fmt.Errorf("Sandbox violation: path '%s' targets blacklisted configuration directory", targetPath)

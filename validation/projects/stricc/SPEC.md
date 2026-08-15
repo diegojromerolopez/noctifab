@@ -316,3 +316,8 @@ make test-build-apps
 2. **Strict No-Unsafe Policy**: Every `.rs` file MUST contain `#![deny(unsafe_code)]`. Zero `unsafe` blocks allowed.
 3. **Zero Compiler Warnings**: Clean build under `cargo clippy -- -D warnings` and `cargo fmt --check`.
 4. **Differential Test Pass**: 100% pass rate on GCC C Torture Suite execution tests (`make test-gcc`) and LLVM / Clang test targets (`make test-llvm`).
+
+
+### 3.3. Architectural Guidelines
+* **SOLID Principles:** Clear separation between lexing, AST parsing, LLVM codegen, and CLI driver stages.
+* **Dependency Injection:** Inject code generators, target triples, and diagnostics printers as trait objects.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,22 +92,49 @@ type StartDirectoryCmd struct {
 	Renderer PromptRenderer
 }
 
-// Execute walks the directory, finds all *.md files (sorted), reads each, and sends work items.
+// Execute walks the directory, finds all user story markdown files (sorted by story ID), reads each, and sends work items.
 func (c *StartDirectoryCmd) Execute(ctx context.Context, repo domain.StateRepository) error {
 	absDir, err := resolveAbsPath(c.DirPath)
 	if err != nil {
 		return fmt.Errorf("cannot resolve directory path %q: %w", c.DirPath, err)
 	}
 
+	// Check for roadmap/user-stories, user-stories, or roadmap subdirectories and prefer them
+	targetScanDir := absDir
+	scanCandidates := []string{
+		filepath.Join(absDir, "roadmap", "user-stories"),
+		filepath.Join(absDir, "user-stories"),
+		filepath.Join(absDir, "roadmap"),
+	}
+	for _, cand := range scanCandidates {
+		if info, statErr := os.Stat(cand); statErr == nil && info.IsDir() {
+			targetScanDir = cand
+			break
+		}
+	}
+
 	// Helper to find md files
 	findMdFiles := func() ([]string, error) {
 		var mdFiles []string
-		walkErr := filepath.WalkDir(absDir, func(path string, d fs.DirEntry, err error) error {
+		walkErr := filepath.WalkDir(targetScanDir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-			if !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
-				mdFiles = append(mdFiles, path)
+			if d.IsDir() {
+				if d.Name() == "tasks" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.EqualFold(filepath.Ext(path), ".md") {
+				baseLower := strings.ToLower(filepath.Base(path))
+				if baseLower == "spec.md" || baseLower == "readme.md" || baseLower == "changelog.md" {
+					return nil
+				}
+				baseUpper := strings.ToUpper(filepath.Base(path))
+				if !strings.HasPrefix(baseUpper, "TASK-") {
+					mdFiles = append(mdFiles, path)
+				}
 			}
 			return nil
 		})
@@ -115,26 +143,37 @@ func (c *StartDirectoryCmd) Execute(ctx context.Context, repo domain.StateReposi
 
 	mdFiles, walkErr := findMdFiles()
 	if walkErr != nil {
-		return fmt.Errorf("failed to scan directory %q: %w", absDir, walkErr)
+		return fmt.Errorf("failed to scan directory %q: %w", targetScanDir, walkErr)
 	}
 
-	// If no md files are found, but SPEC.md exists in the parent directory, generate!
+	// If no md files are found, but SPEC.md exists in project root, generate!
 	if len(mdFiles) == 0 && c.LLMClient != nil {
-		projectPath := filepath.Dir(absDir)
+		projectPath := absDir
+		if filepath.Base(absDir) == "roadmap" || filepath.Base(absDir) == "user-stories" {
+			projectPath = filepath.Dir(absDir)
+			if filepath.Base(absDir) == "user-stories" {
+				projectPath = filepath.Dir(projectPath)
+			}
+		}
 		specPath := filepath.Join(projectPath, "SPEC.md")
 		if _, specErr := os.Stat(specPath); specErr == nil {
 			fmt.Printf("No user stories found in %q, but SPEC.md exists. Generating roadmap...\n", absDir)
 			if genErr := GenerateRoadmap(ctx, projectPath, c.LLMClient, c.Renderer); genErr == nil {
-				// Re-scan directory
+				for _, cand := range scanCandidates {
+					if info, statErr := os.Stat(cand); statErr == nil && info.IsDir() {
+						targetScanDir = cand
+						break
+					}
+				}
 				mdFiles, walkErr = findMdFiles()
 				if walkErr != nil {
-					return fmt.Errorf("failed to scan directory %q after roadmap generation: %w", absDir, walkErr)
+					return fmt.Errorf("failed to scan directory %q after roadmap generation: %w", targetScanDir, walkErr)
 				}
 			}
 		}
 	}
 
-	sort.Strings(mdFiles)
+	sortStoryFiles(mdFiles)
 
 	for _, mdPath := range mdFiles {
 		data, err := os.ReadFile(mdPath)
@@ -247,4 +286,43 @@ func (c *MarkStoryInterruptedCmd) Execute(ctx context.Context, repo domain.State
 		return repo.Save(ctx, state)
 	}
 	return nil
+}
+
+// sortStoryFiles sorts user story file paths by numerical story ID (e.g., US-001 before US-002).
+func sortStoryFiles(files []string) {
+	sort.Slice(files, func(i, j int) bool {
+		numI, hasI := extractStoryNumber(files[i])
+		numJ, hasJ := extractStoryNumber(files[j])
+		if hasI && hasJ {
+			if numI != numJ {
+				return numI < numJ
+			}
+		} else if hasI != hasJ {
+			return hasI
+		}
+		return files[i] < files[j]
+	})
+}
+
+// extractStoryNumber parses the integer story number from a story file path (e.g. US-001-slug.md -> 1).
+func extractStoryNumber(path string) (int, bool) {
+	base := filepath.Base(path)
+	upper := strings.ToUpper(base)
+	if idx := strings.Index(upper, "US-"); idx != -1 {
+		rest := upper[idx+3:]
+		digits := ""
+		for _, r := range rest {
+			if r >= '0' && r <= '9' {
+				digits += string(r)
+			} else {
+				break
+			}
+		}
+		if digits != "" {
+			if n, err := strconv.Atoi(digits); err == nil {
+				return n, true
+			}
+		}
+	}
+	return 0, false
 }

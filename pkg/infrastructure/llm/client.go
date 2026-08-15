@@ -268,7 +268,10 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 				fmt.Fprintf(os.Stderr, "ℹ [llm] %s/%s call OK after %v (attempt %d)\n", c.Provider, activeModel, time.Since(attemptStart), attempt+1)
 				break
 			}
-			fmt.Fprintf(os.Stderr, "⚠ [llm] %s/%s call error after %v (attempt %d/%d): %v\n", c.Provider, activeModel, time.Since(attemptStart), attempt+1, maxRetries+1, err)
+
+			if isModelNotFoundOrDeprecated(err) {
+				BlacklistModel(activeModel)
+			}
 
 			if isCreditExhausted(err) {
 				creditExhausted = true
@@ -292,13 +295,16 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 				fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s; skipping retries.\n", c.Provider, activeModel)
 				break
 			}
-
-			fmt.Fprintf(os.Stderr, "⚠ LLM API error: %v (attempt %d/%d). Retrying...\n", err, attempt+1, maxRetries+1)
 			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") || creditExhausted {
 				fmt.Fprintln(os.Stderr, "⚠ Warning: You have exceeded your LLM API quota (HTTP 429). Please check your plan and billing details.")
 				if len(c.APIKeys) > 1 {
 					activeKey = c.getNextAPIKey()
 					fmt.Fprintf(os.Stderr, "ℹ Switching to next API key in pool for provider %s...\n", c.Provider)
+				} else if c.SkipOnCreditExhausted {
+					if delay, ok := parseRetryDelay(err); !ok || delay > 5*time.Second {
+						fmt.Fprintf(os.Stderr, "⚠ Circuit-breaker: HTTP 429 quota exhausted for %s/%s; skipping retries to trigger model/provider fallback immediately.\n", c.Provider, activeModel)
+						break
+					}
 				}
 			}
 
@@ -323,6 +329,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		if err == nil {
 			resp, parseErr := parseAndUnmarshal(responseBody)
 			if parseErr == nil {
+				emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, resp, nil)
 				return resp, nil
 			}
 			// Defensive one-shot format-reminder retry: when the model
@@ -337,12 +344,15 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			if rErr == nil {
 				resp2, pErr2 := parseAndUnmarshal(reminderBody)
 				if pErr2 == nil {
+					emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), reminderPrompt, resp2, nil)
 					return resp2, nil
 				}
 				fmt.Fprintf(os.Stderr, "⚠ One-shot format reminder did not yield a parseable JSON response: %v\n", pErr2)
+				emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), reminderPrompt, nil, pErr2)
 				return nil, pErr2
 			}
 			fmt.Fprintf(os.Stderr, "⚠ Format reminder call failed: %v\n", rErr)
+			emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, parseErr)
 			return nil, parseErr
 		}
 
@@ -377,9 +387,38 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		}
 
 		if creditExhausted && c.SkipOnCreditExhausted {
-			return nil, fmt.Errorf("%w (provider %s, model %s): %v", ErrCreditExhausted, c.Provider, activeModel, err)
+			errResult := fmt.Errorf("%w (provider %s, model %s): %v", ErrCreditExhausted, c.Provider, activeModel, err)
+			emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, errResult)
+			return nil, errResult
 		}
 
-		return nil, fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
+		errResult := fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
+		emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, errResult)
+		return nil, errResult
 	}
+}
+
+func emitLLMEvent(ctx context.Context, provider, model string, duration time.Duration, prompt string, resp *domain.LLMResponse, err error) {
+	obs := domain.ObserverFromContext(ctx)
+	if obs == nil {
+		return
+	}
+	durMS := duration.Milliseconds()
+	outcome := domain.OutcomeSuccess
+	if err != nil {
+		outcome = domain.OutcomeFailed
+	}
+	pTokens := estimatePromptTokens(prompt)
+	cTokens := estimateCompletionTokens(resp)
+	event := domain.ExecutionEvent{
+		Kind:             domain.EventLLMCallFinished,
+		At:               time.Now().UTC(),
+		Provider:         provider,
+		Model:            model,
+		DurationMillis:   &durMS,
+		PromptTokens:     &pTokens,
+		CompletionTokens: &cTokens,
+		Outcome:          outcome,
+	}
+	obs.Observe(ctx, event)
 }
