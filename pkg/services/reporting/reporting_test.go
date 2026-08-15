@@ -113,13 +113,11 @@ func TestReportingPipeline(t *testing.T) {
 			require.NoError(t, readErr)
 			content := string(readBytes)
 
-			assert.Contains(t, content, "### Modified & Created Files")
-			assert.Contains(t, content, "### Created & Modified Artifacts")
+			assert.NotContains(t, content, "### Modified & Created Files")
+			assert.NotContains(t, content, "### Created & Modified Artifacts")
 			assert.Contains(t, content, "### Filesystem Hierarchy")
 			assert.Contains(t, content, "├── app/")
 			assert.Contains(t, content, "│   └── main.py")
-			assert.Contains(t, content, "- `app/main.py`\n")
-			assert.Contains(t, content, "- `pyproject.toml`\n")
 		})
 
 		t.Run("it renders empty filesystem tree when no files provided", func(t *testing.T) {

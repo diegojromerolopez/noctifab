@@ -145,14 +145,7 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	fmt.Fprintf(&sb, "- **Files Changed:** %d\n", snapshot.Churn.FilesChanged)
 	fmt.Fprintf(&sb, "- **Lines Added:** +%d\n", snapshot.Churn.LinesAdded)
 	fmt.Fprintf(&sb, "- **Lines Deleted:** -%d\n", snapshot.Churn.LinesDeleted)
-	fmt.Fprintf(&sb, "- **Net Line Delta:** %+d\n", netDelta)
-	if len(snapshot.Churn.ChangedFiles) > 0 {
-		sb.WriteString("\n### Modified & Created Files\n\n")
-		for _, f := range snapshot.Churn.ChangedFiles {
-			fmt.Fprintf(&sb, "- `%s`\n", r.sanitizeCell(f))
-		}
-	}
-	sb.WriteString("\n")
+	fmt.Fprintf(&sb, "- **Net Line Delta:** %+d\n\n", netDelta)
 
 	// Self-Correction and Turn Efficiency
 	sb.WriteString("## Self-Correction and Turn Efficiency\n\n")
@@ -269,10 +262,6 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	fmt.Fprintf(&sb, "- **Execution Report:** `%s` *(Authoritative execution diagnosis)*\n", r.sanitizeCell(snapshot.Run.ReportPath))
 	fmt.Fprintf(&sb, "- **Documentation / README:** `README.md` *(Project instructions & specification reference)*\n")
 	if len(snapshot.Churn.ChangedFiles) > 0 {
-		sb.WriteString("\n### Created & Modified Artifacts\n\n")
-		for _, f := range snapshot.Churn.ChangedFiles {
-			fmt.Fprintf(&sb, "- `%s`\n", r.sanitizeCell(f))
-		}
 		sb.WriteString("\n### Filesystem Hierarchy\n\n```\n")
 		sb.WriteString(RenderFilesystemTree(snapshot.Churn.ChangedFiles))
 		sb.WriteString("\n```\n")

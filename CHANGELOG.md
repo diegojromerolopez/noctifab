@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated Gemini model configuration across all 15 validation project `.noctifab/config.yaml` files from `gemini-2.5-pro` (deprecated by Google API) to `gemini-3.6-pro`.
 - **`pyedis` Standard Library `unittest` Mandate**:
   - Updated `validation/projects/pyedis/SPEC.md` to forbid `pytest` and mandate Python standard library `unittest` (`unittest.TestCase`, `unittest.IsolatedAsyncioTestCase`) for unit/integration testing (`python3 -m unittest discover -s tests`).
-  - Updated `validation/projects/pyedis/Dockerfile` to remove `pytest` dependencies.
+- **Execution Report File List De-duplication**:
+  - Removed redundant `### Modified & Created Files` and `### Created & Modified Artifacts` bullet lists from execution reports (`pkg/services/reporting/renderer.go`). File modifications are now presented once in the `### Filesystem Hierarchy` tree view.
 
 ## [0.33.6] - 2026-08-15
 
