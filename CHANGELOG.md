@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.8] - 2026-08-15
+
+### Changed
+- **Validation Projects Speed & Token Optimization (Proposals 1B, 1C, 2A, 2D)**:
+  - **Proposal 1B (Hybrid Model Allocation)**: Configured high-throughput `gemini-3.6-flash` model (`gemini-flash`) as top priority for `generators` and `testers`, reserving `gemini-3.6-pro` for high-level PM and planning tasks.
+  - **Proposal 1C (Generator Concurrency)**: Increased concurrent generator worker count from 4 to 6 across all validation project configurations.
+  - **Proposal 2A (`caveman` Context Compaction)**: Updated `context.compaction` to `caveman` mode in all validation project `.noctifab/config.yaml` files to compress conversation history.
+  - **Proposal 2D (LLM Prompt Caching)**: Added Anthropic prompt caching headers (`anthropic-beta: prompt-caching-2024-07-31`) and `cache_control: {"type": "ephemeral"}` payload markers for prompts over 2048 bytes (`pkg/infrastructure/llm/anthropic.go`).
+
 ## [0.33.7] - 2026-08-15
 
 ### Changed

@@ -22,9 +22,10 @@ agents:
     number: 1
     iterations: 2
   generators:
-    number: 4
+    number: 6
     iterations: 5
     providers:
+    - name: gemini-flash
     - name: claude
     - name: gemini
     - name: openai
@@ -36,6 +37,7 @@ agents:
     number: 2
     iterations: 3
     providers:
+    - name: gemini-flash
     - name: claude
     - name: gemini
     - name: openai
@@ -47,6 +49,7 @@ agents:
     enabled: false
     iterations: 2
     providers:
+    - name: gemini-flash
     - name: claude
     - name: gemini
     - name: openai
@@ -68,6 +71,7 @@ storage:
   json_file_path: .noctifab/data/state.json
 llm:
   priority:
+  - gemini-flash
   - claude
   - gemini
   - openai
@@ -80,6 +84,17 @@ llm:
     provider: anthropic
     model: claude-3-7-sonnet-latest
     api_keys: CLAUDE_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: gemini-flash
+    provider: gemini
+    model: gemini-3.6-flash
+    api_keys: GEMINI_API_KEY
     max_retries: 2
     retry_backoff: 50ms
     max_timeout: 600s
@@ -214,4 +229,4 @@ telemetry:
 context:
   mode: full
   diff_window_lines: 15
-  compaction: simple_english
+  compaction: caveman

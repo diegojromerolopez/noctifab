@@ -59,15 +59,28 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	headers := make(map[string]string)
 	headers["X-API-Key"] = apiKey
 	headers["anthropic-version"] = "2023-06-01"
+	headers["anthropic-beta"] = "prompt-caching-2024-07-31"
 	headers["Content-Type"] = "application/json"
 
 	if maxTokens <= 0 {
 		maxTokens = 4096
 	}
+
+	var messageContent any = prompt
+	if len(prompt) > 2048 {
+		messageContent = []map[string]any{
+			{
+				"type":          "text",
+				"text":          prompt,
+				"cache_control": map[string]string{"type": "ephemeral"},
+			},
+		}
+	}
+
 	payload := map[string]any{
 		"model": model,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
+		"messages": []map[string]any{
+			{"role": "user", "content": messageContent},
 		},
 		"max_tokens": maxTokens,
 	}
