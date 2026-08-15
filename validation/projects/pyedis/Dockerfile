@@ -18,12 +18,9 @@ RUN apk add --no-cache git bash docker-cli curl build-base
 # not depend on runtime network access.
 RUN python3 -m pip install --no-cache-dir --break-system-packages \
         "redis>=5.0" \
-        "pytest>=8.0" \
-        "pytest-asyncio>=0.23" \
         "ruff>=0.8" \
         "mypy>=1.13" \
         "coverage>=7.6" \
-        "pytest-cov>=5.0" \
     && rm -rf /root/.cache/pip
 
 # Copy noctifab binary, validation projects, and the validate.sh harness

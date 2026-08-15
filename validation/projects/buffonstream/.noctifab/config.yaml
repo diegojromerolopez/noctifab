@@ -89,7 +89,7 @@ llm:
     streaming: true
   - name: gemini
     provider: gemini
-    model: gemini-2.5-pro
+    model: gemini-3.6-pro
     api_keys: GEMINI_API_KEY
     max_retries: 2
     retry_backoff: 50ms

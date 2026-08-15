@@ -10,7 +10,7 @@ The project deliberately exercises the validation host's Python-ecosystem seam: 
 
 ```
 pyedis/
-├── pyproject.toml            # PEP 621; deps + [tool.pytest.ini_options], [tool.mypy], [tool.ruff]
+├── pyproject.toml            # PEP 621; deps + [tool.mypy], [tool.ruff]
 ├── requirements.txt          # pinned runtime + dev deps (see §3.1)
 ├── Makefile                  # install/run/test/lint/format/e2e targets (all REQUIRED)
 ├── README.md                 # usage, command API, persistence format, e2e instructions
@@ -45,12 +45,13 @@ pyedis/
 
 ### 3.1 Runtime / Dev Dependencies (pinned)
 - **Runtime:** Standard Python 3.14 library (`asyncio`, `dataclass`, `os`, `sys`, `time`, `typing`). No external web frameworks (no FastAPI/Uvicorn).
-- **Dev:** `pytest>=8.0`, `pytest-asyncio>=0.23`, `redis>=5.0`, `ruff>=0.8`, `mypy>=1.13`, `coverage>=7.6`, `pytest-cov>=5.0`.
+- **Dev:** `redis>=5.0`, `ruff>=0.8`, `mypy>=1.13`, `coverage>=7.6`.
+- **Testing Framework Rule (MANDATORY):** Tests MUST NOT use `pytest` or any third-party test framework under any circumstances. All unit and integration tests MUST be written using Python's standard library `unittest` framework (using `unittest.TestCase`, `unittest.IsolatedAsyncioTestCase` for async tests, and `unittest.mock`). All test modules must be executable via `python3 -m unittest discover -s tests`.
 
 ### 3.2 Makefile Targets (all REQUIRED, defined exactly once)
 - `make install` → `python3 -m pip install -e ".[dev]"`.
 - `make run` → `python3 -m app.main`.
-- `make test` → `python3 -m pytest -q` (runs unit + integration suites; zero failures allowed).
+- `make test` → `python3 -m unittest discover -s tests -v` (runs unit + integration suites via standard library `unittest`; zero failures allowed).
 - `make lint` → `ruff check app tests` AND `mypy --strict app` — both must pass with zero findings.
 - `make format` → `ruff format app tests` (idempotent code formatting).
 - `make e2e` → `docker compose up --build --exit-code-from e2e` (host-run black-box harness).
@@ -249,7 +250,7 @@ To ensure feature-parity between `pyedis` and official Redis, the automated test
 The integration test suite (`tests/integration/test_server.py`) and E2E script (`tests/e2e/run_tests.sh`) MUST yield the exact same test outputs and return code `0` whether executed against `pyedis` or standard `redis:7-alpine`.
 
 ### 9.8 Code Coverage Gate
-Total test coverage of `app/` must be $\ge 95\%$ lines (`pytest --cov=app --cov-report=term-missing`).
+Total test coverage of `app/` must be $\ge 95\%$ lines (`coverage run -m unittest discover -s tests && coverage report`).
 
 ---
 
