@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.33.4] - 2026-08-15
 
 ### Fixed
-- **Legacy File Scanning & Prompt Mandate**: Added Dockerfile, compose, Makefile, and Read the Docs config files to `scanLegacyFiles` ignored files in `pkg/services/roadmap_generator.go` so build configs aren't misidentified as legacy source code. Updated Product Manager prompt templates (`generate.tmpl` and `audit.tmpl`) to mandate preserving pinned directory layouts and required file paths from `SPEC.md` in user story Definitions of Done.
+- **Legacy File Scanning & Prompt Mandates**: Added Dockerfile, compose, Makefile, and Read the Docs config files to `scanLegacyFiles` ignored files in `pkg/services/roadmap_generator.go` so build configs aren't misidentified as legacy source code. Updated Product Manager (`generate.tmpl`, `audit.tmpl`) and Generator (`implement_breadth_first.tmpl`) prompt templates to explicitly mandate creating all required manifest and source files (e.g. `pyproject.toml`, `Cargo.toml`, `app/main.py`) specified by `SPEC.md` or user story Definitions of Done.
 
 ## [0.33.3] - 2026-08-15
 
