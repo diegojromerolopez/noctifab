@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.2] - 2026-08-16
+
+### Fixed
+- **Pre-Flight Diagnostics & LLM Provider Ping**:
+  - Restored pre-flight provider ping/ban diagnostic checks in `cmd/noctifab/cli/preflight.go` to validate LLM connectivity, credit exhaustion, and latency before orchestrator launch.
+- **QA Recovery & Unblocker Agent Wiring**:
+  - Restored interrupted QA phase recovery (`NewQARecoveryService(...).Recover`) and `UnblockerAgent` startup in `start_runner.go`.
+- **Model Blacklist Isolation & Reset Helper**:
+  - Added `ResetModelBlacklist()` in `pkg/infrastructure/llm/http_error.go` to prevent global blacklist state pollution across unit tests and process resets.
+- **State Persistence Error Handling**:
+  - Fixed discarded `repo.Save` error check in `start_runner.go` story execution loop to prevent proceeding on unpersisted state.
+- **CLI Resume Command Consistency**:
+  - Cleaned up redundant `--resume` flag definition and force-set in `cmd/noctifab/cli/resume.go`, unifying command dispatch through `runStartCommand`.
+- **Daemon Concurrency & Worker Bounds**:
+  - Derived story worker concurrency from configuration (`cfg.Agents.Generators.Number`) in `runServerLoop` (`cmd/noctifab/cli/serve.go`) and documented the 100ms batch drain window heuristic.
+
 ## [0.34.1] - 2026-08-16
 
 ### Changed

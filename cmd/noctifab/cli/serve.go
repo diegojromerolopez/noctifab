@@ -224,12 +224,18 @@ var serveCmd = &cobra.Command{
 		fmt.Printf("noctifab daemon started (PID %d). Listening on 127.0.0.1:18080\n", os.Getpid())
 
 		// Server mode: consume stories from the channel and execute each one.
-		return runServerLoop(ctx, orchestrator, repo, storyCh, cfg.VCS.BaseBranch, cfg.VCS.BranchPrefix, storyExecInterval(cfg))
+		storyWorkers := cfg.Agents.Generators.Number
+		if storyWorkers <= 0 {
+			storyWorkers = 4
+		}
+		return runServerLoop(ctx, orchestrator, repo, storyCh, cfg.VCS.BaseBranch, cfg.VCS.BranchPrefix, storyExecInterval(cfg), storyWorkers)
 	},
 }
 
 // runServerLoop processes user stories from the queue concurrently using StoryDAGScheduler.
-// Unblocked user stories execute in parallel across worker slots.
+// When stories are enqueued in rapid succession (e.g. from batch or directory submissions),
+// a 100ms drain window groups burst-enqueued stories into a single batch for concurrent DAG execution
+// across up to maxStoryWorkers parallel slots.
 func runServerLoop(
 	ctx context.Context,
 	orchestrator *services.Orchestrator,
@@ -237,7 +243,12 @@ func runServerLoop(
 	storyCh <-chan services.StoryWorkItem,
 	baseBranch, branchPrefix string,
 	execInterval time.Duration,
+	maxStoryWorkers ...int,
 ) error {
+	workers := 4
+	if len(maxStoryWorkers) > 0 && maxStoryWorkers[0] > 0 {
+		workers = maxStoryWorkers[0]
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "."
@@ -282,7 +293,7 @@ func runServerLoop(
 					fmt.Fprintf(os.Stderr, "noctifab daemon: story %s failed: %v\n", items[0].Path, err)
 				}
 			} else {
-				scheduler := services.NewStoryDAGScheduler(4)
+				scheduler := services.NewStoryDAGScheduler(workers)
 				for _, it := range items {
 					scheduler.AddStory(it)
 				}

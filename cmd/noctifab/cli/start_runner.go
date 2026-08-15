@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -132,15 +131,9 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Println("Running pre-flight checks...")
-	tools := []string{"go", "docker", "python3", "rustc", "make", "gcc"}
-	var foundTools []string
-	for _, t := range tools {
-		if _, err := exec.LookPath(t); err == nil {
-			foundTools = append(foundTools, t)
-		}
+	if err := runPreFlightChecks(cfg); err != nil {
+		return err
 	}
-	fmt.Printf("- Sandbox build tools available: %s\n", strings.Join(foundTools, ", "))
 
 	// Initialize repository
 	var repo domain.StateRepository
@@ -155,6 +148,10 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	if _, err := services.NewQARecoveryService(repo, services.SystemQAClock{}).Recover(cmd.Context()); err != nil {
+		return fmt.Errorf("recover interrupted QA phases: %w", err)
 	}
 
 	var sandboxRunner services.Sandbox
@@ -260,20 +257,38 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 	validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+	validator.ExcludePaths = cfg.Sandbox.ExcludePaths
+	validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 	scheduler := services.NewScheduler(services.NewFileLockRegistry())
 	evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+	evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
+	evaluator.LinterCommand = cfg.Sandbox.LinterCommand
+	evaluator.MaxLinterIssues = cfg.Sandbox.MaxLinterIssues
+	if cfg.Sandbox.TimeoutSeconds > 0 {
+		evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
+	}
 	vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 	repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
 
 	orchConfig := services.OrchestratorConfig{
-		Architecture:       cfg.Agents.Architecture,
-		TaskExecutionOrder: cfg.Agents.TaskExecutionOrder,
-		GeneratorsNumber:   cfg.Agents.Generators.Number,
-		TestersNumber:      cfg.Agents.Testers.Number,
-		PollInterval:       time.Duration(cfg.PollInterval),
-		MaxRetries:         10,
-		Concurrency:        effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
-		UseWorktrees:       cfg.VCS.UseWorktrees,
+		Architecture:         cfg.Agents.Architecture,
+		TaskExecutionOrder:   cfg.Agents.TaskExecutionOrder,
+		GeneratorsNumber:     cfg.Agents.Generators.Number,
+		GeneratorsIterations: cfg.Agents.Generators.Iterations,
+		TestersNumber:        cfg.Agents.Testers.Number,
+		TestersIterations:    cfg.Agents.Testers.Iterations,
+		PollInterval:         time.Duration(cfg.PollInterval),
+		MaxRetries:           10,
+		Concurrency:          effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
+		UseWorktrees:         cfg.VCS.UseWorktrees,
+		OCCMaxRetries:        cfg.OCCMaxRetries,
+		OCCBackoffBase:       time.Duration(cfg.OCCBackoffBase),
+		OCCBackoffFactor:     cfg.OCCBackoffFactor,
+		MaxDuration:          time.Duration(cfg.MaxDuration),
+		AutoCreatePR:         cfg.VCS.PullRequest.AutoCreate,
+		ExcludePaths:         cfg.Sandbox.ExcludePaths,
+		WorkspaceCache:       cfg.GetWorkspaceCache(),
+		QA:                   cfg.Agents.QA,
 	}
 
 	mailbox := services.NewCommandMailbox(repo)
@@ -282,7 +297,12 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	if executionReporter != nil {
 		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "story_execution", At: time.Now().UTC()})
 	}
-	resumeRequested, _ := cmd.Flags().GetBool("resume")
+	resumeRequested := cmd.Name() == "resume"
+	if flag := cmd.Flags().Lookup("resume"); flag != nil {
+		if val, err := cmd.Flags().GetBool("resume"); err == nil && val {
+			resumeRequested = true
+		}
+	}
 
 	for idx, currentStoryFile := range storyFiles {
 		storyID := fmt.Sprintf("story-%04d", idx+1)
@@ -338,20 +358,50 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			state.Metadata.InputPath = currentStoryFile
 			state.Tasks = nil
 			state.StoryStatus = domain.StoryRunning
-			_ = repo.Save(cmdCtx, state)
+			if err := repo.Save(cmdCtx, state); err != nil {
+				return fmt.Errorf("failed to save initial state: %w", err)
+			}
+
+			var qaCoord *services.QARuntimeCoordinator
+			if qaDeps := qaDependencies(cfg); len(qaDeps) > 0 {
+				deps := qaDeps[0]
+				qaCoord = services.NewQARuntimeCoordinator(
+					cfg.Agents.QA, llmClient, promptRenderer,
+					deps.WorkspaceFactory, deps.ArtifactBuilder, deps.Sandbox, deps.FileSystem, deps.Clock,
+				)
+			}
 
 			orchRuntime := services.OrchestratorRuntimeDependencies{
 				Mailbox:        mailbox,
 				WatchdogRepair: repairHandler,
+				PromptRenderer: promptRenderer,
+				QA:             qaCoord,
 				Observer:       executionReporter,
 			}
 			orchestrator := services.NewOrchestratorWithRuntime(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, orchRuntime)
+
+			if cfg.Unblocker.Enabled {
+				unblocker := services.NewUnblockerAgent(
+					repo,
+					llmClient,
+					mailbox,
+					time.Duration(cfg.Unblocker.PollInterval),
+					cfg.Unblocker.MaxRetries,
+					time.Duration(cfg.Unblocker.StallThreshold),
+					time.Duration(cfg.Unblocker.ConflictThreshold),
+					cfg.Unblocker.LLMAssessment,
+				)
+				orchestrator.SetUnblocker(unblocker)
+				unblockerCtx, cancelUnblocker := context.WithCancel(cmdCtx)
+				defer cancelUnblocker()
+				unblocker.Start(unblockerCtx)
+			}
 
 			if err := orchestrator.PlanStory(cmdCtx, state, string(specBytes)); err != nil {
 				return err
 			}
 
-			ticker := time.NewTicker(2 * time.Second)
+			ticker := time.NewTicker(storyExecInterval(cfg))
 			defer ticker.Stop()
 			for {
 				select {

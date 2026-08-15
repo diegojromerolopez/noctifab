@@ -33,6 +33,15 @@ func IsModelBlacklisted(model string) bool {
 	return ok
 }
 
+// ResetModelBlacklist clears all blacklisted models from memory.
+// Primarily used for unit test cleanup and state resets.
+func ResetModelBlacklist() {
+	blacklistedModels.Range(func(key, _ any) bool {
+		blacklistedModels.Delete(key)
+		return true
+	})
+}
+
 // isModelNotFoundOrDeprecated reports whether an error indicates a model is 404, deprecated, or no longer available.
 func isModelNotFoundOrDeprecated(err error) bool {
 	if err == nil {
