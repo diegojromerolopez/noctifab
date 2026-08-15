@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.3] - 2026-08-15
+
+### Changed
+- **Execution Report Formatting Enhancements**: Updated `pkg/services/reporting/renderer.go`, `collector.go`, and `snapshot.go` to list created/modified workspace file paths under Codebase Changes, add explanatory note to Task Pass Efficiency, add Resolution/Status column to Execution Errors table, include README in deliverables, render individual black-box contract scenarios on dedicated rows, remove generic Developer Recommendations section, and omit empty sections.
+- **`pyedis` Specification Update**: Updated `validation/projects/pyedis/SPEC.md` to mandate `README.md`, `docs/` documentation folder, and `.readthedocs.yaml` configuration at root level.
+
 ## [0.33.2] - 2026-08-14
 
 ### Changed

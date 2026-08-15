@@ -531,6 +531,7 @@ func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 			churn.FilesChanged++
 			churn.LinesAdded += added
 			churn.LinesDeleted += deleted
+			churn.ChangedFiles = append(churn.ChangedFiles, filePath)
 		}
 	}
 

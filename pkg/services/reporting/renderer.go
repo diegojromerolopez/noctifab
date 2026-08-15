@@ -145,7 +145,14 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	fmt.Fprintf(&sb, "- **Files Changed:** %d\n", snapshot.Churn.FilesChanged)
 	fmt.Fprintf(&sb, "- **Lines Added:** +%d\n", snapshot.Churn.LinesAdded)
 	fmt.Fprintf(&sb, "- **Lines Deleted:** -%d\n", snapshot.Churn.LinesDeleted)
-	fmt.Fprintf(&sb, "- **Net Line Delta:** %+d\n\n", netDelta)
+	fmt.Fprintf(&sb, "- **Net Line Delta:** %+d\n", netDelta)
+	if len(snapshot.Churn.ChangedFiles) > 0 {
+		sb.WriteString("\n### Modified & Created Files\n\n")
+		for _, f := range snapshot.Churn.ChangedFiles {
+			fmt.Fprintf(&sb, "- `%s`\n", r.sanitizeCell(f))
+		}
+	}
+	sb.WriteString("\n")
 
 	// Self-Correction and Turn Efficiency
 	sb.WriteString("## Self-Correction and Turn Efficiency\n\n")
@@ -157,7 +164,8 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 		pct := (float64(snapshot.SelfCorrection.TaskSuccesses) / float64(snapshot.SelfCorrection.TaskAttempts)) * 100
 		taskEfficiency = fmt.Sprintf("%.1f%% (%d/%d attempts passed)", pct, snapshot.SelfCorrection.TaskSuccesses, snapshot.SelfCorrection.TaskAttempts)
 	}
-	fmt.Fprintf(&sb, "- **Task Pass Efficiency:** %s\n\n", taskEfficiency)
+	fmt.Fprintf(&sb, "- **Task Pass Efficiency:** %s\n", taskEfficiency)
+	sb.WriteString("  *(Ratio of successful task verification attempts across all initial executions and self-correction retries)*\n\n")
 
 	// Bottlenecks
 	sb.WriteString("## Bottlenecks\n\n")
@@ -169,36 +177,6 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 		for _, bn := range snapshot.Bottlenecks {
 			fmt.Fprintf(&sb, "| %d | %s | %s | %s | %s |\n",
 				bn.Rank, bn.RuleID, r.sanitizeCell(bn.Scope), r.sanitizeCell(bn.Measurement), r.sanitizeCell(bn.Impact))
-		}
-		sb.WriteString("\n")
-	}
-
-	// Developer Recommendations & Next Actions
-	sb.WriteString("## Developer Recommendations & Next Actions\n\n")
-	if len(snapshot.Proposals) == 0 && len(snapshot.Issues) == 0 {
-		sb.WriteString("No outstanding developer actions required.\n\n")
-	} else {
-		sb.WriteString("| Scope & Context | Recommendation | Verification Step |\n")
-		sb.WriteString("| :--- | :--- | :--- |\n")
-		if len(snapshot.Proposals) > 0 {
-			for _, prop := range snapshot.Proposals {
-				sc := prop.Scope
-				if sc == "" || sc == "noctifab" {
-					sc = snapshot.Run.ProjectPath
-				}
-				fmt.Fprintf(&sb, "| %s | %s | %s |\n",
-					r.sanitizeCell(sc), r.sanitizeCell(prop.Action), r.sanitizeCell(prop.Verification))
-			}
-		} else {
-			for _, issue := range snapshot.Issues {
-				sc := issue.Scope
-				if issue.StoryID != "" {
-					sc = fmt.Sprintf("%s / %s", issue.StoryID, issue.TaskID)
-				}
-				rec := fmt.Sprintf("Review %s issue: %s", issue.Category, issue.Title)
-				ver := "Re-run target story task locally to verify"
-				fmt.Fprintf(&sb, "| %s | %s | %s |\n", r.sanitizeCell(sc), r.sanitizeCell(rec), r.sanitizeCell(ver))
-			}
 		}
 		sb.WriteString("\n")
 	}
@@ -264,8 +242,8 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 
 	if len(snapshot.Issues) > 0 {
 		sb.WriteString("### Execution Errors\n\n")
-		sb.WriteString("| Error ID | Category | Target Scope | Summary / Excerpt |\n")
-		sb.WriteString("| :--- | :--- | :--- | :--- |\n")
+		sb.WriteString("| Error ID | Category | Target Scope | Resolution / Status | Summary / Excerpt |\n")
+		sb.WriteString("| :--- | :--- | :--- | :--- | :--- |\n")
 		for _, issue := range snapshot.Issues {
 			sc := issue.Scope
 			if issue.StoryID != "" {
@@ -275,8 +253,12 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 			if len(issue.Evidence) > 0 && issue.Evidence[0].Excerpt != "" {
 				ex = issue.Evidence[0].Excerpt
 			}
-			fmt.Fprintf(&sb, "| %s | %s | %s | %s |\n",
-				issue.ID, issue.Category, r.sanitizeCell(sc), r.sanitizeCell(ex))
+			status := "Self-Corrected by Tester"
+			if snapshot.Status == domain.ExecutionFailed {
+				status = "Unresolved / Fatal"
+			}
+			fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
+				issue.ID, issue.Category, r.sanitizeCell(sc), status, r.sanitizeCell(ex))
 		}
 		sb.WriteString("\n")
 	}
@@ -284,7 +266,8 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	// Deliverables & Documentation
 	sb.WriteString("## Deliverables & Documentation\n\n")
 	fmt.Fprintf(&sb, "- **Project Workspace:** `%s` *(Target implementation root)*\n", r.sanitizeCell(snapshot.Run.ProjectPath))
-	fmt.Fprintf(&sb, "- **Execution Report:** `%s` *(Authoritative execution diagnosis)*\n\n", r.sanitizeCell(snapshot.Run.ReportPath))
+	fmt.Fprintf(&sb, "- **Execution Report:** `%s` *(Authoritative execution diagnosis)*\n", r.sanitizeCell(snapshot.Run.ReportPath))
+	fmt.Fprintf(&sb, "- **Documentation / README:** `README.md` *(Project instructions & specification reference)*\n\n")
 
 	// Verification & Testing Strategy
 	sb.WriteString("## Verification & Testing Strategy\n\n")
@@ -293,7 +276,7 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 
 	if len(snapshot.PublicContracts) > 0 {
 		sb.WriteString("### Black-Box Contract Scenarios\n\n")
-		sb.WriteString("| Contract ID | Interface | Executable Path | Observable Expectations | Verification Status |\n")
+		sb.WriteString("| Scenario ID | Interface | Executable Path | Observable Expectations | Verification Status |\n")
 		sb.WriteString("| :--- | :--- | :--- | :--- | :---: |\n")
 		for _, pc := range snapshot.PublicContracts {
 			execs := strings.Join(pc.AllowedExecutables, ", ")
@@ -325,22 +308,18 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	sb.WriteString("## LLM and Token Usage\n\n")
 	fmt.Fprintf(&sb, "- **Tokens:** %d measured\n\n", snapshot.MeasuredTokens)
 
-	// Evidence and Limitations
-	sb.WriteString("## Evidence and Limitations\n\n")
-	if len(snapshot.Limitations) == 0 {
-		sb.WriteString("None observed\n\n")
-	} else {
+	// Evidence and Limitations (only render if non-empty)
+	if len(snapshot.Limitations) > 0 {
+		sb.WriteString("## Evidence and Limitations\n\n")
 		for _, lim := range snapshot.Limitations {
 			fmt.Fprintf(&sb, "- %s\n", r.sanitizeCell(lim))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Reporter Diagnostics
-	sb.WriteString("## Reporter Diagnostics\n\n")
-	if len(snapshot.Diagnostics) == 0 {
-		sb.WriteString("None observed\n\n")
-	} else {
+	// Reporter Diagnostics (only render if non-empty)
+	if len(snapshot.Diagnostics) > 0 {
+		sb.WriteString("## Reporter Diagnostics\n\n")
 		for _, diag := range snapshot.Diagnostics {
 			fmt.Fprintf(&sb, "- %s\n", r.sanitizeCell(diag))
 		}

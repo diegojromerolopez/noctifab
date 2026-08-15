@@ -74,9 +74,10 @@ type TaskExecutionSummary struct {
 }
 
 type CodeChurnSummary struct {
-	FilesChanged int64 `json:"files_changed"`
-	LinesAdded   int64 `json:"lines_added"`
-	LinesDeleted int64 `json:"lines_deleted"`
+	FilesChanged int64    `json:"files_changed"`
+	LinesAdded   int64    `json:"lines_added"`
+	LinesDeleted int64    `json:"lines_deleted"`
+	ChangedFiles []string `json:"changed_files,omitempty"`
 }
 
 type SelfCorrectionSummary struct {

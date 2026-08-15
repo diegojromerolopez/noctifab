@@ -21,6 +21,10 @@ pyedis/
 ├── requirements.txt          # pinned runtime deps (see §3.1)
 ├── Makefile                  # install/run/test/lint/format/e2e targets (all REQUIRED)
 ├── README.md                 # usage, command API, persistence format, e2e instructions
+├── .readthedocs.yaml         # Read the Docs configuration file (REQUIRED)
+├── docs/                     # Read the Docs documentation directory (REQUIRED)
+│   ├── index.md              # Documentation entry point
+│   └── api.md                # Command API and architecture documentation
 ├── .gitignore                # ignore __pycache__/, .venv/, data/, .coverage, htmlcov/
 ├── docker-compose.yml        # e2e black-box harness (see §8)
 ├── app/
@@ -210,10 +214,11 @@ volumes:
    assertion passes.
 4. Coverage of `app/` must be ≥ 95% lines (`pytest --cov=app --cov-report=term-missing`).
 
-## 10. README
+## 10. Documentation Requirements (README & Read the Docs)
 
-`README.md` must document: install/run, the command API table, reply/error
-envelopes, the AOF format, `make test`/`lint`/`e2e`, and the e2e compose usage.
+1. **`README.md`**: Must exist at root level documenting: install/run, the command API table, reply/error envelopes, the AOF format, `make test`/`lint`/`e2e`, and e2e compose usage.
+2. **`docs/` Folder**: Must contain full documentation in Read the Docs format (MkDocs/Sphinx markdown files) covering Architecture, API Reference, Persistence, and Deployment.
+3. **`.readthedocs.yaml`**: Must exist at root level configured to build the `docs/` documentation bundle.
 
 
 ## 5. Definition of Done (DoD)
