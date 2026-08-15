@@ -37,8 +37,8 @@ ROOT="${NOCTIFAB_BUILD_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 # Clean up output directory contents from previous runs, preserving base directories
 # to avoid Docker Desktop mount synchronization race conditions on macOS hosts.
 if [ -d "${ROOT}/validation/projects/${PROJECT}/output" ]; then
-  find "${ROOT}/validation/projects/${PROJECT}/output" -mindepth 1 -maxdepth 1 -not -name "log" -exec rm -rf {} + || true
-  rm -f "${ROOT}/validation/projects/${PROJECT}/output/log"/* || true
+  find "${ROOT}/validation/projects/${PROJECT}/output" -mindepth 1 -maxdepth 1 -not -name "log" -not -name "report" -not -name ".noctifab" -exec rm -rf {} + || true
+  rm -rf "${ROOT}/validation/projects/${PROJECT}/output/log"/* || true
 else
   mkdir -p "${ROOT}/validation/projects/${PROJECT}/output"
 fi
@@ -56,7 +56,7 @@ case "${PROJECT}" in
   echo)       TARGETS="cmd/echo/main.go" ;;
   fortune)    TARGETS="main.c;Makefile" ;;
   t4)         TARGETS="Makefile;docker-compose.yml;src/t4.c" ;;
-  pyedis)     TARGETS="app/main.py;pyproject.toml" ;;
+  pyedis)     TARGETS="src/main.py;pyproject.toml" ;;
   notebook)   TARGETS="src/index.ts;package.json;docker-compose.yml" ;;
   djanban)    TARGETS="manage.py;pyproject.toml;djanban/settings.py" ;;
   *)          TARGETS="" ;;
@@ -98,7 +98,7 @@ if [ ! -f "${SECRETS_FILE}" ]; then
 fi
 
 # Ensure host mount points exist for source code, compiled binaries, and execution report
-SRC_DIR="${ROOT}/validation/projects/${PROJECT}/output/src"
+SRC_DIR="${ROOT}/validation/projects/${PROJECT}/output"
 DIST_DIR="${ROOT}/validation/projects/${PROJECT}/output/dist"
 REPORT_DIR="${ROOT}/validation/projects/${PROJECT}/output/report"
 mkdir -p "${SRC_DIR}"

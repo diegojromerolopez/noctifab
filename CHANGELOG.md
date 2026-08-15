@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.1] - 2026-08-16
+
+### Changed
+- **Flat Workspace Output Layout & `src/` Application Directory Convention**:
+  - Restructured validation output (`validation/projects/<project>/output/`) so that output is directly the project workspace root.
+  - Standardized application source code convention to `src/` (e.g. `src/main.py`) instead of `app/`.
+  - Moved Noctifab execution reports to `.noctifab/reports/` and console logs to `.noctifab/logs/`.
+  - Updated validation harness (`run_one.sh`, `validate.sh`) and prompt templates to support the flat workspace layout.
+
+## [0.34.0] - 2026-08-15
+
+### Added
+- **Automatic Task Markdown File Serialization (`roadmap/tasks/`)**:
+  - Implemented `WriteTaskMarkdown` in `pkg/services/task_writer.go` to serialize task entities as markdown files in `roadmap/tasks/`.
+  - Formatted task filenames as `roadmap/tasks/US-XXX-TASK-YYY-title-slug.md` (e.g. `roadmap/tasks/US-001-task-035acd76-project-scaffolding.md`).
+  - Integrated `WriteTaskMarkdown` into `AddTaskTool.Execute` (`pkg/services/bootstrap_tools.go`) and `AddTaskCmd.Execute` (`pkg/services/command_channel.go`).
+- **User Story DAG Scheduler (Cross-Story Parallel Execution)**:
+  - Added `StoryDAGScheduler` (`pkg/services/story_dag_scheduler.go`) to parse `depends_on` dependencies from User Story markdown frontmatter.
+  - Implemented concurrent dispatch of all unblocked user stories across worker slots, dynamically unblocking child stories as parent stories complete.
+  - Updated `runServerLoop` in `cmd/noctifab/cli/serve.go` to process queued story batches via `StoryDAGScheduler`.
+- **Structured Roadmap Subdirectories & Title Slug Filename Convention**:
+  - Organized user story files into `roadmap/user-stories/` and tasks into `roadmap/tasks/` subdirectories.
+  - Added title slug formatting to user story filenames (`roadmap/user-stories/US-XXX-title-slug.md`).
+  - Updated Product Manager agent prompt contracts and templates (`product_manager.txt`, `generate.tmpl`, `audit.tmpl`) to emit user story actions into `roadmap/user-stories/`.
+  - Updated `GenerateRoadmap` and `StartDirectoryCmd` to discover user stories across `roadmap/user-stories/` and legacy `roadmap/`, sorting story execution by numerical story ID.
+  - Enhanced `storyExists` in `task_dependencies.go` to resolve dependencies against `roadmap/user-stories/` and slugged story file paths.
+
 ## [0.33.8] - 2026-08-15
 
 ### Changed

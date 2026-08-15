@@ -30,7 +30,7 @@ fi
 if [ -d "/app/src_mount" ]; then
   TMP_DIR="/app/src_mount"
   echo "Validating project: ${PROJECT} (real-time mounted workspace at ${TMP_DIR})..." >&2
-  rm -rf "${TMP_DIR:?}"/* "${TMP_DIR}"/.[!.]* "${TMP_DIR}"/..?* 2>/dev/null || true
+  find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -not -name "report" -not -name "log" -not -name "dist" -not -name ".noctifab" -exec rm -rf {} + || true
 else
   TMP_DIR="$(pwd)/${PROJECT}"
   echo "Validating project: ${PROJECT}..." >&2
@@ -157,8 +157,8 @@ elif [ "${PROJECT}" = "t4" ]; then
     exit 1
   fi
 elif [ "${PROJECT}" = "pyedis" ]; then
-  if [ ! -f "app/main.py" ] || [ ! -f "pyproject.toml" ]; then
-    echo "❌ Error: pyedis artifacts (app/main.py, pyproject.toml) were not created!"
+  if { [ ! -f "src/main.py" ] && [ ! -f "app/main.py" ]; } || [ ! -f "pyproject.toml" ]; then
+    echo "❌ Error: pyedis artifacts (src/main.py, pyproject.toml) were not created!"
     exit 1
   fi
 elif [ "${PROJECT}" = "notebook" ]; then

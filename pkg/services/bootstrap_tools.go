@@ -91,6 +91,7 @@ func (t *AddTaskTool) Execute(ctx context.Context, state *domain.State, args map
 	}
 
 	state.Tasks = append(state.Tasks, task)
+	_ = WriteTaskMarkdown(state.ProjectPath, state.Metadata.InputPath, task)
 	return id, nil
 }
 

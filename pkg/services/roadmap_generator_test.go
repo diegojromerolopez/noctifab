@@ -9,6 +9,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockRoadmapLLMClient is a test double for domain.LLMClient.
@@ -42,14 +43,14 @@ func TestGenerateRoadmap_Success(t *testing.T) {
 				{
 					Tool: "create_story",
 					Args: map[string]any{
-						"filename": "roadmap/US-001.md",
+						"filename": "roadmap/user-stories/US-001-content.md",
 						"content":  "# US-001 content",
 					},
 				},
 				{
 					Tool: "create_story",
 					Args: map[string]any{
-						"filename": "roadmap/US-002.md",
+						"filename": "roadmap/user-stories/US-002-content.md",
 						"content":  "# US-002 content",
 					},
 				},
@@ -60,9 +61,9 @@ func TestGenerateRoadmap_Success(t *testing.T) {
 	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLM, nil)
 	assert.NoError(t, err)
 
-	// Verify the roadmap files were written
-	us1Path := filepath.Join(tempDir, "roadmap", "US-001.md")
-	us2Path := filepath.Join(tempDir, "roadmap", "US-002.md")
+	// Verify the roadmap files were written under roadmap/user-stories/
+	us1Path := filepath.Join(tempDir, "roadmap", "user-stories", "US-001-content.md")
+	us2Path := filepath.Join(tempDir, "roadmap", "user-stories", "US-002-content.md")
 
 	assert.FileExists(t, us1Path)
 	assert.FileExists(t, us2Path)
@@ -235,7 +236,7 @@ func TestGenerateRoadmapWithPasses_MultiPass(t *testing.T) {
 				{
 					Tool: "create_story",
 					Args: map[string]any{
-						"filename": "roadmap/US-001.md",
+						"filename": "roadmap/user-stories/US-001-initial-story.md",
 						"content":  "# US-001: Initial Story\n",
 					},
 				},
@@ -246,7 +247,31 @@ func TestGenerateRoadmapWithPasses_MultiPass(t *testing.T) {
 	err = services.GenerateRoadmapWithPasses(context.Background(), tempDir, mockLLM, nil, 3)
 	assert.NoError(t, err)
 
-	us1Path := filepath.Join(tempDir, "roadmap", "US-001.md")
+	us1Path := filepath.Join(tempDir, "roadmap", "user-stories", "US-001-initial-story.md")
 	_, err = os.Stat(us1Path)
 	assert.NoError(t, err)
+}
+
+func TestNormalizeStoryPath_And_ToSlug(t *testing.T) {
+	tempDir := t.TempDir()
+
+	t.Run("converts pure US ID filename to roadmap/user-stories/ with title slug", func(t *testing.T) {
+		got := services.NormalizeStoryPath(tempDir, "roadmap/US-001.md", "# US-001: Framing and Binary-Safe Streaming")
+		expected := filepath.Join(tempDir, "roadmap", "user-stories", "US-001-framing-and-binary-safe-streaming.md")
+		assert.Equal(t, expected, got)
+	})
+
+	t.Run("preserves path if target file already exists on disk", func(t *testing.T) {
+		existing := filepath.Join(tempDir, "roadmap", "US-001.md")
+		require.NoError(t, os.MkdirAll(filepath.Dir(existing), 0755))
+		require.NoError(t, os.WriteFile(existing, []byte("# Existing"), 0644))
+
+		got := services.NormalizeStoryPath(tempDir, "roadmap/US-001.md", "# US-001: Refined Story")
+		assert.Equal(t, existing, got)
+	})
+
+	t.Run("ToSlug formats title nicely", func(t *testing.T) {
+		assert.Equal(t, "user-story-001-test", services.ToSlug("User Story 001: Test!"))
+		assert.Equal(t, "framing-streaming", services.ToSlug("Framing & Streaming"))
+	})
 }

@@ -228,9 +228,8 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-// runServerLoop processes user stories from the queue one at a time.
-// For each story it creates a fresh State, runs the full orchestration loop, finalizes with a PR,
-// then writes a per-story completion entry and loops back.
+// runServerLoop processes user stories from the queue concurrently using StoryDAGScheduler.
+// Unblocked user stories execute in parallel across worker slots.
 func runServerLoop(
 	ctx context.Context,
 	orchestrator *services.Orchestrator,
@@ -255,9 +254,44 @@ func runServerLoop(
 			fmt.Fprintln(os.Stderr, "noctifab daemon: state saved. Goodbye.")
 			return nil
 
-		case item := <-storyCh:
-			if err := processStory(ctx, orchestrator, repo, item, cwd, baseBranch, branchPrefix, execInterval); err != nil {
-				fmt.Fprintf(os.Stderr, "noctifab daemon: story %s failed: %v\n", item.Path, err)
+		case item, ok := <-storyCh:
+			if !ok {
+				return nil
+			}
+
+			// Collect all story items currently buffered in storyCh (e.g. from directory command)
+			items := []services.StoryWorkItem{item}
+			drainTimer := time.NewTimer(100 * time.Millisecond)
+			draining := true
+			for draining {
+				select {
+				case nextItem, open := <-storyCh:
+					if open {
+						items = append(items, nextItem)
+					} else {
+						draining = false
+					}
+				case <-drainTimer.C:
+					draining = false
+				}
+			}
+			drainTimer.Stop()
+
+			if len(items) == 1 {
+				if err := processStory(ctx, orchestrator, repo, items[0], cwd, baseBranch, branchPrefix, execInterval); err != nil {
+					fmt.Fprintf(os.Stderr, "noctifab daemon: story %s failed: %v\n", items[0].Path, err)
+				}
+			} else {
+				scheduler := services.NewStoryDAGScheduler(4)
+				for _, it := range items {
+					scheduler.AddStory(it)
+				}
+
+				if err := scheduler.Execute(ctx, func(storyCtx context.Context, it services.StoryWorkItem) error {
+					return processStory(storyCtx, orchestrator, repo, it, cwd, baseBranch, branchPrefix, execInterval)
+				}); err != nil {
+					fmt.Fprintf(os.Stderr, "noctifab daemon: story DAG execution finished with error: %v\n", err)
+				}
 			}
 		}
 	}

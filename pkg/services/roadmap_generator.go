@@ -69,12 +69,24 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 
 	for p := 1; p <= passes; p++ {
 		roadmapDir := filepath.Join(projectPath, "roadmap")
+		storiesDir := filepath.Join(roadmapDir, "user-stories")
 		var existingStories []string
-		if matches, err := filepath.Glob(filepath.Join(roadmapDir, "*.md")); err == nil && len(matches) > 0 {
-			for _, match := range matches {
-				rel, _ := filepath.Rel(projectPath, match)
-				content, _ := os.ReadFile(match)
-				existingStories = append(existingStories, fmt.Sprintf("=== File: %s ===\n%s\n", rel, string(content)))
+		scanPatterns := []string{
+			filepath.Join(storiesDir, "*.md"),
+			filepath.Join(roadmapDir, "*.md"),
+		}
+		seenPaths := make(map[string]bool)
+		for _, pattern := range scanPatterns {
+			if matches, err := filepath.Glob(pattern); err == nil {
+				for _, match := range matches {
+					if seenPaths[match] {
+						continue
+					}
+					seenPaths[match] = true
+					rel, _ := filepath.Rel(projectPath, match)
+					content, _ := os.ReadFile(match)
+					existingStories = append(existingStories, fmt.Sprintf("=== File: %s ===\n%s\n", rel, string(content)))
+				}
 			}
 		}
 
@@ -103,8 +115,8 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 				continue
 			}
 
-			if err := os.MkdirAll(roadmapDir, 0755); err != nil {
-				return fmt.Errorf("failed to create roadmap directory %q: %w", roadmapDir, err)
+			if err := os.MkdirAll(storiesDir, 0755); err != nil {
+				return fmt.Errorf("failed to create roadmap stories directory %q: %w", storiesDir, err)
 			}
 
 			storiesCount := 0
@@ -116,13 +128,7 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 						continue
 					}
 
-					cleaned := filepath.Clean(filename)
-					var targetPath string
-					if filepath.IsAbs(cleaned) {
-						targetPath = cleaned
-					} else {
-						targetPath = filepath.Join(projectPath, cleaned)
-					}
+					targetPath := NormalizeStoryPath(projectPath, filename, content)
 
 					if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 						return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)
@@ -153,12 +159,110 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 	return nil
 }
 
+// NormalizeStoryPath normalizes user story paths to roadmap/user-stories/ and appends a title slug if missing.
+func NormalizeStoryPath(projectPath, filename, content string) string {
+	cleaned := filepath.Clean(filename)
+	var targetPath string
+	if filepath.IsAbs(cleaned) {
+		targetPath = cleaned
+	} else {
+		targetPath = filepath.Join(projectPath, cleaned)
+	}
+
+	// If target file already exists on disk, update it in-place
+	if info, err := os.Stat(targetPath); err == nil && !info.IsDir() {
+		return targetPath
+	}
+
+	if !filepath.IsAbs(cleaned) {
+		if strings.HasPrefix(cleaned, "roadmap/US-") || strings.HasPrefix(cleaned, "US-") {
+			base := filepath.Base(cleaned)
+			cleaned = filepath.Join("roadmap", "user-stories", base)
+		} else if !strings.HasPrefix(cleaned, "roadmap/") {
+			cleaned = filepath.Join("roadmap", "user-stories", cleaned)
+		}
+	}
+
+	dir := filepath.Dir(cleaned)
+	base := filepath.Base(cleaned)
+	ext := filepath.Ext(base)
+	nameNoExt := strings.TrimSuffix(base, ext)
+
+	if isPureID(nameNoExt) && content != "" {
+		slug := ExtractTitleSlug(content)
+		if slug != "" {
+			nameNoExt = nameNoExt + "-" + slug
+		}
+		cleaned = filepath.Join(dir, nameNoExt+ext)
+	}
+
+	if filepath.IsAbs(cleaned) {
+		return cleaned
+	}
+	return filepath.Join(projectPath, cleaned)
+}
+
+func isPureID(name string) bool {
+	upper := strings.ToUpper(name)
+	if strings.HasPrefix(upper, "US-") {
+		rest := upper[3:]
+		isNum := true
+		for _, r := range rest {
+			if r < '0' || r > '9' {
+				isNum = false
+				break
+			}
+		}
+		return isNum
+	}
+	return false
+}
+
+// ExtractTitleSlug extracts the first markdown heading (# ...) title and converts it to a kebab-case slug.
+func ExtractTitleSlug(content string) string {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "# ") {
+			title := strings.TrimPrefix(trimmed, "# ")
+			if idx := strings.Index(title, ":"); idx != -1 {
+				title = title[idx+1:]
+			}
+			title = strings.TrimSpace(title)
+			return ToSlug(title)
+		}
+	}
+	return ""
+}
+
+// ToSlug converts a text string into a clean URL/filename-safe kebab-case slug (max 50 chars).
+func ToSlug(text string) string {
+	text = strings.ToLower(text)
+	var sb strings.Builder
+	inHyphen := false
+	for _, r := range text {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			sb.WriteRune(r)
+			inHyphen = false
+		} else if !inHyphen && sb.Len() > 0 {
+			sb.WriteRune('-')
+			inHyphen = true
+		}
+	}
+	res := strings.Trim(sb.String(), "-")
+	if len(res) > 50 {
+		res = strings.Trim(res[:50], "-")
+	}
+	return res
+}
+
 // scanLegacyFiles walks projectPath and returns relative paths of existing legacy source files,
 // ignoring metadata directories, documentation, binary artifacts, and generated roadmap files.
 func scanLegacyFiles(projectPath string) ([]string, error) {
 	ignoredDirs := map[string]bool{
 		".git": true, ".noctifab": true, ".github": true, ".idea": true,
 		".vscode": true, ".gemini": true, ".antigravity": true, "roadmap": true,
+		"user-stories": true, "tasks": true,
 		"output": true, "dist": true, "target": true, "node_modules": true,
 		"vendor": true, "bin": true, "build": true,
 	}

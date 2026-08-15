@@ -130,6 +130,7 @@ func (c *AddTaskCmd) Execute(ctx context.Context, repo domain.StateRepository) e
 		return err
 	}
 	state.Tasks = append(state.Tasks, c.Task)
+	_ = WriteTaskMarkdown(state.ProjectPath, state.Metadata.InputPath, c.Task)
 	return repo.Save(ctx, state)
 }
 
