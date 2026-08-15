@@ -2,6 +2,8 @@ package reporting
 
 import (
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -67,4 +69,93 @@ func (r *Renderer) formatRelativeTime(t time.Time) string {
 		diff = 0
 	}
 	return fmt.Sprintf("%s ago", diff.String())
+}
+
+type treeNode struct {
+	name     string
+	isDir    bool
+	children map[string]*treeNode
+}
+
+// RenderFilesystemTree renders a slice of relative file paths as an ASCII directory tree.
+func RenderFilesystemTree(files []string) string {
+	if len(files) == 0 {
+		return ""
+	}
+
+	root := &treeNode{
+		name:     ".",
+		isDir:    true,
+		children: make(map[string]*treeNode),
+	}
+
+	for _, f := range files {
+		f = filepath.ToSlash(strings.TrimSpace(f))
+		if f == "" || f == "." {
+			continue
+		}
+		parts := strings.Split(f, "/")
+		curr := root
+		for i, part := range parts {
+			if part == "" {
+				continue
+			}
+			isLast := (i == len(parts)-1)
+			child, exists := curr.children[part]
+			if !exists {
+				child = &treeNode{
+					name:     part,
+					isDir:    !isLast,
+					children: make(map[string]*treeNode),
+				}
+				curr.children[part] = child
+			} else if !isLast {
+				child.isDir = true
+			}
+			curr = child
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(".\n")
+
+	var renderNode func(n *treeNode, prefix string)
+	renderNode = func(n *treeNode, prefix string) {
+		var keys []string
+		for k := range n.children {
+			keys = append(keys, k)
+		}
+		// Sort keys: directories first, then files alphabetically
+		sort.Slice(keys, func(i, j int) bool {
+			ni := n.children[keys[i]]
+			nj := n.children[keys[j]]
+			if ni.isDir != nj.isDir {
+				return ni.isDir
+			}
+			return keys[i] < keys[j]
+		})
+
+		for i, k := range keys {
+			child := n.children[k]
+			isLast := (i == len(keys)-1)
+			connector := "├── "
+			childPrefix := "│   "
+			if isLast {
+				connector = "└── "
+				childPrefix = "    "
+			}
+
+			dispName := child.name
+			if child.isDir {
+				dispName += "/"
+			}
+			fmt.Fprintf(&sb, "%s%s%s\n", prefix, connector, dispName)
+			if child.isDir && len(child.children) > 0 {
+				renderNode(child, prefix+childPrefix)
+			}
+		}
+	}
+
+	renderNode(root, "")
+	return strings.TrimRight(sb.String(), "\n")
 }

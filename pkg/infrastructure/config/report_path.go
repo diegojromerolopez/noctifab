@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -34,7 +35,11 @@ func ResolveReportPathWithTime(projectPath, configured string, now time.Time) (s
 	}
 
 	folderName := filepath.Base(cleanProjectPath)
-	if folderName == "" || folderName == "." || folderName == "/" {
+	if envProj := strings.TrimSpace(os.Getenv("PROJECT")); envProj != "" {
+		folderName = envProj
+	} else if envProjName := strings.TrimSpace(os.Getenv("PROJECT_NAME")); envProjName != "" {
+		folderName = envProjName
+	} else if folderName == "" || folderName == "." || folderName == "/" || folderName == "src_mount" {
 		folderName = "project"
 	}
 

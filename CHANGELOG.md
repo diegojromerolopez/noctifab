@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.6] - 2026-08-15
+
+### Changed
+- **`pyedis` Specification & Redis Parity Conformance Matrix**:
+  - Revamped `validation/projects/pyedis/SPEC.md` with an exhaustive Staff Engineer Redis feature-parity testset covering RESP2/RESP3 wire framing envelopes, TCP stream reassembly, command pipelining, binary safety, command case-insensitivity, and deterministic error message envelopes.
+  - Specified absolute Unix epoch timestamps (`expire_at`) for AOF durability records to prevent expired keys from reviving after server restarts.
+  - Defined explicit multi-client concurrency invariants (50+ parallel workers with atomic increments) and black-box E2E validation against `redis-cli` and `redis-py` (v5+).
+  - Updated `validation/projects/pyedis/Dockerfile`, `validation/projects/TESTING_GUIDE.md`, and `validation/README.md` to align toolchains and eliminate outdated references to FastAPI.
+
+## [0.33.5] - 2026-08-15
+
+### Fixed
+- **Execution Report Created Artifacts & Project Filename Resolution**:
+  - Fixed execution report filename resolution in `pkg/infrastructure/config/report_path.go` to resolve `PROJECT` and `PROJECT_NAME` environment variables when running in mounted container workspaces (`/app/src_mount`), formatting report files with the project name (e.g. `_pyedis.md`) instead of `_src_mount.md`.
+  - Fixed workspace churn and artifact collection in `pkg/services/reporting/churn.go` to capture all untracked created files and perform a workspace directory scan, ensuring 100% of created artifacts and files are included in `snapshot.Churn.ChangedFiles` and rendered in the report markdown.
+  - Added `RenderFilesystemTree` ASCII directory tree generator in `pkg/services/reporting/renderer_helpers.go` and rendered `### Filesystem Hierarchy` under `Deliverables & Documentation` in execution reports.
+  - Extracted helper functions from `pkg/services/reporting/collector.go` into `churn.go` to maintain strict adherence to the 500-lines-per-file repository constraint.
+
 ## [0.33.4] - 2026-08-15
 
 ### Fixed

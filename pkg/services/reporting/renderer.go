@@ -267,7 +267,17 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	sb.WriteString("## Deliverables & Documentation\n\n")
 	fmt.Fprintf(&sb, "- **Project Workspace:** `%s` *(Target implementation root)*\n", r.sanitizeCell(snapshot.Run.ProjectPath))
 	fmt.Fprintf(&sb, "- **Execution Report:** `%s` *(Authoritative execution diagnosis)*\n", r.sanitizeCell(snapshot.Run.ReportPath))
-	fmt.Fprintf(&sb, "- **Documentation / README:** `README.md` *(Project instructions & specification reference)*\n\n")
+	fmt.Fprintf(&sb, "- **Documentation / README:** `README.md` *(Project instructions & specification reference)*\n")
+	if len(snapshot.Churn.ChangedFiles) > 0 {
+		sb.WriteString("\n### Created & Modified Artifacts\n\n")
+		for _, f := range snapshot.Churn.ChangedFiles {
+			fmt.Fprintf(&sb, "- `%s`\n", r.sanitizeCell(f))
+		}
+		sb.WriteString("\n### Filesystem Hierarchy\n\n```\n")
+		sb.WriteString(RenderFilesystemTree(snapshot.Churn.ChangedFiles))
+		sb.WriteString("\n```\n")
+	}
+	sb.WriteString("\n")
 
 	// Verification & Testing Strategy
 	sb.WriteString("## Verification & Testing Strategy\n\n")

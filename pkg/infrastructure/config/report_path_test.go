@@ -67,4 +67,14 @@ func TestResolveReportPath(t *testing.T) {
 			assert.False(t, enabled)
 		})
 	})
+
+	t.Run("when project path is src_mount or PROJECT env is set", func(t *testing.T) {
+		t.Run("it resolves folderName using PROJECT environment variable", func(t *testing.T) {
+			t.Setenv("PROJECT", "pyedis")
+			path, enabled, err := config.ResolveReportPathWithTime("/app/src_mount", "/tmp/report.md", fixedTime)
+			require.NoError(t, err)
+			assert.True(t, enabled)
+			assert.Equal(t, "/tmp/20260811_225122_pyedis.md", path)
+		})
+	})
 }

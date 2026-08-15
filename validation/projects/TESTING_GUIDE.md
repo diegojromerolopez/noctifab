@@ -15,7 +15,7 @@ credentials, and the harness mechanics.
 | `calculator` | Ruby CLI | CLI + REPL | Performance (linter loop) |
 | `fortune` | C + SQLite | Native + embedded DB | Effectiveness |
 | `t4` | C | Network HTTP server, black-box contract | Effectiveness |
-| `pyedis` | Python 3.14 + FastAPI | Typed command API, AOF durability | Effectiveness |
+| `pyedis` | Python 3.14 (asyncio + RESP2/3) | Typed command API, AOF durability | Effectiveness |
 | `notebook` | TypeScript (React + Fastify + PostgreSQL) | Full-stack SPA + REST API + JWT Auth + WebSockets | Usefulness |
 | `frontpunch` | Python + Valkey | Async distributed workers | Usefulness |
 | `djanban` | Python 3.12 + Django 5.x | Legacy codebase modernization | Effectiveness |

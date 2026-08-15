@@ -88,6 +88,44 @@ func TestReportingPipeline(t *testing.T) {
 			assert.NotContains(t, content, "Total Cost USD")
 			assert.Contains(t, content, "1s 200ms")
 		})
+
+		t.Run("it includes all created workspace artifacts in the execution report", func(t *testing.T) {
+			projDir := t.TempDir()
+			require.NoError(t, os.MkdirAll(filepath.Join(projDir, "app"), 0755))
+			require.NoError(t, os.WriteFile(filepath.Join(projDir, "app", "main.py"), []byte("print('hello')\n"), 0644))
+			require.NoError(t, os.WriteFile(filepath.Join(projDir, "pyproject.toml"), []byte("[project]\nname='test'\n"), 0644))
+
+			repFile := filepath.Join(projDir, "report.md")
+			agent, err := reporting.NewReporterAgent(repFile, clock, writer, nil, nil)
+			require.NoError(t, err)
+
+			run := domain.RunMetadata{
+				RunID:       "run-test-02",
+				Command:     "noctifab start",
+				ProjectPath: projDir,
+				ReportPath:  repFile,
+				StartedAt:   clock.Now(),
+			}
+			agent.Start(context.Background(), run)
+			agent.Finish(context.Background(), domain.ExecutionSuccess)
+
+			readBytes, readErr := os.ReadFile(repFile)
+			require.NoError(t, readErr)
+			content := string(readBytes)
+
+			assert.Contains(t, content, "### Modified & Created Files")
+			assert.Contains(t, content, "### Created & Modified Artifacts")
+			assert.Contains(t, content, "### Filesystem Hierarchy")
+			assert.Contains(t, content, "├── app/")
+			assert.Contains(t, content, "│   └── main.py")
+			assert.Contains(t, content, "- `app/main.py`\n")
+			assert.Contains(t, content, "- `pyproject.toml`\n")
+		})
+
+		t.Run("it renders empty filesystem tree when no files provided", func(t *testing.T) {
+			assert.Empty(t, reporting.RenderFilesystemTree(nil))
+			assert.Empty(t, reporting.RenderFilesystemTree([]string{}))
+		})
 	})
 }
 
