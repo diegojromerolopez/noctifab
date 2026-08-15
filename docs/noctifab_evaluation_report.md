@@ -85,7 +85,7 @@ This creates the gitignored [.noctifab/](file:///Users/diegoj/repos/noctifab/doc
    ```
 
 ### Step 3: Write the Feature Specification (User Story)
-Create a Markdown specification file (e.g., `roadmap/US-001_auth_service.md`). The specification must be highly detailed and include:
+Create a Markdown specification file (e.g., `roadmap/user-stories/US-001-auth-service.md`). The specification must be highly detailed and include:
 *   **Requirements:** Precise endpoints, API structures, database entities, and error codes.
 *   **Technical Constraints:** Allowed languages, file size rules, or design pattern preferences.
 *   **Verification Criteria:** Specific test scenarios that the Tester Agent must write (e.g., "Must write a unit test checking token expiration").
@@ -97,11 +97,11 @@ noctifab start
 ```
 From the REPL prompt, enqueue your user story:
 ```text
-> start roadmap/US-001_auth_service.md
+> start roadmap/user-stories/US-001-auth-service.md
 ```
 Alternatively, for non-interactive execution (e.g., in CI/CD pipelines or headless scripts), run:
 ```bash
-noctifab start roadmap/US-001_auth_service.md
+noctifab start roadmap/user-stories/US-001-auth-service.md
 ```
 
 ### Step 5: Interacting with the Loop (Human-in-the-Loop)

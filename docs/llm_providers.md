@@ -149,12 +149,15 @@ llm:
   streaming: true
 ```
 
+> [!TIP]
+> **Prompt Caching Support**: `noctifab` automatically includes Anthropic prompt caching beta headers (`anthropic-beta: prompt-caching-2024-07-31`) and attaches ephemeral cache markers (`cache_control: {"type": "ephemeral"}`) for payloads larger than 2,048 bytes, cutting token costs by up to 90% and dramatically accelerating multi-turn task loops.
+
 ---
 
 ### Google Gemini
 
-**Models**: `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`
-**Fallback chain**: `2.5-pro` → `2.5-flash` → `2.0-flash` → `1.5-pro` → `1.5-flash`
+**Models**: `gemini-3.6-pro`, `gemini-3.6-flash`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`
+**Fallback chain**: `3.6-pro` → `3.6-flash` → `2.5-pro` → `2.5-flash` → `1.5-pro` → `1.5-flash`
 **Ranking**: model family weight + version × 5. Uses the Gemini-specific `sortGeminiModels` with `GeminiModelInfo.Rank`.
 
 ```yaml
@@ -164,7 +167,7 @@ GEMINI_API_KEY: "AIzaSy..."
 # .noctifab/config.yaml
 llm:
   provider: "gemini"
-  model: "gemini-2.5-pro"
+  model: "gemini-3.6-pro"
   api_key: "secret:GEMINI_API_KEY"
   max_retries: 3
   streaming: true
@@ -638,7 +641,7 @@ llms:
     api_key: "secret:ANTHROPIC_API_KEY"
     streaming: true
   - provider: "gemini"
-    model: "gemini-2.5-pro"
+    model: "gemini-3.6-pro"
     api_key: "secret:GEMINI_API_KEY"
     streaming: true
   - provider: "groq"
@@ -704,7 +707,7 @@ When `model: "latest"` is configured:
 |---|---|---|---|
 | **OpenAI** | `latest` | `[text-embedding-3, gpt-3.5-turbo, gpt-4o-mini, gpt-4o]` | `gpt-4o` |
 | **Anthropic** | `latest` | `[claude-3-5-haiku, claude-3-5-sonnet, claude-3-opus]` | `claude-3-opus-20240229` / `claude-3-5-sonnet-20241022` |
-| **Google Gemini** | `latest` | `[gemini-embed, gemini-robotics, gemini-1.5-flash, gemini-2.5-flash]` | `gemini-2.5-flash` |
+| **Google Gemini** | `latest` | `[gemini-embed, gemini-robotics, gemini-1.5-flash, gemini-2.5-flash, gemini-3.6-flash]` | `gemini-3.6-flash` |
 | **Mistral** | `latest` | `[mistral-embed, mistral-small, mistral-large-latest]` | `mistral-large-latest` |
 | **DeepSeek** | `latest` | `[deepseek-chat, deepseek-coder]` | `deepseek-coder` |
 | **Hermes (Nous)** | `latest` | `[hermes-8b, hermes-70b, hermes-405b]` | `hermes-3-llama-3.1-405b` |

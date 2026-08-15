@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.3] - 2026-08-16
+
+### Changed
+- **Documentation Alignment with Latest Features**:
+  - Synchronized `README.md` and `docs/` documentation files with recent platform additions (v0.33.0 – v0.34.2).
+  - Documented the cross-story `StoryDAGScheduler` (`pkg/services/story_dag_scheduler.go`) for parallel user story execution via `depends_on` YAML frontmatter.
+  - Documented structured roadmap directories (`roadmap/user-stories/` with slugged names) and automatic task markdown serialization (`roadmap/tasks/`).
+  - Added `noctifab resume` and `noctifab dashboard` to `README.md`'s Command Reference.
+  - Expanded `README.md` validation matrix table to include all 15 validation projects and aligned `pyedis` application entry point to `src/main.py`.
+  - Updated Google Gemini flagship and flash models from `gemini-2.5-pro` / `gemini-2.5-flash` to `gemini-3.6-pro` / `gemini-3.6-flash` across all documentation references and fallback hierarchy tables.
+  - Added missing pages (`llm_providers`, `configuration_examples`, `api`, `noctifab_evaluation_report`) to Sphinx `toctree` in `docs/index.md`.
+  - Documented Anthropic prompt caching integration and `context.compaction` modes.
+
 ## [0.34.2] - 2026-08-16
 
 ### Fixed

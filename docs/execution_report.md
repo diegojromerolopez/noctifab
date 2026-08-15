@@ -33,7 +33,7 @@ execution_report: ".noctifab/reports/execution_report.md"
 When `execution_report` is specified:
 - Noctifab formats the report path with a UTC timestamp and canonical workspace folder name:
   ```text
-  validation/projects/wc/output/report/20260813_094612_wc.md
+  .noctifab/reports/20260816_010300_wc.md
   ```
 - Path resolution strictly enforces workspace boundaries. Reports cannot be placed inside forbidden paths such as `.git/` or `secrets.yaml`.
 - All report files are written atomically using exclusive temporary files with restrictive permissions (`0600`) and parent directory synchronization.
@@ -59,7 +59,7 @@ The generated `<TIMESTAMP>_<PROJECT>.md` contains the following structured secti
 | **Developer Recommendations & Next Actions** | Actionable recommendations mapping target scopes to concrete verification steps. |
 | **User Story & Task Results** | Summary of user stories (including spent time per story) and tasks (displaying Task ID, human-readable Task Title, parent Story ID, attempts, and elapsed time). |
 | **Reliability & Concurrency** | Error counts, retries, dropped events, and a detailed **Execution Errors** breakdown table. |
-| **Deliverables & Documentation** | Workspace implementation root and canonical execution report path. |
+| **Deliverables & Documentation** | Full workspace ASCII directory tree (`### Filesystem Hierarchy`), workspace implementation root, and canonical execution report path. |
 | **Verification & Testing Strategy** | Verification layers (automated unit tests, isolation worktree compilation, black-box contracts) and testing strategy notes. |
 | **LLM & Cost Usage** | Total measured token counts and active provider failover chains. |
 

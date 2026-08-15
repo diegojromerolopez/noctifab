@@ -32,12 +32,16 @@ A "Dark Factory" (in a software engineering context) is a fully automated reposi
 getting_started
 cli_usage
 configuration
+configuration_examples
+llm_providers
 execution_report
 prompts
 architecture
+api
 developer_guide
 unblocker_agent
 secrets
+noctifab_evaluation_report
 ```
 
 ---
@@ -45,12 +49,14 @@ secrets
 ## Features & Capabilities
 
 - **State-Driven Orchestration**: Operates using a stateless agent controlled by a stateful orchestrator. The orchestrator tracks tasks, action execution, and clarifications in a local SQLite or PostgreSQL database.
-- **Structured Execution Reports & Logs**: Captures fine-grained `execution_log` timeline events during runs and synthesizes Markdown `execution_report.md` artifacts documenting process timings, agent performance, deterministic bottlenecks (`BN-*`), evidence-backed issues (`ISSUE-*`), and proposals.
-- **Topological Task Scheduling**: Automatically constructs a Directed Acyclic Graph (DAG) of task dependencies and runs independent tasks concurrently.
+- **Story DAG Scheduler & Cross-Story Parallelism**: Parses `depends_on` dependencies from User Story YAML frontmatter and concurrently executes all unblocked user stories across worker slots, dynamically unblocking dependent stories as prerequisites finish.
+- **Structured Roadmap Organization & Task Serialization**: Organizes specifications into `roadmap/user-stories/` and automatically serializes task domain models into markdown files in `roadmap/tasks/` (`US-XXX-TASK-YYY-slug.md`).
+- **Structured Execution Reports & Telemetry**: Captures fine-grained `execution_log` timeline events during runs and atomically writes Markdown `<TIMESTAMP>_<PROJECT>.md` artifacts to `.noctifab/reports/` with real-time ASCII directory trees (`### Filesystem Hierarchy`), phase execution windows, agent execution spans, and error breakdowns.
+- **Topological Task Scheduling**: Automatically constructs a Directed Acyclic Graph (DAG) of task dependencies within each story and runs independent tasks concurrently in isolated Git worktrees.
 - **Self-Correcting & Dynamic Prompts Engine**: Dynamically adapts agent prompts using live log tailing, secret scrubbing (`log_tailer.go`), 0-token fast-path regex pre-filtering (`unblocker_fastpath.go`), 10x progressive log escalation, and `[STALL RECOVERY DIRECTIVE]` prompt injection on task retries.
-- **Legacy Codebase Stabilization**: Automatically scans pre-existing workspace code (`scanLegacyFiles`) and dynamically injects `US-001` characterization testing mandates into Product Manager, Planner, Generator, and Tester prompts before refactoring or feature additions.
-- **Pre-Flight Provider Capability Caching**: Thread-safe model parameter capability cache (`providerCapabilityCache`) that records parameter rejections on HTTP 400 and automatically omits unsupported fields on subsequent requests.
+- **Legacy Codebase Stabilization**: Automatically scans pre-existing workspace code (`scanLegacyFiles`) and dynamically injects `roadmap/user-stories/US-001.md` characterization testing mandates into Product Manager, Planner, Generator, and Tester prompts before refactoring or feature additions.
+- **Pre-Flight Diagnostics & Capability Caching**: Performs automated pre-flight checks (Git CLI, DB connectivity, LLM `/models` endpoint ping, sandbox mode) before launch, and maintains a thread-safe model parameter capability cache (`providerCapabilityCache`) to omit unsupported parameters automatically.
 - **Sandboxed Action Execution**: Safely edits code files and runs test suites inside host sandboxes or Docker containers.
-- **Test Validator Verification**: Prevents regression and guarantees code quality by running the project test suite multiple times with majority voting.
-- **Automated VCS Merging**: Manages Git checkouts, worker branch creation, rebase queues, pull request creation, and merges on GitHub and GitLab.
+- **Test Validator Verification**: Prevents regression and guarantees code quality by running the project test suite multiple times with majority voting (2/3 consensus).
+- **Automated VCS Merging**: Manages Git checkouts, worker branch creation, serialized rebase queues, pull request creation, and merges on GitHub and GitLab.
 - **Unblocker Agent**: An autonomous background goroutine that periodically scans the pipeline for stalled tasks and blocked agents, diagnoses root causes via LLM, and injects corrective interventions to restore forward progress — with configurable waking frequency (`unblocker.poll_interval`).

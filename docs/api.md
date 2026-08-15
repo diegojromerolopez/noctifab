@@ -12,7 +12,7 @@ When running the headless orchestrator daemon (`noctifab serve`), a loopback HTT
 * **Request Payload**:
   ```json
   {
-    "path": "./roadmap/US-001.md"
+    "path": "./roadmap/user-stories/US-001.md"
   }
   ```
 * **Response**: `202 Accepted`

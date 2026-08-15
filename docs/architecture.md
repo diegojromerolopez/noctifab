@@ -54,8 +54,10 @@ flowchart TD
 ### 1. The World Model (`pkg/domain/state.go`)
 The `State` struct represents the entire system state, including tasks, files, clarification mailboxes, and action logs. It serves as the single source of truth and is stored in a relational database (SQLite for local setups, PostgreSQL for concurrent Level 4 production loops).
 
-### 2. Topological Scheduler (`pkg/services/scheduler.go`)
-Tasks can define dependencies on other tasks (e.g., Task B depends on Task A). The Scheduler performs a topological sort using Directed Acyclic Graphs (DAG) to find tasks that are ready to run, scheduling them to run concurrently in a worker pool.
+### 2. Topological Task Scheduler (`pkg/services/scheduler.go`) & Story DAG Scheduler (`pkg/services/story_dag_scheduler.go`)
+- **Task DAG Scheduling (`scheduler.go`)**: Within a single user story, tasks can define dependencies on other tasks (e.g., Task B depends on Task A). The Scheduler performs a topological sort using Directed Acyclic Graphs (DAG) to find ready tasks and schedule them concurrently in a worker pool.
+- **Story DAG Scheduler (`story_dag_scheduler.go`)**: Across user stories, `StoryDAGScheduler` parses `depends_on` dependencies declared in User Story YAML frontmatter. It concurrently dispatches all unblocked user stories across worker slots, dynamically unblocking dependent child stories as parent stories reach completion.
+- **Structured Roadmap Layout & Task Serialization**: User stories are discovered in `roadmap/user-stories/` (with fallback to `roadmap/`), formatted as `US-XXX-title-slug.md`. Task domain models are automatically serialized into markdown files in `roadmap/tasks/` (`US-XXX-TASK-YYY-slug.md`) during planning and tool additions.
 
 ### 3. Policy Validator (`pkg/services/validator.go`)
 Acts as a security checkpoint before any LLM-proposed tool is executed. It matches tools and command patterns against role profiles defined in `.noctifab/profiles/` to prevent directory traversal attacks, illegal network requests, or host command escapes.
@@ -95,8 +97,8 @@ Noctifab exposes the following implemented roles and retained experimental capab
 | Role Key | Agent Name | Domain Scope & Responsibility |
 | :--- | :--- | :--- |
 | **`orchestrator`** | Orchestrator Agent | Coordinates state persistence, VCS branch rebasing, task assignment, and PR creation. |
-| **`product_manager`** | Product Manager Agent | Analyzes `SPEC.md` and existing user stories in `roadmap/`. Generates new User Stories or audits and enriches existing ones with explicit Definitions of Done (DoD), language-agnostic interface contracts, I/O formatting invariants, error prefixes, exit codes, and comprehensive edge-case scenario matrices before task planning starts. |
-| **`planner`** | Task Planner Agent | Decomposes User Stories into a Directed Acyclic Graph (DAG) of executable technical tasks. |
+| **`product_manager`** | Product Manager Agent | Analyzes `SPEC.md` and existing user stories in `roadmap/user-stories/`. Generates new User Stories or audits and enriches existing ones with explicit Definitions of Done (DoD), language-agnostic interface contracts, I/O formatting invariants, error prefixes, exit codes, and comprehensive edge-case scenario matrices before task planning starts. |
+| **`planner`** | Task Planner Agent | Decomposes User Stories into a Directed Acyclic Graph (DAG) of executable technical tasks, automatically serializing task entities into `roadmap/tasks/`. |
 | **`generators`** | Generator Agent | Writes production source code and initial feature logic in task branches. |
 | **`testers`** | Tester Agent | Independently writes black-box test suites (unit, integration, e2e) against public contracts. |
 | **`qa`** | Experimental QA capability | Retained but disabled in Phase 0; no QA runtime executes. |
@@ -337,7 +339,7 @@ See [docs/unblocker_agent.md](unblocker_agent.md) for full developer reference.
 #### B. Legacy Codebase Scanning & Characterization Mandate (`pkg/usecase/roadmap_generator.go`)
 When initialized in a project directory containing existing source code:
 1. **Workspace Legacy Scanning (`scanLegacyFiles`)**: Detects pre-existing source files while ignoring build outputs, vendor paths, and `.noctifab` metadata.
-2. **Product Manager Legacy Directive (`prompt_templates.go`)**: Injects `LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE` into the PM prompt. The PM automatically generates `roadmap/US-001.md` titled `"Legacy Codebase Characterization & Stabilization"`, requiring unit/integration characterization tests before refactoring or new feature work.
+2. **Product Manager Legacy Directive (`prompt_templates.go`)**: Injects `LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE` into the PM prompt. The PM automatically generates `roadmap/user-stories/US-001.md` titled `"Legacy Codebase Characterization & Stabilization"`, requiring unit/integration characterization tests before refactoring or new feature work.
 3. **Dynamic Role Prompt Adaptation**: Planner, Generator, and Tester prompts dynamically adapt with characterization testing requirements and surgical refactoring directives (`edit_file`, `apply_patch`).
 
 #### C. Pre-Flight LLM Provider Capability Caching (`openai_adapt.go` & `openai.go`)
@@ -347,7 +349,7 @@ When initialized in a project directory containing existing source code:
 
 #### D. Parallel Context Compaction Engine (`pkg/usecase/prompt_templates.go`)
 For context payloads $> 20$ KB (`20,000` bytes):
-1. **Parallel Worker Compaction**: Parallelizes line block compaction across worker goroutines in `CompactSimpleEnglish` and `CompactCaveman` modes.
+1. **Parallel Worker Compaction**: Parallelizes line block compaction across worker goroutines in `CompactSimpleEnglish` and `CompactCaveman` modes (`context.compaction`).
 2. **Invariant Preservation**: Cuts token volume by 25%+ while strictly preserving code blocks, JSON schemas, file paths, and technical invariants.
 
 ---
@@ -363,12 +365,8 @@ To support near-instantaneous development feedback loops, `noctifab` implements 
 5. **Spec-Level Deterministic Mock Clocks**: Enforces mock clock patterns at the spec layer (`US-xxx.md`) to guarantee zero assertion flakiness on time-dependent code.
 6. **Aggressive Prompt History Pruning**: Suffix-only pruning preserves LLM KV cache prefixes on retry turns.
 7. **Warm Compiler & Sandbox Caching**: Mounts host package caches (`/go/pkg/mod`, `~/.cache/go-build`, `.cargo/registry`) directly into validation containers for rapid incremental builds.
-
-3. **Zero-Delay Task Handoff:**
-   Whenever a scheduler loop run makes progress (i.e., a task completes or state is updated), the orchestrator immediately invokes the next schedule check without sleeping for `poll_interval`. Tasks are chained sequentially with no idle latency.
-
-4. **In-Memory Diagnostic Result Caching (`TaskDiagnosticCache`):**
-   During intra-turn multi-turn agent loops (`RunTesterAgent` and `RunGeneratorAgent`), the orchestrator instantiates an in-memory `TaskDiagnosticCache` that caches the execution results of read-only verification tools (`run_tests` and `run_linter`). Whenever an agent executes file-mutating actions (`write_file`, `edit_file`, `multi_replace_file_content`, `delete_file`), an internal `isDirty` boolean flag stored in RAM inside the cache struct is set to `true`, invalidating the cache. If an agent calls `run_tests` or `run_linter` again without modifying workspace files (`isDirty == false`), the orchestrator returns the cached result instantly (`0ms`), eliminating redundant subprocess executions.
+8. **Zero-Delay Task Handoff**: Whenever a scheduler loop run makes progress (i.e., a task completes or state is updated), the orchestrator immediately invokes the next schedule check without sleeping for `poll_interval`. Tasks are chained sequentially with no idle latency.
+9. **In-Memory Diagnostic Result Caching (`TaskDiagnosticCache`)**: During intra-turn multi-turn agent loops (`RunTesterAgent` and `RunGeneratorAgent`), the orchestrator instantiates an in-memory `TaskDiagnosticCache` that caches the execution results of read-only verification tools (`run_tests` and `run_linter`). Whenever an agent executes file-mutating actions (`write_file`, `edit_file`, `multi_replace_file_content`, `delete_file`), an internal `isDirty` boolean flag stored in RAM inside the cache struct is set to `true`, invalidating the cache. If an agent calls `run_tests` or `run_linter` again without modifying workspace files (`isDirty == false`), the orchestrator returns the cached result instantly (`0ms`), eliminating redundant subprocess executions.
 
 ---
 
@@ -393,7 +391,7 @@ The **Breadth-First Generation** mode optimizes for rapid end-to-end prototype d
 * **Deterministic Validation**: Evaluates candidates based on functional happy paths and enforces the non-negotiable **Zero Regressions** rule.
 * **Iterative Refinement (Passes 2..N)**: Progressive passes expand edge-case coverage, error handling, linter compliance, and performance hardening.
 
-### 5. Task Execution Ordering (`agents.task_execution_order`)
+### 4. Task Execution Ordering (`agents.task_execution_order`)
 
 Configured via `agents.task_execution_order` in `.noctifab/config.yaml`:
 * **`generator_first` (Default)**: Generator Agent implements feature code on Turn 1; Tester Agent writes QA tests on Turn 2. Prevents Turn 1 compilation errors and guarantees 0 wasted turns.
@@ -407,15 +405,15 @@ agents:
     passes: 2 # 1 = Fast, 2 = Standard 2-Pass Refinement (default), 3 = Deep Contract Audit
 ```
 
-### 6. Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)
+### 5. Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)
 The Product Manager Agent executes a multi-pass specification decomposition and audit loop:
-* **Pass 1 (Decomposition & Drafting)**: Renders `generate` prompt, creating initial user stories in `roadmap/US-xxx.md`.
+* **Pass 1 (Decomposition & Drafting)**: Renders `generate` prompt, creating initial user stories in `roadmap/user-stories/US-XXX-slug.md`.
 * **Pass 2+ (Cross-Story Audit & Contract Alignment)**: Renders `audit` prompt with existing generated stories as context, verifying cross-story dependencies, contract IDs, and `SPEC.md` requirement coverage.
 
-### 7. Black-Box Contract Scenario Prompt Injection
+### 6. Black-Box Contract Scenario Prompt Injection
 Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks (`AllowedExecutables`, `ExitCodes`, `StderrPrefixes`, `StdoutContains`) are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
 
-### 8. Standardized Sandbox Path Normalization (`resolveSandboxPath`)
+### 7. Standardized Sandbox Path Normalization (`resolveSandboxPath`)
 The sandbox resolution layer cleans, trims whitespace, converts Windows backslashes `\` to `/`, and strips leading `./` prefixes before verifying sandbox boundary jail rules and blacklisted directory policy (`.noctifab`, `.git`).
 
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.

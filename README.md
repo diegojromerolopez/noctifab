@@ -142,7 +142,7 @@ The core engine runs a continuous polling event loop that drives all development
    - **0-Token Fast-Path Regex Pre-Filter (`unblocker_fastpath.go`)**: Pre-filters routine CLI hangs (interactive `y/n` prompts, port binding collisions, test watch spinners) in **< 5ms** with **0 LLM token overhead**.
    - **10x Progressive Log Window Escalation**: Scales diagnostic scope dynamically based on stall count (Level 1: 50 lines $\rightarrow$ Level 2: 500 lines $\rightarrow$ Level 3: 5,000 lines, capped at 3 escalations before failing task).
    - **Stall Recovery Directives (`[STALL RECOVERY DIRECTIVE]`)**: Attaches recovery directives to task state upon reset and injects `[STALL RECOVERY DIRECTIVE]` into `Generator` and `Tester` prompts on retry attempts to prevent repeating the hanging command.
-2. **Legacy Codebase Characterization & Stabilization Prompts**: When `noctifab` runs in a workspace containing existing code, `scanLegacyFiles` detects pre-existing source files and dynamically injects a `LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE` into the Product Manager prompt. The PM automatically generates `roadmap/US-001.md` titled `"Legacy Codebase Characterization & Stabilization"`, requiring unit/integration characterization tests before refactoring or feature additions. Planner, Generator, and Tester prompts dynamically adapt with characterization testing and surgical refactoring (`edit_file`, `apply_patch`) directives.
+2. **Legacy Codebase Characterization & Stabilization Prompts**: When `noctifab` runs in a workspace containing existing code, `scanLegacyFiles` detects pre-existing source files and dynamically injects a `LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE` into the Product Manager prompt. The PM automatically generates `roadmap/user-stories/US-001.md` titled `"Legacy Codebase Characterization & Stabilization"`, requiring unit/integration characterization tests before refactoring or feature additions. Planner, Generator, and Tester prompts dynamically adapt with characterization testing and surgical refactoring (`edit_file`, `apply_patch`) directives.
 3. **Pre-Flight LLM Provider Capability Caching (`providerCapabilityCache`)**: Dynamically learns provider model parameter rejections (`temperature`, `max_tokens`, `response_format` for reasoning models like OpenAI O-series) upon the first HTTP 400 rejection. Caches capabilities per model in a thread-safe cache and automatically omits unsupported parameters on subsequent calls without error roundtrips.
 4. **Intra-Turn Iterative Self-Healing**: Generator and Tester agents execute in a multi-turn feedback loop (up to **5 turns** per task). If verification tools like `run_tests` or `run_linter` fail, the orchestrator appends compiler, syntax, or test failure outputs directly back into the prompt context. The agent receives this output as direct feedback to repair the code dynamically in the next turn before finalizing its work.
 5. **Watchdog Self-Repair (Inter-Turn)**: If a completed task fails the final verification gate, the orchestrator intercepts the failure and invokes a dedicated `WatchdogRepair` handler across three repair contexts:
@@ -158,11 +158,17 @@ The core engine runs a continuous polling event loop that drives all development
    - **`max_user_stories`**: Ceiling on Product Manager roadmap story generation (default: `5`).
    - **`max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
-
-16. **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: Enables resuming interrupted or partially completed project executions, skipping completed stories (`StorySuccess`) and picking up execution at the first incomplete story.
-17. **Configurable Task Execution Order (`agents.task_execution_order`)**: Configurable verification sequence mode (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
-18. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
-19. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
+10. **Structured Roadmap Directories & Task Serialization (`roadmap/tasks/`)**:
+   - Organizes user story specifications into `roadmap/user-stories/` using title slug filenames (`US-XXX-title-slug.md`).
+   - Automatically serializes task models into markdown files in `roadmap/tasks/` (`US-XXX-TASK-YYY-slug.md`) for full auditability.
+11. **User Story DAG Scheduler (`depends_on` Cross-Story Parallelism)**:
+   - Parses `depends_on` dependencies from User Story YAML frontmatter.
+   - Concurrently executes all unblocked user stories across worker slots, dynamically unblocking dependent stories as prerequisites complete.
+12. **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: Enables resuming interrupted or partially completed project executions, skipping completed stories (`StorySuccess`) and picking up execution at the first incomplete story.
+13. **Configurable Task Execution Order (`agents.task_execution_order`)**: Configurable verification sequence mode (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
+14. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
+15. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
+16. **Pre-Flight Diagnostics & LLM Provider Ping**: Validates Git CLI availability, state database connectivity, LLM provider `/models` endpoint reachability, and sandbox mode before launching the orchestrator.
 
 ---
 
@@ -300,7 +306,7 @@ noctifab start
 ```
 
 Key features of Interactive Mode:
-- **Story Dispatching**: Enqueue individual user stories (`start roadmap/US-0001.md`) or an entire folder of specifications (`start roadmap/`).
+- **Story Dispatching**: Enqueue individual user stories (`start roadmap/user-stories/US-001.md`) or an entire folder of specifications (`start roadmap/user-stories/`).
 - **Real-Time Monitoring**: Observe autonomous DAG task progress, generator/tester execution turns, and quality gate results.
 - **Clarification Resolution**: Answer disambiguation questions raised by Planner/Generator agents to unblock autonomous execution.
 
@@ -310,7 +316,9 @@ Key features of Interactive Mode:
 
 - **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles.
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
-- **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Ensures `SPEC.md` and `.noctifab` configuration are initialized. Auto-generates `roadmap/` from `SPEC.md` if no user stories exist, and executes all user stories sequentially.
+- **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Auto-generates user stories in `roadmap/user-stories/` from `SPEC.md` if missing, and executes stories concurrently via the Story DAG Scheduler. Pass `-i` for interactive TUI, `--resume` to skip completed stories.
+- **`resume`**: Resumes execution of an interrupted or partially completed workspace, skipping already completed user stories (`StorySuccess`) and picking up execution at the first incomplete story.
+- **`dashboard`**: Launches the interactive real-time Terminal User Interface (TUI) progress dashboard to monitor active story and task orchestrations.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
 - **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
@@ -509,7 +517,7 @@ All providers benefit from the same resilience layer automatically:
 # .noctifab/config.yaml
 llm:
   provider: gemini
-  model: gemini-2.5-pro          # fallback chain: → gemini-2.5-flash
+  model: gemini-3.6-pro          # fallback chain: → gemini-3.6-flash
   api_key: "secret:GEMINI_API_KEY"
   max_timeout: 60s               # Overall request hard timeout
   idle_timeout: 15s              # Socket stream inactivity timeout before failover
@@ -600,7 +608,7 @@ llm:
 
 | Provider | Model priority (high → low) |
 |---|---|
-| **Gemini** | `gemini-2.5-pro` → `gemini-2.5-flash` |
+| **Gemini** | `gemini-3.6-pro` → `gemini-3.6-flash` |
 | **OpenAI** | `gpt-4o` → `gpt-4o-mini` |
 | **Anthropic** | `claude-3-5-sonnet-latest` → `claude-3-5-haiku-latest` |
 | **Mistral** | `mistral-large-latest` → `mistral-medium-latest` → `mistral-small-latest` → `open-mistral-7b` |
@@ -687,17 +695,23 @@ To optimize validation container runs for near-instantaneous development feedbac
 
 ### Available Validation Projects
 
-| Project | Language | User Story | What is Checked |
+| Project | Language / Stack | Spec / User Story | What is Checked |
 | :--- | :--- | :--- | :--- |
-| **`frontpunch`** | Python | `SPEC.md` | `frontpunch/worker.py` created/modified and test suite passes |
-| **`todo-cli`** | Go | `US-001.md` | `cmd/todo/main.go` (or `main.go`) created/modified and test suite passes |
-| **`wc`** | Rust | `US-002.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
-| **`calculator`** | Ruby | `SPEC.md` | `calculator.rb` (or under `lib/`) created/modified and test suite passes |
-| **`echo`** | Go | `SPEC.md` | `cmd/echo/main.go` (or `main.go`) created/modified and test suite passes |
-| **`fortune`** | C | `SPEC.md` | `main.c` (or `Makefile`) created/modified and test suite passes |
-| **`t4`** | C | `SPEC.md` | `Makefile` + `docker-compose.yml` + `src/t4.c` created/modified and test suite passes |
-| **`pyedis`** | Python | `SPEC.md` | `app/main.py` + `pyproject.toml` created/modified and test suite passes |
-| **`notebook`** | TypeScript | `SPEC.md` | `src/index.ts` + `package.json` + `docker-compose.yml` created/modified and test suite passes |
+| **`echo`** | Go CLI | `SPEC.md` | `cmd/echo/main.go` created/modified and test suite passes |
+| **`todo-cli`** | Go CLI | `roadmap/user-stories/US-001.md` | `cmd/todo/main.go` (or `main.go`) created/modified and test suite passes |
+| **`wc`** | Rust CLI | `roadmap/user-stories/US-002.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
+| **`calculator`** | Ruby CLI | `SPEC.md` | `calculator.rb` (or under `lib/`) created/modified and test suite passes |
+| **`fortune`** | C + SQLite | `SPEC.md` | `main.c` (or `Makefile`) created/modified and test suite passes |
+| **`t4`** | C17 HTTP Server | `SPEC.md` | `Makefile` + `docker-compose.yml` + `src/t4.c` created/modified and test suite passes |
+| **`pyedis`** | Python 3.14 (asyncio + RESP2/3) | `SPEC.md` | `src/main.py` (or `app/main.py`) + `pyproject.toml` created/modified and `unittest` passes |
+| **`notebook`** | TypeScript + Fastify + PostgreSQL | `SPEC.md` | `src/index.ts` + `package.json` + `docker-compose.yml` created/modified and test suite passes |
+| **`frontpunch`** | Python + Valkey | `roadmap/user-stories/US-001.md` | `frontpunch/worker.py` created/modified and test suite passes |
+| **`djanban`** | Python 3.12 + Django 5.x | `SPEC.md` | Modernized Django models, views, and migrations created and test suite passes |
+| **`stricc`** | Rust + LLVM 18 | `SPEC.md` | Safe C compiler with LLVM 18 backend created/modified and test suite passes |
+| **`searchthedocs`** | Python 3.12 + FastAPI + Redis | `SPEC.md` | Documentation scraper + RAG vector search API created and test suite passes |
+| **`auth-vault`** | Go 1.22+ | `SPEC.md` | OAuth2/OIDC Zero-Trust Authorization Server + PKI Vault created and test suite passes |
+| **`sqlasm`** | x86_64 Assembly (NASM) | `SPEC.md` | Pure 64-bit Assembly B-Tree DBMS & SQL-92 engine created and test suite passes |
+| **`buffonstream`** | Go 1.22+ (gRPC / Protobuf) | `SPEC.md` | Protobuf-Native Storage Engine & Real-Time Bi-Directional Streaming passes |
 
 The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
 
