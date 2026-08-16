@@ -48,6 +48,7 @@ type Task struct {
 	PartialChangelog  []string   `json:"partial_changelog,omitempty"`
 	FailureLog        string     `json:"failure_log,omitempty"`
 	RecoveryDirective string     `json:"recovery_directive,omitempty"`
+	UserDirectives    []string   `json:"user_directives,omitempty"`
 	StallCount        int        `json:"stall_count,omitempty"`
 	Retries           int        `json:"retries"`
 	MaxRetries        int        `json:"max_retries"`

@@ -334,6 +334,34 @@ func TestParseAndUnmarshalRejectsShellCommand(t *testing.T) {
 	}
 }
 
+func TestExtractJSONBlockStripsThinkingTags(t *testing.T) {
+	in := "<think>\nFirst I need to inspect the directory and figure out what files to write.\nLet's emit write_file tool.\n</think>\n" +
+		"```json\n" +
+		"{\n" +
+		"  \"reasoning\": \"Implementing calculation function\",\n" +
+		"  \"actions\": [\n" +
+		"    {\n" +
+		"      \"tool\": \"write_file\",\n" +
+		"      \"args\": {\n" +
+		"        \"path\": \"calc.go\",\n" +
+		"        \"content\": \"package main\\n\\nfunc Add(a, b int) int { return a + b }\\n\"\n" +
+		"      }\n" +
+		"    }\n" +
+		"  ]\n" +
+		"}\n" +
+		"```"
+	got, err := ExtractJSONBlock(in)
+	if err != nil {
+		t.Fatalf("unexpected error parsing think-tagged response: %v", err)
+	}
+	if strings.Contains(got, "<think>") {
+		t.Errorf("expected <think> tags to be stripped, got: %s", got)
+	}
+	if !strings.Contains(got, "calc.go") {
+		t.Errorf("expected extracted JSON to contain calc.go, got: %s", got)
+	}
+}
+
 func TestLLMResponseIsExpectedShape(t *testing.T) {
 	// Sanity: domain.LLMResponse is still importable and used.
 	var r domain.LLMResponse

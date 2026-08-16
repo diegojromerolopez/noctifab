@@ -215,3 +215,33 @@ func TestStatusEmoji(t *testing.T) {
 		assert.Equal(t, "", statusEmoji(domain.StoryIdle))
 	})
 }
+
+func TestDashboard_PipelineRibbonAndSteering(t *testing.T) {
+	state := &domain.State{
+		ID:          "state-ribbon-test",
+		ProjectPath: "/Users/dev/project",
+		StoryStatus: domain.StoryRunning,
+		Tasks: []domain.Task{
+			{
+				ID:             "task-1",
+				Title:          "Implement REST Router",
+				ChangeType:     domain.ChangeTypeFeature,
+				Status:         domain.TaskInProgress,
+				Progress:       40,
+				DependsOn:      []string{"task-0"},
+				TargetFiles:    []string{"pkg/router.go"},
+				UserDirectives: []string{"Use chi router instead of gin"},
+				AssignedTo:     "generator",
+			},
+		},
+	}
+
+	out := renderDashboard([]*domain.State{state})
+
+	assert.Contains(t, out, "Stage:")
+	assert.Contains(t, out, "GENERATOR")
+	assert.Contains(t, out, "FEATURE")
+	assert.Contains(t, out, "Depends on: task-0")
+	assert.Contains(t, out, "Target Files: pkg/router.go")
+	assert.Contains(t, out, "🎯 Steering: \"Use chi router instead of gin\"")
+}

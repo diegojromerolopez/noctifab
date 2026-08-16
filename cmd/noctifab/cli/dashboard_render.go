@@ -37,6 +37,10 @@ func renderEnhancedDashboard(states []*domain.State) string {
 	sb.WriteString(colorBold + colorCyan + "====================================================================================" + colorReset + "\r\n")
 	sb.WriteString(colorBold + colorCyan + "  🤖🌌 NOCTIFAB TERMINAL DASHBOARD -- DARK FACTORY CONTROL ENGINE" + colorReset + "\r\n")
 	sb.WriteString(colorBold + colorCyan + "====================================================================================" + colorReset + "\r\n")
+
+	// Pipeline Stage Progression Ribbon
+	sb.WriteString(renderPipelineRibbon(primary) + "\r\n")
+
 	fmt.Fprintf(&sb, "Path: %s\r\n", primary.ProjectPath)
 	logPath := filepath.Join(primary.ProjectPath, ".noctifab", "logs", "noctifab.log")
 	if primary.Metadata.FeatureName != "" {
@@ -72,16 +76,16 @@ func renderEnhancedDashboard(states []*domain.State) string {
 			if ag.Status == domain.AgentWorking {
 				statusColor = colorYellow
 			}
-			elapsed := ""
+			elapsedStr := ""
 			if !ag.StartedAt.IsZero() {
-				elapsed = fmt.Sprintf(" (%s elapsed)", time.Since(ag.StartedAt).Truncate(time.Second))
+				elapsedStr = fmt.Sprintf(" (%s elapsed)", time.Since(ag.StartedAt).Truncate(time.Second))
 			}
 			taskInfo := ""
 			if ag.TaskID != "" {
 				taskInfo = fmt.Sprintf(" | Task: %s", ag.TaskID)
 			}
 			fmt.Fprintf(&sb, "  • [%s%s%s] Agent %s (%s) — Status: %s%s%s%s%s\r\n",
-				colorCyan, ag.Role, colorReset, ag.Name, ag.ID, statusColor, ag.Status, colorReset, elapsed, taskInfo)
+				colorCyan, ag.Role, colorReset, ag.Name, ag.ID, statusColor, ag.Status, colorReset, elapsedStr, taskInfo)
 			if ag.LastError != "" {
 				fmt.Fprintf(&sb, "    %sError: %s%s\r\n", colorRed, ag.LastError, colorReset)
 			}
@@ -119,20 +123,33 @@ func renderEnhancedDashboard(states []*domain.State) string {
 			if t.Retries > 0 {
 				retryBadge = fmt.Sprintf(" [Retry #%d]", t.Retries)
 			}
+			changeBadge := ""
+			if t.ChangeType != "" {
+				changeBadge = fmt.Sprintf(" [%s]", t.ChangeType)
+			}
 
 			if (t.Status == domain.TaskFailed || t.Status == domain.TaskConflictFailed) && t.FailureLog != "" {
-				fmt.Fprintf(&sb, "  %s %s (%d%%)%s\r\n", emoji, t.Title, t.Progress, retryBadge)
+				fmt.Fprintf(&sb, "  %s %s%s (%d%%)%s\r\n", emoji, t.Title, changeBadge, t.Progress, retryBadge)
 				lines := extractFailureExcerpt(t.FailureLog, 3)
 				for _, line := range lines {
 					fmt.Fprintf(&sb, colorRed+"     ├─ Error: %s\r\n"+colorReset, line)
 				}
 				fmt.Fprintf(&sb, colorYellow+"     └─ [Press 'd' to open full Log Inspector]\r\n"+colorReset)
 			} else {
-				fmt.Fprintf(&sb, "  %s %s (%d%%)%s\r\n", emoji, t.Title, t.Progress, retryBadge)
+				fmt.Fprintf(&sb, "  %s %s%s (%d%%)%s\r\n", emoji, t.Title, changeBadge, t.Progress, retryBadge)
+			}
+
+			if len(t.DependsOn) > 0 {
+				fmt.Fprintf(&sb, colorGray+"     ├─ Depends on: %s\r\n"+colorReset, strings.Join(t.DependsOn, ", "))
 			}
 
 			if len(t.TargetFiles) > 0 {
-				fmt.Fprintf(&sb, colorGray+"     └─ Target Files: %s\r\n"+colorReset, strings.Join(t.TargetFiles, ", "))
+				fmt.Fprintf(&sb, colorGray+"     ├─ Target Files: %s\r\n"+colorReset, strings.Join(t.TargetFiles, ", "))
+			}
+
+			if len(t.UserDirectives) > 0 {
+				latestDir := t.UserDirectives[len(t.UserDirectives)-1]
+				fmt.Fprintf(&sb, colorPurple+"     └─ 🎯 Steering: %q\r\n"+colorReset, latestDir)
 			}
 		}
 		sb.WriteString("\r\n")
@@ -183,11 +200,12 @@ func renderEnhancedDashboard(states []*domain.State) string {
 	if elapsed > 0 {
 		footerExtra = " | Elapsed: " + formatDuration(elapsed)
 	}
-	fmt.Fprintf(&sb, "%sControls: %s[%sq%s] Quit | [%sp%s] Pause/Resume | [%sx%s] Cancel | [%sn%s] New Order/Prompt | [%sc%s] Resolve Clarifications | [%sd%s] Inspect Log/Failures %s| Refreshed: %s%s%s",
+	fmt.Fprintf(&sb, "%sControls: %s[%sq%s] Quit | [%sp%s] Pause/Resume | [%sx%s] Cancel | [%ss%s] Steer | [%sn%s] New Order/Prompt | [%sc%s] Resolve Clarifications | [%sd%s] Inspect Log/Failures %s| Refreshed: %s%s%s",
 		colorBold, colorReset,
 		colorGreen, colorReset,
 		colorYellow, colorReset,
 		colorRed, colorReset,
+		colorYellow, colorReset,
 		colorCyan, colorReset,
 		colorPurple, colorReset,
 		colorCyan, colorReset,
@@ -259,4 +277,58 @@ func extractFailureExcerpt(log string, maxLines int) []string {
 		return relevant[len(relevant)-maxLines:]
 	}
 	return relevant
+}
+
+func renderPipelineRibbon(state *domain.State) string {
+	steps := []string{"1. ROADMAP", "2. PLANNER", "3. GENERATOR", "4. TESTER", "5. CONSENSUS", "6. PR/MERGE"}
+	activeIdx := 0
+
+	if len(state.Tasks) == 0 {
+		activeIdx = 1 // Planner
+	} else {
+		hasRunning := false
+		for _, t := range state.Tasks {
+			if t.Status == domain.TaskInProgress {
+				hasRunning = true
+				if strings.Contains(strings.ToLower(t.AssignedTo), "test") {
+					activeIdx = 3 // Tester
+				} else {
+					activeIdx = 2 // Generator
+				}
+				break
+			}
+		}
+		if !hasRunning {
+			allSuccess := true
+			for _, t := range state.Tasks {
+				if t.Status != domain.TaskSuccess {
+					allSuccess = false
+					break
+				}
+			}
+			if allSuccess && len(state.Tasks) > 0 {
+				if state.StoryStatus == domain.StorySuccess {
+					activeIdx = 5 // PR/Merge
+				} else {
+					activeIdx = 4 // Consensus
+				}
+			}
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Stage: ")
+	for i, step := range steps {
+		if i > 0 {
+			sb.WriteString(colorGray + " ➔ " + colorReset)
+		}
+		if i == activeIdx {
+			sb.WriteString(colorBold + colorCyan + "[" + step + "]" + colorReset)
+		} else if i < activeIdx {
+			sb.WriteString(colorGreen + step + colorReset)
+		} else {
+			sb.WriteString(colorGray + step + colorReset)
+		}
+	}
+	return sb.String()
 }

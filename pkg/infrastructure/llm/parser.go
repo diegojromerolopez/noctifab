@@ -16,6 +16,10 @@ import (
 // optional space and a colon to count.
 var jsonKeyRE = regexp.MustCompile(`"(reasoning|actions|tool|args|path|content)"\s*:`)
 
+// thinkTagRE matches reasoning chain-of-thought tokens (<think>...</think>)
+// emitted by reasoning models like DeepSeek-R1.
+var thinkTagRE = regexp.MustCompile(`(?s)<think>.*?</think>`)
+
 // ExtractJSONBlock locates the outer JSON object of the LLM response envelope.
 //
 // It is string-literal-aware (braces inside JSON string values, such as Rust
@@ -28,6 +32,7 @@ var jsonKeyRE = regexp.MustCompile(`"(reasoning|actions|tool|args|path|content)"
 // rather than guessing — guessing feeds junk to json.Unmarshal and produces
 // misleading parse errors (e.g. "invalid character 'l'" on a Rust struct).
 func ExtractJSONBlock(input string) (string, error) {
+	input = thinkTagRE.ReplaceAllString(input, "")
 	cleaned := stripFencedCodeBlocks(input)
 	blocks := findTopLevelJSONBlocks(cleaned)
 	if len(blocks) == 0 {

@@ -186,7 +186,19 @@ var dashboardCmd = &cobra.Command{
 				mu.Unlock()
 			}
 
-			if char == 'n' || char == 'N' || char == 'a' || char == 'A' {
+			if char == 's' || char == 'S' {
+				mu.Lock()
+				activeOverlay = "\033[1;33m🎯 Inject mid-flight steering directive:\033[0m"
+				mu.Unlock()
+
+				_ = HandleSteerPrompt(ctx, client, fd, oldState)
+
+				mu.Lock()
+				activeOverlay = ""
+				mu.Unlock()
+			}
+
+			if char == 'o' || char == 'O' || char == 'n' || char == 'N' || char == 'a' || char == 'A' {
 				mu.Lock()
 				activeOverlay = "\033[1;36m📝 Enter new feature specification order:\033[0m"
 				mu.Unlock()

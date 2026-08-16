@@ -1,12 +1,57 @@
-# Headless Daemon REST API
+# REST and Server-Sent Events (SSE) API Reference
 
-When running the headless orchestrator daemon (`noctifab serve`), a loopback HTTP REST API is exposed locally on `127.0.0.1:18080` to manage user stories, task lifecycles, clarifications, and active execution states.
+Noctifab exposes local HTTP APIs for headless orchestration, supervisor LLM control, and real-time visual web telemetry:
+1. **Headless Daemon REST API**: default `127.0.0.1:18080` (started via `noctifab start` / `serve`).
+2. **Visual Web Dashboard API**: default `127.0.0.1:8080` (started via `noctifab web`).
+
+> An OpenAPI 3.1.0 specification is available at [`api/openapi.yaml`](file:///Users/diegoj/repos/noctifab/api/openapi.yaml).
 
 ---
 
 ## Endpoint Reference
 
-### 1. Enqueue User Story
+### 1. System State Snapshot
+* **Method & Path**: `GET /api/v1/state`
+* **Description**: Returns the full JSON snapshot of system state including user stories, topological task DAG, active agent worker telemetry cards, action logs, and cost metrics.
+* **Response**: `200 OK`
+
+---
+
+### 2. Live Telemetry Event Stream (SSE)
+* **Method & Path**: `GET /api/v1/events`
+* **Description**: Server-Sent Events (`text/event-stream`) streaming real-time timeline events (`tool_executed`, `task_started`, `test_run`, `task_failed`, `story_completed`) with a 100-event circular ring buffer replay on reconnection.
+* **Response**: `200 OK` (`text/event-stream`)
+
+---
+
+### 3. Inject Mid-Flight Steering Directive
+* **Method & Path**: `POST /api/v1/steer`
+* **Description**: Injects a human-in-the-loop steering prompt into the target task or active running worker goroutines.
+* **Request Payload**:
+  ```json
+  {
+    "task_id": "task-0",
+    "directive": "Use PostgreSQL connection pool instead of SQLite"
+  }
+  ```
+* **Response**: `202 Accepted`
+
+---
+
+### 4. Submit Feature Prompt Order
+* **Method & Path**: `POST /api/v1/orders`
+* **Description**: Enqueues an ad-hoc feature requirement / prompt order directly into the autonomous story queue.
+* **Request Payload**:
+  ```json
+  {
+    "prompt": "Add rate limiting middleware with sliding window algorithm"
+  }
+  ```
+* **Response**: `202 Accepted`
+
+---
+
+### 5. Enqueue User Story
 * **Method & Path**: `POST /api/v1/stories`
 * **Description**: Enqueues a single markdown user story file or a folder path containing stories to execute lexicographically.
 * **Request Payload**:
@@ -19,45 +64,21 @@ When running the headless orchestrator daemon (`noctifab serve`), a loopback HTT
 
 ---
 
-### 2. List Execution Statuses
+### 6. List Execution Statuses
 * **Method & Path**: `GET /api/v1/status`
 * **Description**: Returns the real-time status of all active and completed user story orchestrations.
 * **Response**: `200 OK`
-  ```json
-  [
-    {
-      "id": "story-1719234857",
-      "project_path": "/Users/user/repos/myproject",
-      "story_status": "running",
-      "build_status": "success",
-      "metadata": {
-        "feature_name": "Login Form Validation",
-        "total_cost_usd": "0.1420"
-      }
-    }
-  ]
-  ```
 
 ---
 
-### 3. List Pending Clarifications
+### 7. List Pending Clarifications
 * **Method & Path**: `GET /api/v1/clarifications?pending=true`
 * **Description**: Returns all unresolved clarification questions asked by the Planner Agent.
 * **Response**: `200 OK`
-  ```json
-  [
-    {
-      "id": "clar-923847293",
-      "question": "Which database type is preferred for session storage?",
-      "resolved": false,
-      "options": ["Redis", "PostgreSQL", "SQLite"]
-    }
-  ]
-  ```
 
 ---
 
-### 4. Resolve Clarification
+### 8. Resolve Clarification
 * **Method & Path**: `POST /api/v1/clarifications/{id}/resolve`
 * **Description**: Answers a pending clarification question by ID, unblocking the orchestrator thread.
 * **Request Payload**:
@@ -70,43 +91,28 @@ When running the headless orchestrator daemon (`noctifab serve`), a loopback HTT
 
 ---
 
-### 5. Pause Execution
+### 9. Pause Execution
 * **Method & Path**: `POST /api/v1/pause`
 * **Description**: Temporarily suspends the active orchestration cycle loop.
-* **Response**: `202 Accepted`
-  ```json
-  {
-    "status": "paused"
-  }
-  ```
+* **Response**: `200 OK` (`{"status":"paused"}`)
 
 ---
 
-### 6. Resume Execution
+### 10. Resume Execution
 * **Method & Path**: `POST /api/v1/resume`
 * **Description**: Resumes the paused story orchestration.
-* **Response**: `202 Accepted`
-  ```json
-  {
-    "status": "running"
-  }
-  ```
+* **Response**: `200 OK` (`{"status":"resumed"}`)
 
 ---
 
-### 7. Cancel Execution
+### 11. Cancel Execution
 * **Method & Path**: `POST /api/v1/cancel`
 * **Description**: Gracefully halts the active task execution, reverts the current task branch, and releases directory locks.
-* **Response**: `202 Accepted`
-  ```json
-  {
-    "status": "cancelled"
-  }
-  ```
+* **Response**: `202 Accepted` (`{"status":"cancelled"}`)
 
 ---
 
-### 8. Add Manual Task
+### 12. Add Manual Task
 * **Method & Path**: `POST /api/v1/tasks`
 * **Description**: Inserts a custom manual task directly into the active scheduling pipeline.
 * **Request Payload**:
@@ -118,6 +124,20 @@ When running the headless orchestrator daemon (`noctifab serve`), a loopback HTT
   }
   ```
 * **Response**: `202 Accepted`
+
+---
+
+### 13. Override Task Merge Quality Gate
+* **Method & Path**: `POST /api/v1/tasks/{id}/override-merge`
+* **Description**: Force-overrides the test validation gate for a specific task branch.
+* **Response**: `202 Accepted`
+
+---
+
+### 14. Health & Diagnostics Probes
+* **`GET /healthz`**: Liveness probe returning `{"status":"ok"}`.
+* **`GET /readyz`**: Readiness probe returning `{"status":"ready"}`.
+* **`GET /statusz`**: Lightweight stripped state diagnostic summary for daemon monitoring.
 
 ---
 

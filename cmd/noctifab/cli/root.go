@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/diegojromerolopez/noctifab/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -49,6 +50,9 @@ func Execute() {
 }
 
 func init() {
+	RootCmd.Version = version.GetInfo().String()
+	RootCmd.SetVersionTemplate("{{.Version}}\n")
+
 	// Global persistent flags
 	RootCmd.PersistentFlags().StringP("config", "c", ".noctifab/config.yaml", "Path to the YAML configuration file")
 	RootCmd.PersistentFlags().String("db-path", "", "Path to the local SQLite database file")

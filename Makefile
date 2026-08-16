@@ -4,6 +4,13 @@ BINARY_NAME=noctifab
 DIST_DIR=dist
 GOFLAGS=-v
 
+VERSION ?= $(shell cat VERSION 2>/dev/null | tr -d ' \n\r' || echo "dev")
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+COMMIT_DATE ?= $(shell git log -1 --format=%cI 2>/dev/null || echo "unknown")
+LDFLAGS ?= -X github.com/diegojromerolopez/noctifab/pkg/version.Version=$(VERSION) \
+           -X github.com/diegojromerolopez/noctifab/pkg/version.GitCommit=$(GIT_COMMIT) \
+           -X github.com/diegojromerolopez/noctifab/pkg/version.CommitDate=$(COMMIT_DATE)
+
 .PHONY: all build clean test lint help validate validate-all validate-images
 
 # Default target
@@ -12,7 +19,7 @@ all: build
 # Build the Go binary in the dist directory
 build:
 	mkdir -p $(DIST_DIR)
-	CGO_ENABLED=0 go build $(GOFLAGS) -o $(DIST_DIR)/$(BINARY_NAME) cmd/noctifab/main.go
+	CGO_ENABLED=0 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(BINARY_NAME) cmd/noctifab/main.go
 
 # Clean build artifacts
 clean:

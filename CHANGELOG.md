@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.0] - 2026-08-16
+
+### Added
+- **Version CLI Command & VCS Metadata (`noctifab version` & `noctifab --version`)**:
+  - Implemented `noctifab version` CLI command and wired `RootCmd.Version` for `--version` / `-v` flags.
+  - Added support for `--short` (raw semantic version string), `--verbose` (multi-line detailed environment & compiler metadata), and `--json` (machine-readable JSON output).
+  - Implemented `pkg/version` with automatic 3-tier version and VCS metadata resolution: build-time linker flags (`-ldflags -X`), Go runtime build info (`runtime/debug.ReadBuildInfo()` for Git commit hash, commit timestamp, and dirty working tree status), and embedded semantic version fallback.
+  - Updated `Makefile` `build` target with `-ldflags` injection for build artifacts.
+- **OpenAPI 3.1.0 Specification (`api/openapi.yaml`)**:
+  - Added complete OpenAPI 3.1.0 specification documenting all REST and Server-Sent Events (SSE) endpoints across both the Headless Daemon and Visual Web Dashboard servers under `api/openapi.yaml`.
+  - Synchronized `docs/api.md` with complete endpoint reference, request/response schemas, and health probe documentation.
+
+### Fixed
+- **OrderCmd Story Path Resolution**: Rooted `storiesDir` in `OrderCmd.Execute` under `state.ProjectPath` instead of process-relative `.noctifab/stories`.
+- **Web Pause/Resume Error Handling**: Propagated database load and save errors in `POST /api/v1/pause` and `POST /api/v1/resume` HTTP handlers, returning HTTP 500 on repository failures.
+- **Static Analysis & Error Checking**: Fixed errcheck on `fmt.Fprintln`/`fmt.Fprintf` in CLI version command and SSE streaming endpoint, and simplified `TrimSuffix` in `demo_service.go`.
+- **Demo Template Embedding (`DemoFS`)**: Renamed embedded archetype source files (`main.go`, `calc_test.go`) to `.tmpl` suffix (`main.go.tmpl`, `calc_test.go.tmpl`) to prevent Go module tooling and `go list` from misidentifying embedded assets as nested modules.
+
+## [0.35.1] - 2026-08-16
+
+### Changed
+- **Comprehensive UI Observability & Developer Experience Improvements**:
+  - **Dark Factory Pipeline Stage Progression Ribbon**: Added dynamic 6-stage lifecycle stepper (`[1. ROADMAP] ➔ [2. PLANNER] ➔ [3. GENERATOR] ➔ [4. TESTER] ➔ [5. CONSENSUS] ➔ [6. PR/MERGE]`) to both the Terminal TUI and Visual Web Dashboard with active phase highlighting.
+  - **Enhanced Active Agent Worker Observability**: Real-time worker cards displaying role, status (`WORKING` / `IDLE`), elapsed runtime, assigned task ID, and current tool invocation context.
+  - **Task DAG & Dependency Visualizer**: Added explicit dependency links (`Depends on: [task-1]`), target files, change types (`[FEATURE]`, `[FIX]`, `[REFACTOR]`), failure error excerpts, and active human steering directives (`🎯 Steering: "..."`).
+  - **Web Dashboard Mission Control**: Added filter chips (`All`, `Active`, `Failed`, `Done`), tabbed split-pane viewer (syntax-highlighted code diffs vs. live event/tool feed), and interactive keyboard shortcuts (`Ctrl+Enter`, `P`, `S`, `O`).
+  - **Web Control Endpoints**: Added `POST /api/v1/pause` and `POST /api/v1/resume` API routes for one-click runtime flow control.
+- **Documentation & Mermaid Architecture Synchronization**:
+  - Updated `README.md`, `SPEC.md`, `docs/cli_usage.md`, `docs/configuration.md`, `docs/getting_started.md`, `docs/index.md`, `docs/llm_providers.md`, and `docs/architecture.md` with complete documentation for `noctifab demo`, `noctifab web`, `noctifab steer`, `noctifab order`, and `--profile` flags.
+  - Updated Mermaid architecture flowchart in `README.md` to illustrate the developer steering loop, web SSE dashboard, and 3x consensus quality gate.
+
+## [0.35.0] - 2026-08-16
+
+### Added
+- **Proposal 2: Instant 2-Minute Zero-Config Sandbox (`noctifab demo`)**:
+  - Implemented `noctifab demo` command with embedded CLI calculator project templates.
+  - Implemented `MockDemoLLMClient` deterministic replay provider for fast, 100% offline, zero-token sandbox execution.
+  - Added POSIX signal trapping (`SIGINT`, `SIGTERM`) for automatic ephemeral directory cleanup.
+- **Proposal 3: Real-Time Visual DAG & Diff Web Dashboard (`noctifab web`)**:
+  - Implemented `noctifab web` command serving an embedded, modern responsive web dashboard.
+  - Implemented thread-safe `SSEBroadcaster` with circular ring-buffered event replay on reconnection.
+  - Added live topological task DAG renderer, split diff viewer, and integrated prompt order / steering input bar.
+- **Proposal 5: 1-Click Local LLM Profiles & DeepSeek Reasoning Parser**:
+  - Added pre-configured profile presets (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) in `pkg/infrastructure/config/profiles.go`.
+  - Added `--profile` flag to `noctifab init`.
+  - Added `<think>...</think>` reasoning tag stripper to `pkg/infrastructure/llm/parser.go` for DeepSeek-R1 / Qwen reasoning models.
+- **Proposal 7: Mid-Flight Interactive Steerability & Developer Prompt Orders**:
+  - Added `noctifab steer` and `noctifab order` CLI commands communicating with daemon `/api/v1/steer` and `/api/v1/orders` endpoints.
+  - Added interactive prompt dialogs in TUI Dashboard: `s`/`S` for mid-flight task steering directives and `o`/`O` for ad-hoc prompt orders.
+  - Injected `task.UserDirectives` into Generator and Tester LLM prompt templates under `[USER HUMAN-IN-THE-LOOP STEERING DIRECTIVES]`.
+  - Implemented thread-safe `SteeringService` and `CommandMailbox` command handlers.
+
+## [0.34.7] - 2026-08-16
+
+### Added
+- **Popularity & Viral Growth Feature Proposals**:
+  - Created comprehensive technical implementation blueprint (`POPULARITY_FEATURE_PROPOSALS.md`) covering GitHub Action `@noctifab` PR/issue bot, `noctifab demo` 2-minute sandbox, real-time web dashboard (`noctifab web`), SWE-bench Verified leaderboard evaluation harness, 1-click local LLM profiles (Ollama/vLLM for DeepSeek-R1 and Qwen2.5-Coder), Linear/Jira bidirectional sync, and mid-flight interactive steerability.
+  - Added `POPULARITY_FEATURE_PROPOSALS.md` to root `.gitignore`.
+
 ## [0.34.6] - 2026-08-16
 
 ### Changed

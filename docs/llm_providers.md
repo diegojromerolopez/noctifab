@@ -728,3 +728,28 @@ See [architecture.md](architecture.md#3-dynamic-model-fallback-engine-provider-s
 2. Each model is scored by the provider's `ParseModelFunc`.
 3. The next lower-ranked model is selected and execution resumes transparently.
 4. If the current model is unrecognised (e.g. a brand-new model release), the safety valve selects the **lowest-ranked known model**, preventing a hard failure.
+
+---
+
+## 1-Click Local LLM Profiles & DeepSeek-R1 Reasoning Support
+
+Noctifab provides built-in, pre-tuned configuration profiles for local model deployments (Ollama, vLLM, LMDeploy, and OpenAI-compatible local engines) via `noctifab init --profile <preset>`:
+
+```bash
+noctifab init --profile ollama-qwen
+noctifab init --profile ollama-deepseek
+noctifab init --profile vllm-local
+noctifab init --profile openai-compat
+```
+
+### Supported Profile Presets
+
+| Profile Preset | Provider | Default Model | Base URL | Max Context | Notes |
+|---|---|---|---|---|---|
+| `ollama-qwen` | `ollama` | `qwen2.5-coder:32b` | `http://127.0.0.1:11434/v1` | 32,768 | Tuned for coding and fast agent cycles |
+| `ollama-deepseek`| `ollama` | `deepseek-r1:32b` | `http://127.0.0.1:11434/v1` | 64,000 | Optimized for deep chain-of-thought planning |
+| `vllm-local` | `openai` | `Qwen/Qwen2.5-Coder-32B-Instruct` | `http://127.0.0.1:8000/v1` | 32,768 | High-throughput concurrent vLLM engine |
+| `openai-compat` | `openai` | `default-local-model` | `http://127.0.0.1:1234/v1` | 16,384 | Generic local server (LM Studio, LocalAI) |
+
+### Automatic `<think>` Reasoning Tag Stripping
+Reasoning models like DeepSeek-R1 and Qwen-Thinking output chain-of-thought blocks wrapped in `<think>...</think>` tags before their actual JSON action envelope. Noctifab's response parser automatically intercepts and strips `<think>` blocks before JSON unmarshaling, allowing reasoning models to execute structured tool calling seamlessly without formatting errors.

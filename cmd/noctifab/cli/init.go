@@ -9,7 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var WorkspaceDir = "."
+var (
+	WorkspaceDir = "."
+	ProfileFlag  = ""
+)
 
 var initCmd = &cobra.Command{
 	Use:           "init [target_dir]",
@@ -24,18 +27,31 @@ var initCmd = &cobra.Command{
 		if len(args) > 0 {
 			targetDir = args[0]
 		}
-		_, err := EnsureWorkspaceInitialized(targetDir)
+		_, err := EnsureWorkspaceInitializedWithProfile(targetDir, ProfileFlag)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("noctifab workspace initialized successfully in %s\n", targetDir)
+		if ProfileFlag != "" {
+			fmt.Printf("noctifab workspace initialized successfully in %s with profile %q\n", targetDir, ProfileFlag)
+		} else {
+			fmt.Printf("noctifab workspace initialized successfully in %s\n", targetDir)
+		}
 		return nil
 	},
+}
+
+func init() {
+	initCmd.Flags().StringVar(&ProfileFlag, "profile", "", "Pre-configured LLM profile (e.g. ollama-qwen, ollama-deepseek, vllm-local)")
 }
 
 // EnsureWorkspaceInitialized ensures .noctifab/ directory, config.yaml, secrets.yaml, database, and SPEC.md exist.
 // Returns createdSpec=true if a new SPEC.md template was written.
 func EnsureWorkspaceInitialized(targetDir string) (bool, error) {
+	return EnsureWorkspaceInitializedWithProfile(targetDir, "")
+}
+
+// EnsureWorkspaceInitializedWithProfile initializes workspace with an optional configuration profile preset.
+func EnsureWorkspaceInitializedWithProfile(targetDir string, profileName string) (bool, error) {
 	if targetDir == "" {
 		targetDir = "."
 	}
@@ -84,11 +100,21 @@ func EnsureWorkspaceInitialized(targetDir string) (bool, error) {
 		}
 	}
 
-	// 3. Generate default config.yaml if it doesn't exist
+	// 3. Generate default or profile config.yaml if it doesn't exist
 	cfgPath := filepath.Join(noctifabDir, "config.yaml")
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
-		if err := config.WriteDefaultConfig(cfgPath); err != nil {
-			return false, fmt.Errorf("failed to write default config: %w", err)
+		if profileName != "" {
+			preset, err := config.GetProfile(profileName)
+			if err != nil {
+				return false, err
+			}
+			if err := os.WriteFile(cfgPath, []byte(preset.ConfigYAML), 0644); err != nil {
+				return false, fmt.Errorf("failed to write profile config: %w", err)
+			}
+		} else {
+			if err := config.WriteDefaultConfig(cfgPath); err != nil {
+				return false, fmt.Errorf("failed to write default config: %w", err)
+			}
 		}
 	}
 

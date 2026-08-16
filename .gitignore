@@ -42,9 +42,9 @@ go.work.sum
 /validation/projects/*/output/
 .validation-logs/
 
-# Feedback notes (local analysis artifacts, not source)
+# Feedback notes and proposals (local analysis artifacts, not source)
 *_FEEDBACK.md
 VALIDATION_CONTAINERS_REGISTRY.md
-
-
-
+POPULARITY_FEATURE_PROPOSALS.md
+.noctifab/
+**/.noctifab/

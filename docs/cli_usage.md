@@ -39,17 +39,67 @@ noctifab init [flags]
 
 ### 1. `init`
 Initializes a Noctifab project workspace in the target directory (defaults to `.`). Automatically creates `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, SQLite database, and a `SPEC.md` template if missing.
+
 ```bash
-noctifab init [target_dir]
+noctifab init [target_dir] [--profile <preset>]
 ```
 
-### 2. `validate`
+| Flag | Description |
+|------|-------------|
+| `--profile` | Pre-configured LLM profile preset (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) |
+
+### 2. `demo`
+Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Ideal for testing Noctifab's dark factory loop with zero LLM API keys and zero cost.
+
+```bash
+noctifab demo [--project <archetype>] [--offline] [--speed <multiplier>] [--no-cleanup]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project` | `cli` | Demo archetype template (`cli`, `rest`) |
+| `--offline` | `true` | Deterministic offline replay mode without external network calls |
+| `--speed` | `1.0` | Execution speed multiplier (e.g. `2.0` for 2x speed) |
+| `--no-cleanup` | `false` | Preserve ephemeral `/tmp/noctifab-demo-*` workspace directory on exit |
+
+### 3. `web`
+Launches the embedded real-time visual web dashboard with live topological task DAG, syntax-highlighted code diffs, real-time event log stream, and developer prompt input bar.
+
+```bash
+noctifab web [workspace_dir] [--port 8080] [--host 127.0.0.1] [--readonly]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port` | `8080` | Port for the visual web dashboard |
+| `--host` | `127.0.0.1` | Host address to bind the web dashboard |
+| `--readonly` | `false` | Read-only mode disabling prompt steering and order mutations |
+
+### 4. `steer`
+Injects a mid-flight steering directive to guide active agent workers without stopping the execution loop.
+
+```bash
+noctifab steer "Use PostgreSQL instead of SQLite" [--task-id <id>]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--task-id` | `-t` | Specific task ID to steer (defaults to active running task) |
+
+### 5. `order`
+Submits an ad-hoc user story or feature prompt order directly into the autonomous dark factory execution queue.
+
+```bash
+noctifab order "Implement JWT authentication middleware with refresh token rotation"
+```
+
+### 6. `validate`
 Loads and validates the current configurations, state, and directory constraints, ensuring that security policies, LLM keys, and local sandbox folders are correctly aligned.
 ```bash
 noctifab validate
 ```
 
-### 3. `start`
+### 7. `start`
 Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-i` / `--interactive` to launch the live TUI dashboard interface. Pass `--resume` to skip already completed user stories and resume execution from the first incomplete story.
 ```bash
 # Run in current directory
@@ -62,31 +112,35 @@ noctifab start /path/to/my-project -i
 noctifab start --resume
 ```
 
-### 4. `resume`
+### 8. `resume`
 Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story.
 ```bash
 # Resume execution in target project folder
 noctifab resume /path/to/my-project
 ```
 
-### 5. `dashboard`
+### 9. `dashboard`
 Launches the interactive real-time Terminal User Interface (TUI) progress dashboard to monitor active story and task orchestrations.
 ```bash
 noctifab dashboard
 ```
 * **Interactive Keyboard Shortcuts**:
-  * `q`: Quit the dashboard (returns an error if active runs exist, otherwise clean exit).
-  * `p`: Prompt to Pause/Resume execution of the active story.
-  * `x`: Prompt to Cancel execution of the active story.
+  * `q`: Quit the dashboard.
+  * `p`: Pause / Resume execution of the active story.
+  * `s`: Inject a mid-flight steering directive to the active worker.
+  * `o` / `n`: Type a new feature prompt order.
+  * `c`: Answer pending disambiguation/clarification questions.
+  * `d`: Open the interactive Log / Failure Inspector.
+  * `x`: Cancel execution of the active story.
 * **CI/CD Non-Interactive Mode**: If stdin is not a terminal, the dashboard automatically falls back to dumping a plain-text status summary to stdout every 5 seconds, auto-exiting when all active stories have finished.
 
-### 6. `stop`
+### 10. `stop`
 Gracefully stops the background daemon process and saves state.
 ```bash
 noctifab stop
 ```
 
-### 7. `clean`
+### 11. `clean`
 Wipes all noctifab state (deletes database, PID, and story/daemon logs).
 
 ```bash
@@ -100,11 +154,41 @@ noctifab clean --dry-run # preview what would be deleted without deleting
 | `--yes` | `-y` | Skip the `Are you sure? [y/N]` prompt |
 | `--dry-run` | | Print what would be removed without deleting anything |
 
-### 8. `maintenance`
+### 12. `maintenance`
 Performs cleanup actions: prunes fully merged task branches from the local directory, cleans orphaned worktrees, and executes state database schema migrations.
 ```bash
 noctifab maintenance
 ```
+
+### 13. `version`
+Displays Noctifab's semantic release version, Git commit hash, and commit date.
+
+```bash
+# Default single-line format
+noctifab version
+# Example: noctifab version 0.36.0 (commit: f85f9fd, date: 2026-08-16T22:38:35+02:00)
+
+# Output raw semantic version string only
+noctifab version --short
+# or: noctifab version -s
+# Example: 0.36.0
+
+# Output structured multi-line details (includes Go runtime & OS/architecture)
+noctifab version --verbose
+# or: noctifab version -v
+
+# Output machine-readable JSON format
+noctifab version --json
+
+# Root flag shortcut
+noctifab --version
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--json` | | `false` | Output version and VCS build metadata in JSON format |
+| `--short` | `-s` | `false` | Output only the raw semantic version string |
+| `--verbose` | `-v` | `false` | Output detailed key-value metadata (version, commit, date, Go runtime, platform) |
 
 ---
 

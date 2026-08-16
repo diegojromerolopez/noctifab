@@ -74,34 +74,41 @@ The autonomy level is controlled by the VCS `pull_request` and `ci` settings in 
 To understand how `noctifab` works as a "dark factory" (an automated software development environment operating without human intervention), it helps to view the system as a **stateful orchestrator** controlling **stateless, role-segregated agent workers**.
 
 ```mermaid
-graph TD
-    Spec["Feature Specification"] -->|Parsed by Planner| DAG["Topological Task DAG"]
-    DAG -->|Read by| Orchestrator["Orchestrator Coordinator"]
-    
-    subgraph Execution Loop
-        Orchestrator -->|Observe| StateDB[("State DB (SQLite/Postgres)")]
-        Orchestrator -->|Decide| Scheduler["Task Scheduler"]
-        Scheduler -->|Dispatch task branch| Worktree["Git Worktree Sandbox"]
-        
-        Worktree -->|1. Verification: Make it Work| GenMinimal["Generator Agent (Minimal Functional Code)"]
+flowchart TD
+    subgraph Inputs ["Input Specifications & Developer Steering"]
+        Spec["SPEC.md / User Stories"] -->|Product Manager| Roadmap["Roadmap & Specs"]
+        Developer["Developer Orders / Prompts"] -->|"noctifab steer / order"| CmdMailbox["Command Mailbox"]
+        TUI["Terminal TUI (noctifab dashboard)"] <-->|Real-Time Telemetry| CmdMailbox
+        WebUI["Web Dashboard (noctifab web)"] <-->|"SSE Live Stream & Prompts"| CmdMailbox
+    end
+
+    Roadmap -->|Planner Agent| DAG["Topological Task DAG"]
+    CmdMailbox -->|Inject Steering Directives| Orchestrator["Stateful Orchestrator"]
+    DAG -->|Task Schedule| Orchestrator
+
+    subgraph FactoryLoop ["Dark Factory Autonomous Execution Loop"]
+        Orchestrator -->|Observe State| StateDB[("State DB (SQLite / Postgres)")]
+        Orchestrator -->|Decide & Dispatch| Worktree["Git Worktree Sandbox"]
+
+        Worktree -->|1. Verification| GenMinimal["Generator Agent (Minimal Functional Code)"]
         GenMinimal -->|Commit| Worktree
-        
+
         Worktree -->|2. Black-Box Tests| TesterWrite["Tester Agent (Behavioral Tests)"]
         TesterWrite -->|Commit| Worktree
-        
-        Worktree -->|3. Validation: Refactor & Harden| GenRefactor["Generator Agent (Refactor & Polish)"]
+
+        Worktree -->|3. Validation| GenRefactor["Generator Agent (Refactor & Polish)"]
         GenRefactor -->|Commit| Worktree
-        
+
         Worktree -->|4. Test Alignment| TesterRefactor["Tester Agent (Align Tests)"]
         TesterRefactor -->|Commit| Worktree
-        
-        Worktree -->|Validate| Val["Test Validator (3x consensus)"]
-        Val -->|Run Test Suite| Worktree
+
+        Worktree -->|Validate Quality Gate| Consensus["3x Consensus Test Validator"]
+        Consensus -->|Run Test Suite| Worktree
     end
-    
-    Val -->|"Success (>= 2/3)"| Merge["Rebase / Auto-Merge to main"]
-    Val -->|Failure| Retry["Increment Retries / Backoff"]
-    
+
+    Consensus -->|"Majority Pass (>= 2/3)"| Merge["Rebase / Auto-Merge PR to main"]
+    Consensus -->|Test Failures| Retry["Incremental Backoff / Unblocker Repair"]
+
     Merge -->|Update State| StateDB
     Retry -->|Update State| StateDB
 ```
@@ -314,14 +321,19 @@ Key features of Interactive Mode:
 
 ## Command Reference
 
-- **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles.
+- **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles. Use `--profile <preset>` (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) for 1-click local LLM configuration.
+- **`demo`**: Runs an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay (supports `--project`, `--offline`, `--speed`, `--no-cleanup`).
+- **`web`**: Launches the real-time visual web dashboard with live topological task DAG, syntax-highlighted code diffs, event stream, and interactive prompt orders (`--port`, `--host`, `--readonly`).
+- **`steer`**: Injects a mid-flight human-in-the-loop steering directive into the active task (`noctifab steer "Use PostgreSQL instead of SQLite"`).
+- **`order`**: Enqueues an ad-hoc user story / feature prompt order into the autonomous execution queue (`noctifab order "Add JWT authentication middleware"`).
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
 - **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Auto-generates user stories in `roadmap/user-stories/` from `SPEC.md` if missing, and executes stories concurrently via the Story DAG Scheduler. Pass `-i` for interactive TUI, `--resume` to skip completed stories.
 - **`resume`**: Resumes execution of an interrupted or partially completed workspace, skipping already completed user stories (`StorySuccess`) and picking up execution at the first incomplete story.
-- **`dashboard`**: Launches the interactive real-time Terminal User Interface (TUI) progress dashboard to monitor active story and task orchestrations.
+- **`dashboard`**: Launches the interactive real-time Terminal User Interface (TUI) progress dashboard with Dark Factory pipeline ribbon, active agent worker cards, and live log ticker.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
 - **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
+- **`version`**: Displays Noctifab release version, Git commit hash, and commit date. Supports `--short` / `-s`, `--verbose` / `-v`, and `--json`. Also accessible via `noctifab --version`.
 
 ---
 

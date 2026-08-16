@@ -413,8 +413,16 @@ The Product Manager Agent executes a multi-pass specification decomposition and 
 ### 6. Black-Box Contract Scenario Prompt Injection
 Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks (`AllowedExecutables`, `ExitCodes`, `StderrPrefixes`, `StdoutContains`) are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
 
-### 7. Standardized Sandbox Path Normalization (`resolveSandboxPath`)
-The sandbox resolution layer cleans, trims whitespace, converts Windows backslashes `\` to `/`, and strips leading `./` prefixes before verifying sandbox boundary jail rules and blacklisted directory policy (`.noctifab`, `.git`).
+### 8. Interactive Command Mailbox & Steering Architecture (`pkg/services/command_channel.go`, `command_channel_steer.go`)
+Noctifab implements an asynchronous `CommandMailbox` channel allowing operators to dynamically steer in-flight agent workers and queue prompt orders while the orchestrator runs:
+- **Thread-Safe Mutation Queueing**: Incoming commands (`SteerCmd`, `OrderCmd`, `PauseCmd`, `ResumeCmd`) from CLI or Web UI are queued and processed sequentially within the daemon's state loop, eliminating SQLite/PostgreSQL write lock contention.
+- **Human-in-the-Loop Directive Injections**: Steering directives are attached directly to target task models (`task.UserDirectives`) and injected into Generator and Tester prompt templates under `[USER HUMAN-IN-THE-LOOP STEERING DIRECTIVES]`.
+- **Zero-Latency Story Enqueueing**: Ad-hoc prompt orders (`noctifab order "..."`) dynamically create markdown specifications in `.noctifab/stories/` and forward them to the story dispatcher channel.
+
+### 9. Embedded Real-Time Web Server & SSE Telemetry (`pkg/interfaces/web/`)
+- **Self-Contained Single Binary**: Embedded web assets (`//go:embed static/*`) compile directly into the single binary with zero external CDN or npm dependencies.
+- **Ring-Buffered Event Replay (`SSEBroadcaster`)**: Keeps a 100-event circular memory buffer to replay missed events upon browser reconnects, accompanied by 15-second keepalive frames.
+- **Mission Control Observability**: Exposes state snapshots (`GET /api/v1/state`), event streams (`GET /api/v1/events`), steering injection (`POST /api/v1/steer`), order creation (`POST /api/v1/orders`), and flow controls (`POST /api/v1/pause`, `POST /api/v1/resume`).
 
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.
 

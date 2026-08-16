@@ -2100,9 +2100,18 @@ To prevent console log clutter and improve developer user experience, the Cobra 
 *   `noctifab init`
     Clones the target VCS repository directly into the Current Working Directory (CWD) and initializes the workspace config directory and database. This command is strictly idempotent:
     *   **Clone Protocol CLI Flag:** Adds a `--vcs-clone-protocol` flag (values: `https`, `ssh`, default: `https`). The command constructs the clone URL dynamically using the VCS provider API (e.g. `https://github.com/owner/repo.git`).
+    *   **1-Click Profile Flag:** Accepts `--profile <preset>` (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) to pre-tune endpoints, token contexts, and stripping parameters.
     *   **Directory Cleanliness Guard:** Prior to execution, the command walks the current directory. If the directory contains files or folders other than `.noctifab` layout assets, the command aborts immediately with process exit code `4` and logs a security warning to `stderr` to prevent accidental codebase overwrites.
     *   If run in a clean directory, it clones the repository, creates the `.noctifab/` configuration directory structure, generates a default `.noctifab/config.yaml` file, and initializes the local SQLite database.
     *   If run in a directory where a repository or `.noctifab` directory already exists, it verifies remote origin configurations and database schemas, preserving existing configuration values or task state without overwriting or corrupting them.
+*   `noctifab demo`
+    Runs an instant 2-minute zero-config autonomous sandbox using deterministic mock replay (`MockDemoLLMClient`). Unpacks embedded project templates into an ephemeral `/tmp/noctifab-demo-*` directory, coordinates the Planner, Generator, and Tester stages with 100% offline consensus passes, and cleans up the sandbox on termination. Supports `--project`, `--offline`, `--speed`, and `--no-cleanup`.
+*   `noctifab web`
+    Launches the embedded real-time visual web dashboard with live topological task DAG rendering, syntax-highlighted code diffs, real-time Server-Sent Events (SSE) telemetry feed, prompt order input bar, and flow pause/resume controls (`--port`, `--host`, `--readonly`).
+*   `noctifab steer`
+    Injects a mid-flight human-in-the-loop steering directive into the active worker goroutine via the daemon Command Mailbox without interrupting the loop (`noctifab steer "Use PostgreSQL instead of SQLite"`).
+*   `noctifab order`
+    Enqueues an ad-hoc user story specification prompt order into the autonomous dark factory execution queue.
 *   `noctifab start`
     Starts the daemonized execution loop, continuously polling and executing actions.
     
@@ -2128,6 +2137,8 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     3. Executes pending database schema migrations. Migrations are tracked in a `schema_migrations` table inside the database. The migrations read embedded SQL scripts using standard `go:embed` inside the binary and run within a single transaction.
     4. Validates the `.noctifab/config.yaml` schema against environment variables and configuration properties.
     This command runs entirely deterministically and does not invoke the LLM, avoiding execution costs.
+*   `noctifab version`
+    Outputs the semantic release version, Git commit hash, and commit date. Supports `--short` (raw semver string), `--verbose` (detailed metadata including compiler and platform), and `--json` (machine-readable JSON format). The root command also responds to `--version` and `-v`.
 
 ### 4.2. CLI Flags & Environment Mappings
 
