@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.7] - 2026-08-16
+
+### Added
+- **Popularity & Viral Growth Feature Proposals**:
+  - Created comprehensive technical implementation blueprint (`POPULARITY_FEATURE_PROPOSALS.md`) covering GitHub Action `@noctifab` PR/issue bot, `noctifab demo` 2-minute sandbox, real-time web dashboard (`noctifab web`), SWE-bench Verified leaderboard evaluation harness, 1-click local LLM profiles (Ollama/vLLM for DeepSeek-R1 and Qwen2.5-Coder), Linear/Jira bidirectional sync, and mid-flight interactive steerability.
+  - Added `POPULARITY_FEATURE_PROPOSALS.md` to root `.gitignore`.
+
 ## [0.34.6] - 2026-08-16
 
 ### Changed
