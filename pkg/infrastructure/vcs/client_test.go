@@ -72,4 +72,52 @@ func TestVCSClient(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+
+	t.Run("github provider fallback when token is empty with mock server", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.Method == "POST" && r.URL.Path == "/repos/owner/repo/pulls" {
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"html_url": "https://github.com/owner/repo/pull/55",
+				})
+				return
+			}
+			if r.Method == "PUT" && r.URL.Path == "/repos/owner/repo/pulls/55/merge" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+
+		client := NewClient("github", "owner/repo", "")
+		client.BaseURL = server.URL
+
+		pr, err := client.CreatePullRequest(context.Background(), "Title", "Body", "feat", "main")
+		if err != nil {
+			t.Fatalf("unexpected error on fallback: %v", err)
+		}
+		if pr == "" {
+			t.Errorf("expected non-empty PR URL")
+		}
+
+		err = client.MergePullRequest(context.Background(), pr)
+		if err != nil {
+			t.Fatalf("unexpected error on merge fallback: %v", err)
+		}
+	})
+
+	t.Run("unsupported provider error", func(t *testing.T) {
+		client := NewClient("unknown_vcs", "owner/repo", "token")
+		_, err := client.CreatePullRequest(context.Background(), "t", "b", "h", "b")
+		if err == nil {
+			t.Errorf("expected error for unsupported provider")
+		}
+
+		err = client.MergePullRequest(context.Background(), "123")
+		if err == nil {
+			t.Errorf("expected error for unsupported provider merge")
+		}
+	})
 }
