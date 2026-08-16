@@ -120,24 +120,40 @@ llm:
 
 ---
 
-## 🚀 5. Running the Dark Factory Agent
+## 🚀 5. Running the Dark Factory Agent & Instant Demo
 
-You can run Noctifab in **Live Interactive TUI Mode** or **Headless Automated Mode**:
+### Option A: Instant 2-Minute Zero-Config Sandbox (`noctifab demo`)
+Test Noctifab immediately without setting up any API keys or creating configuration files:
 
-### Option A: Live Interactive TUI Dashboard Mode (`-i`)
-Launch the interactive dashboard to watch real-time task execution, inspect active worker goroutines, view task DAG progress, and answer clarification prompts on the fly:
+```bash
+noctifab demo
+```
+This runs a 100% offline, deterministic mock simulation of the entire Dark Factory loop with embedded templates and automated cleanup.
+
+### Option B: Real-Time Visual Web Dashboard (`noctifab web`)
+Launch the visual web dashboard to explore the topological task DAG, watch streaming code diffs, and inspect real-time agent event logs:
+
+```bash
+noctifab web
+# Open http://127.0.0.1:8080 in your browser
+```
+
+### Option C: Live Interactive TUI Dashboard Mode (`-i`)
+Launch the terminal dashboard to watch real-time task execution, inspect active worker goroutines, view task DAG progress, and inject mid-flight steering directives:
 
 ```bash
 noctifab start [my-project-dir] -i
 ```
 
 **Interactive Keystrokes**:
-- **`[n]`**: Submit a new order or requirement prompt on the fly.
+- **`[s]`**: Inject a mid-flight steering directive to guide the active worker (e.g. "Use PostgreSQL instead of SQLite").
+- **`[o]` / `[n]`**: Submit a new feature prompt order directly into the execution queue.
 - **`[c]`**: Open interactive modal to resolve agent clarification questions.
 - **`[p]`**: Toggle Pause / Resume.
+- **`[d]`**: Open the Log & Failure Inspector.
 - **`[q]`**: Exit dashboard view (daemon continues running safely in background).
 
-### Option B: Headless Automated Mode (CI / Background Run)
+### Option D: Headless Automated Mode (CI / Background Run)
 For headless server or CI pipeline execution:
 
 ```bash

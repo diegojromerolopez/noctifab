@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Task DAG & Dependency Visualizer**: Added explicit dependency links (`Depends on: [task-1]`), target files, change types (`[FEATURE]`, `[FIX]`, `[REFACTOR]`), failure error excerpts, and active human steering directives (`🎯 Steering: "..."`).
   - **Web Dashboard Mission Control**: Added filter chips (`All`, `Active`, `Failed`, `Done`), tabbed split-pane viewer (syntax-highlighted code diffs vs. live event/tool feed), and interactive keyboard shortcuts (`Ctrl+Enter`, `P`, `S`, `O`).
   - **Web Control Endpoints**: Added `POST /api/v1/pause` and `POST /api/v1/resume` API routes for one-click runtime flow control.
+- **Documentation & Mermaid Architecture Synchronization**:
+  - Updated `README.md`, `SPEC.md`, `docs/cli_usage.md`, `docs/configuration.md`, `docs/getting_started.md`, `docs/index.md`, `docs/llm_providers.md`, and `docs/architecture.md` with complete documentation for `noctifab demo`, `noctifab web`, `noctifab steer`, `noctifab order`, and `--profile` flags.
+  - Updated Mermaid architecture flowchart in `README.md` to illustrate the developer steering loop, web SSE dashboard, and 3x consensus quality gate.
 
 ## [0.35.0] - 2026-08-16
 
