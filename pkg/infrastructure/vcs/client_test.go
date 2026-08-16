@@ -108,6 +108,27 @@ func TestVCSClient(t *testing.T) {
 		}
 	})
 
+	t.Run("github provider REST API failure returns error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message": "Forbidden"}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("github", "invalid/repo", "bad-token")
+		client.BaseURL = server.URL
+
+		_, err := client.CreatePullRequest(context.Background(), "t", "b", "h", "m")
+		if err == nil {
+			t.Fatalf("expected error on REST API 403 failure")
+		}
+
+		err = client.MergePullRequest(context.Background(), "https://github.com/invalid/repo/pull/1")
+		if err == nil {
+			t.Fatalf("expected error on REST API 403 merge failure")
+		}
+	})
+
 	t.Run("unsupported provider error", func(t *testing.T) {
 		client := NewClient("unknown_vcs", "owner/repo", "token")
 		_, err := client.CreatePullRequest(context.Background(), "t", "b", "h", "b")
