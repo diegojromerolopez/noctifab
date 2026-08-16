@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added support for `--short` (raw semantic version string), `--verbose` (multi-line detailed environment & compiler metadata), and `--json` (machine-readable JSON output).
   - Implemented `pkg/version` with automatic 3-tier version and VCS metadata resolution: build-time linker flags (`-ldflags -X`), Go runtime build info (`runtime/debug.ReadBuildInfo()` for Git commit hash, commit timestamp, and dirty working tree status), and embedded semantic version fallback.
   - Updated `Makefile` `build` target with `-ldflags` injection for build artifacts.
+- **OpenAPI 3.1.0 Specification (`openapi.yaml`)**:
+  - Added complete OpenAPI 3.1.0 specification documenting all REST and Server-Sent Events (SSE) endpoints across both the Headless Daemon and Visual Web Dashboard servers.
+  - Synchronized `docs/api.md` with complete endpoint reference, request/response schemas, and health probe documentation.
 
 ### Fixed
 - **OrderCmd Story Path Resolution**: Rooted `storiesDir` in `OrderCmd.Execute` under `state.ProjectPath` instead of process-relative `.noctifab/stories`.

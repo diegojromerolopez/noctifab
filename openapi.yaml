@@ -1,0 +1,684 @@
+openapi: 3.1.0
+info:
+  title: Noctifab Dark Factory API
+  version: "0.36.0"
+  description: |
+    REST and Server-Sent Events (SSE) API specification for Noctifab, an autonomous dark factory agentic harness.
+    
+    Noctifab exposes endpoints via:
+    1. **Headless Daemon REST API** (default: `http://127.0.0.1:18080` via `noctifab start` / `serve`)
+    2. **Real-Time Visual Web Dashboard API** (default: `http://127.0.0.1:8080` via `noctifab web`)
+  license:
+    name: Apache 2.0
+    url: https://github.com/diegojromerolopez/noctifab/blob/main/LICENSE
+servers:
+  - url: http://127.0.0.1:18080
+    description: Headless Orchestrator Daemon Loopback API
+  - url: http://127.0.0.1:8080
+    description: Visual Web Dashboard Server
+
+tags:
+  - name: Dashboard & State
+    description: Real-time system state snapshots and Server-Sent Events (SSE) telemetry streams.
+  - name: Steering & Orders
+    description: Mid-flight human-in-the-loop steering directives and ad-hoc feature prompt orders.
+  - name: Lifecycle & Control
+    description: Orchestration loop controls (pause, resume, cancel) and story queue dispatching.
+  - name: Tasks
+    description: Task DAG inspection and manual task injection.
+  - name: Clarifications
+    description: Disambiguation questions and interactive answer resolution.
+
+paths:
+  /api/v1/state:
+    get:
+      tags:
+        - Dashboard & State
+      summary: Get Full System State Snapshot
+      description: Returns the complete JSON representation of the active system state (stories, topological task DAG, active workers, action logs, and metrics).
+      operationId: getState
+      responses:
+        "200":
+          description: Successful state snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/State"
+        "500":
+          description: Internal database or repository error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: State repository unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/events:
+    get:
+      tags:
+        - Dashboard & State
+      summary: Real-Time Server-Sent Events (SSE) Stream
+      description: |
+        Streams live execution events, timeline updates, tool invocations, and test outcomes via Server-Sent Events (`text/event-stream`).
+        Includes a 100-event circular ring buffer replay upon initial connection.
+      operationId: streamEvents
+      responses:
+        "200":
+          description: Continuous Server-Sent Events stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  id: 1
+                  event: timeline_event
+                  data: {"type":"tool_executed","agent_role":"generator","message":"Wrote file src/main.go"}
+
+  /api/v1/status:
+    get:
+      tags:
+        - Lifecycle & Control
+      summary: List Orchestration Statuses
+      description: Returns high-level execution statuses and cost summaries for active and completed user stories.
+      operationId: listStatuses
+      responses:
+        "200":
+          description: List of story execution status objects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StoryStatusItem"
+
+  /api/v1/stories:
+    post:
+      tags:
+        - Lifecycle & Control
+      summary: Enqueue User Story
+      description: Enqueues a single markdown user story file or a folder path containing user stories to execute.
+      operationId: enqueueStory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnqueueStoryRequest"
+      responses:
+        "202":
+          description: Story successfully queued for execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+        "400":
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/steer:
+    post:
+      tags:
+        - Steering & Orders
+      summary: Inject Mid-Flight Steering Directive
+      description: Injects a human-in-the-loop steering prompt into the target task or active running workers without stopping the execution loop.
+      operationId: steerTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SteerRequest"
+      responses:
+        "202":
+          description: Steering directive accepted and queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+        "400":
+          description: Invalid payload or empty directive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Server is in read-only mode.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/orders:
+    post:
+      tags:
+        - Steering & Orders
+      summary: Submit Ad-Hoc Feature Prompt Order
+      description: Submits a new user requirement or feature prompt order directly into the dark factory execution queue.
+      operationId: submitOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderRequest"
+      responses:
+        "202":
+          description: Prompt order accepted and enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+        "400":
+          description: Invalid payload or empty prompt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Server is in read-only mode.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/pause:
+    post:
+      tags:
+        - Lifecycle & Control
+      summary: Pause Execution Loop
+      description: Temporarily pauses autonomous story and task execution.
+      operationId: pauseExecution
+      responses:
+        "200":
+          description: Execution paused successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+                example:
+                  status: paused
+        "403":
+          description: Server is in read-only mode.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to update state database.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/resume:
+    post:
+      tags:
+        - Lifecycle & Control
+      summary: Resume Execution Loop
+      description: Resumes a paused execution loop.
+      operationId: resumeExecution
+      responses:
+        "200":
+          description: Execution resumed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+                example:
+                  status: resumed
+        "403":
+          description: Server is in read-only mode.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to update state database.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/cancel:
+    post:
+      tags:
+        - Lifecycle & Control
+      summary: Cancel Active Story Execution
+      description: Halts the active story execution, prunes ephemeral worktrees, and releases workspace locks.
+      operationId: cancelExecution
+      responses:
+        "202":
+          description: Cancellation request accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+                example:
+                  status: cancelled
+
+  /healthz:
+    get:
+      tags:
+        - Dashboard & State
+      summary: Liveness Probe
+      description: Returns service liveness health status.
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is healthy and alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+                example:
+                  status: ok
+
+  /readyz:
+    get:
+      tags:
+        - Dashboard & State
+      summary: Readiness Probe
+      description: Returns service readiness status.
+      operationId: getReady
+      responses:
+        "200":
+          description: Service is ready to accept incoming commands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+                example:
+                  status: ready
+
+  /statusz:
+    get:
+      tags:
+        - Dashboard & State
+      summary: Daemon Status & Diagnostic Summary
+      description: Returns a lightweight, stripped system state snapshot suitable for daemon health checks (workspace file tree stripped, recent actions capped).
+      operationId: getStatusz
+      responses:
+        "200":
+          description: Daemon status and stripped state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/State"
+        "500":
+          description: Internal server or state repository error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/tasks:
+    post:
+      tags:
+        - Tasks
+      summary: Insert Custom Manual Task
+      description: Inserts a custom manual task directly into the active scheduling pipeline.
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
+      responses:
+        "202":
+          description: Task successfully inserted into DAG.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/tasks/{id}/override-merge:
+    post:
+      tags:
+        - Tasks
+      summary: Force Override Merge Quality Gate
+      description: Overrides the test validation quality gate for a specific task, allowing its branch to be merged into the base branch.
+      operationId: overrideMergeTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the task.
+          schema:
+            type: string
+            example: "task-171923"
+      responses:
+        "202":
+          description: Override merge command accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+        "400":
+          description: Invalid request path or task ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/clarifications:
+    get:
+      tags:
+        - Clarifications
+      summary: List Pending Clarification Questions
+      description: Retrieves unanswered disambiguation questions raised by Planner and Generator agents.
+      operationId: listClarifications
+      parameters:
+        - name: pending
+          in: query
+          description: Filter by pending status (true/false)
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: List of clarification questions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Clarification"
+
+  /api/v1/clarifications/{id}/resolve:
+    post:
+      tags:
+        - Clarifications
+      summary: Resolve Clarification Question
+      description: Provides an answer to an outstanding clarification question by ID, unblocking the waiting agent.
+      operationId: resolveClarification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the clarification question.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveClarificationRequest"
+      responses:
+        "200":
+          description: Clarification answered successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericStatusResponse"
+                example:
+                  status: resolved
+        "404":
+          description: Clarification question not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    State:
+      type: object
+      properties:
+        project_path:
+          type: string
+          example: "/Users/dev/repos/my-project"
+        story_id:
+          type: string
+          example: "US-001"
+        story_title:
+          type: string
+          example: "User Authentication Middleware"
+        story_status:
+          type: string
+          enum: [pending, running, paused, success, failed, cancelled]
+          example: "running"
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        clarifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Clarification"
+        last_actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Action"
+        active_workers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActiveWorker"
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "task-0"
+        title:
+          type: string
+          example: "Implement JWT signing service"
+        description:
+          type: string
+          example: "Create JWT token generator and validator functions."
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, SUCCESS, FAILED]
+          example: "IN_PROGRESS"
+        depends_on:
+          type: array
+          items:
+            type: string
+          example: []
+        target_files:
+          type: array
+          items:
+            type: string
+          example: ["pkg/auth/jwt.go"]
+        change_type:
+          type: string
+          example: "FEATURE"
+        user_directives:
+          type: array
+          items:
+            type: string
+          example: ["Use HMAC SHA-256 for signing"]
+        retries:
+          type: integer
+          example: 0
+        error:
+          type: string
+          example: ""
+
+    ActiveWorker:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "worker-1"
+        role:
+          type: string
+          enum: [planner, generator, tester, consensus, unblocker]
+          example: "generator"
+        task_id:
+          type: string
+          example: "task-0"
+        status:
+          type: string
+          enum: [WORKING, IDLE]
+          example: "WORKING"
+        current_tool:
+          type: string
+          example: "write_file(pkg/auth/jwt.go)"
+        elapsed_ms:
+          type: integer
+          example: 4520
+
+    Clarification:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "clar-1"
+        question:
+          type: string
+          example: "Which token expiration duration is preferred?"
+        options:
+          type: array
+          items:
+            type: string
+          example: ["15 minutes", "1 hour", "24 hours"]
+        resolved:
+          type: boolean
+          example: false
+        answer:
+          type: string
+          example: ""
+
+    Action:
+      type: object
+      properties:
+        tool:
+          type: string
+          example: "write_file"
+        params:
+          type: object
+        reasoning:
+          type: string
+          example: "Writing JWT token signer implementation"
+        result:
+          type: string
+          example: "File written successfully"
+        success:
+          type: boolean
+          example: true
+        timestamp:
+          type: string
+          format: date-time
+
+    SteerRequest:
+      type: object
+      required:
+        - directive
+      properties:
+        task_id:
+          type: string
+          description: Optional target task ID (defaults to active running task).
+          example: "task-0"
+        directive:
+          type: string
+          description: Human-in-the-loop directive prompt to steer the agent worker.
+          example: "Use PostgreSQL connection pool instead of SQLite"
+
+    OrderRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        prompt:
+          type: string
+          description: Natural language feature requirement or user story prompt order.
+          example: "Add rate limiting middleware with sliding window algorithm"
+
+    CreateTaskRequest:
+      type: object
+      required:
+        - title
+        - description
+      properties:
+        title:
+          type: string
+          example: "Add CORS headers"
+        description:
+          type: string
+          example: "Configure CORS middleware allowing localhost origins."
+        depends_on:
+          type: array
+          items:
+            type: string
+          example: ["task-0"]
+        target_files:
+          type: array
+          items:
+            type: string
+          example: ["pkg/server/cors.go"]
+
+    EnqueueStoryRequest:
+      type: object
+      required:
+        - path
+      properties:
+        path:
+          type: string
+          description: Relative path to user story markdown file or directory.
+          example: "roadmap/user-stories/US-002-cors.md"
+
+    ResolveClarificationRequest:
+      type: object
+      required:
+        - answer
+      properties:
+        answer:
+          type: string
+          description: Chosen answer or free-form resolution text.
+          example: "15 minutes"
+
+    StoryStatusItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "US-001"
+        project_path:
+          type: string
+          example: "/Users/dev/repos/my-project"
+        story_status:
+          type: string
+          example: "running"
+        build_status:
+          type: string
+          example: "success"
+        metadata:
+          type: object
+          properties:
+            feature_name:
+              type: string
+              example: "User Authentication Middleware"
+            total_cost_usd:
+              type: string
+              example: "0.1420"
+
+    GenericStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "accepted"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid payload: directive cannot be empty"
