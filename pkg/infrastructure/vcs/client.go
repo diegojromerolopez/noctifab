@@ -66,7 +66,7 @@ func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch,
 		token := c.resolveToken(ctx)
 		var apiErr error
 
-		if token != "" {
+		if token != "" || c.BaseURL != "" {
 			baseURL := c.BaseURL
 			if baseURL == "" {
 				baseURL = "https://api.github.com"
@@ -82,7 +82,9 @@ func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch,
 
 			req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 			if err == nil {
-				req.Header.Set("Authorization", "Bearer "+token)
+				if token != "" {
+					req.Header.Set("Authorization", "Bearer "+token)
+				}
 				req.Header.Set("Accept", "application/vnd.github+json")
 				req.Header.Set("Content-Type", "application/json")
 
@@ -163,7 +165,7 @@ func (c *Client) MergePullRequest(ctx context.Context, prID string) error {
 		token := c.resolveToken(ctx)
 		var apiErr error
 
-		if token != "" {
+		if token != "" || c.BaseURL != "" {
 			parts := strings.Split(prID, "/")
 			prNumber := parts[len(parts)-1]
 
@@ -179,7 +181,9 @@ func (c *Client) MergePullRequest(ctx context.Context, prID string) error {
 
 			req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(reqBody))
 			if err == nil {
-				req.Header.Set("Authorization", "Bearer "+token)
+				if token != "" {
+					req.Header.Set("Authorization", "Bearer "+token)
+				}
 				req.Header.Set("Accept", "application/vnd.github+json")
 				req.Header.Set("Content-Type", "application/json")
 
