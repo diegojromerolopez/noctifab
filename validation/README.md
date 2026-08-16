@@ -14,6 +14,10 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 8. **`pyedis`**: Checks out the base `main` branch of a native Redis wire-protocol (RESP2/RESP3) key-value store spec and executes `SPEC.md`. Validates that an in-memory key-value store with AOF persistence, injected clock, and TCP RESP protocol is planned and implemented in Python 3.14 with type hints throughout (`mypy --strict`), with `app/main.py` and `pyproject.toml` present and tests passing.
 9. **`notebook`**: Checks out the base `main` branch of a notes REST API spec and executes `SPEC.md`. Validates that a TypeScript (strict) + Fastify service on PostgreSQL is planned and implemented, with `src/index.ts`, `package.json`, and a `docker-compose.yml` e2e harness present and tests passing.
 10. **`stricc`**: Checks out the base `main` branch of a C compiler spec written in Rust and executes `SPEC.md`. Validates that a defined-behavior safe C compiler with an LLVM 18 backend is planned and implemented in safe Rust (`#![deny(unsafe_code)]`), validated against GCC and Clang differential test suites.
+11. **`djanban`**: Checks out the base `main` branch of a legacy Django 5.x Kanban board spec and executes `SPEC.md`. Validates modernization of legacy models, views, and migrations.
+12. **`searchthedocs`**: Checks out the base `main` branch of a documentation scraper and vector search spec and executes `SPEC.md`. Validates async scraping queues and RAG vector search API.
+13. **`auth-vault`**: Checks out the base `main` branch of an OAuth2/OIDC zero-trust authorization server spec and executes `SPEC.md`. Validates PKI vault and zero-trust authentication.
+14. **`buffonstream`**: Checks out the base `main` branch of a Protobuf-native real-time streaming storage engine spec and executes `SPEC.md`. Validates bi-directional gRPC streaming.
 
 ### Project Tiers (effectiveness classification)
 
@@ -23,9 +27,9 @@ time/tokens** — the priority ramp to follow when reading results or running a 
 | Tier | Purpose | Projects |
 | :--- | :--- | :--- |
 | **Tier 0 — Baseline smoke** | Cheapest full-loop proof (init → PM → plan → generate → test → merge). Run first, always: if this stalls, nothing else is worth reading. | `echo` |
-| **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service. The core set. | `t4`, `pyedis`, `notebook` |
+| **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service, legacy Django modernization, zero-trust OAuth2/OIDC PKI, Protobuf real-time CDC streaming. The core set. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream` |
 | **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains and linter discipline (incl. compiler correctness and safety matrix). | `calculator`, `wc`, `fortune`, `stricc` |
-| **Tier 3 — Breadth** | State persistence and distributed/broker seams; heaviest runtime and highest API rate-limit exposure — run last or when targeting those seams specifically. | `todo-cli`, `frontpunch` |
+| **Tier 3 — Breadth** | State persistence and distributed/broker seams; heaviest runtime and highest API rate-limit exposure — run last or when targeting those seams specifically. | `todo-cli`, `frontpunch`, `searchthedocs` |
 
 **Quick triage run:** `echo t4 pyedis notebook` covers the four major seams; add
 Tiers 2–3 when validating depth rather than as the default feedback loop.
@@ -51,7 +55,11 @@ validation/
     ├── t4/{Dockerfile, SPEC.md, .noctifab/}
     ├── pyedis/{Dockerfile, SPEC.md, .noctifab/}
     ├── notebook/{Dockerfile, SPEC.md, .noctifab/}
-    └── stricc/{Dockerfile, SPEC.md, .noctifab/}
+    ├── stricc/{Dockerfile, SPEC.md, .noctifab/}
+    ├── djanban/{Dockerfile, SPEC.md, .noctifab/}
+    ├── searchthedocs/{Dockerfile, SPEC.md, .noctifab/}
+    ├── auth-vault/{Dockerfile, SPEC.md, .noctifab/}
+    └── buffonstream/{Dockerfile, SPEC.md, .noctifab/}
 ```
 
 Each project owns its own `Dockerfile` that layers the language toolchain it
@@ -69,6 +77,10 @@ needs on top of the shared `noctifab-validation:base` image:
 | `pyedis`| `python:3.14-alpine` (+ base)| python3.14, redis, pytest, ruff, mypy | `app/main.py`, `pyproject.toml` |
 | `notebook`   | `node:22-alpine` (+ base)    | node22/npm, typescript, eslint, prettier, vitest, postgresql | `src/index.ts`, `package.json`, `docker-compose.yml` |
 | `stricc`     | `rust:alpine` (+ base)       | rustc, cargo, llvm18, gcc, clang | `Cargo.toml`, `stricc/src/main.rs`, `runtime/src/lib.rs` |
+| `djanban`    | `python:3.12-alpine` (+ base)| python3.12, django5              | `manage.py`, `djanban/settings.py`        |
+| `searchthedocs` | `python:3.12-alpine` (+ base) | python3.12, fastapi, redis      | `app/main.py`                             |
+| `auth-vault` | `golang:1.22-alpine` (+ base)| go                               | `cmd/server/main.go`                      |
+| `buffonstream` | `golang:1.22-alpine` (+ base)| go, protoc                       | `cmd/server/main.go`                      |
 
 The base image (`Dockerfile.validation`) is a multi-stage build: a
 `golang:1.25-alpine` builder compiles the `noctifab` binary, which is then

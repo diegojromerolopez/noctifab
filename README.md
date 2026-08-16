@@ -639,6 +639,9 @@ vcs:
     max_retries: 3       # Max CI fix attempts before giving up
 ```
 
+> [!NOTE]
+> **GitHub CLI (`gh`) Fallback**: If `GITHUB_TOKEN` is missing or fails authentication when creating or merging Pull Requests, `noctifab` automatically falls back to host `gh` CLI credentials (`gh auth token` or direct `gh pr create` / `gh pr merge` execution). If both fail, generated code is safely preserved in the local workspace.
+
 For a full reference of all available settings and CLI flags, see the [SPEC.md](SPEC.md) and [docs/cli_usage.md](docs/cli_usage.md).
 
 ### Dependency Auto-Install
@@ -710,7 +713,6 @@ To optimize validation container runs for near-instantaneous development feedbac
 | **`stricc`** | Rust + LLVM 18 | `SPEC.md` | Safe C compiler with LLVM 18 backend created/modified and test suite passes |
 | **`searchthedocs`** | Python 3.12 + FastAPI + Redis | `SPEC.md` | Documentation scraper + RAG vector search API created and test suite passes |
 | **`auth-vault`** | Go 1.22+ | `SPEC.md` | OAuth2/OIDC Zero-Trust Authorization Server + PKI Vault created and test suite passes |
-| **`sqlasm`** | x86_64 Assembly (NASM) | `SPEC.md` | Pure 64-bit Assembly B-Tree DBMS & SQL-92 engine created and test suite passes |
 | **`buffonstream`** | Go 1.22+ (gRPC / Protobuf) | `SPEC.md` | Protobuf-Native Storage Engine & Real-Time Bi-Directional Streaming passes |
 
 The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
