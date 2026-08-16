@@ -256,7 +256,7 @@ vcs:
 - **`repository`** (String): Remote repository path identifier (e.g. `owner/repo-name`).
 - **`base_branch`** (String): Default integration target branch (e.g. `main` or `master`).
 - **`branch_prefix`** (String): Namespace prefix applied to ephemeral feature task branches (default: `noctifab/`).
-- **`token`** (String): OAuth or Personal Access Token value. Must use `secret:GITHUB_TOKEN` reference syntax.
+- **`token`** (String): OAuth or Personal Access Token value. Must use `secret:GITHUB_TOKEN` reference syntax. If omitted or API authentication fails, `noctifab` automatically falls back to `gh auth token` or executing `gh pr create` / `gh pr merge` directly using host CLI credentials.
 - **`token_env`** (String): Fallback env name to extract token (default: `GITHUB_TOKEN` or `GITLAB_TOKEN`).
 - **`conventional_commits`**:
   - **`enabled`** (Boolean): Commit messages will be formatted following Conventional Commits format when true.

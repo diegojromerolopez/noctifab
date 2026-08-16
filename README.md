@@ -639,6 +639,9 @@ vcs:
     max_retries: 3       # Max CI fix attempts before giving up
 ```
 
+> [!NOTE]
+> **GitHub CLI (`gh`) Fallback**: If `GITHUB_TOKEN` is missing or fails authentication when creating or merging Pull Requests, `noctifab` automatically falls back to host `gh` CLI credentials (`gh auth token` or direct `gh pr create` / `gh pr merge` execution). If both fail, generated code is safely preserved in the local workspace.
+
 For a full reference of all available settings and CLI flags, see the [SPEC.md](SPEC.md) and [docs/cli_usage.md](docs/cli_usage.md).
 
 ### Dependency Auto-Install

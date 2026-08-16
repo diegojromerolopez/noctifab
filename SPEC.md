@@ -1810,10 +1810,11 @@ Once all tasks are done, the orchestrator updates the `CHANGELOG.md` file locate
 #### 3.8.4. Conventional Commits & Pull Request Creation
 *   **Conventional Commit Message:** If conventional commits are enabled in the configuration (`conventional_commits.enabled: true`), the commit messages written by the orchestrator follow the Conventional Commits specification. The message prefix is determined by the task change type (e.g. `feat` for Feature, `fix` for Fix) and applies the configured `default_scope` (e.g. `feat(core): integrate oauth2 login`).
 *   **Remote Push:** The Git wrapper pushes the branch to the remote repository.
-*   **Pull Request Creation:** The VCS client makes a REST/GraphQL call to the remote provider (GitHub/GitLab) to create a Pull Request targeting the configured `base_branch` (which defaults to `master`), providing a detailed description outlining:
+*   **Pull Request Creation & GitHub CLI (`gh`) Fallback:** The VCS client makes a REST API call to the remote provider (GitHub/GitLab) to create a Pull Request targeting the configured `base_branch` (which defaults to `master`), providing a detailed description outlining:
     *   The feature/fix goal.
     *   List of files modified.
     *   A summary of test suite verification outcomes.
+    If `GITHUB_TOKEN` is absent, empty, or encounters API authentication errors, the VCS client automatically falls back to fetching credentials via `gh auth token` or executing `gh pr create` / `gh pr merge` directly using host CLI credentials. If both API calls and host `gh` CLI fail (or if `git push` fails), `noctifab` logs a non-fatal warning and preserves all generated code locally in the workspace.
 
 #### 3.8.5. Workspace Cleanup & Completion Notification
 Once the VCS pull request has been successfully created and the final verification validation criteria pass:

@@ -132,6 +132,15 @@ When `llm.api_key`, `vcs.token`, or `jira.token` are not explicitly defined in `
 
 ---
 
+### GitHub CLI (`gh`) Fallback Mechanism
+
+For GitHub VCS operations (`CreatePullRequest` and `MergePullRequest`), if `GITHUB_TOKEN` is missing, empty, or fails authentication against the GitHub REST API:
+1. `noctifab` attempts to dynamically retrieve an authentication token using `gh auth token`.
+2. If token retrieval is unavailable, `noctifab` invokes the host `gh` CLI directly (`gh pr create` and `gh pr merge`).
+3. If both API calls and `gh` CLI commands fail (or if `git push` fails), `noctifab` logs a non-fatal warning and preserves all generated source code locally in the workspace without breaking execution.
+
+---
+
 If `secrets.yaml` does not exist, noctifab proceeds normally — no error is raised. You can still provide credentials via environment variables:
 
 ```bash

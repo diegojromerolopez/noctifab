@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.5] - 2026-08-16
+
+### Changed
+- **Documentation Synchronization for GitHub API `gh` Fallback**:
+  - Updated `SPEC.md`, `README.md`, `docs/configuration.md`, and `docs/secrets.md` to document the automatic `gh` CLI fallback (`gh auth token` / `gh pr create` / `gh pr merge`) when `GITHUB_TOKEN` is missing or fails authentication.
+  - Documented local code preservation behavior on VCS operation failures.
+
+### Removed
+- **Duplicate `.gitignore` Cleanup**:
+  - Removed duplicate `.noctifab/.gitignore` configuration files from validation projects (`frontpunch`, `stricc`, `todo-cli`, `wc`).
+
 ## [0.34.4] - 2026-08-16
 
 ### Added
