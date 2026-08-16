@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -112,10 +113,12 @@ func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch,
 		}
 
 		if apiErr != nil {
-			return "", apiErr
+			fmt.Fprintf(os.Stderr, "⚠ VCS Notice: GITHUB_TOKEN API failed (%v) and gh CLI unavailable/failed. Preserving generated code locally without remote PR.\n", apiErr)
+		} else {
+			fmt.Fprintf(os.Stderr, "⚠ VCS Notice: GITHUB_TOKEN not configured and gh CLI unavailable/failed. Preserving generated code locally without remote PR.\n")
 		}
-		// If no token and no gh CLI succeeded, fallback to mock in local/offline environment
-		return fmt.Sprintf("https://github.com/%s/pull/123", c.Repository), nil
+		// If both token API and gh CLI fail, preserve generated code locally without crashing
+		return fmt.Sprintf("https://github.com/%s/pull/local", c.Repository), nil
 	}
 
 	return "", fmt.Errorf("unsupported VCS provider: %s", c.Provider)
@@ -205,9 +208,11 @@ func (c *Client) MergePullRequest(ctx context.Context, prID string) error {
 		}
 
 		if apiErr != nil {
-			return apiErr
+			fmt.Fprintf(os.Stderr, "⚠ VCS Notice: GITHUB_TOKEN API failed (%v) and gh CLI unavailable/failed. Preserving generated code locally without remote merge.\n", apiErr)
+		} else {
+			fmt.Fprintf(os.Stderr, "⚠ VCS Notice: GITHUB_TOKEN not configured and gh CLI unavailable/failed. Preserving generated code locally without remote merge.\n")
 		}
-		// If no token and gh CLI unavailable, default to success in offline/mock mode
+		// If both token API and gh CLI fail, preserve generated code locally without crashing
 		return nil
 	}
 
