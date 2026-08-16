@@ -183,3 +183,33 @@ func HandleLogInspectorModal(ctx context.Context, states []*domain.State, fd int
 	_, _ = os.Stdin.Read(buf)
 	return nil
 }
+
+// HandleSteerPrompt allows the developer to type a mid-flight steering directive directly in the dashboard.
+func HandleSteerPrompt(ctx context.Context, client *services.DaemonClient, fd int, oldState *term.State) error {
+	_ = term.Restore(fd, oldState)
+	defer func() { _, _ = term.MakeRaw(fd) }()
+
+	fmt.Print("\r\n\033[1;33m🎯 ENTER STEERING DIRECTIVE FOR ACTIVE TASK:\033[0m\r\n> ")
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read steering input: %w", err)
+	}
+
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		fmt.Print("\r\n\033[1;33m⚠️  No steering directive entered. Returning to dashboard...\033[0m\r\n")
+		time.Sleep(1 * time.Second)
+		return nil
+	}
+
+	if err := client.SendSteerDirective(ctx, "", trimmed); err != nil {
+		fmt.Printf("\r\n\033[1;31m❌ Failed to send steering directive: %v\033[0m\r\n", err)
+		time.Sleep(2 * time.Second)
+		return err
+	}
+
+	fmt.Printf("\r\n\033[1;32m✅ Steering directive injected into active task: %q\033[0m\r\n", trimmed)
+	time.Sleep(2 * time.Second)
+	return nil
+}

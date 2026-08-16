@@ -74,3 +74,19 @@ func TestEnsureWorkspaceInitialized_AlreadyExists(t *testing.T) {
 	// US-001.md must NOT be created when SPEC.md already existed
 	assert.NoFileExists(t, filepath.Join(tmpDir, "roadmap", "US-001.md"))
 }
+
+func TestInitCmd_WithProfile(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "profile_project")
+
+	ProfileFlag = "ollama-qwen"
+	defer func() { ProfileFlag = "" }()
+
+	err := initCmd.RunE(initCmd, []string{targetDir})
+	require.NoError(t, err)
+
+	cfgContent, err := os.ReadFile(filepath.Join(targetDir, ".noctifab", "config.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(cfgContent), "ollama")
+	assert.Contains(t, string(cfgContent), "qwen2.5-coder:32b")
+}

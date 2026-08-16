@@ -40,6 +40,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	if task.RecoveryDirective != "" {
 		promptContext = append(promptContext, fmt.Sprintf("### ⚠️ PREVIOUS ATTEMPT STALL RECOVERY DIRECTIVE\n%s", task.RecoveryDirective))
 	}
+	// Add user human-in-the-loop steering directives
+	if len(task.UserDirectives) > 0 {
+		promptContext = append(promptContext, fmt.Sprintf("### 🎯 [USER HUMAN-IN-THE-LOOP STEERING DIRECTIVES]\n%s", strings.Join(task.UserDirectives, "\n")))
+	}
 	// Add previous failure context and git diff if retrying
 	if task.Retries > 0 {
 		if task.FailureLog != "" {

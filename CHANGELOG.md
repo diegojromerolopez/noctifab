@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.0] - 2026-08-16
+
+### Added
+- **Proposal 2: Instant 2-Minute Zero-Config Sandbox (`noctifab demo`)**:
+  - Implemented `noctifab demo` command with embedded CLI calculator project templates.
+  - Implemented `MockDemoLLMClient` deterministic replay provider for fast, 100% offline, zero-token sandbox execution.
+  - Added POSIX signal trapping (`SIGINT`, `SIGTERM`) for automatic ephemeral directory cleanup.
+- **Proposal 3: Real-Time Visual DAG & Diff Web Dashboard (`noctifab web`)**:
+  - Implemented `noctifab web` command serving an embedded, modern responsive web dashboard.
+  - Implemented thread-safe `SSEBroadcaster` with circular ring-buffered event replay on reconnection.
+  - Added live topological task DAG renderer, split diff viewer, and integrated prompt order / steering input bar.
+- **Proposal 5: 1-Click Local LLM Profiles & DeepSeek Reasoning Parser**:
+  - Added pre-configured profile presets (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) in `pkg/infrastructure/config/profiles.go`.
+  - Added `--profile` flag to `noctifab init`.
+  - Added `<think>...</think>` reasoning tag stripper to `pkg/infrastructure/llm/parser.go` for DeepSeek-R1 / Qwen reasoning models.
+- **Proposal 7: Mid-Flight Interactive Steerability & Developer Prompt Orders**:
+  - Added `noctifab steer` and `noctifab order` CLI commands communicating with daemon `/api/v1/steer` and `/api/v1/orders` endpoints.
+  - Added interactive prompt dialogs in TUI Dashboard: `s`/`S` for mid-flight task steering directives and `o`/`O` for ad-hoc prompt orders.
+  - Injected `task.UserDirectives` into Generator and Tester LLM prompt templates under `[USER HUMAN-IN-THE-LOOP STEERING DIRECTIVES]`.
+  - Implemented thread-safe `SteeringService` and `CommandMailbox` command handlers.
+
 ## [0.34.7] - 2026-08-16
 
 ### Added

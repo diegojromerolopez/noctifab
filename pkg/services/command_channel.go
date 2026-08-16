@@ -375,5 +375,7 @@ func newDaemonMux(repo domain.StateRepository, mailbox *CommandMailbox, storyCh 
 		_, _ = w.Write([]byte(`{"status":"accepted"}`))
 	})
 
+	registerSteerAndOrderRoutes(mux, mailbox, storyCh, llmClient, renderer)
+
 	return mux
 }

@@ -183,11 +183,12 @@ func renderEnhancedDashboard(states []*domain.State) string {
 	if elapsed > 0 {
 		footerExtra = " | Elapsed: " + formatDuration(elapsed)
 	}
-	fmt.Fprintf(&sb, "%sControls: %s[%sq%s] Quit | [%sp%s] Pause/Resume | [%sx%s] Cancel | [%sn%s] New Order/Prompt | [%sc%s] Resolve Clarifications | [%sd%s] Inspect Log/Failures %s| Refreshed: %s%s%s",
+	fmt.Fprintf(&sb, "%sControls: %s[%sq%s] Quit | [%sp%s] Pause/Resume | [%sx%s] Cancel | [%ss%s] Steer | [%sn%s] New Order/Prompt | [%sc%s] Resolve Clarifications | [%sd%s] Inspect Log/Failures %s| Refreshed: %s%s%s",
 		colorBold, colorReset,
 		colorGreen, colorReset,
 		colorYellow, colorReset,
 		colorRed, colorReset,
+		colorYellow, colorReset,
 		colorCyan, colorReset,
 		colorPurple, colorReset,
 		colorCyan, colorReset,

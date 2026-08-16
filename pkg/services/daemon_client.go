@@ -204,6 +204,26 @@ func (c *DaemonClient) CancelStory(ctx context.Context) error {
 	return c.postJSONWithContext(ctx, "/api/v1/cancel", nil)
 }
 
+// SendSteerDirective sends a mid-flight steering directive to the daemon.
+func (c *DaemonClient) SendSteerDirective(ctx context.Context, taskID, directive string) error {
+	_, span := telemetry.Tracer().Start(ctx, "SendSteerDirective",
+		trace.WithAttributes(telemetry.Attr("task_id", taskID)))
+	defer span.End()
+	return c.postJSONWithContext(ctx, "/api/v1/steer", map[string]any{
+		"task_id":   taskID,
+		"directive": directive,
+	})
+}
+
+// SendOrderPrompt sends a prompt order to the daemon to start a new user story.
+func (c *DaemonClient) SendOrderPrompt(ctx context.Context, prompt string) error {
+	_, span := telemetry.Tracer().Start(ctx, "SendOrderPrompt")
+	defer span.End()
+	return c.postJSONWithContext(ctx, "/api/v1/orders", map[string]any{
+		"prompt": prompt,
+	})
+}
+
 // postJSONWithContext is a helper that POSTs a JSON body with a context.
 func (c *DaemonClient) postJSONWithContext(ctx context.Context, path string, payload any) error {
 	var bodyReader io.Reader

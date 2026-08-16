@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Noctifab Dark Factory Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header / Nav -->
+    <header class="header">
+      <div class="header-brand">
+        <span class="logo">🤖🌌</span>
+        <h1>Noctifab <span class="tag">Dark Factory</span></h1>
+      </div>
+      <div class="header-stats">
+        <div class="stat-pill"><span class="stat-label">Status:</span> <span id="story-status" class="badge">RUNNING</span></div>
+        <div class="stat-pill"><span class="stat-label">Tokens:</span> <span id="total-tokens">0</span></div>
+        <div class="stat-pill"><span class="stat-label">Cost:</span> <span id="total-cost">$0.00</span></div>
+        <div class="header-actions">
+          <button id="btn-pause" class="btn btn-secondary">Pause</button>
+          <button id="btn-resume" class="btn btn-primary" style="display:none;">Resume</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="main-grid">
+      <!-- Left Column: DAG & Task Tree -->
+      <section class="card dag-card">
+        <div class="card-header">
+          <h2>Topological Task DAG</h2>
+          <span class="card-subtitle" id="active-story-name">Active Story</span>
+        </div>
+        <div class="card-body">
+          <div id="dag-container" class="dag-container">
+            <div class="empty-state">Waiting for task scheduling graph...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Split Diff & Consensus -->
+      <section class="card diff-card">
+        <div class="card-header">
+          <h2>Live Diff & Consensus Quality Gate</h2>
+          <div id="consensus-badge" class="badge badge-success">Consensus: 3/3 Pass</div>
+        </div>
+        <div class="card-body">
+          <div class="diff-viewer">
+            <pre><code id="diff-content">// Live file modifications will stream here in real-time...</code></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Controls & Prompt Input Bar -->
+    <footer class="footer-control-bar">
+      <form id="order-form" class="order-form">
+        <div class="input-group">
+          <select id="order-type" class="select-order-type">
+            <option value="order">➕ New Order / Feature</option>
+            <option value="steer">🎯 Mid-Flight Steering</option>
+          </select>
+          <input type="text" id="order-input" placeholder="Type a prompt order or mid-flight steering directive..." autocomplete="off" required>
+          <button type="submit" class="btn btn-primary">Send to Engine</button>
+        </div>
+      </form>
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

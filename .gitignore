@@ -46,3 +46,5 @@ go.work.sum
 *_FEEDBACK.md
 VALIDATION_CONTAINERS_REGISTRY.md
 POPULARITY_FEATURE_PROPOSALS.md
+.noctifab/
+**/.noctifab/
