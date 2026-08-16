@@ -140,7 +140,7 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 		if ws.repo != nil {
 			if st, err := ws.repo.Load(r.Context()); err == nil {
 				if b, err := json.Marshal(st); err == nil {
-					fmt.Fprintf(w, "data: %s\n\n", string(b))
+					_, _ = fmt.Fprintf(w, "data: %s\n\n", string(b))
 					flusher.Flush()
 				}
 			}
@@ -155,13 +155,13 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 			case <-r.Context().Done():
 				return
 			case <-ticker.C:
-				fmt.Fprint(w, ":keepalive\n\n")
+				_, _ = fmt.Fprint(w, ":keepalive\n\n")
 				flusher.Flush()
 			case ev, ok := <-ch:
 				if !ok {
 					return
 				}
-				fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", ev.ID, ev.Type, string(ev.Payload))
+				_, _ = fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", ev.ID, ev.Type, string(ev.Payload))
 				flusher.Flush()
 			}
 		}
@@ -246,9 +246,17 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 			return
 		}
 		if ws.repo != nil {
-			if st, err := ws.repo.Load(r.Context()); err == nil && st != nil {
+			st, err := ws.repo.Load(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if st != nil {
 				st.StoryStatus = domain.StoryPaused
-				_ = ws.repo.Save(r.Context(), st)
+				if err := ws.repo.Save(r.Context(), st); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -266,9 +274,17 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 			return
 		}
 		if ws.repo != nil {
-			if st, err := ws.repo.Load(r.Context()); err == nil && st != nil {
+			st, err := ws.repo.Load(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if st != nil {
 				st.StoryStatus = domain.StoryRunning
-				_ = ws.repo.Save(r.Context(), st)
+				if err := ws.repo.Save(r.Context(), st); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")

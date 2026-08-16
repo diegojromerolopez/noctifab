@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented `pkg/version` with automatic 3-tier version and VCS metadata resolution: build-time linker flags (`-ldflags -X`), Go runtime build info (`runtime/debug.ReadBuildInfo()` for Git commit hash, commit timestamp, and dirty working tree status), and embedded semantic version fallback.
   - Updated `Makefile` `build` target with `-ldflags` injection for build artifacts.
 
+### Fixed
+- **OrderCmd Story Path Resolution**: Rooted `storiesDir` in `OrderCmd.Execute` under `state.ProjectPath` instead of process-relative `.noctifab/stories`.
+- **Web Pause/Resume Error Handling**: Propagated database load and save errors in `POST /api/v1/pause` and `POST /api/v1/resume` HTTP handlers, returning HTTP 500 on repository failures.
+- **Static Analysis & Error Checking**: Fixed errcheck on `fmt.Fprintln`/`fmt.Fprintf` in CLI version command and SSE streaming endpoint, and simplified `TrimSuffix` in `demo_service.go`.
+
 ## [0.35.1] - 2026-08-16
 
 ### Changed

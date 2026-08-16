@@ -132,9 +132,7 @@ func (s *DemoService) unpackArchetype(arch DemoArchetype, targetDir string) erro
 			return err
 		}
 		relPath, _ := filepath.Rel(subDir, path)
-		if strings.HasSuffix(relPath, ".tmpl") {
-			relPath = strings.TrimSuffix(relPath, ".tmpl")
-		}
+		relPath = strings.TrimSuffix(relPath, ".tmpl")
 		destPath := filepath.Join(targetDir, relPath)
 		if d.IsDir() {
 			return os.MkdirAll(destPath, 0755)

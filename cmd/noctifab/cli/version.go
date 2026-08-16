@@ -25,21 +25,21 @@ var versionCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), jsonStr)
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), jsonStr)
 			return nil
 		}
 
 		if versionShort {
-			fmt.Fprintln(cmd.OutOrStdout(), info.Short())
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), info.Short())
 			return nil
 		}
 
 		if versionVerbose {
-			fmt.Fprintln(cmd.OutOrStdout(), info.Verbose())
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), info.Verbose())
 			return nil
 		}
 
-		fmt.Fprintln(cmd.OutOrStdout(), info.String())
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), info.String())
 		return nil
 	},
 }

@@ -86,8 +86,18 @@ func (c *OrderCmd) Execute(ctx context.Context, repo domain.StateRepository) err
 		return errors.New("order prompt cannot be empty")
 	}
 
+	state, err := repo.Load(ctx)
+	if err != nil {
+		return err
+	}
+
+	baseDir := state.ProjectPath
+	if baseDir == "" {
+		baseDir = "."
+	}
+
 	// Create story file in .noctifab/stories/
-	storiesDir := ".noctifab/stories"
+	storiesDir := filepath.Join(baseDir, ".noctifab", "stories")
 	if err := os.MkdirAll(storiesDir, 0755); err != nil {
 		return fmt.Errorf("failed to create stories directory: %w", err)
 	}
