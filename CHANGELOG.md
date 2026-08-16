@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.1] - 2026-08-16
+
+### Changed
+- **Comprehensive UI Observability & Developer Experience Improvements**:
+  - **Dark Factory Pipeline Stage Progression Ribbon**: Added dynamic 6-stage lifecycle stepper (`[1. ROADMAP] ➔ [2. PLANNER] ➔ [3. GENERATOR] ➔ [4. TESTER] ➔ [5. CONSENSUS] ➔ [6. PR/MERGE]`) to both the Terminal TUI and Visual Web Dashboard with active phase highlighting.
+  - **Enhanced Active Agent Worker Observability**: Real-time worker cards displaying role, status (`WORKING` / `IDLE`), elapsed runtime, assigned task ID, and current tool invocation context.
+  - **Task DAG & Dependency Visualizer**: Added explicit dependency links (`Depends on: [task-1]`), target files, change types (`[FEATURE]`, `[FIX]`, `[REFACTOR]`), failure error excerpts, and active human steering directives (`🎯 Steering: "..."`).
+  - **Web Dashboard Mission Control**: Added filter chips (`All`, `Active`, `Failed`, `Done`), tabbed split-pane viewer (syntax-highlighted code diffs vs. live event/tool feed), and interactive keyboard shortcuts (`Ctrl+Enter`, `P`, `S`, `O`).
+  - **Web Control Endpoints**: Added `POST /api/v1/pause` and `POST /api/v1/resume` API routes for one-click runtime flow control.
+
 ## [0.35.0] - 2026-08-16
 
 ### Added

@@ -105,4 +105,24 @@ func TestWebServer_Endpoints(t *testing.T) {
 			t.Errorf("expected 202 Accepted, got %d", rec.Code)
 		}
 	})
+
+	t.Run("POST /api/v1/pause pauses story", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/pause", nil)
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rec.Code)
+		}
+	})
+
+	t.Run("POST /api/v1/resume resumes story", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/resume", nil)
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rec.Code)
+		}
+	})
 }

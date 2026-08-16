@@ -235,5 +235,45 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 		_, _ = w.Write([]byte(`{"status":"accepted"}`))
 	})
 
+	// 6. POST /api/v1/pause — Pause execution
+	mux.HandleFunc("/api/v1/pause", func(w http.ResponseWriter, r *http.Request) {
+		if ws.config.ReadOnly {
+			http.Error(w, "server is in read-only mode", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if ws.repo != nil {
+			if st, err := ws.repo.Load(r.Context()); err == nil && st != nil {
+				st.StoryStatus = domain.StoryPaused
+				_ = ws.repo.Save(r.Context(), st)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"paused"}`))
+	})
+
+	// 7. POST /api/v1/resume — Resume execution
+	mux.HandleFunc("/api/v1/resume", func(w http.ResponseWriter, r *http.Request) {
+		if ws.config.ReadOnly {
+			http.Error(w, "server is in read-only mode", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if ws.repo != nil {
+			if st, err := ws.repo.Load(r.Context()); err == nil && st != nil {
+				st.StoryStatus = domain.StoryRunning
+				_ = ws.repo.Save(r.Context(), st)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"resumed"}`))
+	})
+
 	return mux
 }

@@ -3,67 +3,135 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Noctifab Dark Factory Dashboard</title>
+  <title>Noctifab Dark Factory — Live Mission Control</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div class="app-container">
-    <!-- Header / Nav -->
+    <!-- 1. Mission Control Header -->
     <header class="header">
-      <div class="header-brand">
-        <span class="logo">🤖🌌</span>
-        <h1>Noctifab <span class="tag">Dark Factory</span></h1>
+      <div class="header-left">
+        <div class="header-brand">
+          <span class="logo">🤖🌌</span>
+          <div>
+            <h1>Noctifab <span class="tag">Dark Factory</span></h1>
+            <div class="live-status">
+              <span class="pulse-dot"></span>
+              <span id="sse-status">Live Stream Connected</span>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <!-- Pipeline Phase Ribbon -->
+      <nav class="pipeline-stepper" aria-label="Pipeline Stages">
+        <div class="step" id="step-roadmap"><span class="step-num">1</span> Roadmap</div>
+        <div class="step-arrow">➔</div>
+        <div class="step" id="step-planner"><span class="step-num">2</span> Planner DAG</div>
+        <div class="step-arrow">➔</div>
+        <div class="step" id="step-generator"><span class="step-num">3</span> Generator Code</div>
+        <div class="step-arrow">➔</div>
+        <div class="step" id="step-tester"><span class="step-num">4</span> Tester Verify</div>
+        <div class="step-arrow">➔</div>
+        <div class="step" id="step-consensus"><span class="step-num">5</span> Consensus Gate</div>
+        <div class="step-arrow">➔</div>
+        <div class="step" id="step-vcs"><span class="step-num">6</span> Merge / PR</div>
+      </nav>
+
+      <!-- Telemetry Stats & Actions -->
       <div class="header-stats">
-        <div class="stat-pill"><span class="stat-label">Status:</span> <span id="story-status" class="badge">RUNNING</span></div>
+        <div class="stat-pill"><span class="stat-label">Story:</span> <strong id="active-story-name">Default</strong></div>
+        <div class="stat-pill"><span class="stat-label">Status:</span> <span id="story-status" class="badge badge-success">RUNNING</span></div>
+        <div class="stat-pill"><span class="stat-label">Health:</span> <span id="build-health" class="badge badge-success">PASSING</span></div>
         <div class="stat-pill"><span class="stat-label">Tokens:</span> <span id="total-tokens">0</span></div>
         <div class="stat-pill"><span class="stat-label">Cost:</span> <span id="total-cost">$0.00</span></div>
+        <div class="stat-pill"><span class="stat-label">Elapsed:</span> <span id="elapsed-time">00s</span></div>
         <div class="header-actions">
-          <button id="btn-pause" class="btn btn-secondary">Pause</button>
-          <button id="btn-resume" class="btn btn-primary" style="display:none;">Resume</button>
+          <button id="btn-pause" class="btn btn-secondary">⏸ Pause</button>
+          <button id="btn-resume" class="btn btn-primary" style="display:none;">▶ Resume</button>
         </div>
       </div>
     </header>
 
-    <!-- Main Content Grid -->
-    <main class="main-grid">
-      <!-- Left Column: DAG & Task Tree -->
-      <section class="card dag-card">
+    <!-- 2. Active Autonomous Agent Workers Grid -->
+    <section class="agents-section">
+      <div class="section-title-bar">
+        <h3>⚡ Active Autonomous Agent Workers</h3>
+        <span class="active-count" id="active-agents-count">0 active goroutines</span>
+      </div>
+      <div id="agents-grid" class="agents-grid">
+        <div class="empty-agent-state">No agent workers currently active (system idle or awaiting trigger)</div>
+      </div>
+    </section>
+
+    <!-- 3. Main Split Content Area -->
+    <main class="main-split">
+      <!-- Left Column: Topological Task DAG -->
+      <section class="card task-dag-card">
         <div class="card-header">
-          <h2>Topological Task DAG</h2>
-          <span class="card-subtitle" id="active-story-name">Active Story</span>
+          <div class="card-title-group">
+            <h2>Topological Task DAG</h2>
+            <div class="filter-chips">
+              <button class="chip active" data-filter="all">All (<span id="count-all">0</span>)</button>
+              <button class="chip" data-filter="active">Active (<span id="count-active">0</span>)</button>
+              <button class="chip" data-filter="failed">Failed (<span id="count-failed">0</span>)</button>
+              <button class="chip" data-filter="done">Done (<span id="count-done">0</span>)</button>
+            </div>
+          </div>
+          <span class="consensus-badge" id="consensus-summary">Consensus: 3/3 Pass</span>
         </div>
         <div class="card-body">
           <div id="dag-container" class="dag-container">
-            <div class="empty-state">Waiting for task scheduling graph...</div>
+            <div class="empty-state">No tasks scheduled in DAG yet.</div>
           </div>
         </div>
       </section>
 
-      <!-- Right Column: Split Diff & Consensus -->
-      <section class="card diff-card">
-        <div class="card-header">
-          <h2>Live Diff & Consensus Quality Gate</h2>
-          <div id="consensus-badge" class="badge badge-success">Consensus: 3/3 Pass</div>
+      <!-- Right Column: Tabbed Split Viewer (Diff & Live Log Feed) -->
+      <section class="card split-viewer-card">
+        <div class="card-header tab-header">
+          <div class="tabs">
+            <button class="tab-btn active" id="tab-diff-btn">📝 Live Code Diff</button>
+            <button class="tab-btn" id="tab-logs-btn">⚡ Live Event Feed & Actions (<span id="action-count">0</span>)</button>
+          </div>
+          <button id="btn-clear-logs" class="btn-sm btn-ghost">Clear Feed</button>
         </div>
-        <div class="card-body">
-          <div class="diff-viewer">
-            <pre><code id="diff-content">// Live file modifications will stream here in real-time...</code></pre>
+        <div class="card-body tab-body">
+          <!-- Tab 1: Code Diff View -->
+          <div id="view-diff" class="tab-view active">
+            <div class="diff-viewer">
+              <pre><code id="diff-content">// Live file modifications will stream here in real-time...</code></pre>
+            </div>
+          </div>
+
+          <!-- Tab 2: Live Activity & Tool Log Feed -->
+          <div id="view-logs" class="tab-view">
+            <div class="log-stream" id="log-stream">
+              <div class="log-entry system">[00:00:00] Connected to Noctifab Live Telemetry Engine. Ready for directives.</div>
+            </div>
           </div>
         </div>
       </section>
     </main>
 
-    <!-- Bottom Controls & Prompt Input Bar -->
+    <!-- 4. Interactive Developer Control Bar -->
     <footer class="footer-control-bar">
       <form id="order-form" class="order-form">
         <div class="input-group">
           <select id="order-type" class="select-order-type">
-            <option value="order">➕ New Order / Feature</option>
-            <option value="steer">🎯 Mid-Flight Steering</option>
+            <option value="order">➕ New Feature Prompt Order</option>
+            <option value="steer">🎯 Mid-Flight Steering Directive</option>
+            <option value="clarify">💬 Answer Clarification Question</option>
           </select>
-          <input type="text" id="order-input" placeholder="Type a prompt order or mid-flight steering directive..." autocomplete="off" required>
-          <button type="submit" class="btn btn-primary">Send to Engine</button>
+          <input type="text" id="order-input" placeholder="Type prompt order or steering directive (e.g. 'Use PostgreSQL instead of SQLite', 'Add JWT auth middleware')..." autocomplete="off" required>
+          <button type="submit" class="btn btn-primary">🚀 Send to Engine</button>
+        </div>
+        <div class="keyboard-hints">
+          <span>Shortcuts:</span>
+          <kbd>Ctrl+Enter</kbd> Send
+          <kbd>P</kbd> Pause/Resume
+          <kbd>S</kbd> Focus Steer
+          <kbd>O</kbd> Focus Order
         </div>
       </form>
     </footer>
