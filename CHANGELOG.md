@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **OrderCmd Story Path Resolution**: Rooted `storiesDir` in `OrderCmd.Execute` under `state.ProjectPath` instead of process-relative `.noctifab/stories`.
 - **Web Pause/Resume Error Handling**: Propagated database load and save errors in `POST /api/v1/pause` and `POST /api/v1/resume` HTTP handlers, returning HTTP 500 on repository failures.
 - **Static Analysis & Error Checking**: Fixed errcheck on `fmt.Fprintln`/`fmt.Fprintf` in CLI version command and SSE streaming endpoint, and simplified `TrimSuffix` in `demo_service.go`.
+- **Demo Template Embedding (`DemoFS`)**: Renamed embedded archetype source files (`main.go`, `calc_test.go`) to `.tmpl` suffix (`main.go.tmpl`, `calc_test.go.tmpl`) to prevent Go module tooling and `go list` from misidentifying embedded assets as nested modules.
 
 ## [0.35.1] - 2026-08-16
 
