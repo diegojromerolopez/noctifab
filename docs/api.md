@@ -4,7 +4,7 @@ Noctifab exposes local HTTP APIs for headless orchestration, supervisor LLM cont
 1. **Headless Daemon REST API**: default `127.0.0.1:18080` (started via `noctifab start` / `serve`).
 2. **Visual Web Dashboard API**: default `127.0.0.1:8080` (started via `noctifab web`).
 
-> An OpenAPI 3.1.0 specification is available in the repository root at [`openapi.yaml`](file:///Users/diegoj/repos/noctifab/openapi.yaml).
+> An OpenAPI 3.1.0 specification is available at [`api/openapi.yaml`](file:///Users/diegoj/repos/noctifab/api/openapi.yaml).
 
 ---
 
