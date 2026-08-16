@@ -333,6 +333,7 @@ Key features of Interactive Mode:
 - **`stop`**: Gracefully stops the background daemon process and saves state.
 - **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
+- **`version`**: Displays Noctifab release version, Git commit hash, and commit date. Supports `--short` / `-s`, `--verbose` / `-v`, and `--json`. Also accessible via `noctifab --version`.
 
 ---
 

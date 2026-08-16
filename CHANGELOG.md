@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.0] - 2026-08-16
+
+### Added
+- **Version CLI Command & VCS Metadata (`noctifab version` & `noctifab --version`)**:
+  - Implemented `noctifab version` CLI command and wired `RootCmd.Version` for `--version` / `-v` flags.
+  - Added support for `--short` (raw semantic version string), `--verbose` (multi-line detailed environment & compiler metadata), and `--json` (machine-readable JSON output).
+  - Implemented `pkg/version` with automatic 3-tier version and VCS metadata resolution: build-time linker flags (`-ldflags -X`), Go runtime build info (`runtime/debug.ReadBuildInfo()` for Git commit hash, commit timestamp, and dirty working tree status), and embedded semantic version fallback.
+  - Updated `Makefile` `build` target with `-ldflags` injection for build artifacts.
+
 ## [0.35.1] - 2026-08-16
 
 ### Changed
