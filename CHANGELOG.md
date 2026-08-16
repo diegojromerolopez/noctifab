@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.4] - 2026-08-16
+
+### Added
+- **GitHub CLI (`gh`) Fallback & Local Code Preservation for VCS Operations**:
+  - Implemented automatic GitHub CLI (`gh`) fallback in `pkg/infrastructure/vcs/client.go` (`resolveToken`, `createPRViaGHCLI`, `mergePRViaGHCLI`).
+  - When `GITHUB_TOKEN` is missing, empty, or fails authentication during Pull Request creation (`CreatePullRequest`) or merging (`MergePullRequest`), Noctifab dynamically attempts to fetch credentials via `gh auth token` or execute `gh pr create` / `gh pr merge` directly using host CLI credentials.
+  - Ensured that if both `GITHUB_TOKEN` and `gh` CLI fail (or if `git push` fails), Noctifab gracefully logs a non-fatal warning and preserves all generated code in the local workspace without halting execution or throwing fatal errors.
+
 ## [0.34.3] - 2026-08-16
 
 ### Changed

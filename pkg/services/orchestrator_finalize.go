@@ -65,8 +65,7 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	// Push integration branch
 	_, pushErr := o.git.Run(ctx, true, "push", "origin", integrationBranch)
 	if pushErr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ Failed to push integration branch %s: %v\n", integrationBranch, pushErr)
-		return fmt.Errorf("push failed for %s: %w", integrationBranch, pushErr)
+		fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to push integration branch %s to remote (%v). Preserving generated code locally.\n", integrationBranch, pushErr)
 	}
 
 	// Create pull request
@@ -75,8 +74,7 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 		prBody := buildPRBody(state)
 		_, prErr := o.vcsClient.CreatePullRequest(ctx, prTitle, prBody, integrationBranch, baseBranch)
 		if prErr != nil {
-			fmt.Fprintf(os.Stderr, "⚠ Failed to create Pull Request for story %s: %v\n", state.Metadata.FeatureName, prErr)
-			return fmt.Errorf("PR creation failed: %w", prErr)
+			fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to create Pull Request for story %s: %v. Preserving generated code locally.\n", state.Metadata.FeatureName, prErr)
 		}
 	} else {
 		fmt.Printf("Skipping PR creation for story %s (auto_create is false)\n", state.Metadata.FeatureName)

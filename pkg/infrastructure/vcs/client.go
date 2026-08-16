@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -32,6 +33,21 @@ func NewClient(provider, repository, token string) *Client {
 	}
 }
 
+func (c *Client) resolveToken(ctx context.Context) string {
+	if c.Token != "" {
+		return c.Token
+	}
+	// Try fetching token via `gh auth token` if available
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
+	if err == nil {
+		tok := strings.TrimSpace(string(out))
+		if tok != "" {
+			return tok
+		}
+	}
+	return ""
+}
+
 func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch, baseBranch string) (string, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "CreatePullRequest",
 		trace.WithAttributes(
@@ -42,56 +58,95 @@ func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch,
 		))
 	defer span.End()
 
-	if c.Provider == "mock" || c.Token == "test-token" || c.Token == "" {
-		// Mock implementation for test runners/offline validation
+	if c.Provider == "mock" || c.Token == "test-token" {
 		return fmt.Sprintf("https://github.com/%s/pull/123", c.Repository), nil
 	}
 
 	if c.Provider == "github" {
-		baseURL := c.BaseURL
-		if baseURL == "" {
-			baseURL = "https://api.github.com"
-		}
-		url := fmt.Sprintf("%s/repos/%s/pulls", baseURL, c.Repository)
-		payload := map[string]string{
-			"title": title,
-			"body":  body,
-			"head":  headBranch,
-			"base":  baseBranch,
-		}
-		reqBody, _ := json.Marshal(payload)
+		token := c.resolveToken(ctx)
+		var apiErr error
 
-		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
-		if err != nil {
-			return "", err
+		if token != "" || c.BaseURL != "" {
+			baseURL := c.BaseURL
+			if baseURL == "" {
+				baseURL = "https://api.github.com"
+			}
+			url := fmt.Sprintf("%s/repos/%s/pulls", baseURL, c.Repository)
+			payload := map[string]string{
+				"title": title,
+				"body":  body,
+				"head":  headBranch,
+				"base":  baseBranch,
+			}
+			reqBody, _ := json.Marshal(payload)
+
+			req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
+			if err == nil {
+				if token != "" {
+					req.Header.Set("Authorization", "Bearer "+token)
+				}
+				req.Header.Set("Accept", "application/vnd.github+json")
+				req.Header.Set("Content-Type", "application/json")
+
+				httpClient := &http.Client{}
+				resp, err := httpClient.Do(req)
+				if err == nil {
+					defer func() { _ = resp.Body.Close() }()
+					respBody, _ := io.ReadAll(resp.Body)
+					if resp.StatusCode == http.StatusCreated {
+						var result map[string]any
+						if err := json.Unmarshal(respBody, &result); err == nil {
+							if htmlURL, ok := result["html_url"].(string); ok && htmlURL != "" {
+								return htmlURL, nil
+							}
+						}
+					}
+					apiErr = fmt.Errorf("GitHub PR creation status %d: %s", resp.StatusCode, string(respBody))
+				} else {
+					apiErr = err
+				}
+			}
 		}
 
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("Content-Type", "application/json")
-
-		httpClient := &http.Client{}
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer func() { _ = resp.Body.Close() }()
-
-		respBody, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != http.StatusCreated {
-			return "", fmt.Errorf("GitHub PR creation status %d: %s", resp.StatusCode, string(respBody))
+		// Fallback to gh CLI tool if HTTP API failed or token was absent
+		if ghPR, ghErr := c.createPRViaGHCLI(ctx, title, body, headBranch, baseBranch); ghErr == nil {
+			return ghPR, nil
 		}
 
-		var result map[string]any
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return "", err
+		if apiErr != nil {
+			return "", apiErr
 		}
-
-		htmlURL, _ := result["html_url"].(string)
-		return htmlURL, nil
+		return "", fmt.Errorf("no GITHUB_TOKEN and gh CLI unavailable; cannot create PR for %s", c.Repository)
 	}
 
 	return "", fmt.Errorf("unsupported VCS provider: %s", c.Provider)
+}
+
+func (c *Client) createPRViaGHCLI(ctx context.Context, title, body, headBranch, baseBranch string) (string, error) {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return "", err
+	}
+	args := []string{
+		"pr", "create",
+		"--repo", c.Repository,
+		"--title", title,
+		"--body", body,
+		"--head", headBranch,
+		"--base", baseBranch,
+	}
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("gh pr create failed: %w", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) > 0 {
+		lastLine := strings.TrimSpace(lines[len(lines)-1])
+		if strings.HasPrefix(lastLine, "http") {
+			return lastLine, nil
+		}
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func (c *Client) MergePullRequest(ctx context.Context, prID string) error {
@@ -102,48 +157,88 @@ func (c *Client) MergePullRequest(ctx context.Context, prID string) error {
 		))
 	defer span.End()
 
-	if c.Provider == "mock" || c.Token == "test-token" || c.Token == "" {
+	if c.Provider == "mock" || c.Token == "test-token" {
 		return nil
 	}
 
 	if c.Provider == "github" {
-		// Extract PR number from ID or URL (e.g., https://github.com/owner/repo/pull/123)
-		parts := strings.Split(prID, "/")
-		prNumber := parts[len(parts)-1]
+		token := c.resolveToken(ctx)
+		var apiErr error
 
-		baseURL := c.BaseURL
-		if baseURL == "" {
-			baseURL = "https://api.github.com"
+		if token != "" || c.BaseURL != "" {
+			parts := strings.Split(prID, "/")
+			prNumber := parts[len(parts)-1]
+
+			baseURL := c.BaseURL
+			if baseURL == "" {
+				baseURL = "https://api.github.com"
+			}
+			url := fmt.Sprintf("%s/repos/%s/pulls/%s/merge", baseURL, c.Repository, prNumber)
+			payload := map[string]string{
+				"merge_method": "rebase",
+			}
+			reqBody, _ := json.Marshal(payload)
+
+			req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(reqBody))
+			if err == nil {
+				if token != "" {
+					req.Header.Set("Authorization", "Bearer "+token)
+				}
+				req.Header.Set("Accept", "application/vnd.github+json")
+				req.Header.Set("Content-Type", "application/json")
+
+				httpClient := &http.Client{}
+				resp, err := httpClient.Do(req)
+				if err == nil {
+					defer func() { _ = resp.Body.Close() }()
+					respBody, _ := io.ReadAll(resp.Body)
+					if resp.StatusCode == http.StatusOK {
+						return nil
+					}
+					apiErr = fmt.Errorf("GitHub PR merge status %d: %s", resp.StatusCode, string(respBody))
+				} else {
+					apiErr = err
+				}
+			}
 		}
-		url := fmt.Sprintf("%s/repos/%s/pulls/%s/merge", baseURL, c.Repository, prNumber)
-		payload := map[string]string{
-			"merge_method": "rebase",
-		}
-		reqBody, _ := json.Marshal(payload)
 
-		req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(reqBody))
-		if err != nil {
-			return err
+		// Fallback to gh CLI tool
+		if ghErr := c.mergePRViaGHCLI(ctx, prID); ghErr == nil {
+			return nil
 		}
 
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("Content-Type", "application/json")
-
-		httpClient := &http.Client{}
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			return err
+		if apiErr != nil {
+			return apiErr
 		}
-		defer func() { _ = resp.Body.Close() }()
-
-		respBody, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("GitHub PR merge status %d: %s", resp.StatusCode, string(respBody))
-		}
-
-		return nil
+		return fmt.Errorf("no GITHUB_TOKEN and gh CLI unavailable; cannot merge PR %s for %s", prID, c.Repository)
 	}
 
 	return fmt.Errorf("unsupported VCS provider: %s", c.Provider)
+}
+
+func (c *Client) mergePRViaGHCLI(ctx context.Context, prID string) error {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return err
+	}
+	parts := strings.Split(prID, "/")
+	prNumber := parts[len(parts)-1]
+
+	args := []string{
+		"pr", "merge", prNumber,
+		"--repo", c.Repository,
+		"--rebase",
+		"--auto",
+	}
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		argsNoAuto := []string{
+			"pr", "merge", prNumber,
+			"--repo", c.Repository,
+			"--rebase",
+		}
+		if _, err2 := exec.CommandContext(ctx, "gh", argsNoAuto...).CombinedOutput(); err2 != nil {
+			return fmt.Errorf("gh pr merge failed: %s: %w", string(out), err)
+		}
+	}
+	return nil
 }
