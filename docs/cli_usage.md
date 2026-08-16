@@ -160,6 +160,36 @@ Performs cleanup actions: prunes fully merged task branches from the local direc
 noctifab maintenance
 ```
 
+### 13. `version`
+Displays Noctifab's semantic release version, Git commit hash, and commit date.
+
+```bash
+# Default single-line format
+noctifab version
+# Example: noctifab version 0.36.0 (commit: f85f9fd, date: 2026-08-16T22:38:35+02:00)
+
+# Output raw semantic version string only
+noctifab version --short
+# or: noctifab version -s
+# Example: 0.36.0
+
+# Output structured multi-line details (includes Go runtime & OS/architecture)
+noctifab version --verbose
+# or: noctifab version -v
+
+# Output machine-readable JSON format
+noctifab version --json
+
+# Root flag shortcut
+noctifab --version
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--json` | | `false` | Output version and VCS build metadata in JSON format |
+| `--short` | `-s` | `false` | Output only the raw semantic version string |
+| `--verbose` | `-v` | `false` | Output detailed key-value metadata (version, commit, date, Go runtime, platform) |
+
 ---
 
 ## Pre-flight Checks

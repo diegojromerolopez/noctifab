@@ -2137,6 +2137,8 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     3. Executes pending database schema migrations. Migrations are tracked in a `schema_migrations` table inside the database. The migrations read embedded SQL scripts using standard `go:embed` inside the binary and run within a single transaction.
     4. Validates the `.noctifab/config.yaml` schema against environment variables and configuration properties.
     This command runs entirely deterministically and does not invoke the LLM, avoiding execution costs.
+*   `noctifab version`
+    Outputs the semantic release version, Git commit hash, and commit date. Supports `--short` (raw semver string), `--verbose` (detailed metadata including compiler and platform), and `--json` (machine-readable JSON format). The root command also responds to `--version` and `-v`.
 
 ### 4.2. CLI Flags & Environment Mappings
 
