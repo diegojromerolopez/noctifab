@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.0] - 2026-08-17
+
+### Added
+- **`jpacioli` Java + Spring Boot Validation Project (`validation/projects/jpacioli/`)**:
+  - Added enterprise double-entry financial accounting ledger and transaction engine validation project.
+  - Implemented with Java 21, Spring Boot 3.3+, Domain-Driven Design (DDD), and Event-Driven Architecture (EDA with Transactional Outbox pattern) backed by PostgreSQL.
+  - Implemented Stateless JWT Bearer Authentication and fine-grained Role-Based Access Control (RBAC) permissions (`ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_AUDITOR`, `ROLE_OPERATOR` with `accounts:*`, `transactions:*`, and `outbox:*` authority scopes).
+  - Prioritized DeepSeek LLM (`deepseek-pro` and `deepseek`) at the top tier for code generators and testers in `.noctifab/config.yaml`.
+  - Added `eclipse-temurin:21-jdk-alpine` multi-toolchain Dockerfile and comprehensive `SPEC.md`.
+  - Updated validation matrix and documentation in `validation/projects/TESTING_GUIDE.md`.
+
 ## [0.38.0] - 2026-08-17
 
 ### Added

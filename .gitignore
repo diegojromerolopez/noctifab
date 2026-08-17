@@ -49,3 +49,4 @@ POPULARITY_FEATURE_PROPOSALS.md
 MAXIMUM_AUTONOMY_PLAN.md
 .noctifab/
 **/.noctifab/
+!/validation/projects/*/.noctifab/config.yaml
