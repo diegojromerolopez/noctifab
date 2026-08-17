@@ -59,13 +59,13 @@ func TestLoad_NilCommand(t *testing.T) {
 
 func TestLoad_BadValues(t *testing.T) {
 	// Bad boolean env
-	_ = os.Setenv("NOCTIFAB_AUTO_COMMIT", "invalid-bool")
+	_ = os.Setenv("NOCTIFAB_PR_AUTO_CREATE", "invalid-bool")
 	cfg := &Config{}
 	applyEnvOverrides(cfg)
-	if cfg.AutoCommit {
-		t.Error("expected AutoCommit to remain false on invalid env value")
+	if cfg.VCS.PullRequest.AutoCreate {
+		t.Error("expected PullRequest.AutoCreate to remain false on invalid env value")
 	}
-	_ = os.Unsetenv("NOCTIFAB_AUTO_COMMIT")
+	_ = os.Unsetenv("NOCTIFAB_PR_AUTO_CREATE")
 
 	// Bad int env
 	_ = os.Setenv("NOCTIFAB_AGENTS_COUNT", "invalid-int")
@@ -89,7 +89,7 @@ func TestLoad_BadValues(t *testing.T) {
 	_ = os.Setenv("NOCTIFAB_OCC_BACKOFF_FACTOR", "invalid-float")
 	cfg = &Config{}
 	applyEnvOverrides(cfg)
-	if cfg.OCCBackoffFactor != 0.0 {
+	if cfg.Storage.OCC.BackoffFactor != 0.0 {
 		t.Error("expected OCCBackoffFactor to remain 0.0 on invalid env value")
 	}
 	_ = os.Unsetenv("NOCTIFAB_OCC_BACKOFF_FACTOR")
@@ -97,12 +97,12 @@ func TestLoad_BadValues(t *testing.T) {
 
 func TestLoad_BadFlags(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
-	cmd.Flags().String("auto-commit", "", "")
+	cmd.Flags().String("pr-auto-create", "", "")
 	cmd.Flags().String("agents", "", "")
 	cmd.Flags().String("interval", "", "")
 	cmd.Flags().String("occ-backoff-factor", "", "")
 
-	_ = cmd.Flags().Set("auto-commit", "invalid-bool")
+	_ = cmd.Flags().Set("pr-auto-create", "invalid-bool")
 	_ = cmd.Flags().Set("agents", "invalid-int")
 	_ = cmd.Flags().Set("interval", "invalid-duration")
 	_ = cmd.Flags().Set("occ-backoff-factor", "invalid-float")
@@ -110,8 +110,8 @@ func TestLoad_BadFlags(t *testing.T) {
 	cfg := &Config{}
 	applyFlagOverrides(cfg, cmd)
 
-	if cfg.AutoCommit {
-		t.Error("expected AutoCommit to remain false on invalid flag value")
+	if cfg.VCS.PullRequest.AutoCreate {
+		t.Error("expected PullRequest.AutoCreate to remain false on invalid flag value")
 	}
 	if cfg.Agents.Generators.Number != 0 {
 		t.Error("expected Concurrency to remain 0 on invalid flag value")
@@ -119,7 +119,7 @@ func TestLoad_BadFlags(t *testing.T) {
 	if time.Duration(cfg.PollInterval) != 0 {
 		t.Error("expected PollInterval to remain 0 on invalid flag value")
 	}
-	if cfg.OCCBackoffFactor != 0.0 {
+	if cfg.Storage.OCC.BackoffFactor != 0.0 {
 		t.Error("expected OCCBackoffFactor to remain 0.0 on invalid flag value")
 	}
 }

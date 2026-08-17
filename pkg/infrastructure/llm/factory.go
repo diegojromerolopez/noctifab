@@ -56,7 +56,7 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 		}
 		maxLimit := cfg.LLM.Failover.MaxCallLimit
 
-		return NewFailoverClient(backends, cooldown, maxLimit, budgetStore, cfg.TokenUsageLimit)
+		return NewFailoverClient(backends, cooldown, maxLimit, budgetStore, cfg.LLM.TokenUsageLimit)
 	}
 
 	// 2. Fall back to the legacy config.LLM failover if enabled
@@ -88,7 +88,7 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 				Client: client,
 			})
 		}
-		return NewFailoverClient(backends, time.Duration(cfg.LLM.Failover.Cooldown), cfg.LLM.Failover.MaxCallLimit, budgetStore, cfg.TokenUsageLimit)
+		return NewFailoverClient(backends, time.Duration(cfg.LLM.Failover.Cooldown), cfg.LLM.Failover.MaxCallLimit, budgetStore, cfg.LLM.TokenUsageLimit)
 	}
 
 	client := NewClient(

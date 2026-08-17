@@ -103,7 +103,7 @@ func TestRouterCooldownOnlyOnTransientErrors(t *testing.T) {
 func TestRouterTokenAccounting(t *testing.T) {
 	t.Run("when a completion succeeds it records estimated tokens instead of a call count", func(t *testing.T) {
 		store := newMockBudgetStore()
-		router := NewResilientLLMRouter(&config.Config{TokenUsageLimit: 1_000_000}, store)
+		router := NewResilientLLMRouter(&config.Config{LLM: config.LLMConfig{TokenUsageLimit: 1_000_000}}, store)
 		ok := &mockLLMClient{completeFn: func(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
 			return &domain.LLMResponse{Reasoning: "some reasoning output from the model"}, nil
 		}}

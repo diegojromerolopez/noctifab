@@ -31,7 +31,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	targetPath := cfg.Input
+	targetPath := cfg.Runtime.SpecSource
 	if targetPath == "" && len(args) > 0 {
 		targetPath = args[0]
 	}
@@ -281,10 +281,11 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		MaxRetries:           10,
 		Concurrency:          effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
 		UseWorktrees:         cfg.VCS.UseWorktrees,
-		OCCMaxRetries:        cfg.OCCMaxRetries,
-		OCCBackoffBase:       time.Duration(cfg.OCCBackoffBase),
-		OCCBackoffFactor:     cfg.OCCBackoffFactor,
-		MaxDuration:          time.Duration(cfg.MaxDuration),
+		OCCMaxRetries:        cfg.Storage.OCC.MaxRetries,
+		OCCBackoffBase:       time.Duration(cfg.Storage.OCC.BackoffBase),
+		OCCBackoffFactor:     cfg.Storage.OCC.BackoffFactor,
+		MaxDuration:          time.Duration(cfg.Runtime.MaxDuration),
+		MaxActions:           cfg.Runtime.MaxActions,
 		AutoCreatePR:         cfg.VCS.PullRequest.AutoCreate,
 		ExcludePaths:         cfg.Sandbox.ExcludePaths,
 		WorkspaceCache:       cfg.GetWorkspaceCache(),

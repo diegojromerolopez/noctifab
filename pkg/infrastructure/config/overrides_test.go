@@ -59,12 +59,7 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_MAX_TOOLS_PER_RESPONSE": "6",
 		"NOCTIFAB_MAX_ACTIONS":            "150",
 		"NOCTIFAB_MAX_DURATION":           "3h",
-		"NOCTIFAB_CONVERSATION_MODE":      "sliding-env",
-		"NOCTIFAB_MAX_HISTORY_MESSAGES":   "25",
-		"NOCTIFAB_COMPACTION_THRESHOLD":   "35",
-		"NOCTIFAB_MAX_HISTORY_TOKENS":     "9999",
 		"NOCTIFAB_SANDBOX_MODE":           "docker",
-		"NOCTIFAB_SHUTDOWN_GRACE_PERIOD":  "45s",
 		"NOCTIFAB_OCC_MAX_RETRIES":        "12",
 		"NOCTIFAB_OCC_BACKOFF_BASE":       "99ms",
 		"NOCTIFAB_OCC_BACKOFF_FACTOR":     "3.14",
@@ -77,8 +72,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_PR_DRAFT":               "true",
 		"NOCTIFAB_PR_ASSIGNEES":           "user1, user2",
 		"NOCTIFAB_PR_LABELS":              "auto,bot",
-		"NOCTIFAB_CI_AUTO_FIX":            "true",
-		"NOCTIFAB_CI_MAX_RETRIES":         "5",
 	}
 
 	for k, v := range envVars {
@@ -89,20 +82,19 @@ func TestLoad_AndOverrides(t *testing.T) {
 	// Prepare mock cmd with ALL flags
 	cmd := &cobra.Command{Use: "test"}
 	flags := []string{
-		"config", "db-path", "storage-provider", "storage-conn", "input", "auto-commit",
+		"config", "db-path", "storage-provider", "storage-conn", "input",
 		"agents", "interval", "vcs-provider", "vcs-repo", "llm-provider",
 		"llm-model", "llm-url", "llm-planner-model", "llm-generator-model",
 		"llm-tester-model", "jira-user", "jira-url", "http-max-retries",
-		"http-retry-backoff", "max-tools-per-response", "max-actions", "max-duration",
-		"conversation-mode", "max-history-messages", "compaction-threshold",
-		"max-history-tokens", "sandbox-mode", "shutdown-grace-period", "occ-max-retries",
+		"http-retry-backoff", "max-actions", "max-duration",
+		"sandbox-mode", "occ-max-retries",
 		"occ-backoff-base", "occ-backoff-factor", "max-budget-usd", "token-usage-limit",
 		"log-level", "log-file", "pr-auto-create", "pr-auto-merge", "pr-auto-rebase",
-		"pr-draft", "pr-assignees", "pr-labels", "ci-auto-fix", "ci-max-retries",
+		"pr-draft", "pr-assignees", "pr-labels",
 	}
 	for _, f := range flags {
 		switch f {
-		case "auto-commit", "pr-auto-create", "pr-auto-merge", "pr-auto-rebase", "pr-draft", "ci-auto-fix":
+		case "pr-auto-create", "pr-auto-merge", "pr-auto-rebase", "pr-draft":
 			cmd.Flags().Bool(f, false, "")
 		default:
 			cmd.Flags().String(f, "", "")
@@ -121,11 +113,8 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if cfg.Storage.Provider != "sqlite" {
 		t.Errorf("expected sqlite, got %s", cfg.Storage.Provider)
 	}
-	if cfg.Input != "input-env" {
-		t.Errorf("expected input-env, got %s", cfg.Input)
-	}
-	if !cfg.AutoCommit {
-		t.Error("expected auto commit true")
+	if cfg.Runtime.SpecSource != "input-env" {
+		t.Errorf("expected input-env, got %s", cfg.Runtime.SpecSource)
 	}
 	if cfg.Agents.Generators.Number != 9 {
 		t.Errorf("expected concurrency 9, got %d", cfg.Agents.Generators.Number)
@@ -178,50 +167,32 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if time.Duration(cfg.LLM.RetryBackoff) != 150*time.Millisecond {
 		t.Errorf("expected 150ms, got %v", time.Duration(cfg.LLM.RetryBackoff))
 	}
-	if cfg.Agents.MaxToolsPerResponse != 6 {
-		t.Errorf("expected 6, got %d", cfg.Agents.MaxToolsPerResponse)
+	if cfg.Runtime.MaxActions != 150 {
+		t.Errorf("expected 150, got %d", cfg.Runtime.MaxActions)
 	}
-	if cfg.MaxActions != 150 {
-		t.Errorf("expected 150, got %d", cfg.MaxActions)
-	}
-	if time.Duration(cfg.MaxDuration) != 3*time.Hour {
-		t.Errorf("expected 3h, got %v", time.Duration(cfg.MaxDuration))
-	}
-	if cfg.ConversationMode != "sliding-env" {
-		t.Errorf("expected sliding-env, got %s", cfg.ConversationMode)
-	}
-	if cfg.MaxHistoryMessages != 25 {
-		t.Errorf("expected 25, got %d", cfg.MaxHistoryMessages)
-	}
-	if cfg.CompactionThreshold != 35 {
-		t.Errorf("expected 35, got %d", cfg.CompactionThreshold)
-	}
-	if cfg.MaxHistoryTokens != 9999 {
-		t.Errorf("expected 9999, got %d", cfg.MaxHistoryTokens)
+	if time.Duration(cfg.Runtime.MaxDuration) != 3*time.Hour {
+		t.Errorf("expected 3h, got %v", time.Duration(cfg.Runtime.MaxDuration))
 	}
 	if cfg.Sandbox.Mode != "docker" {
 		t.Errorf("expected docker, got %s", cfg.Sandbox.Mode)
 	}
-	if time.Duration(cfg.ShutdownGracePeriod) != 45*time.Second {
-		t.Errorf("expected 45s, got %v", time.Duration(cfg.ShutdownGracePeriod))
+	if cfg.Storage.OCC.MaxRetries != 12 {
+		t.Errorf("expected 12, got %d", cfg.Storage.OCC.MaxRetries)
 	}
-	if cfg.OCCMaxRetries != 12 {
-		t.Errorf("expected 12, got %d", cfg.OCCMaxRetries)
+	if time.Duration(cfg.Storage.OCC.BackoffBase) != 99*time.Millisecond {
+		t.Errorf("expected 99ms, got %v", time.Duration(cfg.Storage.OCC.BackoffBase))
 	}
-	if time.Duration(cfg.OCCBackoffBase) != 99*time.Millisecond {
-		t.Errorf("expected 99ms, got %v", time.Duration(cfg.OCCBackoffBase))
+	if cfg.Storage.OCC.BackoffFactor != 3.14 {
+		t.Errorf("expected 3.14, got %f", cfg.Storage.OCC.BackoffFactor)
 	}
-	if cfg.OCCBackoffFactor != 3.14 {
-		t.Errorf("expected 3.14, got %f", cfg.OCCBackoffFactor)
+	if cfg.LLM.TokenUsageLimit != 8888 {
+		t.Errorf("expected 8888, got %d", cfg.LLM.TokenUsageLimit)
 	}
-	if cfg.TokenUsageLimit != 8888 {
-		t.Errorf("expected 8888, got %d", cfg.TokenUsageLimit)
+	if cfg.Logging.Level != "debug" {
+		t.Errorf("expected debug, got %s", cfg.Logging.Level)
 	}
-	if cfg.LogLevel != "debug" {
-		t.Errorf("expected debug, got %s", cfg.LogLevel)
-	}
-	if cfg.LogFile != "log-file-env" {
-		t.Errorf("expected log-file-env, got %s", cfg.LogFile)
+	if cfg.Logging.File != "log-file-env" {
+		t.Errorf("expected log-file-env, got %s", cfg.Logging.File)
 	}
 	if !cfg.VCS.PullRequest.AutoCreate {
 		t.Error("expected pr-auto-create true")
@@ -241,19 +212,12 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if len(cfg.VCS.PullRequest.Labels) != 2 || cfg.VCS.PullRequest.Labels[0] != "auto" {
 		t.Errorf("expected [auto bot], got %v", cfg.VCS.PullRequest.Labels)
 	}
-	if !cfg.VCS.CI.AutoFix {
-		t.Error("expected ci-auto-fix true")
-	}
-	if cfg.VCS.CI.MaxRetries != 5 {
-		t.Errorf("expected ci-max-retries 5, got %d", cfg.VCS.CI.MaxRetries)
-	}
 
 	// Override with CLI flags
 	_ = cmd.Flags().Set("db-path", "db-path-flag")
 	_ = cmd.Flags().Set("storage-provider", "postgres")
 	_ = cmd.Flags().Set("storage-conn", "storage-conn-flag")
 	_ = cmd.Flags().Set("input", "input-flag")
-	_ = cmd.Flags().Set("auto-commit", "false")
 	_ = cmd.Flags().Set("agents", "11")
 	_ = cmd.Flags().Set("interval", "15m")
 	_ = cmd.Flags().Set("vcs-provider", "gitlab")
@@ -268,15 +232,9 @@ func TestLoad_AndOverrides(t *testing.T) {
 	_ = cmd.Flags().Set("jira-url", "jira-url-flag")
 	_ = cmd.Flags().Set("http-max-retries", "13")
 	_ = cmd.Flags().Set("http-retry-backoff", "250ms")
-	_ = cmd.Flags().Set("max-tools-per-response", "12")
 	_ = cmd.Flags().Set("max-actions", "250")
 	_ = cmd.Flags().Set("max-duration", "5h")
-	_ = cmd.Flags().Set("conversation-mode", "sliding-flag")
-	_ = cmd.Flags().Set("max-history-messages", "35")
-	_ = cmd.Flags().Set("compaction-threshold", "45")
-	_ = cmd.Flags().Set("max-history-tokens", "12000")
 	_ = cmd.Flags().Set("sandbox-mode", "host")
-	_ = cmd.Flags().Set("shutdown-grace-period", "55s")
 	_ = cmd.Flags().Set("occ-max-retries", "18")
 	_ = cmd.Flags().Set("occ-backoff-base", "150ms")
 	_ = cmd.Flags().Set("occ-backoff-factor", "4.0")
@@ -290,8 +248,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	_ = cmd.Flags().Set("pr-draft", "false")
 	_ = cmd.Flags().Set("pr-assignees", "flag1, flag2")
 	_ = cmd.Flags().Set("pr-labels", "flag-a,flag-b")
-	_ = cmd.Flags().Set("ci-auto-fix", "false")
-	_ = cmd.Flags().Set("ci-max-retries", "7")
 
 	cfg2, err := Load(cmd)
 	if err != nil {
@@ -304,11 +260,8 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if cfg2.Storage.Provider != "postgres" {
 		t.Errorf("expected postgres, got %s", cfg2.Storage.Provider)
 	}
-	if cfg2.Input != "input-flag" {
-		t.Errorf("expected input-flag, got %s", cfg2.Input)
-	}
-	if cfg2.AutoCommit {
-		t.Error("expected auto commit false")
+	if cfg2.Runtime.SpecSource != "input-flag" {
+		t.Errorf("expected input-flag, got %s", cfg2.Runtime.SpecSource)
 	}
 	if cfg2.Agents.Generators.Number != 11 {
 		t.Errorf("expected concurrency 11, got %d", cfg2.Agents.Generators.Number)
@@ -352,50 +305,32 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if time.Duration(cfg2.LLM.RetryBackoff) != 250*time.Millisecond {
 		t.Errorf("expected 250ms, got %v", time.Duration(cfg2.LLM.RetryBackoff))
 	}
-	if cfg2.Agents.MaxToolsPerResponse != 12 {
-		t.Errorf("expected 12, got %d", cfg2.Agents.MaxToolsPerResponse)
+	if cfg2.Runtime.MaxActions != 250 {
+		t.Errorf("expected 250, got %d", cfg2.Runtime.MaxActions)
 	}
-	if cfg2.MaxActions != 250 {
-		t.Errorf("expected 250, got %d", cfg2.MaxActions)
-	}
-	if time.Duration(cfg2.MaxDuration) != 5*time.Hour {
-		t.Errorf("expected 5h, got %v", time.Duration(cfg2.MaxDuration))
-	}
-	if cfg2.ConversationMode != "sliding-flag" {
-		t.Errorf("expected sliding-flag, got %s", cfg2.ConversationMode)
-	}
-	if cfg2.MaxHistoryMessages != 35 {
-		t.Errorf("expected 35, got %d", cfg2.MaxHistoryMessages)
-	}
-	if cfg2.CompactionThreshold != 45 {
-		t.Errorf("expected 45, got %d", cfg2.CompactionThreshold)
-	}
-	if cfg2.MaxHistoryTokens != 12000 {
-		t.Errorf("expected 12000, got %d", cfg2.MaxHistoryTokens)
+	if time.Duration(cfg2.Runtime.MaxDuration) != 5*time.Hour {
+		t.Errorf("expected 5h, got %v", time.Duration(cfg2.Runtime.MaxDuration))
 	}
 	if cfg2.Sandbox.Mode != "host" {
 		t.Errorf("expected host, got %s", cfg2.Sandbox.Mode)
 	}
-	if time.Duration(cfg2.ShutdownGracePeriod) != 55*time.Second {
-		t.Errorf("expected 55s, got %v", time.Duration(cfg2.ShutdownGracePeriod))
+	if cfg2.Storage.OCC.MaxRetries != 18 {
+		t.Errorf("expected 18, got %d", cfg2.Storage.OCC.MaxRetries)
 	}
-	if cfg2.OCCMaxRetries != 18 {
-		t.Errorf("expected 18, got %d", cfg2.OCCMaxRetries)
+	if time.Duration(cfg2.Storage.OCC.BackoffBase) != 150*time.Millisecond {
+		t.Errorf("expected 150ms, got %v", time.Duration(cfg2.Storage.OCC.BackoffBase))
 	}
-	if time.Duration(cfg2.OCCBackoffBase) != 150*time.Millisecond {
-		t.Errorf("expected 150ms, got %v", time.Duration(cfg2.OCCBackoffBase))
+	if cfg2.Storage.OCC.BackoffFactor != 4.0 {
+		t.Errorf("expected 4.0, got %f", cfg2.Storage.OCC.BackoffFactor)
 	}
-	if cfg2.OCCBackoffFactor != 4.0 {
-		t.Errorf("expected 4.0, got %f", cfg2.OCCBackoffFactor)
+	if cfg2.LLM.TokenUsageLimit != 9999 {
+		t.Errorf("expected 9999, got %d", cfg2.LLM.TokenUsageLimit)
 	}
-	if cfg2.TokenUsageLimit != 9999 {
-		t.Errorf("expected 9999, got %d", cfg2.TokenUsageLimit)
+	if cfg2.Logging.Level != "info" {
+		t.Errorf("expected info, got %s", cfg2.Logging.Level)
 	}
-	if cfg2.LogLevel != "info" {
-		t.Errorf("expected info, got %s", cfg2.LogLevel)
-	}
-	if cfg2.LogFile != "log-file-flag" {
-		t.Errorf("expected log-file-flag, got %s", cfg2.LogFile)
+	if cfg2.Logging.File != "log-file-flag" {
+		t.Errorf("expected log-file-flag, got %s", cfg2.Logging.File)
 	}
 	if cfg2.VCS.PullRequest.AutoCreate {
 		t.Error("expected pr-auto-create false")
@@ -415,10 +350,29 @@ func TestLoad_AndOverrides(t *testing.T) {
 	if len(cfg2.VCS.PullRequest.Labels) != 2 || cfg2.VCS.PullRequest.Labels[0] != "flag-a" {
 		t.Errorf("expected [flag-a flag-b], got %v", cfg2.VCS.PullRequest.Labels)
 	}
-	if cfg2.VCS.CI.AutoFix {
-		t.Error("expected ci-auto-fix false")
-	}
-	if cfg2.VCS.CI.MaxRetries != 7 {
-		t.Errorf("expected ci-max-retries 7, got %d", cfg2.VCS.CI.MaxRetries)
-	}
+}
+
+func TestLoad_SpecSourceOverrides(t *testing.T) {
+	t.Run("when NOCTIFAB_SPEC_SOURCE is set", func(t *testing.T) {
+		_ = os.Setenv("NOCTIFAB_SPEC_SOURCE", "specs/feature.md")
+		defer func() { _ = os.Unsetenv("NOCTIFAB_SPEC_SOURCE") }()
+
+		cfg := &Config{}
+		applyEnvOverrides(cfg)
+		if cfg.Runtime.SpecSource != "specs/feature.md" {
+			t.Errorf("expected specs/feature.md, got %s", cfg.Runtime.SpecSource)
+		}
+	})
+
+	t.Run("when --spec-source flag is set", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("spec-source", "", "")
+		_ = cmd.Flags().Set("spec-source", "specs/feature-flag.md")
+
+		cfg := &Config{}
+		applyFlagOverrides(cfg, cmd)
+		if cfg.Runtime.SpecSource != "specs/feature-flag.md" {
+			t.Errorf("expected specs/feature-flag.md, got %s", cfg.Runtime.SpecSource)
+		}
+	})
 }

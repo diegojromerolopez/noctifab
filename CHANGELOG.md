@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.37.0] - 2026-08-17
+
+### Changed
+- **Configuration Schema Modernization & Domain Grouping**:
+  - Grouped loose top-level configuration settings into structured domain sections:
+    - Operational settings under `runtime:` (`spec_source`, `max_actions`, `max_duration`).
+    - Database concurrency parameters under `storage.occ:` (`max_retries`, `backoff_base`, `backoff_factor`).
+    - Logging filters and file outputs under `logging:` (`level`, `file`).
+    - Model token limit boundary under `llm.token_usage_limit`.
+  - Renamed `input` configuration setting to `spec_source` with `--spec-source` CLI flag and `NOCTIFAB_SPEC_SOURCE` environment variable support (retaining `--input` / `NOCTIFAB_INPUT` as aliases).
+  - Purged obsolete and unused configuration fields across the codebase (`auto_commit`, `conversation_mode`, `max_history_messages`, `compaction_threshold`, `max_history_tokens`, `shutdown_grace_period`, `max_tools_per_response`, `reset_period`, `conventional_commits`, `git_mutex_timeout`, `git_operation_retries`, `git_retry_backoff`, `ci`, and `sandbox.grace_period_seconds`).
+  - Updated all 14 validation project configuration files, documentation, and schemas.
+
 ## [0.36.0] - 2026-08-16
 
 ### Added

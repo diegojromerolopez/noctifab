@@ -29,6 +29,7 @@ func (d Duration) MarshalYAML() (interface{}, error) {
 
 type Config struct {
 	ConfigVersion  string                   `yaml:"config_version"`
+	Runtime        RuntimeConfig            `yaml:"runtime"`
 	Agents         AgentsConfig             `yaml:"agents"`
 	Storage        StorageConfig            `yaml:"storage"`
 	LLM            LLMConfig                `yaml:"llm"`
@@ -39,6 +40,7 @@ type Config struct {
 	Profiles       map[string]ProfileConfig `yaml:"profiles"`
 	Jira           JiraConfig               `yaml:"jira"`
 	Telemetry      TelemetryConfig          `yaml:"telemetry"`
+	Logging        LoggingConfig            `yaml:"logging"`
 	SAST           SASTConfig               `yaml:"sast"`
 	Unblocker      UnblockerConfig          `yaml:"unblocker"`
 	Context        ContextConfig            `yaml:"context"`
@@ -55,23 +57,18 @@ type Config struct {
 	StoryExecInterval          Duration `yaml:"story_exec_interval"`
 	MaxClarificationWait       Duration `yaml:"max_clarification_wait"`
 	ClarificationTimeoutAction string   `yaml:"clarification_timeout_action"`
+	ExecutionReport            string   `yaml:"execution_report,omitempty"`
+}
 
-	Input               string   `yaml:"input"`
-	AutoCommit          bool     `yaml:"auto_commit"`
-	MaxActions          int      `yaml:"max_actions"`
-	MaxDuration         Duration `yaml:"max_duration"`
-	ConversationMode    string   `yaml:"conversation_mode"`
-	MaxHistoryMessages  int      `yaml:"max_history_messages"`
-	CompactionThreshold int      `yaml:"compaction_threshold"`
-	MaxHistoryTokens    int      `yaml:"max_history_tokens"`
-	ShutdownGracePeriod Duration `yaml:"shutdown_grace_period"`
-	OCCMaxRetries       int      `yaml:"occ_max_retries"`
-	OCCBackoffBase      Duration `yaml:"occ_backoff_base"`
-	OCCBackoffFactor    float64  `yaml:"occ_backoff_factor"`
-	TokenUsageLimit     int64    `yaml:"token_usage_limit"`
-	LogLevel            string   `yaml:"log_level"`
-	LogFile             string   `yaml:"log_file"`
-	ExecutionReport     string   `yaml:"execution_report,omitempty"`
+type RuntimeConfig struct {
+	SpecSource  string   `yaml:"spec_source"`
+	MaxActions  int      `yaml:"max_actions"`
+	MaxDuration Duration `yaml:"max_duration"`
+}
+
+type LoggingConfig struct {
+	Level string `yaml:"level"`
+	File  string `yaml:"file"`
 }
 
 // PromptOverride customizes the prompt template of one agent action.
@@ -85,17 +82,16 @@ type PromptOverride struct {
 }
 
 type AgentsConfig struct {
-	Architecture        string               `yaml:"architecture"`
-	TaskExecutionOrder  string               `yaml:"task_execution_order,omitempty"`
-	MaxToolsPerResponse int                  `yaml:"max_tools_per_response"`
-	Orchestrator        AgentRoleConfig      `yaml:"orchestrator"`
-	ProductManager      AgentRoleConfig      `yaml:"product_manager"`
-	Planner             AgentRoleConfig      `yaml:"planner"`
-	Generators          AgentRoleConfig      `yaml:"generators"`
-	Testers             AgentRoleConfig      `yaml:"testers"`
-	QA                  QAConfig             `yaml:"qa"`
-	Unblocker           AgentRoleConfig      `yaml:"unblocker"`
-	WorkspaceCache      WorkspaceCacheConfig `yaml:"workspace_cache"`
+	Architecture       string               `yaml:"architecture"`
+	TaskExecutionOrder string               `yaml:"task_execution_order,omitempty"`
+	Orchestrator       AgentRoleConfig      `yaml:"orchestrator"`
+	ProductManager     AgentRoleConfig      `yaml:"product_manager"`
+	Planner            AgentRoleConfig      `yaml:"planner"`
+	Generators         AgentRoleConfig      `yaml:"generators"`
+	Testers            AgentRoleConfig      `yaml:"testers"`
+	QA                 QAConfig             `yaml:"qa"`
+	Unblocker          AgentRoleConfig      `yaml:"unblocker"`
+	WorkspaceCache     WorkspaceCacheConfig `yaml:"workspace_cache"`
 }
 
 // QAConfig reserves the bounded configuration contract for the experimental QA role.
@@ -129,10 +125,17 @@ type AgentRoleConfig struct {
 	Passes         int                `yaml:"passes,omitempty"`
 }
 
+type OCCConfig struct {
+	MaxRetries    int      `yaml:"max_retries"`
+	BackoffBase   Duration `yaml:"backoff_base"`
+	BackoffFactor float64  `yaml:"backoff_factor"`
+}
+
 type StorageConfig struct {
-	Provider     string `yaml:"provider"`
-	ConnString   string `yaml:"conn_string"`
-	JSONFilePath string `yaml:"json_file_path"`
+	Provider     string    `yaml:"provider"`
+	ConnString   string    `yaml:"conn_string"`
+	JSONFilePath string    `yaml:"json_file_path"`
+	OCC          OCCConfig `yaml:"occ"`
 	// KeepFinishedStates bounds how many terminal (SUCCESS/FAILED) story
 	// states are retained; older ones are pruned on daemon startup
 	// (0 = built-in default of 20, negative = never prune).
@@ -234,12 +237,12 @@ type LLMConfig struct {
 	MaxRetries            int            `yaml:"max_retries"`
 	RetryBackoff          Duration       `yaml:"retry_backoff"`
 	RetryBackoffFactor    float64        `yaml:"retry_backoff_factor"`
-	ResetPeriod           string         `yaml:"reset_period"`
 	Failover              FailoverConfig `yaml:"failover"`
 	SkipOnCreditExhausted bool           `yaml:"skip_on_credit_exhausted"`
 	MaxTimeout            Duration       `yaml:"max_timeout"`
 	IdleTimeout           Duration       `yaml:"idle_timeout"`
 	MaxTokens             int            `yaml:"max_tokens"`
+	TokenUsageLimit       int64          `yaml:"token_usage_limit"`
 	Streaming             *bool          `yaml:"streaming"`
 	// MaxPromptTokens is a pre-send cap on the estimated token size of
 	// outgoing prompts (0 = built-in default of 262144, negative = disabled).
@@ -255,38 +258,22 @@ type PullRequestConfig struct {
 	Labels     []string `yaml:"labels"`
 }
 
-type CIConfig struct {
-	AutoFix    bool `yaml:"auto_fix"`
-	MaxRetries int  `yaml:"max_retries"`
-}
-
 type VCSConfig struct {
-	Provider            string                   `yaml:"provider"`
-	Repository          string                   `yaml:"repository"`
-	BaseBranch          string                   `yaml:"base_branch"`
-	BranchPrefix        string                   `yaml:"branch_prefix"`
-	UseWorktrees        bool                     `yaml:"use_worktrees"`
-	Token               string                   `yaml:"token"`
-	TokenEnv            string                   `yaml:"token_env"`
-	TokenValue          string                   `yaml:"-"`
-	ConventionalCommits ConventionalCommitConfig `yaml:"conventional_commits"`
-	GitMutexTimeout     Duration                 `yaml:"git_mutex_timeout"`
-	GitOperationRetries int                      `yaml:"git_operation_retries"`
-	GitRetryBackoff     Duration                 `yaml:"git_retry_backoff"`
-	PullRequest         PullRequestConfig        `yaml:"pull_request"`
-	CI                  CIConfig                 `yaml:"ci"`
-}
-
-type ConventionalCommitConfig struct {
-	Enabled      bool   `yaml:"enabled"`
-	DefaultScope string `yaml:"default_scope"`
+	Provider     string            `yaml:"provider"`
+	Repository   string            `yaml:"repository"`
+	BaseBranch   string            `yaml:"base_branch"`
+	BranchPrefix string            `yaml:"branch_prefix"`
+	UseWorktrees bool              `yaml:"use_worktrees"`
+	Token        string            `yaml:"token"`
+	TokenEnv     string            `yaml:"token_env"`
+	TokenValue   string            `yaml:"-"`
+	PullRequest  PullRequestConfig `yaml:"pull_request"`
 }
 
 type SandboxConfig struct {
 	Mode               string `yaml:"mode"`
 	TimeoutSeconds     int    `yaml:"timeout_seconds"`
 	IdleTimeoutSeconds int    `yaml:"idle_timeout_seconds"`
-	GracePeriodSeconds int    `yaml:"grace_period_seconds"`
 	TestCommand        string `yaml:"test_command"`
 	LinterCommand      string `yaml:"linter_command"`
 	FormatterCommand   string `yaml:"formatter_command"`
