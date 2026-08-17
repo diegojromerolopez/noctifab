@@ -46,27 +46,26 @@ func (n *OSDesktopNotifier) Notify(ctx context.Context, kind NotificationKind, t
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	safeTitle := escapeString(title)
-	safeMessage := escapeString(message)
-
 	switch runtime.GOOS {
 	case "darwin":
 		soundSnippet := ""
 		if n.SoundEnabled {
 			soundSnippet = ` sound name "Glass"`
 		}
-		script := fmt.Sprintf(`display notification "%s" with title "%s"%s`, safeMessage, safeTitle, soundSnippet)
+		script := fmt.Sprintf(`display notification "%s" with title "%s"%s`, escapeAppleScript(message), escapeAppleScript(title), soundSnippet)
 		return n.ExecCommand(ctx, "osascript", "-e", script)
 
 	case "linux":
-		args := []string{"-a", "Noctifab", safeTitle, safeMessage}
+		args := []string{"-a", "Noctifab", title, message}
 		if n.SoundEnabled {
 			args = append(args, "-u", "normal")
 		}
 		return n.ExecCommand(ctx, "notify-send", args...)
 
 	case "windows":
-		psScript := fmt.Sprintf(`[reflection.assembly]::loadwithpartialname('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('%s', '%s')`, safeMessage, safeTitle)
+		psSafeTitle := escapePowerShell(title)
+		psSafeMessage := escapePowerShell(message)
+		psScript := fmt.Sprintf(`[reflection.assembly]::loadwithpartialname('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('%s', '%s')`, psSafeMessage, psSafeTitle)
 		return n.ExecCommand(ctx, "powershell", "-Command", psScript)
 
 	default:
@@ -107,9 +106,12 @@ func (m *MockNotifier) Notify(ctx context.Context, kind NotificationKind, title,
 	return nil
 }
 
-func escapeString(s string) string {
+func escapeAppleScript(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
-	s = strings.ReplaceAll(s, `'`, `\'`)
 	return s
+}
+
+func escapePowerShell(s string) string {
+	return strings.ReplaceAll(s, `'`, `''`)
 }

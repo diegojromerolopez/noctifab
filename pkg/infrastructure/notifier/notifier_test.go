@@ -62,10 +62,16 @@ func TestMockNotifier(t *testing.T) {
 	assert.Equal(t, "Passed", m.Notifications[0].Message)
 }
 
-func TestEscapeString(t *testing.T) {
+func TestEscapeAppleScript(t *testing.T) {
 	input := `Hello "World" and 'Friends' \ Path`
-	escaped := escapeString(input)
-	assert.NotContains(t, escaped, `"`+"\n")
-	assert.Contains(t, escaped, `\"`)
-	assert.Contains(t, escaped, `\'`)
+	escaped := escapeAppleScript(input)
+	assert.Contains(t, escaped, `\"World\"`)
+	assert.Contains(t, escaped, `\\ Path`)
+	assert.Contains(t, escaped, `'Friends'`)
+}
+
+func TestEscapePowerShell(t *testing.T) {
+	input := `it's a "test" with 'single quotes'`
+	escaped := escapePowerShell(input)
+	assert.Equal(t, `it''s a "test" with ''single quotes''`, escaped)
 }
