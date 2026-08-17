@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `-w` / `--web`, `--web-port` (default: `8080`), and `--web-host` (default: `127.0.0.1`) flags to `noctifab start` and `noctifab resume`.
   - Spawns the embedded real-time Visual Web Dashboard server concurrently in a background goroutine alongside the Dark Factory execution loop.
   - Automatically logs the live dashboard URL on startup (`🌐 Visual Web Dashboard live at: http://127.0.0.1:8080`) and handles graceful shutdown.
+- **Unified Dashboard CLI Architecture (`noctifab dashboard --web` / `noctifab dashboard -w`)**:
+  - Consolidated the standalone `noctifab web` command into `noctifab dashboard` via the `-w` / `--web` flag (with `--port`, `--host`, and `--readonly` support).
+  - Cleaned up redundant CLI surface area: developers can use `noctifab dashboard` for TUI mode and `noctifab dashboard -w` for browser web mode.
 
 ### Changed
 - **Configuration Schema Modernization & Domain Grouping**:

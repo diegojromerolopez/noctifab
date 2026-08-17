@@ -2107,8 +2107,8 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     *   If run in a directory where a repository or `.noctifab` directory already exists, it verifies remote origin configurations and database schemas, preserving existing configuration values or task state without overwriting or corrupting them.
 *   `noctifab demo`
     Runs an instant 2-minute zero-config autonomous sandbox using deterministic mock replay (`MockDemoLLMClient`). Unpacks embedded project templates into an ephemeral `/tmp/noctifab-demo-*` directory, coordinates the Planner, Generator, and Tester stages with 100% offline consensus passes, and cleans up the sandbox on termination. Supports `--project`, `--offline`, `--speed`, and `--no-cleanup`.
-*   `noctifab web`
-    Launches the embedded real-time visual web dashboard with live topological task DAG rendering, syntax-highlighted code diffs, real-time Server-Sent Events (SSE) telemetry feed, prompt order input bar, and flow pause/resume controls (`--port`, `--host`, `--readonly`).
+*   `noctifab dashboard`
+    Launches the real-time progress dashboard. By default, opens the interactive Terminal User Interface (TUI). When passed `-w` / `--web`, launches the embedded real-time visual web dashboard in the browser (`--port`, `--host`, `--readonly`) with live topological task DAG rendering, syntax-highlighted code diffs, real-time Server-Sent Events (SSE) telemetry feed, prompt order input bar, and flow pause/resume controls.
 *   `noctifab steer`
     Injects a mid-flight human-in-the-loop steering directive into the active worker goroutine via the daemon Command Mailbox without interrupting the loop (`noctifab steer "Use PostgreSQL instead of SQLite"`).
 *   `noctifab order`

@@ -62,18 +62,39 @@ noctifab demo [--project <archetype>] [--offline] [--speed <multiplier>] [--no-c
 | `--speed` | `1.0` | Execution speed multiplier (e.g. `2.0` for 2x speed) |
 | `--no-cleanup` | `false` | Preserve ephemeral `/tmp/noctifab-demo-*` workspace directory on exit |
 
-### 3. `web`
-Launches the embedded real-time visual web dashboard with live topological task DAG, syntax-highlighted code diffs, real-time event log stream, and developer prompt input bar.
+### 3. `dashboard`
+Launches the real-time progress dashboard to monitor active story and task orchestrations. By default, it opens the interactive Terminal User Interface (TUI). Pass `-w` / `--web` to launch the visual web dashboard in the browser instead.
 
 ```bash
-noctifab web [workspace_dir] [--port 8080] [--host 127.0.0.1] [--readonly]
+# Launch interactive TUI dashboard in terminal
+noctifab dashboard
+
+# Launch visual web dashboard in browser
+noctifab dashboard -w
+
+# Launch visual web dashboard with custom port and host
+noctifab dashboard -w --port 8080 --host 127.0.0.1
+
+# Launch visual web dashboard in read-only mode
+noctifab dashboard -w --readonly
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--port` | `8080` | Port for the visual web dashboard |
-| `--host` | `127.0.0.1` | Host address to bind the web dashboard |
-| `--readonly` | `false` | Read-only mode disabling prompt steering and order mutations |
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--web` | `-w` | `false` | Launch the real-time visual web dashboard in browser instead of TUI |
+| `--port` | | `8080` | Port for the visual web dashboard |
+| `--host` | | `127.0.0.1` | Host address to bind the visual web dashboard |
+| `--readonly` | | `false` | Read-only mode disabling prompt steering and order mutations |
+
+* **Interactive TUI Keyboard Shortcuts**:
+  * `q`: Quit the dashboard.
+  * `p`: Pause / Resume execution of the active story.
+  * `s`: Inject a mid-flight steering directive to the active worker.
+  * `o` / `n`: Type a new feature prompt order.
+  * `c`: Answer pending disambiguation/clarification questions.
+  * `d`: Open the interactive Log / Failure Inspector.
+  * `x`: Cancel execution of the active story.
+* **CI/CD Non-Interactive Mode**: If stdin is not a terminal and `--web` is not set, the dashboard automatically falls back to dumping a plain-text status summary to stdout every 5 seconds, auto-exiting when all active stories have finished.
 
 ### 4. `steer`
 Injects a mid-flight steering directive to guide active agent workers without stopping the execution loop.
@@ -131,28 +152,13 @@ Resumes execution of an interrupted or partially completed project workspace, sk
 noctifab resume /path/to/my-project -w
 ```
 
-### 9. `dashboard`
-Launches the interactive real-time Terminal User Interface (TUI) progress dashboard to monitor active story and task orchestrations.
-```bash
-noctifab dashboard
-```
-* **Interactive Keyboard Shortcuts**:
-  * `q`: Quit the dashboard.
-  * `p`: Pause / Resume execution of the active story.
-  * `s`: Inject a mid-flight steering directive to the active worker.
-  * `o` / `n`: Type a new feature prompt order.
-  * `c`: Answer pending disambiguation/clarification questions.
-  * `d`: Open the interactive Log / Failure Inspector.
-  * `x`: Cancel execution of the active story.
-* **CI/CD Non-Interactive Mode**: If stdin is not a terminal, the dashboard automatically falls back to dumping a plain-text status summary to stdout every 5 seconds, auto-exiting when all active stories have finished.
-
-### 10. `stop`
+### 9. `stop`
 Gracefully stops the background daemon process and saves state.
 ```bash
 noctifab stop
 ```
 
-### 11. `clean`
+### 10. `clean`
 Wipes all noctifab state (deletes database, PID, and story/daemon logs).
 
 ```bash
@@ -166,13 +172,13 @@ noctifab clean --dry-run # preview what would be deleted without deleting
 | `--yes` | `-y` | Skip the `Are you sure? [y/N]` prompt |
 | `--dry-run` | | Print what would be removed without deleting anything |
 
-### 12. `maintenance`
+### 11. `maintenance`
 Performs cleanup actions: prunes fully merged task branches from the local directory, cleans orphaned worktrees, and executes state database schema migrations.
 ```bash
 noctifab maintenance
 ```
 
-### 13. `version`
+### 12. `version`
 Displays Noctifab's semantic release version, Git commit hash, and commit date.
 
 ```bash

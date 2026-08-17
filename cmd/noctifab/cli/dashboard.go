@@ -5,11 +5,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
+	"github.com/diegojromerolopez/noctifab/pkg/interfaces/web"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -18,9 +23,30 @@ import (
 var dashboardStartTime time.Time
 
 var dashboardCmd = &cobra.Command{
-	Use:   "dashboard",
-	Short: "Launch the real-time terminal user interface progress dashboard",
+	Use:   "dashboard [workspace_dir]",
+	Short: "Launch the real-time progress dashboard (terminal TUI or visual web browser)",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		webEnabled, _ := cmd.Flags().GetBool("web")
+		if webEnabled {
+			host, _ := cmd.Flags().GetString("host")
+			if host == "" {
+				host = "127.0.0.1"
+			}
+			port, _ := cmd.Flags().GetInt("port")
+			if port == 0 {
+				port = 8080
+			}
+			readOnly, _ := cmd.Flags().GetBool("readonly")
+			targetDir := WorkspaceDir
+			if targetDir == "" {
+				targetDir = "."
+			}
+			if len(args) > 0 {
+				targetDir = args[0]
+			}
+			return runWebDashboard(targetDir, host, port, readOnly)
+		}
+
 		if dashboardStartTime.IsZero() {
 			dashboardStartTime = time.Now()
 		}
@@ -322,8 +348,48 @@ func deduplicateStates(states []*domain.State) []*domain.State {
 	return result
 }
 
+func runWebDashboard(targetDir string, host string, port int, readOnly bool) error {
+	dbPath := filepath.Join(targetDir, ".noctifab", "data", "noctifab.db")
+	repo, err := storage.NewSQLiteRepository(context.Background(), dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to open state database at %s: %w", dbPath, err)
+	}
+
+	mailbox := services.NewCommandMailbox(repo)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go mailbox.Start(ctx)
+
+	serverCfg := web.WebServerConfig{
+		Host:     host,
+		Port:     port,
+		ReadOnly: readOnly,
+	}
+
+	server := web.NewWebServer(serverCfg, repo, mailbox, nil)
+	if err := server.Start(); err != nil {
+		return fmt.Errorf("failed to start web dashboard server: %w", err)
+	}
+
+	fmt.Printf("🌐 Noctifab Visual Web Dashboard running at: http://%s:%d\n", host, port)
+	fmt.Println("Press Ctrl+C to stop.")
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	<-sigChan
+
+	fmt.Println("\nShutting down web dashboard...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer shutdownCancel()
+	return server.Shutdown(shutdownCtx)
+}
+
 func init() {
 	RootCmd.AddCommand(dashboardCmd)
+	dashboardCmd.Flags().BoolP("web", "w", false, "Launch the real-time visual web dashboard in browser instead of TUI")
+	dashboardCmd.Flags().String("host", "127.0.0.1", "Host address to bind the visual web dashboard")
+	dashboardCmd.Flags().Int("port", 8080, "Port for the visual web dashboard")
+	dashboardCmd.Flags().Bool("readonly", false, "Run web dashboard in read-only mode (disable steering and orders)")
 }
 
 func ensureDaemonRunning() error {
