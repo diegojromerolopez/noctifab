@@ -298,5 +298,95 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 		_, _ = w.Write([]byte(`{"status":"resumed"}`))
 	})
 
+	// 8. GET /api/v1/clarifications — List clarifications
+	mux.HandleFunc("/api/v1/clarifications", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if ws.repo == nil {
+			http.Error(w, "state repository unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		state, err := ws.repo.Load(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		clarifications := state.Clarifications
+		if r.URL.Query().Get("pending") == "true" {
+			pending := make([]domain.Clarification, 0)
+			for _, c := range clarifications {
+				if !c.Resolved {
+					pending = append(pending, c)
+				}
+			}
+			clarifications = pending
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(clarifications)
+	})
+
+	// 9. POST /api/v1/clarifications/ — Resolve clarification by ID
+	mux.HandleFunc("/api/v1/clarifications/", func(w http.ResponseWriter, r *http.Request) {
+		if ws.config.ReadOnly {
+			http.Error(w, "server is in read-only mode", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/api/v1/clarifications/")
+		parts := strings.Split(path, "/")
+		if len(parts) == 0 || parts[0] == "" {
+			http.Error(w, "clarification id required", http.StatusBadRequest)
+			return
+		}
+		id := parts[0]
+
+		var body struct {
+			Answer string `json:"answer"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(body.Answer) == "" {
+			http.Error(w, "answer cannot be empty", http.StatusBadRequest)
+			return
+		}
+
+		if ws.mailbox != nil {
+			ws.mailbox.Send(&services.ResolveClarificationCmd{
+				ID:     id,
+				Answer: body.Answer,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"accepted"}`))
+	})
+
+	// 10. GET /api/v1/orders — List persisted prompt orders
+	mux.HandleFunc("/api/v1/orders/list", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if ws.repo == nil {
+			http.Error(w, "state repository unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		state, err := ws.repo.Load(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state.Orders)
+	})
+
 	return mux
 }

@@ -142,3 +142,44 @@ func TestStandbyEngine_FailureNotification(t *testing.T) {
 
 	assert.Equal(t, DaemonStatusIdle, engine.Status())
 }
+
+func TestStandbyEngine_PendingOrderReconciliation(t *testing.T) {
+	repo := &mockStandbyStateRepo{
+		state: &domain.State{
+			ID: "test-state",
+			Orders: []domain.StoryOrder{
+				{
+					ID:        "order_1",
+					Prompt:    "Add health check endpoint",
+					StoryPath: "roadmap/user-stories/US-003.md",
+					Status:    "PENDING",
+				},
+			},
+		},
+	}
+	mockNotif := notifier.NewMockNotifier()
+
+	var processedStory string
+	executor := func(ctx context.Context, storyFile string) error {
+		processedStory = storyFile
+		return nil
+	}
+
+	engine := NewStandbyEngine(StandbyEngineConfig{
+		Repo:     repo,
+		Notifier: mockNotif,
+		Executor: executor,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		_ = engine.Run(ctx)
+	}()
+
+	time.Sleep(150 * time.Millisecond)
+
+	assert.Equal(t, "roadmap/user-stories/US-003.md", processedStory)
+	assert.Equal(t, "COMPLETED", repo.state.Orders[0].Status)
+}

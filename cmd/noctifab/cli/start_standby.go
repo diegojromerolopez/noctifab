@@ -82,7 +82,15 @@ type StandbyParams struct {
 
 // runStandbyMode starts the perpetual background event loop waiting for developer prompt orders.
 func runStandbyMode(ctx context.Context, p StandbyParams) error {
-	notif := notifier.NewOSDesktopNotifier(true)
+	desktopNotif := notifier.NewOSDesktopNotifier(true)
+	var notifiers []notifier.DesktopNotifier
+	notifiers = append(notifiers, desktopNotif)
+
+	webhookURL := os.Getenv("NOCTIFAB_NOTIFICATIONS_WEBHOOK_URL")
+	if webhookURL != "" {
+		notifiers = append(notifiers, notifier.NewWebhookNotifier(webhookURL))
+	}
+	notif := notifier.NewMultiNotifier(notifiers...)
 
 	engine := services.NewStandbyEngine(services.StandbyEngineConfig{
 		Repo:     p.Repo,

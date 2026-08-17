@@ -56,6 +56,9 @@ func (s *State) Clone() *State {
 	if s.QAFindings != nil {
 		clone.QAFindings = append([]QAFinding(nil), s.QAFindings...)
 	}
+	if s.Orders != nil {
+		clone.Orders = append([]StoryOrder(nil), s.Orders...)
+	}
 	return &clone
 }
 

@@ -101,6 +101,7 @@ func (se *StandbyEngine) Status() DaemonStatus {
 func (se *StandbyEngine) Run(ctx context.Context) error {
 	se.setStatus(DaemonStatusIdle, "")
 	se.syncIdleState(ctx, "Ready for prompt orders")
+	se.reconcilePendingOrders(ctx)
 
 	if se.watchFS {
 		watcher := NewFSWatcher(FSWatcherConfig{
@@ -127,9 +128,48 @@ func (se *StandbyEngine) Run(ctx context.Context) error {
 	}
 }
 
+func (se *StandbyEngine) reconcilePendingOrders(ctx context.Context) {
+	if se.repo == nil {
+		return
+	}
+	state, err := se.repo.Load(ctx)
+	if err != nil || state == nil || len(state.Orders) == 0 {
+		return
+	}
+	for _, order := range state.Orders {
+		if order.Status == "PENDING" || order.Status == "RUNNING" {
+			if order.StoryPath != "" {
+				se.Enqueue(StoryWorkItem{Path: order.StoryPath})
+			}
+		}
+	}
+}
+
+func (se *StandbyEngine) updateOrderStatus(ctx context.Context, storyPath string, status string) {
+	if se.repo == nil {
+		return
+	}
+	state, err := se.repo.Load(ctx)
+	if err != nil || state == nil {
+		return
+	}
+	updated := false
+	for i := range state.Orders {
+		if state.Orders[i].StoryPath == storyPath || filepath.Base(state.Orders[i].StoryPath) == filepath.Base(storyPath) {
+			state.Orders[i].Status = status
+			state.Orders[i].UpdatedAt = time.Now().UTC()
+			updated = true
+		}
+	}
+	if updated {
+		_ = se.repo.Save(ctx, state)
+	}
+}
+
 func (se *StandbyEngine) processStoryWorkItem(ctx context.Context, item StoryWorkItem) {
 	storyName := filepath.Base(item.Path)
 	se.setStatus(DaemonStatusExecuting, storyName)
+	se.updateOrderStatus(ctx, item.Path, "RUNNING")
 
 	fmt.Printf("\n🚀 [Standby Daemon] Waking up for new story order: %s\n", storyName)
 
@@ -140,10 +180,12 @@ func (se *StandbyEngine) processStoryWorkItem(ctx context.Context, item StoryWor
 
 	if runErr != nil {
 		fmt.Printf("❌ [Standby Daemon] Story execution finished with error: %v\n", runErr)
+		se.updateOrderStatus(ctx, item.Path, "FAILED")
 		_ = se.notifier.Notify(ctx, notifier.NotifyBuildFailed, "Noctifab Build Failed",
 			fmt.Sprintf("Story %s failed: %v", storyName, runErr))
 	} else {
 		fmt.Printf("✨ [Standby Daemon] Story %s completed successfully with 100%% test consensus!\n", storyName)
+		se.updateOrderStatus(ctx, item.Path, "COMPLETED")
 		_ = se.notifier.Notify(ctx, notifier.NotifyStoryCompleted, "Noctifab Dark Factory",
 			fmt.Sprintf("Feature %s completed with 100%% green test consensus!", storyName))
 	}

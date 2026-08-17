@@ -53,6 +53,22 @@
       </div>
     </header>
 
+    <!-- Interactive Clarification & Disambiguation Banner -->
+    <div id="clarification-banner" class="clarification-banner" style="display:none;">
+      <div class="clarification-icon">🤔</div>
+      <div class="clarification-body">
+        <div class="clarification-header">
+          <strong>Agent Clarification Required</strong>
+          <span id="clarification-task-id" class="clarification-task-tag">GLOBAL</span>
+        </div>
+        <p id="clarification-question-text" class="clarification-question"></p>
+        <form id="clarification-form" class="clarification-form">
+          <input type="text" id="clarification-input" placeholder="Type your answer to resolve clarification and unblock agent..." required autocomplete="off">
+          <button type="submit" class="btn btn-warning">💬 Submit Clarification</button>
+        </form>
+      </div>
+    </div>
+
     <!-- 2. Active Autonomous Agent Workers Grid -->
     <section class="agents-section">
       <div class="section-title-bar">
@@ -113,6 +129,26 @@
         </div>
       </section>
     </main>
+
+    <!-- Real-Time Streaming Console Terminal Drawer -->
+    <section class="terminal-drawer" id="terminal-drawer">
+      <div class="terminal-header" id="terminal-toggle">
+        <div class="terminal-title">
+          <span class="terminal-dot"></span>
+          <span>💻 Real-Time Agent & Tool Terminal Console</span>
+        </div>
+        <div class="terminal-controls">
+          <label class="autoscroll-toggle">
+            <input type="checkbox" id="terminal-autoscroll" checked> Auto-scroll
+          </label>
+          <button type="button" id="terminal-clear" class="btn-xs btn-ghost">Clear</button>
+          <span id="terminal-chevron" class="terminal-chevron">▼</span>
+        </div>
+      </div>
+      <div class="terminal-body" id="terminal-body">
+        <pre id="terminal-output" class="terminal-output">// Noctifab Live Terminal Stream initialized. Ready for tool executions...</pre>
+      </div>
+    </section>
 
     <!-- 4. Interactive Developer Control Bar -->
     <footer class="footer-control-bar">

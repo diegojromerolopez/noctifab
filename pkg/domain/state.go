@@ -111,6 +111,16 @@ const (
 	StoryCancelled StoryStatus = "CANCELLED"
 )
 
+// StoryOrder tracks a developer prompt order in the persistent work queue.
+type StoryOrder struct {
+	ID        string    `json:"id"`
+	Prompt    string    `json:"prompt"`
+	StoryPath string    `json:"story_path"`
+	Status    string    `json:"status"` // PENDING, RUNNING, COMPLETED, FAILED
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // State represents the complete system database state record.
 type State struct {
 	ID                 string                `json:"id"`
@@ -130,4 +140,5 @@ type State struct {
 	ReviewPhases       []ReviewPhase         `json:"review_phases,omitempty"`
 	QAScenarios        []QAScenario          `json:"qa_scenarios,omitempty"`
 	QAFindings         []QAFinding           `json:"qa_findings,omitempty"`
+	Orders             []StoryOrder          `json:"orders,omitempty"`
 }

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.38.0] - 2026-08-17
+
+### Added
+- **In-Flight Order Queue Persistence & Crash Resilience (`pkg/domain/state.go`, `pkg/services/standby_loop.go`)**:
+  - Added `StoryOrder` entity and persistent `Orders` tracking across SQLite, PostgreSQL, and JSON database storage backends.
+  - Automatically records incoming prompt orders (`PENDING`) and updates status (`RUNNING`, `COMPLETED`, `FAILED`) across execution lifecycles.
+  - Implemented automatic startup reconciliation: on daemon boot/restart, any pending or interrupted orders are safely re-enqueued without loss.
+- **In-Browser Disambiguation & Clarification UI (`pkg/interfaces/web/`, `pkg/interfaces/web/static/`)**:
+  - Added Web API endpoints: `GET /api/v1/clarifications` (with `?pending=true` filtering), `POST /api/v1/clarifications/{id}/resolve`, and `GET /api/v1/orders/list`.
+  - Added reactive glowing clarification notification banner in the Mission Control Dashboard that alerts developers in real-time when an agent requires specification disambiguation.
+  - Provides inline text input and instant resolution button, unblocking agents directly from the browser.
+- **Real-Time Streaming Terminal Log Pane in Web Dashboard (`pkg/interfaces/web/static/`)**:
+  - Embedded a collapsible dark-mode terminal console drawer (`#terminal-drawer`) streaming live agent actions, test execution results, consensus votes, and diff updates via Server-Sent Events (SSE).
+  - Added auto-scroll lock, manual clear button, and smooth collapse/expand transitions.
+- **Remote & Cloud Dev Notifications (Webhooks / Slack / Discord) (`pkg/infrastructure/notifier/`)**:
+  - Implemented `WebhookNotifier` supporting Slack-compatible (`text`), Discord-compatible (`content`), and structured JSON event payloads.
+  - Created `MultiNotifier` composite pattern dispatching native OS alerts and remote webhooks simultaneously.
+  - Added `notifications.webhook_url` and `notifications.desktop` configuration support (`NOCTIFAB_NOTIFICATIONS_WEBHOOK_URL`).
+
 ## [0.37.0] - 2026-08-17
 
 ### Added
