@@ -263,4 +263,9 @@ func TestDashboardCmd_WebFlags(t *testing.T) {
 	roFlag := dashboardCmd.Flags().Lookup("readonly")
 	require.NotNil(t, roFlag)
 	assert.Equal(t, "false", roFlag.DefValue)
+
+	openFlag := dashboardCmd.Flags().Lookup("web-open")
+	require.NotNil(t, openFlag)
+	assert.Equal(t, "", openFlag.Shorthand)
+	assert.Equal(t, "false", openFlag.DefValue)
 }

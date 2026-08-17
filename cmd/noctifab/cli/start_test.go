@@ -152,6 +152,7 @@ func TestResumeCmd_Setup(t *testing.T) {
 	assert.NotNil(t, resumeCmd.Flags().Lookup("web"))
 	assert.NotNil(t, resumeCmd.Flags().Lookup("web-port"))
 	assert.NotNil(t, resumeCmd.Flags().Lookup("web-host"))
+	assert.NotNil(t, resumeCmd.Flags().Lookup("web-open"))
 }
 
 func TestStartCmd_WebFlags(t *testing.T) {
@@ -167,4 +168,24 @@ func TestStartCmd_WebFlags(t *testing.T) {
 	hostFlag := startCmd.Flags().Lookup("web-host")
 	require.NotNil(t, hostFlag)
 	assert.Equal(t, "127.0.0.1", hostFlag.DefValue)
+
+	openFlag := startCmd.Flags().Lookup("web-open")
+	require.NotNil(t, openFlag)
+	assert.Equal(t, "", openFlag.Shorthand)
+	assert.Equal(t, "false", openFlag.DefValue)
+
+	standbyFlag := startCmd.Flags().Lookup("standby")
+	require.NotNil(t, standbyFlag)
+	assert.Equal(t, "false", standbyFlag.DefValue)
+}
+
+func TestExtractStoryTitle(t *testing.T) {
+	tmpFile := t.TempDir() + "/US-001.md"
+	content := "# My Custom Story Title\n\nSome body text..."
+	require.NoError(t, os.WriteFile(tmpFile, []byte(content), 0644))
+
+	title := extractStoryTitle(tmpFile)
+	assert.Equal(t, "My Custom Story Title", title)
+
+	assert.Equal(t, "", extractStoryTitle("/nonexistent/file.md"))
 }

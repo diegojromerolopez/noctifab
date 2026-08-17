@@ -22,6 +22,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const orderInput = document.getElementById('order-input');
   const actionCount = document.getElementById('action-count');
 
+  // Clarification banner DOM elements
+  const clarificationBanner = document.getElementById('clarification-banner');
+  const clarificationTaskId = document.getElementById('clarification-task-id');
+  const clarificationQuestionText = document.getElementById('clarification-question-text');
+  const clarificationForm = document.getElementById('clarification-form');
+  const clarificationInput = document.getElementById('clarification-input');
+  let activeClarificationId = null;
+
+  // Terminal console DOM elements
+  const terminalDrawer = document.getElementById('terminal-drawer');
+  const terminalToggle = document.getElementById('terminal-toggle');
+  const terminalChevron = document.getElementById('terminal-chevron');
+  const terminalOutput = document.getElementById('terminal-output');
+  const terminalAutoscroll = document.getElementById('terminal-autoscroll');
+  const terminalClear = document.getElementById('terminal-clear');
+
   // Filter chips
   const countAll = document.getElementById('count-all');
   const countActive = document.getElementById('count-active');
@@ -74,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
           updatePipelinePhase(currentState);
         }
         appendLogEntry('TASK', `Task state updated: ${payload.task_id || 'batch'}`, 'system');
+        appendTerminalLine(`[TASK STATE] ${payload.task_id || 'batch'}: ${payload.status || 'updated'}`);
       } catch (err) {
         console.error('Error in TASK_STATE_CHANGED event:', err);
       }
@@ -84,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const payload = JSON.parse(e.data);
         if (payload.diff) {
           renderDiff(payload.diff);
+          appendTerminalLine(`[DIFF UPDATED] ${payload.file || 'patch'} (${payload.diff.length} bytes)`);
         }
       } catch (err) {
         console.error('Error in DIFF_CHUNK_APPENDED event:', err);
@@ -104,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const payload = JSON.parse(e.data);
         appendLogEntry('CONSENSUS', `Vote recorded for task ${payload.task_id}: ${payload.vote || 'PASS'}`, 'tool-success');
+        appendTerminalLine(`[CONSENSUS VOTE] Task: ${payload.task_id} => Vote: ${payload.vote || 'PASS'}`);
       } catch (err) {
         console.error('Error in CONSENSUS_VOTE event:', err);
       }
@@ -113,6 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const payload = JSON.parse(e.data);
         appendLogEntry(payload.level || 'LOG', payload.message || JSON.stringify(payload), 'system');
+        appendTerminalLine(`[${payload.level || 'LOG'}] ${payload.message || JSON.stringify(payload)}`);
       } catch (err) {
         console.error('Error in SYSTEM_LOG event:', err);
       }
@@ -144,8 +164,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Header stats
     if (state.story_status) {
-      storyStatus.textContent = state.story_status;
-      storyStatus.className = 'badge ' + (state.story_status === 'SUCCESS' ? 'badge-success' : state.story_status === 'PAUSED' ? 'badge-warning' : 'badge-danger');
+      if (state.story_status === 'IDLE') {
+        storyStatus.textContent = 'STANDBY 🟢';
+        storyStatus.className = 'badge badge-info';
+      } else if (state.story_status === 'SUCCESS') {
+        storyStatus.textContent = 'SUCCESS ✅';
+        storyStatus.className = 'badge badge-success';
+      } else if (state.story_status === 'PAUSED') {
+        storyStatus.textContent = 'PAUSED ⏸';
+        storyStatus.className = 'badge badge-warning';
+      } else if (state.story_status === 'RUNNING') {
+        storyStatus.textContent = 'RUNNING ⚡';
+        storyStatus.className = 'badge badge-success';
+      } else {
+        storyStatus.textContent = state.story_status;
+        storyStatus.className = 'badge badge-danger';
+      }
+
       if (state.story_status === 'PAUSED') {
         btnPause.style.display = 'none';
         btnResume.style.display = 'inline-block';
@@ -167,6 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     updatePipelinePhase(state);
+    renderClarifications(state.clarifications || []);
     renderAgents(state.active_agents || []);
     renderTasks(state.tasks || []);
     updateTaskCounts(state.tasks || []);
@@ -436,6 +472,81 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
     }
   });
+
+  // 14. Clarifications Rendering & Submission
+  function renderClarifications(clarifications) {
+    if (!clarificationBanner) return;
+    const pending = (clarifications || []).filter(c => !c.resolved);
+    if (pending.length === 0) {
+      clarificationBanner.style.display = 'none';
+      activeClarificationId = null;
+      return;
+    }
+    const current = pending[0];
+    activeClarificationId = current.id || current.question;
+    if (clarificationTaskId) {
+      clarificationTaskId.textContent = current.task_id || current.id || 'GLOBAL';
+    }
+    if (clarificationQuestionText) {
+      clarificationQuestionText.textContent = current.question;
+    }
+    clarificationBanner.style.display = 'flex';
+  }
+
+  if (clarificationForm) {
+    clarificationForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const answer = clarificationInput.value.trim();
+      if (!answer || !activeClarificationId) return;
+
+      try {
+        const res = await fetch(`/api/v1/clarifications/${encodeURIComponent(activeClarificationId)}/resolve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answer })
+        });
+        if (res.ok) {
+          appendLogEntry('CLARIFY', `Resolved clarification [${activeClarificationId}]: ${answer}`, 'steer');
+          appendTerminalLine(`[CLARIFICATION RESOLVED] ID: ${activeClarificationId} => Answer: ${answer}`);
+          clarificationInput.value = '';
+          clarificationBanner.style.display = 'none';
+          activeClarificationId = null;
+        }
+      } catch (err) {
+        console.error('Failed to submit clarification answer:', err);
+      }
+    });
+  }
+
+  // 15. Streaming Console Terminal Helper & Controls
+  function appendTerminalLine(text) {
+    if (!terminalOutput) return;
+    const now = new Date();
+    const timeStr = now.toTimeString().split(' ')[0];
+    terminalOutput.textContent += `\n[${timeStr}] ${text}`;
+    if (terminalAutoscroll && terminalAutoscroll.checked) {
+      terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    }
+  }
+
+  if (terminalToggle) {
+    terminalToggle.addEventListener('click', (e) => {
+      if (e.target.closest('.terminal-controls')) return;
+      terminalDrawer.classList.toggle('collapsed');
+      if (terminalChevron) {
+        terminalChevron.textContent = terminalDrawer.classList.contains('collapsed') ? '▲' : '▼';
+      }
+    });
+  }
+
+  if (terminalClear) {
+    terminalClear.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (terminalOutput) {
+        terminalOutput.textContent = '// Terminal cleared. Listening for stream...';
+      }
+    });
+  }
 
   // Timer ticker
   setInterval(() => {

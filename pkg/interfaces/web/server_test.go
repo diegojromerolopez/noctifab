@@ -125,4 +125,46 @@ func TestWebServer_Endpoints(t *testing.T) {
 			t.Errorf("expected 200 OK, got %d", rec.Code)
 		}
 	})
+
+	t.Run("GET /api/v1/clarifications lists clarifications", func(t *testing.T) {
+		repo.state.Clarifications = []domain.Clarification{
+			{ID: "c-1", Question: "Use SQLite or PostgreSQL?", Resolved: false},
+		}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/clarifications?pending=true", nil)
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "Use SQLite or PostgreSQL?") {
+			t.Errorf("expected clarification in response, got: %s", rec.Body.String())
+		}
+	})
+
+	t.Run("POST /api/v1/clarifications/{id}/resolve resolves question", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/clarifications/c-1/resolve", strings.NewReader(`{"answer":"Use SQLite"}`))
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusAccepted {
+			t.Errorf("expected 202 Accepted, got %d", rec.Code)
+		}
+	})
+
+	t.Run("GET /api/v1/orders/list returns orders", func(t *testing.T) {
+		repo.state.Orders = []domain.StoryOrder{
+			{ID: "order-1", Prompt: "Build Auth", Status: "PENDING"},
+		}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/list", nil)
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "Build Auth") {
+			t.Errorf("expected order in response, got: %s", rec.Body.String())
+		}
+	})
 }

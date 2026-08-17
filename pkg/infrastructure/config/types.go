@@ -44,6 +44,7 @@ type Config struct {
 	SAST           SASTConfig               `yaml:"sast"`
 	Unblocker      UnblockerConfig          `yaml:"unblocker"`
 	Context        ContextConfig            `yaml:"context"`
+	Notifications  NotificationsConfig      `yaml:"notifications"`
 	WorkspaceCache WorkspaceCacheConfig     `yaml:"workspace_cache"`
 	// Prompts holds per-agent, per-action prompt customizations
 	// (agent -> action -> override). See pkg/infrastructure/prompts for the
@@ -58,6 +59,11 @@ type Config struct {
 	MaxClarificationWait       Duration `yaml:"max_clarification_wait"`
 	ClarificationTimeoutAction string   `yaml:"clarification_timeout_action"`
 	ExecutionReport            string   `yaml:"execution_report,omitempty"`
+}
+
+type NotificationsConfig struct {
+	Desktop    bool   `yaml:"desktop"`
+	WebhookURL string `yaml:"webhook_url"`
 }
 
 type RuntimeConfig struct {

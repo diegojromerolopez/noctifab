@@ -5,13 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.38.0] - 2026-08-17
+
+### Added
+- **In-Flight Order Queue Persistence & Crash Resilience (`pkg/domain/state.go`, `pkg/services/standby_loop.go`)**:
+  - Added `StoryOrder` entity and persistent `Orders` tracking across SQLite, PostgreSQL, and JSON database storage backends.
+  - Automatically records incoming prompt orders (`PENDING`) and updates status (`RUNNING`, `COMPLETED`, `FAILED`) across execution lifecycles.
+  - Implemented automatic startup reconciliation: on daemon boot/restart, any pending or interrupted orders are safely re-enqueued without loss.
+- **In-Browser Disambiguation & Clarification UI (`pkg/interfaces/web/`, `pkg/interfaces/web/static/`)**:
+  - Added Web API endpoints: `GET /api/v1/clarifications` (with `?pending=true` filtering), `POST /api/v1/clarifications/{id}/resolve`, and `GET /api/v1/orders/list`.
+  - Added reactive glowing clarification notification banner in the Mission Control Dashboard that alerts developers in real-time when an agent requires specification disambiguation.
+  - Provides inline text input and instant resolution button, unblocking agents directly from the browser.
+- **Real-Time Streaming Terminal Log Pane in Web Dashboard (`pkg/interfaces/web/static/`)**:
+  - Embedded a collapsible dark-mode terminal console drawer (`#terminal-drawer`) streaming live agent actions, test execution results, consensus votes, and diff updates via Server-Sent Events (SSE).
+  - Added auto-scroll lock, manual clear button, and smooth collapse/expand transitions.
+- **Remote & Cloud Dev Notifications (Webhooks / Slack / Discord) (`pkg/infrastructure/notifier/`)**:
+  - Implemented `WebhookNotifier` supporting Slack-compatible (`text`), Discord-compatible (`content`), and structured JSON event payloads.
+  - Created `MultiNotifier` composite pattern dispatching native OS alerts and remote webhooks simultaneously.
+- **Autonomous Generator-Powered Merge Conflict Resolution (`pkg/services/rebase_queue.go`)**:
+  - Reused the existing `GENERATOR` agent role to autonomously resolve Git merge and rebase conflicts without adding redundant agent roles.
+  - Added `GeneratorConflictResolverFunc` callback to `RebaseQueue` to synthesize semantic AST resolutions, stage files, and complete rebase/merge workflows automatically.
+
 ## [0.37.0] - 2026-08-17
 
 ### Added
 - **Concurrent Visual Web Dashboard Flag (`noctifab start --web` / `noctifab start -w`)**:
   - Added `-w` / `--web`, `--web-port` (default: `8080`), and `--web-host` (default: `127.0.0.1`) flags to `noctifab start` and `noctifab resume`.
   - Spawns the embedded real-time Visual Web Dashboard server concurrently in a background goroutine alongside the Dark Factory execution loop.
-  - Automatically logs the live dashboard URL on startup (`🌐 Visual Web Dashboard live at: http://127.0.0.1:8080`) and handles graceful shutdown.
+  - Added `--web-open` flag (across `start`, `resume`, and `dashboard`) with cross-platform browser launch (`pkg/infrastructure/browser/`) to automatically open `http://127.0.0.1:8080` in the default system browser upon launch.
+  - Added stylized Vite-style console launch cards displaying local URL and runtime mode.
+- **Always-On Background Standby Daemon (`pkg/services/standby_loop.go` & `noctifab start --standby`)**:
+  - Replaced termination on story completion with a persistent, zero-idle-CPU `StandbyEngine` that enters `STANDBY 🟢` state.
+  - Keeps the background daemon and Web Dashboard alive, reacting in real-time to prompt orders via Web UI (`POST /api/v1/orders`), CLI (`noctifab order`), and filesystem events.
+- **Cross-Platform Desktop Notifications (`pkg/infrastructure/notifier/`)**:
+  - Added native desktop alerts for macOS (`osascript`), Linux (`notify-send`), and Windows (`powershell`).
+  - Sends immediate notifications when a feature story completes with 100% test consensus, when clarification is required, or when a build failure occurs.
+- **Automated Specification Filesystem Watcher (`pkg/services/fs_watcher.go`)**:
+  - Implemented debounced file monitoring on `SPEC.md` and `roadmap/user-stories/*.md` to automatically wake up the dark factory when new stories are added.
 - **Unified Dashboard CLI Architecture (`noctifab dashboard --web` / `noctifab dashboard -w`)**:
   - Consolidated the standalone `noctifab web` command into `noctifab dashboard` via the `-w` / `--web` flag (with `--port`, `--host`, and `--readonly` support).
   - Cleaned up redundant CLI surface area: developers can use `noctifab dashboard` for TUI mode and `noctifab dashboard -w` for browser web mode.

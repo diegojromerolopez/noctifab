@@ -2108,13 +2108,13 @@ To prevent console log clutter and improve developer user experience, the Cobra 
 *   `noctifab demo`
     Runs an instant 2-minute zero-config autonomous sandbox using deterministic mock replay (`MockDemoLLMClient`). Unpacks embedded project templates into an ephemeral `/tmp/noctifab-demo-*` directory, coordinates the Planner, Generator, and Tester stages with 100% offline consensus passes, and cleans up the sandbox on termination. Supports `--project`, `--offline`, `--speed`, and `--no-cleanup`.
 *   `noctifab dashboard`
-    Launches the real-time progress dashboard. By default, opens the interactive Terminal User Interface (TUI). When passed `-w` / `--web`, launches the embedded real-time visual web dashboard in the browser (`--port`, `--host`, `--readonly`) with live topological task DAG rendering, syntax-highlighted code diffs, real-time Server-Sent Events (SSE) telemetry feed, prompt order input bar, and flow pause/resume controls.
+    Launches the real-time progress dashboard. By default, opens the interactive Terminal User Interface (TUI). When passed `-w` / `--web`, launches the embedded real-time visual web dashboard in the browser (`--port`, `--host`, `--readonly`, `--web-open` to auto-open) with live topological task DAG rendering, syntax-highlighted code diffs, real-time Server-Sent Events (SSE) telemetry feed, prompt order input bar, and flow pause/resume controls.
 *   `noctifab steer`
     Injects a mid-flight human-in-the-loop steering directive into the active worker goroutine via the daemon Command Mailbox without interrupting the loop (`noctifab steer "Use PostgreSQL instead of SQLite"`).
 *   `noctifab order`
     Enqueues an ad-hoc user story specification prompt order into the autonomous dark factory execution queue.
 *   `noctifab start`
-    Starts the daemonized execution loop, continuously polling and executing actions. Pass `-w` / `--web` to simultaneously spawn the concurrent embedded live visual web dashboard (`http://127.0.0.1:8080`), `-i` for interactive TUI, and `--resume` to skip already completed stories.
+    Starts the daemonized execution loop, continuously polling and executing actions. Pass `-w` / `--web` to simultaneously spawn the concurrent embedded live visual web dashboard (`http://127.0.0.1:8080`), `--web-open` to auto-open in browser, `-i` for interactive TUI, `--standby` for persistent always-on dark factory mode, and `--resume` to skip already completed stories.
     
     ##### Startup Pre-Flight Health & Maintenance Checks:
     Prior to starting the loop, `noctifab start` executes the following checks sequentially:
@@ -2127,8 +2127,16 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     
     ##### Daemon Lock & PID File:
     At start, `noctifab start` attempts to acquire a file lock (`flock`) on `.noctifab/noctifab.pid` and writes its process PID inside. If another process holds the lock, the command exits with `"noctifab daemon is already running in this workspace."`
-*   `noctifab create`
-    Plans and executes the feature specification end-to-end. It first runs the Planner phase to decompose the specification into a task DAG (if not already planned), then runs the execution loop continuously, calling the Tester/Generator to implement and validate tasks, and retrying/fixing any failures until the build is passing. Once complete, it pushes the branch, creates a single Pull Request, and exits cleanly.
+*   `noctifab resume`
+    Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story. Supports `-w` / `--web` and `--web-open` for concurrent visual web dashboard.
+*   `noctifab serve`
+    Runs the long-running headless orchestrator daemon loop in the background, continuously polling and executing tasks until completion or cancellation, exposing internal loopback REST API endpoints.
+*   `noctifab prompts`
+    Inspects, initializes, customizes, and validates per-agent prompt templates (`list`, `show`, `init`, `validate`) without requiring binary recompilation.
+*   `noctifab stop`
+    Gracefully stops the background daemon process and saves state.
+*   `noctifab clean`
+    Resets all Noctifab workspace state by wiping the database, removing PID files, and purging logs. Supports `--dry-run` and `--yes` / `-y`.
 *   `noctifab validate`
     Runs a dry-run check of the current local state file, project directory constraints, and linter commands without polling the LLM or running actions.
 *   `noctifab maintenance`

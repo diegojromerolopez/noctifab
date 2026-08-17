@@ -109,6 +109,19 @@ func (c *OrderCmd) Execute(ctx context.Context, repo domain.StateRepository) err
 		return fmt.Errorf("failed to write story order file: %w", err)
 	}
 
+	orderRecord := domain.StoryOrder{
+		ID:        fmt.Sprintf("order_%s", timestamp),
+		Prompt:    trimmed,
+		StoryPath: storyPath,
+		Status:    "PENDING",
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	state.Orders = append(state.Orders, orderRecord)
+	if err := repo.Save(ctx, state); err != nil {
+		return fmt.Errorf("failed to persist story order: %w", err)
+	}
+
 	if c.StoryCh != nil {
 		c.StoryCh <- StoryWorkItem{
 			Path: storyPath,

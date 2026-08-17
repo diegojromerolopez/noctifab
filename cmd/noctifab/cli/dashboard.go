@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/browser"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/interfaces/web"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
@@ -37,6 +38,7 @@ var dashboardCmd = &cobra.Command{
 				port = 8080
 			}
 			readOnly, _ := cmd.Flags().GetBool("readonly")
+			openBrowser, _ := cmd.Flags().GetBool("web-open")
 			targetDir := WorkspaceDir
 			if targetDir == "" {
 				targetDir = "."
@@ -44,7 +46,7 @@ var dashboardCmd = &cobra.Command{
 			if len(args) > 0 {
 				targetDir = args[0]
 			}
-			return runWebDashboard(targetDir, host, port, readOnly)
+			return runWebDashboard(targetDir, host, port, readOnly, openBrowser)
 		}
 
 		if dashboardStartTime.IsZero() {
@@ -348,7 +350,7 @@ func deduplicateStates(states []*domain.State) []*domain.State {
 	return result
 }
 
-func runWebDashboard(targetDir string, host string, port int, readOnly bool) error {
+func runWebDashboard(targetDir string, host string, port int, readOnly bool, openBrowser bool) error {
 	dbPath := filepath.Join(targetDir, ".noctifab", "data", "noctifab.db")
 	repo, err := storage.NewSQLiteRepository(context.Background(), dbPath)
 	if err != nil {
@@ -371,8 +373,24 @@ func runWebDashboard(targetDir string, host string, port int, readOnly bool) err
 		return fmt.Errorf("failed to start web dashboard server: %w", err)
 	}
 
-	fmt.Printf("🌐 Noctifab Visual Web Dashboard running at: http://%s:%d\n", host, port)
+	targetURL := fmt.Sprintf("http://%s:%d", host, port)
+	modeDesc := "Read-Write (Steering & Orders Enabled)"
+	if readOnly {
+		modeDesc = "Read-Only (Monitoring only)"
+	}
+
+	fmt.Println()
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("🚀 Noctifab Visual Web Dashboard")
+	fmt.Printf("➜  Local:    %s\n", targetURL)
+	fmt.Printf("➜  Database: %s\n", dbPath)
+	fmt.Printf("➜  Mode:     %s\n", modeDesc)
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println("Press Ctrl+C to stop.")
+
+	if openBrowser {
+		_ = browser.NewOSBrowserOpener().Open(ctx, targetURL)
+	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -390,6 +408,7 @@ func init() {
 	dashboardCmd.Flags().String("host", "127.0.0.1", "Host address to bind the visual web dashboard")
 	dashboardCmd.Flags().Int("port", 8080, "Port for the visual web dashboard")
 	dashboardCmd.Flags().Bool("readonly", false, "Run web dashboard in read-only mode (disable steering and orders)")
+	dashboardCmd.Flags().Bool("web-open", false, "Automatically open the visual web dashboard in the default browser")
 }
 
 func ensureDaemonRunning() error {

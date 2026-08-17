@@ -92,11 +92,15 @@ type RebaseJob struct {
 	Result chan error
 }
 
+// GeneratorConflictResolverFunc defines a callback to resolve Git merge/rebase conflicts via the Generator agent.
+type GeneratorConflictResolverFunc func(ctx context.Context, branch, base string) error
+
 // RebaseQueue serializes git rebases to prevent index lock contention
 type RebaseQueue struct {
-	git     *GitClient
-	jobs    chan RebaseJob
-	started atomic.Bool
+	git      *GitClient
+	jobs     chan RebaseJob
+	started  atomic.Bool
+	resolver GeneratorConflictResolverFunc
 }
 
 func NewRebaseQueue(git *GitClient) *RebaseQueue {
@@ -104,6 +108,11 @@ func NewRebaseQueue(git *GitClient) *RebaseQueue {
 		git:  git,
 		jobs: make(chan RebaseJob, 100),
 	}
+}
+
+// SetConflictResolver configures the conflict resolver callback (invoked on rebase conflicts).
+func (q *RebaseQueue) SetConflictResolver(resolver GeneratorConflictResolverFunc) {
+	q.resolver = resolver
 }
 
 // Start spawns the rebase queue consumer loop
@@ -168,14 +177,27 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 	// Rebase onto base
 	_, err = q.git.Run(ctx, true, "rebase", base)
 	if err != nil {
-		fmt.Printf("⚠️  [Git Rebase Conflict] Branch %q encountered conflict with %q. Aborting rebase...\n", branch, base)
-		// Conflict occurred! Abort rebase
-		_, _ = q.git.Run(ctx, true, "rebase", "--abort")
-		_, _ = q.git.Run(ctx, true, "checkout", base) // revert to safe base
-		if stashed {
-			_, _ = q.git.Run(ctx, true, "stash", "pop")
+		fmt.Printf("⚠️  [Git Rebase Conflict] Branch %q encountered conflict with %q. Invoking Generator Agent...\n", branch, base)
+		resolved := false
+		if q.resolver != nil {
+			if resolveErr := q.resolver(ctx, branch, base); resolveErr == nil {
+				_, _ = q.git.Run(ctx, true, "add", "--all")
+				if _, contErr := q.git.Run(ctx, true, "rebase", "--continue"); contErr == nil {
+					resolved = true
+					fmt.Printf("✨ [Conflict Resolved] Generator Agent successfully resolved merge conflicts between %q and %q\n", branch, base)
+				}
+			}
 		}
-		return fmt.Errorf("rebase conflict detected: %w", err)
+
+		if !resolved {
+			// Conflict could not be resolved; abort rebase cleanly
+			_, _ = q.git.Run(ctx, true, "rebase", "--abort")
+			_, _ = q.git.Run(ctx, true, "checkout", base) // revert to safe base
+			if stashed {
+				_, _ = q.git.Run(ctx, true, "stash", "pop")
+			}
+			return fmt.Errorf("rebase conflict detected: %w", err)
+		}
 	}
 
 	// Checkout base and merge branch to fast-forward local base branch
