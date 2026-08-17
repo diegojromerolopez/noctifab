@@ -100,8 +100,9 @@ func (w *FSWatcher) scanFiles(notify bool) {
 	entries, err := os.ReadDir(storiesDir)
 	if err == nil {
 		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
-				targets = append(targets, filepath.Join(storiesDir, e.Name()))
+			name := e.Name()
+			if !e.IsDir() && strings.HasSuffix(name, ".md") && !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "~") && !strings.HasSuffix(name, ".tmp") {
+				targets = append(targets, filepath.Join(storiesDir, name))
 			}
 		}
 	}

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -136,10 +137,16 @@ func (se *StandbyEngine) reconcilePendingOrders(ctx context.Context) {
 	if err != nil || state == nil || len(state.Orders) == 0 {
 		return
 	}
-	for _, order := range state.Orders {
-		if order.Status == "PENDING" || order.Status == "RUNNING" {
-			if order.StoryPath != "" {
-				se.Enqueue(StoryWorkItem{Path: order.StoryPath})
+	for i := range state.Orders {
+		if state.Orders[i].Status == "PENDING" || state.Orders[i].Status == "RUNNING" {
+			if state.Orders[i].StoryPath != "" {
+				if _, statErr := os.Stat(state.Orders[i].StoryPath); statErr == nil {
+					se.Enqueue(StoryWorkItem{Path: state.Orders[i].StoryPath})
+				} else {
+					state.Orders[i].Status = "FAILED"
+					state.Orders[i].UpdatedAt = time.Now().UTC()
+					_ = se.repo.Save(ctx, state)
+				}
 			}
 		}
 	}

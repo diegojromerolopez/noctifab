@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -144,6 +146,10 @@ func TestStandbyEngine_FailureNotification(t *testing.T) {
 }
 
 func TestStandbyEngine_PendingOrderReconciliation(t *testing.T) {
+	tempDir := t.TempDir()
+	storyFile := filepath.Join(tempDir, "US-003.md")
+	_ = os.WriteFile(storyFile, []byte("# US-003: Health Check"), 0644)
+
 	repo := &mockStandbyStateRepo{
 		state: &domain.State{
 			ID: "test-state",
@@ -151,7 +157,7 @@ func TestStandbyEngine_PendingOrderReconciliation(t *testing.T) {
 				{
 					ID:        "order_1",
 					Prompt:    "Add health check endpoint",
-					StoryPath: "roadmap/user-stories/US-003.md",
+					StoryPath: storyFile,
 					Status:    "PENDING",
 				},
 			},
@@ -160,8 +166,8 @@ func TestStandbyEngine_PendingOrderReconciliation(t *testing.T) {
 	mockNotif := notifier.NewMockNotifier()
 
 	var processedStory string
-	executor := func(ctx context.Context, storyFile string) error {
-		processedStory = storyFile
+	executor := func(ctx context.Context, sf string) error {
+		processedStory = sf
 		return nil
 	}
 
@@ -180,6 +186,6 @@ func TestStandbyEngine_PendingOrderReconciliation(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 
-	assert.Equal(t, "roadmap/user-stories/US-003.md", processedStory)
+	assert.Equal(t, storyFile, processedStory)
 	assert.Equal(t, "COMPLETED", repo.state.Orders[0].Status)
 }
