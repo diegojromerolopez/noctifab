@@ -130,16 +130,16 @@ noctifab demo
 ```
 This runs a 100% offline, deterministic mock simulation of the entire Dark Factory loop with embedded templates and automated cleanup.
 
-### Option B: Real-Time Visual Web Dashboard (`noctifab start -w` / `noctifab dashboard -w`)
-Launch the visual web dashboard to explore the topological task DAG, watch streaming code diffs, and inspect real-time agent event logs:
+### Option B: Real-Time Visual Web Dashboard (`noctifab start -w -o` / `noctifab dashboard -w -o`)
+Launch the visual web dashboard to explore the topological task DAG, watch streaming code diffs, and inspect real-time agent event logs (pass `-o` to auto-open in your default browser):
 
 ```bash
-# Launch during execution:
-noctifab start [my-project-dir] -w
+# Launch during execution and auto-open browser:
+noctifab start [my-project-dir] -w -o
 
 # Or inspect an existing project workspace anytime:
-noctifab dashboard -w
-# Open http://127.0.0.1:8080 in your browser
+noctifab dashboard -w -o
+# Automatically opens http://127.0.0.1:8080 in your browser
 ```
 
 ### Option C: Live Interactive TUI Dashboard Mode (`-i`)

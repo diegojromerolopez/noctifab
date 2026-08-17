@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Concurrent Visual Web Dashboard Flag (`noctifab start --web` / `noctifab start -w`)**:
   - Added `-w` / `--web`, `--web-port` (default: `8080`), and `--web-host` (default: `127.0.0.1`) flags to `noctifab start` and `noctifab resume`.
   - Spawns the embedded real-time Visual Web Dashboard server concurrently in a background goroutine alongside the Dark Factory execution loop.
-  - Automatically logs the live dashboard URL on startup (`🌐 Visual Web Dashboard live at: http://127.0.0.1:8080`) and handles graceful shutdown.
+  - Added `-o` / `--web-open` (and `-o` / `--open` on `noctifab dashboard`) with cross-platform browser launch (`pkg/infrastructure/browser/`) to automatically open `http://127.0.0.1:8080` in the default system browser upon launch.
+  - Added stylized Vite-style console launch cards displaying local URL and runtime mode.
 - **Always-On Background Standby Daemon (`pkg/services/standby_loop.go` & `noctifab start --standby`)**:
   - Replaced termination on story completion with a persistent, zero-idle-CPU `StandbyEngine` that enters `STANDBY 🟢` state.
   - Keeps the background daemon and Web Dashboard alive, reacting in real-time to prompt orders via Web UI (`POST /api/v1/orders`), CLI (`noctifab order`), and filesystem events.

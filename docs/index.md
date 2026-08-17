@@ -47,7 +47,7 @@ noctifab_evaluation_report
 ---
 
 - **Instant 2-Minute Zero-Config Sandbox (`noctifab demo`)**: Ephemeral, 100% offline, deterministic simulation of the complete Dark Factory loop with embedded templates, zero token cost, and automated cleanup.
-- **Real-Time Visual Web Dashboard (`noctifab dashboard -w` / `noctifab start -w`)**: Modern embedded web UI featuring live topological task DAG rendering, syntax-highlighted code diffs, real-time Server-Sent Events (SSE) telemetry stream, prompt order input bar, and flow pause/resume controls.
+- **Always-On Background Standby Daemon & Real-Time Visual Web Dashboard (`noctifab start -w -o` / `noctifab dashboard -w -o`)**: Modern embedded web UI featuring auto-browser launch (`-o` / `--open`), zero-idle-CPU standby mode (`STANDBY 🟢`), live topological task DAG rendering, syntax-highlighted code diffs, real-time Server-Sent Events (SSE) telemetry stream, prompt order input bar, desktop alerts, and flow pause/resume controls.
 - **Mid-Flight Interactive Steerability & Developer Prompt Orders**: Human-in-the-loop steering directives (`noctifab steer`) and ad-hoc prompt orders (`noctifab order`) injected dynamically into the Command Mailbox and agent prompts without halting execution.
 - **1-Click Local LLM Profiles & DeepSeek-R1 Parser**: Pre-configured profiles (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) with automatic `<think>...</think>` reasoning tag stripping for reasoning models.
 - **State-Driven Orchestration**: Operates using a stateless agent controlled by a stateful orchestrator. The orchestrator tracks tasks, action execution, and clarifications in a local SQLite or PostgreSQL database.

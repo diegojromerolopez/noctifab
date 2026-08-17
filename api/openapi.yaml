@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Noctifab Dark Factory API
-  version: "0.36.0"
+  version: "0.37.0"
   description: |
     REST and Server-Sent Events (SSE) API specification for Noctifab, an autonomous dark factory agentic harness.
     

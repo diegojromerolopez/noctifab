@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/browser"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/notifier"
 	"github.com/diegojromerolopez/noctifab/pkg/interfaces/web"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
@@ -42,7 +43,21 @@ func startConcurrentWebServer(cmd *cobra.Command, repo domain.StateRepository, m
 				fmt.Fprintf(os.Stderr, "Warning: failed to start concurrent web dashboard: %v\n", err)
 				return nil, webHost, webPort, false, func() {}
 			}
-			fmt.Printf("🌐 Visual Web Dashboard live at: http://%s:%d\n", webHost, webPort)
+
+			targetURL := fmt.Sprintf("http://%s:%d", webHost, webPort)
+			fmt.Println()
+			fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+			fmt.Println("🚀 Noctifab Visual Web Dashboard")
+			fmt.Printf("➜  Local:    %s\n", targetURL)
+			fmt.Println("➜  Mode:     Concurrent Live Mission Control")
+			fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+			if openFlag := cmd.Flags().Lookup("web-open"); openFlag != nil {
+				if openBrowser, _ := cmd.Flags().GetBool("web-open"); openBrowser {
+					_ = browser.NewOSBrowserOpener().Open(context.Background(), targetURL)
+				}
+			}
+
 			cleanup := func() {
 				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer shutdownCancel()

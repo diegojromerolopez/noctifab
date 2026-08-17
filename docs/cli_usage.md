@@ -69,8 +69,8 @@ Launches the real-time progress dashboard to monitor active story and task orche
 # Launch interactive TUI dashboard in terminal
 noctifab dashboard
 
-# Launch visual web dashboard in browser
-noctifab dashboard -w
+# Launch visual web dashboard in browser and auto-open default browser
+noctifab dashboard -w -o
 
 # Launch visual web dashboard with custom port and host
 noctifab dashboard -w --port 8080 --host 127.0.0.1
@@ -82,6 +82,7 @@ noctifab dashboard -w --readonly
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--web` | `-w` | `false` | Launch the real-time visual web dashboard in browser instead of TUI |
+| `--open` | `-o` | `false` | Automatically open the visual web dashboard in the default browser |
 | `--port` | | `8080` | Port for the visual web dashboard |
 | `--host` | | `127.0.0.1` | Host address to bind the visual web dashboard |
 | `--readonly` | | `false` | Read-only mode disabling prompt steering and order mutations |
@@ -121,16 +122,19 @@ noctifab validate
 ```
 
 ### 7. `start`
-Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-w` / `--web` to launch the concurrent live Visual Web Dashboard. Pass `-i` / `--interactive` to launch the live TUI dashboard interface. Pass `--resume` to skip already completed user stories and resume execution from the first incomplete story.
+Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-w` / `--web` to launch the concurrent live Visual Web Dashboard. Pass `-o` / `--web-open` to automatically open the dashboard in your default browser. Pass `-i` / `--interactive` to launch the live TUI dashboard interface. Pass `--standby` to keep the daemon running persistently in standby mode after finishing initial stories.
 ```bash
-# Run in current directory with live Visual Web Dashboard
-noctifab start -w
+# Run in current directory with live Visual Web Dashboard and auto-open in browser
+noctifab start -w -o
 
 # Run on a target project folder with live Web Dashboard on custom port
 noctifab start /path/to/my-project -w --web-port 8080
 
 # Run in interactive TUI dashboard mode
 noctifab start -i
+
+# Run in persistent standby mode (always-on dark factory)
+noctifab start -w --standby
 
 # Resume execution, skipping completed user stories
 noctifab start --resume
@@ -139,17 +143,19 @@ noctifab start --resume
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--web` | `-w` | `false` | Launch the real-time visual web dashboard concurrently during execution |
+| `--web-open` | `-o` | `false` | Automatically open the visual web dashboard in the default browser |
 | `--web-port` | | `8080` | Port for the concurrent visual web dashboard |
 | `--web-host` | | `127.0.0.1` | Host address to bind the concurrent visual web dashboard |
+| `--standby` | | `false` | Keep daemon alive in standby mode after finishing initial stories to accept prompt orders (defaults to true with `-w`) |
 | `--interactive` | `-i` | `false` | Launch in live interactive TUI dashboard mode |
 | `--resume` | | `false` | Resume execution from the first incomplete user story, skipping completed stories |
 | `--spec` | `-s` | `SPEC.md` | Path to feature specification file |
 
 ### 8. `resume`
-Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story. Supports `-w` / `--web` to launch the visual web dashboard concurrently.
+Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story. Supports `-w` / `--web` to launch the visual web dashboard concurrently, and `-o` / `--web-open` to auto-open in browser.
 ```bash
 # Resume execution in target project folder with concurrent web dashboard
-noctifab resume /path/to/my-project -w
+noctifab resume /path/to/my-project -w -o
 ```
 
 ### 9. `stop`
