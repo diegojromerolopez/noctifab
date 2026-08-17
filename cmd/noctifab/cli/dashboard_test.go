@@ -186,7 +186,7 @@ func TestDashboardCmd_Configuration(t *testing.T) {
 		for _, cmd := range RootCmd.Commands() {
 			if cmd.Name() == "dashboard" {
 				found = true
-				assert.Equal(t, "Launch the real-time terminal user interface progress dashboard", cmd.Short)
+				assert.Equal(t, "Launch the real-time progress dashboard (terminal TUI or visual web browser)", cmd.Short)
 				break
 			}
 		}
@@ -244,4 +244,23 @@ func TestDashboard_PipelineRibbonAndSteering(t *testing.T) {
 	assert.Contains(t, out, "Depends on: task-0")
 	assert.Contains(t, out, "Target Files: pkg/router.go")
 	assert.Contains(t, out, "🎯 Steering: \"Use chi router instead of gin\"")
+}
+
+func TestDashboardCmd_WebFlags(t *testing.T) {
+	webFlag := dashboardCmd.Flags().Lookup("web")
+	require.NotNil(t, webFlag)
+	assert.Equal(t, "w", webFlag.Shorthand)
+	assert.Equal(t, "false", webFlag.DefValue)
+
+	portFlag := dashboardCmd.Flags().Lookup("port")
+	require.NotNil(t, portFlag)
+	assert.Equal(t, "8080", portFlag.DefValue)
+
+	hostFlag := dashboardCmd.Flags().Lookup("host")
+	require.NotNil(t, hostFlag)
+	assert.Equal(t, "127.0.0.1", hostFlag.DefValue)
+
+	roFlag := dashboardCmd.Flags().Lookup("readonly")
+	require.NotNil(t, roFlag)
+	assert.Equal(t, "false", roFlag.DefValue)
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/reportfs"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
+	"github.com/diegojromerolopez/noctifab/pkg/interfaces/web"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/diegojromerolopez/noctifab/pkg/services/reporting"
 )
@@ -294,6 +295,38 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	mailbox := services.NewCommandMailbox(repo)
 	go mailbox.Start(cmdCtx)
+
+	if webFlag := cmd.Flags().Lookup("web"); webFlag != nil {
+		if webEnabled, _ := cmd.Flags().GetBool("web"); webEnabled {
+			webHost := "127.0.0.1"
+			if hostFlag := cmd.Flags().Lookup("web-host"); hostFlag != nil {
+				if h, err := cmd.Flags().GetString("web-host"); err == nil && h != "" {
+					webHost = h
+				}
+			}
+			webPort := 8080
+			if portFlag := cmd.Flags().Lookup("web-port"); portFlag != nil {
+				if p, err := cmd.Flags().GetInt("web-port"); err == nil && p > 0 {
+					webPort = p
+				}
+			}
+			serverCfg := web.WebServerConfig{
+				Host: webHost,
+				Port: webPort,
+			}
+			webServer := web.NewWebServer(serverCfg, repo, mailbox, nil)
+			if err := webServer.Start(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to start concurrent web dashboard: %v\n", err)
+			} else {
+				fmt.Printf("🌐 Visual Web Dashboard live at: http://%s:%d\n", webHost, webPort)
+				defer func() {
+					shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+					defer shutdownCancel()
+					_ = webServer.Shutdown(shutdownCtx)
+				}()
+			}
+		}
+	}
 
 	if executionReporter != nil {
 		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "story_execution", At: time.Now().UTC()})

@@ -7,7 +7,7 @@ info:
     
     Noctifab exposes endpoints via:
     1. **Headless Daemon REST API** (default: `http://127.0.0.1:18080` via `noctifab start` / `serve`)
-    2. **Real-Time Visual Web Dashboard API** (default: `http://127.0.0.1:8080` via `noctifab web`)
+    2. **Real-Time Visual Web Dashboard API** (default: `http://127.0.0.1:8080` via `noctifab start -w` / `noctifab dashboard -w`)
   license:
     name: Apache 2.0
     url: https://github.com/diegojromerolopez/noctifab/blob/main/LICENSE
