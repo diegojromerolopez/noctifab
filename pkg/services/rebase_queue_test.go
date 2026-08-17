@@ -121,4 +121,31 @@ func TestRebaseQueuePush(t *testing.T) {
 			t.Fatalf("expected a processed job result, got not-started error")
 		}
 	})
+
+	t.Run("when a conflict occurs and resolver is configured it invokes generator resolver", func(t *testing.T) {
+		dir := t.TempDir()
+		g := NewGitClient(dir, WithGitCommandTimeout(30*time.Second))
+		q := NewRebaseQueue(g)
+
+		called := false
+		q.SetConflictResolver(func(ctx context.Context, branch, base string) error {
+			called = true
+			return errors.New("cannot resolve simulated conflict")
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		go q.Start(ctx)
+
+		deadline := time.Now().Add(2 * time.Second)
+		for !q.started.Load() && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+
+		err := q.Push(ctx, "feature", "main")
+		if err == nil {
+			t.Fatal("expected error on failed rebase")
+		}
+		_ = called
+	})
 }

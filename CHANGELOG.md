@@ -22,7 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Remote & Cloud Dev Notifications (Webhooks / Slack / Discord) (`pkg/infrastructure/notifier/`)**:
   - Implemented `WebhookNotifier` supporting Slack-compatible (`text`), Discord-compatible (`content`), and structured JSON event payloads.
   - Created `MultiNotifier` composite pattern dispatching native OS alerts and remote webhooks simultaneously.
-  - Added `notifications.webhook_url` and `notifications.desktop` configuration support (`NOCTIFAB_NOTIFICATIONS_WEBHOOK_URL`).
+- **Autonomous Generator-Powered Merge Conflict Resolution (`pkg/services/rebase_queue.go`)**:
+  - Reused the existing `GENERATOR` agent role to autonomously resolve Git merge and rebase conflicts without adding redundant agent roles.
+  - Added `GeneratorConflictResolverFunc` callback to `RebaseQueue` to synthesize semantic AST resolutions, stage files, and complete rebase/merge workflows automatically.
 
 ## [0.37.0] - 2026-08-17
 
