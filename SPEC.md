@@ -2127,8 +2127,16 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     
     ##### Daemon Lock & PID File:
     At start, `noctifab start` attempts to acquire a file lock (`flock`) on `.noctifab/noctifab.pid` and writes its process PID inside. If another process holds the lock, the command exits with `"noctifab daemon is already running in this workspace."`
-*   `noctifab create`
-    Plans and executes the feature specification end-to-end. It first runs the Planner phase to decompose the specification into a task DAG (if not already planned), then runs the execution loop continuously, calling the Tester/Generator to implement and validate tasks, and retrying/fixing any failures until the build is passing. Once complete, it pushes the branch, creates a single Pull Request, and exits cleanly.
+*   `noctifab resume`
+    Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story. Supports `-w` / `--web` and `--web-open` for concurrent visual web dashboard.
+*   `noctifab serve`
+    Runs the long-running headless orchestrator daemon loop in the background, continuously polling and executing tasks until completion or cancellation, exposing internal loopback REST API endpoints.
+*   `noctifab prompts`
+    Inspects, initializes, customizes, and validates per-agent prompt templates (`list`, `show`, `init`, `validate`) without requiring binary recompilation.
+*   `noctifab stop`
+    Gracefully stops the background daemon process and saves state.
+*   `noctifab clean`
+    Resets all Noctifab workspace state by wiping the database, removing PID files, and purging logs. Supports `--dry-run` and `--yes` / `-y`.
 *   `noctifab validate`
     Runs a dry-run check of the current local state file, project directory constraints, and linter commands without polling the LLM or running actions.
 *   `noctifab maintenance`
