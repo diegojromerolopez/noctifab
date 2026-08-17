@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.37.0] - 2026-08-17
 
+### Added
+- **Concurrent Visual Web Dashboard Flag (`noctifab start --web` / `noctifab start -w`)**:
+  - Added `-w` / `--web`, `--web-port` (default: `8080`), and `--web-host` (default: `127.0.0.1`) flags to `noctifab start` and `noctifab resume`.
+  - Spawns the embedded real-time Visual Web Dashboard server concurrently in a background goroutine alongside the Dark Factory execution loop.
+  - Automatically logs the live dashboard URL on startup (`🌐 Visual Web Dashboard live at: http://127.0.0.1:8080`) and handles graceful shutdown.
+
 ### Changed
 - **Configuration Schema Modernization & Domain Grouping**:
   - Grouped loose top-level configuration settings into structured domain sections:

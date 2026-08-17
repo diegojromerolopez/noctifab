@@ -2114,7 +2114,7 @@ To prevent console log clutter and improve developer user experience, the Cobra 
 *   `noctifab order`
     Enqueues an ad-hoc user story specification prompt order into the autonomous dark factory execution queue.
 *   `noctifab start`
-    Starts the daemonized execution loop, continuously polling and executing actions.
+    Starts the daemonized execution loop, continuously polling and executing actions. Pass `-w` / `--web` to simultaneously spawn the concurrent embedded live visual web dashboard (`http://127.0.0.1:8080`), `-i` for interactive TUI, and `--resume` to skip already completed stories.
     
     ##### Startup Pre-Flight Health & Maintenance Checks:
     Prior to starting the loop, `noctifab start` executes the following checks sequentially:

@@ -100,23 +100,35 @@ noctifab validate
 ```
 
 ### 7. `start`
-Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-i` / `--interactive` to launch the live TUI dashboard interface. Pass `--resume` to skip already completed user stories and resume execution from the first incomplete story.
+Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-w` / `--web` to launch the concurrent live Visual Web Dashboard. Pass `-i` / `--interactive` to launch the live TUI dashboard interface. Pass `--resume` to skip already completed user stories and resume execution from the first incomplete story.
 ```bash
-# Run in current directory
-noctifab start -i
+# Run in current directory with live Visual Web Dashboard
+noctifab start -w
 
-# Run on a target project folder
-noctifab start /path/to/my-project -i
+# Run on a target project folder with live Web Dashboard on custom port
+noctifab start /path/to/my-project -w --web-port 8080
+
+# Run in interactive TUI dashboard mode
+noctifab start -i
 
 # Resume execution, skipping completed user stories
 noctifab start --resume
 ```
 
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--web` | `-w` | `false` | Launch the real-time visual web dashboard concurrently during execution |
+| `--web-port` | | `8080` | Port for the concurrent visual web dashboard |
+| `--web-host` | | `127.0.0.1` | Host address to bind the concurrent visual web dashboard |
+| `--interactive` | `-i` | `false` | Launch in live interactive TUI dashboard mode |
+| `--resume` | | `false` | Resume execution from the first incomplete user story, skipping completed stories |
+| `--spec` | `-s` | `SPEC.md` | Path to feature specification file |
+
 ### 8. `resume`
-Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story.
+Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story. Supports `-w` / `--web` to launch the visual web dashboard concurrently.
 ```bash
-# Resume execution in target project folder
-noctifab resume /path/to/my-project
+# Resume execution in target project folder with concurrent web dashboard
+noctifab resume /path/to/my-project -w
 ```
 
 ### 9. `dashboard`

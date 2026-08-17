@@ -14,5 +14,8 @@ var resumeCmd = &cobra.Command{
 
 func init() {
 	resumeCmd.Flags().StringP("spec", "s", "SPEC.md", "Path to feature specification file")
+	resumeCmd.Flags().BoolP("web", "w", false, "Launch the real-time visual web dashboard concurrently during execution")
+	resumeCmd.Flags().Int("web-port", 8080, "Port for the concurrent visual web dashboard")
+	resumeCmd.Flags().String("web-host", "127.0.0.1", "Host address to bind the concurrent visual web dashboard")
 	RootCmd.AddCommand(resumeCmd)
 }

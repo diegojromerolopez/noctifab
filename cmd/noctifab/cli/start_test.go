@@ -149,4 +149,22 @@ func TestRunPreFlightChecks_UnreachableProvider(t *testing.T) {
 func TestResumeCmd_Setup(t *testing.T) {
 	assert.Equal(t, "resume", resumeCmd.Name())
 	assert.NotNil(t, resumeCmd.Flags().Lookup("spec"))
+	assert.NotNil(t, resumeCmd.Flags().Lookup("web"))
+	assert.NotNil(t, resumeCmd.Flags().Lookup("web-port"))
+	assert.NotNil(t, resumeCmd.Flags().Lookup("web-host"))
+}
+
+func TestStartCmd_WebFlags(t *testing.T) {
+	webFlag := startCmd.Flags().Lookup("web")
+	require.NotNil(t, webFlag)
+	assert.Equal(t, "w", webFlag.Shorthand)
+	assert.Equal(t, "false", webFlag.DefValue)
+
+	portFlag := startCmd.Flags().Lookup("web-port")
+	require.NotNil(t, portFlag)
+	assert.Equal(t, "8080", portFlag.DefValue)
+
+	hostFlag := startCmd.Flags().Lookup("web-host")
+	require.NotNil(t, hostFlag)
+	assert.Equal(t, "127.0.0.1", hostFlag.DefValue)
 }

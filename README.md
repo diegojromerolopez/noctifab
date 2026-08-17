@@ -327,8 +327,8 @@ Key features of Interactive Mode:
 - **`steer`**: Injects a mid-flight human-in-the-loop steering directive into the active task (`noctifab steer "Use PostgreSQL instead of SQLite"`).
 - **`order`**: Enqueues an ad-hoc user story / feature prompt order into the autonomous execution queue (`noctifab order "Add JWT authentication middleware"`).
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
-- **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Auto-generates user stories in `roadmap/user-stories/` from `SPEC.md` if missing, and executes stories concurrently via the Story DAG Scheduler. Pass `-i` for interactive TUI, `--resume` to skip completed stories.
-- **`resume`**: Resumes execution of an interrupted or partially completed workspace, skipping already completed user stories (`StorySuccess`) and picking up execution at the first incomplete story.
+- **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Auto-generates user stories in `roadmap/user-stories/` from `SPEC.md` if missing, and executes stories concurrently via the Story DAG Scheduler. Pass `-w` / `--web` to launch the concurrent live Visual Web Dashboard, `-i` for interactive TUI, `--resume` to skip completed stories.
+- **`resume`**: Resumes execution of an interrupted or partially completed workspace, skipping already completed user stories (`StorySuccess`) and picking up execution at the first incomplete story (supports `-w` / `--web` for concurrent web dashboard).
 - **`dashboard`**: Launches the interactive real-time Terminal User Interface (TUI) progress dashboard with Dark Factory pipeline ribbon, active agent worker cards, and live log ticker.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
 - **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
