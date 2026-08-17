@@ -216,7 +216,9 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 		cfg.Runtime.SpecSource = val
 	})
 	setIfChanged("input", func(val string) {
-		cfg.Runtime.SpecSource = val
+		if !cmd.Flags().Changed("spec-source") {
+			cfg.Runtime.SpecSource = val
+		}
 	})
 	setIfChanged("agents", func(val string) {
 		if i, err := strconv.Atoi(val); err == nil {

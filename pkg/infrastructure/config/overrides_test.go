@@ -56,7 +56,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_JIRA_URL":               "jira-url-env",
 		"NOCTIFAB_HTTP_MAX_RETRIES":       "7",
 		"NOCTIFAB_HTTP_RETRY_BACKOFF":     "150ms",
-		"NOCTIFAB_MAX_TOOLS_PER_RESPONSE": "6",
 		"NOCTIFAB_MAX_ACTIONS":            "150",
 		"NOCTIFAB_MAX_DURATION":           "3h",
 		"NOCTIFAB_SANDBOX_MODE":           "docker",
@@ -88,7 +87,7 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"llm-tester-model", "jira-user", "jira-url", "http-max-retries",
 		"http-retry-backoff", "max-actions", "max-duration",
 		"sandbox-mode", "occ-max-retries",
-		"occ-backoff-base", "occ-backoff-factor", "max-budget-usd", "token-usage-limit",
+		"occ-backoff-base", "occ-backoff-factor", "token-usage-limit",
 		"log-level", "log-file", "pr-auto-create", "pr-auto-merge", "pr-auto-rebase",
 		"pr-draft", "pr-assignees", "pr-labels",
 	}
@@ -238,7 +237,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	_ = cmd.Flags().Set("occ-max-retries", "18")
 	_ = cmd.Flags().Set("occ-backoff-base", "150ms")
 	_ = cmd.Flags().Set("occ-backoff-factor", "4.0")
-	_ = cmd.Flags().Set("max-budget-usd", "150.0")
 	_ = cmd.Flags().Set("token-usage-limit", "9999")
 	_ = cmd.Flags().Set("log-level", "info")
 	_ = cmd.Flags().Set("log-file", "log-file-flag")
@@ -364,15 +362,69 @@ func TestLoad_SpecSourceOverrides(t *testing.T) {
 		}
 	})
 
+	t.Run("when NOCTIFAB_INPUT alias is set", func(t *testing.T) {
+		_ = os.Setenv("NOCTIFAB_INPUT", "specs/alias.md")
+		defer func() { _ = os.Unsetenv("NOCTIFAB_INPUT") }()
+
+		cfg := &Config{}
+		applyEnvOverrides(cfg)
+		if cfg.Runtime.SpecSource != "specs/alias.md" {
+			t.Errorf("expected specs/alias.md, got %s", cfg.Runtime.SpecSource)
+		}
+	})
+
+	t.Run("when both NOCTIFAB_SPEC_SOURCE and NOCTIFAB_INPUT are set, canonical wins", func(t *testing.T) {
+		_ = os.Setenv("NOCTIFAB_SPEC_SOURCE", "specs/canonical.md")
+		_ = os.Setenv("NOCTIFAB_INPUT", "specs/alias.md")
+		defer func() {
+			_ = os.Unsetenv("NOCTIFAB_SPEC_SOURCE")
+			_ = os.Unsetenv("NOCTIFAB_INPUT")
+		}()
+
+		cfg := &Config{}
+		applyEnvOverrides(cfg)
+		if cfg.Runtime.SpecSource != "specs/canonical.md" {
+			t.Errorf("expected canonical specs/canonical.md to win, got %s", cfg.Runtime.SpecSource)
+		}
+	})
+
 	t.Run("when --spec-source flag is set", func(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}
 		cmd.Flags().String("spec-source", "", "")
+		cmd.Flags().String("input", "", "")
 		_ = cmd.Flags().Set("spec-source", "specs/feature-flag.md")
 
 		cfg := &Config{}
 		applyFlagOverrides(cfg, cmd)
 		if cfg.Runtime.SpecSource != "specs/feature-flag.md" {
 			t.Errorf("expected specs/feature-flag.md, got %s", cfg.Runtime.SpecSource)
+		}
+	})
+
+	t.Run("when --input alias flag is set", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("spec-source", "", "")
+		cmd.Flags().String("input", "", "")
+		_ = cmd.Flags().Set("input", "specs/alias-flag.md")
+
+		cfg := &Config{}
+		applyFlagOverrides(cfg, cmd)
+		if cfg.Runtime.SpecSource != "specs/alias-flag.md" {
+			t.Errorf("expected specs/alias-flag.md, got %s", cfg.Runtime.SpecSource)
+		}
+	})
+
+	t.Run("when both --spec-source and --input flags are set, canonical wins", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("spec-source", "", "")
+		cmd.Flags().String("input", "", "")
+		_ = cmd.Flags().Set("spec-source", "specs/canonical-flag.md")
+		_ = cmd.Flags().Set("input", "specs/alias-flag.md")
+
+		cfg := &Config{}
+		applyFlagOverrides(cfg, cmd)
+		if cfg.Runtime.SpecSource != "specs/canonical-flag.md" {
+			t.Errorf("expected canonical specs/canonical-flag.md to win, got %s", cfg.Runtime.SpecSource)
 		}
 	})
 }
