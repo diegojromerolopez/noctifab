@@ -171,7 +171,7 @@ func TestStartCmd_WebFlags(t *testing.T) {
 
 	openFlag := startCmd.Flags().Lookup("web-open")
 	require.NotNil(t, openFlag)
-	assert.Equal(t, "o", openFlag.Shorthand)
+	assert.Equal(t, "", openFlag.Shorthand)
 	assert.Equal(t, "false", openFlag.DefValue)
 
 	standbyFlag := startCmd.Flags().Lookup("standby")

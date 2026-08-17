@@ -38,7 +38,7 @@ var dashboardCmd = &cobra.Command{
 				port = 8080
 			}
 			readOnly, _ := cmd.Flags().GetBool("readonly")
-			openBrowser, _ := cmd.Flags().GetBool("open")
+			openBrowser, _ := cmd.Flags().GetBool("web-open")
 			targetDir := WorkspaceDir
 			if targetDir == "" {
 				targetDir = "."
@@ -408,7 +408,7 @@ func init() {
 	dashboardCmd.Flags().String("host", "127.0.0.1", "Host address to bind the visual web dashboard")
 	dashboardCmd.Flags().Int("port", 8080, "Port for the visual web dashboard")
 	dashboardCmd.Flags().Bool("readonly", false, "Run web dashboard in read-only mode (disable steering and orders)")
-	dashboardCmd.Flags().BoolP("open", "o", false, "Automatically open the visual web dashboard in the default browser")
+	dashboardCmd.Flags().Bool("web-open", false, "Automatically open the visual web dashboard in the default browser")
 }
 
 func ensureDaemonRunning() error {
