@@ -193,6 +193,7 @@ body {
 .badge-success { background: var(--accent-green); color: #000; }
 .badge-warning { background: var(--accent-yellow); color: #000; }
 .badge-danger { background: var(--accent-red); }
+.badge-info { background: var(--accent-cyan, #38bdf8); color: #000; }
 
 .header-actions {
   display: flex;

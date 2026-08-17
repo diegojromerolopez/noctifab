@@ -144,8 +144,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Header stats
     if (state.story_status) {
-      storyStatus.textContent = state.story_status;
-      storyStatus.className = 'badge ' + (state.story_status === 'SUCCESS' ? 'badge-success' : state.story_status === 'PAUSED' ? 'badge-warning' : 'badge-danger');
+      if (state.story_status === 'IDLE') {
+        storyStatus.textContent = 'STANDBY 🟢';
+        storyStatus.className = 'badge badge-info';
+      } else if (state.story_status === 'SUCCESS') {
+        storyStatus.textContent = 'SUCCESS ✅';
+        storyStatus.className = 'badge badge-success';
+      } else if (state.story_status === 'PAUSED') {
+        storyStatus.textContent = 'PAUSED ⏸';
+        storyStatus.className = 'badge badge-warning';
+      } else if (state.story_status === 'RUNNING') {
+        storyStatus.textContent = 'RUNNING ⚡';
+        storyStatus.className = 'badge badge-success';
+      } else {
+        storyStatus.textContent = state.story_status;
+        storyStatus.className = 'badge badge-danger';
+      }
+
       if (state.story_status === 'PAUSED') {
         btnPause.style.display = 'none';
         btnResume.style.display = 'inline-block';

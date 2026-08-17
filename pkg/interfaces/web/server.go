@@ -30,6 +30,7 @@ type WebServer struct {
 	repo        domain.StateRepository
 	mailbox     *services.CommandMailbox
 	broadcaster *SSEBroadcaster
+	storyCh     chan<- services.StoryWorkItem
 	httpServer  *http.Server
 }
 
@@ -89,6 +90,11 @@ func (ws *WebServer) Addr() string {
 // Broadcaster returns the associated SSE broadcaster for event publishing.
 func (ws *WebServer) Broadcaster() *SSEBroadcaster {
 	return ws.broadcaster
+}
+
+// SetStoryChannel connects a background work item queue to the web server.
+func (ws *WebServer) SetStoryChannel(ch chan<- services.StoryWorkItem) {
+	ws.storyCh = ch
 }
 
 func (ws *WebServer) buildMux() *http.ServeMux {
@@ -226,7 +232,8 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 
 		if ws.mailbox != nil {
 			ws.mailbox.Send(&services.OrderCmd{
-				Prompt: payload.Prompt,
+				Prompt:  payload.Prompt,
+				StoryCh: ws.storyCh,
 			})
 		}
 

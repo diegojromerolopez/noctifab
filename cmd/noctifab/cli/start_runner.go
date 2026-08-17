@@ -21,7 +21,6 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/reportfs"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
-	"github.com/diegojromerolopez/noctifab/pkg/interfaces/web"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/diegojromerolopez/noctifab/pkg/services/reporting"
 )
@@ -296,34 +295,99 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	mailbox := services.NewCommandMailbox(repo)
 	go mailbox.Start(cmdCtx)
 
-	if webFlag := cmd.Flags().Lookup("web"); webFlag != nil {
-		if webEnabled, _ := cmd.Flags().GetBool("web"); webEnabled {
-			webHost := "127.0.0.1"
-			if hostFlag := cmd.Flags().Lookup("web-host"); hostFlag != nil {
-				if h, err := cmd.Flags().GetString("web-host"); err == nil && h != "" {
-					webHost = h
+	webServerInstance, webHost, webPort, webEnabled, webCleanup := startConcurrentWebServer(cmd, repo, mailbox)
+	defer webCleanup()
+
+	executeStory := func(ctx context.Context, currentStoryFile string) error {
+		specBytes, err := os.ReadFile(currentStoryFile)
+		if err != nil {
+			return err
+		}
+		featName := filepath.Base(currentStoryFile)
+		integrationBranch := "noctifab/feature-" + strings.TrimSuffix(featName, filepath.Ext(featName))
+
+		state, err := repo.Load(ctx)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				state = &domain.State{
+					ID:          uuid.New().String(),
+					ProjectPath: targetDir,
+					Version:     0,
+					BuildStatus: domain.BuildUnknown,
+					Metadata: domain.StateMetadata{
+						InputSource:       "markdown",
+						InputPath:         currentStoryFile,
+						FeatureName:       featName,
+						BaseBranch:        cfg.VCS.BaseBranch,
+						IntegrationBranch: integrationBranch,
+						TotalCostUSD:      "0.00000",
+					},
 				}
-			}
-			webPort := 8080
-			if portFlag := cmd.Flags().Lookup("web-port"); portFlag != nil {
-				if p, err := cmd.Flags().GetInt("web-port"); err == nil && p > 0 {
-					webPort = p
-				}
-			}
-			serverCfg := web.WebServerConfig{
-				Host: webHost,
-				Port: webPort,
-			}
-			webServer := web.NewWebServer(serverCfg, repo, mailbox, nil)
-			if err := webServer.Start(); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to start concurrent web dashboard: %v\n", err)
 			} else {
-				fmt.Printf("🌐 Visual Web Dashboard live at: http://%s:%d\n", webHost, webPort)
-				defer func() {
-					shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
-					defer shutdownCancel()
-					_ = webServer.Shutdown(shutdownCtx)
-				}()
+				return err
+			}
+		}
+		state.Metadata.InputPath = currentStoryFile
+		state.Tasks = nil
+		state.StoryStatus = domain.StoryRunning
+		if err := repo.Save(ctx, state); err != nil {
+			return fmt.Errorf("failed to save initial state: %w", err)
+		}
+
+		var qaCoord *services.QARuntimeCoordinator
+		if qaDeps := qaDependencies(cfg); len(qaDeps) > 0 {
+			deps := qaDeps[0]
+			qaCoord = services.NewQARuntimeCoordinator(
+				cfg.Agents.QA, llmClient, promptRenderer,
+				deps.WorkspaceFactory, deps.ArtifactBuilder, deps.Sandbox, deps.FileSystem, deps.Clock,
+			)
+		}
+
+		orchRuntime := services.OrchestratorRuntimeDependencies{
+			Mailbox:        mailbox,
+			WatchdogRepair: repairHandler,
+			PromptRenderer: promptRenderer,
+			QA:             qaCoord,
+			Observer:       executionReporter,
+		}
+		orchestrator := services.NewOrchestratorWithRuntime(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, orchRuntime)
+
+		if cfg.Unblocker.Enabled {
+			unblocker := services.NewUnblockerAgent(
+				repo,
+				llmClient,
+				mailbox,
+				time.Duration(cfg.Unblocker.PollInterval),
+				cfg.Unblocker.MaxRetries,
+				time.Duration(cfg.Unblocker.StallThreshold),
+				time.Duration(cfg.Unblocker.ConflictThreshold),
+				cfg.Unblocker.LLMAssessment,
+			)
+			orchestrator.SetUnblocker(unblocker)
+			unblockerCtx, cancelUnblocker := context.WithCancel(ctx)
+			defer cancelUnblocker()
+			unblocker.Start(unblockerCtx)
+		}
+
+		if err := orchestrator.PlanStory(ctx, state, string(specBytes)); err != nil {
+			return err
+		}
+
+		ticker := time.NewTicker(storyExecInterval(cfg))
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+				_, _ = orchestrator.RunOnce(ctx)
+				st, err := repo.Load(ctx)
+				if err != nil {
+					return err
+				}
+				if allTasksFinished(st) {
+					return nil
+				}
 			}
 		}
 	}
@@ -360,100 +424,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		storyErr := func(currentStoryFile string) error {
-			specBytes, err := os.ReadFile(currentStoryFile)
-			if err != nil {
-				return err
-			}
-			featName := filepath.Base(currentStoryFile)
-			integrationBranch := "noctifab/feature-" + strings.TrimSuffix(featName, filepath.Ext(featName))
-
-			state, err := repo.Load(cmdCtx)
-			if err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					state = &domain.State{
-						ID:          uuid.New().String(),
-						ProjectPath: targetDir,
-						Version:     0,
-						BuildStatus: domain.BuildUnknown,
-						Metadata: domain.StateMetadata{
-							InputSource:       "markdown",
-							InputPath:         currentStoryFile,
-							FeatureName:       featName,
-							BaseBranch:        cfg.VCS.BaseBranch,
-							IntegrationBranch: integrationBranch,
-							TotalCostUSD:      "0.00000",
-						},
-					}
-				} else {
-					return err
-				}
-			}
-			state.Metadata.InputPath = currentStoryFile
-			state.Tasks = nil
-			state.StoryStatus = domain.StoryRunning
-			if err := repo.Save(cmdCtx, state); err != nil {
-				return fmt.Errorf("failed to save initial state: %w", err)
-			}
-
-			var qaCoord *services.QARuntimeCoordinator
-			if qaDeps := qaDependencies(cfg); len(qaDeps) > 0 {
-				deps := qaDeps[0]
-				qaCoord = services.NewQARuntimeCoordinator(
-					cfg.Agents.QA, llmClient, promptRenderer,
-					deps.WorkspaceFactory, deps.ArtifactBuilder, deps.Sandbox, deps.FileSystem, deps.Clock,
-				)
-			}
-
-			orchRuntime := services.OrchestratorRuntimeDependencies{
-				Mailbox:        mailbox,
-				WatchdogRepair: repairHandler,
-				PromptRenderer: promptRenderer,
-				QA:             qaCoord,
-				Observer:       executionReporter,
-			}
-			orchestrator := services.NewOrchestratorWithRuntime(repo, reg, llmClient, validator, scheduler, gitClient, rebaseQueue, evaluator, vcsClient, orchConfig, orchRuntime)
-
-			if cfg.Unblocker.Enabled {
-				unblocker := services.NewUnblockerAgent(
-					repo,
-					llmClient,
-					mailbox,
-					time.Duration(cfg.Unblocker.PollInterval),
-					cfg.Unblocker.MaxRetries,
-					time.Duration(cfg.Unblocker.StallThreshold),
-					time.Duration(cfg.Unblocker.ConflictThreshold),
-					cfg.Unblocker.LLMAssessment,
-				)
-				orchestrator.SetUnblocker(unblocker)
-				unblockerCtx, cancelUnblocker := context.WithCancel(cmdCtx)
-				defer cancelUnblocker()
-				unblocker.Start(unblockerCtx)
-			}
-
-			if err := orchestrator.PlanStory(cmdCtx, state, string(specBytes)); err != nil {
-				return err
-			}
-
-			ticker := time.NewTicker(storyExecInterval(cfg))
-			defer ticker.Stop()
-			for {
-				select {
-				case <-cmdCtx.Done():
-					return cmdCtx.Err()
-				case <-ticker.C:
-					_, _ = orchestrator.RunOnce(cmdCtx)
-					st, err := repo.Load(cmdCtx)
-					if err != nil {
-						return err
-					}
-					if allTasksFinished(st) {
-						return nil
-					}
-				}
-			}
-		}(currentStoryFile)
-
+		storyErr := executeStory(cmdCtx, currentStoryFile)
 		if storyErr != nil {
 			executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionFailed)
 			if executionReporter != nil {
@@ -469,21 +440,25 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	finalOutcome = domain.ExecutionSuccess
-	return nil
-}
 
-func extractStoryTitle(filePath string) string {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return ""
-	}
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "# ") {
-			title := strings.TrimPrefix(line, "# ")
-			return strings.TrimSpace(title)
+	standbyRequested := webEnabled
+	if sFlag := cmd.Flags().Lookup("standby"); sFlag != nil {
+		if val, err := cmd.Flags().GetBool("standby"); err == nil && val {
+			standbyRequested = true
 		}
 	}
-	return ""
+
+	if standbyRequested {
+		return runStandbyMode(cmdCtx, StandbyParams{
+			Repo:      repo,
+			Mailbox:   mailbox,
+			WebServer: webServerInstance,
+			Executor:  executeStory,
+			TargetDir: targetDir,
+			WebHost:   webHost,
+			WebPort:   webPort,
+		})
+	}
+
+	return nil
 }
