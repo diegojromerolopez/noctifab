@@ -319,9 +319,9 @@ The core guarantee is: **as long as the provider's `/models` endpoint returns at
 When a provider adopts a completely new naming convention (e.g., changing from `"claude-3-*"` to a scheme without the `"claude"` prefix), the `RequiredPrefix` in the parser should be updated or removed in the corresponding provider file (e.g. [anthropic.go](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/anthropic.go)). No other files need to be changed.
 
 ### 4. Safety Circuit Breakers
-- **`max_actions`**: Specifies a global limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
-- **`max_duration`**: Specifies a story-level wall-clock timeout.
-- **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
+- **`runtime.max_actions`**: Specifies a limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
+- **`runtime.max_duration`**: Specifies a story-level wall-clock timeout.
+- **`sandbox.timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
 
 ### 5. Self-Correcting & Dynamic Prompts Framework
 

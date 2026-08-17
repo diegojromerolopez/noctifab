@@ -258,12 +258,6 @@ func TestConfigValidation_Comprehensive(t *testing.T) {
 			errContains: "agent role testers iterations must be non-negative",
 		},
 		{
-			name:        "Negative max tools per response",
-			yamlContent: "config_version: \"2.0\"\nagents:\n  max_tools_per_response: -1\n",
-			wantErr:     true,
-			errContains: "max_tools_per_response must be non-negative",
-		},
-		{
 			name:        "Invalid storage provider",
 			yamlContent: "config_version: \"2.0\"\nstorage:\n  provider: \"oracle\"\n",
 			wantErr:     true,

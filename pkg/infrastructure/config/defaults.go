@@ -14,9 +14,8 @@ func DefaultConfig() *Config {
 	return &Config{
 		ConfigVersion: "2.0",
 		Agents: AgentsConfig{
-			Architecture:        "code_first",
-			TaskExecutionOrder:  "generator_first",
-			MaxToolsPerResponse: 5,
+			Architecture:       "code_first",
+			TaskExecutionOrder: "generator_first",
 			ProductManager: AgentRoleConfig{
 				Number:         1,
 				Iterations:     2,
@@ -56,11 +55,21 @@ func DefaultConfig() *Config {
 		StoryExecInterval:          Duration(2 * time.Second),
 		MaxClarificationWait:       Duration(30 * time.Minute),
 		ClarificationTimeoutAction: "abort",
+		Runtime: RuntimeConfig{
+			SpecSource:  "",
+			MaxActions:  100,
+			MaxDuration: Duration(0),
+		},
 		Storage: StorageConfig{
 			Provider:           "sqlite",
 			ConnString:         ".noctifab/data/noctifab.db",
 			JSONFilePath:       ".noctifab/data/state.json",
 			KeepFinishedStates: 20,
+			OCC: OCCConfig{
+				MaxRetries:    5,
+				BackoffBase:   Duration(50 * time.Millisecond),
+				BackoffFactor: 2.0,
+			},
 		},
 		LLM: LLMConfig{
 			Provider:           "openai",
@@ -70,7 +79,7 @@ func DefaultConfig() *Config {
 			MaxRetries:         5,
 			RetryBackoff:       Duration(100 * time.Millisecond),
 			RetryBackoffFactor: 2.0,
-			ResetPeriod:        "daily",
+			TokenUsageLimit:    0,
 			Failover: FailoverConfig{
 				Enabled:      false,
 				Cooldown:     Duration(5 * time.Minute),
@@ -93,13 +102,6 @@ func DefaultConfig() *Config {
 			BranchPrefix: "noctifab/",
 			UseWorktrees: true,
 			TokenEnv:     "GITHUB_TOKEN",
-			ConventionalCommits: ConventionalCommitConfig{
-				Enabled:      true,
-				DefaultScope: "core",
-			},
-			GitMutexTimeout:     Duration(30 * time.Second),
-			GitOperationRetries: 3,
-			GitRetryBackoff:     Duration(500 * time.Millisecond),
 			PullRequest: PullRequestConfig{
 				AutoCreate: false,
 				AutoMerge:  false,
@@ -108,16 +110,11 @@ func DefaultConfig() *Config {
 				Assignees:  nil,
 				Labels:     nil,
 			},
-			CI: CIConfig{
-				AutoFix:    false,
-				MaxRetries: 3,
-			},
 		},
 		Sandbox: SandboxConfig{
 			Mode:               "host",
 			TimeoutSeconds:     300,
 			IdleTimeoutSeconds: 30,
-			GracePeriodSeconds: 30,
 			TestCommand:        "go test -v ./...",
 			LinterCommand:      "golangci-lint run",
 			FormatterCommand:   "go fmt ./...",
@@ -137,19 +134,11 @@ func DefaultConfig() *Config {
 			Generator:    RoleSetting{Profile: "generator", Temperature: 0.0},
 			Tester:       RoleSetting{Profile: "tester", Temperature: 0.0},
 		},
-		Profiles:            make(map[string]ProfileConfig),
-		AutoCommit:          false,
-		MaxActions:          100,
-		MaxDuration:         Duration(0),
-		ConversationMode:    "sliding-window",
-		MaxHistoryMessages:  10,
-		CompactionThreshold: 15,
-		MaxHistoryTokens:    4096,
-		ShutdownGracePeriod: Duration(30 * time.Second),
-		OCCMaxRetries:       5,
-		OCCBackoffBase:      Duration(50 * time.Millisecond),
-		OCCBackoffFactor:    2.0,
-		TokenUsageLimit:     0,
+		Profiles: make(map[string]ProfileConfig),
+		Logging: LoggingConfig{
+			Level: "info",
+			File:  "",
+		},
 		Telemetry: TelemetryConfig{
 			Enabled:     false,
 			Exporter:    "otlp",
@@ -177,7 +166,6 @@ func DefaultConfig() *Config {
 			DiffWindowLines: 15,
 			Compaction:      "none",
 		},
-		LogLevel: "info",
 	}
 }
 

@@ -1807,8 +1807,7 @@ Once all tasks are done, the orchestrator updates the `CHANGELOG.md` file locate
 *   Version header (e.g., `## [1.2.0] - YYYY-MM-DD`).
 *   Categorized lists of changes under subheadings: `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`.
 
-#### 3.8.4. Conventional Commits & Pull Request Creation
-*   **Conventional Commit Message:** If conventional commits are enabled in the configuration (`conventional_commits.enabled: true`), the commit messages written by the orchestrator follow the Conventional Commits specification. The message prefix is determined by the task change type (e.g. `feat` for Feature, `fix` for Fix) and applies the configured `default_scope` (e.g. `feat(core): integrate oauth2 login`).
+#### 3.8.4. Pull Request Creation
 *   **Remote Push:** The Git wrapper pushes the branch to the remote repository.
 *   **Pull Request Creation & GitHub CLI (`gh`) Fallback:** The VCS client makes a REST API call to the remote provider (GitHub/GitLab) to create a Pull Request targeting the configured `base_branch` (which defaults to `master`), providing a detailed description outlining:
     *   The feature/fix goal.
@@ -1840,8 +1839,16 @@ The daemon initializes and operates inside a dedicated `.noctifab/` directory at
 ```yaml
 config_version: "2.0"
 
+runtime:
+  spec_source: ""               # Default path or URL for target feature specification
+  max_actions: 100              # Maximum LLM tool loop action turns per task execution
+  max_duration: "45m"           # Maximum wall-clock execution time limit
+
+logging:
+  level: "info"                 # Logging level: debug, info, warn, error
+  file: ""                      # Log output file (empty prints to stderr)
+
 orchestrator:
-  max_tools_per_response: 5     # Maximum parallel tool calls allowed per LLM response
   concurrency: 3                # Max concurrent worker agents running parallel tasks
   poll_interval: "5m"           # Interval between task scanning iterations
   max_clarification_wait: "30m" # Max wait time waiting for user clarifications (user requested: 30 minutes)
@@ -1851,8 +1858,13 @@ storage:
   provider: "sqlite"            # Options: sqlite, postgres, mysql, json
   conn_string: "./data/noctifab.db" # Database connection string or sqlite filepath
   json_file_path: "./data/state.json" # File path used strictly if provider is "json"
+  occ:
+    max_retries: 5              # Max database retry attempts on OCC transaction failure
+    backoff_base: "50ms"        # Baseline delay before OCC retry
+    backoff_factor: 2.0         # Exponential multiplier for OCC backoff delay
 
 llm:
+  token_usage_limit: 0          # Total model token limit boundary for the session (0 = unlimited)
   provider: "gemini"            # Options: gemini (Gemini), anthropic (Claude), openai (ChatGPT/GPT-4o), ollama
   model: "gemini-1.5-pro"       # Target LLM model identifier
   temperature: 0.0              # Default temperature for completions
@@ -1860,7 +1872,6 @@ llm:
   max_retries: 10               # Max retries for outbound HTTP requests
   retry_backoff: "100ms"        # Base delay time duration for exponential backoff (e.g. retry_backoff * 2^retry)
   retry_backoff_factor: 2.0     # Multiplier factor for exponential backoff retry logic
-  max_budget_usd: 10.0          # Max daily LLM credit budget boundary in USD (locally monitored & safeguarded)
   failover:
     enabled: false
     cooldown: "5m"               # Cooldown duration before retrying a failed primary provider
@@ -1876,12 +1887,6 @@ vcs:
   base_branch: "master"         # Base target integration branch for PRs (default: master)
   branch_prefix: "noctifab/"    # Branch prefix for worker branches (e.g., noctifab/task-)
   token_env: "GITHUB_TOKEN"     # Environment variable for VCS authentication API token
-  conventional_commits:
-    enabled: true               # Enforce conventional commit structures
-    default_scope: "core"       # Default scope mapping to commit titles (e.g., feat(core): message)
-  git_mutex_timeout: "30s"      # Max wait timeout limit for acquiring the centralized git lock mutex
-  git_operation_retries: 3      # Max retries on transient Git write / lock collisions
-  git_retry_backoff: "500ms"    # Delay base between Git lock retry attempts
   pull_request:
     auto_create: false           # Automatically create a PR from the task branch
     auto_merge: false            # Automatically merge the PR when CI checks pass
@@ -1889,14 +1894,10 @@ vcs:
     draft: false                 # Create the PR as a draft (GitHub-only)
     assignees: []                # GitHub usernames to auto-assign as reviewers
     labels: []                   # Labels to auto-apply to the PR
-  ci:
-    auto_fix: false              # Automatically attempt to fix CI pipeline failures
-    max_retries: 3               # Max attempts to fix CI before giving up
 
 sandbox:
   mode: "host"                  # Options: host, docker
   timeout_seconds: 300
-  grace_period_seconds: 30
   test_command: "go test -v ./..." # Default command used by run_tests if none is supplied
   # --- Formatters and Linters Settings ---
   # Common linters & formatters for reference across supported languages:

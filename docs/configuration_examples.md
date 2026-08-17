@@ -10,7 +10,9 @@ A standard local development setup for Go projects using a local SQLite database
 
 ```yaml
 config_version: "2.0"
-log_level: "info"
+
+logging:
+  level: "info"
 
 storage:
   provider: "sqlite"
@@ -82,7 +84,9 @@ An isolated development setup for Python projects. It executes tests and linters
 
 ```yaml
 config_version: "2.0"
-log_level: "info"
+
+logging:
+  level: "info"
 
 storage:
   provider: "sqlite"
@@ -113,14 +117,15 @@ sandbox:
 
 ---
 
-## 3. Node.js (GitHub + Automated CI Fixes)
+## 3. Node.js (GitHub + Automated Pull Requests)
 
-A JavaScript/TypeScript repository configuration. It enables **CI Auto-Fix**, allowing `noctifab` to listen for GitHub Action failures, check out the task branch, and prompt the Generator agent to fix compile or test issues autonomously.
+A JavaScript/TypeScript repository configuration with automatic pull request generation.
 
 ```yaml
 config_version: "2.0"
-auto_commit: true
-log_level: "info"
+
+logging:
+  level: "info"
 
 storage:
   provider: "sqlite"
@@ -139,9 +144,6 @@ vcs:
   pull_request:
     auto_create: true
     auto_merge: true
-  ci:
-    auto_fix: true
-    max_retries: 5
 
 sandbox:
   mode: "host"
@@ -163,10 +165,14 @@ A highly resilient configuration for enterprise-grade autonomous software factor
 
 ```yaml
 config_version: "2.0"
-max_actions: 150
-max_duration: "2h"
-log_level: "info"
-log_file: "./.noctifab/logs/orchestrator.log"
+
+runtime:
+  max_actions: 150
+  max_duration: "2h"
+
+logging:
+  level: "info"
+  file: "./.noctifab/logs/orchestrator.log"
 
 storage:
   provider: "postgres"
@@ -178,8 +184,6 @@ llm:
   model: "glm-5.2"
   temperature: 0.0
   api_key: "secret:OPENCODE_API_KEY"
-  max_budget_usd: 15.00            # Stop calls if daily limit is exceeded
-  reset_period: "daily"
   failover:
     enabled: true
     cooldown: "10m"
@@ -251,7 +255,9 @@ Assigning different models to generate code, write tests, and review code preven
 
 ```yaml
 config_version: "2.0"
-log_level: "info"
+
+logging:
+  level: "info"
 
 # 1. Named LLM Provider Registry & Global Failover
 llm:

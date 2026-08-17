@@ -49,13 +49,13 @@ The platform classifies development automation into distinct levels. `noctifab` 
 
 ### Configuring Autonomy Level
 
-The autonomy level is controlled by the VCS `pull_request` and `ci` settings in `.noctifab/config.yaml`:
+The autonomy level is controlled by the VCS `pull_request` settings in `.noctifab/config.yaml`:
 
-| Level | `pull_request` settings | `ci` settings |
+| Level | `pull_request` settings | Description |
 |---|---|---|
-| **Level 3** | `auto_create: true`, `auto_merge: false` | _(optional)_ |
-| **Level 3.5** | `auto_create: true`, `auto_merge: true` | `auto_fix: true` |
-| **Level 4** | `auto_create: true`, `auto_merge: true`, `auto_rebase: true` | `auto_fix: true`, `max_retries: 3` |
+| **Level 3** | `auto_create: true`, `auto_merge: false` | Generates branches and PRs; human reviews and merges. |
+| **Level 3.5** | `auto_create: true`, `auto_merge: true` | Validated tasks merge automatically upon consensus passing. |
+| **Level 4** | `auto_create: true`, `auto_merge: true`, `auto_rebase: true` | Fully autonomous dark factory loop with automated rebase queuing. |
 
 ---
 
@@ -161,9 +161,9 @@ The core engine runs a continuous polling event loop that drives all development
 7. **Parallel Prompt Compaction Engine (`context.compaction`)**: Compresses HTTP prompt payloads using `simple_english` (active voice, simplified vocabulary) or `caveman` (telegraphic Markdown compaction) modes. Parallelizes line block compaction across worker goroutines for inputs $> 20$ KB to reduce latency and token usage by 25%+ while preserving code blocks, JSON schemas, file paths, and technical invariants.
 8. **Automatic Tool Formatting & Makefile Tab Normalization**: Dynamically converts space-indented recipe lines in `Makefile` and `*.mk` files into tab-indented (`\t`) lines during `write_file` and `edit_file` execution, maintaining build tool syntax invariants automatically.
 9. **Safety Circuit Breakers**:
-   - **`max_actions`**: Root config value (default: `100`) that sets a ceiling on the total task execution loops. If the system exceeds this limit, the orchestrator aborts the story to protect the LLM token budget from infinite loops.
+   - **`runtime.max_actions`**: Config value (default: `100`) that sets a ceiling on the total task execution loops. If the system exceeds this limit, the orchestrator aborts the story to protect the LLM token budget from infinite loops.
    - **`max_user_stories`**: Ceiling on Product Manager roadmap story generation (default: `5`).
-   - **`max_duration`**: Story-level wall-clock timeout.
+   - **`runtime.max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
 10. **Structured Roadmap Directories & Task Serialization (`roadmap/tasks/`)**:
    - Organizes user story specifications into `roadmap/user-stories/` using title slug filenames (`US-XXX-title-slug.md`).
@@ -631,9 +631,9 @@ llm:
 
 
 
-## Pull Request & CI Configuration
+## Pull Request Configuration
 
-In addition to the core LLM and VCS settings, `noctifab` supports automated PR management and CI pipeline integration:
+In addition to the core LLM and VCS settings, `noctifab` supports automated PR management and branch integration:
 
 ```yaml
 vcs:
@@ -646,9 +646,6 @@ vcs:
       - "user1"
     labels:              # Labels to auto-apply to the PR
       - "autonomous"
-  ci:
-    auto_fix: true       # Automatically fix CI pipeline failures
-    max_retries: 3       # Max CI fix attempts before giving up
 ```
 
 > [!NOTE]

@@ -77,7 +77,7 @@ func NewResilientLLMRouter(cfg *config.Config, budgetStore domain.BudgetStore) *
 
 	var tokenLimit int64
 	if cfg != nil {
-		tokenLimit = cfg.TokenUsageLimit
+		tokenLimit = cfg.LLM.TokenUsageLimit
 	}
 
 	return &ResilientLLMRouter{

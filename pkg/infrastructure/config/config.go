@@ -176,10 +176,6 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
-	if cfg.Agents.MaxToolsPerResponse < 0 {
-		return fmt.Errorf("max_tools_per_response must be non-negative, got %d", cfg.Agents.MaxToolsPerResponse)
-	}
-
 	roles := map[string]AgentRoleConfig{
 		"orchestrator":    cfg.Agents.Orchestrator,
 		"product_manager": cfg.Agents.ProductManager,

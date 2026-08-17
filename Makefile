@@ -11,7 +11,7 @@ LDFLAGS ?= -X github.com/diegojromerolopez/noctifab/pkg/version.Version=$(VERSIO
            -X github.com/diegojromerolopez/noctifab/pkg/version.GitCommit=$(GIT_COMMIT) \
            -X github.com/diegojromerolopez/noctifab/pkg/version.CommitDate=$(COMMIT_DATE)
 
-.PHONY: all build clean test lint help validate validate-all validate-images
+.PHONY: all build clean test lint help validate validate-all validate-images validate-summary
 
 # Default target
 all: build
@@ -40,15 +40,16 @@ lint:
 # Display help information
 help:
 	@echo "Available targets:"
-	@echo "  all             - Builds the binary (default target)"
-	@echo "  build           - Compile noctifab binary to dist/ folder"
-	@echo "  clean           - Remove build artifacts (dist/ directory)"
-	@echo "  test            - Run the Go unit test suite"
-	@echo "  test-e2e        - Run the containerized E2E test suite"
-	@echo "  lint            - Run static analysis lint checks using Docker"
-	@echo "  validate        - Run autonomous E2E check for one or more projects inside Docker (e.g. PROJECT=pyedis,echo)"
-	@echo "  validate-all    - Run all validation projects in parallel inside Docker"
-	@echo "  validate-images - Build base + all per-project validation Docker images"
+	@echo "  all              - Builds the binary (default target)"
+	@echo "  build            - Compile noctifab binary to dist/ folder"
+	@echo "  clean            - Remove build artifacts (dist/ directory)"
+	@echo "  test             - Run the Go unit test suite"
+	@echo "  test-e2e         - Run the containerized E2E test suite"
+	@echo "  lint             - Run static analysis lint checks using Docker"
+	@echo "  validate         - Run autonomous E2E check for one or more projects inside Docker (e.g. PROJECT=pyedis,echo)"
+	@echo "  validate-all     - Run all validation projects in parallel inside Docker"
+	@echo "  validate-images  - Build base + all per-project validation Docker images"
+	@echo "  validate-summary - Summarize metrics and token usage from all execution reports"
 
 # Which project validate-runs by default when no PROJECT is passed.
 PROJECT ?= frontpunch
@@ -91,4 +92,9 @@ validate-images:
 	@for proj in $$(ls validation/projects); do \
 		docker build -f validation/projects/$$proj/Dockerfile -t "noctifab-validation:$$proj" . ; \
 	done
+
+# Summarize performance and token consumption from execution reports
+validate-summary:
+	@./validation/summarize_reports.sh
+
 

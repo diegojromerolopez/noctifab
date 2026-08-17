@@ -19,13 +19,10 @@ func applyEnvOverrides(cfg *Config) {
 	if val, ok := os.LookupEnv("NOCTIFAB_STORAGE_CONN"); ok {
 		cfg.Storage.ConnString = val
 	}
-	if val, ok := os.LookupEnv("NOCTIFAB_INPUT"); ok {
-		cfg.Input = val
-	}
-	if val, ok := os.LookupEnv("NOCTIFAB_AUTO_COMMIT"); ok {
-		if b, err := strconv.ParseBool(val); err == nil {
-			cfg.AutoCommit = b
-		}
+	if val, ok := os.LookupEnv("NOCTIFAB_SPEC_SOURCE"); ok {
+		cfg.Runtime.SpecSource = val
+	} else if val, ok := os.LookupEnv("NOCTIFAB_INPUT"); ok {
+		cfg.Runtime.SpecSource = val
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_AGENTS_COUNT"); ok {
 		if i, err := strconv.Atoi(val); err == nil {
@@ -87,72 +84,44 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.LLM.RetryBackoff = Duration(d)
 		}
 	}
-	if val, ok := os.LookupEnv("NOCTIFAB_MAX_TOOLS_PER_RESPONSE"); ok {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.Agents.MaxToolsPerResponse = i
-		}
-	}
 	if val, ok := os.LookupEnv("NOCTIFAB_MAX_ACTIONS"); ok {
 		if i, err := strconv.Atoi(val); err == nil {
-			cfg.MaxActions = i
+			cfg.Runtime.MaxActions = i
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_MAX_DURATION"); ok {
 		if d, err := time.ParseDuration(val); err == nil {
-			cfg.MaxDuration = Duration(d)
-		}
-	}
-	if val, ok := os.LookupEnv("NOCTIFAB_CONVERSATION_MODE"); ok {
-		cfg.ConversationMode = val
-	}
-	if val, ok := os.LookupEnv("NOCTIFAB_MAX_HISTORY_MESSAGES"); ok {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.MaxHistoryMessages = i
-		}
-	}
-	if val, ok := os.LookupEnv("NOCTIFAB_COMPACTION_THRESHOLD"); ok {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.CompactionThreshold = i
-		}
-	}
-	if val, ok := os.LookupEnv("NOCTIFAB_MAX_HISTORY_TOKENS"); ok {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.MaxHistoryTokens = i
+			cfg.Runtime.MaxDuration = Duration(d)
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_SANDBOX_MODE"); ok {
 		cfg.Sandbox.Mode = val
 	}
-	if val, ok := os.LookupEnv("NOCTIFAB_SHUTDOWN_GRACE_PERIOD"); ok {
-		if d, err := time.ParseDuration(val); err == nil {
-			cfg.ShutdownGracePeriod = Duration(d)
-		}
-	}
 	if val, ok := os.LookupEnv("NOCTIFAB_OCC_MAX_RETRIES"); ok {
 		if i, err := strconv.Atoi(val); err == nil {
-			cfg.OCCMaxRetries = i
+			cfg.Storage.OCC.MaxRetries = i
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_OCC_BACKOFF_BASE"); ok {
 		if d, err := time.ParseDuration(val); err == nil {
-			cfg.OCCBackoffBase = Duration(d)
+			cfg.Storage.OCC.BackoffBase = Duration(d)
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_OCC_BACKOFF_FACTOR"); ok {
 		if f, err := strconv.ParseFloat(val, 64); err == nil {
-			cfg.OCCBackoffFactor = f
+			cfg.Storage.OCC.BackoffFactor = f
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_TOKEN_USAGE_LIMIT"); ok {
 		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
-			cfg.TokenUsageLimit = i
+			cfg.LLM.TokenUsageLimit = i
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_LOG_LEVEL"); ok {
-		cfg.LogLevel = val
+		cfg.Logging.Level = val
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_LOG_FILE"); ok {
-		cfg.LogFile = val
+		cfg.Logging.File = val
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_PR_AUTO_CREATE"); ok {
 		if b, err := strconv.ParseBool(val); err == nil {
@@ -179,16 +148,6 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_PR_LABELS"); ok {
 		cfg.VCS.PullRequest.Labels = splitAndTrim(val)
-	}
-	if val, ok := os.LookupEnv("NOCTIFAB_CI_AUTO_FIX"); ok {
-		if b, err := strconv.ParseBool(val); err == nil {
-			cfg.VCS.CI.AutoFix = b
-		}
-	}
-	if val, ok := os.LookupEnv("NOCTIFAB_CI_MAX_RETRIES"); ok {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.VCS.CI.MaxRetries = i
-		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_UNBLOCKER_ENABLED"); ok {
 		if b, err := strconv.ParseBool(val); err == nil {
@@ -253,12 +212,12 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	setIfChanged("storage-conn", func(val string) {
 		cfg.Storage.ConnString = val
 	})
-	setIfChanged("input", func(val string) {
-		cfg.Input = val
+	setIfChanged("spec-source", func(val string) {
+		cfg.Runtime.SpecSource = val
 	})
-	setIfChanged("auto-commit", func(val string) {
-		if b, err := strconv.ParseBool(val); err == nil {
-			cfg.AutoCommit = b
+	setIfChanged("input", func(val string) {
+		if !cmd.Flags().Changed("spec-source") {
+			cfg.Runtime.SpecSource = val
 		}
 	})
 	setIfChanged("agents", func(val string) {
@@ -311,72 +270,44 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 			cfg.LLM.RetryBackoff = Duration(d)
 		}
 	})
-	setIfChanged("max-tools-per-response", func(val string) {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.Agents.MaxToolsPerResponse = i
-		}
-	})
 	setIfChanged("max-actions", func(val string) {
 		if i, err := strconv.Atoi(val); err == nil {
-			cfg.MaxActions = i
+			cfg.Runtime.MaxActions = i
 		}
 	})
 	setIfChanged("max-duration", func(val string) {
 		if d, err := time.ParseDuration(val); err == nil {
-			cfg.MaxDuration = Duration(d)
-		}
-	})
-	setIfChanged("conversation-mode", func(val string) {
-		cfg.ConversationMode = val
-	})
-	setIfChanged("max-history-messages", func(val string) {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.MaxHistoryMessages = i
-		}
-	})
-	setIfChanged("compaction-threshold", func(val string) {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.CompactionThreshold = i
-		}
-	})
-	setIfChanged("max-history-tokens", func(val string) {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.MaxHistoryTokens = i
+			cfg.Runtime.MaxDuration = Duration(d)
 		}
 	})
 	setIfChanged("sandbox-mode", func(val string) {
 		cfg.Sandbox.Mode = val
 	})
-	setIfChanged("shutdown-grace-period", func(val string) {
-		if d, err := time.ParseDuration(val); err == nil {
-			cfg.ShutdownGracePeriod = Duration(d)
-		}
-	})
 	setIfChanged("occ-max-retries", func(val string) {
 		if i, err := strconv.Atoi(val); err == nil {
-			cfg.OCCMaxRetries = i
+			cfg.Storage.OCC.MaxRetries = i
 		}
 	})
 	setIfChanged("occ-backoff-base", func(val string) {
 		if d, err := time.ParseDuration(val); err == nil {
-			cfg.OCCBackoffBase = Duration(d)
+			cfg.Storage.OCC.BackoffBase = Duration(d)
 		}
 	})
 	setIfChanged("occ-backoff-factor", func(val string) {
 		if f, err := strconv.ParseFloat(val, 64); err == nil {
-			cfg.OCCBackoffFactor = f
+			cfg.Storage.OCC.BackoffFactor = f
 		}
 	})
 	setIfChanged("token-usage-limit", func(val string) {
 		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
-			cfg.TokenUsageLimit = i
+			cfg.LLM.TokenUsageLimit = i
 		}
 	})
 	setIfChanged("log-level", func(val string) {
-		cfg.LogLevel = val
+		cfg.Logging.Level = val
 	})
 	setIfChanged("log-file", func(val string) {
-		cfg.LogFile = val
+		cfg.Logging.File = val
 	})
 	setIfChanged("pr-auto-create", func(val string) {
 		if b, err := strconv.ParseBool(val); err == nil {
@@ -403,16 +334,6 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	})
 	setIfChanged("pr-labels", func(val string) {
 		cfg.VCS.PullRequest.Labels = splitAndTrim(val)
-	})
-	setIfChanged("ci-auto-fix", func(val string) {
-		if b, err := strconv.ParseBool(val); err == nil {
-			cfg.VCS.CI.AutoFix = b
-		}
-	})
-	setIfChanged("ci-max-retries", func(val string) {
-		if i, err := strconv.Atoi(val); err == nil {
-			cfg.VCS.CI.MaxRetries = i
-		}
 	})
 	setIfChanged("unblocker-enabled", func(val string) {
 		if b, err := strconv.ParseBool(val); err == nil {

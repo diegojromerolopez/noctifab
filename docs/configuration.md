@@ -10,22 +10,44 @@ These settings are defined at the root level of the configuration file.
 
 | Key | Type | Default | Description |
 |:---|:---|:---|:---|
-| `config_version` | String | `1.0` | Configuration format version. |
-| `input` | String | `""` | Default path or issue URL to fetch the feature specification. |
-| `auto_commit` | Boolean | `false` | Enable automated branch checkouts, conventional commits, and PR creations. |
+| `config_version` | String | `2.0` | Configuration format version. |
+| `execution_report` | String | `""` | Output file path for generated execution report markdown. |
+
+---
+
+## Runtime Settings (`runtime`)
+
+Configures operational execution limits and target specification fallback paths.
+
+```yaml
+runtime:
+  spec_source: ""
+  max_actions: 100
+  max_duration: "45m"
+```
+
+| Key | Type | Default | Description |
+|:---|:---|:---|:---|
+| `spec_source` | String | `""` | Default file path (e.g. `./roadmap/US-001.md`) or issue URL to fetch the feature specification. |
 | `max_actions` | Integer | `100` | Maximum number of LLM actions permitted per task loop execution to avoid infinite loops. |
 | `max_duration` | Duration | `0` (unlimited) | Max wall-clock time limit for the entire run. Supports duration strings (e.g. `2h`, `45m`). |
-| `conversation_mode` | String | `sliding-window` | Context management strategy: `sliding-window` or `compaction`. |
-| `max_history_messages`| Integer | `10` | Message limit before sliding window or compaction triggers. |
-| `compaction_threshold` | Integer | `15` | Action log size at which history compaction occurs (if mode is `compaction`). |
-| `max_history_tokens` | Integer | `4096` | Token count threshold for triggering history compaction. |
-| `shutdown_grace_period`| Duration | `30s` | Time window to wait for active tasks to shut down gracefully before exit. |
-| `occ_max_retries` | Integer | `5` | Maximum database transaction retries on Optimistic Concurrency Control failure. |
-| `occ_backoff_base` | Duration | `50ms` | Baseline backoff duration for OCC retry loops. |
-| `occ_backoff_factor` | Float | `2.0` | Exponential multiplier factor applied to subsequent OCC retries. |
-| `token_usage_limit` | Integer | `0` (unlimited) | Total model token limit boundary for the current session. |
-| `log_level` | String | `info` | Logs verbosity filter: `debug`, `info`, `warn`, `error`. |
-| `log_file` | String | `""` | File path to write execution logs (empty prints to stderr). |
+
+---
+
+## Logging Settings (`logging`)
+
+Controls log output level and destination file.
+
+```yaml
+logging:
+  level: info
+  file: ""
+```
+
+| Key | Type | Default | Description |
+|:---|:---|:---|:---|
+| `level` | String | `info` | Logs verbosity filter: `debug`, `info`, `warn`, `error`. |
+| `file` | String | `""` | File path to write execution logs (empty prints to stderr). |
 
 ---
 
@@ -36,7 +58,6 @@ Configures implemented agent concurrency, turn iterations, architecture mode, an
 ```yaml
 agents:
   architecture: code_first
-  max_tools_per_response: 5
 
   orchestrator:
     number: 1
@@ -92,18 +113,26 @@ clarification_timeout_action: abort
 
 ## Storage Settings (`storage`)
 
-Configures the state database persistence backend.
+Configures the state database persistence backend and concurrency parameters.
 
 ```yaml
 storage:
   provider: sqlite
   conn_string: .noctifab/data/noctifab.db
   json_file_path: .noctifab/data/state.json
+  occ:
+    max_retries: 5
+    backoff_base: 50ms
+    backoff_factor: 2.0
 ```
 
 - **`provider`** (String): Persistent database backend. Supported values: `sqlite`, `postgres`, `mysql`, `json`.
 - **`conn_string`** (String): Filepath or connection DSN string. (e.g. `postgres://user:pass@localhost:5432/dbname?sslmode=disable`). Can reference secrets using `secret:CONN_STRING`.
 - **`json_file_path`** (String): Target backup file path used if the provider is `json`.
+- **`occ`**:
+  - **`max_retries`** (Integer): Maximum database transaction retries on Optimistic Concurrency Control failure (default: `5`).
+  - **`backoff_base`** (Duration): Baseline backoff duration for OCC retry loops (default: `50ms`).
+  - **`backoff_factor`** (Float): Exponential multiplier factor applied to subsequent OCC retries (default: `2.0`).
 
 ---
 
@@ -229,7 +258,7 @@ One of `noctifab`'s core resilience features is its **Dynamic Model Fallback Eng
 
 ## VCS & Integration Settings (`vcs`)
 
-Configures code tracking, branch prefixes, pull requests, and CI feedback hooks.
+Configures code tracking, branch prefixes, and pull requests.
 
 ```yaml
 vcs:
@@ -247,9 +276,6 @@ vcs:
       - "dev-user"
     labels:
       - "autonomous"
-  ci:
-    auto_fix: true
-    max_retries: 3
 ```
 
 - **`provider`** (String): Version Control System target host. Values: `github` or `gitlab`.
@@ -258,12 +284,6 @@ vcs:
 - **`branch_prefix`** (String): Namespace prefix applied to ephemeral feature task branches (default: `noctifab/`).
 - **`token`** (String): OAuth or Personal Access Token value. Must use `secret:GITHUB_TOKEN` reference syntax. If omitted or API authentication fails, `noctifab` automatically falls back to `gh auth token` or executing `gh pr create` / `gh pr merge` directly using host CLI credentials.
 - **`token_env`** (String): Fallback env name to extract token (default: `GITHUB_TOKEN` or `GITLAB_TOKEN`).
-- **`conventional_commits`**:
-  - **`enabled`** (Boolean): Commit messages will be formatted following Conventional Commits format when true.
-  - **`default_scope`** (String): Commit scope fallback keyword (default: `core`).
-- **`git_mutex_timeout`** (Duration): Timeout constraint when waiting for local Git file system lock acquisitions.
-- **`git_operation_retries`** (Integer): Retry attempts on transient Git errors.
-- **`git_retry_backoff`** (Duration): Backoff wait between Git retries.
 - **`pull_request`**:
   - **`auto_create`** (Boolean): Automatically create a VCS Pull Request when a task successfully passes validation.
   - **`auto_merge`** (Boolean): Automatically merge the PR once all integration CI status checks pass.
@@ -271,9 +291,6 @@ vcs:
   - **`draft`** (Boolean): Create the PR in Draft status.
   - **`assignees`** (List of Strings): VCS accounts automatically assigned to the PR.
   - **`labels`** (List of Strings): VCS tags automatically applied to the PR.
-- **`ci`**:
-  - **`auto_fix`** (Boolean): If true, `noctifab` will listen for CI build failures, checkout the task branch, package the build trace logs, and task the Generator agent to patch the code automatically.
-  - **`max_retries`** (Integer): Max CI fix loop attempts.
 
 ---
 
@@ -286,7 +303,6 @@ sandbox:
   mode: host
   timeout_seconds: 300
   idle_timeout_seconds: 30
-  grace_period_seconds: 30
   test_command: "go test -v ./..."
   linter_command: "golangci-lint run"
   formatter_command: "go fmt ./..."
@@ -302,7 +318,6 @@ sandbox:
 - **`mode`** (String): Isolation strategy environment. Values: `host` (jail checks on the developer machine) or `docker` (complete container sandbox isolation).
 - **`timeout_seconds`** (Integer): Absolute execution wall-clock time limit in seconds for test and script execution processes.
 - **`idle_timeout_seconds`** (Integer): Active watchdog timeout. Kills processes immediately if they output no bytes on stdout/stderr for this duration.
-- **`grace_period_seconds`** (Integer): Delay allowed for subprocesses to clean up after receiving `SIGTERM` before sending `SIGKILL`.
 - **`test_command`** (String): Command executed by the Test Validator to run the unit/integration test suites (e.g. `npm test`, `pytest`).
 - **`linter_command`** (String): Command executed to run project static analysis linter tasks.
 - **`formatter_command`** (String): Command executed to run code format checks (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_linter` runs this pre-step auto-fixer first before linter diagnostics.
@@ -482,24 +497,17 @@ Below is a complete, annotated example configuration demonstrating all options i
 
 ```yaml
 config_version: "2.0"
-input: "./roadmap/US-001.md"
-auto_commit: true
-max_actions: 100
-max_duration: "45m"
-conversation_mode: "compaction"
-max_history_messages: 20
-compaction_threshold: 25
-max_history_tokens: 32768
-shutdown_grace_period: "30s"
-occ_max_retries: 5
-occ_backoff_base: "50ms"
-occ_backoff_factor: 2.0
-token_usage_limit: 0
-log_level: "info"
-log_file: "./.noctifab/logs/noctifab.log"
+
+runtime:
+  spec_source: "./roadmap/US-001.md"
+  max_actions: 100
+  max_duration: "45m"
+
+logging:
+  level: "info"
+  file: "./.noctifab/logs/noctifab.log"
 
 orchestrator:
-  max_tools_per_response: 5
   concurrency: 3
   poll_interval: "10s"
   max_clarification_wait: "30m"
@@ -508,8 +516,13 @@ orchestrator:
 storage:
   provider: "sqlite"
   conn_string: "./.noctifab/data/noctifab.db"
+  occ:
+    max_retries: 5
+    backoff_base: "50ms"
+    backoff_factor: 2.0
 
 llm:
+  token_usage_limit: 0
   provider: "opencode"
   model: "opencode-v1"
   temperature: 0.0
@@ -517,8 +530,6 @@ llm:
   max_retries: 5
   retry_backoff: "100ms"
   retry_backoff_factor: 2.0
-  max_budget_usd: 10.0
-  reset_period: "daily"
   failover:
     enabled: true
     cooldown: "5m"
@@ -534,9 +545,6 @@ vcs:
   base_branch: "main"
   branch_prefix: "noctifab/feature-"
   token: "secret:GITHUB_TOKEN"
-  git_mutex_timeout: "5m"
-  git_operation_retries: 3
-  git_retry_backoff: "1s"
   pull_request:
     auto_create: true
     auto_merge: true
@@ -547,15 +555,11 @@ vcs:
     labels:
       - "autonomous"
       - "noctifab"
-  ci:
-    auto_fix: true
-    max_retries: 3
 
 sandbox:
   mode: "docker"
   timeout_seconds: 300
   idle_timeout_seconds: 30
-  grace_period_seconds: 10
   test_command: "cargo test"
   linter_command: "cargo clippy -- -D warnings"
   formatter_command: "cargo fmt --check"
