@@ -18,7 +18,7 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 12. **`searchthedocs`**: Checks out the base `main` branch of a documentation scraper and vector search spec and executes `SPEC.md`. Validates async scraping queues and RAG vector search API.
 13. **`auth-vault`**: Checks out the base `main` branch of an OAuth2/OIDC zero-trust authorization server spec and executes `SPEC.md`. Validates PKI vault and zero-trust authentication.
 14. **`buffonstream`**: Checks out the base `main` branch of a Protobuf-native real-time streaming storage engine spec and executes `SPEC.md`. Validates bi-directional gRPC streaming.
-15. **`jpacioli`**: Checks out the base `main` branch of an enterprise double-entry financial accounting ledger and transaction engine spec and executes `SPEC.md`. Validates Java 21, Spring Boot 3.3+, DDD, Transactional Outbox EDA, and Stateless JWT / RBAC permissions against PostgreSQL.
+15. **`jpacioli`**: Checks out the base `main` branch of an enterprise double-entry financial accounting ledger and transaction engine spec and executes `SPEC.md`. Validates Java 21, Spring Boot 3.3+, Full Event Sourcing (ES), CQRS with materialized read projections, and Stateless JWT / RBAC permissions against PostgreSQL.
 
 ### Project Tiers (effectiveness classification)
 
@@ -28,7 +28,7 @@ time/tokens** — the priority ramp to follow when reading results or running a 
 | Tier | Purpose | Projects |
 | :--- | :--- | :--- |
 | **Tier 0 — Baseline smoke** | Cheapest full-loop proof (init → PM → plan → generate → test → merge). Run first, always: if this stalls, nothing else is worth reading. | `echo` |
-| **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service, legacy Django modernization, zero-trust OAuth2/OIDC PKI, Protobuf real-time CDC streaming, and Java/Spring Boot enterprise double-entry accounting with transactional outbox. The core set. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream`, `jpacioli` |
+| **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service, legacy Django modernization, zero-trust OAuth2/OIDC PKI, Protobuf real-time CDC streaming, and Java/Spring Boot Full Event Sourcing + CQRS double-entry accounting. The core set. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream`, `jpacioli` |
 | **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains and linter discipline (incl. compiler correctness and safety matrix). | `calculator`, `wc`, `fortune`, `stricc` |
 | **Tier 3 — Breadth** | State persistence and distributed/broker seams; heaviest runtime and highest API rate-limit exposure — run last or when targeting those seams specifically. | `todo-cli`, `frontpunch`, `searchthedocs` |
 
