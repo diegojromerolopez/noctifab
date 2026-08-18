@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.0] - 2026-08-18
+
+### Added
+- **`make install` Makefile Target**:
+  - Added `make install` target to compile and copy `noctifab` binary to `$(INSTALL_DIR)` (default: `$HOME/bin`).
+  - Added `INSTALL_DIR` configuration variable to `Makefile` allowing custom installation destinations.
+
 ## [0.40.0] - 2026-08-18
 
 ### Added
