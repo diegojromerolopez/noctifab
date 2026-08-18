@@ -166,6 +166,16 @@ elif [ "${PROJECT}" = "notebook" ]; then
     echo "❌ Error: notebook artifacts (src/*.ts, package.json) were not created!"
     exit 1
   fi
+elif [ "${PROJECT}" = "jpacioli" ]; then
+  if { [ ! -f "build.gradle" ] && [ ! -f "pom.xml" ]; } || [ -z "$(find src -name '*.java' 2>/dev/null)" ]; then
+    echo "❌ Error: jpacioli artifacts (build.gradle/pom.xml, src/**/*.java) were not created!"
+    exit 1
+  fi
+elif [ "${PROJECT}" = "ocalogue" ]; then
+  if [ ! -f "dune-project" ] || [ -z "$(find . -name '*.ml' 2>/dev/null)" ]; then
+    echo "❌ Error: ocalogue artifacts (dune-project, *.ml) were not created!"
+    exit 1
+  fi
 else
   echo "⚠ Warning: No specific file check defined for project ${PROJECT}."
 fi
@@ -226,6 +236,20 @@ if [ -d "/app/dist_mount" ]; then
     fi
     if [ -d "dist" ]; then
       cp -a dist/. /app/dist_mount/ || true
+    fi
+  elif [ "${PROJECT}" = "jpacioli" ]; then
+    if [ -f "build.gradle" ]; then
+      gradle build -x test >/dev/null 2>&1 || true
+      if [ -d "build/libs" ]; then
+        cp -a build/libs/*.jar /app/dist_mount/ 2>/dev/null || true
+      fi
+    fi
+  elif [ "${PROJECT}" = "ocalogue" ]; then
+    if [ -f "dune-project" ]; then
+      dune build >/dev/null 2>&1 || true
+      if [ -f "_build/default/bin/main.exe" ]; then
+        cp _build/default/bin/main.exe /app/dist_mount/ocalogue 2>/dev/null || true
+      fi
     fi
   fi
 fi

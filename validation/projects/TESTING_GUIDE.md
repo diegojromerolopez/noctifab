@@ -23,6 +23,8 @@ credentials, and the harness mechanics.
 | `searchthedocs` | Python 3.12 + FastAPI + Redis | Async Queue Scraper + RAG Vector Search Engine | Usefulness / AI |
 | `auth-vault` | Go 1.22+ | OAuth2/OIDC Zero-Trust Authorization Server + PKI Vault | Rigor / Security |
 | `buffonstream` | Go 1.22+ (gRPC / Protobuf) | Protobuf-Native Storage Engine & Real-Time Bi-Directional Streaming | Usefulness / Streaming |
+| `jpacioli` | Java 21 + Spring Boot 3.3+ + PostgreSQL | Full Event Sourcing (ES) + CQRS + Double-Entry Financial Ledger + JWT/RBAC | Rigor / Security / Enterprise |
+| `ocalogue` | OCaml 5.x + Dune | Datalog Deductive Logic Engine + Semi-Naive Fixpoint + Official Test Suite | Rigor / Algorithmic / Logic |
 
 ## 2. Tier Classification (effectiveness)
 
@@ -32,8 +34,8 @@ time/tokens — the priority ramp to follow when reading results or running a su
 | Tier | Purpose | Projects |
 | :--- | :--- | :--- |
 | **Tier 0 — Baseline smoke** | Cheapest full-loop proof (init → PM → plan → generate → test → merge). Run first, always: if this stalls, nothing else is worth reading. | `echo` |
-| **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service, legacy Django modernization, zero-trust OAuth2/OIDC PKI, Protobuf real-time CDC streaming. The core set. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream` |
-| **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains and linter discipline (incl. compiler correctness, assembly, and safety matrix). | `calculator`, `wc`, `fortune`, `stricc` |
+| **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service, legacy Django modernization, zero-trust OAuth2/OIDC PKI, Protobuf real-time CDC streaming, and Java/Spring Boot Full Event Sourcing + CQRS double-entry accounting. The core set. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream`, `jpacioli` |
+| **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains, type systems, and linter discipline (incl. compiler correctness, Datalog deductive logic, assembly, and safety matrix). | `calculator`, `wc`, `fortune`, `stricc`, `ocalogue` |
 | **Tier 3 — Breadth** | State persistence and distributed/broker seams; heaviest runtime and highest API rate-limit exposure — run last or when targeting those seams specifically. | `todo-cli`, `frontpunch` |
 
 ## 3. Recommended Order to Test noctifab (diagnostic ramp)

@@ -1,0 +1,258 @@
+config_version: '2.0'
+execution_report: "/app/report_mount/execution_report.md"
+agents:
+  architecture: code_first
+  orchestrator:
+    number: 1
+    iterations: 2
+  product_manager:
+    number: 1
+    iterations: 2
+    max_user_stories: 5
+    passes: 2
+    providers:
+    - name: claude
+    - name: gemini
+    - name: openai
+    - name: deepseek-pro
+    - name: deepseek
+    - name: qwen
+    - name: opencode
+    - name: openrouter
+  planner:
+    number: 1
+    iterations: 2
+  generators:
+    number: 6
+    iterations: 5
+    providers:
+    - name: deepseek-pro
+    - name: deepseek
+    - name: gemini-flash
+    - name: claude
+    - name: gemini
+    - name: openai
+    - name: qwen
+    - name: opencode
+    - name: openrouter
+  testers:
+    number: 2
+    iterations: 3
+    providers:
+    - name: deepseek-pro
+    - name: deepseek
+    - name: gemini-flash
+    - name: claude
+    - name: gemini
+    - name: openai
+    - name: qwen
+    - name: opencode
+    - name: openrouter
+  qa:
+    enabled: false
+    iterations: 2
+    providers:
+    - name: deepseek-pro
+    - name: deepseek
+    - name: gemini-flash
+    - name: claude
+    - name: gemini
+    - name: openai
+    - name: qwen
+    - name: opencode
+    - name: openrouter
+  unblocker:
+    number: 1
+    iterations: 2
+workspace_cache:
+  enabled: true
+poll_interval: 10s
+max_clarification_wait: 30m0s
+clarification_timeout_action: abort
+storage:
+  provider: sqlite
+  conn_string: .noctifab/data/noctifab.db
+  json_file_path: .noctifab/data/state.json
+  occ:
+    max_retries: 5
+    backoff_base: 50ms
+    backoff_factor: 2
+llm:
+  token_usage_limit: 0
+  priority:
+  - deepseek-pro
+  - deepseek
+  - gemini-flash
+  - claude
+  - gemini
+  - openai
+  - qwen
+  - opencode
+  - openrouter
+  providers:
+  - name: deepseek-pro
+    provider: qwencloud
+    model: deepseek-v4-pro
+    api_keys: QWENCLOUD_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: deepseek
+    provider: deepseek
+    model: deepseek-chat
+    api_keys: DEEPSEEK_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: claude
+    provider: anthropic
+    model: claude-3-7-sonnet-latest
+    api_keys: CLAUDE_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: gemini-flash
+    provider: gemini
+    model: gemini-3.6-flash
+    api_keys: GEMINI_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: gemini
+    provider: gemini
+    model: gemini-3.6-pro
+    api_keys: GEMINI_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: openai
+    provider: openai
+    model: gpt-5.6-luna
+    api_keys: OPENAI_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: qwen
+    provider: qwencloud
+    model: qwen3.8-max
+    api_keys: QWENCLOUD_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+    enable_thinking: true
+    thinking_budget: 8192
+  - name: opencode
+    provider: opencode
+    model: glm-5.2
+    api_keys: OPENCODE_ZEN_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+  - name: openrouter
+    provider: openrouter
+    model: deepseek/deepseek-v4-flash-0731
+    api_keys: OPENROUTER_API_KEY
+    max_retries: 2
+    retry_backoff: 50ms
+    max_timeout: 600s
+    idle_timeout: 600s
+    max_tokens: 32768
+    temperature: 0.3
+    streaming: true
+vcs:
+  provider: github
+  repository: diegojromerolopez/jpacioli
+  base_branch: main
+  branch_prefix: noctifab/
+  use_worktrees: true
+  token: secret:GITHUB_TOKEN
+  token_env: GITHUB_TOKEN
+  pull_request:
+    auto_create: false
+sandbox:
+  mode: host
+  timeout_seconds: 300
+  test_command: make test
+  linter_command: make lint
+  formatter_command: make format
+  max_linter_retries: 3
+  exclude_paths:
+  - .gradle/
+  - build/
+  - target/
+  - node_modules/
+  - vendor/
+  - bin/
+  - dist/
+  - .noctifab/
+  - .git/
+  - data/
+  allowed_commands:
+  - make
+  - gradle
+  - ./gradlew
+  - java
+  - javac
+  - git
+  - sh
+  - bash
+  - curl
+  - docker
+  - postgres
+  - initdb
+  - pg_ctl
+  - createdb
+  - dropdb
+  - psql
+  - pg_isready
+  - su
+runtime:
+  spec_source: ''
+  max_actions: 100
+  max_duration: 30m
+logging:
+  level: info
+  file: ''
+telemetry:
+  enabled: false
+  exporter: otlp
+  endpoint: ''
+  service_name: noctifab
+  metrics:
+    enabled: true
+context:
+  mode: full
+  diff_window_lines: 15
+  compaction: caveman

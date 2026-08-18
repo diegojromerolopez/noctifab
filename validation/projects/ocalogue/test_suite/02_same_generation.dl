@@ -1,0 +1,16 @@
+% Same Generation Cousin Benchmark
+parent(pam, bob).
+parent(tom, bob).
+parent(tom, liz).
+parent(bob, ann).
+parent(bob, pat).
+parent(liz, bill).
+
+same_generation(X, X) :- person(X).
+same_generation(X, Y) :- parent(P, X), parent(P, Y).
+same_generation(X, Y) :- parent(P1, X), same_generation(P1, P2), parent(P2, Y).
+
+person(X) :- parent(X, _).
+person(Y) :- parent(_, Y).
+
+?- same_generation(ann, Who).

@@ -1,0 +1,11 @@
+% Mutual Recursion Benchmark
+succ(0, 1).
+succ(1, 2).
+succ(2, 3).
+succ(3, 4).
+
+even(0).
+even(Y) :- odd(X), succ(X, Y).
+odd(Y) :- even(X), succ(X, Y).
+
+?- even(N).

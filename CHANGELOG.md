@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.40.0] - 2026-08-18
+
+### Added
+- **`ocalogue` OCaml Datalog Validation Project (`validation/projects/ocalogue/`)**:
+  - Added purely functional Datalog deductive logic and relational query engine validation project in OCaml 5.x with the Dune build system.
+  - Implemented with Semi-Naive Bottom-Up Fixpoint Evaluation, Stratified Negation (predicate dependency graph cycle checking), and relational indexing.
+  - Integrated the Official Datalog Test Suite fixtures (`test_suite/01_transitive_closure.dl` through `07_unstratified_negation_error.dl`) covering graph reachability, same-generation cousin recursion, mutual recursion, and cyclic graph termination.
+  - Added `ocaml/opam:alpine-ocaml-5.2` multi-toolchain Dockerfile and comprehensive `SPEC.md`.
+  - Updated validation matrix and documentation in `validation/projects/TESTING_GUIDE.md`.
+
+## [0.39.0] - 2026-08-17
+
+### Added
+- **`jpacioli` Java + Spring Boot Validation Project (`validation/projects/jpacioli/`)**:
+  - Added enterprise double-entry financial accounting ledger and transaction engine validation project.
+  - Implemented with Java 21, Spring Boot 3.3+, Full Event Sourcing (ES with `event_store` single source of truth and point-in-time time-travel balance reconstruction), CQRS with materialized read-model projections (`account_balances_view`, `account_statements_view`, `trial_balance_view`), and PostgreSQL.
+  - Implemented Stateless JWT Bearer Authentication and fine-grained Role-Based Access Control (RBAC) permissions (`ROLE_SUPERADMIN`, `ROLE_ADMIN`, `ROLE_ACCOUNTANT`, `ROLE_AUDITOR`, `ROLE_OPERATOR` with `accounts:*`, `transactions:*`, `reports:*`, `events:*`, and `users:*` authority scopes).
+  - Prioritized DeepSeek LLM (`deepseek-pro` and `deepseek`) at the top tier for code generators and testers in `.noctifab/config.yaml`.
+  - Added `eclipse-temurin:21-jdk-alpine` multi-toolchain Dockerfile, `docker-compose.e2e.yml`, and comprehensive `SPEC.md`.
+  - Updated validation matrix and documentation in `validation/projects/TESTING_GUIDE.md`.
+
 ## [0.38.0] - 2026-08-17
 
 ### Added

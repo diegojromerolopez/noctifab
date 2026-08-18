@@ -1,0 +1,5 @@
+% Unstratified Negation (Negative cycle: p depends on not p)
+p(X) :- q(X), not p(X).
+q(1).
+
+?- p(X).

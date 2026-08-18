@@ -11,7 +11,7 @@ import (
 func TestLoadValidationProjectConfigs(t *testing.T) {
 	for _, key := range []string{
 		"CLAUDE_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "QWENCLOUD_API_KEY",
-		"OPENCODE_ZEN_API_KEY", "OPENROUTER_API_KEY", "GITHUB_TOKEN",
+		"OPENCODE_ZEN_API_KEY", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "GITHUB_TOKEN",
 	} {
 		t.Setenv(key, "test-key")
 	}

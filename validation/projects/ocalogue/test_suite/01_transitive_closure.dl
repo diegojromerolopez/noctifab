@@ -1,0 +1,10 @@
+% Transitive Closure (Graph Reachability)
+edge(a, b).
+edge(b, c).
+edge(c, d).
+edge(d, e).
+
+path(X, Y) :- edge(X, Y).
+path(X, Z) :- edge(X, Y), path(Y, Z).
+
+?- path(a, Target).

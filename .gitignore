@@ -35,10 +35,17 @@ go.work.sum
 /dist/
 /bin/
 
-# Validation artifacts
+# Noctifab runtime state, secrets and test artifacts
+secrets.yaml
+.noctifab/
+**/.noctifab/
+!validation/projects/*/.noctifab/
+!validation/projects/*/.noctifab/config.yaml
 /validation/projects/*/.noctifab/secrets.yaml
 /validation/projects/*/.noctifab/data/
 /validation/projects/*/.noctifab/logs/
+
+# Validation outputs
 /validation/projects/*/output/
 .validation-logs/
 
@@ -47,5 +54,3 @@ go.work.sum
 VALIDATION_CONTAINERS_REGISTRY.md
 POPULARITY_FEATURE_PROPOSALS.md
 MAXIMUM_AUTONOMY_PLAN.md
-.noctifab/
-**/.noctifab/
