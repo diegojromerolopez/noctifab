@@ -2,6 +2,7 @@
 
 BINARY_NAME=noctifab
 DIST_DIR=dist
+INSTALL_DIR ?= $(HOME)/bin
 GOFLAGS=-v
 
 VERSION ?= $(shell cat VERSION 2>/dev/null | tr -d ' \n\r' || echo "dev")
@@ -11,7 +12,7 @@ LDFLAGS ?= -X github.com/diegojromerolopez/noctifab/pkg/version.Version=$(VERSIO
            -X github.com/diegojromerolopez/noctifab/pkg/version.GitCommit=$(GIT_COMMIT) \
            -X github.com/diegojromerolopez/noctifab/pkg/version.CommitDate=$(COMMIT_DATE)
 
-.PHONY: all build clean test lint help validate validate-all validate-images validate-summary
+.PHONY: all build clean install test lint help validate validate-all validate-images validate-summary
 
 # Default target
 all: build
@@ -24,6 +25,11 @@ build:
 # Clean build artifacts
 clean:
 	rm -rf $(DIST_DIR)
+
+# Install noctifab binary to INSTALL_DIR (default: $HOME/bin)
+install: build
+	mkdir -p $(INSTALL_DIR)
+	cp $(DIST_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
 
 # Run unit tests
 test:
@@ -43,6 +49,7 @@ help:
 	@echo "  all              - Builds the binary (default target)"
 	@echo "  build            - Compile noctifab binary to dist/ folder"
 	@echo "  clean            - Remove build artifacts (dist/ directory)"
+	@echo "  install          - Build and copy noctifab binary to INSTALL_DIR (default: \$$HOME/bin)"
 	@echo "  test             - Run the Go unit test suite"
 	@echo "  test-e2e         - Run the containerized E2E test suite"
 	@echo "  lint             - Run static analysis lint checks using Docker"
