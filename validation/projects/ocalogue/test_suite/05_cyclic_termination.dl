@@ -1,0 +1,9 @@
+% Cyclic Graph Termination
+edge(x, y).
+edge(y, z).
+edge(z, x).
+
+connected(A, B) :- edge(A, B).
+connected(A, C) :- connected(A, B), edge(B, C).
+
+?- connected(x, Node).

@@ -725,6 +725,7 @@ To optimize validation container runs for near-instantaneous development feedbac
 | **`auth-vault`** | Go 1.22+ | `SPEC.md` | OAuth2/OIDC Zero-Trust Authorization Server + PKI Vault created and test suite passes |
 | **`buffonstream`** | Go 1.22+ (gRPC / Protobuf) | `SPEC.md` | Protobuf-Native Storage Engine & Real-Time Bi-Directional Streaming passes |
 | **`jpacioli`** | Java 21 + Spring Boot 3.3+ + PostgreSQL | `SPEC.md` | Full Event Sourcing (ES) + CQRS Double-Entry Financial Ledger + JWT/RBAC passes |
+| **`ocalogue`** | OCaml 5.x + Dune | `SPEC.md` | Datalog Deductive Logic Engine + Semi-Naive Fixpoint + Official Test Suite passes |
 
 The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
 

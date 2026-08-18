@@ -1,0 +1,9 @@
+% Unification, Constants and Joins
+emp("Alice", "Engineering", 120000).
+emp("Bob", "Engineering", 95000).
+emp("Charlie", "HR", 80000).
+emp("Dave", "Engineering", 150000).
+
+high_earner_dept(Name, Dept) :- emp(Name, Dept, Salary), Salary >= 100000, Dept = "Engineering".
+
+?- high_earner_dept(Name, Dept).

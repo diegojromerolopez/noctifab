@@ -1,0 +1,15 @@
+% Stratified Negation Benchmark
+node(1).
+node(2).
+node(3).
+node(4).
+
+edge(1, 2).
+edge(2, 3).
+
+reachable(X, Y) :- edge(X, Y).
+reachable(X, Z) :- edge(X, Y), reachable(Y, Z).
+
+unreachable(X, Y) :- node(X), node(Y), not reachable(X, Y), X != Y.
+
+?- unreachable(1, Target).

@@ -19,6 +19,7 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 13. **`auth-vault`**: Checks out the base `main` branch of an OAuth2/OIDC zero-trust authorization server spec and executes `SPEC.md`. Validates PKI vault and zero-trust authentication.
 14. **`buffonstream`**: Checks out the base `main` branch of a Protobuf-native real-time streaming storage engine spec and executes `SPEC.md`. Validates bi-directional gRPC streaming.
 15. **`jpacioli`**: Checks out the base `main` branch of an enterprise double-entry financial accounting ledger and transaction engine spec and executes `SPEC.md`. Validates Java 21, Spring Boot 3.3+, Full Event Sourcing (ES), CQRS with materialized read projections, and Stateless JWT / RBAC permissions against PostgreSQL.
+16. **`ocalogue`**: Checks out the base `main` branch of a Datalog deductive logic engine spec and executes `SPEC.md`. Validates OCaml 5.x, Dune, Semi-Naive Fixpoint evaluation, Stratified Negation, and compliance with the Official Datalog Test Suite.
 
 ### Project Tiers (effectiveness classification)
 
@@ -29,7 +30,7 @@ time/tokens** — the priority ramp to follow when reading results or running a 
 | :--- | :--- | :--- |
 | **Tier 0 — Baseline smoke** | Cheapest full-loop proof (init → PM → plan → generate → test → merge). Run first, always: if this stalls, nothing else is worth reading. | `echo` |
 | **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service, legacy Django modernization, zero-trust OAuth2/OIDC PKI, Protobuf real-time CDC streaming, and Java/Spring Boot Full Event Sourcing + CQRS double-entry accounting. The core set. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream`, `jpacioli` |
-| **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains and linter discipline (incl. compiler correctness and safety matrix). | `calculator`, `wc`, `fortune`, `stricc` |
+| **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains, type systems, and linter discipline (incl. compiler correctness, Datalog deductive logic, assembly, and safety matrix). | `calculator`, `wc`, `fortune`, `stricc`, `ocalogue` |
 | **Tier 3 — Breadth** | State persistence and distributed/broker seams; heaviest runtime and highest API rate-limit exposure — run last or when targeting those seams specifically. | `todo-cli`, `frontpunch`, `searchthedocs` |
 
 **Quick triage run:** `echo t4 pyedis notebook` covers the four major seams; add
@@ -61,7 +62,8 @@ validation/
     ├── searchthedocs/{Dockerfile, SPEC.md, .noctifab/}
     ├── auth-vault/{Dockerfile, SPEC.md, .noctifab/}
     ├── buffonstream/{Dockerfile, SPEC.md, .noctifab/}
-    └── jpacioli/{Dockerfile, SPEC.md, .noctifab/}
+    ├── jpacioli/{Dockerfile, SPEC.md, .noctifab/}
+    └── ocalogue/{Dockerfile, SPEC.md, test_suite/, .noctifab/}
 ```
 
 Each project owns its own `Dockerfile` that layers the language toolchain it
@@ -84,6 +86,7 @@ needs on top of the shared `noctifab-validation:base` image:
 | `auth-vault` | `golang:1.22-alpine` (+ base)| go                               | `cmd/server/main.go`                      |
 | `buffonstream` | `golang:1.22-alpine` (+ base)| go, protoc                       | `cmd/server/main.go`                      |
 | `jpacioli`   | `eclipse-temurin:21-jdk-alpine` (+ base)| java21, gradle, postgresql  | `build.gradle`, `src/**/*.java`           |
+| `ocalogue`   | `ocaml/opam:alpine-ocaml-5.2` (+ base)| ocaml5.2, opam, dune, menhir | `dune-project`, `lib/*.ml`                |
 
 The base image (`Dockerfile.validation`) is a multi-stage build: a
 `golang:1.25-alpine` builder compiles the `noctifab` binary, which is then
