@@ -548,6 +548,192 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // 16. Spec Studio (Visual Web Spec Editor) Controller
+  const btnToggleSpec = document.getElementById('btn-toggle-spec');
+  const specStudioView = document.getElementById('spec-studio-view');
+  const mainSplit = document.querySelector('.main-split');
+  const agentsSection = document.querySelector('.agents-section');
+  const specEditorTextarea = document.getElementById('spec-editor-textarea');
+  const specDiffContent = document.getElementById('spec-diff-content');
+  const specRefineForm = document.getElementById('spec-refine-form');
+  const specFeedbackInput = document.getElementById('spec-feedback-input');
+  const btnSubmitRefine = document.getElementById('btn-submit-refine');
+  const btnApproveSpec = document.getElementById('btn-approve-spec');
+  const btnAuditSpec = document.getElementById('btn-audit-spec');
+
+  let isSpecStudioActive = false;
+
+  if (btnToggleSpec) {
+    btnToggleSpec.addEventListener('click', () => {
+      isSpecStudioActive = !isSpecStudioActive;
+      if (isSpecStudioActive) {
+        btnToggleSpec.textContent = '📊 Dashboard View';
+        btnToggleSpec.classList.remove('btn-warning');
+        btnToggleSpec.classList.add('btn-primary');
+        if (mainSplit) mainSplit.style.display = 'none';
+        if (agentsSection) agentsSection.style.display = 'none';
+        if (specStudioView) specStudioView.style.display = 'grid';
+        fetchSpec();
+      } else {
+        btnToggleSpec.textContent = '📄 Spec Studio';
+        btnToggleSpec.classList.remove('btn-primary');
+        btnToggleSpec.classList.add('btn-warning');
+        if (mainSplit) mainSplit.style.display = 'grid';
+        if (agentsSection) agentsSection.style.display = 'block';
+        if (specStudioView) specStudioView.style.display = 'none';
+      }
+    });
+  }
+
+  const btnSpecUndo = document.getElementById('btn-spec-undo');
+  const btnSpecRedo = document.getElementById('btn-spec-redo');
+  const specTimelinePills = document.getElementById('spec-timeline-pills');
+  const specStatusBadge = document.getElementById('spec-status-badge');
+
+  let currentActiveVer = 1;
+  let availableVersions = [1];
+
+  async function fetchSpec() {
+    try {
+      const res = await fetch('/api/v1/spec');
+      if (res.ok) {
+        const data = await res.json();
+        updateSpecView(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch specification:', err);
+    }
+  }
+
+  function updateSpecView(data) {
+    if (specEditorTextarea) specEditorTextarea.value = data.content || '';
+    if (data.latest_diff && specDiffContent) {
+      specDiffContent.textContent = data.latest_diff;
+    }
+    if (data.active_version) currentActiveVer = data.active_version;
+    if (data.available_versions) availableVersions = data.available_versions;
+
+    if (specStatusBadge) {
+      specStatusBadge.textContent = `Revision ${currentActiveVer}`;
+    }
+
+    renderTimelinePills();
+
+    if (data.model_roles) {
+      const rolePm = document.getElementById('role-pm-model');
+      const roleArch = document.getElementById('role-arch-model');
+      const roleTest = document.getElementById('role-test-model');
+      const roleQa = document.getElementById('role-qa-model');
+      if (rolePm && data.model_roles['Product Manager']) rolePm.textContent = data.model_roles['Product Manager'];
+      if (roleArch && data.model_roles['Systems Architect']) roleArch.textContent = data.model_roles['Systems Architect'];
+      if (roleTest && data.model_roles['Test Architect']) roleTest.textContent = data.model_roles['Test Architect'];
+      if (roleQa && data.model_roles['QA Specialist']) roleQa.textContent = data.model_roles['QA Specialist'];
+    }
+  }
+
+  function renderTimelinePills() {
+    if (!specTimelinePills) return;
+    specTimelinePills.innerHTML = '';
+    availableVersions.forEach((v) => {
+      const pill = document.createElement('button');
+      pill.className = `rev-pill ${v === currentActiveVer ? 'active' : ''}`;
+      pill.setAttribute('data-version', v);
+      pill.textContent = `● v${v} ${v === 1 ? '(Draft)' : ''}`;
+      pill.addEventListener('click', () => checkoutVersion(v));
+      specTimelinePills.appendChild(pill);
+    });
+  }
+
+  async function checkoutVersion(v) {
+    try {
+      const res = await fetch('/api/v1/spec/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: v })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        updateSpecView(data);
+        appendLogEntry('SPEC', `Checked out specification revision v${v}`, 'steer');
+      }
+    } catch (err) {
+      console.error('Checkout version failed:', err);
+    }
+  }
+
+  if (btnSpecUndo) {
+    btnSpecUndo.addEventListener('click', () => {
+      if (currentActiveVer > 1) {
+        checkoutVersion(currentActiveVer - 1);
+      }
+    });
+  }
+
+  if (btnSpecRedo) {
+    btnSpecRedo.addEventListener('click', () => {
+      if (currentActiveVer < availableVersions.length) {
+        checkoutVersion(currentActiveVer + 1);
+      }
+    });
+  }
+
+  if (specRefineForm) {
+    specRefineForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const prompt = specFeedbackInput.value.trim();
+      if (!prompt) return;
+
+      if (btnSubmitRefine) {
+        btnSubmitRefine.disabled = true;
+        btnSubmitRefine.textContent = '⏳ Multi-Model Pipeline Refining...';
+      }
+
+      try {
+        const res = await fetch('/api/v1/spec/refine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          updateSpecView(data);
+          specFeedbackInput.value = '';
+          appendLogEntry('SPEC', `Refined specification with prompt: ${prompt}`, 'steer');
+        }
+      } catch (err) {
+        console.error('Failed to refine spec:', err);
+      } finally {
+        if (btnSubmitRefine) {
+          btnSubmitRefine.disabled = false;
+          btnSubmitRefine.textContent = '🚀 Refine with Multi-Model Pipeline';
+        }
+      }
+    });
+  }
+
+  if (btnApproveSpec) {
+    btnApproveSpec.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/v1/spec/approve', { method: 'POST' });
+        if (res.ok) {
+          alert('✔ Specification approved! Returning to mission control dashboard.');
+          if (btnToggleSpec) btnToggleSpec.click();
+        }
+      } catch (err) {
+        console.error('Failed to approve spec:', err);
+      }
+    });
+  }
+
+  if (btnAuditSpec) {
+    btnAuditSpec.addEventListener('click', async () => {
+      if (specFeedbackInput) {
+        specFeedbackInput.value = 'Run a multi-model consistency audit to detect and resolve any section contradictions.';
+        if (specRefineForm) specRefineForm.requestSubmit();
+      }
+    });
+  }
+
   // Timer ticker
   setInterval(() => {
     const secs = Math.floor((Date.now() - startTime) / 1000);

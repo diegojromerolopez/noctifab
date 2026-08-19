@@ -19,26 +19,34 @@ The `secret:` reference system solves this cleanly:
 
 Any string field in `config.yaml` whose value starts with `secret:` is treated as a reference. During configuration loading, `noctifab` resolves the reference by looking up the remainder of the string as a key in `secrets.yaml`.
 
-**Resolution order for a given field:**
+**Resolution Precedence (Highest to Lowest):**
 
-1. `secrets.yaml` reference (resolved at YAML load time)
-2. Environment variable (applied after)
-3. CLI flag (applied last, highest precedence)
+1. **CLI Flags** (applied last, highest precedence)
+2. **Environment Variables** (e.g. `OPENAI_API_KEY`, `GITHUB_TOKEN`)
+3. **Project Secrets** (`.noctifab/secrets.yaml` inside project folder)
+4. **Global Home Secrets** (`$HOME/.noctifab/secrets.yaml`)
+5. **Literal Values** in `config.yaml`
 
 ---
 
 ## Setup
 
-### 1. Create `secrets.yaml`
+### 1. Global Baseline vs Project Secrets
 
-Place `secrets.yaml` in the same directory as `config.yaml` (i.e. `.noctifab/secrets.yaml`). The format is a flat YAML key-value map:
+Noctifab supports both single-project credentials and global user-wide credentials:
+
+* **Global Home Directory Secrets (`$HOME/.noctifab/secrets.yaml`)**:  
+  Create `$HOME/.noctifab/secrets.yaml` to store baseline API keys used across all projects on your machine. If a project does not contain a local `.noctifab/secrets.yaml`, Noctifab automatically reads your global home secrets file.
+* **Project-Level Secrets (`.noctifab/secrets.yaml`)**:  
+  Place `secrets.yaml` inside `.noctifab/secrets.yaml` of a specific project workspace. Values in the project secrets file override matching keys from the global home secrets file.
 
 ```yaml
-# .noctifab/secrets.yaml
+# $HOME/.noctifab/secrets.yaml or .noctifab/secrets.yaml
 # This file is gitignored — never commit it.
 
 GITHUB_TOKEN: "github_pat_11AA4TEXQ0..."
 GEMINI_API_KEY: "AIzaSyATKC77..."
+OPENAI_API_KEY: "sk-proj-..."
 ```
 
 ### 2. Reference secrets in `config.yaml`

@@ -47,6 +47,7 @@
         <div class="stat-pill"><span class="stat-label">Cost:</span> <span id="total-cost">$0.00</span></div>
         <div class="stat-pill"><span class="stat-label">Elapsed:</span> <span id="elapsed-time">00s</span></div>
         <div class="header-actions">
+          <button id="btn-toggle-spec" class="btn btn-warning">📄 Spec Studio</button>
           <button id="btn-pause" class="btn btn-secondary">⏸ Pause</button>
           <button id="btn-resume" class="btn btn-primary" style="display:none;">▶ Resume</button>
         </div>
@@ -126,6 +127,79 @@
               <div class="log-entry system">[00:00:00] Connected to Noctifab Live Telemetry Engine. Ready for directives.</div>
             </div>
           </div>
+    </main>
+
+    <!-- 3.5. Spec Studio (Visual Human-in-the-Loop Spec Editor) -->
+    <main class="spec-studio-view" id="spec-studio-view" style="display:none;">
+      <!-- Left Column: SPEC.md Editor & Viewer -->
+      <section class="card spec-editor-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>📄 Project Specification (<span id="spec-filename">SPEC.md</span>)</h2>
+            <span class="badge badge-success" id="spec-status-badge">Revision 1</span>
+          </div>
+          <div class="spec-header-actions">
+            <button id="btn-audit-spec" class="btn-sm btn-secondary">🔍 Audit Consistency</button>
+            <button id="btn-approve-spec" class="btn-sm btn-success">✅ Approve & Start Build</button>
+          </div>
+        </div>
+
+        <!-- Time-Travel Revision Timeline Scrubber -->
+        <div class="spec-timeline-scrubber">
+          <div class="timeline-controls">
+            <button id="btn-spec-undo" class="btn-xs btn-secondary" title="Rollback to previous revision">⏪ Undo</button>
+            <button id="btn-spec-redo" class="btn-xs btn-secondary" title="Redo forward revision">⏩ Redo</button>
+            <span class="timeline-label">Revisions:</span>
+          </div>
+          <div class="timeline-pills" id="spec-timeline-pills">
+            <button class="rev-pill active" data-version="1">● v1 (Draft)</button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <textarea id="spec-editor-textarea" class="spec-editor-textarea" placeholder="No specification loaded. Enter a prompt to generate or refine your SPEC.md..."></textarea>
+        </div>
+      </section>
+
+      <!-- Right Column: Multi-Model Panel & Feedback Loop -->
+      <section class="card spec-refine-card">
+        <div class="card-header">
+          <h2>🌌 Multi-Model Consensus & Refinement</h2>
+          <span class="consensus-badge" id="spec-consensus-badge">✔ 4 Roles Synthesized</span>
+        </div>
+        <div class="card-body spec-refine-body">
+          <!-- Role Attribution Cards -->
+          <div class="role-grid" id="spec-role-grid">
+            <div class="role-card">
+              <span class="role-title">👑 Product Manager</span>
+              <span class="role-model" id="role-pm-model">Claude 3.7 Sonnet</span>
+            </div>
+            <div class="role-card">
+              <span class="role-title">📐 Systems Architect</span>
+              <span class="role-model" id="role-arch-model">GPT-4o</span>
+            </div>
+            <div class="role-card">
+              <span class="role-title">🧪 Test Architect</span>
+              <span class="role-model" id="role-test-model">DeepSeek R1</span>
+            </div>
+            <div class="role-card">
+              <span class="role-title">🛡️ QA Specialist</span>
+              <span class="role-model" id="role-qa-model">Gemini 2.5 Pro</span>
+            </div>
+          </div>
+
+          <!-- Diff Preview -->
+          <div class="spec-diff-box">
+            <h4>📝 Latest Changes Applied</h4>
+            <pre><code id="spec-diff-content">// Refinement diffs will appear here...</code></pre>
+          </div>
+
+          <!-- Human Feedback Form -->
+          <form id="spec-refine-form" class="spec-refine-form">
+            <label for="spec-feedback-input"><strong>What would you like to improve, fix, or add?</strong></label>
+            <textarea id="spec-feedback-input" placeholder="e.g. 'Add support for PostgreSQL instead of SQLite and add Prometheus metrics at /metrics'..." required></textarea>
+            <button type="submit" class="btn btn-primary btn-block" id="btn-submit-refine">🚀 Refine with Multi-Model Pipeline</button>
+          </form>
         </div>
       </section>
     </main>

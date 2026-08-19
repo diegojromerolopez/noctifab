@@ -10,8 +10,10 @@ import (
 )
 
 var (
-	WorkspaceDir = "."
-	ProfileFlag  = ""
+	WorkspaceDir    = "."
+	ProfileFlag     = ""
+	initSpecPrompt  = ""
+	initInteractive = false
 )
 
 var initCmd = &cobra.Command{
@@ -36,12 +38,18 @@ var initCmd = &cobra.Command{
 		} else {
 			fmt.Printf("noctifab workspace initialized successfully in %s\n", targetDir)
 		}
+
+		if initSpecPrompt != "" || initInteractive {
+			return runSpecSession(targetDir, initSpecPrompt, "SPEC.md", false, true)
+		}
 		return nil
 	},
 }
 
 func init() {
 	initCmd.Flags().StringVar(&ProfileFlag, "profile", "", "Pre-configured LLM profile (e.g. ollama-qwen, ollama-deepseek, vllm-local)")
+	initCmd.Flags().StringVar(&initSpecPrompt, "spec", "", "Initial prompt to bootstrap and interactively refine SPEC.md")
+	initCmd.Flags().BoolVarP(&initInteractive, "interactive", "i", false, "Launch interactive spec generator wizard upon initialization")
 }
 
 // EnsureWorkspaceInitialized ensures .noctifab/ directory, config.yaml, secrets.yaml, database, and SPEC.md exist.

@@ -51,6 +51,12 @@ func DefaultConfig() *Config {
 		WorkspaceCache: WorkspaceCacheConfig{
 			Enabled: boolPtr(true),
 		},
+		Spec: SpecConfig{
+			OutputFile:          "SPEC.md",
+			ConsensusAudit:      boolPtr(true),
+			MaxHistoryTurns:     10,
+			AutoGenerateRoadmap: boolPtr(true),
+		},
 		PollInterval:               Duration(5 * time.Minute),
 		StoryExecInterval:          Duration(2 * time.Second),
 		MaxClarificationWait:       Duration(30 * time.Minute),

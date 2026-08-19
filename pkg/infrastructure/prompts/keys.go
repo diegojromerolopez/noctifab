@@ -25,15 +25,20 @@ const (
 	AgentTester         = "tester"
 	AgentGenerator      = "generator"
 	AgentQA             = "qa"
+	AgentSpec           = "spec"
 )
 
 // catalog maps each agent to its customizable actions. It is the single
-// source of truth for the (agent, action) key space: 14 keys across 4 agents.
+// source of truth for the (agent, action) key space: 20 keys across 6 agents.
 var catalog = map[string][]string{
 	AgentProductManager: {"generate", "audit"},
 	AgentPlanner:        {"decompose"},
 	AgentQA:             {"acceptance"},
-	AgentTester:         {"write", "fix", "refactor", "write_breadth_first"},
+	AgentSpec: {
+		"pm_draft", "architect_enrich", "tester_enrich",
+		"qa_enrich", "consensus_audit", "refine",
+	},
+	AgentTester: {"write", "fix", "refactor", "write_breadth_first"},
 	AgentGenerator: {
 		"implement", "refactor", "fix",
 		"single_pass", "single_pass_fix",

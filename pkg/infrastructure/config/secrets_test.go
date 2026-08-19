@@ -144,3 +144,58 @@ func TestResolveProviderSpecSecret_CanonicalEnvNames(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_GlobalHomeSecretsFallback(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+	t.Setenv("NOCTIFAB_E2E", "true")
+
+	homeNoctifab := filepath.Join(tempHome, ".noctifab")
+	if err := os.MkdirAll(homeNoctifab, 0755); err != nil {
+		t.Fatalf("failed to create home .noctifab dir: %v", err)
+	}
+
+	homeSecretsPath := filepath.Join(homeNoctifab, "secrets.yaml")
+	if err := os.WriteFile(homeSecretsPath, []byte("GLOBAL_TOKEN: \"global-secret-123\"\n"), 0600); err != nil {
+		t.Fatalf("failed to write home secrets: %v", err)
+	}
+
+	// Create project directory with config.yaml referencing secret:GLOBAL_TOKEN
+	tempProj := t.TempDir()
+	projNoctifab := filepath.Join(tempProj, ".noctifab")
+	if err := os.MkdirAll(projNoctifab, 0755); err != nil {
+		t.Fatalf("failed to create proj .noctifab dir: %v", err)
+	}
+
+	configContent := "config_version: \"2.0\"\nvcs:\n  provider: \"github\"\n  repository: \"test/repo\"\n  token: \"secret:GLOBAL_TOKEN\"\nllm:\n  providers:\n    - name: test\n      provider: ollama\n"
+	if err := os.WriteFile(filepath.Join(projNoctifab, "config.yaml"), []byte(configContent), 0600); err != nil {
+		t.Fatalf("failed to write config.yaml: %v", err)
+	}
+
+	t.Setenv("NOCTIFAB_CONFIG", filepath.Join(projNoctifab, "config.yaml"))
+
+	cfg, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if cfg.VCS.Token != "global-secret-123" {
+		t.Errorf("expected global-secret-123 from HOME secrets, got %q", cfg.VCS.Token)
+	}
+
+	// Now add an unpopulated local secrets.yaml with GLOBAL_TOKEN: ""
+	projSecretsPath := filepath.Join(projNoctifab, "secrets.yaml")
+	if err := os.WriteFile(projSecretsPath, []byte("GLOBAL_TOKEN: \"\"\n"), 0600); err != nil {
+		t.Fatalf("failed to write proj secrets.yaml: %v", err)
+	}
+
+	cfg2, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load with empty proj secrets failed: %v", err)
+	}
+
+	if cfg2.VCS.Token != "global-secret-123" {
+		t.Errorf("expected empty local secret to NOT wipe home secret global-secret-123, got %q", cfg2.VCS.Token)
+	}
+}
+

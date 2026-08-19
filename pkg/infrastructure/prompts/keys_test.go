@@ -6,9 +6,9 @@ import (
 )
 
 func TestCatalog(t *testing.T) {
-	t.Run("when listing agents it returns the 5 catalog agents sorted", func(t *testing.T) {
+	t.Run("when listing agents it returns the 6 catalog agents sorted", func(t *testing.T) {
 		agents := Agents()
-		want := []string{"generator", "planner", "product_manager", "qa", "tester"}
+		want := []string{"generator", "planner", "product_manager", "qa", "spec", "tester"}
 		if len(agents) != len(want) {
 			t.Fatalf("expected %d agents, got %v", len(want), agents)
 		}
@@ -19,13 +19,13 @@ func TestCatalog(t *testing.T) {
 		}
 	})
 
-	t.Run("when counting catalog keys it totals 15 actions", func(t *testing.T) {
+	t.Run("when counting catalog keys it totals 21 actions", func(t *testing.T) {
 		total := 0
 		for _, agent := range Agents() {
 			total += len(Actions(agent))
 		}
-		if total != 15 {
-			t.Fatalf("expected 15 (agent, action) keys, got %d", total)
+		if total != 21 {
+			t.Fatalf("expected 21 (agent, action) keys, got %d", total)
 		}
 	})
 
