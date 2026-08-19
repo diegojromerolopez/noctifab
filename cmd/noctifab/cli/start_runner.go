@@ -107,21 +107,15 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 				"please replace it with your project requirements and run 'noctifab start' again", targetDir)
 	}
 
-	roadmapDir := filepath.Join(targetDir, "roadmap")
-	if entries, readErr := os.ReadDir(roadmapDir); readErr == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
-				sfPath := filepath.Join(roadmapDir, entry.Name())
-				sfBytes, sfErr := os.ReadFile(sfPath)
-				if sfErr != nil {
-					return fmt.Errorf("failed to read story file %s: %w", sfPath, sfErr)
-				}
-				if isTemplateStory(string(sfBytes)) {
-					return fmt.Errorf(
-						"user story %q still contains the default template content; "+
-							"please replace it with real requirements or delete it and run 'noctifab start' again", sfPath)
-				}
-			}
+	for _, sfPath := range discoverStoryFiles(targetDir) {
+		sfBytes, sfErr := os.ReadFile(sfPath)
+		if sfErr != nil {
+			return fmt.Errorf("failed to read story file %s: %w", sfPath, sfErr)
+		}
+		if isTemplateStory(string(sfBytes)) {
+			return fmt.Errorf(
+				"user story %q still contains the default template content; "+
+					"please replace it with real requirements or delete it and run 'noctifab start' again", sfPath)
 		}
 	}
 
@@ -194,16 +188,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	llmClient := llm.BuildFailoverClient(cfg, budgetStore)
 
 	// Discover stories
-	roadmapDir = filepath.Join(targetDir, "roadmap")
-	hasExistingStories := false
-	if entries, readErr := os.ReadDir(roadmapDir); readErr == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
-				hasExistingStories = true
-				break
-			}
-		}
-	}
+	hasExistingStories := len(discoverStoryFiles(targetDir)) > 0
 
 	if hasExistingStories {
 		fmt.Printf("Spawning Product Manager Agent to audit and refine existing roadmap user stories in %s/roadmap...\n", targetDir)
@@ -232,14 +217,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "roadmap_generation", At: time.Now().UTC()})
 	}
 
-	var storyFiles []string
-	if entries, readErr := os.ReadDir(roadmapDir); readErr == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
-				storyFiles = append(storyFiles, filepath.Join(roadmapDir, entry.Name()))
-			}
-		}
-	}
+	storyFiles := discoverStoryFiles(targetDir)
 	if len(storyFiles) == 0 {
 		storyFiles = []string{specFile}
 	}
@@ -461,4 +439,21 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func discoverStoryFiles(targetDir string) []string {
+	storiesDir := filepath.Join(targetDir, "roadmap", "user-stories")
+
+	var storyFiles []string
+	if matches, err := filepath.Glob(filepath.Join(storiesDir, "*.md")); err == nil {
+		storyFiles = append(storyFiles, matches...)
+	}
+	sort.Strings(storyFiles)
+
+	roadmapDir := filepath.Join(targetDir, "roadmap")
+	if matches, err := filepath.Glob(filepath.Join(roadmapDir, "US-*.md")); err == nil && len(matches) > 0 {
+		fmt.Printf("Warning: Found %d user story file(s) directly in 'roadmap/'; user stories must be located in 'roadmap/user-stories/'. Please move them to %s.\n", len(matches), storiesDir)
+	}
+
+	return storyFiles
 }

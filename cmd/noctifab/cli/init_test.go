@@ -34,9 +34,9 @@ func TestInitCmd_DefaultDirectory(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "Specification: New Project")
 
-	// Assert roadmap/US-001.md template exists
-	assert.FileExists(t, filepath.Join(tmpDir, "roadmap", "US-001.md"))
-	storyContent, err := os.ReadFile(filepath.Join(tmpDir, "roadmap", "US-001.md"))
+	// Assert roadmap/user-stories/US-001.md template exists
+	assert.FileExists(t, filepath.Join(tmpDir, "roadmap", "user-stories", "US-001.md"))
+	storyContent, err := os.ReadFile(filepath.Join(tmpDir, "roadmap", "user-stories", "US-001.md"))
 	require.NoError(t, err)
 	assert.Contains(t, string(storyContent), "User Story: US-001")
 }
@@ -49,13 +49,13 @@ func TestInitCmd_TargetDirectory(t *testing.T) {
 	err := initCmd.RunE(initCmd, []string{targetDir})
 	require.NoError(t, err)
 
-	// Assert target directory was created with .noctifab, secrets.yaml, SPEC.md, and roadmap/US-001.md
+	// Assert target directory was created with .noctifab, secrets.yaml, SPEC.md, and roadmap/user-stories/US-001.md
 	assert.DirExists(t, targetDir)
 	assert.FileExists(t, filepath.Join(targetDir, ".noctifab", "config.yaml"))
 	assert.FileExists(t, filepath.Join(targetDir, ".noctifab", "secrets.yaml"))
 	assert.FileExists(t, filepath.Join(targetDir, "SPEC.md"))
 	// US-001.md must exist because SPEC.md was also freshly created (new project)
-	assert.FileExists(t, filepath.Join(targetDir, "roadmap", "US-001.md"))
+	assert.FileExists(t, filepath.Join(targetDir, "roadmap", "user-stories", "US-001.md"))
 }
 
 func TestEnsureWorkspaceInitialized_AlreadyExists(t *testing.T) {
@@ -72,7 +72,7 @@ func TestEnsureWorkspaceInitialized_AlreadyExists(t *testing.T) {
 	assert.Equal(t, "# Custom Spec", string(content))
 
 	// US-001.md must NOT be created when SPEC.md already existed
-	assert.NoFileExists(t, filepath.Join(tmpDir, "roadmap", "US-001.md"))
+	assert.NoFileExists(t, filepath.Join(tmpDir, "roadmap", "user-stories", "US-001.md"))
 }
 
 func TestInitCmd_WithProfile(t *testing.T) {

@@ -18,33 +18,31 @@ import (
 var storyContractBlockRE = regexp.MustCompile("(?s)```noctifab-contract[ \\t]*\\r?\\n(.*?)\\r?\\n```")
 
 func collectStoryContracts(projectPath string) []domain.PublicContract {
-	roadmapDir := filepath.Join(projectPath, "roadmap")
-	entries, err := os.ReadDir(roadmapDir)
-	if err != nil {
-		return nil
+	storiesDir := filepath.Join(projectPath, "roadmap", "user-stories")
+
+	var storyFiles []string
+	if matches, err := filepath.Glob(filepath.Join(storiesDir, "*.md")); err == nil {
+		storyFiles = append(storyFiles, matches...)
 	}
 
 	var contracts []domain.PublicContract
 	seen := make(map[string]bool)
 
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
-			fullPath := filepath.Join(roadmapDir, entry.Name())
-			content, rErr := os.ReadFile(fullPath)
-			if rErr != nil {
-				continue
+	for _, fullPath := range storyFiles {
+		content, rErr := os.ReadFile(fullPath)
+		if rErr != nil {
+			continue
+		}
+		matches := storyContractBlockRE.FindAllStringSubmatch(string(content), -1)
+		for _, match := range matches {
+			var payload struct {
+				PublicContracts []domain.PublicContract `json:"public_contracts"`
 			}
-			matches := storyContractBlockRE.FindAllStringSubmatch(string(content), -1)
-			for _, match := range matches {
-				var payload struct {
-					PublicContracts []domain.PublicContract `json:"public_contracts"`
-				}
-				if jsonErr := json.Unmarshal([]byte(match[1]), &payload); jsonErr == nil {
-					for _, pc := range payload.PublicContracts {
-						if pc.ID != "" && !seen[pc.ID] {
-							seen[pc.ID] = true
-							contracts = append(contracts, pc)
-						}
+			if jsonErr := json.Unmarshal([]byte(match[1]), &payload); jsonErr == nil {
+				for _, pc := range payload.PublicContracts {
+					if pc.ID != "" && !seen[pc.ID] {
+						seen[pc.ID] = true
+						contracts = append(contracts, pc)
 					}
 				}
 			}
