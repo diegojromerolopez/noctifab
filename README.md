@@ -27,10 +27,16 @@ Initialize a project workspace (creates `.noctifab/config.yaml`, `.noctifab/secr
 noctifab init [my-project-dir]
 ```
 
-Launch the dark factory loop in any project with a `SPEC.md` (add `-i` for interactive TUI dashboard):
+Interactively draft, refine, and audit your software specification with multi-agent AI consensus:
 
 ```bash
-noctifab start [my-project-dir] -i
+noctifab spec "Build a REST API with JWT authentication and PostgreSQL"
+```
+
+Launch the dark factory loop in any project with a `SPEC.md` (add `-w` for live Visual Web Dashboard & Spec Studio):
+
+```bash
+noctifab start [my-project-dir] -w
 ```
 
 ---
@@ -321,9 +327,10 @@ Key features of Interactive Mode:
 
 ## Command Reference
 
-- **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles. Use `--profile <preset>` (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) for 1-click local LLM configuration.
+- **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles. Use `--profile <preset>` (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) for 1-click local LLM configuration, `--spec <prompt>` to bootstrap interactive spec generation, or `-i` / `--interactive` for interactive wizard.
+- **`spec`**: Interactively creates, refines, and audits software specifications (`SPEC.md`). Features multi-agent team consensus review (Architect, QA, Tester, PM), version snapshotting (`SPEC.v1.md`, `SPEC.v2.md`), and instant zero-token time-travel rollback (`undo`, `redo`, `history`, `checkout <v>`). Supports subcommands `noctifab spec [prompt]`, `noctifab spec new`, `noctifab spec refine`, and `noctifab spec audit`.
 - **`demo`**: Runs an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay (supports `--project`, `--offline`, `--speed`, `--no-cleanup`).
-- **`dashboard`**: Launches the real-time progress dashboard (terminal TUI by default, or visual web browser via `-w` / `--web`). Supports `--web-open` (auto-open in default browser), `--port`, `--host`, and `--readonly`.
+- **`dashboard`**: Launches the real-time progress dashboard (terminal TUI by default, or visual web browser via `-w` / `--web`). Features the Visual Spec Studio (`/spec`) tab with interactive Timeline Scrubber, revision pills, model role badges, side-by-side diff previews, and 1-click spec approval. Supports `--web-open` (auto-open in default browser), `--port`, `--host`, and `--readonly`.
 - **`steer`**: Injects a mid-flight human-in-the-loop steering directive into the active task (`noctifab steer "Use PostgreSQL instead of SQLite"`).
 - **`order`**: Enqueues an ad-hoc user story / feature prompt order into the autonomous execution queue (`noctifab order "Add JWT authentication middleware"`).
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
@@ -342,8 +349,11 @@ Key features of Interactive Mode:
 
 Credentials such as API keys and VCS tokens must **not** be stored as literal values in `config.yaml`. Use the `secret:` reference syntax to load them from a gitignored `secrets.yaml` file instead:
 
+- **Global Home Directory Secrets (`$HOME/.noctifab/secrets.yaml`)**: Stores default baseline API credentials for all Noctifab projects on your host machine.
+- **Project-Level Overlay (`.noctifab/secrets.yaml`)**: Places project-specific credentials that overlay and take precedence over global home secrets.
+
 ```yaml
-# .noctifab/secrets.yaml  (gitignored — never commit)
+# $HOME/.noctifab/secrets.yaml or .noctifab/secrets.yaml  (gitignored — never commit)
 GEMINI_API_KEY: "AIzaSy..."
 GITHUB_TOKEN:   "github_pat_..."
 ```
