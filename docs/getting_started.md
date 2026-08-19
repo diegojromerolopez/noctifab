@@ -27,9 +27,20 @@ Verify your installation:
 noctifab --help
 ```
 
+## 🎯 The 3-Step Development Lifecycle
+
+Noctifab follows a clean, intuitive 3-step workflow from idea to fully tested, autonomous code delivery:
+
+```
+ ┌─────────────────────────┐      ┌─────────────────────────┐      ┌─────────────────────────┐
+ │   1. noctifab init      │ ───► │   2. noctifab spec      │ ───► │   3. noctifab start     │
+ │ (Infrastructure Setup)  │      │  (Interactive Design)   │      │ (Autonomous Execution)  │
+ └─────────────────────────┘      └─────────────────────────┘      └─────────────────────────┘
+```
+
 ---
 
-## 📁 2. Initializing a Project
+## 📁 Step 1: Initializing Workspace Infrastructure (`init`)
 
 To set up a new or existing codebase for Noctifab, run `noctifab init`:
 
@@ -46,42 +57,44 @@ cd my-awesome-app
 ```
 
 ### What `noctifab init` Creates:
-- **`SPEC.md`**: A clean software specification template pre-structured for Noctifab's Product Manager Agent.
-- **`.noctifab/config.yaml`**: The primary YAML configuration file with intelligent defaults.
+- **`.noctifab/config.yaml`**: The primary YAML configuration file with intelligent role and LLM defaults.
+- **`.noctifab/secrets.yaml`**: API keys and secrets template (gitignored).
 - **`.noctifab/data/noctifab.db`**: Local SQLite state repository for tracking task DAGs and execution logs.
 - **`.noctifab/.gitignore`**: Excludes local state databases, logs, and secrets from VCS commits.
 
 ---
 
-## 📝 3. Writing Your Specification (`SPEC.md`)
+## 📝 Step 2: Interactive Specification Design (`spec`)
 
-Noctifab reads `SPEC.md` to plan and generate code. Open `SPEC.md` and define your project requirements:
+Instead of writing complex markdown specifications by hand, use `noctifab spec` to generate, refine, and audit your `SPEC.md` through an interactive Human-in-the-Loop review session:
 
-```markdown
-# Specification: Quote Generator Service
-
-## 1. Overview
-A lightweight CLI quote generator with SQLite persistence.
-
-## 2. Technology Stack & Language Guidelines
-- **Primary Language**: Go 1.22 / C17 / Python / Rust
-- **Testing Framework**: Native unit tests (`go test ./...`)
-
-## 3. Core Domain Models & Schemas
-Define key entities and structs (e.g. `Quote` struct with `ID`, `Author`, `Text`).
-
-## 4. Interfaces & Command Contracts
-- CLI command: `quote-app generate --category motivational`
-
-## 5. Acceptance Criteria & Quality Gates
-- All unit tests must pass with 100% success rate.
-- Zero linter warnings.
+```bash
+noctifab spec "Build an in-memory Redis-compatible key-value server in Go with LRU eviction"
 ```
 
-### 💡 Working with Existing / Legacy Codebases
-If you initialize Noctifab in an existing repository with pre-existing code files, Noctifab's **Legacy Codebase Scanning** (`scanLegacyFiles`) automatically detects existing source files. 
+1. **4-Stage Multi-Model Generation**: Noctifab coordinates Product Manager, Systems Architect, Test Architect, and QA Specialist roles across different LLMs to minimize bias.
+2. **Consensus Audit**: Automatically audits the spec for internal contradictions and ensures test/DoD alignment.
+3. **Interactive Review Loop**: Inspect the draft and colored line-by-line diffs in the terminal:
+   * Provide feedback: `> "Add support for TLS certificates and a Prometheus /metrics endpoint"`
+   * Approve: `> "looks good to me, stop"`
+4. **Roadmap Generation**: Upon approval, Noctifab automatically generates atomic user stories under `roadmap/user-stories/`.
 
-The Product Manager agent automatically generates `roadmap/user-stories/US-001.md` titled **`"Legacy Codebase Characterization & Stabilization"`**. This forces the dark factory loop to write comprehensive characterization tests asserting pre-existing behaviors before attempting surgical refactoring (`edit_file`, `apply_patch`) or implementing new user story features.
+> 💡 **Fast-Track Bootstrap**: Combine Step 1 & Step 2 into a single command:
+> ```bash
+> noctifab init my-project --spec "Build a distributed KV store in Go"
+> ```
+
+---
+
+## 🚀 Step 3: Launching Autonomous Dark Factory Execution (`start`)
+
+Once `SPEC.md` is approved, launch Noctifab's autonomous Dark Factory loop:
+
+```bash
+noctifab start
+```
+
+Noctifab decomposes the specification into a topological task DAG, implements minimal compiling code (Verification), executes isolated black-box test suites (Validation), runs QA acceptance gates, and autonomously merges validated feature branches.
 
 ---
 
@@ -163,6 +176,31 @@ For headless server or CI pipeline execution:
 ```bash
 noctifab start [my-project-dir]
 ```
+
+### Option E: Running via Background Daemon & Remote Orchestration
+You can run Noctifab as a continuous background daemon (`--standby` or `-d`) and feed it project initialization, specifications, and new feature orders dynamically:
+
+#### 1. Start the Noctifab Standby Daemon:
+```bash
+# Starts the background orchestrator and HTTP REST server on 127.0.0.1:8080
+noctifab start --standby -d
+```
+
+#### 2. Submit Projects & Orders to the Daemon:
+```bash
+# A. Submit a new specification/feature order to the active daemon:
+noctifab order "Build a high-performance REST API in Go with SQLite persistence and JWT auth"
+
+# B. Inject a live steering directive while the daemon is implementing code:
+noctifab steer "Ensure port is 9000 and add Prometheus metrics at /metrics"
+
+# C. Or submit directly via HTTP REST API:
+curl -X POST http://127.0.0.1:8080/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Add Redis caching layer to user queries"}'
+```
+
+The daemon automatically manages the complete Dark Factory lifecycle (planning, generation, testing, QA, and git branch merging) continuously in the background.
 
 ---
 

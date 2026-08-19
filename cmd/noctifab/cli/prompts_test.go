@@ -70,19 +70,19 @@ func runPromptsCmd(t *testing.T, workspace string, args ...string) (string, erro
 }
 
 func TestPromptsListCommand(t *testing.T) {
-	t.Run("when no overrides exist it lists all 15 actions as embedded", func(t *testing.T) {
+	t.Run("when no overrides exist it lists all 21 actions as embedded", func(t *testing.T) {
 		ws := t.TempDir()
 		out, err := runPromptsCmd(t, ws, "list")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		for _, needle := range []string{"product_manager", "planner", "tester", "generator", "qa", "acceptance", "implement", "write_breadth_first"} {
+		for _, needle := range []string{"product_manager", "planner", "tester", "generator", "qa", "spec", "acceptance", "implement", "write_breadth_first"} {
 			if !strings.Contains(out, needle) {
 				t.Errorf("expected %q in list output, got:\n%s", needle, out)
 			}
 		}
-		if strings.Count(out, "embedded") != 15 {
-			t.Errorf("expected 15 embedded entries, got %d:\n%s", strings.Count(out, "embedded"), out)
+		if strings.Count(out, "embedded") != 21 {
+			t.Errorf("expected 21 embedded entries, got %d:\n%s", strings.Count(out, "embedded"), out)
 		}
 	})
 
@@ -170,14 +170,14 @@ func TestPromptsInitCommand(t *testing.T) {
 		}
 	})
 
-	t.Run("when initializing everything it writes all 15 templates", func(t *testing.T) {
+	t.Run("when initializing everything it writes all 21 templates", func(t *testing.T) {
 		ws := t.TempDir()
 		out, err := runPromptsCmd(t, ws, "init")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if strings.Count(out, "created ") != 15 {
-			t.Errorf("expected 15 created files, got:\n%s", out)
+		if strings.Count(out, "created ") != 21 {
+			t.Errorf("expected 21 created files, got:\n%s", out)
 		}
 	})
 

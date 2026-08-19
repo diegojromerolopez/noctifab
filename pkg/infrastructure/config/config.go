@@ -38,9 +38,10 @@ func Load(cmd *cobra.Command) (*Config, error) {
 	if cmd != nil {
 		if flag := cmd.Flags().Lookup("config"); flag != nil && flag.Changed {
 			configPath = flag.Value.String()
-		} else if envVal, exists := os.LookupEnv("NOCTIFAB_CONFIG"); exists {
-			configPath = envVal
 		}
+	}
+	if envVal, exists := os.LookupEnv("NOCTIFAB_CONFIG"); exists && envVal != "" {
+		configPath = envVal
 	}
 
 	// 2. Load YAML configuration if it exists
@@ -67,13 +68,30 @@ func Load(cmd *cobra.Command) (*Config, error) {
 		return nil, err
 	}
 
-	// 2a. Load secrets.yaml (optional) from the same directory as config.yaml.
+	// 2a. Load global secrets from $HOME/.noctifab/secrets.yaml if present.
+	mergedSecrets := make(map[string]string)
+	if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+		homeSecretsPath := filepath.Join(homeDir, ".noctifab", "secrets.yaml")
+		if homeSecrets, err := LoadSecrets(homeSecretsPath); err == nil {
+			for k, v := range homeSecrets {
+				mergedSecrets[k] = v
+			}
+		}
+	}
+
+	// 2b. Load project-level secrets.yaml (optional) from the same directory as config.yaml.
 	secretsPath := filepath.Join(filepath.Dir(configPath), "secrets.yaml")
-	secrets, err := LoadSecrets(secretsPath)
+	projectSecrets, err := LoadSecrets(secretsPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load secrets file: %w", err)
 	}
-	applySecretsToConfig(cfg, secrets)
+	for k, v := range projectSecrets {
+		if strings.TrimSpace(v) != "" {
+			mergedSecrets[k] = v
+		}
+	}
+
+	applySecretsToConfig(cfg, mergedSecrets)
 
 	// 3. Override from environment variables
 	applyEnvOverrides(cfg)

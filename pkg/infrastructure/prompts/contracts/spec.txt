@@ -1,0 +1,19 @@
+
+You may only use the 'update_spec' tool.
+'update_spec' tool arguments:
+- section: Target specification section (e.g. "overview", "architecture", "domain_models", "interfaces", "verification", "definition_of_done", or "full_spec")
+- content: Complete markdown text for the specification section or full document
+
+Return format:
+{
+  "reasoning": "Rationale for specification drafting, enrichment, or reconciliation",
+  "actions": [
+    {
+      "tool": "update_spec",
+      "args": {
+        "section": "full_spec",
+        "content": "# SPEC.md: Project Name\n..."
+      }
+    }
+  ]
+}

@@ -388,5 +388,8 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 		_ = json.NewEncoder(w).Encode(state.Orders)
 	})
 
+	// 11. /api/v1/spec routes — Visual Web Spec Editor
+	ws.registerSpecRoutes(mux)
+
 	return mux
 }

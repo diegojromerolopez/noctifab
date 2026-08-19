@@ -31,24 +31,56 @@ This creates the default configuration structure in the `.noctifab/` directory:
 `noctifab` provides several subcommands for orchestrating development pipelines:
 
 ### 1. `init`
-Initializes a repository workspace with the necessary folder structure, database, default YAML configuration, and security permission profiles.
-```bash
-noctifab init [flags]
-```
-- **Security Check**: If the target directory contains existing project files but does not have a `.noctifab` directory, the command will warn the developer and abort with exit code `4` to prevent unintended code overwrites.
-
-### 1. `init`
-Initializes a Noctifab project workspace in the target directory (defaults to `.`). Automatically creates `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, SQLite database, and a `SPEC.md` template if missing.
+Initializes a Noctifab project workspace in the target directory (defaults to `.`). Automatically creates `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, SQLite state database, and workspace structure.
 
 ```bash
-noctifab init [target_dir] [--profile <preset>]
+noctifab init [target_dir] [--profile <preset>] [--spec <prompt>] [-i]
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--profile` | Pre-configured LLM profile preset (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) |
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--profile` | | Pre-configured LLM profile preset (`ollama-qwen`, `ollama-deepseek`, `vllm-local`) |
+| `--spec` | | Initial prompt to bootstrap and immediately enter interactive `SPEC.md` review session |
+| `--interactive` | `-i` | Launch interactive spec generator wizard upon initialization |
 
-### 2. `demo`
+### 2. `spec`
+Creates, refines, or audits the project specification (`SPEC.md`) using an interactive Human-in-the-Loop review session and multi-model consensus engine (Product Manager, Systems Architect, Test Architect, QA Specialist).
+
+```bash
+# Draft a new specification from an idea
+noctifab spec "Build a distributed in-memory cache in Go with Raft consensus"
+
+# Refine an existing specification with new requirements
+noctifab spec "Add TLS certificates and Prometheus metrics endpoint"
+
+# Audit and review existing specification
+noctifab spec
+
+# Target a specific directory
+noctifab spec ./my-project "Build a CLI calculator"
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--output` | `-o` | `SPEC.md` | Target specification file output path |
+| `--non-interactive` | | `false` | Run single pass and exit without interactive review loop |
+| `--consensus` | | `true` | Enable multi-model cross-critique and consensus audit pass |
+
+### 3. `start`
+Launches the autonomous Dark Factory loop. Decomposes `SPEC.md` into topological user stories, generates code, runs isolated black-box tests, executes QA quality gates, and automatically merges validated feature branches.
+
+```bash
+# Run in foreground with interactive TUI dashboard
+noctifab start [target_dir] -i
+
+# Run with visual web dashboard
+noctifab start [target_dir] -w --web-open
+
+# Run as a continuous background daemon in standby mode
+noctifab start [target_dir] --standby -d
+```
+
+### 4. `demo`
 Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Ideal for testing Noctifab's dark factory loop with zero LLM API keys and zero cost.
 
 ```bash
@@ -62,7 +94,7 @@ noctifab demo [--project <archetype>] [--offline] [--speed <multiplier>] [--no-c
 | `--speed` | `1.0` | Execution speed multiplier (e.g. `2.0` for 2x speed) |
 | `--no-cleanup` | `false` | Preserve ephemeral `/tmp/noctifab-demo-*` workspace directory on exit |
 
-### 3. `dashboard`
+### 5. `dashboard`
 Launches the real-time progress dashboard to monitor active story and task orchestrations. By default, it opens the interactive Terminal User Interface (TUI). Pass `-w` / `--web` to launch the visual web dashboard in the browser instead.
 
 ```bash
@@ -87,17 +119,7 @@ noctifab dashboard -w --readonly
 | `--host` | | `127.0.0.1` | Host address to bind the visual web dashboard |
 | `--readonly` | | `false` | Read-only mode disabling prompt steering and order mutations |
 
-* **Interactive TUI Keyboard Shortcuts**:
-  * `q`: Quit the dashboard.
-  * `p`: Pause / Resume execution of the active story.
-  * `s`: Inject a mid-flight steering directive to the active worker.
-  * `o` / `n`: Type a new feature prompt order.
-  * `c`: Answer pending disambiguation/clarification questions.
-  * `d`: Open the interactive Log / Failure Inspector.
-  * `x`: Cancel execution of the active story.
-* **CI/CD Non-Interactive Mode**: If stdin is not a terminal and `--web` is not set, the dashboard automatically falls back to dumping a plain-text status summary to stdout every 5 seconds, auto-exiting when all active stories have finished.
-
-### 4. `steer`
+### 6. `steer`
 Injects a mid-flight steering directive to guide active agent workers without stopping the execution loop.
 
 ```bash
@@ -108,61 +130,114 @@ noctifab steer "Use PostgreSQL instead of SQLite" [--task-id <id>]
 |------|-------|-------------|
 | `--task-id` | `-t` | Specific task ID to steer (defaults to active running task) |
 
-### 5. `order`
-Submits an ad-hoc user story or feature prompt order directly into the autonomous dark factory execution queue.
+### 7. `order`
+Submits an ad-hoc user story or feature prompt order directly into the running daemon's execution queue.
 
 ```bash
 noctifab order "Implement JWT authentication middleware with refresh token rotation"
 ```
 
-### 6. `validate`
+### 8. `validate`
 Loads and validates the current configurations, state, and directory constraints, ensuring that security policies, LLM keys, and local sandbox folders are correctly aligned.
 ```bash
 noctifab validate
 ```
 
-### 7. `start`
-Plans and executes code generation from a software specification file or project directory (defaults to `.`). Automatically initializes `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template if missing in the target folder. Pass `-w` / `--web` to launch the concurrent live Visual Web Dashboard. Pass `--web-open` to automatically open the dashboard in your default browser. Pass `-i` / `--interactive` to launch the live TUI dashboard interface. Pass `--standby` to keep the daemon running persistently in standby mode after finishing initial stories.
-```bash
-# Run in current directory with live Visual Web Dashboard and auto-open in browser
-noctifab start -w --web-open
-
-# Run on a target project folder with live Web Dashboard on custom port
-noctifab start /path/to/my-project -w --web-port 8080
-
-# Run in interactive TUI dashboard mode
-noctifab start -i
-
-# Run in persistent standby mode (always-on dark factory)
-noctifab start -w --standby
-
-# Resume execution, skipping completed user stories
-noctifab start --resume
-```
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--web` | `-w` | `false` | Launch the real-time visual web dashboard concurrently during execution |
-| `--web-open` | | `false` | Automatically open the visual web dashboard in the default browser |
-| `--web-port` | | `8080` | Port for the concurrent visual web dashboard |
-| `--web-host` | | `127.0.0.1` | Host address to bind the concurrent visual web dashboard |
-| `--standby` | | `false` | Keep daemon alive in standby mode after finishing initial stories to accept prompt orders (defaults to true with `-w`) |
-| `--interactive` | `-i` | `false` | Launch in live interactive TUI dashboard mode |
-| `--resume` | | `false` | Resume execution from the first incomplete user story, skipping completed stories |
-| `--spec` | `-s` | `SPEC.md` | Path to feature specification file |
-
-### 8. `resume`
+### 9. `resume`
 Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story. Supports `-w` / `--web` to launch the visual web dashboard concurrently, and `--web-open` to auto-open in browser.
 ```bash
 # Resume execution in target project folder with concurrent web dashboard
 noctifab resume /path/to/my-project -w --web-open
 ```
 
-### 9. `serve`
-Starts the long-running headless orchestrator daemon loop in the background, continuously polling and executing actions until completion or cancellation. Exposes the internal loopback REST API on `127.0.0.1:18080`.
+### 10. `serve`
+Starts the long-running headless orchestrator daemon loop in the background, continuously polling and executing actions until completion or cancellation. Exposes the internal loopback REST API on `127.0.0.1:8080`.
 ```bash
 noctifab serve
 ```
+
+---
+
+## 🔄 End-to-End Workflow with Noctifab Running in the Background (Daemon Mode)
+
+In production, continuous integration, or headless developer setups, Noctifab can run persistently in the background as a daemon service, handling the complete **`init` ➔ `spec` ➔ `start`** lifecycle asynchronously without human terminal blocking.
+
+### Architecture of Background Daemon Execution
+
+```
+                       ┌─────────────────────────────────────────────────────────┐
+                       │          Noctifab Background Daemon (Standby)           │
+                       │             (noctifab start --standby -d)               │
+                       ├─────────────────────────────────────────────────────────┤
+                       │  • Loopback HTTP REST API (:8080)                       │
+                       │  • State Repository & SQLite DB Engine                  │
+                       │  • Concurrent Story DAG Scheduler & Workers             │
+                       └─────────────────────────────────────────────────────────┘
+                                ▲                      ▲                    ▲
+                                │                      │                    │
+                   1. noctifab init        2. noctifab spec / order   3. noctifab steer
+                 (Scaffold workspace)     (Submit requirements)     (Live course-correction)
+```
+
+---
+
+### Step-by-Step Daemon Workflow
+
+#### 1. Start the Background Daemon in Standby Mode
+Launch the daemon in the background to listen for incoming projects, specs, and orders:
+```bash
+# Starts daemon in background with REST server listening on 127.0.0.1:8080
+noctifab start --standby -d
+```
+
+#### 2. Initialize the Project (`init`)
+Create your project workspace directory and configuration:
+```bash
+noctifab init /path/to/my-project
+```
+
+#### 3. Submit Specifications or Feature Orders (`spec` / `order`)
+You can trigger specification generation and story planning either via the CLI client or via the REST API:
+
+**Option A: Using the CLI Client (`noctifab order` or `noctifab spec`)**:
+```bash
+# Submit new feature order to the active daemon:
+noctifab order "Build an in-memory Redis-compatible server in Go with LRU memory eviction and TLS support"
+
+# Or run spec non-interactively to generate SPEC.md and roadmap:
+noctifab spec ./my-project "Build a Redis server in Go" --non-interactive
+```
+
+**Option B: Using the HTTP REST API (CI/CD, Webhooks, GitHub Actions)**:
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Build an in-memory Redis-compatible server in Go with LRU memory eviction and TLS support"}'
+```
+
+#### 4. Automatic Dark Factory Execution (`start`)
+The background daemon automatically:
+1. Decomposes the specification / order prompt into atomic user stories (`roadmap/user-stories/US-xxx.md`).
+2. Schedules concurrent tasks on the DAG.
+3. Invokes the Generator Agent (writing compiling code) and Tester Agent (writing black-box unit/integration tests).
+4. Enforces QA Definition of Done gates and commits/merges validated feature branches into `main`.
+
+#### 5. Live Mid-Flight Steering & Progress Monitoring
+While the daemon is implementing code in the background:
+
+```bash
+# A. Inject a mid-flight directive to guide the active worker:
+noctifab steer "Ensure port 9000 is used instead of 8080 and add Prometheus metrics at /metrics"
+
+# B. Monitor execution progress via the visual Web Dashboard:
+noctifab dashboard -w --web-open
+# Or open http://127.0.0.1:8080 in any web browser
+
+# C. Inspect current state via REST API:
+curl http://127.0.0.1:8080/api/v1/state
+```
+
+---
 
 ### 10. `prompts`
 Inspects, initializes, customizes, and validates per-agent prompt templates without rebuilding the binary.
@@ -332,9 +407,9 @@ vcs:
   token: "secret:GITHUB_TOKEN"
 ```
 
-During startup, noctifab resolves each `secret:<KEY>` reference from `secrets.yaml`. If the file does not exist, noctifab falls back to environment variables or config files (note that CLI flags are not provided for credentials to prevent secrets leakage in shell history).
+During startup, noctifab resolves each `secret:<KEY>` reference from project `.noctifab/secrets.yaml` or global `$HOME/.noctifab/secrets.yaml`. If no local project `secrets.yaml` exists, noctifab automatically reads your global `$HOME/.noctifab/secrets.yaml` file.
 
-**Precedence (highest wins):** Environment variable → `secrets.yaml` → literal value in `config.yaml`
+**Precedence (highest wins):** CLI flag → Environment variable → Project `.noctifab/secrets.yaml` → Global `$HOME/.noctifab/secrets.yaml` → literal value in `config.yaml`
 
 For full details, supported fields, and CI/CD usage see [docs/secrets.md](secrets.md).
 

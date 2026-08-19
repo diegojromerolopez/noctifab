@@ -45,6 +45,7 @@ type Config struct {
 	Context        ContextConfig            `yaml:"context"`
 	Notifications  NotificationsConfig      `yaml:"notifications"`
 	WorkspaceCache WorkspaceCacheConfig     `yaml:"workspace_cache"`
+	Spec           SpecConfig               `yaml:"spec,omitempty"`
 	// Prompts holds per-agent, per-action prompt customizations
 	// (agent -> action -> override). See pkg/infrastructure/prompts for the
 	// (agent, action) catalog and docs/prompts.md for usage.
@@ -429,4 +430,35 @@ func (w WorkspaceCacheConfig) IsEnabled() bool {
 		return true // Default: true
 	}
 	return *w.Enabled
+}
+
+// SpecConfig holds optional settings for the interactive specification generator.
+type SpecConfig struct {
+	OutputFile          string `yaml:"output_file,omitempty"`
+	ConsensusAudit      *bool  `yaml:"consensus_audit,omitempty"`
+	LeadRole            string `yaml:"lead_role,omitempty"`
+	PromptsDir          string `yaml:"prompts_dir,omitempty"`
+	MaxHistoryTurns     int    `yaml:"max_history_turns,omitempty"`
+	AutoGenerateRoadmap *bool  `yaml:"auto_generate_roadmap,omitempty"`
+}
+
+func (s SpecConfig) IsConsensusEnabled() bool {
+	if s.ConsensusAudit == nil {
+		return true // Default: true
+	}
+	return *s.ConsensusAudit
+}
+
+func (s SpecConfig) GetOutputFile() string {
+	if s.OutputFile != "" {
+		return s.OutputFile
+	}
+	return "SPEC.md"
+}
+
+func (s SpecConfig) ShouldAutoGenerateRoadmap() bool {
+	if s.AutoGenerateRoadmap == nil {
+		return true // Default: true
+	}
+	return *s.AutoGenerateRoadmap
 }

@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.0] - 2026-08-19
+
+### Added
+- **Specification Revision History, Snapshot Storage & Time-Travel Rollback Engine (`undo`/`redo`/`checkout`)**:
+  - Implemented immutable specification snapshot manager (`SpecSnapshotManager`) storing snapshots (`SPEC.v1.md`, `SPEC.v2.md`, patch diffs) under `.noctifab/data/specs/revisions/` with SHA-256 integrity verification.
+  - Implemented instant, zero-token time-travel commands (`undo`, `redo`, `history`, `checkout <v>`) in `SpecIntentDetector`, `SpecOrchestrator`, and `SpecRenderer`.
+  - Added visual Spec Studio editor tab (`/spec`) in the embedded Web Dashboard with interactive Timeline Scrubber, revision pills (`● v1`, `● v2`, `● v3`), model role attributions, side-by-side diff previews, and single-click approval.
+  - Added HTTP REST endpoints `GET /api/v1/spec`, `POST /api/v1/spec/refine`, `POST /api/v1/spec/checkout`, and `POST /api/v1/spec/approve`.
+  - **Global Home Directory Secrets Fallback (`$HOME/.noctifab/secrets.yaml`)**:
+  - Configured `config.Load()` to read baseline global credentials from `$HOME/.noctifab/secrets.yaml` when no project-level `.noctifab/secrets.yaml` exists.
+  - Project-level `.noctifab/secrets.yaml` files automatically overlay and take precedence over global home secrets.
+  - Updated `docs/secrets.md` and `docs/cli_usage.md` with complete secrets resolution hierarchy.
+
+## [0.43.0] - 2026-08-19
+
+### Added
+- **Interactive Human-in-the-Loop (HITL) Specification Creation & Multi-Model Consensus Engine**:
+  - Added `noctifab spec` command suite (`noctifab spec [prompt]`, `noctifab spec new`, `noctifab spec refine`, `noctifab spec audit`) for interactive specification drafting and refinement with continuous human-in-the-loop review.
+  - Implemented 4-stage multi-model drafting pipeline (`SpecMultiAgentPipeline`) coordinating Product Manager, Systems Architect / Generator, Test Architect / Tester, and QA Specialist roles to minimize single-provider bias.
+  - Implemented multi-model cross-critique and consistency audit engine (`SpecConsensusAuditor`) to eliminate hallucinations and internal contradictions across specification sections.
+  - Implemented two-tier natural language termination and approval intent detector (`SpecIntentDetector`) supporting zero-latency fast-path regex pattern matching (e.g. *"all right, it's enough"*, *"the SPEC looks good to me"*, *"I like the SPEC.md already, stop"*, *"looks good"*, *"done"*, *"lgtm"*) and LLM classifier fallback.
+  - Added ANSI-colored terminal syntax highlighting, line-by-line colored diff previews, and interactive REPL prompts (`SpecRenderer`).
+  - Added `--spec [prompt]` and `-i`/`--interactive` flag integration to `noctifab init` to seamlessly bootstrap workspace specifications.
+  - Added prompt catalog support for `spec` agent actions (`pm_draft`, `architect_enrich`, `tester_enrich`, `qa_enrich`, `consensus_audit`, `refine`).
+  - Added domain model `SpecSession` and `SpecRevision` with multi-turn revision tracking.
+  - Added comprehensive architectural proposal in `docs/proposals/SPEC_CREATION_HITL_PLAN.md`.
+
 ## [0.42.0] - 2026-08-18
 
 ### Removed

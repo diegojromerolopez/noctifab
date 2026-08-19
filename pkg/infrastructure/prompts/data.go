@@ -52,6 +52,15 @@ type QAPromptData struct {
 	MaxScenarios       int
 }
 
+// SpecPromptData backs the spec/* action templates.
+type SpecPromptData struct {
+	UserPrompt   string
+	ExistingSpec string
+	DraftSpec    string
+	HumanHistory string
+	Feedback     string
+}
+
 // FixtureData returns representative data for the given agent, used to
 // test-render every effective template at startup so a broken override fails
 // fast with a clear error instead of failing mid-run.
@@ -71,6 +80,14 @@ func FixtureData(agent string) any {
 			StoryContract:      "fixture story contract",
 			ValidationCommands: []string{"./dist/example"},
 			MaxScenarios:       8,
+		}
+	case AgentSpec:
+		return SpecPromptData{
+			UserPrompt:   "fixture prompt",
+			ExistingSpec: "fixture existing spec",
+			DraftSpec:    "fixture draft spec",
+			HumanHistory: "fixture history",
+			Feedback:     "fixture feedback",
 		}
 	default:
 		return TaskPromptData{
