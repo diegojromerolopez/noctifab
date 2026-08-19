@@ -96,22 +96,12 @@ func (w *FSWatcher) scanFiles(notify bool) {
 		filepath.Join(w.baseDir, "SPEC.md"),
 	}
 
-	scanPatterns := []string{
-		filepath.Join(w.baseDir, "roadmap", "user-stories", "*.md"),
-		filepath.Join(w.baseDir, "roadmap", "*.md"),
-	}
-	seenTargets := make(map[string]bool)
-	for _, pattern := range scanPatterns {
-		if matches, err := filepath.Glob(pattern); err == nil {
-			for _, match := range matches {
-				if seenTargets[match] {
-					continue
-				}
-				seenTargets[match] = true
-				name := filepath.Base(match)
-				if !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "~") && !strings.HasSuffix(name, ".tmp") {
-					targets = append(targets, match)
-				}
+	storiesDir := filepath.Join(w.baseDir, "roadmap", "user-stories")
+	if matches, err := filepath.Glob(filepath.Join(storiesDir, "*.md")); err == nil {
+		for _, match := range matches {
+			name := filepath.Base(match)
+			if !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "~") && !strings.HasSuffix(name, ".tmp") {
+				targets = append(targets, match)
 			}
 		}
 	}

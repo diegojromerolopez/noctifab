@@ -449,5 +449,11 @@ func discoverStoryFiles(targetDir string) []string {
 		storyFiles = append(storyFiles, matches...)
 	}
 	sort.Strings(storyFiles)
+
+	roadmapDir := filepath.Join(targetDir, "roadmap")
+	if matches, err := filepath.Glob(filepath.Join(roadmapDir, "US-*.md")); err == nil && len(matches) > 0 {
+		fmt.Printf("Warning: Found %d user story file(s) directly in 'roadmap/'; user stories must be located in 'roadmap/user-stories/'. Please move them to %s.\n", len(matches), storiesDir)
+	}
+
 	return storyFiles
 }

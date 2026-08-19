@@ -18,25 +18,11 @@ import (
 var storyContractBlockRE = regexp.MustCompile("(?s)```noctifab-contract[ \\t]*\\r?\\n(.*?)\\r?\\n```")
 
 func collectStoryContracts(projectPath string) []domain.PublicContract {
-	roadmapDir := filepath.Join(projectPath, "roadmap")
-	storiesDir := filepath.Join(roadmapDir, "user-stories")
-
-	scanPatterns := []string{
-		filepath.Join(storiesDir, "*.md"),
-		filepath.Join(roadmapDir, "*.md"),
-	}
+	storiesDir := filepath.Join(projectPath, "roadmap", "user-stories")
 
 	var storyFiles []string
-	seenPaths := make(map[string]bool)
-	for _, pattern := range scanPatterns {
-		if matches, err := filepath.Glob(pattern); err == nil {
-			for _, match := range matches {
-				if !seenPaths[match] {
-					seenPaths[match] = true
-					storyFiles = append(storyFiles, match)
-				}
-			}
-		}
+	if matches, err := filepath.Glob(filepath.Join(storiesDir, "*.md")); err == nil {
+		storyFiles = append(storyFiles, matches...)
 	}
 
 	var contracts []domain.PublicContract

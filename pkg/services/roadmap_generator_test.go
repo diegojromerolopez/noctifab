@@ -123,11 +123,11 @@ func TestGenerateRoadmap_RefineExistingStories(t *testing.T) {
 	err = os.WriteFile(specPath, []byte("# Calculator Spec\nBuild CLI calculator."), 0644)
 	assert.NoError(t, err)
 
-	roadmapDir := filepath.Join(tempDir, "roadmap")
-	err = os.MkdirAll(roadmapDir, 0755)
+	storiesDir := filepath.Join(tempDir, "roadmap", "user-stories")
+	err = os.MkdirAll(storiesDir, 0755)
 	assert.NoError(t, err)
 
-	existingStoryPath := filepath.Join(roadmapDir, "US-001.md")
+	existingStoryPath := filepath.Join(storiesDir, "US-001.md")
 	err = os.WriteFile(existingStoryPath, []byte("# Existing Vague Story\nBuild calculator."), 0644)
 	assert.NoError(t, err)
 
@@ -139,7 +139,7 @@ func TestGenerateRoadmap_RefineExistingStories(t *testing.T) {
 				{
 					Tool: "create_story",
 					Args: map[string]any{
-						"filename": "roadmap/US-001.md",
+						"filename": "roadmap/user-stories/US-001.md",
 						"content":  "# US-001: Refined Story with DoD\n## Definition of Done\n- Interface: Calculator::CLI\n",
 					},
 				},
@@ -262,11 +262,11 @@ func TestNormalizeStoryPath_And_ToSlug(t *testing.T) {
 	})
 
 	t.Run("preserves path if target file already exists on disk", func(t *testing.T) {
-		existing := filepath.Join(tempDir, "roadmap", "US-001.md")
+		existing := filepath.Join(tempDir, "roadmap", "user-stories", "US-001.md")
 		require.NoError(t, os.MkdirAll(filepath.Dir(existing), 0755))
 		require.NoError(t, os.WriteFile(existing, []byte("# Existing"), 0644))
 
-		got := services.NormalizeStoryPath(tempDir, "roadmap/US-001.md", "# US-001: Refined Story")
+		got := services.NormalizeStoryPath(tempDir, "roadmap/user-stories/US-001.md", "# US-001: Refined Story")
 		assert.Equal(t, existing, got)
 	})
 
