@@ -14,6 +14,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
+	"gopkg.in/yaml.v3"
 )
 
 // SpecResponse represents the JSON response structure for /api/v1/spec endpoints.
@@ -52,7 +53,6 @@ func (ws *WebServer) registerSpecRoutes(mux *http.ServeMux) {
 		if activeVer == 0 && content != "" {
 			activeVer = 1
 			versions = []int{1}
-			_, _, _ = snapshots.SaveSnapshot(1, content, "")
 		}
 
 		cfg, _ := ws.loadConfig(baseDir)
@@ -238,7 +238,7 @@ func (ws *WebServer) loadConfig(baseDir string) (*config.Config, error) {
 	cfgPath := filepath.Join(baseDir, ".noctifab", "config.yaml")
 	if data, err := os.ReadFile(cfgPath); err == nil && len(data) > 0 {
 		cfg := config.DefaultConfig()
-		_ = json.Unmarshal(data, cfg)
+		_ = yaml.Unmarshal(data, cfg)
 		return cfg, nil
 	}
 	return config.DefaultConfig(), nil

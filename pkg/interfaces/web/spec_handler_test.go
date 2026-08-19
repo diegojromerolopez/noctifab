@@ -73,3 +73,44 @@ func TestWebServer_SpecEndpoints(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 }
+
+func TestWebServer_SpecGETIsReadonlyAndLoadsYAMLConfig(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "spec-web-yaml-*")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	noctifabDir := filepath.Join(tempDir, ".noctifab")
+	require.NoError(t, os.MkdirAll(noctifabDir, 0755))
+
+	configYAML := `config_version: "2.0"
+vcs:
+  provider: "github"
+  repository: "owner/repo"
+agents:
+  product_manager:
+    providers:
+      - name: "custom-pm-provider"
+`
+	require.NoError(t, os.WriteFile(filepath.Join(noctifabDir, "config.yaml"), []byte(configYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte("# Spec for YAML test"), 0644))
+
+	oldWd, _ := os.Getwd()
+	defer func() { _ = os.Chdir(oldWd) }()
+	require.NoError(t, os.Chdir(tempDir))
+
+	server := NewWebServer(WebServerConfig{Host: "127.0.0.1", Port: 8080}, nil, nil, nil)
+	mux := server.buildMux()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/spec", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "custom-pm-provider")
+
+	// Verify GET did NOT write any snapshot files to disk
+	snapshots := storage.NewSpecSnapshotManager(tempDir)
+	versions, err := snapshots.ListSnapshots()
+	require.NoError(t, err)
+	assert.Empty(t, versions, "GET /api/v1/spec must be idempotent and not write snapshots to disk")
+}
