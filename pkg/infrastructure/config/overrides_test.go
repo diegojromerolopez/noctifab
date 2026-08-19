@@ -51,9 +51,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_LLM_PLANNER_MODEL":   "planner-env",
 		"NOCTIFAB_LLM_GENERATOR_MODEL": "generator-env",
 		"NOCTIFAB_LLM_TESTER_MODEL":    "tester-env",
-		"NOCTIFAB_JIRA_USER":           "jira-user-env",
-		"NOCTIFAB_JIRA_TOKEN":          "jira-token-env",
-		"NOCTIFAB_JIRA_URL":            "jira-url-env",
 		"NOCTIFAB_HTTP_MAX_RETRIES":    "7",
 		"NOCTIFAB_HTTP_RETRY_BACKOFF":  "150ms",
 		"NOCTIFAB_MAX_ACTIONS":         "150",
@@ -84,7 +81,7 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"config", "db-path", "storage-provider", "storage-conn", "input",
 		"agents", "interval", "vcs-provider", "vcs-repo", "llm-provider",
 		"llm-model", "llm-url", "llm-planner-model", "llm-generator-model",
-		"llm-tester-model", "jira-user", "jira-url", "http-max-retries",
+		"llm-tester-model", "http-max-retries",
 		"http-retry-backoff", "max-actions", "max-duration",
 		"sandbox-mode", "occ-max-retries",
 		"occ-backoff-base", "occ-backoff-factor", "token-usage-limit",
@@ -150,15 +147,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	}
 	if cfg.Roles.Tester.Model != "tester-env" {
 		t.Errorf("expected tester-env, got %s", cfg.Roles.Tester.Model)
-	}
-	if cfg.Jira.User != "jira-user-env" {
-		t.Errorf("expected jira-user-env, got %s", cfg.Jira.User)
-	}
-	if cfg.Jira.Token != "jira-token-env" {
-		t.Errorf("expected jira-token-env, got %s", cfg.Jira.Token)
-	}
-	if cfg.Jira.URL != "jira-url-env" {
-		t.Errorf("expected jira-url-env, got %s", cfg.Jira.URL)
 	}
 	if cfg.LLM.MaxRetries != 7 {
 		t.Errorf("expected max retries 7, got %d", cfg.LLM.MaxRetries)
@@ -227,8 +215,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	_ = cmd.Flags().Set("llm-planner-model", "planner-flag")
 	_ = cmd.Flags().Set("llm-generator-model", "generator-flag")
 	_ = cmd.Flags().Set("llm-tester-model", "tester-flag")
-	_ = cmd.Flags().Set("jira-user", "jira-user-flag")
-	_ = cmd.Flags().Set("jira-url", "jira-url-flag")
 	_ = cmd.Flags().Set("http-max-retries", "13")
 	_ = cmd.Flags().Set("http-retry-backoff", "250ms")
 	_ = cmd.Flags().Set("max-actions", "250")
@@ -290,12 +276,6 @@ func TestLoad_AndOverrides(t *testing.T) {
 	}
 	if cfg2.Roles.Tester.Model != "tester-flag" {
 		t.Errorf("expected tester-flag, got %s", cfg2.Roles.Tester.Model)
-	}
-	if cfg2.Jira.User != "jira-user-flag" {
-		t.Errorf("expected jira-user-flag, got %s", cfg2.Jira.User)
-	}
-	if cfg2.Jira.URL != "jira-url-flag" {
-		t.Errorf("expected jira-url-flag, got %s", cfg2.Jira.URL)
 	}
 	if cfg2.LLM.MaxRetries != 13 {
 		t.Errorf("expected max retries 13, got %d", cfg2.LLM.MaxRetries)

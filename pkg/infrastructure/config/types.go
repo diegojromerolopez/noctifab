@@ -38,7 +38,6 @@ type Config struct {
 	Sandbox        SandboxConfig            `yaml:"sandbox"`
 	Roles          RolesConfig              `yaml:"roles"`
 	Profiles       map[string]ProfileConfig `yaml:"profiles"`
-	Jira           JiraConfig               `yaml:"jira"`
 	Telemetry      TelemetryConfig          `yaml:"telemetry"`
 	Logging        LoggingConfig            `yaml:"logging"`
 	SAST           SASTConfig               `yaml:"sast"`
@@ -345,12 +344,6 @@ type TelemetryConfig struct {
 	Endpoint    string        `yaml:"endpoint"`
 	ServiceName string        `yaml:"service_name"`
 	Metrics     MetricsConfig `yaml:"metrics"`
-}
-
-type JiraConfig struct {
-	User  string `yaml:"user"`
-	Token string `yaml:"token"`
-	URL   string `yaml:"url"`
 }
 
 type SASTConfig struct {

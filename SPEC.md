@@ -81,8 +81,7 @@ noctifab/
 │       ├── storage/           # State persistence
 │       │   ├── sqlite_repository.go   # WAL mode, busy timeout, connection limiting
 │       │   └── postgres_repository.go # Production PGX connection, SELECT FOR UPDATE row-locks
-│       ├── vcs/               # Git & APIs (GitHub, GitLab adapters)
-│       └── jira/              # Jira API Client (authentication & ADF parser)
+│       └── vcs/               # Git & APIs (GitHub, GitLab adapters)
 ├── tests/                     # Test suites
 │   ├── e2e/                   # E2E integration test suite
 │   │   ├── mock_llm/          # Mock LLM provider service
@@ -259,7 +258,7 @@ const (
 
 // StateMetadata holds structured session parameters and cost aggregations.
 type StateMetadata struct {
-	InputSource       string `json:"input_source"`                 // Source of the specification (e.g., "markdown", "jira", "github")
+	InputSource       string `json:"input_source"`                 // Source of the specification (e.g., "markdown", "github")
 	InputPath         string `json:"input_path"`                   // Original path or URL of the specification
 	IntegrationBranch string `json:"integration_branch"`           // Feature integration branch name (e.g., "feature/feature-auth")
 	FeatureName       string `json:"feature_name"`                 // Human-readable name of the feature being built
@@ -897,7 +896,7 @@ What is the next best action?
 *   **Purpose:** Guides the Planner agent to decompose a specification into a DAG of small, testable tasks.
 *   **Variables Injected:**
     *   `{{.State}}` - The current State struct serialized as JSON.
-    *   `{{.InputSpecification}}` - The raw markdown text, issue details, or Jira body.
+    *   `{{.InputSpecification}}` - The raw markdown text or issue details.
 *   **Template Content:**
     ```
     {{template "base_system_prompt"}}
@@ -1347,7 +1346,7 @@ T5    | -                                    | -                                
 To achieve true multi-agent autonomy without collision, `noctifab` implements a formal DAG scheduling and worker dispatching loop:
 
 1.  **Task Splitting (Decomposition):**
-    *   The **Planner Agent** parses the raw Markdown input spec (file, Jira, or issue).
+    *   The **Planner Agent** parses the raw Markdown input spec (file or issue).
     *   It decomposes the feature request into discrete, isolated, and small logical units of work (e.g., "Implement database schema migrator", "Implement storage adapter interface", "Write HTTP controller endpoints").
     *   Each logical unit is converted into a `Task` struct populated with a unique ID, description, and target files.
 
@@ -1737,25 +1736,6 @@ The **Unblocker Agent** (`pkg/services/unblocker.go`) is an autonomous backgroun
 ### 3.7. Specification Ingestion & External Clients
 To support dynamic task generation from multiple workflow sources, `noctifab` abstracts the feature specification retrieval through an ingestion layer. The `--input` flag (available on `noctifab start`) parses `<source>` to determine the appropriate adapter to execute:
 
-```
-                  ┌──────────────────────────────┐
-                  │ noctifab start-one --input   │
-                  └──────────────┬───────────────┘
-                             │
-            ┌────────────────┼────────────────┐
-            ▼ (Jira URL)     ▼ (VCS URL)      ▼ (Local Path)
-     ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-     │ Jira Client │  │ VCS Client  │  │ File Reader │
-     └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
-            │                │                │
-            └────────────────┼────────────────┘
-                             ▼
-                    [Parsed Markdown]
-                             │
-                             ▼
-                     [Task DAG Plan]
-```
-
 #### 3.7.1. Local Markdown File Path
 *   **Behavior:** Direct path reading from local disk (e.g., `--input ./docs/features/feature-auth.md`).
 *   **Format:** Standard Markdown text matching Section 1 and Section 3 validation criteria.
@@ -1764,13 +1744,6 @@ To support dynamic task generation from multiple workflow sources, `noctifab` ab
 *   **Behavior:** If the input matches a GitHub/GitLab issue URL or reference (e.g., `https://github.com/owner/repo/issues/42`), the VCS client makes authenticated API calls to fetch the issue details.
 *   **Payload Construction:** The system extracts the issue title, body description, and relevant discussion comments, consolidating them into a unified Markdown payload for parsing and DAG planning.
 *   **Authentication:** Uses the standard `NOCTIFAB_VCS_TOKEN` environment variable or the VCS token configuration setting.
-
-#### 3.7.3. Jira Issue Ingestion
-*   **Behavior:** If the input matches a Jira issue URL (e.g., `https://company.atlassian.net/browse/KEY-101`), the Jira client is initialized.
-*   **Jira Client Implementation:** Under `pkg/infrastructure/jira/client.go`, a REST client connects to Atlassian's issue API.
-*   **Authentication:** Authenticates using basic authentication headers via the developer email (`--jira-user` / `NOCTIFAB_JIRA_USER`) and API token (`NOCTIFAB_JIRA_TOKEN` environment variable or config setting).
-*   **ADF AST Document Walker:** To prevent data loss when parsing complex Atlassian Document Format (ADF) descriptions, the client implements a recursive AST document walker in Go. It walks the ADF JSON node tree structure, mapping standard nodes (`heading`, `paragraph`, `bulletList`, `orderedList`, `table`, `tableRow`, `tableCell`, `codeBlock`, `panel`) and text marks (`strong`, `em`, `strike`, `code`) directly into GitHub Flavored Markdown (GFM).
-*   **Lossless Fallback Placeholders:** If the ADF walker encounters unsupported node types (such as custom macros, third-party plug-ins, or rich media attachments like `mediaSingle`), it does not drop them silently. It inserts a visible warning fallback placeholder block into the Markdown output (e.g. `[Warning: Unsupported Media Attachment - View Issue URL]` or `[Unsupported block node: mediaSingle]`), alerting the Planner Agent to refer to the original Jira issue URL if required.
 
 ### 3.8. Automatic Commits, Centralized Versioning, & Pull Requests
 When the automated commit setting is enabled (via CLI flag `--auto-commit` or environment variable `NOCTIFAB_AUTO_COMMIT=true`), the orchestrator automatically manages the integration pipeline: branch creation, centralized version bumping, changelog updates, and pull request creation.
@@ -1782,7 +1755,6 @@ The branch created by the worker agent is dynamically named using the configured
 *   **Configured Prefix Behavior**: The branch is named `[branch_prefix]task-[task_id]-agent-[agent_id]`.
 *   **Fallback Suffix Resolution**: If no explicit prefix is configured, it defaults to `noctifab/` and is resolved based on the specification source:
     *   **Markdown File**: Suffix of the filename (e.g., `noctifab/feature-auth` from `feature-auth.md`).
-    *   **Jira Issue**: Suffix of the Jira key (e.g., `noctifab/KEY-123`).
     *   **GitHub/GitLab Issue**: Suffix of the issue ID (e.g., `noctifab/gh-45`).
 
 #### 3.8.2. Centralized Release Pipeline & Version Bumping
@@ -2089,7 +2061,7 @@ The hot-reload feature uses the following runtime paths:
 `noctifab` exposes a structured Command Line Interface built using the `github.com/spf13/cobra` framework.
 
 ### 4.0. CLI Design Rule: Secret and Token Isolation
-To prevent credential leaks, `noctifab` CLI commands must never accept secrets or tokens as command-line arguments or flags. All sensitive credentials (such as LLM API keys, VCS access tokens, and Jira API tokens) must be read from `config.yaml` (directly or resolved via env vars specified in `config.yaml`). If a credential reference in `config.yaml` starts with `secret:`, it will be resolved from `.noctifab/secrets.yaml`.
+To prevent credential leaks, `noctifab` CLI commands must never accept secrets or tokens as command-line arguments or flags. All sensitive credentials (such as LLM API keys and VCS access tokens) must be read from `config.yaml` (directly or resolved via env vars specified in `config.yaml`). If a credential reference in `config.yaml` starts with `secret:`, it will be resolved from `.noctifab/secrets.yaml`.
 
 ### 4.1. Cobra CLI Configuration and Error SILENCE
 To prevent console log clutter and improve developer user experience, the Cobra framework settings are modified:
@@ -2159,7 +2131,7 @@ The CLI configuration can be provided via flags or matching environment variable
 | `--db-path` | | `NOCTIFAB_DB_PATH` | `cwd/.noctifab/data/noctifab.db` | Path to the local SQLite database file (SQLite provider only) |
 | `--storage-provider` | | `NOCTIFAB_STORAGE_PROVIDER` | `sqlite` | Storage backend provider: `sqlite`, `postgres`, `mysql`, `json` |
 | `--storage-conn` | | `NOCTIFAB_STORAGE_CONN` | | Connection string or filepath for the storage database |
-| `--input` | `-i` | `NOCTIFAB_INPUT` | | Path, GitHub/GitLab issue URL, or Jira URL to fetch the feature specification |
+| `--input` | `-i` | `NOCTIFAB_INPUT` | | Path or GitHub/GitLab issue URL to fetch the feature specification |
 | `--auto-commit` | | `NOCTIFAB_AUTO_COMMIT` | `false` | Enable automatic branch creation, conventional commit, version bump, and PR creation |
 | `--agents` | `-a` | `NOCTIFAB_AGENTS_COUNT` | `3` | Maximum number of parallel workers/agents to spawn |
 | `--interval` | `-t` | `NOCTIFAB_INTERVAL` | `5m` | Cycle loop polling duration interval |
@@ -2171,8 +2143,6 @@ The CLI configuration can be provided via flags or matching environment variable
 | `--llm-planner-model` | | `NOCTIFAB_LLM_PLANNER_MODEL` | | Model override for the Planner agent (default: same as `--llm-model`) |
 | `--llm-generator-model` | | `NOCTIFAB_LLM_GENERATOR_MODEL` | | Model override for the Generator agent (default: same as `--llm-model`) |
 | `--llm-tester-model` | | `NOCTIFAB_LLM_TESTER_MODEL` | | Model override for the Tester agent (default: same as `--llm-model`) |
-| `--jira-user` | | `NOCTIFAB_JIRA_USER` | | User email for Jira REST API authentication |
-| `--jira-url` | | `NOCTIFAB_JIRA_URL` | | Base URL of the Jira cloud instance (e.g., https://company.atlassian.net) |
 | `--http-max-retries` | | `NOCTIFAB_HTTP_MAX_RETRIES` | `10` | Maximum HTTP request retries for API clients |
 | `--http-retry-backoff` | | `NOCTIFAB_HTTP_RETRY_BACKOFF` | `100ms` | Base delay time duration for exponential backoff retry logic |
 | `--max-tools-per-response`|| `NOCTIFAB_MAX_TOOLS_PER_RESPONSE`| `5` | Maximum number of parallel tool calls/actions allowed in a single LLM response |
@@ -2245,7 +2215,7 @@ To prevent trace transmission latency from blocking orchestrator cycles:
 #### 5.1.5. Context Propagation across Process & Network Boundaries
 Standard Go contexts do not cross operating system process boundaries natively. To link execution traces across sandboxes, subprocesses, and HTTP APIs:
 *   **Subprocess Environment Injection:** Before starting any command tool execution (`run_tests`, `docker_action` or shell subprocesses), the runner extracts the active span's W3C trace context details using the OTel text map propagator. It injects these attributes as environment variables (`TRACEPARENT` and `TRACESTATE`) into the target execution process or container environment.
-*   **Outbound API HTTP Headers:** For all external HTTP request integrations (e.g. LLM providers, Jira REST API, VCS API requests), the http client uses the standard W3C Trace Context propagator to inject span context headers (`traceparent`, `tracestate`) into the outbound HTTP headers, ensuring trace continuity.
+*   **Outbound API HTTP Headers:** For all external HTTP request integrations (e.g. LLM providers, VCS API requests), the http client uses the standard W3C Trace Context propagator to inject span context headers (`traceparent`, `tracestate`) into the outbound HTTP headers, ensuring trace continuity.
 
 ---
 
@@ -2433,7 +2403,7 @@ To ensure high cohesion, low coupling, and compliance with the 500-line source c
 
 > [!IMPORTANT]
 > **MVP Scope and Prioritization Note:**
-> To guarantee a functional MVP, the absolute mandatory core of this roadmap is the **loop-validation cycle** (Observe -> Decide -> Validate -> Execute -> Save) and its offline validation via the E2E Docker Compose network (Phase 6). Other supporting structures, such as fine-grained agent permission profiles, telemetry (OTel) context propagation, budget ceiling calculations, and external Jira ADF AST walkers are secondary and may be stubbed or simplified in the initial MVP release to ensure focus on the core cycle validation.
+> To guarantee a functional MVP, the absolute mandatory core of this roadmap is the **loop-validation cycle** (Observe -> Decide -> Validate -> Execute -> Save) and its offline validation via the E2E Docker Compose network (Phase 6). Other supporting structures, such as fine-grained agent permission profiles, telemetry (OTel) context propagation, and budget ceiling calculations are secondary and may be stubbed or simplified in the initial MVP release to ensure focus on the core cycle validation.
 
 ### 7.1. Phase 1: Domain & Core Storage Infrastructure
 *   **Objective:** Establish the primary domain models, state persistence, concurrency locking, and basic CLI entrypoints.
@@ -2476,7 +2446,6 @@ To ensure high cohesion, low coupling, and compliance with the 500-line source c
     *   `pkg/infrastructure/vcs/git.go` - Git operations wrapper (checkout, branch, commit, push, merge).
     *   `pkg/infrastructure/vcs/github.go` - GitHub REST API adapter for PR creation.
     *   `pkg/infrastructure/vcs/gitlab.go` - GitLab REST API adapter.
-    *   `pkg/infrastructure/jira/client.go` - Jira REST API client.
     *   `pkg/usecase/release.go` - Version tag bumping algorithm and `CHANGELOG.md` manager.
 *   **Verification:** Unit tests mocking issue fetching APIs, GFM conversions, semver bumping rules, and changelog prepending.
 
@@ -2523,7 +2492,7 @@ To guarantee stable and autonomous execution without human intervention, `noctif
         *   The orchestrator saves the current state of all active tasks and workers back to the database.
         *   Execution is cleanly suspended without leaving uncommitted files or corrupt branches.
         *   The system notifies the user (via stdout/socket/logs) that the agent runs are paused until the token quota resets or more tokens are allocated by the provider.
-    5.  **Configurable Resilient HTTP Retries:** External API clients (LLMs, Jira, VCS) execute all requests through a resilient retry wrapper. It performs up to `--http-max-retries` (default: 10) retries using exponential backoff (starting at `--http-retry-backoff`, e.g., 100ms) with full jitter to transparently handle temporary rate limits (HTTP 429) and network outages.
+    5.  **Configurable Resilient HTTP Retries:** External API clients (LLMs, VCS) execute all requests through a resilient retry wrapper. It performs up to `--http-max-retries` (default: 10) retries using exponential backoff (starting at `--http-retry-backoff`, e.g., 100ms) with full jitter to transparently handle temporary rate limits (HTTP 429) and network outages.
 
 ### 8.5. Multi-Agent Concurrency and Repository Conflicts
 *   **Challenge:** Concurrent developer agents processing parallel DAG tasks might cause git conflicts, branch collisions, or corrupt the state.
@@ -2537,11 +2506,6 @@ To guarantee stable and autonomous execution without human intervention, `noctif
     1.  **Tester Agent Role Partition:** The task execution partitioning decouples test writing from implementation. The Tester agent writes unit, integration, and e2e tests based strictly on the task specifications.
     2.  **Test Validator Gate:** The Test Validator executes the project's test suite 3 times sequentially. A majority vote (2/3 passing runs) determines if the task succeeds, with warnings generated if any individual run fails (indicating flakiness quarantine).
 
-### 8.7. Jira ADF Formatting and Rich Text Parsing Issues
-*   **Challenge:** Jira API returns descriptions using the complex Atlassian Document Format (ADF) JSON structure rather than Markdown. Directly feeding raw ADF JSON to planning prompts increases token size and causes parser errors.
-*   **Resolution:**
-    1.  **AST-based ADF Transformer:** The Jira integration client contains a document transformer that recursively walks the ADF node tree (e.g. `heading`, `paragraph`, `bulletList`, `codeBlock`) and maps them directly to standard GitHub Flavored Markdown (GFM) strings.
-    2.  **Parser Fallbacks:** If the ADF payload is malformed, the parser falls back to fetching plaintext representation from the Jira API description.
 
 ### 8.8. Glossary & Distributed Concepts Reference
 The following glossary defines key software engineering, version control, and distributed systems concepts used throughout the `noctifab` specification:

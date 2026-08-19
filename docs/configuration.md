@@ -376,23 +376,6 @@ Creates permission groups matching agent roles to whitelisted resources:
 
 ---
 
-## Jira Integration (`jira`)
-
-Enables pulling specifications and user stories directly from Jira tickets.
-
-```yaml
-jira:
-  url: "https://mycompany.atlassian.net"
-  user: "secret:JIRA_USER"
-  token: "secret:JIRA_API_TOKEN"
-```
-
-- **`url`** (String): Full Jira instance domain URL.
-- **`user`** (String): Jira user email. Can reference `secrets.yaml`.
-- **`token`** (String): Jira API token value. Must reference `secrets.yaml`.
-
----
-
 ## Telemetry Config (`telemetry`)
 
 Configures export settings for OpenTelemetry (OTel) metrics and distributed tracing.
@@ -609,11 +592,6 @@ profiles:
       - "run_tests"
       - "run_linter"
       - "noop"
-
-jira:
-  url: "https://mycompany.atlassian.net"
-  user: "secret:JIRA_USER"
-  token: "secret:JIRA_API_TOKEN"
 
 telemetry:
   enabled: false

@@ -39,7 +39,6 @@ Place `secrets.yaml` in the same directory as `config.yaml` (i.e. `.noctifab/sec
 
 GITHUB_TOKEN: "github_pat_11AA4TEXQ0..."
 GEMINI_API_KEY: "AIzaSyATKC77..."
-JIRA_API_TOKEN: "your-jira-token"
 ```
 
 ### 2. Reference secrets in `config.yaml`
@@ -57,11 +56,6 @@ vcs:
   provider: github
   repository: owner/repo
   token: "secret:GITHUB_TOKEN" # resolved from secrets.yaml
-
-jira:
-  url: "https://mycompany.atlassian.net"
-  user: "secret:JIRA_USER"
-  token: "secret:JIRA_API_TOKEN"
 ```
 
 ### 3. Confirm it is gitignored
@@ -87,9 +81,6 @@ The following `config.yaml` fields support `secret:` references:
 | LLM API key | `llm.api_key` |
 | LLM endpoint URL | `llm.url` |
 | VCS access token | `vcs.token` |
-| Jira API token | `jira.token` |
-| Jira user/email | `jira.user` |
-| Jira instance URL | `jira.url` |
 | Multiple LLM client API key | `llms[].api_key` |
 | Multiple LLM client endpoint URL | `llms[].url` |
 
@@ -97,7 +88,7 @@ The following `config.yaml` fields support `secret:` references:
 
 ## Supported Provider API Key Environment Variables & `secrets.yaml` Keys
 
-When `llm.api_key`, `vcs.token`, or `jira.token` are not explicitly defined in `config.yaml`, `noctifab` automatically checks the corresponding environment variable (or resolves `secret:<KEY>` from `secrets.yaml`):
+When `llm.api_key` or `vcs.token` are not explicitly defined in `config.yaml`, `noctifab` automatically checks the corresponding environment variable (or resolves `secret:<KEY>` from `secrets.yaml`):
 
 | Provider Category | Provider (`llm.provider`) | Environment Variable(s) | Default Base URL |
 |---|---|---|---|
@@ -128,7 +119,6 @@ When `llm.api_key`, `vcs.token`, or `jira.token` are not explicitly defined in `
 | **LLM** | *Any (Generic Override)* | `NOCTIFAB_LLM_API_KEY` | *(Provider Default)* |
 | **VCS** | `github` | `GITHUB_TOKEN`, `NOCTIFAB_VCS_TOKEN` | `https://api.github.com` |
 | **VCS** | `gitlab` | `GITLAB_TOKEN`, `NOCTIFAB_VCS_TOKEN` | `https://gitlab.com/api/v4` |
-| **Issue Tracker** | `jira` | `JIRA_API_TOKEN`, `JIRA_USER` | `https://<your-org>.atlassian.net` |
 
 ---
 
