@@ -24,12 +24,12 @@ func TestStartCmd_AutoInitializeMissingWorkspace(t *testing.T) {
 	err := startCmd.RunE(startCmd, []string{targetDir})
 	require.NoError(t, err)
 
-	// Verify targetDir was created along with .noctifab, secrets.yaml, SPEC.md, and roadmap/US-001.md
+	// Verify targetDir was created along with .noctifab, secrets.yaml, SPEC.md, and roadmap/user-stories/US-001.md
 	assert.DirExists(t, targetDir)
 	assert.FileExists(t, filepath.Join(targetDir, ".noctifab", "config.yaml"))
 	assert.FileExists(t, filepath.Join(targetDir, ".noctifab", "secrets.yaml"))
 	assert.FileExists(t, filepath.Join(targetDir, "SPEC.md"))
-	assert.FileExists(t, filepath.Join(targetDir, "roadmap", "US-001.md"))
+	assert.FileExists(t, filepath.Join(targetDir, "roadmap", "user-stories", "US-001.md"))
 }
 
 func TestStartCmd_CurrentDirectoryAutoInit(t *testing.T) {
@@ -46,11 +46,11 @@ func TestStartCmd_CurrentDirectoryAutoInit(t *testing.T) {
 	err = startCmd.RunE(startCmd, []string{})
 	require.NoError(t, err)
 
-	// Verify current directory was initialized with .noctifab, secrets.yaml, SPEC.md, and roadmap/US-001.md
+	// Verify current directory was initialized with .noctifab, secrets.yaml, SPEC.md, and roadmap/user-stories/US-001.md
 	assert.FileExists(t, filepath.Join(tmpDir, ".noctifab", "config.yaml"))
 	assert.FileExists(t, filepath.Join(tmpDir, ".noctifab", "secrets.yaml"))
 	assert.FileExists(t, filepath.Join(tmpDir, "SPEC.md"))
-	assert.FileExists(t, filepath.Join(tmpDir, "roadmap", "US-001.md"))
+	assert.FileExists(t, filepath.Join(tmpDir, "roadmap", "user-stories", "US-001.md"))
 }
 
 func TestIsTemplateSpec(t *testing.T) {
@@ -94,10 +94,10 @@ func TestStartCmd_RejectsTemplateUserStory(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "SPEC.md"),
 		[]byte("# Specification: Word Count CLI\n\n## Overview\nCount words."), 0644))
 
-	roadmapDir := filepath.Join(tmpDir, "roadmap")
-	require.NoError(t, os.MkdirAll(roadmapDir, 0755))
+	storiesDir := filepath.Join(tmpDir, "roadmap", "user-stories")
+	require.NoError(t, os.MkdirAll(storiesDir, 0755))
 	require.NoError(t, os.WriteFile(
-		filepath.Join(roadmapDir, "US-001.md"),
+		filepath.Join(storiesDir, "US-001.md"),
 		[]byte("# User Story: US-001 - Initial Feature Specification\n\n## Metadata"),
 		0644,
 	))
@@ -188,4 +188,43 @@ func TestExtractStoryTitle(t *testing.T) {
 	assert.Equal(t, "My Custom Story Title", title)
 
 	assert.Equal(t, "", extractStoryTitle("/nonexistent/file.md"))
+}
+
+func TestStartCmd_RejectsTemplateUserStoryInSubdirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "mock-key")
+
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "SPEC.md"),
+		[]byte("# Specification: Word Count CLI\n\n## Overview\nCount words."), 0644))
+
+	storiesDir := filepath.Join(tmpDir, "roadmap", "user-stories")
+	require.NoError(t, os.MkdirAll(storiesDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(storiesDir, "US-001-feature.md"),
+		[]byte("# User Story: US-001 - Initial Feature Specification\n\n## Metadata"),
+		0644,
+	))
+
+	err := startCmd.RunE(startCmd, []string{tmpDir})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "still contains the default template content")
+}
+
+func TestDiscoverStoryFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	roadmapDir := filepath.Join(tmpDir, "roadmap")
+	storiesDir := filepath.Join(roadmapDir, "user-stories")
+	require.NoError(t, os.MkdirAll(storiesDir, 0755))
+
+	topLevelFile := filepath.Join(roadmapDir, "other_doc.md")
+	storyFile := filepath.Join(storiesDir, "US-002-feature.md")
+
+	require.NoError(t, os.WriteFile(topLevelFile, []byte("# Other Doc"), 0644))
+	require.NoError(t, os.WriteFile(storyFile, []byte("# New Story"), 0644))
+
+	files := discoverStoryFiles(tmpDir)
+	assert.Len(t, files, 1)
+	assert.Contains(t, files, storyFile)
+	assert.NotContains(t, files, topLevelFile)
 }

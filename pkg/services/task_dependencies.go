@@ -113,8 +113,6 @@ func storyExists(projectPath, dep string) bool {
 	candidates := []string{
 		clean,
 		clean + ".md",
-		filepath.Join("roadmap", clean),
-		filepath.Join("roadmap", clean+".md"),
 		filepath.Join("roadmap", "user-stories", clean),
 		filepath.Join("roadmap", "user-stories", clean+".md"),
 	}
@@ -130,16 +128,10 @@ func storyExists(projectPath, dep string) bool {
 		}
 	}
 
-	// Also check glob patterns for slugged story files (e.g. US-001-*.md)
+	// Also check glob patterns for slugged story files (e.g. US-001-*.md) under roadmap/user-stories
 	base := strings.TrimSuffix(filepath.Base(clean), ".md")
-	globPatterns := []string{
-		filepath.Join(projectPath, "roadmap", "user-stories", base+"*.md"),
-		filepath.Join(projectPath, "roadmap", base+"*.md"),
-	}
-	for _, pat := range globPatterns {
-		if matches, err := filepath.Glob(pat); err == nil && len(matches) > 0 {
-			return true
-		}
+	if matches, err := filepath.Glob(filepath.Join(projectPath, "roadmap", "user-stories", base+"*.md")); err == nil && len(matches) > 0 {
+		return true
 	}
 
 	return false

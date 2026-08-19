@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.45.0] - 2026-08-20
+
+### Changed
+- **Strict User Story Discovery Scoping under `roadmap/user-stories/`**:
+  - Enforced strict user story file discovery exclusively under `roadmap/user-stories/*.md` across CLI start runner (`discoverStoryFiles`), Product Manager roadmap generator (`GenerateRoadmapWithPasses`), reporting contract collector (`collectStoryContracts`), task dependency resolver (`storyExists`), story directory command runner (`StartDirectoryCmd`), and filesystem watcher (`FSWatcher`).
+  - Restricted story scanning strictly to `roadmap/user-stories/` to prevent false matches with non-story files or future documentation placed at the top level of `roadmap/`.
+  - Updated workspace initialization (`noctifab init`) to create default template user stories under `roadmap/user-stories/US-001.md`.
+  - Relocated pre-seeded validation project user story fixtures (`frontpunch`, `wc`, `todo-cli`) to `roadmap/user-stories/`.
+
 ## [0.44.0] - 2026-08-19
 
 ### Added

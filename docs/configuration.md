@@ -28,7 +28,7 @@ runtime:
 
 | Key | Type | Default | Description |
 |:---|:---|:---|:---|
-| `spec_source` | String | `""` | Default file path (e.g. `./roadmap/US-001.md`) or issue URL to fetch the feature specification. |
+| `spec_source` | String | `""` | Default file path (e.g. `./roadmap/user-stories/US-001.md`) or issue URL to fetch the feature specification. |
 | `max_actions` | Integer | `100` | Maximum number of LLM actions permitted per task loop execution to avoid infinite loops. |
 | `max_duration` | Duration | `0` (unlimited) | Max wall-clock time limit for the entire run. Supports duration strings (e.g. `2h`, `45m`). |
 
@@ -482,7 +482,7 @@ Below is a complete, annotated example configuration demonstrating all options i
 config_version: "2.0"
 
 runtime:
-  spec_source: "./roadmap/US-001.md"
+  spec_source: "./roadmap/user-stories/US-001.md"
   max_actions: 100
   max_duration: "45m"
 

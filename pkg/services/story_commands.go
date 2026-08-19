@@ -99,12 +99,11 @@ func (c *StartDirectoryCmd) Execute(ctx context.Context, repo domain.StateReposi
 		return fmt.Errorf("cannot resolve directory path %q: %w", c.DirPath, err)
 	}
 
-	// Check for roadmap/user-stories, user-stories, or roadmap subdirectories and prefer them
+	// Check for roadmap/user-stories or user-stories subdirectories and prefer them
 	targetScanDir := absDir
 	scanCandidates := []string{
 		filepath.Join(absDir, "roadmap", "user-stories"),
 		filepath.Join(absDir, "user-stories"),
-		filepath.Join(absDir, "roadmap"),
 	}
 	for _, cand := range scanCandidates {
 		if info, statErr := os.Stat(cand); statErr == nil && info.IsDir() {

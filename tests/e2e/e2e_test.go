@@ -178,7 +178,7 @@ func TestE2E_StartCommand(t *testing.T) {
 
 	err = os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte("# Feature Spec\n\nBuild a contact notebook utility.\n"), 0644)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tempDir, "roadmap", "US-001.md"), []byte("---\nid: US-001\ntitle: Contact Notebook\n---\n\nImplement contact notebook.\n"), 0644)
+	err = os.WriteFile(filepath.Join(tempDir, "roadmap", "user-stories", "US-001.md"), []byte("---\nid: US-001\ntitle: Contact Notebook\n---\n\nImplement contact notebook.\n"), 0644)
 	require.NoError(t, err)
 
 	cmdStart := exec.Command(bin, "start")
@@ -288,7 +288,7 @@ func TestE2E_StartOneCommand(t *testing.T) {
 
 	err = os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte("# Feature Spec\n\nBuild a contact notebook utility.\n"), 0644)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tempDir, "roadmap", "US-001.md"), []byte("---\nid: US-001\ntitle: Contact Notebook\n---\n\nImplement contact notebook.\n"), 0644)
+	err = os.WriteFile(filepath.Join(tempDir, "roadmap", "user-stories", "US-001.md"), []byte("---\nid: US-001\ntitle: Contact Notebook\n---\n\nImplement contact notebook.\n"), 0644)
 	require.NoError(t, err)
 
 	cmdStartOne := exec.Command(bin, "start")

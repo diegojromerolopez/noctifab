@@ -68,25 +68,13 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 	}
 
 	for p := 1; p <= passes; p++ {
-		roadmapDir := filepath.Join(projectPath, "roadmap")
-		storiesDir := filepath.Join(roadmapDir, "user-stories")
+		storiesDir := filepath.Join(projectPath, "roadmap", "user-stories")
 		var existingStories []string
-		scanPatterns := []string{
-			filepath.Join(storiesDir, "*.md"),
-			filepath.Join(roadmapDir, "*.md"),
-		}
-		seenPaths := make(map[string]bool)
-		for _, pattern := range scanPatterns {
-			if matches, err := filepath.Glob(pattern); err == nil {
-				for _, match := range matches {
-					if seenPaths[match] {
-						continue
-					}
-					seenPaths[match] = true
-					rel, _ := filepath.Rel(projectPath, match)
-					content, _ := os.ReadFile(match)
-					existingStories = append(existingStories, fmt.Sprintf("=== File: %s ===\n%s\n", rel, string(content)))
-				}
+		if matches, err := filepath.Glob(filepath.Join(storiesDir, "*.md")); err == nil {
+			for _, match := range matches {
+				rel, _ := filepath.Rel(projectPath, match)
+				content, _ := os.ReadFile(match)
+				existingStories = append(existingStories, fmt.Sprintf("=== File: %s ===\n%s\n", rel, string(content)))
 			}
 		}
 
