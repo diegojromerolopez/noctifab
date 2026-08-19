@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.0] - 2026-08-18
+
+### Removed
+- **Jira Integration**:
+  - Removed `pkg/infrastructure/jira/` package (`client.go`, `adf_walker.go`, and test suites).
+  - Removed `jira` configuration block (`JiraConfig`), secret resolution (`jira.token`, `jira.user`, `jira.url`), and environment variable overrides (`NOCTIFAB_JIRA_*`).
+  - Removed `--jira-user` and `--jira-url` CLI persistent flags.
+  - Updated documentation (`SPEC.md`, `docs/configuration.md`, `docs/secrets.md`) to align with spec-driven repository `SPEC.md` execution.
+
 ## [0.41.0] - 2026-08-18
 
 ### Added

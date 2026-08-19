@@ -81,17 +81,11 @@ func TestApplySecretsToConfig(t *testing.T) {
 	cfg.LLM.APIKey = "secret:MY_API_KEY"
 	cfg.LLM.URL = "secret:MY_LLM_URL"
 	cfg.VCS.Token = "secret:MY_VCS_TOKEN"
-	cfg.Jira.Token = "secret:MY_JIRA_TOKEN"
-	cfg.Jira.User = "secret:MY_JIRA_USER"
-	cfg.Jira.URL = "secret:MY_JIRA_URL"
 
 	secrets := map[string]string{
-		"MY_API_KEY":    "resolved-api-key",
-		"MY_LLM_URL":    "resolved-llm-url",
-		"MY_VCS_TOKEN":  "resolved-vcs-token",
-		"MY_JIRA_TOKEN": "resolved-jira-token",
-		"MY_JIRA_USER":  "resolved-jira-user",
-		"MY_JIRA_URL":   "resolved-jira-url",
+		"MY_API_KEY":   "resolved-api-key",
+		"MY_LLM_URL":   "resolved-llm-url",
+		"MY_VCS_TOKEN": "resolved-vcs-token",
 	}
 
 	applySecretsToConfig(cfg, secrets)
@@ -104,15 +98,6 @@ func TestApplySecretsToConfig(t *testing.T) {
 	}
 	if cfg.VCS.Token != "resolved-vcs-token" {
 		t.Errorf("VCS.Token: expected resolved-vcs-token, got %s", cfg.VCS.Token)
-	}
-	if cfg.Jira.Token != "resolved-jira-token" {
-		t.Errorf("Jira.Token: expected resolved-jira-token, got %s", cfg.Jira.Token)
-	}
-	if cfg.Jira.User != "resolved-jira-user" {
-		t.Errorf("Jira.User: expected resolved-jira-user, got %s", cfg.Jira.User)
-	}
-	if cfg.Jira.URL != "resolved-jira-url" {
-		t.Errorf("Jira.URL: expected resolved-jira-url, got %s", cfg.Jira.URL)
 	}
 }
 

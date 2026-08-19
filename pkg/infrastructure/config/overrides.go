@@ -65,15 +65,6 @@ func applyEnvOverrides(cfg *Config) {
 	if val, ok := os.LookupEnv("NOCTIFAB_LLM_TESTER_MODEL"); ok {
 		cfg.Roles.Tester.Model = val
 	}
-	if val, ok := os.LookupEnv("NOCTIFAB_JIRA_USER"); ok {
-		cfg.Jira.User = val
-	}
-	if val, ok := os.LookupEnv("NOCTIFAB_JIRA_TOKEN"); ok {
-		cfg.Jira.Token = val
-	}
-	if val, ok := os.LookupEnv("NOCTIFAB_JIRA_URL"); ok {
-		cfg.Jira.URL = val
-	}
 	if val, ok := os.LookupEnv("NOCTIFAB_HTTP_MAX_RETRIES"); ok {
 		if i, err := strconv.Atoi(val); err == nil {
 			cfg.LLM.MaxRetries = i
@@ -253,12 +244,6 @@ func applyFlagOverrides(cfg *Config, cmd *cobra.Command) {
 	})
 	setIfChanged("llm-tester-model", func(val string) {
 		cfg.Roles.Tester.Model = val
-	})
-	setIfChanged("jira-user", func(val string) {
-		cfg.Jira.User = val
-	})
-	setIfChanged("jira-url", func(val string) {
-		cfg.Jira.URL = val
 	})
 	setIfChanged("http-max-retries", func(val string) {
 		if i, err := strconv.Atoi(val); err == nil {

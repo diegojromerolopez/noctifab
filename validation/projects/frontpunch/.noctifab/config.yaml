@@ -203,10 +203,6 @@ sandbox:
   - ruff
   - black
   - mypy
-jira:
-  user: ''
-  token: ''
-  url: ''
 runtime:
   spec_source: ''
   max_actions: 100

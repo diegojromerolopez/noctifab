@@ -70,8 +70,6 @@ func init() {
 	RootCmd.PersistentFlags().String("llm-planner-model", "", "Model override for the Planner agent")
 	RootCmd.PersistentFlags().String("llm-generator-model", "", "Model override for the Generator agent")
 	RootCmd.PersistentFlags().String("llm-tester-model", "", "Model override for the Tester agent")
-	RootCmd.PersistentFlags().String("jira-user", "", "User email for Jira REST API authentication")
-	RootCmd.PersistentFlags().String("jira-url", "", "Base URL of the Jira cloud instance")
 	RootCmd.PersistentFlags().Int("http-max-retries", 10, "Maximum HTTP request retries for API clients")
 	RootCmd.PersistentFlags().String("http-retry-backoff", "100ms", "Base delay time duration for exponential backoff")
 	RootCmd.PersistentFlags().Int("max-actions", 100, "Global action count ceiling per run session")
