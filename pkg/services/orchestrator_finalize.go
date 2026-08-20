@@ -56,17 +56,19 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 		}
 	}
 
-	// Stage all generated code and release metadata
-	_, _ = o.git.Run(ctx, true, "add", "-A")
-
 	commitMsg := fmt.Sprintf("feat: implement story %s", state.Metadata.FeatureName)
-	// Bump version and update CHANGELOG.md
 	nextVersion, bumpErr := BumpVersion(state.ProjectPath, state.Tasks)
-	if bumpErr == nil {
-		_ = UpdateChangelog(state.ProjectPath, nextVersion, state.Tasks)
-		_, _ = o.git.Run(ctx, true, "add", "-A")
+	if bumpErr != nil {
+		fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to bump version for story %s: %v\n", state.Metadata.FeatureName, bumpErr)
+	} else {
+		if clErr := UpdateChangelog(state.ProjectPath, nextVersion, state.Tasks); clErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to update changelog for story %s: %v\n", state.Metadata.FeatureName, clErr)
+		}
 		commitMsg = fmt.Sprintf("chore(release): bump version to %s for story %s", nextVersion, state.Metadata.FeatureName)
 	}
+
+	// Stage all generated code and release metadata
+	_, _ = o.git.Run(ctx, true, "add", "-A")
 
 	if statusOut, err := o.git.Run(ctx, false, "status", "--porcelain"); err == nil && strings.TrimSpace(statusOut) != "" {
 		_, _ = o.git.Run(ctx, true, "commit", "-m", commitMsg)
