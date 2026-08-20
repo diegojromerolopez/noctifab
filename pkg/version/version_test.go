@@ -2,6 +2,8 @@ package version
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -197,4 +199,39 @@ func TestVersionInfo(t *testing.T) {
 			t.Errorf("expected String()=%q, got %q", expectedStr, str)
 		}
 	})
+}
+
+func TestVersionMatchesChangelogTop(t *testing.T) {
+	root := filepath.Join("..", "..")
+	verBytes, err := os.ReadFile(filepath.Join(root, "VERSION"))
+	if err != nil {
+		t.Skipf("skipping test: VERSION file not found: %v", err)
+		return
+	}
+	changelogBytes, err := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
+	if err != nil {
+		t.Skipf("skipping test: CHANGELOG.md file not found: %v", err)
+		return
+	}
+
+	version := strings.TrimSpace(string(verBytes))
+	lines := strings.Split(string(changelogBytes), "\n")
+	var topChangelogVer string
+	for _, l := range lines {
+		if strings.HasPrefix(l, "## [") {
+			endIdx := strings.Index(l, "]")
+			if endIdx > 4 {
+				topChangelogVer = l[4:endIdx]
+				break
+			}
+		}
+	}
+
+	if topChangelogVer == "" {
+		t.Fatalf("failed to find top version entry in CHANGELOG.md")
+	}
+
+	if version != topChangelogVer {
+		t.Fatalf("VERSION file version %q does not match top CHANGELOG.md version %q", version, topChangelogVer)
+	}
 }
