@@ -265,6 +265,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		MaxDuration:          time.Duration(cfg.Runtime.MaxDuration),
 		MaxActions:           cfg.Runtime.MaxActions,
 		AutoCreatePR:         cfg.VCS.PullRequest.AutoCreate,
+		CreateBranch:         cfg.VCS.IsCreateBranchEnabled(),
 		ExcludePaths:         cfg.Sandbox.ExcludePaths,
 		WorkspaceCache:       cfg.GetWorkspaceCache(),
 		QA:                   cfg.Agents.QA,
@@ -282,7 +283,9 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		featName := filepath.Base(currentStoryFile)
-		integrationBranch := "noctifab/feature-" + strings.TrimSuffix(featName, filepath.Ext(featName))
+		branchRes := services.ResolveBranches(ctx, gitClient, cfg.VCS.BaseBranch, cfg.VCS.BranchName, cfg.VCS.BranchPrefix, featName)
+		baseBranch := branchRes.BaseBranch
+		integrationBranch := branchRes.IntegrationBranch
 
 		state, err := repo.Load(ctx)
 		if err != nil {
@@ -296,7 +299,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 						InputSource:       "markdown",
 						InputPath:         currentStoryFile,
 						FeatureName:       featName,
-						BaseBranch:        cfg.VCS.BaseBranch,
+						BaseBranch:        baseBranch,
 						IntegrationBranch: integrationBranch,
 						TotalCostUSD:      "0.00000",
 					},

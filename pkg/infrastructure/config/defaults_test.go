@@ -133,8 +133,11 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.VCS.Provider != "github" {
 		t.Errorf("expected VCS.Provider 'github', got %q", cfg.VCS.Provider)
 	}
-	if cfg.VCS.BaseBranch != "master" {
-		t.Errorf("expected VCS.BaseBranch 'master', got %q", cfg.VCS.BaseBranch)
+	if cfg.VCS.BaseBranch != "auto" {
+		t.Errorf("expected VCS.BaseBranch 'auto', got %q", cfg.VCS.BaseBranch)
+	}
+	if !cfg.VCS.IsCreateBranchEnabled() {
+		t.Error("expected VCS.IsCreateBranchEnabled() true")
 	}
 	if cfg.VCS.Repository != "local/repo" {
 		t.Errorf("expected VCS.Repository 'local/repo', got %q", cfg.VCS.Repository)

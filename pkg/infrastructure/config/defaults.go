@@ -104,7 +104,8 @@ func DefaultConfig() *Config {
 		VCS: VCSConfig{
 			Provider:     "github",
 			Repository:   "local/repo",
-			BaseBranch:   "master",
+			BaseBranch:   "auto",
+			CreateBranch: boolPtr(true),
 			BranchPrefix: "noctifab/",
 			UseWorktrees: true,
 			TokenEnv:     "GITHUB_TOKEN",

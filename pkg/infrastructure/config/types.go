@@ -268,12 +268,21 @@ type VCSConfig struct {
 	Provider     string            `yaml:"provider"`
 	Repository   string            `yaml:"repository"`
 	BaseBranch   string            `yaml:"base_branch"`
+	CreateBranch *bool             `yaml:"create_branch,omitempty"`
+	BranchName   string            `yaml:"branch_name,omitempty"`
 	BranchPrefix string            `yaml:"branch_prefix"`
 	UseWorktrees bool              `yaml:"use_worktrees"`
 	Token        string            `yaml:"token"`
 	TokenEnv     string            `yaml:"token_env"`
 	TokenValue   string            `yaml:"-"`
 	PullRequest  PullRequestConfig `yaml:"pull_request"`
+}
+
+func (v VCSConfig) IsCreateBranchEnabled() bool {
+	if v.CreateBranch == nil {
+		return true
+	}
+	return *v.CreateBranch
 }
 
 type SandboxConfig struct {

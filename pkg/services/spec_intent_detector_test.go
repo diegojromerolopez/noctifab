@@ -140,4 +140,3 @@ func TestSpecIntentDetector_TimeTravel(t *testing.T) {
 	isTT, _, _ = detector.DetectTimeTravelIntent("Add TLS support")
 	assert.False(t, isTT)
 }
-

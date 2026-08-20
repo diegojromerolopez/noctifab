@@ -22,9 +22,9 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 		))
 	defer span.End()
 	integrationBranch := state.Metadata.IntegrationBranch
-	baseBranch := state.Metadata.BaseBranch
-	if baseBranch == "" {
-		baseBranch = "main"
+	baseBranch := ResolveBaseBranch(ctx, o.git, state.Metadata.BaseBranch)
+	if integrationBranch == "" {
+		integrationBranch = baseBranch
 	}
 
 	anySuccess := false
@@ -40,16 +40,18 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 		return nil
 	}
 
-	// Ensure integration branch exists locally before bumping
-	_, err := o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
-	if err != nil {
-		_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
-		if _, branchErr := o.git.Run(ctx, true, "checkout", "-b", integrationBranch); branchErr != nil {
-			return fmt.Errorf("failed to create integration branch %s: %w", integrationBranch, branchErr)
-		}
-	} else {
-		if _, checkoutErr := o.git.Run(ctx, true, "checkout", integrationBranch); checkoutErr != nil {
-			return fmt.Errorf("failed to checkout integration branch %s: %w", integrationBranch, checkoutErr)
+	// Ensure integration branch exists locally before bumping if branch creation is enabled
+	if o.cfg.CreateBranch && integrationBranch != baseBranch {
+		_, err := o.git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+integrationBranch)
+		if err != nil {
+			_, _ = o.git.Run(ctx, true, "checkout", baseBranch)
+			if _, branchErr := o.git.Run(ctx, true, "checkout", "-b", integrationBranch); branchErr != nil {
+				return fmt.Errorf("failed to create integration branch %s: %w", integrationBranch, branchErr)
+			}
+		} else {
+			if _, checkoutErr := o.git.Run(ctx, true, "checkout", integrationBranch); checkoutErr != nil {
+				return fmt.Errorf("failed to checkout integration branch %s: %w", integrationBranch, checkoutErr)
+			}
 		}
 	}
 
@@ -69,13 +71,15 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	}
 
 	// Create pull request
-	if o.cfg.AutoCreatePR {
+	if o.cfg.AutoCreatePR && integrationBranch != baseBranch {
 		prTitle := fmt.Sprintf("feat: %s", state.Metadata.FeatureName)
 		prBody := buildPRBody(state)
 		_, prErr := o.vcsClient.CreatePullRequest(ctx, prTitle, prBody, integrationBranch, baseBranch)
 		if prErr != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to create Pull Request for story %s: %v. Preserving generated code locally.\n", state.Metadata.FeatureName, prErr)
 		}
+	} else if o.cfg.AutoCreatePR && integrationBranch == baseBranch {
+		fmt.Printf("Skipping PR creation for story %s (integration branch is base branch %s)\n", state.Metadata.FeatureName, baseBranch)
 	} else {
 		fmt.Printf("Skipping PR creation for story %s (auto_create is false)\n", state.Metadata.FeatureName)
 	}

@@ -201,4 +201,3 @@ func (r *SpecRenderer) RenderCheckout(version int, lines int) {
 	_, _ = fmt.Fprintf(r.out, "\n🎯 Checked out Revision %d (SPEC.v%d.md | %d lines)\n", version, version, lines)
 	_, _ = fmt.Fprintf(r.out, "✔ Restored specification from snapshot cache (0 tokens used)\n")
 }
-
