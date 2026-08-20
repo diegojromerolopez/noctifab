@@ -163,7 +163,7 @@ func (q *RebaseQueue) Push(ctx context.Context, branch, base string) error {
 func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) error {
 	// Stash any uncommitted work first
 	stashed := false
-	out, err := q.git.Run(ctx, true, "stash")
+	out, err := q.git.Run(ctx, true, "stash", "--include-untracked")
 	if err == nil && !strings.Contains(out, "No local changes to save") {
 		stashed = true
 	}

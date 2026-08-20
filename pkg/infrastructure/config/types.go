@@ -265,17 +265,19 @@ type PullRequestConfig struct {
 }
 
 type VCSConfig struct {
-	Provider     string            `yaml:"provider"`
-	Repository   string            `yaml:"repository"`
-	BaseBranch   string            `yaml:"base_branch"`
-	CreateBranch *bool             `yaml:"create_branch,omitempty"`
-	BranchName   string            `yaml:"branch_name,omitempty"`
-	BranchPrefix string            `yaml:"branch_prefix"`
-	UseWorktrees bool              `yaml:"use_worktrees"`
-	Token        string            `yaml:"token"`
-	TokenEnv     string            `yaml:"token_env"`
-	TokenValue   string            `yaml:"-"`
-	PullRequest  PullRequestConfig `yaml:"pull_request"`
+	Provider          string            `yaml:"provider"`
+	Repository        string            `yaml:"repository"`
+	BaseBranch        string            `yaml:"base_branch"`
+	CreateBranch      *bool             `yaml:"create_branch,omitempty"`
+	BranchName        string            `yaml:"branch_name,omitempty"`
+	IntegrationBranch string            `yaml:"integration_branch,omitempty"`
+	BranchPrefix      string            `yaml:"branch_prefix"`
+	BranchStrategy    string            `yaml:"branch_strategy,omitempty"`
+	UseWorktrees      bool              `yaml:"use_worktrees"`
+	Token             string            `yaml:"token"`
+	TokenEnv          string            `yaml:"token_env"`
+	TokenValue        string            `yaml:"-"`
+	PullRequest       PullRequestConfig `yaml:"pull_request"`
 }
 
 func (v VCSConfig) IsCreateBranchEnabled() bool {
@@ -283,6 +285,13 @@ func (v VCSConfig) IsCreateBranchEnabled() bool {
 		return true
 	}
 	return *v.CreateBranch
+}
+
+func (v VCSConfig) GetIntegrationBranch() string {
+	if v.BranchName != "" {
+		return v.BranchName
+	}
+	return v.IntegrationBranch
 }
 
 type SandboxConfig struct {
