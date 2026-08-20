@@ -50,8 +50,13 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	if createdSpec {
-		fmt.Printf("\nWorkspace initialized at %s with default SPEC.md, config.yaml, and secrets.yaml.\n", targetDir)
-		fmt.Printf("Please edit SPEC.md with your project requirements, set your API key in .noctifab/secrets.yaml, and run 'noctifab start' again.\n")
+		if config.HasGlobalSecrets() {
+			fmt.Printf("\nWorkspace initialized at %s with default SPEC.md and config.yaml.\n", targetDir)
+			fmt.Printf("Please edit SPEC.md with your project requirements and run 'noctifab start' again.\n")
+		} else {
+			fmt.Printf("\nWorkspace initialized at %s with default SPEC.md, config.yaml, and secrets.yaml.\n", targetDir)
+			fmt.Printf("Please edit SPEC.md with your project requirements, set your API key in .noctifab/secrets.yaml, and run 'noctifab start' again.\n")
+		}
 		return nil
 	}
 

@@ -198,3 +198,36 @@ func TestLoad_GlobalHomeSecretsFallback(t *testing.T) {
 		t.Errorf("expected empty local secret to NOT wipe home secret global-secret-123, got %q", cfg2.VCS.Token)
 	}
 }
+
+func TestGlobalSecretsPath(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	want := filepath.Join(tempHome, ".noctifab", "secrets.yaml")
+	got := GlobalSecretsPath()
+	if got != want {
+		t.Errorf("GlobalSecretsPath() = %q; want %q", got, want)
+	}
+}
+
+func TestHasGlobalSecrets(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	if HasGlobalSecrets() {
+		t.Error("expected HasGlobalSecrets() to return false when file does not exist")
+	}
+
+	homeNoctifab := filepath.Join(tempHome, ".noctifab")
+	if err := os.MkdirAll(homeNoctifab, 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+	secretsFile := filepath.Join(homeNoctifab, "secrets.yaml")
+	if err := os.WriteFile(secretsFile, []byte("KEY: val\n"), 0644); err != nil {
+		t.Fatalf("failed to write secrets file: %v", err)
+	}
+
+	if !HasGlobalSecrets() {
+		t.Error("expected HasGlobalSecrets() to return true when file exists")
+	}
+}

@@ -126,10 +126,11 @@ func EnsureWorkspaceInitializedWithProfile(targetDir string, profileName string)
 		}
 	}
 
-	// 4. Generate default secrets.yaml if missing
+	// 4. Generate default secrets.yaml only if missing locally AND no global secrets file exists in $HOME/.noctifab/secrets.yaml
 	secretsPath := filepath.Join(noctifabDir, "secrets.yaml")
-	if _, err := os.Stat(secretsPath); os.IsNotExist(err) {
-		secretsContent := `# Noctifab Secrets & API Keys Configuration
+	if !config.HasGlobalSecrets() {
+		if _, err := os.Stat(secretsPath); os.IsNotExist(err) {
+			secretsContent := `# Noctifab Secrets & API Keys Configuration
 OPENAI_API_KEY: ""
 ANTHROPIC_API_KEY: ""
 GEMINI_API_KEY: ""
@@ -158,8 +159,9 @@ AI21_API_KEY: ""
 UPSTAGE_API_KEY: ""
 GITHUB_TOKEN: ""
 `
-		if err := os.WriteFile(secretsPath, []byte(secretsContent), 0644); err != nil {
-			return false, fmt.Errorf("failed to create secrets.yaml: %w", err)
+			if err := os.WriteFile(secretsPath, []byte(secretsContent), 0644); err != nil {
+				return false, fmt.Errorf("failed to create secrets.yaml: %w", err)
+			}
 		}
 	}
 

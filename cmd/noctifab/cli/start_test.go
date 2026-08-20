@@ -13,6 +13,7 @@ import (
 )
 
 func TestStartCmd_AutoInitializeMissingWorkspace(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	tmpDir := t.TempDir()
 	targetDir := filepath.Join(tmpDir, "auto_init_project")
 
@@ -33,6 +34,7 @@ func TestStartCmd_AutoInitializeMissingWorkspace(t *testing.T) {
 }
 
 func TestStartCmd_CurrentDirectoryAutoInit(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	tmpDir := t.TempDir()
 	origDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -51,6 +53,31 @@ func TestStartCmd_CurrentDirectoryAutoInit(t *testing.T) {
 	assert.FileExists(t, filepath.Join(tmpDir, ".noctifab", "secrets.yaml"))
 	assert.FileExists(t, filepath.Join(tmpDir, "SPEC.md"))
 	assert.FileExists(t, filepath.Join(tmpDir, "roadmap", "user-stories", "US-001.md"))
+}
+
+func TestStartCmd_AutoInit_SkipSecretsWhenGlobalSecretsExist(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	homeNoctifab := filepath.Join(tempHome, ".noctifab")
+	require.NoError(t, os.MkdirAll(homeNoctifab, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(homeNoctifab, "secrets.yaml"), []byte("OPENAI_API_KEY: \"test-key\"\n"), 0644))
+
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "global_secrets_start_project")
+
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "mock-key")
+
+	err := startCmd.RunE(startCmd, []string{targetDir})
+	require.NoError(t, err)
+
+	// Verify targetDir was created along with .noctifab, config.yaml, SPEC.md, but NOT secrets.yaml
+	assert.DirExists(t, targetDir)
+	assert.FileExists(t, filepath.Join(targetDir, ".noctifab", "config.yaml"))
+	assert.NoFileExists(t, filepath.Join(targetDir, ".noctifab", "secrets.yaml"))
+	assert.FileExists(t, filepath.Join(targetDir, "SPEC.md"))
+	assert.FileExists(t, filepath.Join(targetDir, "roadmap", "user-stories", "US-001.md"))
 }
 
 func TestIsTemplateSpec(t *testing.T) {
