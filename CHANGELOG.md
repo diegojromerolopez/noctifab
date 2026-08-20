@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.46.1] - 2026-08-20
+
+### Fixed
+- **String Concatenation in `WriteString` calls (`writestring` lint fix)**:
+  - Eliminated inefficient string concatenations inside `sb.WriteString` calls in `pkg/services/spec_renderer.go`.
+  - Updated `AGENTS.md` coding constraints to prohibit inefficient string concatenations inside `WriteString` calls in compliance with the `writestring` static analyzer.
+
 ## [0.46.0] - 2026-08-20
 
 ### Added
