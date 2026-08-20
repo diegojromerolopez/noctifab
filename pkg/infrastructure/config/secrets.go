@@ -5,10 +5,31 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// GlobalSecretsPath returns the default location of the global user secrets file ($HOME/.noctifab/secrets.yaml).
+// If the user home directory cannot be determined, it returns an empty string.
+func GlobalSecretsPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil || homeDir == "" {
+		return ""
+	}
+	return filepath.Join(homeDir, ".noctifab", "secrets.yaml")
+}
+
+// HasGlobalSecrets returns true if $HOME/.noctifab/secrets.yaml exists on the host filesystem.
+func HasGlobalSecrets() bool {
+	p := GlobalSecretsPath()
+	if p == "" {
+		return false
+	}
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
+}
 
 // LoadSecrets reads a flat key-value YAML secrets file from secretsPath.
 // If the file does not exist, an empty map is returned with no error (secrets.yaml is optional).

@@ -70,8 +70,7 @@ func Load(cmd *cobra.Command) (*Config, error) {
 
 	// 2a. Load global secrets from $HOME/.noctifab/secrets.yaml if present.
 	mergedSecrets := make(map[string]string)
-	if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
-		homeSecretsPath := filepath.Join(homeDir, ".noctifab", "secrets.yaml")
+	if homeSecretsPath := GlobalSecretsPath(); homeSecretsPath != "" {
 		if homeSecrets, err := LoadSecrets(homeSecretsPath); err == nil {
 			for k, v := range homeSecrets {
 				mergedSecrets[k] = v
