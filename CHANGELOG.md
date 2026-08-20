@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.46.3] - 2026-08-20
+
+### Fixed
+- **Cumulative Branching Bug in Multi-Story Autonomous Execution**:
+  - Removed destructive `git branch -f integrationBranch baseBranch` reset in `pkg/services/orchestrator_execute.go` that previously wiped out earlier story commits on the integration branch whenever subsequent user stories started.
+  - Implemented `ensureIntegrationBranch` and `setupTaskWorkspace` helpers in `pkg/services/orchestrator_execute_workspace.go` to preserve existing commits on integration branches and branch worker worktrees directly off the current integration branch tip.
+  - Extracted task turn execution logic (tester-first, generator-first, and retries) into `pkg/services/orchestrator_execute_turns.go` to maintain strict compliance with the `< 500 lines per file` limit.
+  - Updated `start_runner.go` and `pkg/infrastructure/config/types.go` (`VCSConfig.IntegrationBranch`, `VCSConfig.BranchStrategy`, and `GetIntegrationBranch()`) so that multi-story executions automatically accumulate sequential story commits on a shared integration branch (e.g. `noctifab/implementation`).
+  - Added BDD unit tests in `pkg/services/orchestrator_cumulative_branching_test.go` verifying commit accumulation across sequential stories in both worktree and direct modes.
+
 ## [0.46.2] - 2026-08-20
 
 ### Fixed

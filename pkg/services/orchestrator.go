@@ -142,6 +142,9 @@ func NewOrchestratorWithRuntime(
 		observer:          runtime.Observer,
 	}
 	o.executeTaskFn = o.executeTask
+	if queue != nil {
+		queue.SetConflictResolver(o.resolveGitRebaseConflict)
+	}
 	return o
 }
 

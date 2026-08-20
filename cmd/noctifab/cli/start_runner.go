@@ -288,7 +288,15 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		featName := filepath.Base(currentStoryFile)
-		branchRes := services.ResolveBranches(ctx, gitClient, cfg.VCS.BaseBranch, cfg.VCS.BranchName, cfg.VCS.BranchPrefix, featName)
+		configuredBranch := cfg.VCS.GetIntegrationBranch()
+		if configuredBranch == "" && strings.ToLower(cfg.VCS.BranchStrategy) != "per_story_isolated" && len(storyFiles) > 1 {
+			prefix := cfg.VCS.BranchPrefix
+			if prefix == "" {
+				prefix = "noctifab/"
+			}
+			configuredBranch = prefix + "implementation"
+		}
+		branchRes := services.ResolveBranches(ctx, gitClient, cfg.VCS.BaseBranch, configuredBranch, cfg.VCS.BranchPrefix, featName)
 		baseBranch := branchRes.BaseBranch
 		integrationBranch := branchRes.IntegrationBranch
 
