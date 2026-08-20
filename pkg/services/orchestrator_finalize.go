@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
@@ -55,13 +56,20 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 		}
 	}
 
+	// Stage all generated code and release metadata
+	_, _ = o.git.Run(ctx, true, "add", "-A")
+
+	commitMsg := fmt.Sprintf("feat: implement story %s", state.Metadata.FeatureName)
 	// Bump version and update CHANGELOG.md
 	nextVersion, bumpErr := BumpVersion(state.ProjectPath, state.Tasks)
 	if bumpErr == nil {
 		_ = UpdateChangelog(state.ProjectPath, nextVersion, state.Tasks)
-		_, _ = o.git.Run(ctx, true, "add", "VERSION", "CHANGELOG.md")
-		_, _ = o.git.Run(ctx, true, "commit", "-m",
-			fmt.Sprintf("chore(release): bump version to %s for story %s", nextVersion, state.Metadata.FeatureName))
+		_, _ = o.git.Run(ctx, true, "add", "-A")
+		commitMsg = fmt.Sprintf("chore(release): bump version to %s for story %s", nextVersion, state.Metadata.FeatureName)
+	}
+
+	if statusOut, err := o.git.Run(ctx, false, "status", "--porcelain"); err == nil && strings.TrimSpace(statusOut) != "" {
+		_, _ = o.git.Run(ctx, true, "commit", "-m", commitMsg)
 	}
 
 	// Push integration branch
