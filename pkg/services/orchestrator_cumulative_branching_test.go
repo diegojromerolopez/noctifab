@@ -421,4 +421,22 @@ func TestOrchestrator_TrollScenario_DeletedWorkerBranchOnRetry_Recovers(t *testi
 	assert.Equal(t, domain.TaskSuccess, st.Tasks[0].Status, "Task on retry should cleanly recreate missing worker branch and succeed")
 }
 
+func TestCleanConflictMarkers_DeterministicResolution(t *testing.T) {
+	input := `func Example() string {
+<<<<<<< HEAD
+	return "base version"
+=======
+	return "worker version"
+>>>>>>> branch
+}`
+
+	expected := `func Example() string {
+	return "worker version"
+}`
+
+	resolved := CleanConflictMarkers(input)
+	assert.Equal(t, expected, resolved, "CleanConflictMarkers must keep incoming changes deterministically without duplicating blocks")
+}
+
+
 

@@ -289,7 +289,9 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		}
 		featName := filepath.Base(currentStoryFile)
 		configuredBranch := cfg.VCS.GetIntegrationBranch()
-		if configuredBranch == "" && strings.ToLower(cfg.VCS.BranchStrategy) != "per_story_isolated" && len(storyFiles) > 1 {
+		if strings.ToLower(cfg.VCS.BranchStrategy) == "per_story_isolated" {
+			configuredBranch = ""
+		} else if configuredBranch == "" && len(storyFiles) > 1 {
 			prefix := cfg.VCS.BranchPrefix
 			if prefix == "" {
 				prefix = "noctifab/"

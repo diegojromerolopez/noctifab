@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
@@ -82,10 +83,13 @@ func (o *Orchestrator) setupTaskWorkspace(
 		taskGit = NewGitClient(worktreeDir)
 		syncRootManifests(state.ProjectPath, worktreeDir)
 
+		var cleanupOnce sync.Once
 		cleanup = func() {
-			_, _ = o.git.Run(ctx, true, "worktree", "remove", "--force", worktreeDir)
-			_ = os.RemoveAll(worktreeDir)
-			_, _ = o.git.Run(ctx, true, "worktree", "prune")
+			cleanupOnce.Do(func() {
+				_, _ = o.git.Run(ctx, true, "worktree", "remove", "--force", worktreeDir)
+				_ = os.RemoveAll(worktreeDir)
+				_, _ = o.git.Run(ctx, true, "worktree", "prune")
+			})
 		}
 		return worktreeDir, taskGit, cleanup, nil
 	}
@@ -115,22 +119,31 @@ func (o *Orchestrator) setupTaskWorkspace(
 	return state.ProjectPath, taskGit, cleanup, nil
 }
 
-// CleanConflictMarkers removes standard Git conflict markers (<<<<<<<, =======, >>>>>>>)
-// by retaining both sections and stripping conflict markers so code compiles.
+// CleanConflictMarkers resolves standard Git conflict markers (<<<<<<<, =======, >>>>>>>)
+// by deterministically preserving the incoming worker changes (between ======= and >>>>>>>).
 func CleanConflictMarkers(content string) string {
 	lines := strings.Split(content, "\n")
 	var cleaned []string
-	inConflict := false
+	inOurs := false
+	inTheirs := false
 	for _, line := range lines {
 		if strings.HasPrefix(line, "<<<<<<<") {
-			inConflict = true
+			inOurs = true
+			inTheirs = false
 			continue
 		}
-		if inConflict && strings.HasPrefix(line, "=======") {
+		if inOurs && strings.HasPrefix(line, "=======") {
+			inOurs = false
+			inTheirs = true
 			continue
 		}
-		if inConflict && strings.HasPrefix(line, ">>>>>>>") {
-			inConflict = false
+		if inTheirs && strings.HasPrefix(line, ">>>>>>>") {
+			inOurs = false
+			inTheirs = false
+			continue
+		}
+		if inOurs {
+			// Skip 'ours' (base) block in favor of incoming 'theirs' (worker)
 			continue
 		}
 		cleaned = append(cleaned, line)
