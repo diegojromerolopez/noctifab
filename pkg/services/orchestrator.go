@@ -42,6 +42,7 @@ type OrchestratorConfig struct {
 	OCCBackoffFactor     float64
 	MaxDuration          time.Duration
 	AutoCreatePR         bool
+	CreateBranch         bool
 	MaxActions           int
 	ExcludePaths         []string
 	MetricsEnabled       bool

@@ -106,12 +106,16 @@ func (r *SpecRenderer) CalculateDiff(oldContent, newContent string) string {
 	var sb strings.Builder
 	for _, l := range newLines {
 		if strings.TrimSpace(l) != "" && !oldSet[l] {
-			sb.WriteString("+ " + l + "\n")
+			sb.WriteString("+ ")
+			sb.WriteString(l)
+			sb.WriteString("\n")
 		}
 	}
 	for _, l := range oldLines {
 		if strings.TrimSpace(l) != "" && !newSet[l] {
-			sb.WriteString("- " + l + "\n")
+			sb.WriteString("- ")
+			sb.WriteString(l)
+			sb.WriteString("\n")
 		}
 	}
 	return sb.String()
@@ -201,4 +205,3 @@ func (r *SpecRenderer) RenderCheckout(version int, lines int) {
 	_, _ = fmt.Fprintf(r.out, "\n🎯 Checked out Revision %d (SPEC.v%d.md | %d lines)\n", version, version, lines)
 	_, _ = fmt.Fprintf(r.out, "✔ Restored specification from snapshot cache (0 tokens used)\n")
 }
-

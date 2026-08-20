@@ -264,7 +264,9 @@ Configures code tracking, branch prefixes, and pull requests.
 vcs:
   provider: github
   repository: owner/repo
-  base_branch: master
+  base_branch: auto
+  create_branch: true
+  branch_name: noctifab/implementation
   branch_prefix: noctifab/
   token: "secret:GITHUB_TOKEN"
   pull_request:
@@ -280,8 +282,10 @@ vcs:
 
 - **`provider`** (String): Version Control System target host. Values: `github` or `gitlab`.
 - **`repository`** (String): Remote repository path identifier (e.g. `owner/repo-name`).
-- **`base_branch`** (String): Default integration target branch (e.g. `main` or `master`).
-- **`branch_prefix`** (String): Namespace prefix applied to ephemeral feature task branches (default: `noctifab/`).
+- **`base_branch`** (String): Default integration target branch (e.g. `auto`, `main`, or `master`). When set to `"auto"` (default), Noctifab automatically detects whether `master` exists in local or remote references and selects `master`, falling back to `main` if `master` is absent.
+- **`create_branch`** (Boolean): Toggles whether `noctifab start` creates and checks out a new Git integration branch (default: `true`). When `false`, Noctifab operates directly on the active base branch without creating feature branches.
+- **`branch_name`** (String): Optional fixed custom integration branch name (e.g. `noctifab/implementation`). Overrides standard per-story branch naming (`noctifab/feature-<story>`). Note: If the workspace is already checked out on a feature branch (different from `main` or `master`), Noctifab automatically detects and reuses that active branch.
+- **`branch_prefix`** (String): Namespace prefix applied to generated feature task branches (default: `noctifab/`).
 - **`token`** (String): OAuth or Personal Access Token value. Must use `secret:GITHUB_TOKEN` reference syntax. If omitted or API authentication fails, `noctifab` automatically falls back to `gh auth token` or executing `gh pr create` / `gh pr merge` directly using host CLI credentials.
 - **`token_env`** (String): Fallback env name to extract token (default: `GITHUB_TOKEN` or `GITLAB_TOKEN`).
 - **`pull_request`**:

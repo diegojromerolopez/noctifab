@@ -48,6 +48,9 @@ func NewGitClient(dir string, opts ...GitClientOption) *GitClient {
 }
 
 func (g *GitClient) Run(ctx context.Context, isWrite bool, args ...string) (string, error) {
+	if g == nil {
+		return "", errors.New("git client is nil")
+	}
 	if isWrite {
 		g.mu.Lock()
 		defer g.mu.Unlock()

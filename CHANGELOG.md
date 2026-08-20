@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.46.1] - 2026-08-20
+
+### Fixed
+- **String Concatenation in `WriteString` calls (`writestring` lint fix)**:
+  - Eliminated inefficient string concatenations inside `sb.WriteString` calls in `pkg/services/spec_renderer.go`.
+  - Updated `AGENTS.md` coding constraints to prohibit inefficient string concatenations inside `WriteString` calls in compliance with the `writestring` static analyzer.
+
+## [0.46.0] - 2026-08-20
+
+### Added
+- **Configurable Git Branching, Dynamic Base Branch Resolution & Current Branch Auto-Selection**:
+  - Added `vcs.create_branch` (boolean, default `true`) configuration option to toggle Git integration branch creation on `noctifab start`.
+  - Added `vcs.branch_name` (string, optional) configuration option allowing users to specify a fixed custom integration branch (e.g. `noctifab/implementation`).
+  - Added dynamic base branch target resolution (`ResolveBaseBranch` and `ResolveBranches`): when `vcs.base_branch` is set to `"auto"` (or default), Noctifab auto-detects whether `master` exists in local/remote references and selects `master`, falling back to `main` if `master` is absent.
+  - Added active Git branch detection on `noctifab start`: if the workspace is already checked out on a feature branch (different from `main` or `master`), Noctifab automatically targets and reuses that branch instead of generating a new feature branch.
+
 ## [0.45.0] - 2026-08-20
 
 ### Changed

@@ -50,6 +50,7 @@ To maintain modularity and high context compatibility, the following guidelines 
 4.  **Formatting & Linting:**
     *   **Formatting:** All Go source code must strictly follow the standard `go fmt` format. Ensure `go fmt ./...` runs clean.
     *   **Linting:** Code must pass static analysis checks. You must run `docker run -t --rm -v $(pwd):/app -w /app golangci/golangci-lint:v2.12.2 golangci-lint run` after every change to ensure the code passes all linter rules.
+    *   **Efficient String Writing (`writestring`):** Inefficient string concatenations inside calls to `WriteString` (e.g., `sb.WriteString("a" + b + "\n")` or `io.WriteString(w, a + b)`) are strictly forbidden. Always call `WriteString` sequentially for individual string components to prevent unnecessary memory allocations and comply with the `writestring` static analyzer (`golang.org/x/tools/go/analysis/passes/writestring`).
 5.  **Continuous Integration (CI):**
     *   A GitHub Actions workflow configured in `.github/workflows/ci.yml` executes on every push and pull request.
     *   All unit tests and static analysis linting checks must pass successfully in the CI pipeline before merging.

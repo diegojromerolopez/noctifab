@@ -198,4 +198,3 @@ func TestLoad_GlobalHomeSecretsFallback(t *testing.T) {
 		t.Errorf("expected empty local secret to NOT wipe home secret global-secret-123, got %q", cfg2.VCS.Token)
 	}
 }
-

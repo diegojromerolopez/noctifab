@@ -91,4 +91,3 @@ func TestSpecRenderer_HistoryAndRollback(t *testing.T) {
 	renderer.RenderCheckout(2, 20)
 	assert.Contains(t, buf.String(), "Checked out Revision 2")
 }
-
