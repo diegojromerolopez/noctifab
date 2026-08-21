@@ -36,10 +36,13 @@ type completionOptions struct {
 
 func isNoTemperatureModel(model string) bool {
 	low := strings.ToLower(model)
+	if parts := strings.Split(low, "/"); len(parts) > 1 {
+		low = parts[len(parts)-1]
+	}
 	if strings.Contains(low, "claude") {
 		return true
 	}
-	if strings.HasPrefix(low, "o1") || strings.HasPrefix(low, "o3") {
+	if strings.HasPrefix(low, "o1") || strings.HasPrefix(low, "o3") || strings.HasPrefix(low, "o4") {
 		return true
 	}
 	return false
@@ -57,7 +60,6 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 		params.Temperature = openai.Float(tempOrDefault(*opts.temperature))
 	}
 	if opts.maxTokens > 0 {
-		params.MaxTokens = openai.Int(int64(opts.maxTokens))
 		params.MaxCompletionTokens = openai.Int(int64(opts.maxTokens))
 	}
 	// response_format=json_object is suppressed when disableJSONMode is set.

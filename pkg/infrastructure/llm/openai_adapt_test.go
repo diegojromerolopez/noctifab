@@ -23,6 +23,9 @@ func TestIsNoTemperatureModel(t *testing.T) {
 		{"anthropic/claude-3-7-sonnet-latest", true},
 		{"o1-mini", true},
 		{"o3-mini", true},
+		{"o4-mini", true},
+		{"openai/o1", true},
+		{"openai/o3-mini-2025-01-31", true},
 		{"gpt-4o", false},
 		{"deepseek-r1", false},
 	}
@@ -144,9 +147,10 @@ type chatRequest struct {
 	Messages []struct {
 		Content string `json:"content"`
 	} `json:"messages"`
-	MaxTokens      *int            `json:"max_tokens"`
-	Temperature    *float64        `json:"temperature"`
-	ResponseFormat json.RawMessage `json:"response_format"`
+	MaxTokens           *int            `json:"max_tokens"`
+	MaxCompletionTokens *int            `json:"max_completion_tokens"`
+	Temperature         *float64        `json:"temperature"`
+	ResponseFormat      json.RawMessage `json:"response_format"`
 }
 
 func decodeChatRequest(t *testing.T, r *http.Request) chatRequest {
@@ -179,7 +183,7 @@ func TestCallAdaptiveFallback(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt64(&calls, 1)
 			req := decodeChatRequest(t, r)
-			if req.ResponseFormat != nil || req.MaxTokens != nil {
+			if req.ResponseFormat != nil || req.MaxCompletionTokens != nil || req.MaxTokens != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(`{"type":"Router.Unavailable","modelID":"kimi-k3"}`))
@@ -457,4 +461,18 @@ func TestProviderCapabilityCaching(t *testing.T) {
 			t.Fatalf("expected second call to succeed on first attempt (3 total calls), got %d", got)
 		}
 	})
+}
+
+func TestBuildChatParams(t *testing.T) {
+	opts := completionOptions{
+		maxTokens:   2048,
+		enforceJSON: true,
+	}
+	params := buildChatParams("gpt-4o", "Hello world", opts)
+	if params.MaxCompletionTokens.Value != 2048 {
+		t.Errorf("expected MaxCompletionTokens=2048, got %v", params.MaxCompletionTokens.Value)
+	}
+	if params.MaxTokens.Value != 0 {
+		t.Errorf("expected MaxTokens to be empty/0, got %v", params.MaxTokens.Value)
+	}
 }
