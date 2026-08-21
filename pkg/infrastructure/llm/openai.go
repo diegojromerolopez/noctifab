@@ -405,7 +405,7 @@ func (o *baseOpenAIClient) GetAvailableModels(ctx context.Context, apiKey string
 		models = append(models, page.Current().ID)
 	}
 	if err := page.Err(); err != nil {
-		return nil, err
+		return nil, o.sdkError(err)
 	}
 	return models, nil
 }
