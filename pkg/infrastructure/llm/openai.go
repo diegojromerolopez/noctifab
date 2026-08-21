@@ -34,8 +34,8 @@ var parseOpenAIModel = NewModelParser(ParserConfig{
 	VersionRegexp:     `gpt-([0-9]+(?:\.[0-9]+)?)`,
 	VersionMultiplier: 5,
 	Tiers: []KeywordTier{
-		{Keywords: []string{"gpt-4o-mini", "mini", "luna"}, Score: 20, TierName: "compact"},
 		{Keywords: []string{"o3-mini", "o1-mini"}, Score: 25, TierName: "compact-reasoning"},
+		{Keywords: []string{"gpt-4o-mini", "mini", "luna"}, Score: 20, TierName: "compact"},
 		{Keywords: []string{"gpt-5", "gpt-4.5", "gpt-4o", "sol"}, Score: 60, TierName: "flagship"},
 		{Keywords: []string{"terra", "gpt-4"}, Score: 40, TierName: "pro"},
 		{Keywords: []string{"o3", "o1"}, Score: 35, TierName: "reasoning"},
