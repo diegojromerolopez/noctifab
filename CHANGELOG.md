@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.1] - 2026-08-21
+
+### Fixed
+- **OpenAI Provider `max_completion_tokens` Parameter & Model Tier Prioritization**:
+  - Updated `buildChatParams` in `pkg/infrastructure/llm/openai_adapt.go` to send only `MaxCompletionTokens` (omitting `MaxTokens`), eliminating `invalid_parameter_combination` and `unsupported_parameter` errors across standard and reasoning models.
+  - Enhanced `isNoTemperatureModel` to handle model IDs with provider prefixes (e.g. `openai/o1`, `openai/o3-mini`) and `o4` models.
+  - Reordered and adjusted model tier scores in `pkg/infrastructure/llm/openai.go` so that `gpt-X` flagship code generation models (`gpt-5`, `gpt-4.5`, `gpt-4o`) take top precedence over reasoning models across all roles including Product Manager and Coder.
+
 ## [0.47.0] - 2026-08-21
 
 ### Added

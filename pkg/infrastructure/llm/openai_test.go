@@ -31,9 +31,9 @@ func TestOpenAIProviderClient_Call(t *testing.T) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			if req["max_tokens"] != float64(4096) {
+			if req["max_completion_tokens"] != float64(4096) {
 				w.WriteHeader(http.StatusBadRequest)
-				_, _ = w.Write([]byte("missing max_tokens"))
+				_, _ = w.Write([]byte("missing max_completion_tokens"))
 				return
 			}
 

@@ -36,10 +36,13 @@ type completionOptions struct {
 
 func isNoTemperatureModel(model string) bool {
 	low := strings.ToLower(model)
+	if parts := strings.Split(low, "/"); len(parts) > 1 {
+		low = parts[len(parts)-1]
+	}
 	if strings.Contains(low, "claude") {
 		return true
 	}
-	if strings.HasPrefix(low, "o1") || strings.HasPrefix(low, "o3") {
+	if strings.HasPrefix(low, "o1") || strings.HasPrefix(low, "o3") || strings.HasPrefix(low, "o4") {
 		return true
 	}
 	return false
@@ -57,7 +60,6 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 		params.Temperature = openai.Float(tempOrDefault(*opts.temperature))
 	}
 	if opts.maxTokens > 0 {
-		params.MaxTokens = openai.Int(int64(opts.maxTokens))
 		params.MaxCompletionTokens = openai.Int(int64(opts.maxTokens))
 	}
 	// response_format=json_object is suppressed when disableJSONMode is set.
@@ -103,6 +105,21 @@ func looksLikeInvalidTemperature(body string) bool {
 func looksLikeMaxTokensRejection(body string) bool {
 	low := strings.ToLower(body)
 	return strings.Contains(low, "max_tokens") || strings.Contains(low, "max_completion_tokens")
+}
+
+func looksLikeExtraBodyRejection(body string, extra map[string]interface{}) string {
+	low := strings.ToLower(body)
+	for k := range extra {
+		if strings.Contains(low, strings.ToLower(k)) {
+			return k
+		}
+	}
+	if strings.Contains(low, "extra_body") || strings.Contains(low, "unsupported parameter") || strings.Contains(low, "unknown parameter") {
+		for k := range extra {
+			return k
+		}
+	}
+	return ""
 }
 
 type providerCapabilityCache struct {
@@ -195,6 +212,18 @@ func adaptOptionsForError(opts completionOptions, err error, model string) (comp
 		opts.maxTokens = 0
 		globalCapabilityCache.markMaxTokensUnsupported(model)
 		return opts, true
+	case he.StatusCode == http.StatusBadRequest && len(opts.extraBody) > 0:
+		if key := looksLikeExtraBodyRejection(he.Body, opts.extraBody); key != "" {
+			fmt.Fprintf(os.Stderr, "⚠ Server rejected parameter %q; retrying without it.\n", key)
+			newExtra := make(map[string]interface{}, len(opts.extraBody)-1)
+			for k, v := range opts.extraBody {
+				if k != key {
+					newExtra[k] = v
+				}
+			}
+			opts.extraBody = newExtra
+			return opts, true
+		}
 	}
 	return opts, false
 }
