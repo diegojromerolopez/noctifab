@@ -107,6 +107,21 @@ func looksLikeMaxTokensRejection(body string) bool {
 	return strings.Contains(low, "max_tokens") || strings.Contains(low, "max_completion_tokens")
 }
 
+func looksLikeExtraBodyRejection(body string, extra map[string]interface{}) string {
+	low := strings.ToLower(body)
+	for k := range extra {
+		if strings.Contains(low, strings.ToLower(k)) {
+			return k
+		}
+	}
+	if strings.Contains(low, "extra_body") || strings.Contains(low, "unsupported parameter") || strings.Contains(low, "unknown parameter") {
+		for k := range extra {
+			return k
+		}
+	}
+	return ""
+}
+
 type providerCapabilityCache struct {
 	mu            sync.RWMutex
 	noTemperature map[string]bool
@@ -197,6 +212,18 @@ func adaptOptionsForError(opts completionOptions, err error, model string) (comp
 		opts.maxTokens = 0
 		globalCapabilityCache.markMaxTokensUnsupported(model)
 		return opts, true
+	case he.StatusCode == http.StatusBadRequest && len(opts.extraBody) > 0:
+		if key := looksLikeExtraBodyRejection(he.Body, opts.extraBody); key != "" {
+			fmt.Fprintf(os.Stderr, "⚠ Server rejected parameter %q; retrying without it.\n", key)
+			newExtra := make(map[string]interface{}, len(opts.extraBody)-1)
+			for k, v := range opts.extraBody {
+				if k != key {
+					newExtra[k] = v
+				}
+			}
+			opts.extraBody = newExtra
+			return opts, true
+		}
 	}
 	return opts, false
 }

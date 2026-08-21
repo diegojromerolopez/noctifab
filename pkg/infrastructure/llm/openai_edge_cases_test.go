@@ -143,4 +143,34 @@ func TestOpenAIEdgeCases_LegacyGatewayMaxCompletionTokensRejection(t *testing.T)
 			t.Errorf("expected exactly 2 calls (initial rejection + adapted retry), got %d", got)
 		}
 	})
+
+	t.Run("when model rejects an extra body parameter it strips it and retries", func(t *testing.T) {
+		var calls int64
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			count := atomic.AddInt64(&calls, 1)
+			if count == 1 {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"type":"invalid_request_error","message":"unknown parameter: 'enable_thinking'"}`))
+				return
+			}
+			writeChatCompletion(w, `{"ok":true}`, "")
+		}))
+		defer server.Close()
+
+		client := newBaseOpenAIClient("openai", server.URL, server.URL, 5*time.Second, 0, false)
+		client.SetExtraBody(map[string]interface{}{"enable_thinking": true})
+
+		body, err := client.Call(context.Background(), "custom-model", "k", "hello", 0, 0.0)
+		if err != nil {
+			t.Fatalf("expected extraBody-adapted call to succeed, got %v", err)
+		}
+		if string(body) != `{"ok":true}` {
+			t.Errorf("unexpected response body: %s", body)
+		}
+		if got := atomic.LoadInt64(&calls); got != 2 {
+			t.Errorf("expected 2 calls, got %d", got)
+		}
+	})
 }
+
