@@ -56,7 +56,10 @@ func (m *CommandMailbox) Start(ctx context.Context) {
 			select {
 			case cmd := <-m.cmds:
 				if syncCmd, ok := cmd.(*syncCommandWrapper); ok {
-					syncCmd.done <- ctx.Err()
+					select {
+					case syncCmd.done <- ctx.Err():
+					default:
+					}
 				}
 			default:
 				m.mu.Unlock()
@@ -78,13 +81,12 @@ func (m *CommandMailbox) Start(ctx context.Context) {
 	}
 }
 
+// Send enqueues a command asynchronously into the single-writer mailbox channel.
+// It applies backpressure by blocking if the command buffer is full, ensuring no state mutations are dropped.
 func (m *CommandMailbox) Send(cmd Command) {
+	m.cmds <- cmd
 	select {
-	case m.cmds <- cmd:
-		select {
-		case m.wakeup <- struct{}{}:
-		default:
-		}
+	case m.wakeup <- struct{}{}:
 	default:
 	}
 }
