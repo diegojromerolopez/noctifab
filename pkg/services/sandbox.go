@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -51,9 +52,43 @@ type HostSandbox struct {
 	DefaultCommand  string
 	IdleTimeout     time.Duration
 	DepMgr          *DependencyManager
+	evictedMu       sync.RWMutex
+	evictedTools    map[string]bool
 }
 
 var _ Sandbox = (*HostSandbox)(nil)
+
+func (s *HostSandbox) EvictTool(tool string) {
+	if tool == "" {
+		return
+	}
+	s.evictedMu.Lock()
+	defer s.evictedMu.Unlock()
+	if s.evictedTools == nil {
+		s.evictedTools = make(map[string]bool)
+	}
+	s.evictedTools[tool] = true
+	fmt.Printf("⚠️  [Tool Evicted] Tool %q evicted from sandbox. Subsequent invocations will degrade gracefully.\n", tool)
+}
+
+func (s *HostSandbox) IsToolEvicted(tool string) bool {
+	s.evictedMu.RLock()
+	defer s.evictedMu.RUnlock()
+	if s.evictedTools == nil {
+		return false
+	}
+	return s.evictedTools[tool]
+}
+
+func (s *HostSandbox) GetEvictedTools() []string {
+	s.evictedMu.RLock()
+	defer s.evictedMu.RUnlock()
+	var tools []string
+	for t := range s.evictedTools {
+		tools = append(tools, t)
+	}
+	return tools
+}
 
 // DetectProjectLanguage inspects the project directory for manifest files
 // and returns the detected programming language identifier.
@@ -88,6 +123,7 @@ func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Durati
 		DefaultCommand:  defaultCmd,
 		IdleTimeout:     idleTimeout,
 		DepMgr:          depMgr,
+		evictedTools:    make(map[string]bool),
 	}
 }
 
@@ -195,11 +231,21 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 	}
 	cmd.Dir = targetDir
 
+	if s.IsToolEvicted(binary) {
+		fmt.Printf("⚠️  [Sandbox Degraded] Tool %q was evicted. Skipping execution in degraded mode.\n", binary)
+		return fmt.Sprintf("Tool %s is evicted on host environment", binary), fmt.Errorf("tool %s is evicted", binary)
+	}
+
 	watchdog := Watchdog{IdleTimeout: s.IdleTimeout}
 	start := time.Now()
 	output, err := watchdog.Run(ctx, cmd)
 	if err != nil && s.DepMgr != nil {
-		if tool, found := s.DepMgr.DetectMissingTool(string(output)); found {
+		tool, found := s.DepMgr.DetectMissingTool(string(output))
+		if !found && strings.Contains(strings.ToLower(string(output)), "not found") {
+			tool = binary
+			found = true
+		}
+		if found {
 			fmt.Printf("🔍 [Tool Auto-Install] Missing tool %q detected, attempting auto-installation...\n", tool)
 			if installErr := s.DepMgr.InstallTool(ctx, tool); installErr == nil {
 				fmt.Printf("✅ [Tool Auto-Install Success] Installed %q successfully. Re-running command...\n", tool)
@@ -220,6 +266,7 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 				}
 			} else {
 				fmt.Printf("❌ [Tool Auto-Install Failure] Failed to install %q: %v\n", tool, installErr)
+				s.EvictTool(tool)
 			}
 		}
 	}

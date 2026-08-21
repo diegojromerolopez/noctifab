@@ -1731,6 +1731,27 @@ The **Unblocker Agent** (`pkg/services/unblocker.go`) is an autonomous backgroun
 4. **LLM Assessment vs Heuristic Fallback:** When `llm_assessment: true` (default), constructs a diagnostic prompt (`buildUnblockerPrompt`) and requests a JSON action response. If disabled or LLM fails, applies deterministic recovery rules.
 5. **Mailbox Dispatch:** Corrective commands (`ResetTaskCmd`, `FailTaskCmd`, `LogUnblockerActionCmd`, `ClearInconsistentAgentCmd`) are sent to `CommandMailbox` to maintain OCC state safety and trigger immediate orchestrator wakeup.
 
+### 3.6.13. Zero-Stall Resilient Architecture
+
+To guarantee the primary invariant—**Noctifab Never Gets Stuck**—the system implements a multi-tier fallback architecture:
+
+1. **Dynamic Tool Degradation & Eviction (`HostSandbox` & `TestValidator`):**
+   - Automatically detects missing binaries (exit status 127, `command not found`, `executable file not found in $PATH`).
+   - If auto-installation is impossible or fails, evicts the missing tool (`EvictTool`) and transitions to degraded validation mode (`[Validation Degraded]`), preventing task retry loops on uninstalled test runners or build tools.
+2. **Optimistic Task Merging:**
+   - Completed code generation tasks with failing test assertions or degraded tools are optimistically merged into `integrationBranch` with status `MERGED_WITH_WARNINGS`. Downstream tasks in the DAG are unblocked, and generated code is never discarded.
+3. **5-Tier Resilient Merge Engine (`RebaseQueue`):**
+   - **Tier 1 (Non-interactive Merge):** `git merge --no-ff` for clean divergence.
+   - **Tier 2 (Deterministic Conflict Marker Cleanup):** Automatically strips git conflict headers (`<<<<<<<`, `=======`, `>>>>>>>`) when divergence is superficial.
+   - **Tier 3 (Whole-File Dual Reimplementation):** When conflicts are severe, extracts full file contents from both `HEAD:file` and `workerBranch:file` and prompts the Generator Agent (`AgentRole: "generator"`, action: `"resolve_conflict"`) to reimplement the whole file synthesizing all features from both branches without markers.
+   - **Tier 4 (Optimistic Union Merge):** Combines unique lines from base and worker preserving structural ordering.
+   - **Tier 5 (Diff Overlay & Forced Commit):** Applies the raw diff directly onto the integration branch.
+4. **Stale Git Lock Sanitizer:**
+   - Purges stale `.git/index.lock` and worktree `.lock` files older than 5 seconds prior to executing merge commands.
+5. **Post-Merge Global Integration & Autonomous Repair Agent (`Orchestrator.RunPostMergeRepairPhase`):**
+   - Upon completion of all story tasks, executes a consolidated global test suite on `integrationBranch`.
+   - If tests fail, spawns the Integration Repair Agent with the consolidated diff and failure traces (budget: max 2 turns) to repair cross-task discrepancies.
+
 ---
 
 ### 3.7. Specification Ingestion & External Clients

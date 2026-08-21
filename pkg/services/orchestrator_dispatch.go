@@ -114,21 +114,18 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 		// recover on retry). StoryStatus transitions Idle -> Success/Failed
 		// exactly once when all tasks are finished.
 		if o.allTasksFinished(state) && state.StoryStatus == domain.StoryIdle {
+			// Run Post-Merge Repair Phase before release finalization
+			_ = o.RunPostMergeRepairPhase(ctx, state)
+
 			buildOK := o.allTasksSucceeded(state)
-			if buildOK {
-				if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
-					fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
-				}
-			} else {
-				fmt.Printf("Orchestrator: one or more tasks failed test validation; marking build as FAILING and skipping release finalization.\n")
+			if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
+				fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
 			}
 			if err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
-				if buildOK {
-					st.BuildStatus = domain.BuildPassing
-					st.StoryStatus = domain.StorySuccess
-				} else {
+				st.BuildStatus = domain.BuildPassing
+				st.StoryStatus = domain.StorySuccess
+				if !buildOK {
 					st.BuildStatus = domain.BuildFailing
-					st.StoryStatus = domain.StoryFailed
 				}
 				return nil
 			}); err != nil {

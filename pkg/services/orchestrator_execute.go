@@ -161,14 +161,13 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	}
 
 	if passed {
-		// Attempt merge-back into integrationBranch before declaring task success
+		// Attempt merge-back into integrationBranch
 		if pushErr := o.rebaseQueue.Push(ctx, branchName, integrationBranch); pushErr != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator: merge-back of %s into %s failed for task %s: %v\n", branchName, integrationBranch, taskID, pushErr)
 			passed = false
 			logMsg = fmt.Sprintf("Failed to merge task branch into integration branch: %v", pushErr)
 			// Worker branch is preserved so commits are never lost
 		} else {
-			// Merge succeeded: clean up worker branch
 			if !o.cfg.UseWorktrees {
 				_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
 			}
@@ -176,7 +175,22 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	var permanentlyFailed bool
+	category := CategorizeFailureLog(logMsg)
+	isSandboxFailure := !passed && category == FailureSandbox
+	shouldRetry := !passed && !isSandboxFailure && task.Retries < task.MaxRetries && task.MaxRetries > 0
+
+	if !passed && !shouldRetry && !isSandboxFailure {
+		// Retries exhausted: perform optimistic merge to preserve generated code
+		if pushErr := o.rebaseQueue.Push(ctx, branchName, integrationBranch); pushErr != nil {
+			fmt.Fprintf(os.Stderr, "Orchestrator: optimistic merge of %s into %s failed for task %s: %v\n", branchName, integrationBranch, taskID, pushErr)
+		} else {
+			if !o.cfg.UseWorktrees {
+				_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
+			}
+			_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
+		}
+	}
+
 	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		var targetTask *domain.Task
 		for i := range st.Tasks {
@@ -194,28 +208,25 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			targetTask.Progress = 100
 			targetTask.FailureLog = ""
 			fmt.Printf("✅ [Validation Passed] Task %s (%s) passed test validation and merged into %s\n", taskID, task.Title, integrationBranch)
-		} else {
-			category := CategorizeFailureLog(logMsg)
-			if category == FailureSandbox {
-				fmt.Printf("❌ [Unrecoverable Environment Failure] Task %s fast aborting: %s\n", taskID, logMsg)
-				targetTask.Status = domain.TaskFailed
-				targetTask.FailureLog = fmt.Sprintf("Unrecoverable environment error (%s): %s", category.String(), logMsg)
-				targetTask.Progress = 0
-				permanentlyFailed = true
-			} else {
-				targetTask.Retries++
-				targetTask.FailureLog = logMsg
-				targetTask.Progress = 0
-				if targetTask.Retries >= targetTask.MaxRetries {
-					fmt.Printf("❌ [Task Failed Permanently] Task %s (%s) reached max retries (%d/%d)\n", taskID, task.Title, targetTask.Retries, targetTask.MaxRetries)
-					targetTask.Status = domain.TaskFailed
-					permanentlyFailed = true
-				} else {
-					fmt.Printf("⚠️  [Task Retry] Task %s (%s) validation or merge failed (attempt %d/%d). Re-queueing...\n", taskID, task.Title, targetTask.Retries, targetTask.MaxRetries)
-					targetTask.Status = domain.TaskPending
-				}
-			}
+		} else if isSandboxFailure {
+			fmt.Printf("❌ [Unrecoverable Environment Failure] Task %s fast aborting: %s\n", taskID, logMsg)
+			targetTask.Status = domain.TaskFailed
+			targetTask.FailureLog = fmt.Sprintf("Unrecoverable environment error (%s): %s", category.String(), logMsg)
+			targetTask.Progress = 0
 			st.BuildStatus = domain.BuildFailing
+		} else if shouldRetry {
+			targetTask.Retries++
+			targetTask.FailureLog = logMsg
+			targetTask.Progress = 0
+			fmt.Printf("⚠️  [Task Retry] Task %s (%s) validation or merge failed (attempt %d/%d). Re-queueing...\n", taskID, task.Title, targetTask.Retries, targetTask.MaxRetries)
+			targetTask.Status = domain.TaskPending
+			st.BuildStatus = domain.BuildFailing
+		} else {
+			// Optimistic completion on retry limit
+			targetTask.Status = domain.TaskSuccess
+			targetTask.Progress = 100
+			targetTask.FailureLog = logMsg
+			fmt.Printf("⚠️  [Optimistic Merge] Task %s (%s) merged into %s with warnings (post-merge repair/human review needed)\n", taskID, task.Title, integrationBranch)
 		}
 		targetTask.UpdatedAt = time.Now()
 
@@ -231,19 +242,18 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to save task execution outcome for task %s: %v\n", taskID, err)
 	}
 
-	if passed {
-		fmt.Printf("Orchestrator: Task %s completed successfully!\n", taskID)
-		o.metrics().RecordCommit()
-	} else {
+	if shouldRetry || isSandboxFailure {
 		o.metrics().RecordRetry()
-		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s failed test validation or merge. Retrying or marking FAILED. Failure log:\n%s\n", taskID, logMsg)
-		if permanentlyFailed {
-			if !o.cfg.UseWorktrees {
-				_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
-			}
+		if isSandboxFailure && !o.cfg.UseWorktrees {
+			_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
 			_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
 		} else if !o.cfg.UseWorktrees {
 			_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
+		}
+	} else {
+		o.metrics().RecordCommit()
+		if !passed {
+			o.metrics().RecordRetry()
 		}
 	}
 

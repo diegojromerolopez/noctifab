@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -144,8 +145,41 @@ func TestRebaseQueuePush(t *testing.T) {
 
 		err := q.Push(ctx, "feature", "main")
 		if err == nil {
-			t.Fatal("expected error on failed rebase")
+			t.Fatal("expected error on failed checkout")
 		}
 		_ = called
+	})
+}
+
+func TestGitClient_CleanStaleLocks(t *testing.T) {
+	t.Run("when index.lock exists and is stale it removes it", func(t *testing.T) {
+		tmp := t.TempDir()
+		gitDir := filepath.Join(tmp, ".git")
+		_ = os.MkdirAll(gitDir, 0755)
+		lockFile := filepath.Join(gitDir, "index.lock")
+		_ = os.WriteFile(lockFile, []byte("lock"), 0644)
+		// Set modtime to 10 seconds ago
+		past := time.Now().Add(-10 * time.Second)
+		_ = os.Chtimes(lockFile, past, past)
+
+		g := NewGitClient(tmp)
+		g.CleanStaleLocks(context.Background())
+
+		if _, err := os.Stat(lockFile); !os.IsNotExist(err) {
+			t.Errorf("expected stale index.lock to be removed")
+		}
+	})
+}
+
+func TestOptimisticUnionMerge(t *testing.T) {
+	t.Run("it merges unique lines from both versions preserving order", func(t *testing.T) {
+		base := "line1\nline2\nline3"
+		worker := "line2\nline4\nline5"
+		merged := OptimisticUnionMerge(base, worker)
+
+		expected := "line1\nline2\nline3\nline4\nline5"
+		if merged != expected {
+			t.Errorf("expected %q, got %q", expected, merged)
+		}
 	})
 }
