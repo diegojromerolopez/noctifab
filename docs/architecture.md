@@ -83,10 +83,13 @@ Configured via `sandbox.idle_timeout_seconds` in `config.yaml` (default: 30s).
 ### 5. Rebase Queue (`pkg/services/rebase_queue.go`)
 A thread-safe channel queue that manages Git rebases and branch merges. When multiple tasks complete in parallel, the rebase queue serializes merges into the target branch to avoid merge conflicts and race conditions.
 
-### 6. Command Mailbox (`pkg/services/command_channel.go`)
-Runs a lightweight REST API server binding loopback commands on `127.0.0.1:18080`. The REST API exposes endpoints to manage stories, pause/resume/cancel cycles, resolve clarifications, and inject manual tasks. See [docs/api.md](api.md) for the complete endpoint reference.
+### 6. Command Mailbox & Single-Writer Event Loop (`pkg/services/command_channel.go`)
+The `CommandMailbox` serves as the centralized, serial event loop for all state mutations across the engine. Worker goroutines and external REST API handlers send mutation command payloads (`StateMutationCmd`, `ResolveClarificationCmd`, `AddTaskCmd`, `OverrideMergeCmd`, `ResetTaskCmd`, `FailTaskCmd`) to the mailbox.
 
-The mailbox exposes a **Wakeup channel** that fires whenever a command is enqueued. The orchestrator's OCC backoff loop (`updateStateWithRetry`) selects on this channel via `SleepWithInterrupt`, allowing operator commands (abort, model switch) to interrupt exponential backoff immediately instead of blocking for the full duration.
+- **`SendSync(ctx, cmd)`**: Synchronously submits a mutation to the single-writer FIFO queue and awaits execution on the dedicated repository writer goroutine. This completely eliminates SQLite transaction locking contentions and OCC version conflicts between concurrent agents.
+- **OCC Fallback**: If the mailbox is not actively running (e.g. in isolated unit test harnesses), `updateStateWithRetry` seamlessly falls back to optimistic concurrency control with exponential reload-and-retry backoff.
+- **Wakeup Interrupts**: The mailbox exposes a `Wakeup()` notification channel. The orchestrator's fallback OCC sleep (`SleepWithInterrupt`) selects on this channel, allowing operator commands (abort, steer, model switch) to interrupt backoff immediately without waiting for timers to expire.
+- **Loopback REST Server**: Binds on `127.0.0.1:18080` to allow operators and dashboard interfaces to inspect runtime health (`/healthz`, `/statusz`) and dynamically steer execution. See [docs/api.md](api.md) for the complete endpoint reference.
 
 ---
 

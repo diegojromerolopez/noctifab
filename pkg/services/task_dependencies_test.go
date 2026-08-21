@@ -166,4 +166,3 @@ func TestValidatePlannedTasks_CycleDetection(t *testing.T) {
 		t.Fatal("expected error due to circular dependencies, got nil")
 	}
 }
-

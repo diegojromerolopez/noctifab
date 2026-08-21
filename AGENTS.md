@@ -63,6 +63,9 @@ To maintain modularity and high context compatibility, the following guidelines 
 8.  **Secrets Handling & Privacy Mandate:**
     *   It is **completely forbidden** for AI agents to directly open, view, read, print, or leak the contents of `secrets.yaml` files into context or user-facing logs.
     *   When instructed or required to perform an action using credentials stored in `secrets.yaml` (e.g., executing an HTTP request or testing an API endpoint), you **must write a script or file** that programmatically reads `secrets.yaml`, extracts the needed key, and executes the task. Under no circumstances should raw secrets be printed, echoed, or included in tool parameters/outputs.
+9.  **Comprehensive Error Handling & Crash Prevention Mandate:**
+    *   Error handling **MUST BE comprehensive**. Every error across all packages, layers, and goroutines must be explicitly checked, handled, or wrapped with contextual detail (`fmt.Errorf("...: %w", err)`).
+    *   All potential error scenarios and edge cases must be dealt with defensively in the best way possible (including graceful degradation, exponential backoff with jitter on transient database/network contentions, fallback strategies, proper unblocking of waiting callers, and thorough channel/mutex cleanup on shutdown) so that the program never unexpectedly crashes, deadlocks, panics, or silently loses state.
 
 ---
 

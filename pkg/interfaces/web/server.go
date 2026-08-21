@@ -253,17 +253,12 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 			return
 		}
 		if ws.repo != nil {
-			st, err := ws.repo.Load(r.Context())
+			err := services.SaveStateWithBackoff(r.Context(), ws.repo, func(st *domain.State) {
+				st.StoryStatus = domain.StoryPaused
+			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
-			}
-			if st != nil {
-				st.StoryStatus = domain.StoryPaused
-				if err := ws.repo.Save(r.Context(), st); err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -281,17 +276,12 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 			return
 		}
 		if ws.repo != nil {
-			st, err := ws.repo.Load(r.Context())
+			err := services.SaveStateWithBackoff(r.Context(), ws.repo, func(st *domain.State) {
+				st.StoryStatus = domain.StoryRunning
+			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
-			}
-			if st != nil {
-				st.StoryStatus = domain.StoryRunning
-				if err := ws.repo.Save(r.Context(), st); err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
