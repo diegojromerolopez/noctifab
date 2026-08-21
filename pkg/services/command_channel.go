@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +29,7 @@ type CommandMailbox struct {
 	cmds    chan Command
 	wakeup  chan struct{}
 	running atomic.Bool
+	mu      sync.RWMutex
 }
 
 func NewCommandMailbox(repo domain.StateRepository) *CommandMailbox {
@@ -47,8 +49,9 @@ func (m *CommandMailbox) IsRunning() bool {
 func (m *CommandMailbox) Start(ctx context.Context) {
 	m.running.Store(true)
 	defer func() {
+		m.mu.Lock()
 		m.running.Store(false)
-		// Drain and notify any remaining sync commands if context was cancelled
+		// Drain and notify any remaining sync commands while holding lock so no new commands can enter
 		for {
 			select {
 			case cmd := <-m.cmds:
@@ -56,6 +59,7 @@ func (m *CommandMailbox) Start(ctx context.Context) {
 					syncCmd.done <- ctx.Err()
 				}
 			default:
+				m.mu.Unlock()
 				return
 			}
 		}
@@ -75,9 +79,12 @@ func (m *CommandMailbox) Start(ctx context.Context) {
 }
 
 func (m *CommandMailbox) Send(cmd Command) {
-	m.cmds <- cmd
 	select {
-	case m.wakeup <- struct{}{}:
+	case m.cmds <- cmd:
+		select {
+		case m.wakeup <- struct{}{}:
+		default:
+		}
 	default:
 	}
 }
@@ -100,7 +107,9 @@ func (m *CommandMailbox) SendSync(ctx context.Context, cmd Command) error {
 		return err
 	}
 
-	if !m.IsRunning() {
+	m.mu.RLock()
+	if !m.running.Load() {
+		m.mu.RUnlock()
 		return cmd.Execute(ctx, m.repo)
 	}
 
@@ -108,8 +117,10 @@ func (m *CommandMailbox) SendSync(ctx context.Context, cmd Command) error {
 	wrapper := &syncCommandWrapper{cmd: cmd, done: done}
 	select {
 	case <-ctx.Done():
+		m.mu.RUnlock()
 		return ctx.Err()
 	case m.cmds <- wrapper:
+		m.mu.RUnlock()
 	}
 
 	select {
@@ -122,6 +133,21 @@ func (m *CommandMailbox) SendSync(ctx context.Context, cmd Command) error {
 		return ctx.Err()
 	case err := <-done:
 		return err
+	}
+}
+
+// PopAll drains and returns all currently buffered commands in the mailbox.
+func (m *CommandMailbox) PopAll() []Command {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var list []Command
+	for {
+		select {
+		case cmd := <-m.cmds:
+			list = append(list, cmd)
+		default:
+			return list
+		}
 	}
 }
 
@@ -147,19 +173,6 @@ func (c *StateMutationCmd) Execute(ctx context.Context, repo domain.StateReposit
 // Wakeup returns a channel that fires when a command is sent to the mailbox.
 func (m *CommandMailbox) Wakeup() <-chan struct{} {
 	return m.wakeup
-}
-
-// PopAll drains and returns all currently buffered commands in the mailbox.
-func (m *CommandMailbox) PopAll() []Command {
-	var list []Command
-	for {
-		select {
-		case cmd := <-m.cmds:
-			list = append(list, cmd)
-		default:
-			return list
-		}
-	}
 }
 
 // SleepWithInterrupt sleeps for the given duration or until the context is cancelled

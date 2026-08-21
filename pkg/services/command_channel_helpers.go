@@ -20,16 +20,19 @@ const (
 	occRetryMaxAttempts = 20
 )
 
-// saveStateWithBackoff performs a Load-mutate-Save cycle with optimistic
+// SaveStateWithBackoff performs a Load-mutate-Save cycle with optimistic
 // concurrency retries using exponential backoff (base 200ms, x2 per attempt,
 // ±20% jitter, capped at 1s). Non-conflict errors abort immediately.
-func saveStateWithBackoff(ctx context.Context, repo domain.StateRepository, mutate func(*domain.State)) error {
+func SaveStateWithBackoff(ctx context.Context, repo domain.StateRepository, mutate func(*domain.State)) error {
 	backoff := occRetryBaseBackoff
 	var lastErr error
 	for attempt := 0; attempt < occRetryMaxAttempts; attempt++ {
 		state, err := repo.Load(ctx)
 		if err != nil {
 			return err
+		}
+		if state == nil {
+			return nil
 		}
 		mutate(state)
 		err = repo.Save(ctx, state)
@@ -54,6 +57,10 @@ func saveStateWithBackoff(ctx context.Context, repo domain.StateRepository, muta
 		}
 	}
 	return lastErr
+}
+
+func saveStateWithBackoff(ctx context.Context, repo domain.StateRepository, mutate func(*domain.State)) error {
+	return SaveStateWithBackoff(ctx, repo, mutate)
 }
 
 // storyStatusHandler builds a POST handler that transitions the active user
