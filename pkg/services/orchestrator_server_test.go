@@ -3,11 +3,15 @@ package services
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -213,5 +217,214 @@ func TestOrchestrator_PlanStory(t *testing.T) {
 		loaded, _ := repo.Load(ctx)
 		require.Len(t, loaded.Tasks, 1)
 		assert.Equal(t, "routed-task", loaded.Tasks[0].ID)
+	})
+}
+
+func TestPlanStory_SQLite_ConcurrentPlanningAndMutationsNoOCCError(t *testing.T) {
+	t.Run("when concurrent planners and background workers mutate real SQLite state via mailbox, zero OCC errors occur", func(t *testing.T) {
+		ctx := context.Background()
+		tmpDir, err := os.MkdirTemp("", "noctifab-sqlite-plan-test-*")
+		require.NoError(t, err)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
+
+		dbPath := filepath.Join(tmpDir, "test.db")
+		repo, err := storage.NewSQLiteRepository(ctx, dbPath)
+		require.NoError(t, err)
+		defer func() { _ = repo.Close() }()
+
+		initialState := &domain.State{
+			ID:          "story-occ-test",
+			ProjectPath: tmpDir,
+			Metadata: domain.StateMetadata{
+				FeatureName: "User Authentication",
+			},
+			Tasks: []domain.Task{},
+		}
+		err = repo.Save(ctx, initialState)
+		require.NoError(t, err)
+
+		mailbox := NewCommandMailbox(repo)
+		mailboxCtx, cancelMailbox := context.WithCancel(ctx)
+		defer cancelMailbox()
+		go mailbox.Start(mailboxCtx)
+		time.Sleep(5 * time.Millisecond)
+
+		llm := &planMockLLM{
+			completeFn: func(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+				time.Sleep(30 * time.Millisecond) // Simulate slow LLM execution
+				return &domain.LLMResponse{
+					Actions: []domain.LLMAction{
+						{
+							Tool: "add_task",
+							Args: map[string]any{
+								"id":          "task-auth",
+								"title":       "Implement Auth Core",
+								"description": "Auth token generator",
+							},
+						},
+					},
+				}, nil
+			},
+		}
+
+		orchestrator := &Orchestrator{
+			repo:           repo,
+			mailbox:        mailbox,
+			llmClient:      llm,
+			promptRenderer: prompts.NewDefaultRenderer(),
+			cfg: OrchestratorConfig{
+				OCCMaxRetries:  20,
+				OCCBackoffBase: 50 * time.Millisecond,
+			},
+		}
+
+		var wg sync.WaitGroup
+		errs := make(chan error, 6)
+
+		// 2 concurrent planners
+		for i := 1; i <= 2; i++ {
+			wg.Add(1)
+			go func(workerID int) {
+				defer wg.Done()
+				state, loadErr := repo.Load(ctx)
+				if loadErr != nil {
+					errs <- loadErr
+					return
+				}
+				errs <- orchestrator.PlanStory(ctx, state, "Auth Spec")
+			}(i)
+		}
+
+		// 4 concurrent background workers mutating tokens and file indexes
+		for i := 1; i <= 4; i++ {
+			wg.Add(1)
+			go func(workerID int) {
+				defer wg.Done()
+				for j := 0; j < 3; j++ {
+					time.Sleep(10 * time.Millisecond)
+					updateErr := orchestrator.updateStateWithRetry(ctx, func(st *domain.State) error {
+						st.Metadata.TotalTokensUsed += 50
+						return nil
+					})
+					if updateErr != nil {
+						errs <- updateErr
+						return
+					}
+				}
+				errs <- nil
+			}(i)
+		}
+
+		wg.Wait()
+		close(errs)
+
+		for err := range errs {
+			assert.NoError(t, err, "no worker should fail with optimistic concurrency version conflict")
+		}
+
+		finalState, err := repo.Load(ctx)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(finalState.Tasks), 1, "planned tasks must be safely persisted")
+		assert.Greater(t, finalState.Metadata.TotalTokensUsed, int64(0), "token usage metrics must be safely persisted")
+	})
+
+	t.Run("when concurrent planners and writers mutate SQLite without mailbox, OCC reload-retry loop succeeds cleanly", func(t *testing.T) {
+		ctx := context.Background()
+		tmpDir, err := os.MkdirTemp("", "noctifab-sqlite-occ-test-*")
+		require.NoError(t, err)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
+
+		dbPath := filepath.Join(tmpDir, "test.db")
+		repo, err := storage.NewSQLiteRepository(ctx, dbPath)
+		require.NoError(t, err)
+		defer func() { _ = repo.Close() }()
+
+		initialState := &domain.State{
+			ID:          "story-occ-retry-test",
+			ProjectPath: tmpDir,
+			Metadata: domain.StateMetadata{
+				FeatureName: "Payment Gateway",
+			},
+			Tasks: []domain.Task{},
+		}
+		err = repo.Save(ctx, initialState)
+		require.NoError(t, err)
+
+		llm := &planMockLLM{
+			completeFn: func(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+				time.Sleep(20 * time.Millisecond)
+				return &domain.LLMResponse{
+					Actions: []domain.LLMAction{
+						{
+							Tool: "add_task",
+							Args: map[string]any{
+								"id":          "task-pay",
+								"title":       "Implement Stripe Client",
+								"description": "Stripe credit card processing client",
+							},
+						},
+					},
+				}, nil
+			},
+		}
+
+		// Orchestrator without active mailbox (forces fallback updateStateWithRetry OCC loop)
+		orchestrator := &Orchestrator{
+			repo:           repo,
+			llmClient:      llm,
+			promptRenderer: prompts.NewDefaultRenderer(),
+			cfg: OrchestratorConfig{
+				OCCMaxRetries:  20,
+				OCCBackoffBase: 50 * time.Millisecond,
+			},
+		}
+
+		var wg sync.WaitGroup
+		errs := make(chan error, 4)
+
+		// 2 concurrent planners
+		for i := 1; i <= 2; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				state, loadErr := repo.Load(ctx)
+				if loadErr != nil {
+					errs <- loadErr
+					return
+				}
+				errs <- orchestrator.PlanStory(ctx, state, "Payment Spec")
+			}()
+		}
+
+		// 2 concurrent writers causing intentional OCC version bumps
+		for i := 1; i <= 2; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for j := 0; j < 2; j++ {
+					time.Sleep(10 * time.Millisecond)
+					updateErr := orchestrator.updateStateWithRetry(ctx, func(st *domain.State) error {
+						st.Metadata.TotalTokensUsed += 25
+						return nil
+					})
+					if updateErr != nil {
+						errs <- updateErr
+						return
+					}
+				}
+				errs <- nil
+			}()
+		}
+
+		wg.Wait()
+		close(errs)
+
+		for err := range errs {
+			assert.NoError(t, err, "fallback OCC retry loop must resolve all version conflicts without error")
+		}
+
+		finalState, err := repo.Load(ctx)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(finalState.Tasks), 1, "planned tasks must be safely persisted")
 	})
 }
