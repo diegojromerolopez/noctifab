@@ -101,7 +101,7 @@ func runDryClean(cfg *config.Config) error {
 		}
 	}
 
-	printDryRunItem(".noctifab/data/metrics.json")
+	dryRunDataArtifacts()
 	printDryRunItem(daemonPIDFile)
 	printDryRunItem(".noctifab/logs")
 	printDryRunItem(".noctifab/worktrees")
@@ -200,6 +200,23 @@ func cleanSQLiteDB(cfg *config.Config) error {
 	return nil
 }
 
+func isDataArtifact(name string) bool {
+	return name == "metrics.json" || (strings.HasPrefix(name, "qa-test-") && strings.HasSuffix(name, ".patch"))
+}
+
+func dryRunDataArtifacts() {
+	dataDir := ".noctifab/data"
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if isDataArtifact(entry.Name()) {
+			printDryRunItem(filepath.Join(dataDir, entry.Name()))
+		}
+	}
+}
+
 func cleanDataArtifacts() {
 	dataDir := ".noctifab/data"
 	entries, err := os.ReadDir(dataDir)
@@ -208,9 +225,11 @@ func cleanDataArtifacts() {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == "metrics.json" || (strings.HasPrefix(name, "qa-test-") && strings.HasSuffix(name, ".patch")) {
+		if isDataArtifact(name) {
 			p := filepath.Join(dataDir, name)
-			_ = os.Remove(p)
+			if err := os.Remove(p); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠ Could not remove data artifact at %s: %v\n", p, err)
+			}
 		}
 	}
 }
@@ -242,8 +261,12 @@ func removeLogs() {
 
 func cleanWorktrees() {
 	worktreeDir := ".noctifab/worktrees"
-	git := services.NewGitClient(".")
-	_, _ = git.Run(context.Background(), false, "worktree", "prune")
+	if _, err := os.Stat(".git"); err == nil {
+		git := services.NewGitClient(".")
+		if _, pruneErr := git.Run(context.Background(), false, "worktree", "prune"); pruneErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Could not prune git worktrees: %v\n", pruneErr)
+		}
+	}
 
 	if _, err := os.Stat(worktreeDir); err == nil {
 		if err := os.RemoveAll(worktreeDir); err != nil {

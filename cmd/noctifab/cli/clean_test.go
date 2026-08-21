@@ -215,9 +215,11 @@ func TestCleanCmd_DryRun_FilesNotDeleted(t *testing.T) {
 	dbFile := filepath.Join(noctifabDir, "data", "noctifab.db")
 	dbWal := filepath.Join(noctifabDir, "data", "noctifab.db-wal")
 	metricsFile := filepath.Join(noctifabDir, "data", "metrics.json")
+	patchFile := filepath.Join(noctifabDir, "data", "qa-test-12345678.patch")
 	_ = os.WriteFile(dbFile, []byte("sqlite data"), 0644)
 	_ = os.WriteFile(dbWal, []byte("wal data"), 0644)
 	_ = os.WriteFile(metricsFile, []byte("{}"), 0644)
+	_ = os.WriteFile(patchFile, []byte("patch data"), 0644)
 
 	pidFile := filepath.Join(noctifabDir, "noctifab.pid")
 	_ = os.WriteFile(pidFile, []byte("12345"), 0644)
@@ -257,6 +259,9 @@ func TestCleanCmd_DryRun_FilesNotDeleted(t *testing.T) {
 	}
 	if _, statErr := os.Stat(metricsFile); os.IsNotExist(statErr) {
 		t.Error("expected metrics file to still exist after dry-run")
+	}
+	if _, statErr := os.Stat(patchFile); os.IsNotExist(statErr) {
+		t.Error("expected patch file to still exist after dry-run")
 	}
 	if _, statErr := os.Stat(pidFile); os.IsNotExist(statErr) {
 		t.Error("expected pid file to still exist after dry-run")
