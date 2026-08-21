@@ -53,9 +53,6 @@ var validateCmd = &cobra.Command{
 				fmt.Printf("✔ Configured sandbox binaries available: %s\n", strings.Join(available, ", "))
 			}
 			if len(missing) > 0 {
-				if cfg.Sandbox.Mode == "" || strings.EqualFold(cfg.Sandbox.Mode, "host") {
-					return fmt.Errorf("configuration validation failed: required sandbox binary not found on host $PATH: %s", strings.Join(missing, ", "))
-				}
 				fmt.Printf("⚠️  Warning: missing configured sandbox binaries on host (mode=%s): %s\n", cfg.Sandbox.Mode, strings.Join(missing, ", "))
 			}
 		}
