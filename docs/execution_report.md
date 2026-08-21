@@ -61,7 +61,7 @@ The generated `<TIMESTAMP>_<PROJECT>.md` contains the following structured secti
 | **Reliability & Concurrency** | Error counts, retries, dropped events, and a detailed **Execution Errors** breakdown table. |
 | **Deliverables & Documentation** | Full workspace ASCII directory tree (`### Filesystem Hierarchy`), workspace implementation root, and canonical execution report path. |
 | **Verification & Testing Strategy** | Verification layers (automated unit tests, isolation worktree compilation, black-box contracts) and testing strategy notes. |
-| **LLM & Cost Usage** | Total measured token counts and active provider failover chains. |
+| **LLM & Token Usage** | Total measured token counts and active provider failover chains. |
 
 ---
 

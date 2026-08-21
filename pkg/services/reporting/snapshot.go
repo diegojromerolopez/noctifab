@@ -108,7 +108,6 @@ type ReportSnapshot struct {
 	PublicContracts  []domain.PublicContract            `json:"public_contracts,omitempty"`
 	MeasuredTokens   int64                              `json:"measured_tokens"`
 	EstimatedTokens  int64                              `json:"estimated_tokens"`
-	TotalCostUSD     string                             `json:"total_cost_usd"`
 	FailoverCount    int                                `json:"failover_count"`
 	ProvidersUsed    []string                           `json:"providers_used"`
 	ErrorCount       int                                `json:"error_count"`

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 )
 
 // defaultLLMAssessmentCooldown is the minimum interval between LLM
@@ -85,7 +86,7 @@ func NewUnblockerAgent(
 		pollInterval = 30 * time.Second
 	}
 	if maxRetries <= 0 {
-		maxRetries = 3
+		maxRetries = 5
 	}
 	if stallThreshold <= 0 {
 		stallThreshold = 5 * time.Minute
@@ -167,8 +168,8 @@ func (u *UnblockerAgent) checkAndUnblock(ctx context.Context) {
 	// Process Fast-Path Regex & Escalation Hard-Stops
 	var remainingStalls []StalledTask
 	for _, s := range stalls {
-		// Hard-stop check: If task has stalled 3 times (StallCount >= 3), fail it
-		if s.Task.StallCount >= 3 {
+		// Hard-stop check: If task has stalled 5 times (StallCount >= 5), fail it
+		if s.Task.StallCount >= 5 {
 			reason := fmt.Sprintf("unblocker: task %s reached max stall escalations (%d); task unrecoverable", s.Task.ID, s.Task.StallCount)
 			fmt.Printf("❌ [UnblockerAgent] Hard-stop max stall limit reached for task %s\n", s.Task.ID)
 			u.sendCmd(&FailTaskCmd{TaskID: s.Task.ID, Reason: reason})
@@ -377,8 +378,10 @@ func (u *UnblockerAgent) assessWithLLM(ctx context.Context, state *domain.State,
 		return
 	}
 
+	tokens := llm.EstimateUsageTokens(prompt, resp)
 	u.sendCmd(&LogUnblockerActionCmd{
-		Message: fmt.Sprintf("UnblockerAgent LLM assessment: reasoning=%s", resp.Reasoning),
+		Message:    fmt.Sprintf("UnblockerAgent LLM assessment: reasoning=%s", resp.Reasoning),
+		TokensUsed: tokens,
 	})
 
 	for _, action := range resp.Actions {

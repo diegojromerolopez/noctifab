@@ -39,7 +39,13 @@ func CategorizeFailureLog(log string) FailureCategory {
 		strings.Contains(lower, "sandbox toolchain") ||
 		strings.Contains(lower, "toolchain binary") ||
 		strings.Contains(lower, "compiler not found") ||
-		strings.Contains(lower, "gcc not found"):
+		strings.Contains(lower, "gcc not found") ||
+		strings.Contains(lower, "command not found") ||
+		strings.Contains(lower, "not found in $path") ||
+		strings.Contains(lower, "not found in %path%") ||
+		strings.Contains(lower, "executable file not found") ||
+		strings.Contains(lower, "exit status 127") ||
+		strings.Contains(lower, ": not found"):
 		return FailureSandbox
 	case strings.Contains(lower, "compile error"),
 		strings.Contains(lower, "syntax error"),

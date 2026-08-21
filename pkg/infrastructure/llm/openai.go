@@ -234,7 +234,7 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 		}
 		// A structured HTTP rejection is deterministic: the non-streaming
 		// POST would receive the identical rejection, doubling latency and
-		// cost for nothing. Surface it so Call can adapt the request shape.
+		// token usage for nothing. Surface it so Call can adapt the request shape.
 		var he *httpError
 		if errors.As(err, &he) {
 			return nil, err

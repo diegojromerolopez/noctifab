@@ -150,7 +150,7 @@ llm:
 ```
 
 > [!TIP]
-> **Prompt Caching Support**: `noctifab` automatically includes Anthropic prompt caching beta headers (`anthropic-beta: prompt-caching-2024-07-31`) and attaches ephemeral cache markers (`cache_control: {"type": "ephemeral"}`) for payloads larger than 2,048 bytes, cutting token costs by up to 90% and dramatically accelerating multi-turn task loops.
+> **Prompt Caching Support**: `noctifab` automatically includes Anthropic prompt caching beta headers (`anthropic-beta: prompt-caching-2024-07-31`) and attaches ephemeral cache markers (`cache_control: {"type": "ephemeral"}`) for payloads larger than 2,048 bytes, reducing input token processing by up to 90% and dramatically accelerating multi-turn task loops.
 
 ---
 
@@ -583,7 +583,7 @@ llm:
 **Fallback chain**: `jamba-large` → `jamba-mini`
 **Ranking**: tier keyword (`large` > `mini`) + generation version multiplier.
 
-> **Why AI21 Jamba?** Jamba uses a hybrid SSM (Mamba) + Transformer architecture supporting 256k+ context windows at significantly lower cost than pure transformer models of equivalent quality.
+> **Why AI21 Jamba?** Jamba uses a hybrid SSM (Mamba) + Transformer architecture supporting 256k+ context windows with high throughput compared to pure transformer models of equivalent quality.
 
 ```yaml
 # .noctifab/secrets.yaml
@@ -653,7 +653,6 @@ llm:
   failover:
     cooldown: "5m"
     max_call_limit: 0
-  max_budget_usd: 10.0
 ```
 
 In the above config:

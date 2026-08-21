@@ -35,10 +35,9 @@ func TestScenario_UpstreamFailurePruning(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "pruning feature",
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "pruning feature",
 			},
 			Tasks: []domain.Task{
 				{
@@ -130,10 +129,9 @@ func TestScenario_RollbackOnBuildBreakage(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "rollback feature",
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "rollback feature",
 			},
 			Tasks: []domain.Task{
 				{

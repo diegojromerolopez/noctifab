@@ -3,7 +3,6 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"os"
 	"path/filepath"
 	"sync"
@@ -26,7 +25,6 @@ type MetricsSummary struct {
 	TotalRetries           int64            `json:"total_retries"`
 	QAPhaseCalls           int64            `json:"qa_phase_calls"`
 	QATokensUsed           int64            `json:"qa_tokens_used"`
-	QACostUSD              string           `json:"qa_cost_usd"`
 	QALatencyMs            int64            `json:"qa_latency_ms"`
 	QASkippedReasons       map[string]int64 `json:"qa_skipped_reasons"`
 	QADuplicatesSuppressed int64            `json:"qa_duplicates_suppressed"`
@@ -51,7 +49,6 @@ type MetricsCollector struct {
 	totalRetries           int64
 	qaPhaseCalls           int64
 	qaTokensUsed           int64
-	qaCostUSD              *big.Rat
 	qaLatencyMs            int64
 	qaSkippedReasons       map[string]int64
 	qaDuplicatesSuppressed int64
@@ -67,7 +64,6 @@ func NewMetricsCollector(enabled bool) *MetricsCollector {
 		startTime:             time.Now(),
 		phaseStarts:           make(map[string]time.Time),
 		phaseLatenciesMs:      make(map[string]int64),
-		qaCostUSD:             new(big.Rat),
 		qaSkippedReasons:      make(map[string]int64),
 		qaFindingDispositions: make(map[string]int64),
 	}
@@ -159,7 +155,7 @@ func (m *MetricsCollector) RecordRetry() {
 }
 
 // RecordQAPhase registers one bounded QA review invocation and its resource totals.
-func (m *MetricsCollector) RecordQAPhase(duration time.Duration, tokens int64, costUSD string) {
+func (m *MetricsCollector) RecordQAPhase(duration time.Duration, tokens int64) {
 	if m == nil || !m.IsEnabled() {
 		return
 	}
@@ -170,9 +166,6 @@ func (m *MetricsCollector) RecordQAPhase(duration time.Duration, tokens int64, c
 	if tokens > 0 {
 		m.qaTokensUsed += tokens
 	}
-	if cost, ok := new(big.Rat).SetString(costUSD); ok && cost.Sign() >= 0 {
-		m.qaCostUSD.Add(m.qaCostUSD, cost)
-	}
 }
 
 // RecordQASkipped increments the bounded skip-reason counter.
@@ -182,15 +175,10 @@ func (m *MetricsCollector) RecordQASkipped(reason string) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	switch reason {
-	case "disabled", "missing_story_contract", "not_applicable":
-	default:
-		reason = "other"
-	}
 	m.qaSkippedReasons[reason]++
 }
 
-// RecordQADuplicateSuppressed records a duplicate QA scenario that was not executed.
+// RecordQADuplicateSuppressed increments the duplicate suppression counter.
 func (m *MetricsCollector) RecordQADuplicateSuppressed() {
 	if m == nil || !m.IsEnabled() {
 		return
@@ -200,7 +188,7 @@ func (m *MetricsCollector) RecordQADuplicateSuppressed() {
 	m.qaDuplicatesSuppressed++
 }
 
-// RecordQAFixRound records a generator fix round caused by QA findings.
+// RecordQAFixRound increments the fix rounds count.
 func (m *MetricsCollector) RecordQAFixRound() {
 	if m == nil || !m.IsEnabled() {
 		return
@@ -210,8 +198,8 @@ func (m *MetricsCollector) RecordQAFixRound() {
 	m.qaFixRounds++
 }
 
-// RecordQARegressionFound records a reproducible public-contract regression.
-func (m *MetricsCollector) RecordQARegressionFound() {
+// RecordQARegression increments the detected regression count.
+func (m *MetricsCollector) RecordQARegression() {
 	if m == nil || !m.IsEnabled() {
 		return
 	}
@@ -220,63 +208,58 @@ func (m *MetricsCollector) RecordQARegressionFound() {
 	m.qaRegressionsFound++
 }
 
-// RecordQAFindingDisposition records a finding's terminal disposition.
+// RecordQAFindingDisposition tracks disposition outcomes.
 func (m *MetricsCollector) RecordQAFindingDisposition(disposition string) {
 	if m == nil || !m.IsEnabled() {
 		return
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	switch disposition {
-	case "OPEN", "FIXED", "STALE", "FALSE_POSITIVE":
-	default:
-		disposition = "UNKNOWN"
-	}
 	m.qaFindingDispositions[disposition]++
 }
 
-// ExportSummary generates a thread-safe snapshot of all metrics collected so far.
-func (m *MetricsCollector) ExportSummary() MetricsSummary {
-	if m == nil {
+func (m *MetricsCollector) timeToFirstCommit() *float64 {
+	if m.firstCommitTime == nil {
+		return nil
+	}
+	sec := m.firstCommitTime.Sub(m.startTime).Seconds()
+	return &sec
+}
+
+// Summary returns a snapshot of all accumulated metrics.
+func (m *MetricsCollector) Summary() MetricsSummary {
+	if m == nil || !m.IsEnabled() {
 		return MetricsSummary{Enabled: false}
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	now := time.Now()
-	totalSec := now.Sub(m.startTime).Seconds()
-
-	var ttfc *float64
-	if m.firstCommitTime != nil {
-		val := m.firstCommitTime.Sub(m.startTime).Seconds()
-		ttfc = &val
-	}
-
-	latencies := make(map[string]int64, len(m.phaseLatenciesMs))
-	for k, v := range m.phaseLatenciesMs {
-		latencies[k] = v
-	}
-	qaSkippedReasons := make(map[string]int64, len(m.qaSkippedReasons))
-	for reason, count := range m.qaSkippedReasons {
-		qaSkippedReasons[reason] = count
-	}
-	qaFindingDispositions := make(map[string]int64, len(m.qaFindingDispositions))
-	for disposition, count := range m.qaFindingDispositions {
-		qaFindingDispositions[disposition] = count
-	}
-
-	llmSec := float64(m.llmWaitDurationMs) / 1000.0
 	var tokensPerSec float64
-	if llmSec > 0 {
-		tokensPerSec = float64(m.totalTokensGenerated) / llmSec
+	if m.llmWaitDurationMs > 0 {
+		tokensPerSec = float64(m.totalTokensGenerated) / (float64(m.llmWaitDurationMs) / 1000.0)
+	}
+
+	phaseLatencies := make(map[string]int64, len(m.phaseLatenciesMs))
+	for k, v := range m.phaseLatenciesMs {
+		phaseLatencies[k] = v
+	}
+
+	qaSkippedReasons := make(map[string]int64, len(m.qaSkippedReasons))
+	for k, v := range m.qaSkippedReasons {
+		qaSkippedReasons[k] = v
+	}
+
+	qaFindingDispositions := make(map[string]int64, len(m.qaFindingDispositions))
+	for k, v := range m.qaFindingDispositions {
+		qaFindingDispositions[k] = v
 	}
 
 	return MetricsSummary{
 		Enabled:                m.enabled,
 		StartTime:              m.startTime,
-		TotalExecutionSec:      totalSec,
-		TimeToFileFirstCommit:  ttfc,
-		PhaseLatenciesMs:       latencies,
+		TotalExecutionSec:      time.Since(m.startTime).Seconds(),
+		TimeToFileFirstCommit:  m.timeToFirstCommit(),
+		PhaseLatenciesMs:       phaseLatencies,
 		LLMWaitDurationMs:      m.llmWaitDurationMs,
 		LLMCalls:               m.llmCalls,
 		TotalTokensGenerated:   m.totalTokensGenerated,
@@ -286,7 +269,6 @@ func (m *MetricsCollector) ExportSummary() MetricsSummary {
 		TotalRetries:           m.totalRetries,
 		QAPhaseCalls:           m.qaPhaseCalls,
 		QATokensUsed:           m.qaTokensUsed,
-		QACostUSD:              m.qaCostUSD.FloatString(5),
 		QALatencyMs:            m.qaLatencyMs,
 		QASkippedReasons:       qaSkippedReasons,
 		QADuplicatesSuppressed: m.qaDuplicatesSuppressed,
@@ -296,12 +278,17 @@ func (m *MetricsCollector) ExportSummary() MetricsSummary {
 	}
 }
 
+// ExportSummary returns a copy of MetricsSummary.
+func (m *MetricsCollector) ExportSummary() MetricsSummary {
+	return m.Summary()
+}
+
 // ExportJSON writes the current metrics summary to a JSON file on disk.
 func (m *MetricsCollector) ExportJSON(path string) error {
 	if m == nil || !m.IsEnabled() {
 		return nil
 	}
-	summary := m.ExportSummary()
+	summary := m.Summary()
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create metrics directory: %w", err)

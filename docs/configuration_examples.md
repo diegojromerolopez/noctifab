@@ -161,7 +161,7 @@ sandbox:
 
 ## 4. Advanced Enterprise (PostgreSQL + Multi-LLM Failover + SAST)
 
-A highly resilient configuration for enterprise-grade autonomous software factories. It uses a centralized PostgreSQL database, multi-provider LLM failover, token cost budgeting, and security vulnerability scanning.
+A highly resilient configuration for enterprise-grade autonomous software factories. It uses a centralized PostgreSQL database, multi-provider LLM failover, token budgeting, and security vulnerability scanning.
 
 ```yaml
 config_version: "2.0"
@@ -251,7 +251,7 @@ Assigning different models to generate code, write tests, and review code preven
 - **Generators (`roles.generator`):** `deepseek-coder` for fast, syntax-accurate code implementation.
 - **Testers (`roles.tester`):** `openai-primary` (`gpt-4o`) for thorough unit test creation and boundary condition assertions.
 - **QA (`roles.qa`):** `anthropic-backup` (`claude-3-5-sonnet-latest`) is reserved for the disabled experimental QA capability.
-- **Orchestrator & Unblocker (`roles.orchestrator`, `roles.unblocker`):** `openai-primary` (`gpt-4o-mini`) for ultra-fast, low-cost state loop checks and diagnostics.
+- **Orchestrator & Unblocker (`roles.orchestrator`, `roles.unblocker`):** `openai-primary` (`gpt-4o-mini`) for ultra-fast, lightweight state loop checks and diagnostics.
 
 ```yaml
 config_version: "2.0"

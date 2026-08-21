@@ -173,4 +173,3 @@ func TestOpenAIEdgeCases_LegacyGatewayMaxCompletionTokensRejection(t *testing.T)
 		}
 	})
 }
-

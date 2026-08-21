@@ -35,10 +35,9 @@ func TestScenario_ParallelConflictResolution(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "conflict feature",
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "conflict feature",
 			},
 			Tasks: []domain.Task{
 				{
@@ -160,10 +159,9 @@ func TestScenario_NonDestructiveRefactor(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "Refactor Feature",
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "Refactor Feature",
 			},
 			Tasks: []domain.Task{
 				{

@@ -65,7 +65,50 @@ func TestUnblocker_FastPathAndEscalation(t *testing.T) {
 		assert.Contains(t, resetCmd.Directive, "non-interactively")
 	})
 
-	t.Run("hard stop fails task when StallCount >= 3", func(t *testing.T) {
+	t.Run("fast-path regex intercepts missing toolchain binary and sends ResetTaskCmd with fallback directive", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		taskLogDir := filepath.Join(tmpDir, ".noctifab", "logs", "tasks")
+		require.NoError(t, os.MkdirAll(taskLogDir, 0755))
+
+		logContent := "sh: 1: pytest: not found\nexit status 127\n"
+		require.NoError(t, os.WriteFile(filepath.Join(taskLogDir, "task-pytest.log"), []byte(logContent), 0644))
+
+		currDir, _ := os.Getwd()
+		defer func() { _ = os.Chdir(currDir) }()
+		_ = os.Chdir(tmpDir)
+
+		state := &domain.State{
+			StoryStatus: domain.StoryRunning,
+			Tasks: []domain.Task{
+				{
+					ID:        "task-pytest",
+					Title:     "Run Pytest",
+					Status:    domain.TaskInProgress,
+					UpdatedAt: time.Now().Add(-15 * time.Minute),
+				},
+			},
+			ActiveAgents: []domain.Agent{
+				{ID: "agent-pytest", TaskID: "task-pytest", Status: domain.AgentWorking, StartedAt: time.Now().Add(-15 * time.Minute)},
+			},
+		}
+
+		repo := &inMemoryRepo{state: state}
+		mailbox := NewCommandMailbox(repo)
+		unblocker := NewUnblockerAgent(repo, nil, mailbox, 10*time.Millisecond, 5, 5*time.Minute, 10*time.Minute, false)
+
+		ctx := context.Background()
+		unblocker.checkAndUnblock(ctx)
+
+		cmds := mailbox.PopAll()
+		require.Len(t, cmds, 1)
+		resetCmd, ok := cmds[0].(*ResetTaskCmd)
+		require.True(t, ok)
+		assert.Equal(t, "task-pytest", resetCmd.TaskID)
+		assert.Equal(t, "missing_toolchain_binary", resetCmd.Reason)
+		assert.Contains(t, resetCmd.Directive, "standard library")
+	})
+
+	t.Run("hard stop fails task when StallCount >= 5", func(t *testing.T) {
 		state := &domain.State{
 			StoryStatus: domain.StoryRunning,
 			Tasks: []domain.Task{
@@ -73,7 +116,7 @@ func TestUnblocker_FastPathAndEscalation(t *testing.T) {
 					ID:         "task-stuck",
 					Title:      "Stuck Task",
 					Status:     domain.TaskInProgress,
-					StallCount: 3,
+					StallCount: 5,
 					UpdatedAt:  time.Now().Add(-15 * time.Minute),
 				},
 			},
@@ -81,7 +124,7 @@ func TestUnblocker_FastPathAndEscalation(t *testing.T) {
 
 		repo := &inMemoryRepo{state: state}
 		mailbox := NewCommandMailbox(repo)
-		unblocker := NewUnblockerAgent(repo, nil, mailbox, 10*time.Millisecond, 3, 5*time.Minute, 10*time.Minute, false)
+		unblocker := NewUnblockerAgent(repo, nil, mailbox, 10*time.Millisecond, 5, 5*time.Minute, 10*time.Minute, false)
 
 		ctx := context.Background()
 		unblocker.checkAndUnblock(ctx)

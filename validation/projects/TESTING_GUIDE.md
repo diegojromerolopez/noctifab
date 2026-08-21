@@ -41,13 +41,13 @@ time/tokens — the priority ramp to follow when reading results or running a su
 ## 3. Recommended Order to Test noctifab (diagnostic ramp)
 
 To test the platform itself, run the projects as a **progressive capability ladder**:
-each project de-risks one capability before you spend budget on the next, so a
+each project de-risks one capability before you spend tokens on the next, so a
 failure attributes cleanly to a specific stage.
 
 | # | Project | Capability it tests | If it fails, the problem is… |
 | :--: | :--- | :--- | :--- |
 | **Wave 1 — the loop** | | | |
-| 1 | `echo` | Full loop integrity (init → PM → plan → generate → test → merge) at minimum cost | Core orchestrator broken; stop here |
+| 1 | `echo` | Full loop integrity (init → PM → plan → generate → test → merge) with minimal tokens | Core orchestrator broken; stop here |
 | 2 | `todo-cli` | Subcommand correctness + file-based state persistence | Generation quality / state handling |
 | 3 | `calculator` | Linter self-healing loop (RSpec + RuboCop — the known stall probe) | Retry/repair logic, linter iteration |
 | **Wave 2 — strict discipline** | | | |
@@ -62,13 +62,13 @@ failure attributes cleanly to a specific stage.
 
 ### Why this order
 
-- **Cheapest, highest-signal first.** `echo` proves the entire loop for pennies;
+- **Fastest, highest-signal first.** `echo` proves the entire loop with minimal token usage;
   `calculator` surfaces the linter-loop bottleneck early (it already stalled once)
-  before you spend budget on bigger projects.
-- **Capability de-risking before cost.** Network (`t4`) comes before typed-app
+  before running larger projects.
+- **Capability de-risking in sequence.** Network (`t4`) comes before typed-app
   (`pyedis`) before relational (`notebook`); if noctifab cannot run a server yet,
   `pyedis`/`notebook` would fail confusingly anyway.
-- **Most expensive last.** `frontpunch` is the heaviest and most rate-limit-exposed;
+- **Heaviest integration last.** `frontpunch` is the heaviest and most rate-limit-exposed;
   it should fail only for its own reasons, never because an earlier stage was broken.
 
 ## 4. Practical Execution

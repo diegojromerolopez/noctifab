@@ -64,7 +64,6 @@ type ExecutionEvent struct {
 	PromptTokens      *int64             `json:"prompt_tokens,omitempty"`
 	CompletionTokens  *int64             `json:"completion_tokens,omitempty"`
 	CachedTokens      *int64             `json:"cached_tokens,omitempty"`
-	CostUSD           string             `json:"cost_usd,omitempty"`
 	UsageKind         string             `json:"usage_kind,omitempty"` // exact | estimated | unknown
 	Count             *int64             `json:"count,omitempty"`
 	Total             *int64             `json:"total,omitempty"`

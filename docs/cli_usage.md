@@ -81,7 +81,7 @@ noctifab start [target_dir] --standby -d
 ```
 
 ### 4. `demo`
-Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Ideal for testing Noctifab's dark factory loop with zero LLM API keys and zero cost.
+Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Ideal for testing Noctifab's dark factory loop with zero LLM API keys.
 
 ```bash
 noctifab demo [--project <archetype>] [--offline] [--speed <multiplier>] [--no-cleanup]
@@ -354,7 +354,7 @@ The following flags can be passed to the root command or configured in `.noctifa
 | `--llm-model` | `-m` | `gpt-4o` | LLM Model Identifier |
 | `--sandbox-mode` | | `host` | Sandbox isolation mode (`host` or `docker`) |
 | `--sandbox-idle-timeout` | | `30s` | Kill subprocess if no stdout/stderr output for this duration (0 = disabled) |
-| `--max-budget-usd` | | `10.00` | Daily LLM credit budget boundary in USD |
+| `--token-usage-limit` | | `0` | Daily token limit boundary (0 disables limit) |
 | `--pr-auto-create` | | `false` | Automatically create a PR from the task branch |
 | `--pr-auto-merge` | | `false` | Automatically merge the PR when CI checks pass |
 | `--pr-auto-rebase` | | `false` | Automatically rebase the PR branch on base updates |
@@ -463,7 +463,6 @@ llms:
     max_retries: 5
     retry_backoff: 100ms
     retry_backoff_factor: 2
-    max_budget_usd: 10
   - provider: gemini
     model: gemini-2.5-flash
     temperature: 0
@@ -472,7 +471,6 @@ llms:
     max_retries: 5
     retry_backoff: 100ms
     retry_backoff_factor: 2
-    max_budget_usd: 10
 ```
 
 **Step 2 — Define your API keys in `secrets.yaml`:**
@@ -486,7 +484,7 @@ GEMINI_API_KEY: "AIzaSy..."
 - **Order of Try:** The first provider listed in the `llms:` configuration is the primary client. `noctifab` uses it for the startup pre-flight check and attempts all completions through it first.
 - **Failover Cooldown:** When a provider encounters a transient failure (HTTP `429`/`503`/overload/timeout), that backend is marked on **cooldown** (default: 5 minutes) and bypassed on subsequent calls. completions are automatically routed to the next configured backend in the list.
 - **Secrets Resolution:** All `secret:` references inside the `llms:` list are recursively resolved against `secrets.yaml` at load time, ensuring fallback credentials remain protected.
-- **Budget Monitoring:** Each backend enforces its own locally monitored daily monetary limit (`max_budget_usd`) independently.
+- **Token Accounting:** Cumulative token consumption is tracked across all backends.
 
 ---
 

@@ -32,7 +32,6 @@ type SpecRevision struct {
 	ParentVer    int               `json:"parent_version,omitempty"`
 	DiffSummary  string            `json:"diff_summary,omitempty"`
 	TokensUsed   int64             `json:"tokens_used"`
-	CostUSD      string            `json:"cost_usd,omitempty"`
 	ModelRoles   map[string]string `json:"model_roles,omitempty"`
 	CreatedAt    time.Time         `json:"created_at"`
 }
@@ -137,7 +136,7 @@ func (s *SpecSession) TotalTokensUsed() int64 {
 }
 
 // AddRevision appends a new revision and updates the current spec content and active version index.
-func (s *SpecSession) AddRevision(content, prompt string, kind SpecTurnKind, diffSummary string, tokensUsed int64, costUSD string) SpecRevision {
+func (s *SpecSession) AddRevision(content, prompt string, kind SpecTurnKind, diffSummary string, tokensUsed int64) SpecRevision {
 	hasher := sha256.New()
 	hasher.Write([]byte(content))
 	sha := hex.EncodeToString(hasher.Sum(nil))
@@ -157,7 +156,6 @@ func (s *SpecSession) AddRevision(content, prompt string, kind SpecTurnKind, dif
 		CreatedAt:   time.Now().UTC(),
 		DiffSummary: diffSummary,
 		TokensUsed:  tokensUsed,
-		CostUSD:     costUSD,
 	}
 	s.Revisions = append(s.Revisions, rev)
 	s.ActiveVerIndex = len(s.Revisions) - 1

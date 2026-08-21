@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const storyStatus = document.getElementById('story-status');
   const buildHealth = document.getElementById('build-health');
   const totalTokens = document.getElementById('total-tokens');
-  const totalCost = document.getElementById('total-cost');
   const elapsedTime = document.getElementById('elapsed-time');
   const activeStoryName = document.getElementById('active-story-name');
   const agentsGrid = document.getElementById('agents-grid');
@@ -112,7 +111,6 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const payload = JSON.parse(e.data);
         if (payload.total_tokens !== undefined) totalTokens.textContent = Number(payload.total_tokens).toLocaleString();
-        if (payload.total_cost !== undefined) totalCost.textContent = '$' + payload.total_cost;
       } catch (err) {
         console.error('Error in TOKEN_METRICS event:', err);
       }
@@ -198,7 +196,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.metadata) {
       if (state.metadata.feature_name) activeStoryName.textContent = state.metadata.feature_name;
       if (state.metadata.total_tokens_used !== undefined) totalTokens.textContent = Number(state.metadata.total_tokens_used).toLocaleString();
-      if (state.metadata.total_cost_usd) totalCost.textContent = '$' + state.metadata.total_cost_usd;
     }
 
     updatePipelinePhase(state);

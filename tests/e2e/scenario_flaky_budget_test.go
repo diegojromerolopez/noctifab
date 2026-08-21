@@ -35,10 +35,9 @@ func TestScenario_FlakyQuarantine(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "Flaky Feature",
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "Flaky Feature",
 			},
 			Tasks: []domain.Task{
 				{
@@ -105,7 +104,7 @@ func TestScenario_BudgetExceededMidExecution(t *testing.T) {
 	ctx := context.Background()
 	tempDir := t.TempDir()
 
-	t.Run("when cost accumulates mid-execution, budget limit halts run gracefully", func(t *testing.T) {
+	t.Run("when tokens accumulate mid-execution, budget limit halts run gracefully", func(t *testing.T) {
 		repo, cleanup := setupRepo(t, ctx, tempDir, "budget-mid", "budget-mid-session")
 		defer cleanup()
 
@@ -124,10 +123,9 @@ func TestScenario_BudgetExceededMidExecution(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "Budget Feature",
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "Budget Feature",
 			},
 			Tasks: []domain.Task{
 				{

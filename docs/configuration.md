@@ -440,7 +440,7 @@ unblocker:
 - **`max_retries`** (Integer): Maximum number of unblock/reset attempts allowed for a single task before the unblocker permanently marks it as `FAILED` (default: `3`). Configurable via `--unblocker-max-retries` or `NOCTIFAB_UNBLOCKER_MAX_RETRIES`.
 - **`stall_threshold`** (Duration): How long a task must be frozen `IN_PROGRESS` with no progress update before it is classified as stalled (default: `5m`).
 - **`conflict_threshold`** (Duration): How long a `CONFLICT_BLOCKED` task waits before the unblocker intervenes (default: `15m`).
-- **`llm_assessment`** (Boolean): When `true` (default), the unblocker calls the LLM to diagnose each stall and choose the corrective action. When `false`, deterministic heuristics are applied instead (no LLM call, lower token cost).
+- **`llm_assessment`** (Boolean): When `true` (default), the unblocker calls the LLM to diagnose each stall and choose the corrective action. When `false`, deterministic heuristics are applied instead (no LLM call, lower token consumption).
 
 See [unblocker_agent.md](unblocker_agent.md) for a full developer reference including the stall detection algorithm, command dispatch, and tuning guidelines.
 

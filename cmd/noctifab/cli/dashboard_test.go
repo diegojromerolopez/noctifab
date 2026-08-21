@@ -23,7 +23,6 @@ func TestDashboard_RenderDashboard(t *testing.T) {
 			StoryStatus: domain.StoryRunning,
 			Metadata: domain.StateMetadata{
 				FeatureName:       "Feature X",
-				TotalCostUSD:      "0.015",
 				TotalTokensUsed:   500,
 				IntegrationBranch: "noctifab/story-feature-x",
 			},
@@ -60,7 +59,6 @@ func TestDashboard_RenderDashboard(t *testing.T) {
 		assert.Contains(t, out, "/Users/dev/project")
 		assert.Contains(t, out, "Global Status: RUNNING")
 		assert.Contains(t, out, "Elapsed Time:")
-		assert.Contains(t, out, "Cost: $0.015")
 		assert.Contains(t, out, "Tokens Used: 500")
 
 		// Part 2: Main progress board assertions
@@ -83,7 +81,6 @@ func TestDashboard_RenderDashboard(t *testing.T) {
 			StoryStatus: domain.StorySuccess,
 			Metadata: domain.StateMetadata{
 				FeatureName:     "Feature Y",
-				TotalCostUSD:    "0.010",
 				TotalTokensUsed: 200,
 			},
 			Tasks: []domain.Task{
@@ -110,7 +107,6 @@ func TestDashboard_RenderDashboard(t *testing.T) {
 			StoryStatus: domain.StoryFailed,
 			Metadata: domain.StateMetadata{
 				FeatureName:     "Feature Z",
-				TotalCostUSD:    "0.020",
 				TotalTokensUsed: 300,
 			},
 			Tasks: []domain.Task{

@@ -66,7 +66,7 @@ func (q *QARuntimeCoordinator) Begin(request QAReviewRequest) QAReviewResult {
 	return QAReviewResult{Phase: domain.ReviewPhase{
 		ID: uuid.NewString(), StoryID: request.Contract.StoryID, TaskID: request.Task.ID,
 		Role: "qa", Attempt: request.Attempt, Status: domain.ReviewWorking,
-		StartedAt: now, DeadlineAt: now.Add(time.Duration(q.cfg.MaxDuration)), CostUSD: "0",
+		StartedAt: now, DeadlineAt: now.Add(time.Duration(q.cfg.MaxDuration)),
 	}}
 }
 

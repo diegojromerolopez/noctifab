@@ -118,7 +118,7 @@ func (o *SpecOrchestrator) RunSession(ctx context.Context, opts RunSessionOption
 		}
 	}
 
-	rev1 := session.AddRevision(currentDraft, opts.InitialPrompt, domain.SpecTurnInitial, "", 0, "0.0")
+	rev1 := session.AddRevision(currentDraft, opts.InitialPrompt, domain.SpecTurnInitial, "", 0)
 	if snapPath, sha, err := snapshots.SaveSnapshot(rev1.Version, rev1.Content, ""); err == nil {
 		session.Revisions[0].SnapshotPath = snapPath
 		session.Revisions[0].SHA256 = sha
@@ -204,7 +204,7 @@ func (o *SpecOrchestrator) RunSession(ctx context.Context, opts RunSessionOption
 		diff := o.renderer.CalculateDiff(session.CurrentSpec, newDraft)
 		o.renderer.RenderDiff(diff)
 
-		rev := session.AddRevision(newDraft, humanInput, domain.SpecTurnRefine, diff, 0, "0.0")
+		rev := session.AddRevision(newDraft, humanInput, domain.SpecTurnRefine, diff, 0)
 		if snapPath, sha, err := snapshots.SaveSnapshot(rev.Version, rev.Content, diff); err == nil {
 			idx := len(session.Revisions) - 1
 			session.Revisions[idx].SnapshotPath = snapPath

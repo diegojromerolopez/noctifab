@@ -44,11 +44,15 @@ func (c *ResetTaskCmd) Execute(ctx context.Context, repo domain.StateRepository)
 
 			// Increment retries to avoid infinite reset loops for permanently broken tasks.
 			state.Tasks[i].Retries++
-			if state.Tasks[i].MaxRetries > 0 && state.Tasks[i].Retries >= state.Tasks[i].MaxRetries {
+			maxLimit := state.Tasks[i].MaxRetries
+			if maxLimit <= 0 || maxLimit > 5 {
+				maxLimit = 5
+			}
+			if state.Tasks[i].Retries >= maxLimit || state.Tasks[i].StallCount >= 5 {
 				state.Tasks[i].Status = domain.TaskFailed
-				state.Tasks[i].FailureLog = fmt.Sprintf("[Unblocker] task reset limit reached (%d/%d): %s", state.Tasks[i].Retries, state.Tasks[i].MaxRetries, c.Reason)
+				state.Tasks[i].FailureLog = fmt.Sprintf("[Unblocker] task reset limit reached (%d/%d, stalls: %d): %s", state.Tasks[i].Retries, maxLimit, state.Tasks[i].StallCount, c.Reason)
 				state.BuildStatus = domain.BuildFailing
-				fmt.Printf("❌ [Unblocker] Task %s reached max retries (%d/%d); marking FAILED\n", c.TaskID, state.Tasks[i].Retries, state.Tasks[i].MaxRetries)
+				fmt.Printf("❌ [Unblocker] Task %s reached max resets (%d/%d, stalls: %d); marking FAILED\n", c.TaskID, state.Tasks[i].Retries, maxLimit, state.Tasks[i].StallCount)
 			} else {
 				state.Tasks[i].Status = domain.TaskPending
 				state.Tasks[i].Progress = 0
@@ -144,6 +148,8 @@ func (c *FailTaskCmd) Execute(ctx context.Context, repo domain.StateRepository) 
 type LogUnblockerActionCmd struct {
 	// Message is the diagnostic message to append.
 	Message string
+	// TokensUsed is the optional count of tokens consumed during LLM assessment.
+	TokensUsed int64
 }
 
 // Execute implements Command for LogUnblockerActionCmd.
@@ -151,6 +157,10 @@ func (c *LogUnblockerActionCmd) Execute(ctx context.Context, repo domain.StateRe
 	state, err := repo.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("LogUnblockerActionCmd: failed to load state: %w", err)
+	}
+
+	if c.TokensUsed > 0 {
+		state.Metadata.TotalTokensUsed += c.TokensUsed
 	}
 
 	domain.AppendAction(state, domain.Action{

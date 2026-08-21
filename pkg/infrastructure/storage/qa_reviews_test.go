@@ -31,7 +31,7 @@ func qaReviewState(id string) *domain.State {
 			ID: "phase-b", StoryID: "US-002", TaskID: "task-2", Role: "qa", ArtifactID: "commit:b", Attempt: 1,
 			ArtifactManifest: []domain.ArtifactManifestEntry{{Path: "dist/app", SHA256: "hash-b"}, {Path: "dist/helper", SHA256: "hash-helper"}},
 			Status:           domain.ReviewFindings, TerminalReason: "public_contract_failed", StartedAt: started.Add(time.Minute),
-			DeadlineAt: started.Add(3 * time.Minute), CompletedAt: started.Add(2 * time.Minute), TokensUsed: 25, CostUSD: "0.001",
+			DeadlineAt: started.Add(3 * time.Minute), CompletedAt: started.Add(2 * time.Minute), TokensUsed: 25,
 		}, {
 			ID: "phase-a", StoryID: "US-001", TaskID: "task-1", Role: "qa", ArtifactID: "commit:a", Attempt: 1,
 			ArtifactManifest: []domain.ArtifactManifestEntry{{Path: "dist/app", SHA256: "hash-a"}},

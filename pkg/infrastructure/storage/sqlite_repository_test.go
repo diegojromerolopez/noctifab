@@ -139,7 +139,6 @@ func TestSQLiteRepository(t *testing.T) {
 				BaseBranch:        "main",
 				ProjectVersion:    "1.0.0",
 				TotalTokensUsed:   500,
-				TotalCostUSD:      "0.01500",
 			},
 		}
 

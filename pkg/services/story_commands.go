@@ -244,7 +244,6 @@ func NewStateForStory(projectPath, storyPath, baseBranch, branchPrefix string) *
 			FeatureName:       featName,
 			BaseBranch:        baseBranch,
 			IntegrationBranch: integrationBranch,
-			TotalCostUSD:      "0.00000",
 		},
 	}
 }

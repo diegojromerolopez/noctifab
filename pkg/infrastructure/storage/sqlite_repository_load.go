@@ -16,7 +16,7 @@ func (r *SQLiteRepository) LoadByID(ctx context.Context, id string) (*domain.Sta
 	defer span.End()
 
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd
+		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used
 		FROM state WHERE id = ?`, id)
 
 	state, err := r.scanStateRow(ctx, row)
@@ -37,7 +37,7 @@ func (r *SQLiteRepository) LoadAll(ctx context.Context) ([]*domain.State, error)
 	defer span.End()
 
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used, total_cost_usd
+		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used
 		FROM state ORDER BY CASE WHEN story_status = 'RUNNING' THEN 0 ELSE 1 END, id DESC`)
 	if err != nil {
 		return nil, err
@@ -77,7 +77,7 @@ func (r *SQLiteRepository) scanStateRow(ctx context.Context, row *sql.Row) (*dom
 		&storyStatusStr, &state.StoryError,
 		&state.Metadata.InputSource, &state.Metadata.InputPath, &state.Metadata.IntegrationBranch,
 		&state.Metadata.FeatureName, &state.Metadata.BaseBranch, &state.Metadata.ProjectVersion,
-		&state.Metadata.TotalTokensUsed, &state.Metadata.TotalCostUSD,
+		&state.Metadata.TotalTokensUsed,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -99,7 +99,7 @@ func (r *SQLiteRepository) scanStateRows(ctx context.Context, rows *sql.Rows) (*
 		&storyStatusStr, &state.StoryError,
 		&state.Metadata.InputSource, &state.Metadata.InputPath, &state.Metadata.IntegrationBranch,
 		&state.Metadata.FeatureName, &state.Metadata.BaseBranch, &state.Metadata.ProjectVersion,
-		&state.Metadata.TotalTokensUsed, &state.Metadata.TotalCostUSD,
+		&state.Metadata.TotalTokensUsed,
 	)
 	if err != nil {
 		return nil, err

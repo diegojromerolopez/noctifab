@@ -353,7 +353,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 				string(state.StoryStatus), state.StoryError,
 				state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 				state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
-				state.Metadata.TotalTokensUsed, state.Metadata.TotalCostUSD).
+				state.Metadata.TotalTokensUsed).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		mock.ExpectExec(`DELETE FROM tasks WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -433,7 +433,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 				string(state.StoryStatus), state.StoryError,
 				state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 				state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
-				state.Metadata.TotalTokensUsed, state.Metadata.TotalCostUSD, state.ID).
+				state.Metadata.TotalTokensUsed, state.ID).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		mock.ExpectExec(`DELETE FROM tasks WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))

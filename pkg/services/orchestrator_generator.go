@@ -96,6 +96,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 
 	for turn := 0; turn < maxTurns; turn++ {
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
+		o.recordTokenUsage(ctx, currentPrompt, resp)
 		if err != nil {
 			lastErr = err
 			break

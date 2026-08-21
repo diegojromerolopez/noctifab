@@ -31,6 +31,14 @@ func TestFastPathClassify(t *testing.T) {
 		assert.Contains(t, res.Directive, "--watchAll=false")
 	})
 
+	t.Run("matches missing toolchain binary", func(t *testing.T) {
+		snippet := "sh: 1: pytest: not found\nexit status 127"
+		res := FastPathClassify(snippet)
+		assert.True(t, res.Matched)
+		assert.Equal(t, "missing_toolchain_binary", res.Reason)
+		assert.Contains(t, res.Directive, "standard library")
+	})
+
 	t.Run("returns unmatched for unrecognized log snippets", func(t *testing.T) {
 		snippet := "Building package... Done in 2.1s"
 		res := FastPathClassify(snippet)

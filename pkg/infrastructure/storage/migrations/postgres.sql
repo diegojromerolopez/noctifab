@@ -9,8 +9,7 @@ CREATE TABLE IF NOT EXISTS state (
     feature_name VARCHAR(255),
     base_branch VARCHAR(255),
     project_version VARCHAR(50),
-    total_tokens_used BIGINT NOT NULL DEFAULT 0,
-    total_cost_usd NUMERIC(10, 5) NOT NULL DEFAULT 0.0
+    total_tokens_used BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -64,8 +63,7 @@ CREATE TABLE IF NOT EXISTS token_usage (
     task_id VARCHAR(255),
     agent_id VARCHAR(255),
     prompt_tokens BIGINT NOT NULL,
-    completion_tokens BIGINT NOT NULL,
-    cost_usd NUMERIC(10, 5) NOT NULL
+    completion_tokens BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS schema_migrations (

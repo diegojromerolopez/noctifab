@@ -96,7 +96,65 @@ func ResolveTaskDependencies(tasks []domain.Task, projectPath string) ([]domain.
 		task.DependsOn = cleanDeps
 	}
 
+	// Auto-serialize tasks that declare overlapping target files or root build configurations
+	fileLastTaskID := make(map[string]string)
+	for i := range resolvedTasks {
+		task := &resolvedTasks[i]
+		for _, tf := range task.TargetFiles {
+			cleanFile := strings.ToLower(filepath.Clean(strings.TrimSpace(tf)))
+			if cleanFile == "" || cleanFile == ".gitignore" {
+				continue
+			}
+			if prevTaskID, exists := fileLastTaskID[cleanFile]; exists && prevTaskID != task.ID {
+				hasDep := false
+				for _, d := range task.DependsOn {
+					if d == prevTaskID {
+						hasDep = true
+						break
+					}
+				}
+				if !hasDep {
+					task.DependsOn = append(task.DependsOn, prevTaskID)
+				}
+			}
+			fileLastTaskID[cleanFile] = task.ID
+		}
+	}
+
 	return resolvedTasks, nil
+}
+
+var sharedRootBuildFiles = map[string]bool{
+	"makefile":          true,
+	"gnumakefile":       true,
+	"cmakelists.txt":    true,
+	"pyproject.toml":    true,
+	"setup.py":          true,
+	"setup.cfg":         true,
+	"package.json":      true,
+	"package-lock.json": true,
+	"yarn.lock":         true,
+	"pnpm-lock.yaml":    true,
+	"cargo.toml":        true,
+	"cargo.lock":        true,
+	"go.mod":            true,
+	"go.sum":            true,
+	"pom.xml":           true,
+	"build.gradle":      true,
+	"build.gradle.kts":  true,
+}
+
+// IsSharedRootBuildFile checks whether the path corresponds to a shared root build/project manifest.
+func IsSharedRootBuildFile(path string) bool {
+	clean := strings.ToLower(filepath.Clean(strings.TrimSpace(path)))
+	if strings.Contains(clean, "/") || strings.Contains(clean, "\\") {
+		dir := filepath.Dir(clean)
+		if dir != "." && dir != "" {
+			return false
+		}
+		clean = filepath.Base(clean)
+	}
+	return sharedRootBuildFiles[clean]
 }
 
 // isStoryReference checks if a dependency string looks like a user story identifier.

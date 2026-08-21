@@ -280,7 +280,7 @@ func (o *Orchestrator) persistQAResult(ctx context.Context, contract domain.Stor
 
 func (o *Orchestrator) recordQAResultMetrics(result QAReviewResult) {
 	metrics := o.metrics()
-	metrics.RecordQAPhase(result.Phase.CompletedAt.Sub(result.Phase.StartedAt), result.Phase.TokensUsed, result.Phase.CostUSD)
+	metrics.RecordQAPhase(result.Phase.CompletedAt.Sub(result.Phase.StartedAt), result.Phase.TokensUsed)
 	if result.Phase.Status == domain.ReviewSkipped {
 		metrics.RecordQASkipped(result.Phase.TerminalReason)
 	}
@@ -288,7 +288,7 @@ func (o *Orchestrator) recordQAResultMetrics(result QAReviewResult) {
 		metrics.RecordQADuplicateSuppressed()
 	}
 	for _, finding := range result.Findings {
-		metrics.RecordQARegressionFound()
+		metrics.RecordQARegression()
 		metrics.RecordQAFindingDisposition(finding.Disposition)
 	}
 }
@@ -319,7 +319,7 @@ func (o *Orchestrator) skippedQAWithStory(taskID, storyID, reason string) QARevi
 	now := time.Now()
 	return QAReviewResult{Phase: domain.ReviewPhase{
 		ID: uuid.NewString(), StoryID: storyID, TaskID: taskID, Role: "qa", Attempt: 1,
-		Status: domain.ReviewSkipped, TerminalReason: reason, StartedAt: now, CompletedAt: now, CostUSD: "0",
+		Status: domain.ReviewSkipped, TerminalReason: reason, StartedAt: now, CompletedAt: now,
 	}}
 }
 

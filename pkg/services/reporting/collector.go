@@ -138,9 +138,6 @@ func (c *Collector) Observe(ctx context.Context, event domain.ExecutionEvent) {
 	if event.CompletionTokens != nil {
 		c.snapshot.MeasuredTokens += *event.CompletionTokens
 	}
-	if event.CostUSD != "" {
-		c.snapshot.TotalCostUSD = event.CostUSD
-	}
 	if event.Provider != "" {
 		found := false
 		for _, p := range c.snapshot.ProvidersUsed {
