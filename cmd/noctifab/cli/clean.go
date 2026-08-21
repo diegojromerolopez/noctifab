@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -18,7 +19,7 @@ import (
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "Remove all noctifab state and reset the project to a pristine condition",
-	Long: `clean removes the noctifab database, PID file, and per-story logs.
+	Long: `clean removes the noctifab database, PID file, logs, worktrees, steer stories, and ephemeral runtime data.
 Use this to start completely fresh. In-flight daemon work will be lost.
 Stop the daemon first with 'noctifab stop' if it is running.`,
 	SilenceErrors: true,
@@ -95,11 +96,16 @@ func runDryClean(cfg *config.Config) error {
 			dbPath = ".noctifab/data/noctifab.db"
 		}
 		printDryRunItem(dbPath)
+		for _, ext := range []string{"-wal", "-shm", "-journal"} {
+			printDryRunItem(dbPath + ext)
+		}
 	}
 
+	dryRunDataArtifacts()
 	printDryRunItem(daemonPIDFile)
-	printDryRunItem(".noctifab/logs/roadmap")
-	printDryRunItem(daemonLogFile)
+	printDryRunItem(".noctifab/logs")
+	printDryRunItem(".noctifab/worktrees")
+	printDryRunItem(".noctifab/stories")
 
 	fmt.Println("[dry-run] No files were deleted.")
 	return nil
@@ -124,9 +130,11 @@ func runActualClean(cfg *config.Config) error {
 		}
 	}
 
+	cleanDataArtifacts()
 	removePIDFile()
-	removeStoryLogs()
-	removeDaemonLog()
+	removeLogs()
+	cleanWorktrees()
+	removeStories()
 
 	fmt.Println("✅ noctifab state cleared. Run 'noctifab init' and 'noctifab start' to begin fresh.")
 	return nil
@@ -176,7 +184,54 @@ func cleanSQLiteDB(cfg *config.Config) error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("failed to access database file %s: %w", dbPath, err)
 	}
+
+	// Clean auxiliary SQLite WAL, SHM, and rollback journal files if present
+	for _, ext := range []string{"-wal", "-shm", "-journal"} {
+		auxPath := dbPath + ext
+		if _, err := os.Stat(auxPath); err == nil {
+			if err := os.Remove(auxPath); err != nil {
+				return fmt.Errorf("failed to remove database auxiliary file %s: %w", auxPath, err)
+			}
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to access database auxiliary file %s: %w", auxPath, err)
+		}
+	}
+
 	return nil
+}
+
+func isDataArtifact(name string) bool {
+	return name == "metrics.json" || (strings.HasPrefix(name, "qa-test-") && strings.HasSuffix(name, ".patch"))
+}
+
+func dryRunDataArtifacts() {
+	dataDir := ".noctifab/data"
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if isDataArtifact(entry.Name()) {
+			printDryRunItem(filepath.Join(dataDir, entry.Name()))
+		}
+	}
+}
+
+func cleanDataArtifacts() {
+	dataDir := ".noctifab/data"
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if isDataArtifact(name) {
+			p := filepath.Join(dataDir, name)
+			if err := os.Remove(p); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠ Could not remove data artifact at %s: %v\n", p, err)
+			}
+		}
+	}
 }
 
 func removePIDFile() {
@@ -191,28 +246,49 @@ func removePIDFile() {
 	}
 }
 
-func removeStoryLogs() {
-	logDir := ".noctifab/logs/roadmap"
+func removeLogs() {
+	logDir := ".noctifab/logs"
 	if _, err := os.Stat(logDir); err == nil {
 		if err := os.RemoveAll(logDir); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠ Could not remove story logs at %s: %v\n", logDir, err)
+			fmt.Fprintf(os.Stderr, "⚠ Could not remove logs directory at %s: %v\n", logDir, err)
 		} else {
-			fmt.Printf("Removed story logs: %s\n", logDir)
+			fmt.Printf("Removed logs: %s\n", logDir)
 		}
 	} else if !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "⚠ Could not access story logs at %s: %v\n", logDir, err)
+		fmt.Fprintf(os.Stderr, "⚠ Could not access logs directory at %s: %v\n", logDir, err)
 	}
 }
 
-func removeDaemonLog() {
-	if _, err := os.Stat(daemonLogFile); err == nil {
-		if err := os.Remove(daemonLogFile); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠ Could not remove daemon log at %s: %v\n", daemonLogFile, err)
+func cleanWorktrees() {
+	worktreeDir := ".noctifab/worktrees"
+	if _, err := os.Stat(".git"); err == nil {
+		git := services.NewGitClient(".")
+		if _, pruneErr := git.Run(context.Background(), false, "worktree", "prune"); pruneErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Could not prune git worktrees: %v\n", pruneErr)
+		}
+	}
+
+	if _, err := os.Stat(worktreeDir); err == nil {
+		if err := os.RemoveAll(worktreeDir); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Could not remove worktrees at %s: %v\n", worktreeDir, err)
 		} else {
-			fmt.Printf("Removed daemon log: %s\n", daemonLogFile)
+			fmt.Printf("Removed worktrees: %s\n", worktreeDir)
 		}
 	} else if !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "⚠ Could not access daemon log at %s: %v\n", daemonLogFile, err)
+		fmt.Fprintf(os.Stderr, "⚠ Could not access worktrees at %s: %v\n", worktreeDir, err)
+	}
+}
+
+func removeStories() {
+	storiesDir := ".noctifab/stories"
+	if _, err := os.Stat(storiesDir); err == nil {
+		if err := os.RemoveAll(storiesDir); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Could not remove stories at %s: %v\n", storiesDir, err)
+		} else {
+			fmt.Printf("Removed steer stories: %s\n", storiesDir)
+		}
+	} else if !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "⚠ Could not access stories at %s: %v\n", storiesDir, err)
 	}
 }
 

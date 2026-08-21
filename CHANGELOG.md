@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.46.4] - 2026-08-21
+
+### Fixed
+- **Comprehensive Workspace and Runtime State Cleanup in `noctifab clean`**:
+  - Added recursive removal of the entire `.noctifab/logs/` directory instead of only targeted subpaths, ensuring all story, task, and daemon logs are cleared.
+  - Added Git worktree pruning (`git worktree prune`) and recursive removal of `.noctifab/worktrees/` directory.
+  - Added removal of auxiliary SQLite database files (`-wal`, `-shm`, `-journal`) in both actual execution and `--dry-run`.
+  - Added cleanup of queued steer story orders (`.noctifab/stories/`) and ephemeral runtime data artifacts (`.noctifab/data/metrics.json`, `qa-test-*.patch`).
+  - Updated documentation in `SPEC.md`, `docs/cli_usage.md`, and CLI help text.
+
 ## [0.46.3] - 2026-08-20
 
 ### Fixed

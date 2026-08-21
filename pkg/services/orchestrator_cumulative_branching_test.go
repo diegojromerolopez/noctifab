@@ -437,6 +437,3 @@ func TestCleanConflictMarkers_DeterministicResolution(t *testing.T) {
 	resolved := CleanConflictMarkers(input)
 	assert.Equal(t, expected, resolved, "CleanConflictMarkers must keep incoming changes deterministically without duplicating blocks")
 }
-
-
-

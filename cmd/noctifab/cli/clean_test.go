@@ -109,11 +109,14 @@ func TestCleanCmd_NoFilesExist(t *testing.T) {
 	if strings.Contains(stdout, "Removed PID file.") {
 		t.Errorf("expected no PID file removal log, got: %s", stdout)
 	}
-	if strings.Contains(stdout, "Removed story logs:") {
-		t.Errorf("expected no story logs removal log, got: %s", stdout)
+	if strings.Contains(stdout, "Removed logs:") {
+		t.Errorf("expected no logs removal log, got: %s", stdout)
 	}
-	if strings.Contains(stdout, "Removed daemon log:") {
-		t.Errorf("expected no daemon log removal log, got: %s", stdout)
+	if strings.Contains(stdout, "Removed worktrees:") {
+		t.Errorf("expected no worktrees removal log, got: %s", stdout)
+	}
+	if strings.Contains(stdout, "Removed steer stories:") {
+		t.Errorf("expected no steer stories removal log, got: %s", stdout)
 	}
 }
 
@@ -123,18 +126,32 @@ func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
 
 	// Create mock files
 	dbFile := filepath.Join(noctifabDir, "data", "noctifab.db")
+	dbWal := filepath.Join(noctifabDir, "data", "noctifab.db-wal")
+	dbShm := filepath.Join(noctifabDir, "data", "noctifab.db-shm")
+	metricsFile := filepath.Join(noctifabDir, "data", "metrics.json")
+	patchFile := filepath.Join(noctifabDir, "data", "qa-test-12345678.patch")
 	_ = os.WriteFile(dbFile, []byte("sqlite data"), 0644)
+	_ = os.WriteFile(dbWal, []byte("wal data"), 0644)
+	_ = os.WriteFile(dbShm, []byte("shm data"), 0644)
+	_ = os.WriteFile(metricsFile, []byte("{}"), 0644)
+	_ = os.WriteFile(patchFile, []byte("patch"), 0644)
 
 	pidFile := filepath.Join(noctifabDir, "noctifab.pid")
 	_ = os.WriteFile(pidFile, []byte("12345"), 0644)
 
-	logDir := filepath.Join(noctifabDir, "logs", "roadmap")
-	_ = os.MkdirAll(logDir, 0755)
-	_ = os.WriteFile(filepath.Join(logDir, "story.log"), []byte("log data"), 0644)
+	logDir := filepath.Join(noctifabDir, "logs")
+	_ = os.MkdirAll(filepath.Join(logDir, "roadmap"), 0755)
+	_ = os.MkdirAll(filepath.Join(logDir, "tasks"), 0755)
+	_ = os.WriteFile(filepath.Join(logDir, "roadmap", "story.log"), []byte("log data"), 0644)
+	_ = os.WriteFile(filepath.Join(logDir, "tasks", "task-1.log"), []byte("task data"), 0644)
+	_ = os.WriteFile(filepath.Join(logDir, "daemon.log"), []byte("daemon log"), 0644)
 
-	daemonLog := filepath.Join(noctifabDir, "logs", "daemon.log")
-	_ = os.MkdirAll(filepath.Dir(daemonLog), 0755)
-	_ = os.WriteFile(daemonLog, []byte("daemon log"), 0644)
+	worktreeDir := filepath.Join(noctifabDir, "worktrees")
+	_ = os.MkdirAll(filepath.Join(worktreeDir, "task-1"), 0755)
+
+	storiesDir := filepath.Join(noctifabDir, "stories")
+	_ = os.MkdirAll(storiesDir, 0755)
+	_ = os.WriteFile(filepath.Join(storiesDir, "order.md"), []byte("order"), 0644)
 
 	stdout, _, err := captureOutput(func() error {
 		RootCmd.SetArgs([]string{"clean", "--config", filepath.Join(noctifabDir, "config.yaml"), "--yes"})
@@ -150,22 +167,43 @@ func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
 	if !strings.Contains(stdout, "Removed PID file.") {
 		t.Errorf("expected PID file removal log, got: %s", stdout)
 	}
-	if !strings.Contains(stdout, "Removed story logs:") {
-		t.Errorf("expected story logs removal log, got: %s", stdout)
+	if !strings.Contains(stdout, "Removed logs:") {
+		t.Errorf("expected logs removal log, got: %s", stdout)
 	}
-	if !strings.Contains(stdout, "Removed daemon log:") {
-		t.Errorf("expected daemon log removal log, got: %s", stdout)
+	if !strings.Contains(stdout, "Removed worktrees:") {
+		t.Errorf("expected worktrees removal log, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Removed steer stories:") {
+		t.Errorf("expected steer stories removal log, got: %s", stdout)
 	}
 
 	// Assert files are gone
 	if _, statErr := os.Stat(dbFile); !os.IsNotExist(statErr) {
 		t.Errorf("expected db file to be deleted, stat error: %v", statErr)
 	}
+	if _, statErr := os.Stat(dbWal); !os.IsNotExist(statErr) {
+		t.Errorf("expected db-wal file to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(dbShm); !os.IsNotExist(statErr) {
+		t.Errorf("expected db-shm file to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(metricsFile); !os.IsNotExist(statErr) {
+		t.Errorf("expected metrics file to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(patchFile); !os.IsNotExist(statErr) {
+		t.Errorf("expected patch file to be deleted, stat error: %v", statErr)
+	}
 	if _, statErr := os.Stat(pidFile); !os.IsNotExist(statErr) {
 		t.Errorf("expected pid file to be deleted, stat error: %v", statErr)
 	}
 	if _, statErr := os.Stat(logDir); !os.IsNotExist(statErr) {
 		t.Errorf("expected log dir to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(worktreeDir); !os.IsNotExist(statErr) {
+		t.Errorf("expected worktree dir to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(storiesDir); !os.IsNotExist(statErr) {
+		t.Errorf("expected stories dir to be deleted, stat error: %v", statErr)
 	}
 }
 
@@ -175,14 +213,26 @@ func TestCleanCmd_DryRun_FilesNotDeleted(t *testing.T) {
 
 	// Create mock files that should survive dry-run
 	dbFile := filepath.Join(noctifabDir, "data", "noctifab.db")
+	dbWal := filepath.Join(noctifabDir, "data", "noctifab.db-wal")
+	metricsFile := filepath.Join(noctifabDir, "data", "metrics.json")
+	patchFile := filepath.Join(noctifabDir, "data", "qa-test-12345678.patch")
 	_ = os.WriteFile(dbFile, []byte("sqlite data"), 0644)
+	_ = os.WriteFile(dbWal, []byte("wal data"), 0644)
+	_ = os.WriteFile(metricsFile, []byte("{}"), 0644)
+	_ = os.WriteFile(patchFile, []byte("patch data"), 0644)
 
 	pidFile := filepath.Join(noctifabDir, "noctifab.pid")
 	_ = os.WriteFile(pidFile, []byte("12345"), 0644)
 
-	logDir := filepath.Join(noctifabDir, "logs", "roadmap")
-	_ = os.MkdirAll(logDir, 0755)
-	_ = os.WriteFile(filepath.Join(logDir, "story.log"), []byte("log data"), 0644)
+	logDir := filepath.Join(noctifabDir, "logs")
+	_ = os.MkdirAll(filepath.Join(logDir, "roadmap"), 0755)
+	_ = os.WriteFile(filepath.Join(logDir, "roadmap", "story.log"), []byte("log data"), 0644)
+
+	worktreeDir := filepath.Join(noctifabDir, "worktrees")
+	_ = os.MkdirAll(worktreeDir, 0755)
+
+	storiesDir := filepath.Join(noctifabDir, "stories")
+	_ = os.MkdirAll(storiesDir, 0755)
 
 	stdout, _, err := captureOutput(func() error {
 		RootCmd.SetArgs([]string{"clean", "--config", filepath.Join(noctifabDir, "config.yaml"), "--dry-run"})
@@ -204,11 +254,26 @@ func TestCleanCmd_DryRun_FilesNotDeleted(t *testing.T) {
 	if _, statErr := os.Stat(dbFile); os.IsNotExist(statErr) {
 		t.Error("expected db file to still exist after dry-run")
 	}
+	if _, statErr := os.Stat(dbWal); os.IsNotExist(statErr) {
+		t.Error("expected db-wal file to still exist after dry-run")
+	}
+	if _, statErr := os.Stat(metricsFile); os.IsNotExist(statErr) {
+		t.Error("expected metrics file to still exist after dry-run")
+	}
+	if _, statErr := os.Stat(patchFile); os.IsNotExist(statErr) {
+		t.Error("expected patch file to still exist after dry-run")
+	}
 	if _, statErr := os.Stat(pidFile); os.IsNotExist(statErr) {
 		t.Error("expected pid file to still exist after dry-run")
 	}
 	if _, statErr := os.Stat(logDir); os.IsNotExist(statErr) {
 		t.Error("expected log dir to still exist after dry-run")
+	}
+	if _, statErr := os.Stat(worktreeDir); os.IsNotExist(statErr) {
+		t.Error("expected worktree dir to still exist after dry-run")
+	}
+	if _, statErr := os.Stat(storiesDir); os.IsNotExist(statErr) {
+		t.Error("expected stories dir to still exist after dry-run")
 	}
 }
 
