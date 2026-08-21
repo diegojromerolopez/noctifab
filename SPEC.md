@@ -2108,7 +2108,7 @@ To prevent console log clutter and improve developer user experience, the Cobra 
 *   `noctifab stop`
     Gracefully stops the background daemon process and saves state.
 *   `noctifab clean`
-    Resets all Noctifab workspace state by wiping the database, removing PID files, and purging logs. Supports `--dry-run` and `--yes` / `-y`.
+    Resets all Noctifab runtime and workspace state by wiping the database (including SQLite WAL, SHM, and rollback journal files or dropping Postgres tables), removing PID files, purging the entire `.noctifab/logs/` directory, executing `git worktree prune` and removing `.noctifab/worktrees/`, purging steer story orders in `.noctifab/stories/`, and clearing ephemeral runtime data artifacts. Supports `--dry-run` and `--yes` / `-y`.
 *   `noctifab validate`
     Runs a dry-run check of the current local state file, project directory constraints, and linter commands without polling the LLM or running actions.
 *   `noctifab maintenance`

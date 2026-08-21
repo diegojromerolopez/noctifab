@@ -263,7 +263,7 @@ noctifab stop
 ```
 
 ### 12. `clean`
-Resets all Noctifab state: wipes the state database, prunes logs, and removes PID files.
+Resets all Noctifab runtime and orchestrator state: wipes the database (SQLite DB + WAL/SHM/journal or Postgres tables), purges all log files in `.noctifab/logs/`, prunes and removes Git worktrees in `.noctifab/worktrees/`, deletes steer story orders in `.noctifab/stories/`, cleans ephemeral data in `.noctifab/data/`, and removes PID files.
 ```bash
 # Preview what would be cleaned
 noctifab clean --dry-run
