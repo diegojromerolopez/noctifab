@@ -123,3 +123,28 @@ func TestIsSharedRootBuildFile(t *testing.T) {
 		}
 	}
 }
+
+func TestValidatePlannedTasks_CycleDetection(t *testing.T) {
+	tasks := []domain.Task{
+		{
+			ID:          "task-1",
+			Title:       "Task 1 Implementation",
+			Description: "This is a detailed description of task 1 that is sufficiently long",
+			TargetFiles: []string{"pkg/foo.go"},
+			DependsOn:   []string{"task-2"},
+		},
+		{
+			ID:          "task-2",
+			Title:       "Task 2 Implementation",
+			Description: "This is a detailed description of task 2 that is sufficiently long",
+			TargetFiles: []string{"pkg/bar.go"},
+			DependsOn:   []string{"task-1"},
+		},
+	}
+
+	err := ValidatePlannedTasks(tasks, t.TempDir())
+	if err == nil {
+		t.Fatal("expected error due to circular dependencies, got nil")
+	}
+}
+

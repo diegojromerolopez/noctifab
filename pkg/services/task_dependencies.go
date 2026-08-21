@@ -34,6 +34,9 @@ func ValidatePlannedTasks(tasks []domain.Task, projectPath ...string) error {
 	for i := range tasks {
 		tasks[i].DependsOn = resolved[i].DependsOn
 	}
+	if _, err := ResolveAndSortTasks(tasks); err != nil {
+		return fmt.Errorf("planning failed: %w", err)
+	}
 	if err := ValidateTaskCohesion(tasks); err != nil {
 		return fmt.Errorf("planning failed: %w", err)
 	}
