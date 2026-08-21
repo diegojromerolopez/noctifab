@@ -72,7 +72,16 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 			continue
 		}
 
-		if err := o.repo.Save(ctx, state); err != nil {
+		plannedTasks := make([]domain.Task, len(state.Tasks))
+		copy(plannedTasks, state.Tasks)
+		if err := o.updateStateWithRetry(ctx, func(currentState *domain.State) error {
+			if len(currentState.Tasks) > 0 {
+				// Another worker already planned tasks concurrently.
+				return nil
+			}
+			currentState.Tasks = plannedTasks
+			return nil
+		}); err != nil {
 			return fmt.Errorf("failed to persist planned tasks: %w", err)
 		}
 

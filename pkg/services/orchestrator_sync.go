@@ -126,7 +126,10 @@ func (o *Orchestrator) saveFileIndexIfChanged(ctx context.Context, state *domain
 		return nil
 	}
 	state.Files = files
-	return o.repo.Save(ctx, state)
+	return o.updateStateWithRetry(ctx, func(currentState *domain.State) error {
+		currentState.Files = files
+		return nil
+	})
 }
 
 // fileIndexesEqual reports whether two workspace file indexes are identical
