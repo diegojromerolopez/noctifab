@@ -35,10 +35,9 @@ func TestScenario_ContextCompaction(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "compaction feature",
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "compaction feature",
 			},
 			Tasks: []domain.Task{
 				{
@@ -117,10 +116,9 @@ func TestScenario_SandboxViolation(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "Sandbox feature",
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "Sandbox feature",
 			},
 			Tasks: []domain.Task{
 				{

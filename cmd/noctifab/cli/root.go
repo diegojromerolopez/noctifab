@@ -78,7 +78,6 @@ func init() {
 	RootCmd.PersistentFlags().Int("occ-max-retries", 5, "Maximum number of reload-modify-retry iterations on version conflicts")
 	RootCmd.PersistentFlags().String("occ-backoff-base", "50ms", "Base delay time duration for OCC lock retry backoff")
 	RootCmd.PersistentFlags().Float64("occ-backoff-factor", 2.0, "Exponential backoff factor on OCC conflicts")
-	RootCmd.PersistentFlags().Float64("max-budget-usd", 10.00, "Daily LLM credit budget boundary in USD")
 	RootCmd.PersistentFlags().Int64("token-usage-limit", 0, "Daily token limit boundary")
 	RootCmd.PersistentFlags().Bool("pr-auto-create", false, "Automatically create a PR from the task branch")
 	RootCmd.PersistentFlags().Bool("pr-auto-merge", false, "Automatically merge the PR when CI checks pass")

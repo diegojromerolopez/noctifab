@@ -9,8 +9,7 @@ CREATE TABLE IF NOT EXISTS state (
     feature_name TEXT,
     base_branch TEXT,
     project_version TEXT,
-    total_tokens_used INTEGER NOT NULL DEFAULT 0,
-    total_cost_usd TEXT NOT NULL DEFAULT '0.00000'
+    total_tokens_used INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -69,8 +68,7 @@ CREATE TABLE IF NOT EXISTS token_usage (
     task_id TEXT,
     agent_id TEXT,
     prompt_tokens INTEGER NOT NULL,
-    completion_tokens INTEGER NOT NULL,
-    cost_usd REAL NOT NULL
+    completion_tokens INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS validation_criteria (

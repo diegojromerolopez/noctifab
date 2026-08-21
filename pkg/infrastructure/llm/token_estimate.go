@@ -9,7 +9,7 @@ import (
 )
 
 // estCharsPerToken is the rough number of characters per token used for
-// budget estimation (~4 chars/token for English-like text and code).
+// token estimation (~4 chars/token for English-like text and code).
 const estCharsPerToken = 4
 
 // defaultMaxPromptTokens is the default pre-send cap on the estimated prompt
@@ -64,6 +64,12 @@ func estimateCompletionTokens(resp *domain.LLMResponse) int64 {
 		n = 1
 	}
 	return int64(n)
+}
+
+// EstimateUsageTokens estimates the total tokens consumed by one completed
+// call (prompt + completion).
+func EstimateUsageTokens(prompt string, resp *domain.LLMResponse) int64 {
+	return estimateUsageTokens(prompt, resp)
 }
 
 // estimateUsageTokens estimates the total tokens consumed by one completed

@@ -37,7 +37,7 @@ func TestPostgresRepositorySaveQAReviews(t *testing.T) {
 	require.NoError(t, err)
 	mock.ExpectExec(`INSERT INTO review_phases`).WithArgs(phase.ID, state.ID, phase.StoryID, phase.TaskID, phase.Role,
 		phase.ArtifactID, manifestJSON, phase.Attempt, string(phase.Status), phase.TerminalReason, phase.StartedAt, phase.DeadlineAt,
-		phase.CompletedAt, phase.TokensUsed, phase.CostUSD).WillReturnResult(sqlmock.NewResult(1, 1))
+		phase.CompletedAt, phase.TokensUsed).WillReturnResult(sqlmock.NewResult(1, 1))
 	stepsJSON, err := json.Marshal(state.QAScenarios[0].Steps)
 	require.NoError(t, err)
 	scenario := state.QAScenarios[0]

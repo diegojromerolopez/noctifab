@@ -22,7 +22,7 @@ func TestSpecSession_Revisions(t *testing.T) {
 	assert.False(t, session.CanRedo())
 	assert.Equal(t, int64(0), session.TotalTokensUsed())
 
-	rev1 := session.AddRevision("# SPEC v1", "Create a CLI tool", SpecTurnInitial, "", 100, "0.001")
+	rev1 := session.AddRevision("# SPEC v1", "Create a CLI tool", SpecTurnInitial, "", 100)
 	assert.Equal(t, 1, rev1.Version)
 	assert.NotEmpty(t, rev1.SHA256)
 	assert.Equal(t, 0, rev1.ParentVer)
@@ -34,7 +34,7 @@ func TestSpecSession_Revisions(t *testing.T) {
 	assert.False(t, session.CanUndo())
 	assert.False(t, session.CanRedo())
 
-	rev2 := session.AddRevision("# SPEC v2", "Add TLS support", SpecTurnRefine, "+ TLS", 150, "0.0015")
+	rev2 := session.AddRevision("# SPEC v2", "Add TLS support", SpecTurnRefine, "+ TLS", 150)
 	assert.Equal(t, 2, rev2.Version)
 	assert.NotEmpty(t, rev2.SHA256)
 	assert.Equal(t, 1, rev2.ParentVer)
@@ -46,7 +46,7 @@ func TestSpecSession_Revisions(t *testing.T) {
 	assert.True(t, session.CanUndo())
 	assert.False(t, session.CanRedo())
 
-	rev3 := session.AddRevision("# SPEC v3", "Add gRPC", SpecTurnRefine, "+ gRPC", 200, "0.002")
+	rev3 := session.AddRevision("# SPEC v3", "Add gRPC", SpecTurnRefine, "+ gRPC", 200)
 	assert.Equal(t, 3, rev3.Version)
 	assert.Equal(t, 3, len(session.Revisions))
 	assert.True(t, session.CanUndo())

@@ -63,7 +63,6 @@ func renderEnhancedDashboard(states []*domain.State) string {
 	if elapsed > 0 {
 		fmt.Fprintf(&sb, "Elapsed Time: %s%s%s\r\n", colorCyan, formatDuration(elapsed), colorReset)
 	}
-	fmt.Fprintf(&sb, "Cost: $%s\r\n", primary.Metadata.TotalCostUSD)
 	fmt.Fprintf(&sb, "Tokens Used: %d\r\n\r\n", primary.Metadata.TotalTokensUsed)
 
 	// 2. Active Agents Execution Panel ("Seeing what each agent is doing")

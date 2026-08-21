@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,8 +14,36 @@ import (
 
 const maxAllowedPingLatency = 10 * time.Second
 
+// getRequiredSandboxBinaries extracts all unique binary executables needed by the sandbox configuration.
+func getRequiredSandboxBinaries(cfg *config.Config) []string {
+	seen := make(map[string]bool)
+	var list []string
+	add := func(bin string) {
+		bin = strings.TrimSpace(bin)
+		if bin == "" {
+			return
+		}
+		fields := strings.Fields(bin)
+		if len(fields) > 0 {
+			bin = fields[0]
+		}
+		// Strip any directory path prefix to get base binary name
+		bin = filepath.Base(bin)
+		if !seen[bin] {
+			seen[bin] = true
+			list = append(list, bin)
+		}
+	}
+
+	add(cfg.Sandbox.TestCommand)
+	add(cfg.Sandbox.LinterCommand)
+	add(cfg.Sandbox.FormatterCommand)
+
+	return list
+}
+
 // runPreFlightChecks executes environment and LLM provider connectivity diagnostics
-// before orchestrator launch, banning unreachable or slow providers.
+// before orchestrator launch, banning unreachable or slow providers and failing on missing host binaries.
 func runPreFlightChecks(cfg *config.Config) error {
 	fmt.Println("Running pre-flight checks...")
 	tools := []string{"go", "docker", "python3", "rustc", "make", "gcc"}
@@ -25,6 +54,28 @@ func runPreFlightChecks(cfg *config.Config) error {
 		}
 	}
 	fmt.Printf("- Sandbox build tools available: %s\n", strings.Join(foundTools, ", "))
+
+	requiredBinaries := getRequiredSandboxBinaries(cfg)
+	if len(requiredBinaries) > 0 {
+		var missing []string
+		var available []string
+		for _, bin := range requiredBinaries {
+			if _, err := exec.LookPath(bin); err == nil {
+				available = append(available, bin)
+			} else {
+				missing = append(missing, bin)
+			}
+		}
+		if len(available) > 0 {
+			fmt.Printf("- Configured sandbox binaries available: %s\n", strings.Join(available, ", "))
+		}
+		if len(missing) > 0 {
+			if cfg.Sandbox.Mode == "" || strings.EqualFold(cfg.Sandbox.Mode, "host") {
+				return fmt.Errorf("pre-flight check failed: required sandbox binary not found on host $PATH: %s", strings.Join(missing, ", "))
+			}
+			fmt.Printf("⚠️  Warning: missing configured sandbox binaries on host (mode=%s): %s\n", cfg.Sandbox.Mode, strings.Join(missing, ", "))
+		}
+	}
 
 	if len(cfg.LLM.Providers) > 0 {
 		var activeProviders []config.ProviderSpec

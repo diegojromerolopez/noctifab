@@ -23,7 +23,6 @@ CREATE TABLE review_phases (
     deadline_at TIMESTAMP WITH TIME ZONE NOT NULL,
     completed_at TIMESTAMP WITH TIME ZONE,
     tokens_used BIGINT NOT NULL DEFAULT 0,
-    cost_usd TEXT NOT NULL DEFAULT '0',
     UNIQUE (story_id, task_id, role, artifact_id, attempt)
 );
 

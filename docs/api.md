@@ -12,7 +12,7 @@ Noctifab exposes local HTTP APIs for headless orchestration, supervisor LLM cont
 
 ### 1. System State Snapshot
 * **Method & Path**: `GET /api/v1/state`
-* **Description**: Returns the full JSON snapshot of system state including user stories, topological task DAG, active agent worker telemetry cards, action logs, and cost metrics.
+* **Description**: Returns the full JSON snapshot of system state including user stories, topological task DAG, active agent worker telemetry cards, action logs, and token metrics.
 * **Response**: `200 OK`
 
 ---

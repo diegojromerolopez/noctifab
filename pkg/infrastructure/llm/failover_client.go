@@ -13,7 +13,7 @@ import (
 )
 
 // NamedClient associates an LLM client with a provider and model name for
-// cooldown tracking and cost estimation.
+// cooldown tracking and token estimation.
 type NamedClient struct {
 	Name   string
 	Model  string
@@ -122,7 +122,7 @@ func (f *FailoverClient) Complete(ctx context.Context, prompt string) (*domain.L
 	return nil, fmt.Errorf("no LLM backends available")
 }
 
-// checkBudget verifies that prior usage plus the estimated cost of the
+// checkBudget verifies that prior usage plus the estimated tokens of the
 // pending request stays within the daily token limit, so a single oversized
 // call cannot sail past the budget.
 func (f *FailoverClient) checkBudget(ctx context.Context, date string, model string, pendingTokens int64) error {

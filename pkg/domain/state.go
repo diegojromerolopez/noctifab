@@ -87,16 +87,15 @@ const (
 	BuildUnknown BuildStatus = "UNKNOWN"
 )
 
-// StateMetadata holds structured session parameters and cost aggregations.
+// StateMetadata holds structured session parameters and token aggregations.
 type StateMetadata struct {
-	InputSource       string `json:"input_source"`             // Source of the specification (e.g., "markdown", "github")
-	InputPath         string `json:"input_path"`               // Original path or URL of the specification
-	IntegrationBranch string `json:"integration_branch"`       // Feature integration branch name (e.g., "feature/feature-auth")
-	FeatureName       string `json:"feature_name"`             // Human-readable name of the feature being built
-	BaseBranch        string `json:"base_branch"`              // Branch from which the integration branch was created (e.g., "main")
-	ProjectVersion    string `json:"project_version"`          // Current project version from VERSION file (e.g., "0.0.1")
-	TotalTokensUsed   int64  `json:"total_tokens_used"`        // Cumulative token count across all agents
-	TotalCostUSD      string `json:"total_cost_usd,omitempty"` // Estimated LLM API cost in USD
+	InputSource       string `json:"input_source"`       // Source of the specification (e.g., "markdown", "github")
+	InputPath         string `json:"input_path"`         // Original path or URL of the specification
+	IntegrationBranch string `json:"integration_branch"` // Feature integration branch name (e.g., "feature/feature-auth")
+	FeatureName       string `json:"feature_name"`       // Human-readable name of the feature being built
+	BaseBranch        string `json:"base_branch"`        // Branch from which the integration branch was created (e.g., "main")
+	ProjectVersion    string `json:"project_version"`    // Current project version from VERSION file (e.g., "0.0.1")
+	TotalTokensUsed   int64  `json:"total_tokens_used"`  // Cumulative token count across all agents
 }
 
 // StoryStatus tracks the lifecycle of a user story being processed by the daemon.

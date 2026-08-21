@@ -256,7 +256,7 @@ const (
 	BuildUnknown BuildStatus = "UNKNOWN"
 )
 
-// StateMetadata holds structured session parameters and cost aggregations.
+// StateMetadata holds structured session parameters and token aggregations.
 type StateMetadata struct {
 	InputSource       string `json:"input_source"`                 // Source of the specification (e.g., "markdown", "github")
 	InputPath         string `json:"input_path"`                   // Original path or URL of the specification
@@ -265,7 +265,6 @@ type StateMetadata struct {
 	BaseBranch        string `json:"base_branch"`                  // Branch from which the integration branch was created (e.g., "main")
 	ProjectVersion    string `json:"project_version"`              // Current project version from VERSION file (e.g., "0.0.1")
 	TotalTokensUsed   int64  `json:"total_tokens_used"`            // Cumulative token count across all agents
-	TotalCostUSD      string `json:"total_cost_usd,omitempty"`     // Estimated LLM API cost in USD
 }
 
 // State represents the complete system database state record.
@@ -531,8 +530,7 @@ CREATE TABLE IF NOT EXISTS state (
     feature_name TEXT,
     base_branch TEXT,
     project_version TEXT,
-    total_tokens_used INTEGER NOT NULL DEFAULT 0,
-    total_cost_usd TEXT NOT NULL DEFAULT '0.00000'
+    total_tokens_used INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -590,8 +588,7 @@ CREATE TABLE IF NOT EXISTS token_usage (
     task_id TEXT,
     agent_id TEXT,
     prompt_tokens INTEGER NOT NULL,
-    completion_tokens INTEGER NOT NULL,
-    cost_usd REAL NOT NULL
+    completion_tokens INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -613,8 +610,7 @@ CREATE TABLE IF NOT EXISTS state (
     feature_name VARCHAR(255),
     base_branch VARCHAR(255),
     project_version VARCHAR(50),
-    total_tokens_used BIGINT NOT NULL DEFAULT 0,
-    total_cost_usd NUMERIC(10, 5) NOT NULL DEFAULT 0.0
+    total_tokens_used BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -668,8 +664,7 @@ CREATE TABLE IF NOT EXISTS token_usage (
     task_id VARCHAR(255),
     agent_id VARCHAR(255),
     prompt_tokens BIGINT NOT NULL,
-    completion_tokens BIGINT NOT NULL,
-    cost_usd NUMERIC(10, 5) NOT NULL
+    completion_tokens BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -986,10 +981,9 @@ These modes are configured via the following CLI settings:
     2.  **Topological Module Processing:** The orchestrator schedules separate sub-planning execution tasks for each milestone.
     3.  **Sub-task DAG Splitting:** A sub-planner agent decomposes each milestone module into detailed task DAGs (e.g. `add_task` tools specific to that module), keeping each LLM completion output small and well within output token boundaries.
 
-#### Configurable Model Pricing Schema
-*   To prevent budget tracking evasion caused by provider price updates or model replacements, LLM token pricing is not hardcoded inside the Go source code.
-*   Model pricing configuration parameters (`input_cost_per_million_tokens` and `output_cost_per_million_tokens`) are declared under the `llm` model settings block inside `.noctifab/config.yaml`.
-*   **Online Pricing Fallback:** If the YAML pricing parameters are omitted or set to `auto`, the client attempts to fetch current pricing indices from a trusted public model pricing endpoint during client initialization, falling back to built-in pricing index defaults if the endpoint is offline.
+#### Model Token Tracking Schema
+*   To ensure transparent resource tracking across all model providers and agents, token consumption is measured and accumulated per task, agent role, and user story session.
+*   Token usage is tracked across prompt and completion boundaries and persisted into the database (`total_tokens_used`).
 
 ### 3.3.2. Example LLM Request & Response Payloads
 To aid implementation, this section provides examples of structured JSON payloads exchanged between the coordinator and the agents.
@@ -1065,24 +1059,19 @@ An example of an agent requesting the execution of test suites to verify code co
 
 ---
 
-### 3.3.3. LLM Budget Safeguarding & Local Billing Engine
+### 3.3.3. LLM Token Safeguarding & Usage Accounting Engine
 
-Since AI providers (Google Gemini, Anthropic Claude, OpenAI) do not expose real-time programmatic billing or balance check APIs during runtime completions, `noctifab` implements a deterministic local safeguarding mechanism to strictly enforce the daily budget limit (`--max-budget-usd`).
+`noctifab` implements a deterministic local safeguarding mechanism to strictly enforce token usage bounds.
 
 #### Core Safeguarding Protocol:
-1. **Pre-Flight Cost Estimation**:
-   * Prior to launching any completions API request, the Orchestrator calculates the size of the outgoing prompt in tokens using a local tokenizer (e.g., standard `tiktoken` for OpenAI/Claude, or native character/byte approximations for Gemini).
-   * It estimates the expected request cost using:
-     $$\text{Estimated Request Cost} = (\text{Prompt Tokens} \times \text{Input Cost per Token}) + (\text{Max Output Tokens} \times \text{Output Cost per Token})$$
-   * The pricing rates are read from the `input_cost_per_million_tokens` and `output_cost_per_million_tokens` configuration parameters.
+1. **Pre-Flight Token Estimation**:
+   * Prior to launching any completions API request, the Orchestrator calculates the size of the outgoing prompt in tokens using local tokenization and character/byte ratio estimators (`EstimateUsageTokens`).
+   * It estimates the expected request tokens based on prompt tokens and maximum expected output tokens.
 2. **Database Reservation Lock**:
-   * The Orchestrator queries the state database for the current day's cumulative consumption (sum of all recorded completed costs).
-   * If $\text{Cumulative Daily Cost} + \text{Estimated Request Cost} > \text{max\_budget\_usd}$, the Orchestrator immediately blocks the execution, cancels the pending completions API request, pauses the task runner, and writes an alert message to stdout/logs prompting developer intervention. This guarantees that the budget is never overrun.
+   * The Orchestrator queries the state database for cumulative consumption.
+   * If token consumption limits are exceeded, the Orchestrator safely pauses execution and logs a diagnostic warning prompting operator review.
 3. **Post-Completion Reconciliation**:
-   * Upon receiving the HTTP response, the Orchestrator parses the exact usage headers (`prompt_tokens` and `completion_tokens`) returned by the AI provider.
-   * It calculates the exact cost:
-     $$\text{Exact Cost} = (\text{Prompt Tokens} \times \text{Input Cost per Token}) + (\text{Completion Tokens} \times \text{Output Cost per Token})$$
-   * It updates the database reservation record with the exact cost value, releasing any unused budget margin back to the session pool.
+   * Upon receiving the response, the exact tokens consumed are accumulated directly into `total_tokens_used` across `domain.State`.
 
 ---
 
@@ -1184,7 +1173,7 @@ In Docker isolation mode, the orchestrator routes command executions and tools t
 *   **Host POSIX ID Matching:** To avoid file permission lockouts on the host after container execution, the orchestrator introspects the host process User ID (UID) and Group ID (GID) using Go's `os.Getuid()` and `os.Getgid()` on Linux. It programmatically injects these matching credentials (`User: "uid:gid"`) into the Docker container configurations. On macOS, this injection is omitted to allow native virtualized synchronization.
 *   **Persistent Warm Containers & Exec Routing:** To eliminate container cold-start delays (1-3 seconds per run) during iterative code generation, the orchestrator maintains a **persistent warm sandbox container** for each active Generator worker thread. Command executions (`run_tests`) are routed to the warm container using the Docker Exec API (`docker exec`) rather than restarting new container instances.
 *   **Docker Container Leakage Prevention:** The orchestrator assigns a unique session label (`noctifab-session=<session-id>`) to all containers, bridge networks, and volumes it spawns. On daemon startup (`noctifab start`), the pre-flight routine queries the Docker API for any legacy resources matching the `noctifab` labels and prunes them. Go `defer` functions are registered on startup to call `ContainerRemove` and prune active networks during unexpected daemon panics or SIGINT/SIGTERM exits.
-*   **Budget Reservation Engine:** Before initiating an LLM completion API call, the worker goroutine locks the budget and reserves an estimated token/cost usage in the database. Post-execution, the worker updates the transaction to reflect actual tokens consumed, preventing concurrent workers from running parallel requests that exceed daily token budgets or maximum USD constraints (`--max-budget-usd`). If budget limit checks fail, the daemon suspends operations cleanly.
+*   **Budget Reservation Engine:** Before initiating an LLM completion API call, the worker goroutine locks the budget and reserves an estimated token usage in the database. Post-execution, the worker updates the transaction to reflect actual tokens consumed, preventing concurrent workers from running parallel requests that exceed daily token budgets (`--token-usage-limit`). If budget limit checks fail, the daemon suspends operations cleanly.
 
 ##### What Host Sandbox Isolation Is Not:
 *   **It is not an OS-level virtualization or kernel jail:** Host isolation mode does not use virtual machines, Docker containers, chroot namespaces, cgroups, or kernel jails. It relies strictly on path validation logic in the Go runtime.
@@ -1310,7 +1299,7 @@ sequenceDiagram
 ```
 
 #### 3.5.2. Hybrid Execution Model: Agentic vs. Deterministic Nodes
-To optimize execution speed and cost, the orchestrator divides the execution loop into agentic nodes (which require LLM reasoning) and deterministic nodes (which run programmatically in Go):
+To optimize execution speed and efficiency, the orchestrator divides the execution loop into agentic nodes (which require LLM reasoning) and deterministic nodes (which run programmatically in Go):
 
 | Node Type | Execution Mode | Example Operations |
 |---|---|---|
@@ -1501,7 +1490,7 @@ The REST API exposes the following endpoints:
 *   `POST /api/v1/tasks/{id}/override-merge`: Forces a manual merge approval of a failing or blocked branch.
 *   `GET /healthz` (liveness probe): Returns HTTP 200 `{"status": "ok"}` to indicate the process is active.
 *   `GET /readyz` (readiness probe): Returns HTTP 200 `{"status": "ready"}` if the daemon is actively loop-polling, and HTTP 503 during daemon shutdown.
-*   `GET /statusz` (diagnostic status probe): Returns a structured JSON payload dumping active task DAGs, running workers, and cost statistics.
+*   `GET /statusz` (diagnostic status probe): Returns a structured JSON payload dumping active task DAGs, running workers, and token statistics.
 
 #### C. Clarification Timeout & LLM Auto-Decision
 For each clarification waiting for user input, a configurable response deadline is enforced (configured via `--clarification-timeout`, defaulting to `30m` or 30 minutes). If the user does not respond within this window, the orchestrator triggers an LLM completion. It prompts the LLM as a Staff Software Engineer to make a robust, production-grade design decision that follows SOLID design and Go idioms. The resulting recommendation is automatically written to the clarification's `Answer` field, the clarification is marked as resolved, and the orchestrator resumes execution of the dependent tasks.
@@ -1531,7 +1520,7 @@ For each clarification waiting for user input, a configurable response deadline 
     ```
 
 ### 3.6.5. Digital Twins (API Mocks)
-*   To avoid test flakiness and billing costs during scenario evaluation, the system registry integrates mock adapters ("Digital Twins") simulating external dependencies (e.g., payment portals, third-party databases), guaranteeing reliable, deterministic test feedback.
+*   To avoid test flakiness and external quota exhaustion during scenario evaluation, the system registry integrates mock adapters ("Digital Twins") simulating external dependencies (e.g., payment portals, third-party databases), guaranteeing reliable, deterministic test feedback.
 
 ### 3.6.6. Auto-Rollback Policies
 To prevent unstable builds or broken endpoints from being committed to the target branch:
@@ -2138,7 +2127,7 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     2. Cleans up orphaned Git worktrees in `.noctifab/worktrees/`.
     3. Executes pending database schema migrations. Migrations are tracked in a `schema_migrations` table inside the database. The migrations read embedded SQL scripts using standard `go:embed` inside the binary and run within a single transaction.
     4. Validates the `.noctifab/config.yaml` schema against environment variables and configuration properties.
-    This command runs entirely deterministically and does not invoke the LLM, avoiding execution costs.
+    This command runs entirely deterministically and does not invoke the LLM, avoiding unnecessary token consumption.
 *   `noctifab version`
     Outputs the semantic release version, Git commit hash, and commit date. Supports `--short` (raw semver string), `--verbose` (detailed metadata including compiler and platform), and `--json` (machine-readable JSON format). The root command also responds to `--version` and `-v`.
 
@@ -2178,7 +2167,6 @@ The CLI configuration can be provided via flags or matching environment variable
 | `--occ-max-retries` | | `NOCTIFAB_OCC_MAX_RETRIES` | `5` | Maximum number of reload-modify-retry iterations on version conflicts |
 | `--occ-backoff-base` | | `NOCTIFAB_OCC_BACKOFF_BASE` | `50ms` | Base delay time duration for OCC lock retry backoff |
 | `--occ-backoff-factor` | | `NOCTIFAB_OCC_BACKOFF_FACTOR` | `2.0` | Exponential backoff factor on OCC conflicts |
-| `--max-budget-usd` | | `NOCTIFAB_MAX_BUDGET_USD` | `10.00` | Daily LLM credit budget boundary in USD |
 | `--token-usage-limit` | | `NOCTIFAB_TOKEN_USAGE_LIMIT` | `0` | Daily token limit boundary (0 disables limit) |
 | `--log-level` | | `NOCTIFAB_LOG_LEVEL` | `info` | Logging verbosity: `debug`, `info`, `warn`, `error` |
 | `--log-file` | | `NOCTIFAB_LOG_FILE` | | Path to target log file (default writes to stdout) |
@@ -2497,22 +2485,22 @@ To guarantee stable and autonomous execution without human intervention, `noctif
     1.  **Granular Separation of Packages:** Implement interfaces to decouple layers. For example, VCS integrations are split into smaller domain models, interface abstractions, and distinct, smaller adapter files (e.g. `github_client.go`, `gitlab_client.go`, `git_command.go` under `vcs/`).
     2.  **Shared Helpers:** Extract formatting, validation, and serialization routines into dedicated helper files (e.g., `pkg/usecase/dag_cycle.go` separate from `pkg/usecase/scheduler.go`).
 
-### 8.3. Flaky, Slow, and Costly VCS Integration Tests
+### 8.3. Flaky and Slow VCS Integration Tests
 *   **Challenge:** Running integration tests that perform Git cloning, branches checking, and pull request generation against public GitHub/GitLab servers is slow, subject to network rate-limiting, and requires external developer tokens.
 *   **Resolution:** 
     1.  **Local CGI Git Backend:** The E2E environment launches a mock VCS service wrapping `git-http-backend` via Go's `net/http/cgi`. This allows authentic git cloning, pushing, and pulling entirely offline.
     2.  **Local API Handlers:** The mock VCS server exposes REST HTTP mock endpoints for PR creation, queries, and merges, maintaining state in a fast in-memory database to simulate external Git APIs deterministically.
 
-### 8.4. Runaway Loops and LLM Token Credit Depletion
-*   **Challenge:** Autonomous agent loops can enter infinite recursion or loop cycles (e.g. fix test -> test fails -> try to fix again in the same way), quickly consuming model credits and API budgets.
+### 8.4. Runaway Loops and LLM Token Depletion
+*   **Challenge:** Autonomous agent loops can enter infinite recursion or loop cycles (e.g. fix test -> test fails -> try to fix again in the same way).
 *   **Resolution:**
     1.  **Task Retry Boundary:** Each task maintains a `Retries` count. If it fails to execute cleanly (compilation or tests fail) more than `MaxRetries` times, the task state transitions to `TaskFailed`, stopping downstream work.
     2.  **Orchestrator Execution Ceiling:** The CLI enforces a hard limit of max actions per execution run (e.g. 100 actions) and a total loop duration ceiling.
     3.  **Command Context Timeouts:** Every external command execution is wrapped with Go's `context.WithTimeout` (e.g., maximum 5 minutes), terminating hanging build scripts.
-    4.  **Shared Token Quota & Graceful Suspension:** The system manages API costs using a shared token bucket record in the database. Workers request token reservations before each LLM call. If daily token quotas or budgets are exhausted:
+    4.  **Shared Token Quota & Graceful Suspension:** The system manages tokens using a shared bucket record in the database. Workers request reservations before each LLM call. If daily quotas are exhausted:
         *   The orchestrator saves the current state of all active tasks and workers back to the database.
         *   Execution is cleanly suspended without leaving uncommitted files or corrupt branches.
-        *   The system notifies the user (via stdout/socket/logs) that the agent runs are paused until the token quota resets or more tokens are allocated by the provider.
+        *   The system notifies the user (via stdout/socket/logs) that the agent runs are paused until the quota resets.
     5.  **Configurable Resilient HTTP Retries:** External API clients (LLMs, VCS) execute all requests through a resilient retry wrapper. It performs up to `--http-max-retries` (default: 10) retries using exponential backoff (starting at `--http-retry-backoff`, e.g., 100ms) with full jitter to transparently handle temporary rate limits (HTTP 429) and network outages.
 
 ### 8.5. Multi-Agent Concurrency and Repository Conflicts
@@ -2539,5 +2527,5 @@ The following glossary defines key software engineering, version control, and di
 | **Test-Driven Development (TDD)** | A development workflow where tests are written before the production logic, guiding the implementation and ensuring high quality. | Used in §3.5.1 (Planner-Tester-Generator Loop & Agentic Roles) for the Tester-Generator agent loop. |
 | **Test Validator** | A verification component that executes the project's test suite multiple times to determine correctness and identify flaky test patterns. | Detailed in §3.4 (Validator & Test-Driven Quality Gates) as the quality gate preventing flaky code. |
 | **Quarantine Branch** | A temporary Git branch prefix (e.g. `noctifab-quarantine/`) where failing or conflicting tasks are isolated for manual developer investigation. | Specified in §3.6.6 (Auto-Rollback Policies) to avoid polluting clean release branches. |
-| **Compaction** | A context management technique that summarizes preceding conversation turns to fit within context limits instead of hard truncation. | Described in §3.3.1 (Conversation History & Context Management) to optimize token costs for long-running debugging iterations. |
+| **Compaction** | A context management technique that summarizes preceding conversation turns to fit within context limits instead of hard truncation. | Described in §3.3.1 (Conversation History & Context Management) to optimize context for long-running debugging iterations. |
 | **OCC Livelock** | A failure state where concurrent update threads repeatedly conflict, abort, and retry in lockstep, blocking overall progress. | Prevented in §3.5.3 (DB-backed State Coordination & Optimistic Concurrency Engine) using exponential backoff with full jitter and retry bounds. |

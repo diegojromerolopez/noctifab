@@ -73,7 +73,7 @@ func (d *SpecIntentDetector) IsTerminationIntent(ctx context.Context, input stri
 		return false, ""
 	}
 
-	// 1. Fast-path regex matching (0 token cost, instantaneous)
+	// 1. Fast-path regex matching (instantaneous, offline)
 	for _, pattern := range d.patterns {
 		if pattern.MatchString(trimmed) {
 			return true, fmt.Sprintf("Matched approval phrase %q", trimmed)

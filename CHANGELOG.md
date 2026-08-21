@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.2] - 2026-08-21
+
+### Fixed
+- **Unblocker Reset Capping & Environmental Missing Tool Handling**:
+  - Enforced a hard bound of **5 resets per task** across both `UnblockerAgent.checkAndUnblock` and `ResetTaskCmd.Execute`, preventing indefinite reset loops on environmental errors.
+  - Expanded `CategorizeFailureLog` in `watchdog_repair.go` and `FastPathClassify` in `unblocker_fastpath.go` to categorize missing toolchain binaries (`command not found`, `exit status 127`, `pytest: not found`, `executable file not found in $PATH`) as `FailureSandbox` and inject standard library fallback directives.
+- **Pre-Flight Environment & Binary Verification**:
+  - Enhanced `runPreFlightChecks` and `noctifab validate` to extract all required binaries from `cfg.Sandbox.AllowedCommands`, package managers, profiles, and configured validator commands (`test_command`, `linter_command`, `formatter_command`), inspecting host `$PATH` via `exec.LookPath` and failing upfront before worker agent dispatch.
+- **Shared Build Infrastructure Auto-Serialization**:
+  - Updated `ResolveTaskDependencies` in `pkg/services/task_dependencies.go` to detect tasks modifying root build configuration files (`Makefile`, `pyproject.toml`, `package.json`, `CMakeLists.txt`, `Cargo.toml`, `go.mod`, etc.) and automatically serialize their execution in the task DAG via `DependsOn` to prevent concurrent worktree merge conflicts.
+- **State Token Accounting & Removal of All Cost Fields**:
+  - Completely purged deprecated cost fields (`total_cost_usd`, `cost_usd`, `QACostUSD`, `TotalCostUSD`, etc.) across domain models, QA reviews, SQLite/PostgreSQL schemas, SQL migrations, repository loaders/scanners, OpenAPI specifications, web dashboard, reporting snapshots, and documentation.
+  - Added token usage accumulation into `state.Metadata.TotalTokensUsed` across all agent LLM invocations (generator, tester, repair, planner, unblocker).
+
 ## [0.47.1] - 2026-08-21
 
 ### Fixed

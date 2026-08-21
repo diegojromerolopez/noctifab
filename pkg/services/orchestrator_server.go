@@ -48,6 +48,7 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		resp, err := o.llmClient.Complete(plannerCtx, prompt)
+		o.recordTokenUsage(ctx, prompt, resp)
 		if err != nil {
 			lastErr = fmt.Errorf("LLM planning failed: %w", err)
 			continue

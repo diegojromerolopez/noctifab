@@ -316,7 +316,6 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 						FeatureName:       featName,
 						BaseBranch:        baseBranch,
 						IntegrationBranch: integrationBranch,
-						TotalCostUSD:      "0.00000",
 					},
 				}
 			} else {

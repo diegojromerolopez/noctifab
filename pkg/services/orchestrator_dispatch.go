@@ -74,7 +74,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 	// 2b. Story-level wall clock enforcement. When max_duration is configured
 	// (> 0) and the story has been running longer than the limit, fail every
 	// non-finished task and mark the story as FAILED so the daemon stops
-	// spending LLM budget on a stuck story. The start time is the first cycle
+	// spending LLM tokens on a stuck story. The start time is the first cycle
 	// in which any task became ready.
 	if o.cfg.MaxDuration > 0 && len(state.Tasks) > 0 {
 		startedAt := o.getStoryStartedAt()
@@ -85,7 +85,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 		// Enforce the wall-clock cap regardless of the transient StoryStatus:
 		// previously this only fired while StoryIdle, so a story that was stuck
 		// mid-execution (StoryRunning) with a hung LLM/sandbox call never hit
-		// the deadline and burned the remaining budget indefinitely. Now we
+		// the deadline and burned tokens indefinitely. Now we
 		// abort as soon as the deadline elapses and any task is still pending.
 		if !startedAt.IsZero() && time.Since(startedAt) > o.cfg.MaxDuration && !o.allTasksFinished(state) {
 			elapsed := time.Since(startedAt)

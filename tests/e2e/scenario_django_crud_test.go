@@ -36,10 +36,9 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "Django Contact CRUD Notebook",
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "Django Contact CRUD Notebook",
 			},
 		}
 		err = repo.Save(ctx, state)
@@ -74,10 +73,9 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
-				InputSource:  "markdown",
-				InputPath:    "requirements.md",
-				FeatureName:  "cyclic", // Triggers cyclic tasks in mock LLM
-				TotalCostUSD: "0.0000",
+				InputSource: "markdown",
+				InputPath:   "requirements.md",
+				FeatureName: "cyclic", // Triggers cyclic tasks in mock LLM
 			},
 		}
 		err = repo.Save(ctx, state)
@@ -140,7 +138,6 @@ func TestScenario_DjangoCRUD(t *testing.T) {
 				FeatureName:       "Django Contact CRUD Notebook",
 				BaseBranch:        "main",
 				ProjectVersion:    "0.1.0",
-				TotalCostUSD:      "0.0000",
 			},
 		}
 		err = repo.Save(ctx, state)
@@ -262,11 +259,10 @@ func TestScenario_GitConflict(t *testing.T) {
 			Version:     0,
 			BuildStatus: domain.BuildPassing,
 			Metadata: domain.StateMetadata{
-				InputSource:  "local",
-				InputPath:    "requirements.md",
-				FeatureName:  "conflict-edits",
-				BaseBranch:   "main",
-				TotalCostUSD: "0.0000",
+				InputSource: "local",
+				InputPath:   "requirements.md",
+				FeatureName: "conflict-edits",
+				BaseBranch:  "main",
 			},
 		}
 		err = repo.Save(ctx, initialState)

@@ -63,6 +63,7 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 
 		resp, err := o.llmClient.Complete(llmCtx, repairPrompt)
 		cancel()
+		o.recordTokenUsage(ctx, repairPrompt, resp)
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ [Integration Repair Agent] Turn %d LLM call failed: %v\n", turn, err)

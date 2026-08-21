@@ -31,10 +31,10 @@ func (r *SQLiteRepository) saveQAReviews(ctx context.Context, tx *sql.Tx, state 
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO review_phases
-			(id, state_id, story_id, task_id, role, artifact_id, artifact_manifest, attempt, status, terminal_reason, started_at, deadline_at, completed_at, tokens_used, cost_usd)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, phase.ID, state.ID, phase.StoryID, phase.TaskID,
+			(id, state_id, story_id, task_id, role, artifact_id, artifact_manifest, attempt, status, terminal_reason, started_at, deadline_at, completed_at, tokens_used)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, phase.ID, state.ID, phase.StoryID, phase.TaskID,
 			phase.Role, phase.ArtifactID, string(manifest), phase.Attempt, string(phase.Status), phase.TerminalReason, phase.StartedAt,
-			phase.DeadlineAt, nullTime(phase.CompletedAt), phase.TokensUsed, phase.CostUSD); err != nil {
+			phase.DeadlineAt, nullTime(phase.CompletedAt), phase.TokensUsed); err != nil {
 			return err
 		}
 	}
@@ -89,7 +89,7 @@ func (r *SQLiteRepository) loadQAReviews(ctx context.Context, state *domain.Stat
 
 func (r *SQLiteRepository) loadSQLiteReviewResults(ctx context.Context, state *domain.State) error {
 	rows, err := r.db.QueryContext(ctx, `SELECT id, story_id, task_id, role, artifact_id, artifact_manifest, attempt, status,
-		terminal_reason, started_at, deadline_at, completed_at, tokens_used, cost_usd
+		terminal_reason, started_at, deadline_at, completed_at, tokens_used
 		FROM review_phases WHERE state_id = ? ORDER BY started_at, id`, state.ID)
 	if err != nil {
 		return err
@@ -100,7 +100,7 @@ func (r *SQLiteRepository) loadSQLiteReviewResults(ctx context.Context, state *d
 		var completed sql.NullTime
 		var manifest string
 		if err := rows.Scan(&phase.ID, &phase.StoryID, &phase.TaskID, &phase.Role, &phase.ArtifactID, &manifest, &phase.Attempt,
-			&phase.Status, &phase.TerminalReason, &phase.StartedAt, &phase.DeadlineAt, &completed, &phase.TokensUsed, &phase.CostUSD); err != nil {
+			&phase.Status, &phase.TerminalReason, &phase.StartedAt, &phase.DeadlineAt, &completed, &phase.TokensUsed); err != nil {
 			_ = rows.Close()
 			return err
 		}

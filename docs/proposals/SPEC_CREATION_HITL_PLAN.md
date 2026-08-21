@@ -260,7 +260,7 @@ $ noctifab spec "Build an in-memory Redis-compatible server in Go supporting GET
 
 To support flexible, conversational human interaction, the termination checker uses a two-tier evaluation strategy:
 
-#### Tier 1: Deterministic Fast-Path Matcher (Zero Token Cost)
+#### Tier 1: Deterministic Fast-Path Matcher (Offline, Instantaneous)
 A fast regex/substring heuristic evaluates common approval patterns and command exits instantly:
 
 ```go
@@ -598,7 +598,6 @@ type SpecRevision struct {
 	CreatedAt   time.Time    `json:"created_at"`
 	DiffSummary string       `json:"diff_summary,omitempty"`
 	TokensUsed  int64        `json:"tokens_used"`
-	CostUSD     string       `json:"cost_usd"`
 }
 
 // SpecSession manages the stateful multi-turn HITL review session.

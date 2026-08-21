@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Noctifab Dark Factory API
-  version: "0.38.0"
+  version: "0.47.2"
   description: |
     REST and Server-Sent Events (SSE) API specification for Noctifab, an autonomous dark factory agentic harness.
     
@@ -83,7 +83,7 @@ paths:
       tags:
         - Lifecycle & Control
       summary: List Orchestration Statuses
-      description: Returns high-level execution statuses and cost summaries for active and completed user stories.
+      description: Returns high-level execution statuses and token summaries for active and completed user stories.
       operationId: listStatuses
       responses:
         "200":
@@ -665,9 +665,9 @@ components:
             feature_name:
               type: string
               example: "User Authentication Middleware"
-            total_cost_usd:
-              type: string
-              example: "0.1420"
+            total_tokens_used:
+              type: integer
+              example: 12500
 
     GenericStatusResponse:
       type: object

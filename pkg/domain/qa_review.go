@@ -31,7 +31,6 @@ type ReviewPhase struct {
 	DeadlineAt       time.Time               `json:"deadline_at"`
 	CompletedAt      time.Time               `json:"completed_at,omitempty"`
 	TokensUsed       int64                   `json:"tokens_used"`
-	CostUSD          string                  `json:"cost_usd"`
 }
 
 // ArtifactManifestEntry identifies one persisted artifact file by path and content.

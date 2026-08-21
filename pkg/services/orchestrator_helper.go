@@ -9,8 +9,23 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 )
+
+func (o *Orchestrator) recordTokenUsage(ctx context.Context, prompt string, resp *domain.LLMResponse) {
+	if o == nil || o.repo == nil || resp == nil {
+		return
+	}
+	tokens := llm.EstimateUsageTokens(prompt, resp)
+	if tokens <= 0 {
+		return
+	}
+	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+		st.Metadata.TotalTokensUsed += tokens
+		return nil
+	})
+}
 
 func (o *Orchestrator) registerAgentStart(ctx context.Context, role string, taskID string) {
 	agentID := fmt.Sprintf("agent-%s-%s", role, taskID)
@@ -243,6 +258,7 @@ Below is a list of target files for this task:
 	// Compaction must never rewrite the tool-list/JSON-schema suffix.
 	readerCtx = domain.WithUncompactableTail(readerCtx, len(readerPromptTail))
 	resp, err := o.llmClient.Complete(readerCtx, prompt)
+	o.recordTokenUsage(ctx, prompt, resp)
 	if err != nil {
 		fmt.Printf("Orchestrator: Task [Reader] phase failed for role %s: %v. Continuing without extra context.\n", role, err)
 		return nil
@@ -344,6 +360,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 
 	for turn := 0; turn < maxTurns; turn++ {
 		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
+		o.recordTokenUsage(ctx, currentPrompt, testResp)
 		if err != nil {
 			lastErr = err
 			break

@@ -63,7 +63,7 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 			BuildStatus: domain.BuildUnknown,
 			Metadata: domain.StateMetadata{
 				InputSource: "local", InputPath: "req.md",
-				FeatureName: "occ-test", TotalCostUSD: "0.0000",
+				FeatureName: "occ-test",
 			},
 		}
 		err := repo.Save(ctx, state)
@@ -77,7 +77,7 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 			BuildStatus: domain.BuildFailing,
 			Metadata: domain.StateMetadata{
 				InputSource: "local", InputPath: "req.md",
-				FeatureName: "occ-test", TotalCostUSD: "0.0000",
+				FeatureName: "occ-test",
 			},
 		}
 		err = repo.Save(ctx, staleState)
@@ -165,7 +165,6 @@ func TestScenario_ComprehensiveAutonomy(t *testing.T) {
 				InputSource: "markdown", InputPath: "requirements.md",
 				FeatureName: "Complex State Test", BaseBranch: "main",
 				IntegrationBranch: "feature/complex", ProjectVersion: "1.0.0",
-				TotalCostUSD: "0.0000",
 			},
 			Tasks: []domain.Task{
 				{ID: "task-1", Title: "First", Description: "First task", Status: domain.TaskPending, ChangeType: domain.ChangeTypeFeature},

@@ -38,6 +38,25 @@ var validateCmd = &cobra.Command{
 		}
 		fmt.Printf("✔ Sandbox build tools available: %s\n", strings.Join(foundTools, ", "))
 
+		requiredBinaries := getRequiredSandboxBinaries(cfg)
+		if len(requiredBinaries) > 0 {
+			var missing []string
+			var available []string
+			for _, bin := range requiredBinaries {
+				if _, err := exec.LookPath(bin); err == nil {
+					available = append(available, bin)
+				} else {
+					missing = append(missing, bin)
+				}
+			}
+			if len(available) > 0 {
+				fmt.Printf("✔ Configured sandbox binaries available: %s\n", strings.Join(available, ", "))
+			}
+			if len(missing) > 0 {
+				fmt.Printf("⚠️  Warning: missing configured sandbox binaries on host (mode=%s): %s\n", cfg.Sandbox.Mode, strings.Join(missing, ", "))
+			}
+		}
+
 		if len(cfg.LLM.Providers) > 0 {
 			for _, p := range cfg.LLM.Providers {
 				fmt.Printf("- Pinging provider %s (%s)... ", p.Name, p.Provider)

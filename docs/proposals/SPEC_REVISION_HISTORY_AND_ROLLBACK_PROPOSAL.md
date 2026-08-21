@@ -18,7 +18,7 @@ In the Human-in-the-Loop (HITL) specification design cycle, engineering requirem
 If an experimental refinement turn turns out to be overly complex or introduces unwanted constraints, developers need a **safe, zero-friction mechanism to roll back to earlier drafts**.
 
 Without persistent revision snapshots:
-1. **Token & Cost Waste**: Developers must spend additional LLM tokens asking the AI to *"revert what you just did"*, which frequently suffers from context drift, partial reverts, and hallucinated omissions.
+1. **Token Waste**: Developers must spend additional LLM tokens asking the AI to *"revert what you just did"*, which frequently suffers from context drift, partial reverts, and hallucinated omissions.
 2. **Loss of Previous State**: Once `SPEC.md` is overwritten, the previous version is lost unless manually backed up.
 3. **No Audit Trail**: Downstream development cannot trace why specific architectural invariants or Definition of Done clauses were added or changed across iterations.
 
@@ -76,7 +76,6 @@ type SpecRevision struct {
 	ParentVer    int               `json:"parent_version"`
 	DiffSummary  string            `json:"diff_summary,omitempty"`
 	TokensUsed   int64             `json:"tokens_used"`
-	CostUSD      string            `json:"cost_usd"`
 	ModelRoles   map[string]string `json:"model_roles,omitempty"`
 	CreatedAt    time.Time         `json:"created_at"`
 }
@@ -121,7 +120,7 @@ During the interactive `noctifab spec` loop, developers have access to dedicated
 
 ### 4.1. Supported REPL Commands:
 
-| Command | Shorthand | Description | Token Cost |
+| Command | Shorthand | Description | Tokens |
 |---|---|---|---|
 | `undo` | `u` | Reverts the current draft to the previous revision (`SPEC.v(N-1).md`) | **0 Tokens** (Instant) |
 | `redo` | `r` | Restores the forward revision if an undo was previously performed | **0 Tokens** (Instant) |
@@ -190,4 +189,4 @@ In the Web Dashboard Spec Studio (`http://127.0.0.1:8080`), the revision history
 
 ## 7. Conclusion
 
-By saving immutable snapshots (`SPEC.v1.md`, `SPEC.v2.md`...) in `.noctifab/data/specs/revisions/`, Noctifab gives developers complete peace of mind to experiment with bold architectural ideas during the specification phase, knowing they can instantly time-travel back with zero token costs and zero latency.
+By saving immutable snapshots (`SPEC.v1.md`, `SPEC.v2.md`...) in `.noctifab/data/specs/revisions/`, Noctifab gives developers complete peace of mind to experiment with bold architectural ideas during the specification phase, knowing they can instantly time-travel back with zero token overhead and zero latency.

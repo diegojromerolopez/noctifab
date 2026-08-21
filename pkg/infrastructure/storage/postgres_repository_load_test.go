@@ -35,9 +35,9 @@ func TestPostgresRepository_Load_Errors(t *testing.T) {
 
 		repo := &PostgresRepository{db: db}
 		stateRows := sqlmock.NewRows([]string{
-			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_tokens_used", "total_cost_usd",
+			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_tokens_used",
 		}).AddRow(
-			"state-1", "/src", 2, "PASSING", "", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100, 0.00300,
+			"state-1", "/src", 2, "PASSING", "", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100,
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
@@ -58,9 +58,9 @@ func TestPostgresRepository_Load_Errors(t *testing.T) {
 
 		repo := &PostgresRepository{db: db}
 		stateRows := sqlmock.NewRows([]string{
-			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_tokens_used", "total_cost_usd",
+			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_tokens_used",
 		}).AddRow(
-			"state-1", "/src", 2, "PASSING", "", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100, 0.00300,
+			"state-1", "/src", 2, "PASSING", "", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100,
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
@@ -88,9 +88,9 @@ func TestPostgresRepository_Load(t *testing.T) {
 		now := time.Now()
 
 		stateRows := sqlmock.NewRows([]string{
-			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_tokens_used", "total_cost_usd",
+			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_tokens_used",
 		}).AddRow(
-			"state-1", "/src", 2, "PASSING", "RUNNING", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100, 0.00300,
+			"state-1", "/src", 2, "PASSING", "RUNNING", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100,
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
@@ -112,8 +112,8 @@ func TestPostgresRepository_Load(t *testing.T) {
 		}).AddRow("US-001", "roadmap/US-001.md", "source", `[{"id":"cli.ok","interface":"CLI","allowed_executables":["./app"]}]`))
 		mock.ExpectQuery("SELECT id, story_id").WithArgs("state-1").WillReturnRows(sqlmock.NewRows([]string{
 			"id", "story_id", "task_id", "role", "artifact_id", "artifact_manifest", "attempt", "status", "terminal_reason",
-			"started_at", "deadline_at", "completed_at", "tokens_used", "cost_usd",
-		}).AddRow("phase-1", "US-001", "task-1", "qa", "commit:hash", `[{"path":"dist/app","sha256":"hash"}]`, 1, "PASS", "", now, now.Add(time.Minute), now.Add(time.Second), 5, "0.001"))
+			"started_at", "deadline_at", "completed_at", "tokens_used",
+		}).AddRow("phase-1", "US-001", "task-1", "qa", "commit:hash", `[{"path":"dist/app","sha256":"hash"}]`, 1, "PASS", "", now, now.Add(time.Minute), now.Add(time.Second), 5))
 		mock.ExpectQuery("SELECT id, review_phase_id, public_contract_id").WithArgs("state-1").WillReturnRows(sqlmock.NewRows([]string{
 			"id", "review_phase_id", "public_contract_id", "name", "fingerprint", "steps", "status", "evidence",
 		}).AddRow("scenario-1", "phase-1", "cli.ok", "normal", "fingerprint", `[{"command":["./app"],"expected_exit_code":0}]`, "PASS", ""))
