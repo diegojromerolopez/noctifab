@@ -10,14 +10,7 @@ import (
 
 func TestGetRequiredSandboxBinaries(t *testing.T) {
 	cfg := &config.Config{
-		Profiles: map[string]config.ProfileConfig{
-			"tester": {
-				AllowedCommands: []string{"pytest", "python3"},
-			},
-		},
 		Sandbox: config.SandboxConfig{
-			AllowedCommands:  []string{"gcc", "make", "python3"},
-			PackageManagers:  []string{"pip"},
 			TestCommand:      "pytest -v",
 			LinterCommand:    "flake8 .",
 			FormatterCommand: "black .",
@@ -25,18 +18,16 @@ func TestGetRequiredSandboxBinaries(t *testing.T) {
 	}
 
 	binaries := getRequiredSandboxBinaries(cfg)
-	assert.Contains(t, binaries, "gcc")
-	assert.Contains(t, binaries, "make")
-	assert.Contains(t, binaries, "python3")
 	assert.Contains(t, binaries, "pytest")
 	assert.Contains(t, binaries, "flake8")
+	assert.Contains(t, binaries, "black")
 }
 
 func TestRunPreFlightChecks_MissingHostBinary(t *testing.T) {
 	cfg := &config.Config{
 		Sandbox: config.SandboxConfig{
-			Mode:            "host",
-			AllowedCommands: []string{"nonexistent_binary_xyz_123"},
+			Mode:        "host",
+			TestCommand: "nonexistent_binary_xyz_123 -v",
 		},
 		LLM: config.LLMConfig{
 			Provider:    "openai",
@@ -49,3 +40,4 @@ func TestRunPreFlightChecks_MissingHostBinary(t *testing.T) {
 	assert.Contains(t, err.Error(), "required sandbox binary not found on host $PATH")
 	assert.Contains(t, err.Error(), "nonexistent_binary_xyz_123")
 }
+

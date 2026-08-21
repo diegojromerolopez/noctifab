@@ -35,17 +35,6 @@ func getRequiredSandboxBinaries(cfg *config.Config) []string {
 		}
 	}
 
-	for _, cmd := range cfg.Sandbox.AllowedCommands {
-		add(cmd)
-	}
-	for _, pm := range cfg.Sandbox.PackageManagers {
-		add(pm)
-	}
-	for _, prof := range cfg.Profiles {
-		for _, cmd := range prof.AllowedCommands {
-			add(cmd)
-		}
-	}
 	add(cfg.Sandbox.TestCommand)
 	add(cfg.Sandbox.LinterCommand)
 	add(cfg.Sandbox.FormatterCommand)
