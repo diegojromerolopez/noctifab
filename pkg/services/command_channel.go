@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -23,9 +24,10 @@ type Command interface {
 
 // CommandMailbox serializes state changes to prevent database write conflicts.
 type CommandMailbox struct {
-	repo   domain.StateRepository
-	cmds   chan Command
-	wakeup chan struct{}
+	repo    domain.StateRepository
+	cmds    chan Command
+	wakeup  chan struct{}
+	running atomic.Bool
 }
 
 func NewCommandMailbox(repo domain.StateRepository) *CommandMailbox {
@@ -36,8 +38,16 @@ func NewCommandMailbox(repo domain.StateRepository) *CommandMailbox {
 	}
 }
 
+// IsRunning reports whether the mailbox event loop is actively processing commands.
+func (m *CommandMailbox) IsRunning() bool {
+	return m.running.Load()
+}
+
 // Start processes mailbox commands sequentially in a single loop
 func (m *CommandMailbox) Start(ctx context.Context) {
+	m.running.Store(true)
+	defer m.running.Store(false)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -57,6 +67,59 @@ func (m *CommandMailbox) Send(cmd Command) {
 	case m.wakeup <- struct{}{}:
 	default:
 	}
+}
+
+type syncCommandWrapper struct {
+	cmd  Command
+	done chan error
+}
+
+func (s *syncCommandWrapper) Execute(ctx context.Context, repo domain.StateRepository) error {
+	err := s.cmd.Execute(ctx, repo)
+	s.done <- err
+	return err
+}
+
+// SendSync dispatches a command to the single-writer event loop and blocks until it is executed or ctx is cancelled.
+func (m *CommandMailbox) SendSync(ctx context.Context, cmd Command) error {
+	done := make(chan error, 1)
+	wrapper := &syncCommandWrapper{cmd: cmd, done: done}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case m.cmds <- wrapper:
+	}
+
+	select {
+	case m.wakeup <- struct{}{}:
+	default:
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
+}
+
+// StateMutationCmd performs an atomic mutate-and-save operation inside the single-writer event loop.
+type StateMutationCmd struct {
+	UpdateFn func(state *domain.State) error
+}
+
+func (c *StateMutationCmd) Execute(ctx context.Context, repo domain.StateRepository) error {
+	if c.UpdateFn == nil {
+		return nil
+	}
+	state, err := repo.Load(ctx)
+	if err != nil {
+		return err
+	}
+	if err := c.UpdateFn(state); err != nil {
+		return err
+	}
+	return repo.Save(ctx, state)
 }
 
 // Wakeup returns a channel that fires when a command is sent to the mailbox.

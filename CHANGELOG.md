@@ -8,9 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.47.3] - 2026-08-21
 
 ### Changed
-- **Optimistic Concurrency Control (OCC) Plan Persistence & Retry Mechanism**:
-  - Replaced direct `o.repo.Save(ctx, state)` calls in [PlanStory](file:///Users/diegoj/repos/noctifab/pkg/services/orchestrator_server.go) and [saveFileIndexIfChanged](file:///Users/diegoj/repos/noctifab/pkg/services/orchestrator_sync.go) with `o.updateStateWithRetry`. This ensures that when multiple agents or background routines mutate the database state while an LLM planning request is completing, planned tasks and file indexes are persisted reliably with reload-and-backoff retries instead of aborting immediately with `optimistic concurrency version conflict`.
-  - Added concurrent planning safeguards to gracefully handle cases where another agent already planned tasks during execution.
+- **Single-Writer Event Loop & Synchronous Mailbox Dispatch**:
+  - Implemented `SendSync(ctx, cmd)` on `CommandMailbox` with `syncCommandWrapper` and `StateMutationCmd`, allowing worker goroutines to dispatch state mutations to the single-writer FIFO queue and await confirmation.
+  - Routed `updateStateWithRetry` through `CommandMailbox.SendSync` when the mailbox event loop is active, serializing all state writes inside isolated transactions and eliminating SQLite OCC version conflicts and database lock contentions across concurrent agents.
+- **Default OCC (Optimistic Concurrency Control) Retries and Backoff**:
+  - Increased default `--occ-max-retries` from 5 to 20 across CLI flags, configuration defaults, and fallback state update retry helpers.
+  - Increased default `--occ-backoff-base` from 50ms to 200ms across CLI flags, configuration defaults, REST handlers, and fallback state update retry helpers.
+- **OCC Plan Persistence & Race-Safe Planning**:
+  - Replaced direct `o.repo.Save(ctx, state)` calls in [PlanStory](file:///Users/diegoj/repos/noctifab/pkg/services/orchestrator_server.go) and [saveFileIndexIfChanged](file:///Users/diegoj/repos/noctifab/pkg/services/orchestrator_sync.go) with `o.updateStateWithRetry`.
+  - Added concurrent planning safeguards to gracefully preserve existing plans if another worker completed planning concurrently.
 
 ## [0.47.2] - 2026-08-21
 

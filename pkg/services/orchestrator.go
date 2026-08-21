@@ -294,6 +294,10 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 }
 
 func (o *Orchestrator) updateStateWithRetry(ctx context.Context, updateFn func(state *domain.State) error) error {
+	if o.mailbox != nil && o.mailbox.IsRunning() {
+		return o.mailbox.SendSync(ctx, &StateMutationCmd{UpdateFn: updateFn})
+	}
+
 	maxRetries := o.cfg.OCCMaxRetries
 	if maxRetries <= 0 {
 		maxRetries = 20

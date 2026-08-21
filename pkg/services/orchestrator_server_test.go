@@ -190,4 +190,28 @@ func TestOrchestrator_PlanStory(t *testing.T) {
 		assert.Contains(t, err.Error(), "LLM planning failed")
 		assert.Equal(t, 3, llm.calls)
 	})
+
+	t.Run("when mailbox is active, updateStateWithRetry routes through mailbox SendSync", func(t *testing.T) {
+		repo := &mockRepo{state: &domain.State{ID: "story-1", Tasks: []domain.Task{}}}
+		mailbox := NewCommandMailbox(repo)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go mailbox.Start(ctx)
+		time.Sleep(5 * time.Millisecond)
+
+		o := &Orchestrator{
+			repo:    repo,
+			mailbox: mailbox,
+		}
+
+		err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+			st.Tasks = append(st.Tasks, domain.Task{ID: "routed-task", Title: "Mailbox Routed"})
+			return nil
+		})
+		require.NoError(t, err)
+
+		loaded, _ := repo.Load(ctx)
+		require.Len(t, loaded.Tasks, 1)
+		assert.Equal(t, "routed-task", loaded.Tasks[0].ID)
+	})
 }
