@@ -101,6 +101,25 @@ func TestResolveTaskDependencies_OverlappingBuildFilesAutoSerialized(t *testing.
 	}
 }
 
+func TestResolveTaskDependencies_IndependentSourceFilesRemainParallel(t *testing.T) {
+	tasks := []domain.Task{
+		{ID: "task-1", Title: "Task 1", TargetFiles: []string{"src/foo.c", "src/foo.h"}},
+		{ID: "task-2", Title: "Task 2", TargetFiles: []string{"src/bar.c", "src/bar.h"}},
+	}
+
+	resolved, err := ResolveTaskDependencies(tasks, t.TempDir())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(resolved[0].DependsOn) != 0 {
+		t.Errorf("expected task-1 to have 0 deps, got %v", resolved[0].DependsOn)
+	}
+	if len(resolved[1].DependsOn) != 0 {
+		t.Errorf("expected task-2 to have 0 deps (parallel execution), got %v", resolved[1].DependsOn)
+	}
+}
+
 func TestIsSharedRootBuildFile(t *testing.T) {
 	tests := []struct {
 		path   string

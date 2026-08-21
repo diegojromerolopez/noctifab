@@ -105,7 +105,7 @@ func ResolveTaskDependencies(tasks []domain.Task, projectPath string) ([]domain.
 		task := &resolvedTasks[i]
 		for _, tf := range task.TargetFiles {
 			cleanFile := strings.ToLower(filepath.Clean(strings.TrimSpace(tf)))
-			if cleanFile == "" || cleanFile == ".gitignore" {
+			if !IsSharedRootBuildFile(cleanFile) {
 				continue
 			}
 			if prevTaskID, exists := fileLastTaskID[cleanFile]; exists && prevTaskID != task.ID {
