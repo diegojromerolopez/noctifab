@@ -118,14 +118,20 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 			_ = o.RunPostMergeRepairPhase(ctx, state)
 
 			buildOK := o.allTasksSucceeded(state)
-			if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
-				fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
+			if buildOK {
+				if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
+				}
+			} else {
+				fmt.Printf("Orchestrator: one or more tasks failed test validation; marking build as FAILING and skipping release finalization.\n")
 			}
 			if err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
-				st.BuildStatus = domain.BuildPassing
-				st.StoryStatus = domain.StorySuccess
-				if !buildOK {
+				if buildOK {
+					st.BuildStatus = domain.BuildPassing
+					st.StoryStatus = domain.StorySuccess
+				} else {
 					st.BuildStatus = domain.BuildFailing
+					st.StoryStatus = domain.StoryFailed
 				}
 				return nil
 			}); err != nil {

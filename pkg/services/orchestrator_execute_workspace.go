@@ -184,7 +184,7 @@ func (o *Orchestrator) resolveGitRebaseConflict(ctx context.Context, branch, bas
 			prompt := fmt.Sprintf("You are the Generator Agent resolving a Git merge conflict on file %q.\nVersion A is from the integration baseline (HEAD).\nVersion B is from the worker task branch (%s).\n\nYour task is to REIMPLEMENT and synthesize a single, complete, coherent version of the file that seamlessly merges and reconciles ALL functions, types, structs, interfaces, methods, logic, and imports from BOTH Version A and Version B.\n\nVersion A (Integration Baseline):\n```\n%s\n```\n\nVersion B (Worker Task Version):\n```\n%s\n```\n\nReturn ONLY the complete, syntactically valid source code for %q. Do not include markdown fences (```) or conflict markers.", file, branch, baseContent, workerContent, file)
 			resp, llmErr := o.llmClient.Complete(llmCtx, prompt)
 			cancel()
-			if llmErr == nil && resp != nil && strings.TrimSpace(resp.Reasoning) != "" || (resp != nil && len(resp.Actions) > 0) {
+			if llmErr == nil && resp != nil && (strings.TrimSpace(resp.Reasoning) != "" || len(resp.Actions) > 0) {
 				var code string
 				if resp.Reasoning != "" {
 					code = cleanLLMCodeOutput(resp.Reasoning)
