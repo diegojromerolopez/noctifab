@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.3] - 2026-08-21
+
+### Changed
+- **Default OCC (Optimistic Concurrency Control) Retries and Backoff**:
+  - Increased default `--occ-max-retries` from 5 to 20 across CLI flags, configuration defaults, and state update retry helpers.
+  - Increased default `--occ-backoff-base` from 50ms to 200ms across CLI flags, configuration defaults, REST handlers, and state update retry helpers to resolve concurrent SQLite write collisions under heavy parallel agent workloads.
+
 ## [0.47.2] - 2026-08-21
 
 ### Fixed

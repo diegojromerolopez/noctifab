@@ -1313,8 +1313,8 @@ The orchestrator operates in a multi-agent environment where multiple worker thr
 *   **Centralized Database Repository:** PostgreSQL (recommended) or SQLite serves as the shared storage and transactional source of truth.
 *   **Command Channel Event Loop (`pkg/usecase/command_channel.go`):** To completely eliminate database OCC lock contentions, worker goroutines do not execute write operations directly to the database. Instead, they write mutation command payloads (e.g., `UpdateTaskStatusCmd`, `SaveActionCmd`, `ReserveTokensCmd`) to a thread-safe Go FIFO channel. The orchestrator runs a single-threaded transaction writer goroutine that processes incoming command payloads from this channel sequentially, executing writes inside isolated, serial transactions.
 *   **Optimistic Concurrency Control (OCC) Fallback:** The system retains a monotonic `Version` field on the `State` entity as a secondary guard. If a manual CLI operation or external process updates the state directly, the event loop detects the version conflict, aborts the write, and triggers a reload-modify-retry cycle. The retry cycle follows an exponential backoff strategy:
-    *   `--occ-max-retries`: Maximum number of retry attempts (default: `5`).
-    *   `--occ-backoff-base`: Base delay time duration (default: `50ms`).
+    *   `--occ-max-retries`: Maximum number of retry attempts (default: `20`).
+    *   `--occ-backoff-base`: Base delay time duration (default: `200ms`).
     *   `--occ-backoff-factor`: Multiplication factor for successive retries (default: `2.0`).
     If conflicts persist after the maximum retries, the task status is marked as `CONFLICT_FAILED` in the database.
 *   **Short-Lived Transactions:** All database writes are executed inside short-lived database transactions that immediately release connection handles. Database connections are never held open during slow external network calls (such as LLM API completions) or execution runs.
@@ -1841,8 +1841,8 @@ storage:
   conn_string: "./data/noctifab.db" # Database connection string or sqlite filepath
   json_file_path: "./data/state.json" # File path used strictly if provider is "json"
   occ:
-    max_retries: 5              # Max database retry attempts on OCC transaction failure
-    backoff_base: "50ms"        # Baseline delay before OCC retry
+    max_retries: 20             # Max database retry attempts on OCC transaction failure
+    backoff_base: "200ms"       # Baseline delay before OCC retry
     backoff_factor: 2.0         # Exponential multiplier for OCC backoff delay
 
 llm:
@@ -2164,8 +2164,8 @@ The CLI configuration can be provided via flags or matching environment variable
 | `--max-history-tokens` | | `NOCTIFAB_MAX_HISTORY_TOKENS` | `4096` | Token limit for conversation history context |
 | `--sandbox-mode` | | `NOCTIFAB_SANDBOX_MODE` | `host` | Sandbox isolation mode: `host` (directory jail) or `docker` (containerized runner) |
 | `--shutdown-grace-period` | | `NOCTIFAB_SHUTDOWN_GRACE_PERIOD` | `30s` | Delay period to wait for in-flight tasks during graceful shutdown |
-| `--occ-max-retries` | | `NOCTIFAB_OCC_MAX_RETRIES` | `5` | Maximum number of reload-modify-retry iterations on version conflicts |
-| `--occ-backoff-base` | | `NOCTIFAB_OCC_BACKOFF_BASE` | `50ms` | Base delay time duration for OCC lock retry backoff |
+| `--occ-max-retries` | | `NOCTIFAB_OCC_MAX_RETRIES` | `20` | Maximum number of reload-modify-retry iterations on version conflicts |
+| `--occ-backoff-base` | | `NOCTIFAB_OCC_BACKOFF_BASE` | `200ms` | Base delay time duration for OCC lock retry backoff |
 | `--occ-backoff-factor` | | `NOCTIFAB_OCC_BACKOFF_FACTOR` | `2.0` | Exponential backoff factor on OCC conflicts |
 | `--token-usage-limit` | | `NOCTIFAB_TOKEN_USAGE_LIMIT` | `0` | Daily token limit boundary (0 disables limit) |
 | `--log-level` | | `NOCTIFAB_LOG_LEVEL` | `info` | Logging verbosity: `debug`, `info`, `warn`, `error` |

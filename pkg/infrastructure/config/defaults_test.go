@@ -44,11 +44,11 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.Storage.JSONFilePath != ".noctifab/data/state.json" {
 		t.Errorf("expected Storage.JSONFilePath '.noctifab/data/state.json', got %q", cfg.Storage.JSONFilePath)
 	}
-	if cfg.Storage.OCC.MaxRetries != 5 {
-		t.Errorf("expected Storage.OCC.MaxRetries 5, got %d", cfg.Storage.OCC.MaxRetries)
+	if cfg.Storage.OCC.MaxRetries != 20 {
+		t.Errorf("expected Storage.OCC.MaxRetries 20, got %d", cfg.Storage.OCC.MaxRetries)
 	}
-	if time.Duration(cfg.Storage.OCC.BackoffBase) != 50*time.Millisecond {
-		t.Errorf("expected Storage.OCC.BackoffBase 50ms, got %v", time.Duration(cfg.Storage.OCC.BackoffBase))
+	if time.Duration(cfg.Storage.OCC.BackoffBase) != 200*time.Millisecond {
+		t.Errorf("expected Storage.OCC.BackoffBase 200ms, got %v", time.Duration(cfg.Storage.OCC.BackoffBase))
 	}
 	if cfg.Storage.OCC.BackoffFactor != 2.0 {
 		t.Errorf("expected Storage.OCC.BackoffFactor 2.0, got %f", cfg.Storage.OCC.BackoffFactor)

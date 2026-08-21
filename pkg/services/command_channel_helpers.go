@@ -13,15 +13,15 @@ import (
 const (
 	// occRetryBaseBackoff is the initial sleep between OCC retry attempts in
 	// the REST handlers.
-	occRetryBaseBackoff = 50 * time.Millisecond
+	occRetryBaseBackoff = 200 * time.Millisecond
 	// occRetryMaxBackoff caps the exponential backoff between OCC retries.
 	occRetryMaxBackoff = time.Second
 	// occRetryMaxAttempts is the number of Load-mutate-Save attempts.
-	occRetryMaxAttempts = 5
+	occRetryMaxAttempts = 20
 )
 
 // saveStateWithBackoff performs a Load-mutate-Save cycle with optimistic
-// concurrency retries using exponential backoff (base 50ms, x2 per attempt,
+// concurrency retries using exponential backoff (base 200ms, x2 per attempt,
 // ±20% jitter, capped at 1s). Non-conflict errors abort immediately.
 func saveStateWithBackoff(ctx context.Context, repo domain.StateRepository, mutate func(*domain.State)) error {
 	backoff := occRetryBaseBackoff

@@ -42,8 +42,8 @@ func TestSaveStateWithBackoff(t *testing.T) {
 		if repo.saveCount != 4 {
 			t.Errorf("expected 4 save attempts (3 conflicts + 1 success), got %d", repo.saveCount)
 		}
-		// Exponential backoff: at least ~50ms*0.8 + 100ms*0.8 + 200ms*0.8 total.
-		if elapsed := time.Since(start); elapsed < 200*time.Millisecond {
+		// Exponential backoff: at least ~200ms*0.8 + 400ms*0.8 + 800ms*0.8 total.
+		if elapsed := time.Since(start); elapsed < 500*time.Millisecond {
 			t.Errorf("expected backoff sleeps, finished too fast: %v", elapsed)
 		}
 	})

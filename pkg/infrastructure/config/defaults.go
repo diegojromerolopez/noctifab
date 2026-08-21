@@ -72,8 +72,8 @@ func DefaultConfig() *Config {
 			JSONFilePath:       ".noctifab/data/state.json",
 			KeepFinishedStates: 20,
 			OCC: OCCConfig{
-				MaxRetries:    5,
-				BackoffBase:   Duration(50 * time.Millisecond),
+				MaxRetries:    20,
+				BackoffBase:   Duration(200 * time.Millisecond),
 				BackoffFactor: 2.0,
 			},
 		},
