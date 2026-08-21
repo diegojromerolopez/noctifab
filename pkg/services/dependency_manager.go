@@ -38,16 +38,25 @@ func (dm *DependencyManager) DetectMissingTool(output string) (string, bool) {
 		"executable file not found",
 		"command not found",
 		"no such file or directory",
+		"exit status 127",
 	}
+	hasMissingPattern := false
 	for _, p := range patterns {
 		if strings.Contains(lower, p) {
-			for tool := range toolPackageMap {
-				if strings.Contains(lower, tool) {
-					return tool, true
-				}
-			}
+			hasMissingPattern = true
+			break
 		}
 	}
+	if !hasMissingPattern {
+		return "", false
+	}
+
+	for tool := range toolPackageMap {
+		if strings.Contains(lower, tool) {
+			return tool, true
+		}
+	}
+
 	return "", false
 }
 

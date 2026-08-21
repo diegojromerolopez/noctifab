@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
@@ -151,7 +152,8 @@ func CleanConflictMarkers(content string) string {
 	return strings.Join(cleaned, "\n")
 }
 
-// resolveGitRebaseConflict automatically inspects and resolves Git merge conflicts during rebase.
+// resolveGitRebaseConflict automatically resolves Git merge conflicts using the Generator Agent
+// to synthesize a whole-file implementation containing all features from both versions.
 func (o *Orchestrator) resolveGitRebaseConflict(ctx context.Context, branch, base string) error {
 	if o.git == nil {
 		return fmt.Errorf("git client is nil")
@@ -171,13 +173,59 @@ func (o *Orchestrator) resolveGitRebaseConflict(ctx context.Context, branch, bas
 		if err != nil {
 			continue
 		}
-		content, err := os.ReadFile(fullPath)
-		if err != nil {
-			continue
+
+		baseContent, _ := o.git.Run(ctx, false, "show", fmt.Sprintf("HEAD:%s", file))
+		workerContent, _ := o.git.Run(ctx, false, "show", fmt.Sprintf("%s:%s", branch, file))
+
+		synthesized := false
+		if o.llmClient != nil && strings.TrimSpace(baseContent) != "" && strings.TrimSpace(workerContent) != "" {
+			llmCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+			llmCtx = context.WithValue(llmCtx, AgentRoleKey, "generator")
+			prompt := fmt.Sprintf("You are the Generator Agent resolving a Git merge conflict on file %q.\nVersion A is from the integration baseline (HEAD).\nVersion B is from the worker task branch (%s).\n\nYour task is to REIMPLEMENT and synthesize a single, complete, coherent version of the file that seamlessly merges and reconciles ALL functions, types, structs, interfaces, methods, logic, and imports from BOTH Version A and Version B.\n\nVersion A (Integration Baseline):\n```\n%s\n```\n\nVersion B (Worker Task Version):\n```\n%s\n```\n\nReturn ONLY the complete, syntactically valid source code for %q. Do not include markdown fences (```) or conflict markers.", file, branch, baseContent, workerContent, file)
+			resp, llmErr := o.llmClient.Complete(llmCtx, prompt)
+			cancel()
+			if llmErr == nil && resp != nil && (strings.TrimSpace(resp.Reasoning) != "" || len(resp.Actions) > 0) {
+				var code string
+				if resp.Reasoning != "" {
+					code = cleanLLMCodeOutput(resp.Reasoning)
+				}
+				for _, act := range resp.Actions {
+					if act.Tool == "write_file" {
+						if c, ok := act.Args["content"].(string); ok && strings.TrimSpace(c) != "" {
+							code = c
+							break
+						}
+					}
+				}
+				if strings.TrimSpace(code) != "" {
+					_ = os.WriteFile(fullPath, []byte(code), 0644)
+					synthesized = true
+					fmt.Printf("✨ [Generator Synthesis] Synthesized unified %q incorporating features from both branches\n", file)
+				}
+			}
 		}
-		cleaned := CleanConflictMarkers(string(content))
-		_ = os.WriteFile(fullPath, []byte(cleaned), 0644)
+
+		if !synthesized {
+			content, err := os.ReadFile(fullPath)
+			if err == nil {
+				cleaned := CleanConflictMarkers(string(content))
+				_ = os.WriteFile(fullPath, []byte(cleaned), 0644)
+			}
+		}
 	}
 	_, _ = o.git.Run(ctx, true, "add", "--all")
 	return nil
+}
+
+// cleanLLMCodeOutput extracts raw source code from potential markdown code fences.
+func cleanLLMCodeOutput(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "```") {
+		firstNewline := strings.Index(trimmed, "\n")
+		if firstNewline != -1 {
+			trimmed = trimmed[firstNewline+1:]
+		}
+		trimmed = strings.TrimSuffix(trimmed, "```")
+	}
+	return strings.TrimSpace(trimmed)
 }

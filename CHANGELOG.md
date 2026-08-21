@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.0] - 2026-08-21
+
+### Added
+- **Zero-Stall Resilient Architecture (Optimistic Merging, Dynamic Tool Degradation, Whole-File Conflict Synthesis & Post-Merge Repair)**:
+  - **Dynamic Tool Degradation**: Implemented missing binary detection (exit code 127, `command not found`, `executable file not found in $PATH`) and tool eviction (`EvictTool`, `IsToolEvicted`) in `HostSandbox` and `TestValidator`, preventing infinite retry/unblocker loops when test runners or host tools are absent.
+  - **Optimistic Task Merging**: Tasks that complete code generation but have failing test assertions or missing tools are optimistically merged into `integrationBranch` (`MERGED_WITH_WARNINGS`) rather than discarded, preserving code and unblocking downstream DAG dependencies.
+  - **5-Tier Resilient Merge Engine**:
+    - Tier 1: Non-interactive fast-forward/merge (`git merge --no-ff`).
+    - Tier 2: Deterministic conflict marker stripping (`CleanConflictMarkers`).
+    - Tier 3: **Whole-File Dual Reimplementation by Generator Agent** synthesizing all features from both base and worker branches into a single clean file.
+    - Tier 4: Optimistic line union merge.
+    - Tier 5: Direct patch overlay and forced commit.
+  - **Stale Git Lock Sanitizer**: Automatic pre-command purging of stale `.git/index.lock` and worktree lock files older than 5 seconds.
+  - **Post-Merge Global Integration & Autonomous Repair Agent**: Spawns an integration repair phase on the consolidated `integrationBranch` after all tasks finish to fix cross-task discrepancies and broken tests with a strict 2-turn budget.
+  - **Comprehensive PR Reporting**: Generates Pull Requests highlighting degraded tools, optimistic merges, and full test diagnostics for human review.
+
 ## [0.46.4] - 2026-08-21
 
 ### Fixed

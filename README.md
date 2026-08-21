@@ -178,10 +178,16 @@ The core engine runs a continuous polling event loop that drives all development
    - Parses `depends_on` dependencies from User Story YAML frontmatter.
    - Concurrently executes all unblocked user stories across worker slots, dynamically unblocking dependent stories as prerequisites complete.
 12. **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: Enables resuming interrupted or partially completed project executions, skipping completed stories (`StorySuccess`) and picking up execution at the first incomplete story.
-13. **Configurable Task Execution Order (`agents.task_execution_order`)**: Configurable verification sequence mode (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
-14. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
-15. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
-16. **Pre-Flight Diagnostics & LLM Provider Ping**: Validates Git CLI availability, state database connectivity, LLM provider `/models` endpoint reachability, and sandbox mode before launching the orchestrator.
+13. **Zero-Stall Resilient Architecture (Optimistic Merging, 5-Tier Merge Engine, Tool Degradation & Post-Merge Repair)**:
+   - **Dynamic Tool Degradation & Eviction**: Auto-detects missing binaries (e.g. exit code 127, `pytest: command not found`). Evicts missing tools and transitions validation to degraded mode (`[Validation Degraded]`), preventing endless retry stalls.
+   - **Optimistic Task Merging**: Optimistically merges completed task code into `integrationBranch` with warnings (`MERGED_WITH_WARNINGS`) even when tests fail, unblocking dependent tasks.
+   - **5-Tier Merge Engine**: Features non-interactive merge, deterministic conflict marker stripping, **Whole-File Dual Reimplementation by the Generator Agent** (prompting the LLM to rewrite the entire file combining all features from both branches), optimistic line union merge, and direct diff overlay.
+   - **Stale Git Lock Sanitizer**: Automatically cleans stale `.git/index.lock` and worktree lock files older than 5 seconds.
+   - **Post-Merge Integration Repair Agent**: Runs an automated repair phase on the consolidated `integrationBranch` after all tasks finish to fix cross-task discrepancies and broken tests with a strict 2-turn budget.
+14. **Configurable Task Execution Order (`agents.task_execution_order`)**: Configurable verification sequence mode (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
+15. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
+16. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
+17. **Pre-Flight Diagnostics & LLM Provider Ping**: Validates Git CLI availability, state database connectivity, LLM provider `/models` endpoint reachability, and sandbox mode before launching the orchestrator.
 
 ---
 

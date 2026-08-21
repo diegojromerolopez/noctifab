@@ -123,6 +123,30 @@ func TestHostSandbox_DepMgrSet_WithAllowedCommand(t *testing.T) {
 	}
 }
 
+func TestHostSandbox_EvictTool(t *testing.T) {
+	s := NewHostSandbox([]string{"sh", "pytest"}, "", 0, nil)
+	if s.IsToolEvicted("pytest") {
+		t.Error("expected pytest to not be evicted initially")
+	}
+
+	s.EvictTool("pytest")
+	if !s.IsToolEvicted("pytest") {
+		t.Error("expected pytest to be evicted after EvictTool")
+	}
+
+	tools := s.GetEvictedTools()
+	if len(tools) != 1 || tools[0] != "pytest" {
+		t.Errorf("expected ['pytest'], got %v", tools)
+	}
+
+	// Running an evicted tool should fail-fast / degrade
+	ctx := context.Background()
+	_, err := s.RunCommand(ctx, t.TempDir(), "pytest", "")
+	if err == nil {
+		t.Error("expected error when running evicted tool")
+	}
+}
+
 func TestBuildCacheVolumeArgs(t *testing.T) {
 	args := BuildCacheVolumeArgs()
 	if len(args) == 0 {

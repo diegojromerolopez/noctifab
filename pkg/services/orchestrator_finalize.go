@@ -107,10 +107,14 @@ func buildPRBody(state *domain.State) string {
 	body += "### Tasks\n\n"
 	for _, t := range state.Tasks {
 		icon := "✅"
+		statusNote := string(t.Status)
 		if t.Status == domain.TaskFailed {
 			icon = "❌"
+		} else if strings.TrimSpace(t.FailureLog) != "" {
+			icon = "⚠️"
+			statusNote = "SUCCESS (with warnings/degraded validation)"
 		}
-		body += fmt.Sprintf("- %s **%s** — %s\n", icon, t.Title, string(t.Status))
+		body += fmt.Sprintf("- %s **%s** — %s\n", icon, t.Title, statusNote)
 	}
 	return body
 }

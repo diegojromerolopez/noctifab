@@ -114,6 +114,9 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 		// recover on retry). StoryStatus transitions Idle -> Success/Failed
 		// exactly once when all tasks are finished.
 		if o.allTasksFinished(state) && state.StoryStatus == domain.StoryIdle {
+			// Run Post-Merge Repair Phase before release finalization
+			_ = o.RunPostMergeRepairPhase(ctx, state)
+
 			buildOK := o.allTasksSucceeded(state)
 			if buildOK {
 				if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
