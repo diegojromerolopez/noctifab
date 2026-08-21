@@ -77,6 +77,8 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		if err := o.updateStateWithRetry(ctx, func(currentState *domain.State) error {
 			if len(currentState.Tasks) > 0 {
 				// Another worker already planned tasks concurrently.
+				plannedTasks = make([]domain.Task, len(currentState.Tasks))
+				copy(plannedTasks, currentState.Tasks)
 				return nil
 			}
 			currentState.Tasks = plannedTasks
@@ -84,6 +86,7 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		}); err != nil {
 			return fmt.Errorf("failed to persist planned tasks: %w", err)
 		}
+		state.Tasks = plannedTasks
 
 		fmt.Printf("📋 Plan created: %d tasks for story %s\n", len(state.Tasks), state.Metadata.FeatureName)
 		return nil

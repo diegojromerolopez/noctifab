@@ -143,9 +143,14 @@ func (se *StandbyEngine) reconcilePendingOrders(ctx context.Context) {
 				if _, statErr := os.Stat(state.Orders[i].StoryPath); statErr == nil {
 					se.Enqueue(StoryWorkItem{Path: state.Orders[i].StoryPath})
 				} else {
-					state.Orders[i].Status = "FAILED"
-					state.Orders[i].UpdatedAt = time.Now().UTC()
-					_ = se.repo.Save(ctx, state)
+					_ = saveStateWithBackoff(ctx, se.repo, func(s *domain.State) {
+						for j := range s.Orders {
+							if s.Orders[j].StoryPath == state.Orders[i].StoryPath {
+								s.Orders[j].Status = "FAILED"
+								s.Orders[j].UpdatedAt = time.Now().UTC()
+							}
+						}
+					})
 				}
 			}
 		}
@@ -156,21 +161,14 @@ func (se *StandbyEngine) updateOrderStatus(ctx context.Context, storyPath string
 	if se.repo == nil {
 		return
 	}
-	state, err := se.repo.Load(ctx)
-	if err != nil || state == nil {
-		return
-	}
-	updated := false
-	for i := range state.Orders {
-		if state.Orders[i].StoryPath == storyPath || filepath.Base(state.Orders[i].StoryPath) == filepath.Base(storyPath) {
-			state.Orders[i].Status = status
-			state.Orders[i].UpdatedAt = time.Now().UTC()
-			updated = true
+	_ = saveStateWithBackoff(ctx, se.repo, func(state *domain.State) {
+		for i := range state.Orders {
+			if state.Orders[i].StoryPath == storyPath || filepath.Base(state.Orders[i].StoryPath) == filepath.Base(storyPath) {
+				state.Orders[i].Status = status
+				state.Orders[i].UpdatedAt = time.Now().UTC()
+			}
 		}
-	}
-	if updated {
-		_ = se.repo.Save(ctx, state)
-	}
+	})
 }
 
 func (se *StandbyEngine) processStoryWorkItem(ctx context.Context, item StoryWorkItem) {

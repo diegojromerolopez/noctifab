@@ -46,7 +46,20 @@ func (m *CommandMailbox) IsRunning() bool {
 // Start processes mailbox commands sequentially in a single loop
 func (m *CommandMailbox) Start(ctx context.Context) {
 	m.running.Store(true)
-	defer m.running.Store(false)
+	defer func() {
+		m.running.Store(false)
+		// Drain and notify any remaining sync commands if context was cancelled
+		for {
+			select {
+			case cmd := <-m.cmds:
+				if syncCmd, ok := cmd.(*syncCommandWrapper); ok {
+					syncCmd.done <- ctx.Err()
+				}
+			default:
+				return
+			}
+		}
+	}()
 
 	for {
 		select {
@@ -81,7 +94,16 @@ func (s *syncCommandWrapper) Execute(ctx context.Context, repo domain.StateRepos
 }
 
 // SendSync dispatches a command to the single-writer event loop and blocks until it is executed or ctx is cancelled.
+// If the mailbox is not running, it falls back to direct synchronous execution on the repository.
 func (m *CommandMailbox) SendSync(ctx context.Context, cmd Command) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if !m.IsRunning() {
+		return cmd.Execute(ctx, m.repo)
+	}
+
 	done := make(chan error, 1)
 	wrapper := &syncCommandWrapper{cmd: cmd, done: done}
 	select {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -253,17 +254,12 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 			return
 		}
 		if ws.repo != nil {
-			st, err := ws.repo.Load(r.Context())
+			err := updateStateWithOCC(r.Context(), ws.repo, func(st *domain.State) {
+				st.StoryStatus = domain.StoryPaused
+			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
-			}
-			if st != nil {
-				st.StoryStatus = domain.StoryPaused
-				if err := ws.repo.Save(r.Context(), st); err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -281,17 +277,12 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 			return
 		}
 		if ws.repo != nil {
-			st, err := ws.repo.Load(r.Context())
+			err := updateStateWithOCC(r.Context(), ws.repo, func(st *domain.State) {
+				st.StoryStatus = domain.StoryRunning
+			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
-			}
-			if st != nil {
-				st.StoryStatus = domain.StoryRunning
-				if err := ws.repo.Save(r.Context(), st); err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -392,4 +383,30 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 	ws.registerSpecRoutes(mux)
 
 	return mux
+}
+
+func updateStateWithOCC(ctx context.Context, repo domain.StateRepository, updateFn func(st *domain.State)) error {
+	for attempt := 0; attempt < 20; attempt++ {
+		st, err := repo.Load(ctx)
+		if err != nil {
+			return err
+		}
+		if st == nil {
+			return nil
+		}
+		updateFn(st)
+		err = repo.Save(ctx, st)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, domain.ErrVersionConflict) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	return domain.ErrVersionConflict
 }
