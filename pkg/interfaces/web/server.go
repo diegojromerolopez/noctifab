@@ -381,5 +381,11 @@ func (ws *WebServer) buildMux() *http.ServeMux {
 	// 11. /api/v1/spec routes — Visual Web Spec Editor
 	ws.registerSpecRoutes(mux)
 
+	// 12. /api/v1/roadmap routes — User Stories & DoD metadata
+	ws.registerRoadmapRoutes(mux)
+
+	// 13. /api/v1/report and /api/v1/metrics routes
+	ws.registerReportAndMetricsRoutes(mux)
+
 	return mux
 }

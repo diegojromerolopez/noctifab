@@ -43,15 +43,32 @@
         <div class="stat-pill"><span class="stat-label">Story:</span> <strong id="active-story-name">Default</strong></div>
         <div class="stat-pill"><span class="stat-label">Status:</span> <span id="story-status" class="badge badge-success">RUNNING</span></div>
         <div class="stat-pill"><span class="stat-label">Health:</span> <span id="build-health" class="badge badge-success">PASSING</span></div>
-        <div class="stat-pill"><span class="stat-label">Tokens:</span> <span id="total-tokens">0</span></div>
+        <div class="stat-pill clickable-pill" id="token-metrics-pill" title="Click to view token breakdown & velocity metrics"><span class="stat-label">Tokens:</span> <span id="total-tokens">0</span> 📊</div>
         <div class="stat-pill"><span class="stat-label">Elapsed:</span> <span id="elapsed-time">00s</span></div>
         <div class="header-actions">
+          <button id="btn-audio-toggle" class="btn btn-secondary" title="Toggle audio and desktop alerts">🔔 Sound: ON</button>
+          <button id="btn-report-modal" class="btn btn-secondary" title="View or download execution report">📥 Report</button>
           <button id="btn-toggle-spec" class="btn btn-warning">📄 Spec Studio</button>
           <button id="btn-pause" class="btn btn-secondary">⏸ Pause</button>
           <button id="btn-resume" class="btn btn-primary" style="display:none;">▶ Resume</button>
         </div>
       </div>
     </header>
+
+    <!-- Interactive Failure Diagnostics & Quick-Steer Hint Banner -->
+    <div id="failure-diagnostics-banner" class="failure-diagnostics-banner" style="display:none;">
+      <div class="diagnostics-left">
+        <span class="diagnostics-icon">🚨</span>
+        <div class="diagnostics-text">
+          <div class="diagnostics-headline"><strong>Build / Verification Failure Detected</strong> <span id="diagnostics-error-badge" class="badge badge-danger">FAILING</span></div>
+          <div class="diagnostics-snippet" id="diagnostics-snippet">Analyzing root cause failure log...</div>
+        </div>
+      </div>
+      <div class="diagnostics-actions">
+        <button id="btn-quick-steer-hint" class="btn btn-warning btn-sm">💡 Suggest Steering Directive</button>
+        <button id="btn-view-failure-details" class="btn btn-secondary btn-sm">🔍 Inspect Log</button>
+      </div>
+    </div>
 
     <!-- Interactive Clarification & Disambiguation Banner -->
     <div id="clarification-banner" class="clarification-banner" style="display:none;">
@@ -66,6 +83,17 @@
           <input type="text" id="clarification-input" placeholder="Type your answer to resolve clarification and unblock agent..." required autocomplete="off">
           <button type="submit" class="btn btn-warning">💬 Submit Clarification</button>
         </form>
+      </div>
+    </div>
+
+    <!-- Multi-Story Roadmap Timeline Bar -->
+    <div id="story-timeline-bar" class="story-timeline-bar">
+      <div class="timeline-bar-header">
+        <span class="timeline-bar-label">🗺️ Roadmap Stories Timeline:</span>
+        <button class="timeline-story-pill active" data-story-filter="all">All Stories</button>
+      </div>
+      <div class="timeline-story-pills" id="timeline-story-pills">
+        <!-- Story pills populated dynamically -->
       </div>
     </div>
 
@@ -103,12 +131,13 @@
         </div>
       </section>
 
-      <!-- Right Column: Tabbed Split Viewer (Diff & Live Log Feed) -->
+      <!-- Right Column: Tabbed Split Viewer (Diff, Logs & Changed Files) -->
       <section class="card split-viewer-card">
         <div class="card-header tab-header">
           <div class="tabs">
             <button class="tab-btn active" id="tab-diff-btn">📝 Live Code Diff</button>
-            <button class="tab-btn" id="tab-logs-btn">⚡ Live Event Feed & Actions (<span id="action-count">0</span>)</button>
+            <button class="tab-btn" id="tab-logs-btn">⚡ Live Events (<span id="action-count">0</span>)</button>
+            <button class="tab-btn" id="tab-files-btn">📁 Changed Files (<span id="changed-files-count">0</span>)</button>
           </div>
           <button id="btn-clear-logs" class="btn-sm btn-ghost">Clear Feed</button>
         </div>
@@ -126,9 +155,26 @@
               <div class="log-entry system">[00:00:00] Connected to Noctifab Live Telemetry Engine. Ready for directives.</div>
             </div>
           </div>
+
+          <!-- Tab 3: Changed Files Browser -->
+          <div id="view-files" class="tab-view">
+            <div class="files-browser-layout">
+              <div class="files-list-panel" id="files-list-panel">
+                <div class="empty-state">No files tracked yet.</div>
+              </div>
+              <div class="file-content-panel">
+                <div class="file-content-header">
+                  <span id="inspected-file-path">Select a file to inspect content</span>
+                </div>
+                <pre class="file-content-pre"><code id="inspected-file-code">// File content preview will appear here...</code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
 
-    <!-- 3.5. Spec Studio (Visual Human-in-the-Loop Spec Editor) -->
+    <!-- 3.5. Spec Studio (Visual Human-in-the-Loop Spec Editor & Roadmap Stories) -->
     <main class="spec-studio-view" id="spec-studio-view" style="display:none;">
       <!-- Left Column: SPEC.md Editor & Viewer -->
       <section class="card spec-editor-card">
@@ -155,60 +201,90 @@
           </div>
         </div>
 
-        <div class="card-body">
+        <div class="card-body spec-editor-body">
           <textarea id="spec-editor-textarea" class="spec-editor-textarea" placeholder="No specification loaded. Enter a prompt to generate or refine your SPEC.md..."></textarea>
         </div>
       </section>
 
-      <!-- Right Column: Multi-Model Panel & Feedback Loop -->
+      <!-- Right Column: User Stories Roadmap & Multi-Model Refinement Panel -->
       <section class="card spec-refine-card">
-        <div class="card-header">
-          <h2>🌌 Multi-Model Consensus & Refinement</h2>
-          <span class="consensus-badge" id="spec-consensus-badge">✔ 4 Roles Synthesized</span>
+        <div class="card-header tab-header">
+          <div class="tabs">
+            <button class="tab-btn active" id="tab-spec-stories-btn">📋 Decomposed User Stories & DoD (<span id="spec-story-count">0</span>)</button>
+            <button class="tab-btn" id="tab-spec-refine-btn">🌌 Multi-Model Consensus</button>
+          </div>
         </div>
         <div class="card-body spec-refine-body">
-          <!-- Role Attribution Cards -->
-          <div class="role-grid" id="spec-role-grid">
-            <div class="role-card">
-              <span class="role-title">👑 Product Manager</span>
-              <span class="role-model" id="role-pm-model">Claude 3.7 Sonnet</span>
+          <!-- Tab A: Decomposed User Stories & DoD with Completion Percentages -->
+          <div id="view-spec-stories" class="spec-tab-view active">
+            <div class="stories-roadmap-summary">
+              <div class="summary-stat-row">
+                <span class="summary-label">Roadmap Progress:</span>
+                <span class="summary-val" id="roadmap-aggregate-progress">0%</span>
+              </div>
+              <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="roadmap-aggregate-bar" style="width: 0%;"></div>
+              </div>
             </div>
-            <div class="role-card">
-              <span class="role-title">📐 Systems Architect</span>
-              <span class="role-model" id="role-arch-model">GPT-4o</span>
-            </div>
-            <div class="role-card">
-              <span class="role-title">🧪 Test Architect</span>
-              <span class="role-model" id="role-test-model">DeepSeek R1</span>
-            </div>
-            <div class="role-card">
-              <span class="role-title">🛡️ QA Specialist</span>
-              <span class="role-model" id="role-qa-model">Gemini 2.5 Pro</span>
+            <div id="spec-stories-list" class="spec-stories-list">
+              <div class="empty-state">No user stories generated yet. Click "Audit Consistency" or "Approve & Start Build" to generate roadmap.</div>
             </div>
           </div>
 
-          <!-- Diff Preview -->
-          <div class="spec-diff-box">
-            <h4>📝 Latest Changes Applied</h4>
-            <pre><code id="spec-diff-content">// Refinement diffs will appear here...</code></pre>
-          </div>
+          <!-- Tab B: Multi-Model Consensus & Refinement Form -->
+          <div id="view-spec-refine" class="spec-tab-view" style="display:none;">
+            <!-- Role Attribution Cards -->
+            <div class="role-grid" id="spec-role-grid">
+              <div class="role-card">
+                <span class="role-title">👑 Product Manager</span>
+                <span class="role-model" id="role-pm-model">Claude 3.7 Sonnet</span>
+              </div>
+              <div class="role-card">
+                <span class="role-title">📐 Systems Architect</span>
+                <span class="role-model" id="role-arch-model">GPT-4o</span>
+              </div>
+              <div class="role-card">
+                <span class="role-title">🧪 Test Architect</span>
+                <span class="role-model" id="role-test-model">DeepSeek R1</span>
+              </div>
+              <div class="role-card">
+                <span class="role-title">🛡️ QA Specialist</span>
+                <span class="role-model" id="role-qa-model">Gemini 2.5 Pro</span>
+              </div>
+            </div>
 
-          <!-- Human Feedback Form -->
-          <form id="spec-refine-form" class="spec-refine-form">
-            <label for="spec-feedback-input"><strong>What would you like to improve, fix, or add?</strong></label>
-            <textarea id="spec-feedback-input" placeholder="e.g. 'Add support for PostgreSQL instead of SQLite and add Prometheus metrics at /metrics'..." required></textarea>
-            <button type="submit" class="btn btn-primary btn-block" id="btn-submit-refine">🚀 Refine with Multi-Model Pipeline</button>
-          </form>
+            <!-- Diff Preview -->
+            <div class="spec-diff-box">
+              <h4>📝 Latest Changes Applied</h4>
+              <pre><code id="spec-diff-content">// Refinement diffs will appear here...</code></pre>
+            </div>
+
+            <!-- Human Feedback Form -->
+            <form id="spec-refine-form" class="spec-refine-form">
+              <label for="spec-feedback-input"><strong>What would you like to improve, fix, or add?</strong></label>
+              <textarea id="spec-feedback-input" placeholder="e.g. 'Add support for PostgreSQL instead of SQLite and add Prometheus metrics at /metrics'..." required></textarea>
+              <button type="submit" class="btn btn-primary btn-block" id="btn-submit-refine">🚀 Refine with Multi-Model Pipeline</button>
+            </form>
+          </div>
         </div>
       </section>
     </main>
 
-    <!-- Real-Time Streaming Console Terminal Drawer -->
-    <section class="terminal-drawer" id="terminal-drawer">
+    <!-- Real-Time Streaming Console Terminal Drawer with Search & Filters -->
+    <section class="terminal-drawer collapsed" id="terminal-drawer">
       <div class="terminal-header" id="terminal-toggle">
         <div class="terminal-title">
           <span class="terminal-dot"></span>
           <span>💻 Real-Time Agent & Tool Terminal Console</span>
+        </div>
+        <div class="terminal-search-group" onclick="event.stopPropagation()">
+          <input type="text" id="terminal-search-input" placeholder="🔍 Search logs..." class="terminal-search-input">
+          <div class="terminal-filter-chips">
+            <button class="term-chip active" data-term-filter="all">All</button>
+            <button class="term-chip" data-term-filter="error">Errors</button>
+            <button class="term-chip" data-term-filter="tool">Tools</button>
+            <button class="term-chip" data-term-filter="test">Tests</button>
+          </div>
         </div>
         <div class="terminal-controls">
           <label class="autoscroll-toggle">
@@ -241,9 +317,73 @@
           <kbd>P</kbd> Pause/Resume
           <kbd>S</kbd> Focus Steer
           <kbd>O</kbd> Focus Order
+          <kbd>Esc</kbd> Close Modals
         </div>
       </form>
     </footer>
+
+    <!-- 5. Task & User Story Detail Inspector Modal -->
+    <div id="detail-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-badge" id="modal-type-badge">TASK</span>
+            <h2 id="modal-title">Task Details</h2>
+          </div>
+          <button class="modal-close-btn" id="modal-close-btn" title="Close modal (Esc)">✕</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+          <!-- Dynamic Content rendered via JS -->
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-warning" id="modal-auto-suggest-btn">💡 Auto-Suggest Fix</button>
+          <button class="btn btn-secondary" id="modal-steer-shortcut-btn">🎯 Steer This Task</button>
+          <button class="btn btn-primary" id="modal-ok-btn">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Telemetry & Token Breakdown Modal -->
+    <div id="metrics-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-badge" style="background:#1e3a8a; color:#93c5fd;">METRICS</span>
+            <h2>📊 Engine Telemetry & Token Usage Breakdown</h2>
+          </div>
+          <button class="modal-close-btn" id="metrics-close-btn" title="Close modal (Esc)">✕</button>
+        </div>
+        <div class="modal-body" id="metrics-modal-body">
+          <!-- Dynamic Content rendered via JS -->
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="metrics-ok-btn">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Execution Report Viewer & Downloader Modal -->
+    <div id="report-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-card" style="max-width: 900px;">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-badge" style="background:#065f46; color:#a7f3d0;">REPORT</span>
+            <h2 id="report-modal-title">📄 Execution Summary Report</h2>
+          </div>
+          <button class="modal-close-btn" id="report-close-btn" title="Close modal (Esc)">✕</button>
+        </div>
+        <div class="modal-body" id="report-modal-body">
+          <pre class="modal-code-box" style="color: var(--text-main); max-height: 540px;"><code id="report-modal-content">Loading report...</code></pre>
+        </div>
+        <div class="modal-footer">
+          <a id="report-download-link" href="/api/v1/report?download=true" class="btn btn-success" download>⬇ Download Report (.md)</a>
+          <button class="btn btn-primary" id="report-ok-btn">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. Floating Toast Notifications Container -->
+    <div id="toast-container" class="toast-container"></div>
   </div>
 
   <script src="/app.js"></script>
