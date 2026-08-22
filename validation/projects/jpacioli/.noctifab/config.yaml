@@ -114,7 +114,7 @@ llm:
     streaming: true
   - name: claude
     provider: anthropic
-    model: claude-3-7-sonnet-latest
+    model: claude-sonnet-5
     api_keys: CLAUDE_API_KEY
     max_retries: 2
     retry_backoff: 50ms

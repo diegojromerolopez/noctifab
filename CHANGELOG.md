@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.50.2] - 2026-08-23
+
+### Fixed
+- **Anthropic LLM Adaptive Parameter Retry**:
+  - Implemented adaptive parameter recovery in `anthropicProviderClient.Call` for HTTP 400 parameter rejections.
+  - Automatically strips rejected sampling `temperature` when models (such as Claude 5 / Opus 5 / Sonnet 5) signal that `temperature` is deprecated or unsupported.
+  - Automatically bounds and adjusts `max_tokens` when an upstream model rejects excessive token limits.
+  - Gracefully recovers from unsupported `cache_control` or beta header rejections without aborting the LLM completion loop.
+- **Claude Model Configurations**:
+  - Updated default Claude model name to `claude-sonnet-5` across all validation project configurations and target repository templates.
+
 ## [0.50.1] - 2026-08-22
 
 ### Fixed
