@@ -336,7 +336,16 @@ Key features of Interactive Mode:
 - **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles. Use `--profile <preset>` (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) for 1-click local LLM configuration, `--spec <prompt>` to bootstrap interactive spec generation, or `-i` / `--interactive` for interactive wizard.
 - **`spec`**: Interactively creates, refines, and audits software specifications (`SPEC.md`). Features multi-agent team consensus review (Architect, QA, Tester, PM), version snapshotting (`SPEC.v1.md`, `SPEC.v2.md`), and instant zero-token time-travel rollback (`undo`, `redo`, `history`, `checkout <v>`). Supports subcommands `noctifab spec [prompt]`, `noctifab spec new`, `noctifab spec refine`, and `noctifab spec audit`.
 - **`demo`**: Runs an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay (supports `--project`, `--offline`, `--speed`, `--no-cleanup`).
-- **`dashboard`**: Launches the real-time progress dashboard (terminal TUI by default, or visual web browser via `-w` / `--web`). Features the Visual Spec Studio (`/spec`) tab with interactive Timeline Scrubber, revision pills, model role badges, side-by-side diff previews, and 1-click spec approval. Supports `--web-open` (auto-open in default browser), `--port`, `--host`, and `--readonly`.
+- **`dashboard`**: Launches the real-time progress dashboard (terminal TUI by default, or visual web browser via `-w` / `--web`). Supports `--web-open` (auto-opens in default browser), `--port`, `--host`, and `--readonly`. Web Mission Control features:
+  - **Task & Story DoD Inspector Modal**: Click any task or story card to view its full description, Definition of Done (DoD) verification checklist, target files, and failure stack traces with 1-click steering shortcuts.
+  - **Failure Diagnostics & Quick-Steer Hints**: Automatically highlights root-cause compiler/test errors when health is failing and generates corrective steering directives with 1 click.
+  - **Changed Files Explorer**: Browse and inspect syntax-highlighted code for all files modified by agent tasks.
+  - **Multi-Story Roadmap Timeline**: Horizontal story scrubber to inspect task DAGs across past, active, and upcoming user stories.
+  - **Audio Cues & Floating Toasts**: Native Web Audio chimes for story completion and alerts, paired with real-time floating toast notifications.
+  - **Telemetry & Token Metrics Modal**: Detailed breakdown of token consumption by agent role (`GENERATOR`, `TESTER`, `PLANNER`, `QA`) and tool action distributions.
+  - **Terminal Drawer Search & Filters**: Live search input and tag chips (`All`, `Errors`, `Tools`, `Tests`) for console output.
+  - **Execution Report Viewer**: 1-click modal to inspect or download the latest Markdown execution report.
+  - **Visual Spec Studio**: Side-by-side specification editor with time-travel revision scrubber, multi-model consensus review, and decomposed user story roadmap with completion meters.
 - **`steer`**: Injects a mid-flight human-in-the-loop steering directive into the active task (`noctifab steer "Use PostgreSQL instead of SQLite"`).
 - **`order`**: Enqueues an ad-hoc user story / feature prompt order into the autonomous execution queue (`noctifab order "Add JWT authentication middleware"`).
 - **`validate`**: Checks configuration files, databases, and sandbox settings.
