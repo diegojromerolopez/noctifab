@@ -30,13 +30,17 @@ func (o *Orchestrator) prepareQA(ctx context.Context, state *domain.State, task 
 		}
 	}
 
+	if contract.StoryID != "" && state != nil {
+		UpsertStoryContract(state, contract)
+	}
+
 	if !o.cfg.QA.Enabled {
 		result := o.skippedQAWithStory(task.ID, contract.StoryID, "disabled")
 		return contract, &result
 	}
 	if len(contract.PublicContracts) == 0 {
-		result := o.skippedQA(task.ID, "missing_story_contract")
-		return domain.StoryContract{}, &result
+		result := o.skippedQAWithStory(task.ID, contract.StoryID, "missing_story_contract")
+		return contract, &result
 	}
 	if !qaApplies(contract, task.TargetFiles, o.cfg.QA.ValidationCommands) {
 		result := o.skippedQAWithStory(task.ID, contract.StoryID, "not_applicable")
@@ -313,10 +317,6 @@ func upsertCompletedQAAgent(state *domain.State, phase domain.ReviewPhase) {
 		}
 	}
 	state.ActiveAgents = append(state.ActiveAgents, agent)
-}
-
-func (o *Orchestrator) skippedQA(taskID, reason string) QAReviewResult {
-	return o.skippedQAWithStory(taskID, "", reason)
 }
 
 func (o *Orchestrator) skippedQAWithStory(taskID, storyID, reason string) QAReviewResult {
