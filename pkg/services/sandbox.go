@@ -117,6 +117,39 @@ func DetectProjectLanguage(projectPath string) string {
 	return ""
 }
 
+// DetectDefaultTestCommand inspects the workspace directory for manifest or build files
+// and returns the appropriate standard test suite command for the project.
+func DetectDefaultTestCommand(projectPath string) string {
+	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
+		content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile"))
+		if rErr == nil && (strings.Contains(string(content), "test:") || strings.Contains(string(content), "test-all:")) {
+			return "make test"
+		}
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
+		return "cargo test"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
+		return "npm test"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "pytest.ini")); err == nil {
+		return "pytest"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "pyproject.toml")); err == nil {
+		return "python3 -m unittest discover -s tests"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "requirements.txt")); err == nil {
+		return "python3 -m unittest discover -s tests"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "setup.py")); err == nil {
+		return "python3 -m unittest discover -s tests"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+		return "go test -v ./..."
+	}
+	return "go test -v ./..."
+}
+
 func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Duration, depMgr *DependencyManager) *HostSandbox {
 	return &HostSandbox{
 		AllowedCommands: allowed,
@@ -142,7 +175,7 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		cmdStr = s.DefaultCommand
 	}
 	if cmdStr == "" {
-		cmdStr = "go test -v ./..."
+		cmdStr = DetectDefaultTestCommand(projectPath)
 	}
 
 	// When the command contains shell operators (&&, ||, ;, |, etc.) we must

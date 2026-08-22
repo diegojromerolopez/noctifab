@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.48.0] - 2026-08-22
+
+### Added
+- **Mandatory Genuine Implementation & Anti-Mock/Stub Mandate for Generator Agent**:
+  - Enforced strict rules across all Generator Agent prompt templates prohibiting mock, fake, shim, or stub code (empty functions returning dummy values, dummy shell wrappers simulating binaries, or replacing the System Under Test with foreign stdlib/third-party substitutes like SQLite).
+  - Mandated that all implemented code must have a real, working implementation with a concrete raison d'être fulfilling the technical architecture and domain requirements.
+  - Added mandatory implementation self-audit requiring generator agents to inspect all generated source files prior to finishing to ensure the codebase is not a collection of stubs/mocks.
+- **Mandatory Non-Tautological Testing & Code Audit Mandate for Tester Agent**:
+  - Enforced strict rules across all Tester Agent prompt templates prohibiting tautological, vacuous, or trivial no-op tests (e.g. C tests returning 0 unconditionally or asserting superficial CLI strings without checking state mutations).
+  - Mandated that tests must execute real code paths, assert real state mutations and invariants, and reliably fail on broken or missing implementations.
+  - Added mandatory code and test audit requiring tester agents to inspect both source code and written tests before completion to verify that the implementation is not composed of dummy stubs and that tests contain non-tautological behavioral assertions that force real implementations.
+- **Optimistic Merge Functionality Retention**:
+  - Mandated that even during forced or optimistic merges upon retry exhaustion, the generator agent must ensure genuine functionality, core algorithms, and domain models are preserved across iterations.
+- **Project-Aware Test Suite Runner Fallback**:
+  - Added `DetectDefaultTestCommand` in `pkg/services/sandbox.go` to inspect workspace manifests and select the appropriate test suite runner (`make test`, `cargo test`, `npm test`, `python3 -m unittest discover -s tests`, or `go test -v ./...`) when no explicit command is provided, preventing non-Go projects from defaulting blindly to `go test`.
+- **Pre-Flight Quality & Release Gate Target Verification**:
+  - Implemented `VerifyQualityAndReleaseGates` in `cmd/noctifab/cli/quality_gates_preflight.go`, integrated into `runPreFlightChecks` and `noctifab validate`.
+  - Audits `Makefile` (if present) to ensure required quality gate targets (`test`, `test-all`, `test-unit`, `check`) are declared and non-trivial (rejecting trivial targets containing only `exit 0`, `true`, `echo skipped`, etc.).
+  - Audits configured sandbox commands (`test_command`, `linter_command`, `formatter_command`) to ensure they are non-trivial and language-consistent with active workspace manifests and source code (e.g. rejecting Go test commands configured for pure Python projects).
+
 ## [0.47.3] - 2026-08-21
 
 ### Changed
