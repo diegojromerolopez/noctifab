@@ -380,6 +380,24 @@ func TestQADisabledAndApplicability(t *testing.T) {
 		t.Fatalf("expected updated phase ID uuid-2, got %q", phases[0].ID)
 	}
 
+	// Test UpsertStoryContract edge cases
+	UpsertStoryContract(nil, domain.StoryContract{StoryID: "US-1"})
+	stateWithContracts := &domain.State{
+		StoryContracts: []domain.StoryContract{{StoryID: "US-100", SourcePath: "old.md"}},
+	}
+	UpsertStoryContract(stateWithContracts, domain.StoryContract{StoryID: ""})
+	if len(stateWithContracts.StoryContracts) != 1 {
+		t.Fatalf("expected empty StoryID to be ignored, got %d", len(stateWithContracts.StoryContracts))
+	}
+	UpsertStoryContract(stateWithContracts, domain.StoryContract{StoryID: "US-100", SourcePath: "new.md"})
+	if len(stateWithContracts.StoryContracts) != 1 || stateWithContracts.StoryContracts[0].SourcePath != "new.md" {
+		t.Fatalf("expected in-place update for US-100, got %+v", stateWithContracts.StoryContracts)
+	}
+	UpsertStoryContract(stateWithContracts, domain.StoryContract{StoryID: "US-200", SourcePath: "us200.md"})
+	if len(stateWithContracts.StoryContracts) != 2 {
+		t.Fatalf("expected append for new US-200, got %d", len(stateWithContracts.StoryContracts))
+	}
+
 	contract := domain.StoryContract{PublicContracts: []domain.PublicContract{{
 		AllowedExecutables: []string{"./app"}, ApplicablePathPrefixes: []string{"cmd/"},
 	}}}

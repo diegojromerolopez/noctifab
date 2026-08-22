@@ -337,17 +337,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 				}
 			}
 			if contract, err := services.ParseStoryContract(relPath, string(markdown)); err == nil && contract.StoryID != "" {
-				contractFound := false
-				for i := range state.StoryContracts {
-					if state.StoryContracts[i].StoryID == contract.StoryID {
-						state.StoryContracts[i] = contract
-						contractFound = true
-						break
-					}
-				}
-				if !contractFound {
-					state.StoryContracts = append(state.StoryContracts, contract)
-				}
+				services.UpsertStoryContract(state, contract)
 			}
 		}
 		if err := repo.Save(ctx, state); err != nil {

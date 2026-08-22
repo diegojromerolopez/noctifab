@@ -397,7 +397,11 @@ func relativeStoryPath(projectPath, sourcePath string) string {
 	return filepath.Base(sourcePath)
 }
 
-func upsertStoryContract(state *domain.State, contract domain.StoryContract) {
+// UpsertStoryContract updates an existing StoryContract or appends a new one to the state.
+func UpsertStoryContract(state *domain.State, contract domain.StoryContract) {
+	if state == nil || contract.StoryID == "" {
+		return
+	}
 	for i := range state.StoryContracts {
 		if state.StoryContracts[i].StoryID == contract.StoryID {
 			state.StoryContracts[i] = contract
@@ -407,10 +411,16 @@ func upsertStoryContract(state *domain.State, contract domain.StoryContract) {
 	state.StoryContracts = append(state.StoryContracts, contract)
 }
 
-func upsertReviewPhase(phases []domain.ReviewPhase, phase domain.ReviewPhase) []domain.ReviewPhase {
+func upsertStoryContract(state *domain.State, contract domain.StoryContract) {
+	UpsertStoryContract(state, contract)
+}
+
+// UpsertReviewPhase updates an existing ReviewPhase by ID or composite key, or appends a new one.
+func UpsertReviewPhase(phases []domain.ReviewPhase, phase domain.ReviewPhase) []domain.ReviewPhase {
 	for i := range phases {
-		if phases[i].ID == phase.ID ||
-			(phases[i].StoryID == phase.StoryID &&
+		if (phase.ID != "" && phases[i].ID == phase.ID) ||
+			(phase.StoryID != "" &&
+				phases[i].StoryID == phase.StoryID &&
 				phases[i].TaskID == phase.TaskID &&
 				phases[i].Role == phase.Role &&
 				phases[i].ArtifactID == phase.ArtifactID &&
@@ -420,6 +430,10 @@ func upsertReviewPhase(phases []domain.ReviewPhase, phase domain.ReviewPhase) []
 		}
 	}
 	return append(phases, phase)
+}
+
+func upsertReviewPhase(phases []domain.ReviewPhase, phase domain.ReviewPhase) []domain.ReviewPhase {
+	return UpsertReviewPhase(phases, phase)
 }
 
 func containsScenario(scenarios []domain.QAScenario, phaseID, fingerprint string) bool {
