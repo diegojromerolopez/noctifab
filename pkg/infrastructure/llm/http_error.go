@@ -42,25 +42,54 @@ func ResetModelBlacklist() {
 	})
 }
 
-// isModelNotFoundOrDeprecated reports whether an error indicates a model is 404, deprecated, or no longer available.
+// isModelNotFoundOrDeprecated reports whether an error indicates a model is 404, deprecated, invalid, or no longer available.
 func isModelNotFoundOrDeprecated(err error) bool {
 	if err == nil {
 		return false
 	}
+
 	var he *httpError
 	if errors.As(err, &he) {
-		if he.StatusCode == http.StatusNotFound {
+		bodyLower := strings.ToLower(he.Body)
+		if isModelScopedErrorText(bodyLower) {
 			return true
 		}
-		bodyLower := strings.ToLower(he.Body)
-		if strings.Contains(bodyLower, "no longer available") || strings.Contains(bodyLower, "model_not_found") {
+		// 404 is a model error if the body mentions model or if it is not an unrelated route/endpoint 404
+		if he.StatusCode == http.StatusNotFound {
+			if strings.Contains(bodyLower, "endpoint") || strings.Contains(bodyLower, "route") || strings.Contains(bodyLower, "page not found") {
+				return false
+			}
 			return true
 		}
 	}
+
 	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "no longer available") ||
-		strings.Contains(errStr, "model_not_found") ||
-		strings.Contains(errStr, "404 not found")
+	return isModelScopedErrorText(errStr)
+}
+
+// isModelScopedErrorText checks for explicit model-related error keywords and phrases.
+func isModelScopedErrorText(s string) bool {
+	if strings.Contains(s, "model_not_found") ||
+		strings.Contains(s, "model_not_supported") ||
+		strings.Contains(s, "no longer available") {
+		return true
+	}
+
+	hasModelScope := strings.Contains(s, "model") || strings.Contains(s, "models/")
+	if !hasModelScope {
+		return false
+	}
+
+	return strings.Contains(s, "not a valid model") ||
+		strings.Contains(s, "is not a valid model") ||
+		strings.Contains(s, "invalid model") ||
+		strings.Contains(s, "does not exist") ||
+		strings.Contains(s, "not found") ||
+		strings.Contains(s, "unknown model") ||
+		strings.Contains(s, "not supported") ||
+		strings.Contains(s, "unsupported model") ||
+		strings.Contains(s, "unrecognized model") ||
+		strings.Contains(s, "is not supported")
 }
 
 // httpError is returned by provider Call methods on non-2xx responses.
@@ -98,9 +127,13 @@ func isNonRetryableHTTPError(err error) bool {
 // rejection that a cheaper/lower model cannot fix, so the lower-model
 // fallback ladder should be skipped entirely. 401/403 (bad or missing API
 // key), 400/422 (invalid request shape) and 405 all reject the caller, not
-// the model. 404 (model not found) is deliberately excluded: falling back to
-// another model in the catalog IS the sensible reaction to an unknown model.
+// the model. 404 (model not found) and invalid/deprecated model errors are
+// deliberately NOT skipped: falling back to another model in the catalog IS the
+// sensible reaction to an unknown model.
 func shouldSkipModelFallback(err error) bool {
+	if isModelNotFoundOrDeprecated(err) {
+		return false
+	}
 	var he *httpError
 	if !errors.As(err, &he) {
 		return false

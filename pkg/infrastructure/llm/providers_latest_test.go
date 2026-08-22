@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestProvidersLatestAliasResolution(t *testing.T) {
@@ -179,66 +180,65 @@ func TestProvidersLatestAliasResolution(t *testing.T) {
 	}
 }
 
-// TestResolveLatestModel_UsesExactAliasWhenPresent is a regression test for
-// OpenRouter-style pinned models whose official name already ends in
-// `-latest` (e.g. `~deepseek/deepseek-v4-flash-latest`). resolveLatestModel
-// must NOT select the `~`-prefixed moving alias (it routes to variable
-// upstreams); it must resolve to a concrete pinned model in the same family
-// instead.
-func TestResolveLatestModel_UsesExactAliasWhenPresent(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
-			"data": [
-				{"id": "sao10k/l3-lunaris-8b"},
-				{"id": "deepseek/deepseek-v4-flash-0731"},
-				{"id": "~deepseek/deepseek-v4-flash-latest"},
-				{"id": "deepseek/deepseek-v4-flash"}
-			]
-		}`))
-	}))
-	defer server.Close()
+// TestComplete_ExplicitLatestModelPassedThrough ensures that model names ending
+// in `-latest` (e.g. `claude-3-7-sonnet-latest`) are passed directly to the provider
+// without triggering dynamic alias resolution or /models queries.
+func TestComplete_ExplicitLatestModelPassedThrough(t *testing.T) {
+	srv, modelCalls := latestModelServer(t)
 
 	c := &Client{
-		Provider: "openrouter",
-		Model:    "deepseek/deepseek-v4-flash-latest",
-		URL:      server.URL,
-		APIKey:   "mock-api-key",
+		Provider:              "opencode",
+		Model:                 "glm-5.2-latest",
+		APIKey:                "testkey",
+		URL:                   srv.URL,
+		Timeout:               2 * time.Second,
+		IdleTimeout:           2 * time.Second,
+		Streaming:             false,
+		SkipOnCreditExhausted: true,
 	}
 
-	resolved := c.resolveLatestModel(context.Background(), "mock-api-key")
-	if resolved != "deepseek/deepseek-v4-flash-0731" {
-		t.Errorf("expected dated snapshot %q (not the ~ alias or bare base), got %q", "deepseek/deepseek-v4-flash-0731", resolved)
+	resp, err := c.Complete(context.Background(), "test prompt")
+	if err != nil {
+		t.Fatalf("Complete failed: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	// No /models endpoint call should have been made because the model was not "latest", "auto", or "".
+	if *modelCalls != 0 {
+		t.Errorf("expected 0 calls to /models for explicit model %q, got %d", c.Model, *modelCalls)
 	}
 }
 
-// TestResolveLatestModel_AliasAbsentFallsBackToFamily ensures that when the
-// exact alias is not in the catalog, resolution stays within the alias's model
-// family rather than jumping to an unrelated top-ranked model.
-func TestResolveLatestModel_AliasAbsentFallsBackToFamily(t *testing.T) {
+// TestResolveLatestModel_AutoAndEmptyAliases verifies that "auto" and empty string
+// trigger dynamic catalog resolution to the top-ranked model.
+func TestResolveLatestModel_AutoAndEmptyAliases(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
 			"data": [
-				{"id": "sao10k/l3-lunaris-8b"},
-				{"id": "deepseek/deepseek-v4-flash-0731"},
-				{"id": "deepseek/deepseek-v4-flash"}
+				{"id": "gpt-3.5-turbo"},
+				{"id": "gpt-4o"},
+				{"id": "gpt-4o-mini"}
 			]
 		}`))
 	}))
 	defer server.Close()
 
-	c := &Client{
-		Provider: "openrouter",
-		Model:    "deepseek/deepseek-v4-flash-latest",
-		URL:      server.URL,
-		APIKey:   "mock-api-key",
-	}
-
-	resolved := c.resolveLatestModel(context.Background(), "mock-api-key")
-	if resolved != "deepseek/deepseek-v4-flash-0731" {
-		t.Errorf("expected family model %q, got %q", "deepseek/deepseek-v4-flash-0731", resolved)
+	for _, alias := range []string{"auto", ""} {
+		t.Run("alias_"+alias, func(t *testing.T) {
+			c := &Client{
+				Provider: "openai",
+				Model:    alias,
+				URL:      server.URL,
+				APIKey:   "mock-api-key",
+			}
+			resolved := c.resolveLatestModel(context.Background(), "mock-api-key")
+			if resolved != "gpt-4o" {
+				t.Errorf("alias %q: expected %q, got %q", alias, "gpt-4o", resolved)
+			}
+		})
 	}
 }

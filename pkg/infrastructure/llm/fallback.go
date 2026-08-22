@@ -21,114 +21,104 @@ func sortProviderModels(models []*ProviderModelInfo) {
 	})
 }
 
-// selectLowerModelFromParsed selects the next lower model from a parsed and sorted slice of models.
-// If the currentModel is found in parsedModels, it returns the next lower model in the sorted list.
-// If the currentModel is NOT found (e.g. it is a newly released model the parser does not yet recognise),
-// it falls back to returning the lowest-ranked model still available, ensuring the fallback
-// engine always has a safe candidate rather than surfacing an error prematurely.
-func selectLowerModelFromParsed(currentModel string, parsedModels []*ProviderModelInfo) string {
-	if len(parsedModels) == 0 {
-		return ""
-	}
-	sortProviderModels(parsedModels)
-	normCurrent := strings.TrimPrefix(strings.ToLower(currentModel), "models/")
-
-	for i, m := range parsedModels {
-		normM := strings.TrimPrefix(strings.ToLower(m.Name), "models/")
-		if normM == normCurrent {
-			for j := i + 1; j < len(parsedModels); j++ {
-				if !IsModelBlacklisted(parsedModels[j].Name) {
-					return parsedModels[j].Name
-				}
-			}
-			// Current model is already the lowest non-blacklisted model — no further fallback.
-			return ""
-		}
-	}
-
-	// The current model was not found in the parsed list (unrecognised model name).
-	// As a fault-tolerant safety valve, return the lowest non-blacklisted model.
-	for j := len(parsedModels) - 1; j >= 0; j-- {
-		if !IsModelBlacklisted(parsedModels[j].Name) && strings.TrimPrefix(strings.ToLower(parsedModels[j].Name), "models/") != normCurrent {
-			return parsedModels[j].Name
-		}
-	}
-	return ""
-}
-
-// normalizeModelID strips provider routing prefixes (e.g. OpenRouter's `~`
-// pin marker or Gemini's `models/`) and lowercases a model identifier so
-// alias-family matching is robust across providers.
-func normalizeModelID(name string) string {
+func normalizeModelName(name string) string {
 	n := strings.ToLower(strings.TrimSpace(name))
 	n = strings.TrimPrefix(n, "~")
 	n = strings.TrimPrefix(n, "models/")
 	return n
 }
 
-// isMovingAlias reports whether a model identifier is a provider-managed
-// "latest" pointer rather than a concrete, pinned model. OpenRouter exposes
-// auto-updating aliases prefixed with `~` (e.g. `~deepseek/deepseek-v4-flash-latest`)
-// that route to variable upstream providers; these must never be selected as
-// the resolved target for a `*-latest` alias because their behaviour is
-// non-deterministic. Concrete pinned snapshots (e.g. `deepseek/deepseek-v4-flash-0731`)
-// are preferred.
-func isMovingAlias(name string) bool {
-	raw := strings.TrimSpace(name)
-	if strings.HasPrefix(raw, "~") {
+// selectFallbackModel selects a replacement model when a model call fails or returns an invalid model error.
+//  1. If currentModel is recognized in parsedModels, it steps down the lower-model ladder (from currentModel down).
+//  2. If currentModel is not found in parsedModels (e.g. invalid, mistyped, or unsupported model name):
+//     a. Prefix match: searches for the first/best non-blacklisted model in parsedModels that starts with the
+//     configured model name (e.g. "claude-3-7-sonnet" matches "claude-3-7-sonnet-20250219") or where the
+//     configured model name starts with the catalog model name.
+//     b. Best available model: if no prefix match is found, selects the highest-ranked non-blacklisted model in parsedModels.
+func selectFallbackModel(configuredModel, currentModel string, parsedModels []*ProviderModelInfo) string {
+	if len(parsedModels) == 0 {
+		return ""
+	}
+	sortProviderModels(parsedModels)
+
+	normCurrent := normalizeModelName(currentModel)
+	normConfigured := normalizeModelName(configuredModel)
+
+	// Case 1: If currentModel is recognized in parsedModels, step down the lower-model ladder.
+	for i, m := range parsedModels {
+		if normalizeModelName(m.Name) == normCurrent {
+			for j := i + 1; j < len(parsedModels); j++ {
+				if !IsModelBlacklisted(parsedModels[j].Name) {
+					return parsedModels[j].Name
+				}
+			}
+			// Current model is already the lowest recognized non-blacklisted model.
+			return ""
+		}
+	}
+
+	// Case 2: Model is not recognized in parsedModels (invalid/unsupported model name).
+	// Step 2a: Prefix matching against the configured model name with delimiter boundary safety.
+	if normConfigured != "" {
+		for _, m := range parsedModels {
+			if IsModelBlacklisted(m.Name) {
+				continue
+			}
+			normM := normalizeModelName(m.Name)
+			if normM == normCurrent {
+				continue
+			}
+			if isModelPrefixMatch(m.Name, configuredModel) {
+				return m.Name
+			}
+		}
+	}
+
+	// Step 2b: Fallback to the best (highest-ranked) available non-blacklisted model.
+	for _, m := range parsedModels {
+		if !IsModelBlacklisted(m.Name) && normalizeModelName(m.Name) != normCurrent {
+			return m.Name
+		}
+	}
+
+	return ""
+}
+
+// isModelPrefixMatch checks if catalogName and configuredName share a model lineage on clean delimiter boundaries.
+func isModelPrefixMatch(catalogName, configuredName string) bool {
+	normCat := normalizeModelName(catalogName)
+	normCfg := normalizeModelName(configuredName)
+	if normCat == "" || normCfg == "" {
+		return false
+	}
+	if normCat == normCfg {
 		return true
 	}
-	norm := normalizeModelID(raw)
-	if norm == "latest" || strings.HasSuffix(norm, "-latest") {
-		return true
+
+	// Catalog model extends configured model (e.g. "claude-3-7-sonnet-20250219" for "claude-3-7-sonnet")
+	if strings.HasPrefix(normCat, normCfg) {
+		rem := normCat[len(normCfg):]
+		if len(rem) > 0 && isModelDelimiter(rem[0]) {
+			return true
+		}
 	}
+
+	// Configured model extends catalog model (e.g. "gpt-4o-mini-preview" for "gpt-4o-mini")
+	if strings.HasPrefix(normCfg, normCat) {
+		rem := normCfg[len(normCat):]
+		if len(rem) > 0 && isModelDelimiter(rem[0]) {
+			return true
+		}
+	}
+
 	return false
 }
 
-// filterModelsForAlias returns the subset of parsed models that belong to the
-// same family as a `*-latest`/`auto` alias. A model belongs to the family when
-// its normalized identifier equals the alias or shares the alias's base prefix
-// (e.g. alias `deepseek/deepseek-v4-flash-latest` matches
-// `deepseek/deepseek-v4-flash` and `deepseek/deepseek-v4-flash-0731`).
-// Moving aliases (`~`-prefixed or `-latest`-suffixed) are excluded so the
-// resolution lands on a concrete pinned model. Base-name matches
-// (e.g. `deepseek/deepseek-v4-flash`) are ranked ahead of suffixed variants so
-// the most canonical member wins deterministically even when rank/version tie.
-// It returns an empty slice when no parsed model is in the family.
-func filterModelsForAlias(alias string, parsedModels []*ProviderModelInfo) []*ProviderModelInfo {
-	normAlias := normalizeModelID(alias)
-	base := strings.TrimSuffix(normAlias, "-latest")
-	var family []*ProviderModelInfo
-	for _, m := range parsedModels {
-		if isMovingAlias(m.Name) {
-			continue
-		}
-		norm := normalizeModelID(m.Name)
-		if norm == normAlias || strings.HasPrefix(norm, base) {
-			family = append(family, m)
-		}
-	}
-	sort.SliceStable(family, func(i, j int) bool {
-		ni, nj := normalizeModelID(family[i].Name), normalizeModelID(family[j].Name)
-		// Exact alias first, then more specific (dated/pinned) members, then
-		// the bare base name. On OpenRouter the bare base name (e.g.
-		// `deepseek/deepseek-v4-flash`) is itself a moving target that routes
-		// to whatever version is current, while dated snapshots
-		// (e.g. `-0731`) are stable — prefer the specific one.
-		score := func(n string) int {
-			switch n {
-			case normAlias:
-				return 4
-			case base:
-				return 2
-			default:
-				return 3
-			}
-		}
-		if si, sj := score(ni), score(nj); si != sj {
-			return si > sj
-		}
-		return family[i].Name < family[j].Name
-	})
-	return family
+func isModelDelimiter(b byte) bool {
+	return b == '-' || b == '.' || b == '_' || b == ':' || b == '/'
+}
+
+// selectLowerModelFromParsed selects the next lower model from a parsed and sorted slice of models.
+func selectLowerModelFromParsed(currentModel string, parsedModels []*ProviderModelInfo) string {
+	return selectFallbackModel(currentModel, currentModel, parsedModels)
 }
