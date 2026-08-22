@@ -161,6 +161,19 @@ ANTI-STALLING MANDATE:
 - LEGACY STABILIZATION TESTING: When writing tests for existing legacy code, write characterization unit and integration tests that verify public interface contracts and observable behaviors without mutating the underlying implementation.
 - If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
 - LINTER IS ADVISORY — NOT A BLOCKER: A completed, working project with ≤100 linter warnings is FAR better than a stalled project with zero warnings. Do NOT spend more than 2 attempts fixing the same linter issue. If run_linter fails the same way twice in a row without any file change in between, STOP calling run_linter and call noop if run_tests passes. Linter cleanup will happen in a later pass. NEVER let linter enforcement prevent you from completing the task.
+- NO TEMPORARY, BYTECODE, OR CACHE FILES IN GIT MANDATE:
+  * You MUST NEVER stage, add, or commit any temporary, bytecode, compiled binary, cache, or runtime artifact files into Git.
+  * Before generating files or running tests, you MUST inspect or update the project's .gitignore file to ensure all language-specific bytecode, build, and temporary directories are completely ignored.
+  * Examples of forbidden files that must NEVER be added to Git (across all languages and environments):
+    - Python: __pycache__/, *.pyc, *.pyo, *.pyd, .pytest_cache/, .ruff_cache/, .mypy_cache/, .venv/, *.egg-info/
+    - Java / Kotlin / Scala: *.class, *.jar, *.war, *.ear, .gradle/, build/, target/, .mvn/
+    - C / C++ / Assembly: *.o, *.obj, *.a, *.so, *.dylib, *.dll, *.out, bin/ (unless specifically committed assets)
+    - Rust: target/, Cargo.lock (for libraries)
+    - JavaScript / TypeScript: node_modules/, .npm/, .next/, .nuxt/, dist/, .turbo/, .parcel-cache/
+    - Go: compiler binary outputs, coverage profiles, test binary caches
+    - Ruby: .bundle/, vendor/bundle, *.gem, coverage/
+    - OS & Editor Artifacts: .DS_Store, Thumbs.db, *.swp, *.swo, *~, *.tmp, .idea/, .vscode/
+  * All commits and Git operations MUST contain only genuine source code, tests, documentation, and declared configuration files.
 - HERMETIC WORKSPACE & STANDARD LIBRARY FIRST MANDATE: You operate in a hermetic, offline workspace where external runtime package downloads are disabled. Always prefer solutions that DO NOT DEPEND on external packages and rely strictly on built-in language standard libraries (across any language, e.g. stdlib file/network/process I/O), UNLESS a specific package is explicitly required by SPEC.md or is a universally adopted standard recommended by language maintainers already pre-baked in the environment. Do not introduce uninstalled third-party dependencies. If run_tests or run_linter fails due to an uninstalled package or missing module import error (e.g. ModuleNotFoundError, ImportError, Cannot find module, package not found), DO NOT repeat the uninstalled import; immediately refactor the code/tests to use language standard library alternatives.
 - If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
 - If edit_file fails because target_content does not match, fall back to write_file with the complete corrected file content.
@@ -189,6 +202,19 @@ ANTI-STALLING MANDATE:
   * Ensure all C source (.c) files contain a valid, non-empty compilation unit (e.g. valid stub functions or typedefs) so GCC '-Wall -Wextra -Werror -pedantic -std=c17' does not fail on empty translation units.
 - If run_tests fails, READ the error output carefully, target the failing source or Makefile immediately, and fix the issue in the SAME response. Do NOT call noop after a failed test run.
 - LINTER IS ADVISORY — NOT A BLOCKER: A completed, working project with ≤100 linter warnings is FAR better than a stalled project with zero warnings. Do NOT spend more than 2 attempts fixing the same linter issue. If run_linter fails the same way twice in a row without any file change in between, STOP calling run_linter and call noop if run_tests passes. Linter cleanup will happen in a later pass. NEVER let linter enforcement prevent you from completing the task. run_tests is the primary quality gate; run_linter is secondary.
+- NO TEMPORARY, BYTECODE, OR CACHE FILES IN GIT MANDATE:
+  * You MUST NEVER stage, add, or commit any temporary, bytecode, compiled binary, cache, or runtime artifact files into Git.
+  * Before generating files or running tests, you MUST inspect or update the project's .gitignore file to ensure all language-specific bytecode, build, and temporary directories are completely ignored.
+  * Examples of forbidden files that must NEVER be added to Git (across all languages and environments):
+    - Python: __pycache__/, *.pyc, *.pyo, *.pyd, .pytest_cache/, .ruff_cache/, .mypy_cache/, .venv/, *.egg-info/
+    - Java / Kotlin / Scala: *.class, *.jar, *.war, *.ear, .gradle/, build/, target/, .mvn/
+    - C / C++ / Assembly: *.o, *.obj, *.a, *.so, *.dylib, *.dll, *.out, bin/ (unless specifically committed assets)
+    - Rust: target/, Cargo.lock (for libraries)
+    - JavaScript / TypeScript: node_modules/, .npm/, .next/, .nuxt/, dist/, .turbo/, .parcel-cache/
+    - Go: compiler binary outputs, coverage profiles, test binary caches
+    - Ruby: .bundle/, vendor/bundle, *.gem, coverage/
+    - OS & Editor Artifacts: .DS_Store, Thumbs.db, *.swp, *.swo, *~, *.tmp, .idea/, .vscode/
+  * All commits and Git operations MUST contain only genuine source code, tests, documentation, and declared configuration files.
 - HERMETIC WORKSPACE & STANDARD LIBRARY FIRST MANDATE: You operate in a hermetic, offline workspace where external runtime package downloads are disabled. Always prefer solutions that DO NOT DEPEND on external packages and rely strictly on built-in language standard libraries (across any language, e.g. stdlib file/network/process I/O), UNLESS a specific package is explicitly required by SPEC.md or is a universally adopted standard recommended by language maintainers already pre-baked in the environment. Do not introduce uninstalled third-party dependencies. If run_tests or run_linter fails due to an uninstalled package or missing module import error (e.g. ModuleNotFoundError, ImportError, Cannot find module, package not found), DO NOT repeat the uninstalled import; immediately refactor the code/tests to use language standard library alternatives.
 - If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
 - If edit_file fails because target_content does not match, fall back to write_file with the complete corrected file content.

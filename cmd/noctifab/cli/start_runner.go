@@ -325,6 +325,31 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		state.Metadata.InputPath = currentStoryFile
 		state.Tasks = nil
 		state.StoryStatus = domain.StoryRunning
+		storyPath := currentStoryFile
+		if !filepath.IsAbs(storyPath) {
+			storyPath = filepath.Join(targetDir, storyPath)
+		}
+		if markdown, err := os.ReadFile(storyPath); err == nil {
+			relPath := currentStoryFile
+			if filepath.IsAbs(relPath) {
+				if rel, err := filepath.Rel(targetDir, relPath); err == nil {
+					relPath = rel
+				}
+			}
+			if contract, err := services.ParseStoryContract(relPath, string(markdown)); err == nil && contract.StoryID != "" {
+				contractFound := false
+				for i := range state.StoryContracts {
+					if state.StoryContracts[i].StoryID == contract.StoryID {
+						state.StoryContracts[i] = contract
+						contractFound = true
+						break
+					}
+				}
+				if !contractFound {
+					state.StoryContracts = append(state.StoryContracts, contract)
+				}
+			}
+		}
 		if err := repo.Save(ctx, state); err != nil {
 			return fmt.Errorf("failed to save initial state: %w", err)
 		}

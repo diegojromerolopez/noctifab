@@ -16,21 +16,25 @@ import (
 )
 
 func (o *Orchestrator) prepareQA(ctx context.Context, state *domain.State, task domain.Task) (domain.StoryContract, *QAReviewResult) {
-	if !o.cfg.QA.Enabled {
-		result := o.skippedQA(task.ID, "disabled")
-		return domain.StoryContract{}, &result
-	}
 	storyPath := state.Metadata.InputPath
-	if !filepath.IsAbs(storyPath) {
+	if storyPath != "" && !filepath.IsAbs(storyPath) {
 		storyPath = filepath.Join(state.ProjectPath, storyPath)
 	}
-	markdown, err := os.ReadFile(storyPath)
-	if err != nil {
-		result := o.skippedQA(task.ID, "missing_story_contract")
-		return domain.StoryContract{}, &result
+	var contract domain.StoryContract
+	if storyPath != "" {
+		if markdown, err := os.ReadFile(storyPath); err == nil {
+			parsed, pErr := ParseStoryContract(relativeStoryPath(state.ProjectPath, storyPath), string(markdown))
+			if pErr == nil {
+				contract = parsed
+			}
+		}
 	}
-	contract, err := ParseStoryContract(relativeStoryPath(state.ProjectPath, storyPath), string(markdown))
-	if err != nil || len(contract.PublicContracts) == 0 {
+
+	if !o.cfg.QA.Enabled {
+		result := o.skippedQAWithStory(task.ID, contract.StoryID, "disabled")
+		return contract, &result
+	}
+	if len(contract.PublicContracts) == 0 {
 		result := o.skippedQA(task.ID, "missing_story_contract")
 		return domain.StoryContract{}, &result
 	}
@@ -405,7 +409,12 @@ func upsertStoryContract(state *domain.State, contract domain.StoryContract) {
 
 func upsertReviewPhase(phases []domain.ReviewPhase, phase domain.ReviewPhase) []domain.ReviewPhase {
 	for i := range phases {
-		if phases[i].ID == phase.ID {
+		if phases[i].ID == phase.ID ||
+			(phases[i].StoryID == phase.StoryID &&
+				phases[i].TaskID == phase.TaskID &&
+				phases[i].Role == phase.Role &&
+				phases[i].ArtifactID == phase.ArtifactID &&
+				phases[i].Attempt == phase.Attempt) {
 			phases[i] = phase
 			return phases
 		}
