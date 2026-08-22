@@ -47,38 +47,49 @@ func isModelNotFoundOrDeprecated(err error) bool {
 	if err == nil {
 		return false
 	}
+
 	var he *httpError
 	if errors.As(err, &he) {
-		if he.StatusCode == http.StatusNotFound {
+		bodyLower := strings.ToLower(he.Body)
+		if isModelScopedErrorText(bodyLower) {
 			return true
 		}
-		bodyLower := strings.ToLower(he.Body)
-		if strings.Contains(bodyLower, "no longer available") ||
-			strings.Contains(bodyLower, "model_not_found") ||
-			strings.Contains(bodyLower, "not a valid model") ||
-			strings.Contains(bodyLower, "is not a valid model") ||
-			strings.Contains(bodyLower, "invalid model") ||
-			strings.Contains(bodyLower, "does not exist") ||
-			strings.Contains(bodyLower, "not found") ||
-			strings.Contains(bodyLower, "unknown model") ||
-			strings.Contains(bodyLower, "model not supported") ||
-			strings.Contains(bodyLower, "unsupported model") ||
-			strings.Contains(bodyLower, "is not supported") {
+		// 404 is a model error if the body mentions model or if it is not an unrelated route/endpoint 404
+		if he.StatusCode == http.StatusNotFound {
+			if strings.Contains(bodyLower, "endpoint") || strings.Contains(bodyLower, "route") || strings.Contains(bodyLower, "page not found") {
+				return false
+			}
 			return true
 		}
 	}
+
 	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "no longer available") ||
-		strings.Contains(errStr, "model_not_found") ||
-		strings.Contains(errStr, "not a valid model") ||
-		strings.Contains(errStr, "is not a valid model") ||
-		strings.Contains(errStr, "invalid model") ||
-		strings.Contains(errStr, "does not exist") ||
-		strings.Contains(errStr, "unknown model") ||
-		strings.Contains(errStr, "model not supported") ||
-		strings.Contains(errStr, "unsupported model") ||
-		strings.Contains(errStr, "is not supported") ||
-		strings.Contains(errStr, "404 not found")
+	return isModelScopedErrorText(errStr)
+}
+
+// isModelScopedErrorText checks for explicit model-related error keywords and phrases.
+func isModelScopedErrorText(s string) bool {
+	if strings.Contains(s, "model_not_found") ||
+		strings.Contains(s, "model_not_supported") ||
+		strings.Contains(s, "no longer available") {
+		return true
+	}
+
+	hasModelScope := strings.Contains(s, "model") || strings.Contains(s, "models/")
+	if !hasModelScope {
+		return false
+	}
+
+	return strings.Contains(s, "not a valid model") ||
+		strings.Contains(s, "is not a valid model") ||
+		strings.Contains(s, "invalid model") ||
+		strings.Contains(s, "does not exist") ||
+		strings.Contains(s, "not found") ||
+		strings.Contains(s, "unknown model") ||
+		strings.Contains(s, "not supported") ||
+		strings.Contains(s, "unsupported model") ||
+		strings.Contains(s, "unrecognized model") ||
+		strings.Contains(s, "is not supported")
 }
 
 // httpError is returned by provider Call methods on non-2xx responses.

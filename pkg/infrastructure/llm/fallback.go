@@ -58,7 +58,7 @@ func selectFallbackModel(configuredModel, currentModel string, parsedModels []*P
 	}
 
 	// Case 2: Model is not recognized in parsedModels (invalid/unsupported model name).
-	// Step 2a: Prefix matching against the configured model name.
+	// Step 2a: Prefix matching against the configured model name with delimiter boundary safety.
 	if normConfigured != "" {
 		for _, m := range parsedModels {
 			if IsModelBlacklisted(m.Name) {
@@ -68,7 +68,7 @@ func selectFallbackModel(configuredModel, currentModel string, parsedModels []*P
 			if normM == normCurrent {
 				continue
 			}
-			if strings.HasPrefix(normM, normConfigured) || strings.HasPrefix(normConfigured, normM) {
+			if isModelPrefixMatch(m.Name, configuredModel) {
 				return m.Name
 			}
 		}
@@ -82,6 +82,40 @@ func selectFallbackModel(configuredModel, currentModel string, parsedModels []*P
 	}
 
 	return ""
+}
+
+// isModelPrefixMatch checks if catalogName and configuredName share a model lineage on clean delimiter boundaries.
+func isModelPrefixMatch(catalogName, configuredName string) bool {
+	normCat := normalizeModelName(catalogName)
+	normCfg := normalizeModelName(configuredName)
+	if normCat == "" || normCfg == "" {
+		return false
+	}
+	if normCat == normCfg {
+		return true
+	}
+
+	// Catalog model extends configured model (e.g. "claude-3-7-sonnet-20250219" for "claude-3-7-sonnet")
+	if strings.HasPrefix(normCat, normCfg) {
+		rem := normCat[len(normCfg):]
+		if len(rem) > 0 && isModelDelimiter(rem[0]) {
+			return true
+		}
+	}
+
+	// Configured model extends catalog model (e.g. "gpt-4o-mini-preview" for "gpt-4o-mini")
+	if strings.HasPrefix(normCfg, normCat) {
+		rem := normCfg[len(normCat):]
+		if len(rem) > 0 && isModelDelimiter(rem[0]) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isModelDelimiter(b byte) bool {
+	return b == '-' || b == '.' || b == '_' || b == ':' || b == '/'
 }
 
 // selectLowerModelFromParsed selects the next lower model from a parsed and sorted slice of models.

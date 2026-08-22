@@ -45,6 +45,19 @@ func TestSelectFallbackModel_PrefixMatching(t *testing.T) {
 		assert.Contains(t, []string{"gpt-4o", "gpt-4o-2024-08-06"}, fallback)
 	})
 
+	t.Run("Prefix match boundary safety: gpt-4o-mini-custom does NOT match gpt-4", func(t *testing.T) {
+		ResetModelBlacklist()
+		available := []string{
+			"gpt-4",
+			"gpt-4o-mini",
+		}
+		parsed := parsedModelsFor(available, parseOpenAIModel)
+
+		// gpt-4o-mini-custom should match gpt-4o-mini on boundary, NOT jump to gpt-4
+		fallback := selectFallbackModel("gpt-4o-mini-custom", "gpt-4o-mini-custom", parsed)
+		assert.Equal(t, "gpt-4o-mini", fallback)
+	})
+
 	t.Run("Gemini prefix match with models/ prefix", func(t *testing.T) {
 		ResetModelBlacklist()
 		available := []string{
@@ -177,6 +190,30 @@ func TestIsModelNotFoundOrDeprecated(t *testing.T) {
 			err: &httpError{
 				StatusCode: 500,
 				Body:       `{"error":"Internal server error"}`,
+			},
+			expected: false,
+		},
+		{
+			name: "404 route not found is not a model error",
+			err: &httpError{
+				StatusCode: 404,
+				Body:       `{"error":"endpoint /v1/chat not found"}`,
+			},
+			expected: false,
+		},
+		{
+			name: "400 unsupported parameter is not a model error",
+			err: &httpError{
+				StatusCode: 400,
+				Body:       `{"error":"parameter 'temperature' is not supported"}`,
+			},
+			expected: false,
+		},
+		{
+			name: "400 organization does not exist is not a model error",
+			err: &httpError{
+				StatusCode: 400,
+				Body:       `{"error":"organization does not exist"}`,
 			},
 			expected: false,
 		},
