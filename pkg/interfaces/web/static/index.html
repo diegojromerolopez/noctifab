@@ -126,9 +126,11 @@
               <div class="log-entry system">[00:00:00] Connected to Noctifab Live Telemetry Engine. Ready for directives.</div>
             </div>
           </div>
+        </div>
+      </section>
     </main>
 
-    <!-- 3.5. Spec Studio (Visual Human-in-the-Loop Spec Editor) -->
+    <!-- 3.5. Spec Studio (Visual Human-in-the-Loop Spec Editor & Roadmap Stories) -->
     <main class="spec-studio-view" id="spec-studio-view" style="display:none;">
       <!-- Left Column: SPEC.md Editor & Viewer -->
       <section class="card spec-editor-card">
@@ -155,56 +157,77 @@
           </div>
         </div>
 
-        <div class="card-body">
+        <div class="card-body spec-editor-body">
           <textarea id="spec-editor-textarea" class="spec-editor-textarea" placeholder="No specification loaded. Enter a prompt to generate or refine your SPEC.md..."></textarea>
         </div>
       </section>
 
-      <!-- Right Column: Multi-Model Panel & Feedback Loop -->
+      <!-- Right Column: User Stories Roadmap & Multi-Model Refinement Panel -->
       <section class="card spec-refine-card">
-        <div class="card-header">
-          <h2>🌌 Multi-Model Consensus & Refinement</h2>
-          <span class="consensus-badge" id="spec-consensus-badge">✔ 4 Roles Synthesized</span>
+        <div class="card-header tab-header">
+          <div class="tabs">
+            <button class="tab-btn active" id="tab-spec-stories-btn">📋 Decomposed User Stories & DoD (<span id="spec-story-count">0</span>)</button>
+            <button class="tab-btn" id="tab-spec-refine-btn">🌌 Multi-Model Consensus</button>
+          </div>
         </div>
         <div class="card-body spec-refine-body">
-          <!-- Role Attribution Cards -->
-          <div class="role-grid" id="spec-role-grid">
-            <div class="role-card">
-              <span class="role-title">👑 Product Manager</span>
-              <span class="role-model" id="role-pm-model">Claude 3.7 Sonnet</span>
+          <!-- Tab A: Decomposed User Stories & DoD with Completion Percentages -->
+          <div id="view-spec-stories" class="spec-tab-view active">
+            <div class="stories-roadmap-summary">
+              <div class="summary-stat-row">
+                <span class="summary-label">Roadmap Progress:</span>
+                <span class="summary-val" id="roadmap-aggregate-progress">0%</span>
+              </div>
+              <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="roadmap-aggregate-bar" style="width: 0%;"></div>
+              </div>
             </div>
-            <div class="role-card">
-              <span class="role-title">📐 Systems Architect</span>
-              <span class="role-model" id="role-arch-model">GPT-4o</span>
-            </div>
-            <div class="role-card">
-              <span class="role-title">🧪 Test Architect</span>
-              <span class="role-model" id="role-test-model">DeepSeek R1</span>
-            </div>
-            <div class="role-card">
-              <span class="role-title">🛡️ QA Specialist</span>
-              <span class="role-model" id="role-qa-model">Gemini 2.5 Pro</span>
+            <div id="spec-stories-list" class="spec-stories-list">
+              <div class="empty-state">No user stories generated yet. Click "Audit Consistency" or "Approve & Start Build" to generate roadmap.</div>
             </div>
           </div>
 
-          <!-- Diff Preview -->
-          <div class="spec-diff-box">
-            <h4>📝 Latest Changes Applied</h4>
-            <pre><code id="spec-diff-content">// Refinement diffs will appear here...</code></pre>
-          </div>
+          <!-- Tab B: Multi-Model Consensus & Refinement Form -->
+          <div id="view-spec-refine" class="spec-tab-view" style="display:none;">
+            <!-- Role Attribution Cards -->
+            <div class="role-grid" id="spec-role-grid">
+              <div class="role-card">
+                <span class="role-title">👑 Product Manager</span>
+                <span class="role-model" id="role-pm-model">Claude 3.7 Sonnet</span>
+              </div>
+              <div class="role-card">
+                <span class="role-title">📐 Systems Architect</span>
+                <span class="role-model" id="role-arch-model">GPT-4o</span>
+              </div>
+              <div class="role-card">
+                <span class="role-title">🧪 Test Architect</span>
+                <span class="role-model" id="role-test-model">DeepSeek R1</span>
+              </div>
+              <div class="role-card">
+                <span class="role-title">🛡️ QA Specialist</span>
+                <span class="role-model" id="role-qa-model">Gemini 2.5 Pro</span>
+              </div>
+            </div>
 
-          <!-- Human Feedback Form -->
-          <form id="spec-refine-form" class="spec-refine-form">
-            <label for="spec-feedback-input"><strong>What would you like to improve, fix, or add?</strong></label>
-            <textarea id="spec-feedback-input" placeholder="e.g. 'Add support for PostgreSQL instead of SQLite and add Prometheus metrics at /metrics'..." required></textarea>
-            <button type="submit" class="btn btn-primary btn-block" id="btn-submit-refine">🚀 Refine with Multi-Model Pipeline</button>
-          </form>
+            <!-- Diff Preview -->
+            <div class="spec-diff-box">
+              <h4>📝 Latest Changes Applied</h4>
+              <pre><code id="spec-diff-content">// Refinement diffs will appear here...</code></pre>
+            </div>
+
+            <!-- Human Feedback Form -->
+            <form id="spec-refine-form" class="spec-refine-form">
+              <label for="spec-feedback-input"><strong>What would you like to improve, fix, or add?</strong></label>
+              <textarea id="spec-feedback-input" placeholder="e.g. 'Add support for PostgreSQL instead of SQLite and add Prometheus metrics at /metrics'..." required></textarea>
+              <button type="submit" class="btn btn-primary btn-block" id="btn-submit-refine">🚀 Refine with Multi-Model Pipeline</button>
+            </form>
+          </div>
         </div>
       </section>
     </main>
 
     <!-- Real-Time Streaming Console Terminal Drawer -->
-    <section class="terminal-drawer" id="terminal-drawer">
+    <section class="terminal-drawer collapsed" id="terminal-drawer">
       <div class="terminal-header" id="terminal-toggle">
         <div class="terminal-title">
           <span class="terminal-dot"></span>
@@ -244,6 +267,26 @@
         </div>
       </form>
     </footer>
+
+    <!-- 5. Task & User Story Detail Inspector Modal -->
+    <div id="detail-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-badge" id="modal-type-badge">TASK</span>
+            <h2 id="modal-title">Task Details</h2>
+          </div>
+          <button class="modal-close-btn" id="modal-close-btn" title="Close modal (Esc)">✕</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+          <!-- Dynamic Content rendered via JS -->
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="modal-steer-shortcut-btn">🎯 Steer This Task</button>
+          <button class="btn btn-primary" id="modal-ok-btn">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/app.js"></script>

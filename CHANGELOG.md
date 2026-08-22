@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.0] - 2026-08-22
+
+### Added
+- **Interactive Task & User Story Detail Inspector Modal**:
+  - Added click interactions across task cards and user story headers in the web dashboard that open a rich detail modal.
+  - Displays full Task Title, Description, **Definition of Done (DoD)** criteria checklist, Target Files, Dependencies, Assigned Agent, Injected Steering Directives, and formatted failure stack traces.
+  - Added direct "🎯 Steer This Task" shortcut button inside the modal to instantly focus and pre-fill steering directives.
+- **Hierarchical User Story Grouping in Web DAG**:
+  - Grouped tasks under expandable User Story cards with individual story titles, status badges, and aggregate story progress bars.
+- **Spec Studio Decomposed User Stories & Roadmap Integration**:
+  - Added a dedicated "Decomposed User Stories & DoD" tab in Spec Studio displaying all roadmap stories, completion percentages, and clickable story cards with DoD details.
+  - Added `/api/v1/roadmap` and `/api/v1/states` endpoints to serve roadmap markdown stories, checkboxes, and database state records.
+- **Prominent Web Dashboard URL Display**:
+  - Displayed the local web dashboard URL prominently in the terminal banner when launching `noctifab dashboard --web` and in the TUI telemetry header.
+
+### Fixed
+- **`--web-open` Auto-Browser Launch Fix**:
+  - Updated `OSBrowserOpener` in `pkg/infrastructure/browser/browser.go` to use `cmd.Run()` instead of `cmd.Start()`, preventing premature context cancellation from terminating the `open` / `xdg-open` / `rundll32` helper process on macOS/Linux/Windows.
+- **Web Dashboard Page Scrolling & Layout**:
+  - Removed rigid `overflow: hidden` on `body` and `.app-container` to allow natural responsive vertical page scrolling.
+  - Added max-height constraints and internal scrolling to the agents grid and terminal drawer to prevent pushing main dashboard components off-screen.
+- **Accurate Elapsed Time Syncing**:
+  - Replaced client-side load timer with true backend run duration calculation in `app.js`, dynamically establishing start time from agent, task, and action timestamps.
+
 ## [0.48.0] - 2026-08-22
 
 ### Added

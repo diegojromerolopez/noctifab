@@ -51,24 +51,106 @@ document.addEventListener('DOMContentLoaded', () => {
   const viewDiff = document.getElementById('view-diff');
   const viewLogs = document.getElementById('view-logs');
 
-  let currentState = null;
-  let eventLogEntries = [];
-  let startTime = Date.now();
+  // Detail Modal Elements
+  const detailModal = document.getElementById('detail-modal');
+  const modalTitle = document.getElementById('modal-title');
+  const modalTypeBadge = document.getElementById('modal-type-badge');
+  const modalBody = document.getElementById('modal-body');
+  const modalCloseBtn = document.getElementById('modal-close-btn');
+  const modalOkBtn = document.getElementById('modal-ok-btn');
+  const modalSteerShortcutBtn = document.getElementById('modal-steer-shortcut-btn');
+  let currentModalTargetId = null;
 
-  // 1. Initial State Fetch
+  // Spec Studio Tabs & Elements
+  const tabSpecStoriesBtn = document.getElementById('tab-spec-stories-btn');
+  const tabSpecRefineBtn = document.getElementById('tab-spec-refine-btn');
+  const viewSpecStories = document.getElementById('view-spec-stories');
+  const viewSpecRefine = document.getElementById('view-spec-refine');
+  const specStoriesList = document.getElementById('spec-stories-list');
+  const specStoryCount = document.getElementById('spec-story-count');
+  const roadmapAggregateProgress = document.getElementById('roadmap-aggregate-progress');
+  const roadmapAggregateBar = document.getElementById('roadmap-aggregate-bar');
+
+  let currentState = null;
+  let currentRoadmapStories = [];
+  let backendStartTime = null;
+
+  // 1. Initial Data Fetch (State & Roadmap)
   async function fetchState() {
     try {
       const res = await fetch('/api/v1/state');
       if (res.ok) {
         currentState = await res.json();
+        computeBackendStartTime(currentState);
         updateUI(currentState);
       }
     } catch (e) {
       console.warn('Initial state fetch failed, waiting for live SSE stream...', e);
     }
+    await fetchRoadmap();
   }
 
-  // 2. Connect to Server-Sent Events (SSE)
+  async function fetchRoadmap() {
+    try {
+      const res = await fetch('/api/v1/roadmap');
+      if (res.ok) {
+        currentRoadmapStories = await res.json();
+        renderSpecStories(currentRoadmapStories);
+        if (currentState) {
+          renderTasks(currentState.tasks || []);
+        }
+      }
+    } catch (e) {
+      console.warn('Roadmap stories fetch failed:', e);
+    }
+  }
+
+  // 2. Compute true elapsed time from backend telemetry timestamps
+  function computeBackendStartTime(state) {
+    if (!state) return;
+    let earliest = null;
+
+    if (state.active_agents && state.active_agents.length > 0) {
+      state.active_agents.forEach(ag => {
+        if (ag.started_at) {
+          const t = new Date(ag.started_at).getTime();
+          if (!isNaN(t) && t > 0 && (earliest === null || t < earliest)) {
+            earliest = t;
+          }
+        }
+      });
+    }
+
+    if (state.tasks && state.tasks.length > 0) {
+      state.tasks.forEach(t => {
+        if (t.created_at) {
+          const ct = new Date(t.created_at).getTime();
+          if (!isNaN(ct) && ct > 0 && (earliest === null || ct < earliest)) {
+            earliest = ct;
+          }
+        }
+      });
+    }
+
+    if (state.last_actions && state.last_actions.length > 0) {
+      state.last_actions.forEach(act => {
+        if (act.timestamp) {
+          const at = new Date(act.timestamp).getTime();
+          if (!isNaN(at) && at > 0 && (earliest === null || at < earliest)) {
+            earliest = at;
+          }
+        }
+      });
+    }
+
+    if (earliest) {
+      backendStartTime = earliest;
+    } else if (!backendStartTime) {
+      backendStartTime = Date.now();
+    }
+  }
+
+  // 3. Connect to Server-Sent Events (SSE)
   function connectSSE() {
     const sse = new EventSource('/api/v1/events');
 
@@ -141,10 +223,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const state = JSON.parse(e.data);
         if (state && typeof state === 'object') {
           currentState = state;
+          computeBackendStartTime(state);
           updateUI(state);
         }
       } catch (err) {
-        // Ping or keepalive comment
+        // Keepalive
       }
     };
 
@@ -156,11 +239,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  // 3. UI Updates
+  // 4. Main UI Update
   function updateUI(state) {
     if (!state) return;
 
-    // Header stats
     if (state.story_status) {
       if (state.story_status === 'IDLE') {
         storyStatus.textContent = 'STANDBY 🟢';
@@ -206,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderActions(state.last_actions || []);
   }
 
-  // 4. Pipeline Phase Stepper
+  // 5. Pipeline Phase Stepper
   function updatePipelinePhase(state) {
     const steps = ['roadmap', 'planner', 'generator', 'tester', 'consensus', 'vcs'];
     steps.forEach(s => {
@@ -242,7 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 5. Active Agent Workers Grid
+  // 6. Active Agents Grid
   function renderAgents(agents) {
     if (activeAgentsCount) {
       activeAgentsCount.textContent = `${agents.length} active goroutine${agents.length === 1 ? '' : 's'}`;
@@ -278,62 +360,129 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
   }
 
-  // 6. Task DAG Rendering with Filter
+  // 7. Grouped Task DAG & User Stories Rendering
   function renderTasks(tasks) {
     if (!tasks || tasks.length === 0) {
       dagContainer.innerHTML = '<div class="empty-state">No tasks scheduled in DAG yet.</div>';
       return;
     }
 
-    const filtered = tasks.filter(t => {
+    const filteredTasks = tasks.filter(t => {
       if (currentFilter === 'active') return t.status === 'IN_PROGRESS';
       if (currentFilter === 'failed') return t.status === 'FAILED' || t.status === 'CONFLICT_FAILED';
       if (currentFilter === 'done') return t.status === 'SUCCESS';
       return true;
     });
 
-    if (filtered.length === 0) {
+    if (filteredTasks.length === 0) {
       dagContainer.innerHTML = `<div class="empty-state">No tasks match filter "${currentFilter}".</div>`;
       return;
     }
 
-    dagContainer.innerHTML = filtered.map(t => {
-      const statusClass = (t.status || 'PENDING').toLowerCase().replace('_', '-');
-      const progress = t.progress || 0;
-      const deps = t.depends_on && t.depends_on.length > 0 ? t.depends_on.join(', ') : null;
-      const targetFiles = t.target_files && t.target_files.length > 0 ? t.target_files.join(', ') : null;
-      const steering = t.user_directives && t.user_directives.length > 0 ? t.user_directives[t.user_directives.length - 1] : null;
+    // Group tasks by User Story ID (e.g. US-001, US-002, or "General")
+    const groups = {};
+    filteredTasks.forEach(task => {
+      let storyKey = 'US-001';
+      const idUpper = (task.id || '').toUpperCase();
+      if (idUpper.startsWith('US-')) {
+        const parts = idUpper.split('-');
+        if (parts.length >= 2) storyKey = `US-${parts[1]}`;
+      } else if (currentState && currentState.metadata && currentState.metadata.feature_name) {
+        storyKey = currentState.metadata.feature_name;
+      }
+      if (!groups[storyKey]) groups[storyKey] = [];
+      groups[storyKey].push(task);
+    });
+
+    dagContainer.innerHTML = Object.keys(groups).map(storyKey => {
+      const storyTasks = groups[storyKey];
+      const storyObj = currentRoadmapStories.find(s => s.id === storyKey || s.title.includes(storyKey)) || {
+        id: storyKey,
+        title: storyKey,
+        progress: 0
+      };
+
+      let totalProgress = 0;
+      storyTasks.forEach(t => totalProgress += (t.progress || 0));
+      const avgProgress = Math.round(totalProgress / storyTasks.length);
+
+      const tasksHTML = storyTasks.map(t => {
+        const statusClass = (t.status || 'PENDING').toLowerCase().replace('_', '-');
+        const progress = t.progress || 0;
+        const deps = t.depends_on && t.depends_on.length > 0 ? t.depends_on.join(', ') : null;
+        const targetFiles = t.target_files && t.target_files.length > 0 ? t.target_files.join(', ') : null;
+        const steering = t.user_directives && t.user_directives.length > 0 ? t.user_directives[t.user_directives.length - 1] : null;
+
+        return `
+          <div class="task-node ${statusClass}" data-task-id="${escapeHtml(t.id)}" title="Click to inspect Definition of Done, criteria, and failure logs">
+            <div class="task-top-row">
+              <div>
+                <span class="task-title"><strong>[${escapeHtml(t.id)}]</strong> ${escapeHtml(t.title || 'Untitled Task')}</span>
+                ${t.change_type ? `<span class="task-change-type">${escapeHtml(t.change_type)}</span>` : ''}
+              </div>
+              <span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : t.status === 'IN_PROGRESS' ? 'badge-warning' : 'badge-danger'}">
+                ${t.status || 'PENDING'} (${progress}%)
+              </span>
+            </div>
+
+            <div class="progress-bar-container">
+              <div class="progress-bar-fill" style="width: ${progress}%;"></div>
+            </div>
+
+            <div class="task-meta-row">
+              ${t.assigned_to ? `<div class="meta-item">👤 <strong>${escapeHtml(t.assigned_to)}</strong></div>` : ''}
+              ${deps ? `<div class="meta-item">🔗 Depends: <code>${escapeHtml(deps)}</code></div>` : ''}
+              ${targetFiles ? `<div class="meta-item">📁 Target: <code>${escapeHtml(targetFiles)}</code></div>` : ''}
+              ${t.retries > 0 ? `<div class="meta-item">⚠️ Retries: ${t.retries}</div>` : ''}
+              <div class="meta-item" style="color: var(--accent-cyan); margin-left: auto;">🔍 Click for DoD & Details ➔</div>
+            </div>
+
+            ${steering ? `<div class="steering-tag">🎯 User Steering: "${escapeHtml(steering)}"</div>` : ''}
+
+            ${(t.status === 'FAILED' || t.status === 'CONFLICT_FAILED') && t.failure_log ? `
+              <div class="failure-excerpt">Error: ${escapeHtml(t.failure_log.slice(0, 150))}...</div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
 
       return `
-        <div class="task-node ${statusClass}">
-          <div class="task-top-row">
-            <div>
-              <span class="task-title">${escapeHtml(t.title || t.id)}</span>
-              ${t.change_type ? `<span class="task-change-type">${escapeHtml(t.change_type)}</span>` : ''}
+        <div class="story-group-card active-story">
+          <div class="story-group-header" data-story-id="${escapeHtml(storyObj.id)}">
+            <div class="story-title-wrap">
+              <span class="story-id-tag">${escapeHtml(storyObj.id)}</span>
+              <span class="story-title-text">${escapeHtml(storyObj.title)}</span>
             </div>
-            <span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : t.status === 'IN_PROGRESS' ? 'badge-warning' : 'badge-danger'}">
-              ${t.status || 'PENDING'} (${progress}%)
-            </span>
+            <div class="story-header-right">
+              <span class="badge badge-success">${avgProgress}% Done</span>
+              <button class="btn-xs btn-secondary btn-story-dod" data-story-id="${escapeHtml(storyObj.id)}">📋 Story DoD</button>
+            </div>
           </div>
-
-          <div class="progress-bar-container">
-            <div class="progress-bar-fill" style="width: ${progress}%;"></div>
+          <div class="story-tasks-list">
+            ${tasksHTML}
           </div>
-
-          <div class="task-meta-row">
-            ${deps ? `<div class="meta-item">🔗 Depends on: <strong>${escapeHtml(deps)}</strong></div>` : ''}
-            ${targetFiles ? `<div class="meta-item">📁 Target: <code>${escapeHtml(targetFiles)}</code></div>` : ''}
-            ${t.retries > 0 ? `<div class="meta-item">⚠️ Retries: ${t.retries}</div>` : ''}
-          </div>
-
-          ${steering ? `<div class="steering-tag">🎯 User Steering: "${escapeHtml(steering)}"</div>` : ''}
-
-          ${(t.status === 'FAILED' || t.status === 'CONFLICT_FAILED') && t.failure_log ? `
-            <div class="failure-excerpt">Error: ${escapeHtml(t.failure_log.slice(0, 150))}...</div>
-          ` : ''}
         </div>
       `;
     }).join('');
+
+    // Attach click listeners to task cards
+    dagContainer.querySelectorAll('.task-node').forEach(card => {
+      card.addEventListener('click', () => {
+        const taskId = card.getAttribute('data-task-id');
+        const task = (tasks || []).find(t => t.id === taskId);
+        if (task) openTaskDetailModal(task);
+      });
+    });
+
+    // Attach click listeners to story headers & story DoD buttons
+    dagContainer.querySelectorAll('.btn-story-dod').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const storyId = btn.getAttribute('data-story-id');
+        const story = currentRoadmapStories.find(s => s.id === storyId || s.title.includes(storyId));
+        if (story) openStoryDetailModal(story);
+      });
+    });
   }
 
   function updateTaskCounts(tasks) {
@@ -344,7 +493,167 @@ document.addEventListener('DOMContentLoaded', () => {
     countDone.textContent = tasks.filter(t => t.status === 'SUCCESS').length;
   }
 
-  // 7. Completed Actions & Live Feed
+  // 8. Task Detail Modal & Definition of Done Inspector
+  function openTaskDetailModal(task) {
+    currentModalTargetId = task.id;
+    modalTypeBadge.textContent = 'TASK';
+    modalTitle.textContent = `${task.id}: ${task.title || 'Task Details'}`;
+
+    // Find parent story DoD
+    let parentStory = currentRoadmapStories.find(s => task.id.startsWith(s.id));
+    const dodItems = parentStory && parentStory.acceptance_criteria ? parentStory.acceptance_criteria : [];
+
+    modalBody.innerHTML = `
+      <div class="modal-section">
+        <div class="modal-section-title">📊 Execution Status & Metadata</div>
+        <div class="modal-grid-2">
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">Task ID</span>
+            <span class="modal-kv-val"><code>${escapeHtml(task.id)}</code></span>
+          </div>
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">Status</span>
+            <span class="modal-kv-val"><span class="badge ${task.status === 'SUCCESS' ? 'badge-success' : task.status === 'IN_PROGRESS' ? 'badge-warning' : 'badge-danger'}">${task.status || 'PENDING'}</span> (${task.progress || 0}%)</span>
+          </div>
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">Assigned Worker</span>
+            <span class="modal-kv-val">👤 ${escapeHtml(task.assigned_to || 'Auto-Scheduled Worker')}</span>
+          </div>
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">Change Scope</span>
+            <span class="modal-kv-val"><span class="task-change-type">${escapeHtml(task.change_type || 'FEATURE')}</span></span>
+          </div>
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">Retries</span>
+            <span class="modal-kv-val">${task.retries || 0} / ${task.max_retries || 10}</span>
+          </div>
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">Target Files</span>
+            <span class="modal-kv-val"><code>${escapeHtml((task.target_files || []).join(', ') || 'None specified')}</code></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">📋 Definition of Done (DoD) & Acceptance Criteria</div>
+        <div class="dod-item-list">
+          ${dodItems.length > 0 ? dodItems.map(item => `
+            <div class="dod-check-row ${task.status === 'SUCCESS' ? 'done' : ''}">
+              <span class="dod-check-icon">${task.status === 'SUCCESS' ? '✅' : '☑️'}</span>
+              <span>${escapeHtml(item)}</span>
+            </div>
+          `).join('') : `
+            <div class="dod-check-row ${task.status === 'SUCCESS' ? 'done' : ''}">
+              <span class="dod-check-icon">${task.status === 'SUCCESS' ? '✅' : '☑️'}</span>
+              <span>Satisfy verification criteria with clean compilation and unit test assertions.</span>
+            </div>
+          `}
+        </div>
+      </div>
+
+      ${task.description ? `
+        <div class="modal-section">
+          <div class="modal-section-title">📝 Task Description</div>
+          <p style="font-size: 0.85rem; line-height: 1.5; color: var(--text-main);">${escapeHtml(task.description)}</p>
+        </div>
+      ` : ''}
+
+      ${task.user_directives && task.user_directives.length > 0 ? `
+        <div class="modal-section">
+          <div class="modal-section-title">🎯 Injected Steering Directives</div>
+          <ul style="padding-left: 18px; font-size: 0.84rem; color: #d8b4fe;">
+            ${task.user_directives.map(d => `<li>${escapeHtml(d)}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
+      ${task.failure_log ? `
+        <div class="modal-section">
+          <div class="modal-section-title" style="color: var(--accent-red);">❌ Failure Output & Stack Trace</div>
+          <pre class="modal-code-box"><code>${escapeHtml(task.failure_log)}</code></pre>
+        </div>
+      ` : ''}
+    `;
+
+    detailModal.style.display = 'flex';
+  }
+
+  function openStoryDetailModal(story) {
+    currentModalTargetId = story.id;
+    modalTypeBadge.textContent = 'USER STORY';
+    modalTitle.textContent = `${story.id}: ${story.title}`;
+
+    modalBody.innerHTML = `
+      <div class="modal-section">
+        <div class="modal-section-title">📊 User Story Progress</div>
+        <div class="modal-grid-2">
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">Story Identifier</span>
+            <span class="modal-kv-val"><code>${escapeHtml(story.id)}</code></span>
+          </div>
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">Status</span>
+            <span class="modal-kv-val"><span class="badge ${story.status === 'SUCCESS' ? 'badge-success' : 'badge-warning'}">${story.status || 'RUNNING'}</span> (${story.progress || 0}%)</span>
+          </div>
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">DoD Checkboxes Completed</span>
+            <span class="modal-kv-val">✅ ${story.completed_checkboxes || 0} of ${story.total_checkboxes || 0} items verified</span>
+          </div>
+          <div class="modal-kv-item">
+            <span class="modal-kv-label">File Path</span>
+            <span class="modal-kv-val"><code>roadmap/user-stories/${escapeHtml(story.filename || story.id + '.md')}</code></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">📋 Definition of Done (DoD)</div>
+        <div class="dod-item-list">
+          ${story.acceptance_criteria && story.acceptance_criteria.length > 0 ? story.acceptance_criteria.map(c => `
+            <div class="dod-check-row">
+              <span class="dod-check-icon">☑️</span>
+              <span>${escapeHtml(c)}</span>
+            </div>
+          `).join('') : `
+            <pre class="modal-code-box" style="color: var(--text-main);"><code>${escapeHtml(story.definition_of_done || story.content)}</code></pre>
+          `}
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">📄 Full Story Markdown Content</div>
+        <pre class="modal-code-box" style="color: var(--text-muted); max-height: 260px;"><code>${escapeHtml(story.content)}</code></pre>
+      </div>
+    `;
+
+    detailModal.style.display = 'flex';
+  }
+
+  function closeModal() {
+    detailModal.style.display = 'none';
+    currentModalTargetId = null;
+  }
+
+  if (modalCloseBtn) modalCloseBtn.addEventListener('click', closeModal);
+  if (modalOkBtn) modalOkBtn.addEventListener('click', closeModal);
+  if (detailModal) {
+    detailModal.addEventListener('click', (e) => {
+      if (e.target === detailModal) closeModal();
+    });
+  }
+
+  if (modalSteerShortcutBtn) {
+    modalSteerShortcutBtn.addEventListener('click', () => {
+      closeModal();
+      if (currentModalTargetId && orderInput) {
+        orderType.value = 'steer';
+        orderInput.value = `[Task ${currentModalTargetId}]: `;
+        orderInput.focus();
+      }
+    });
+  }
+
+  // 9. Completed Actions & Live Feed
   function renderActions(actions) {
     if (!actions) return;
     actionCount.textContent = actions.length;
@@ -364,7 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
     logStream.scrollTop = logStream.scrollHeight;
   }
 
-  // 8. Diff Viewer Syntax Highlighting
+  // 10. Diff Viewer Syntax Highlighting
   function renderDiff(diffText) {
     if (!diffText) return;
     const lines = diffText.split('\n');
@@ -377,7 +686,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('\n');
   }
 
-  // 9. Tab Switching
+  // 11. Tab Switching
   tabDiffBtn.addEventListener('click', () => {
     tabDiffBtn.classList.add('active');
     tabLogsBtn.classList.remove('active');
@@ -396,7 +705,7 @@ document.addEventListener('DOMContentLoaded', () => {
     logStream.innerHTML = '';
   });
 
-  // 10. Filter Chips
+  // 12. Filter Chips
   filterChips.forEach(chip => {
     chip.addEventListener('click', () => {
       filterChips.forEach(c => c.classList.remove('active'));
@@ -406,7 +715,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 11. Pause / Resume Handlers
+  // 13. Pause / Resume Handlers
   btnPause.addEventListener('click', async () => {
     await fetch('/api/v1/pause', { method: 'POST' });
     storyStatus.textContent = 'PAUSED';
@@ -423,7 +732,7 @@ document.addEventListener('DOMContentLoaded', () => {
     appendLogEntry('SYSTEM', 'Execution resumed by user via web control', 'system');
   });
 
-  // 12. Form Order / Steering Submit
+  // 14. Form Order / Steering Submit
   orderForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = orderInput.value.trim();
@@ -448,8 +757,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 13. Global Keyboard Shortcuts
+  // 15. Global Keyboard Shortcuts
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeModal();
+      return;
+    }
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         orderForm.requestSubmit();
@@ -470,7 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 14. Clarifications Rendering & Submission
+  // 16. Clarifications Rendering & Submission
   function renderClarifications(clarifications) {
     if (!clarificationBanner) return;
     const pending = (clarifications || []).filter(c => !c.resolved);
@@ -515,7 +828,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 15. Streaming Console Terminal Helper & Controls
+  // 17. Streaming Console Terminal Helper & Controls
   function appendTerminalLine(text) {
     if (!terminalOutput) return;
     const now = new Date();
@@ -545,7 +858,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 16. Spec Studio (Visual Web Spec Editor) Controller
+  // 18. Spec Studio Controller & Decomposed Stories
   const btnToggleSpec = document.getElementById('btn-toggle-spec');
   const specStudioView = document.getElementById('spec-studio-view');
   const mainSplit = document.querySelector('.main-split');
@@ -571,6 +884,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (agentsSection) agentsSection.style.display = 'none';
         if (specStudioView) specStudioView.style.display = 'grid';
         fetchSpec();
+        fetchRoadmap();
       } else {
         btnToggleSpec.textContent = '📄 Spec Studio';
         btnToggleSpec.classList.remove('btn-primary');
@@ -579,6 +893,72 @@ document.addEventListener('DOMContentLoaded', () => {
         if (agentsSection) agentsSection.style.display = 'block';
         if (specStudioView) specStudioView.style.display = 'none';
       }
+    });
+  }
+
+  // Spec Studio Tab Switching (Stories vs Consensus)
+  if (tabSpecStoriesBtn && tabSpecRefineBtn) {
+    tabSpecStoriesBtn.addEventListener('click', () => {
+      tabSpecStoriesBtn.classList.add('active');
+      tabSpecRefineBtn.classList.remove('active');
+      viewSpecStories.style.display = 'block';
+      viewSpecRefine.style.display = 'none';
+    });
+
+    tabSpecRefineBtn.addEventListener('click', () => {
+      tabSpecRefineBtn.classList.add('active');
+      tabSpecStoriesBtn.classList.remove('active');
+      viewSpecRefine.style.display = 'flex';
+      viewSpecStories.style.display = 'none';
+    });
+  }
+
+  function renderSpecStories(stories) {
+    if (!specStoriesList) return;
+    if (specStoryCount) specStoryCount.textContent = stories.length;
+
+    if (!stories || stories.length === 0) {
+      specStoriesList.innerHTML = '<div class="empty-state">No user stories generated yet. Click "Audit Consistency" or "Approve & Start Build" to generate roadmap.</div>';
+      if (roadmapAggregateProgress) roadmapAggregateProgress.textContent = '0%';
+      if (roadmapAggregateBar) roadmapAggregateBar.style.width = '0%';
+      return;
+    }
+
+    let totalProgress = 0;
+    stories.forEach(s => totalProgress += (s.progress || 0));
+    const avgProgress = Math.round(totalProgress / stories.length);
+    if (roadmapAggregateProgress) roadmapAggregateProgress.textContent = `${avgProgress}%`;
+    if (roadmapAggregateBar) roadmapAggregateBar.style.width = `${avgProgress}%`;
+
+    specStoriesList.innerHTML = stories.map(s => {
+      const progress = s.progress || 0;
+      const dodPreview = s.definition_of_done || (s.acceptance_criteria || []).join(' • ') || 'Standard verification criteria';
+
+      return `
+        <div class="spec-story-card" data-story-id="${escapeHtml(s.id)}">
+          <div class="spec-story-card-top">
+            <span class="spec-story-card-title">
+              <span class="story-id-tag">${escapeHtml(s.id)}</span>
+              ${escapeHtml(s.title)}
+            </span>
+            <span class="badge ${s.status === 'SUCCESS' ? 'badge-success' : 'badge-warning'}">${progress}%</span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" style="width: ${progress}%;"></div>
+          </div>
+          <div class="spec-story-dod-box">
+            ${escapeHtml(dodPreview)}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    specStoriesList.querySelectorAll('.spec-story-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const storyId = card.getAttribute('data-story-id');
+        const story = stories.find(s => s.id === storyId);
+        if (story) openStoryDetailModal(story);
+      });
     });
   }
 
@@ -696,6 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
           updateSpecView(data);
           specFeedbackInput.value = '';
           appendLogEntry('SPEC', `Refined specification with prompt: ${prompt}`, 'steer');
+          await fetchRoadmap();
         }
       } catch (err) {
         console.error('Failed to refine spec:', err);
@@ -731,12 +1112,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Timer ticker
+  // 19. Accurate Live Elapsed Duration Ticker (Synced with Backend Start Timestamp)
   setInterval(() => {
-    const secs = Math.floor((Date.now() - startTime) / 1000);
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    elapsedTime.textContent = `${m > 0 ? m + 'm ' : ''}${s}s`;
+    if (!backendStartTime) return;
+    const totalSecs = Math.max(0, Math.floor((Date.now() - backendStartTime) / 1000));
+    const hours = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+
+    if (hours > 0) {
+      elapsedTime.textContent = `${hours}h ${mins}m ${secs}s`;
+    } else if (mins > 0) {
+      elapsedTime.textContent = `${mins}m ${secs}s`;
+    } else {
+      elapsedTime.textContent = `${secs}s`;
+    }
   }, 1000);
 
   function escapeHtml(str) {

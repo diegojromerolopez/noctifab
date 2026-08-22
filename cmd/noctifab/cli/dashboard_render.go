@@ -50,6 +50,7 @@ func renderEnhancedDashboard(states []*domain.State) string {
 		}
 	}
 	fmt.Fprintf(&sb, "Log File: %s%s%s\r\n", colorCyan, logPath, colorReset)
+	fmt.Fprintf(&sb, "Web Dashboard: %shttp://127.0.0.1:8080%s (run 'noctifab dashboard --web' to launch browser)\r\n", colorCyan, colorReset)
 	fmt.Fprintf(&sb, "Global Status: %s %s\r\n", primary.StoryStatus, statusEmoji(primary.StoryStatus))
 	if primary.Metadata.IntegrationBranch != "" {
 		fmt.Fprintf(&sb, "Git Branch: %s%s%s (Base: %s)\r\n", colorPurple, primary.Metadata.IntegrationBranch, colorReset, primary.Metadata.BaseBranch)

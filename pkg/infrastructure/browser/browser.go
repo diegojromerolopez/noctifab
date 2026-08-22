@@ -23,7 +23,7 @@ func NewOSBrowserOpener() *OSBrowserOpener {
 	return &OSBrowserOpener{
 		ExecCommand: func(ctx context.Context, name string, args ...string) error {
 			cmd := exec.CommandContext(ctx, name, args...)
-			return cmd.Start()
+			return cmd.Run()
 		},
 	}
 }
