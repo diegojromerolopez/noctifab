@@ -42,7 +42,7 @@ func ResetModelBlacklist() {
 	})
 }
 
-// isModelNotFoundOrDeprecated reports whether an error indicates a model is 404, deprecated, or no longer available.
+// isModelNotFoundOrDeprecated reports whether an error indicates a model is 404, deprecated, invalid, or no longer available.
 func isModelNotFoundOrDeprecated(err error) bool {
 	if err == nil {
 		return false
@@ -53,13 +53,31 @@ func isModelNotFoundOrDeprecated(err error) bool {
 			return true
 		}
 		bodyLower := strings.ToLower(he.Body)
-		if strings.Contains(bodyLower, "no longer available") || strings.Contains(bodyLower, "model_not_found") {
+		if strings.Contains(bodyLower, "no longer available") ||
+			strings.Contains(bodyLower, "model_not_found") ||
+			strings.Contains(bodyLower, "not a valid model") ||
+			strings.Contains(bodyLower, "is not a valid model") ||
+			strings.Contains(bodyLower, "invalid model") ||
+			strings.Contains(bodyLower, "does not exist") ||
+			strings.Contains(bodyLower, "not found") ||
+			strings.Contains(bodyLower, "unknown model") ||
+			strings.Contains(bodyLower, "model not supported") ||
+			strings.Contains(bodyLower, "unsupported model") ||
+			strings.Contains(bodyLower, "is not supported") {
 			return true
 		}
 	}
 	errStr := strings.ToLower(err.Error())
 	return strings.Contains(errStr, "no longer available") ||
 		strings.Contains(errStr, "model_not_found") ||
+		strings.Contains(errStr, "not a valid model") ||
+		strings.Contains(errStr, "is not a valid model") ||
+		strings.Contains(errStr, "invalid model") ||
+		strings.Contains(errStr, "does not exist") ||
+		strings.Contains(errStr, "unknown model") ||
+		strings.Contains(errStr, "model not supported") ||
+		strings.Contains(errStr, "unsupported model") ||
+		strings.Contains(errStr, "is not supported") ||
 		strings.Contains(errStr, "404 not found")
 }
 
@@ -98,9 +116,13 @@ func isNonRetryableHTTPError(err error) bool {
 // rejection that a cheaper/lower model cannot fix, so the lower-model
 // fallback ladder should be skipped entirely. 401/403 (bad or missing API
 // key), 400/422 (invalid request shape) and 405 all reject the caller, not
-// the model. 404 (model not found) is deliberately excluded: falling back to
-// another model in the catalog IS the sensible reaction to an unknown model.
+// the model. 404 (model not found) and invalid/deprecated model errors are
+// deliberately NOT skipped: falling back to another model in the catalog IS the
+// sensible reaction to an unknown model.
 func shouldSkipModelFallback(err error) bool {
+	if isModelNotFoundOrDeprecated(err) {
+		return false
+	}
 	var he *httpError
 	if !errors.As(err, &he) {
 		return false

@@ -271,6 +271,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 
 			if isModelNotFoundOrDeprecated(err) {
 				BlacklistModel(activeModel)
+				break
 			}
 
 			if isCreditExhausted(err) {
@@ -380,7 +381,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		if shouldFallback {
 			nextModel := c.getNextLowerModel(ctx, apiKey, activeModel)
 			if nextModel != "" {
-				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to lower model: %s...\n", activeModel, err, nextModel)
+				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to model: %s...\n", activeModel, err, nextModel)
 				activeModel = nextModel
 				continue
 			}

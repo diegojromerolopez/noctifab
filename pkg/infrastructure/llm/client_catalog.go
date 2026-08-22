@@ -174,7 +174,7 @@ func (c *Client) getNextLowerModel(ctx context.Context, apiKey, currentModel str
 		return ""
 	}
 
-	return selectLowerModelFromParsed(currentModel, parsedModels)
+	return selectFallbackModel(c.Model, currentModel, parsedModels)
 }
 
 func (c *Client) resolveLatestModel(ctx context.Context, apiKey string) string {

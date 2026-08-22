@@ -449,10 +449,10 @@ func TestFallbackFaultTolerance(t *testing.T) {
 		}
 	})
 
-	t.Run("it falls back to lowest available when current model lacks required prefix", func(t *testing.T) {
+	t.Run("it falls back to best available when current model lacks required prefix and has no prefix match", func(t *testing.T) {
 		// Simulate a hypothetical Moonshot model "moonshot-k3-pro" whose name does not
 		// contain the "kimi" required prefix — so it would fail parseKimiModel and not
-		// appear in parsedModels at all. The safety valve must still select a fallback.
+		// appear in parsedModels at all. The fallback must select the best available model.
 		known := []string{"kimi-k2.7", "kimi-k2.5"}
 		parsed := parsedModelsFor(known, parseKimiModel)
 
@@ -460,9 +460,9 @@ func TestFallbackFaultTolerance(t *testing.T) {
 		if next == "" {
 			t.Errorf("expected a fallback for model failing RequiredPrefix, got empty string")
 		}
-		// The lowest available should be kimi-k2.5 (rank 20 < rank 40).
-		if next != "kimi-k2.5" {
-			t.Errorf("expected lowest fallback kimi-k2.5, got %q", next)
+		// The best available should be kimi-k2.7.
+		if next != "kimi-k2.7" {
+			t.Errorf("expected best fallback kimi-k2.7, got %q", next)
 		}
 	})
 

@@ -21,37 +21,70 @@ func sortProviderModels(models []*ProviderModelInfo) {
 	})
 }
 
-// selectLowerModelFromParsed selects the next lower model from a parsed and sorted slice of models.
-// If the currentModel is found in parsedModels, it returns the next lower model in the sorted list.
-// If the currentModel is NOT found (e.g. it is a newly released model the parser does not yet recognise),
-// it falls back to returning the lowest-ranked model still available, ensuring the fallback
-// engine always has a safe candidate rather than surfacing an error prematurely.
-func selectLowerModelFromParsed(currentModel string, parsedModels []*ProviderModelInfo) string {
+func normalizeModelName(name string) string {
+	n := strings.ToLower(strings.TrimSpace(name))
+	n = strings.TrimPrefix(n, "~")
+	n = strings.TrimPrefix(n, "models/")
+	return n
+}
+
+// selectFallbackModel selects a replacement model when a model call fails or returns an invalid model error.
+//  1. If currentModel is recognized in parsedModels, it steps down the lower-model ladder (from currentModel down).
+//  2. If currentModel is not found in parsedModels (e.g. invalid, mistyped, or unsupported model name):
+//     a. Prefix match: searches for the first/best non-blacklisted model in parsedModels that starts with the
+//     configured model name (e.g. "claude-3-7-sonnet" matches "claude-3-7-sonnet-20250219") or where the
+//     configured model name starts with the catalog model name.
+//     b. Best available model: if no prefix match is found, selects the highest-ranked non-blacklisted model in parsedModels.
+func selectFallbackModel(configuredModel, currentModel string, parsedModels []*ProviderModelInfo) string {
 	if len(parsedModels) == 0 {
 		return ""
 	}
 	sortProviderModels(parsedModels)
-	normCurrent := strings.TrimPrefix(strings.ToLower(currentModel), "models/")
 
+	normCurrent := normalizeModelName(currentModel)
+	normConfigured := normalizeModelName(configuredModel)
+
+	// Case 1: If currentModel is recognized in parsedModels, step down the lower-model ladder.
 	for i, m := range parsedModels {
-		normM := strings.TrimPrefix(strings.ToLower(m.Name), "models/")
-		if normM == normCurrent {
+		if normalizeModelName(m.Name) == normCurrent {
 			for j := i + 1; j < len(parsedModels); j++ {
 				if !IsModelBlacklisted(parsedModels[j].Name) {
 					return parsedModels[j].Name
 				}
 			}
-			// Current model is already the lowest non-blacklisted model — no further fallback.
+			// Current model is already the lowest recognized non-blacklisted model.
 			return ""
 		}
 	}
 
-	// The current model was not found in the parsed list (unrecognised model name).
-	// As a fault-tolerant safety valve, return the lowest non-blacklisted model.
-	for j := len(parsedModels) - 1; j >= 0; j-- {
-		if !IsModelBlacklisted(parsedModels[j].Name) && strings.TrimPrefix(strings.ToLower(parsedModels[j].Name), "models/") != normCurrent {
-			return parsedModels[j].Name
+	// Case 2: Model is not recognized in parsedModels (invalid/unsupported model name).
+	// Step 2a: Prefix matching against the configured model name.
+	if normConfigured != "" {
+		for _, m := range parsedModels {
+			if IsModelBlacklisted(m.Name) {
+				continue
+			}
+			normM := normalizeModelName(m.Name)
+			if normM == normCurrent {
+				continue
+			}
+			if strings.HasPrefix(normM, normConfigured) || strings.HasPrefix(normConfigured, normM) {
+				return m.Name
+			}
 		}
 	}
+
+	// Step 2b: Fallback to the best (highest-ranked) available non-blacklisted model.
+	for _, m := range parsedModels {
+		if !IsModelBlacklisted(m.Name) && normalizeModelName(m.Name) != normCurrent {
+			return m.Name
+		}
+	}
+
 	return ""
+}
+
+// selectLowerModelFromParsed selects the next lower model from a parsed and sorted slice of models.
+func selectLowerModelFromParsed(currentModel string, parsedModels []*ProviderModelInfo) string {
+	return selectFallbackModel(currentModel, currentModel, parsedModels)
 }
