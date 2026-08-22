@@ -192,6 +192,18 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 	llmClient := llm.BuildFailoverClient(cfg, budgetStore)
 
+	cmdCtx := cmd.Context()
+	if cmdCtx == nil {
+		cmdCtx = context.Background()
+	}
+	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
+
+	mailbox := services.NewCommandMailbox(repo)
+	go mailbox.Start(cmdCtx)
+
+	webServerInstance, webHost, webPort, webEnabled, webCleanup := startConcurrentWebServer(cmd, repo, mailbox)
+	defer webCleanup()
+
 	// Discover stories
 	hasExistingStories := len(discoverStoryFiles(targetDir)) > 0
 
@@ -200,12 +212,6 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("No user stories found in %s/roadmap. Spawning Product Manager Agent to generate roadmap from SPEC.md...\n", targetDir)
 	}
-
-	cmdCtx := cmd.Context()
-	if cmdCtx == nil {
-		cmdCtx = context.Background()
-	}
-	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
 
 	promptRenderer, rendErr := prompts.NewRenderer(targetDir, cfg.PromptOverrides())
 	if rendErr != nil {
@@ -275,12 +281,6 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		WorkspaceCache:       cfg.GetWorkspaceCache(),
 		QA:                   cfg.Agents.QA,
 	}
-
-	mailbox := services.NewCommandMailbox(repo)
-	go mailbox.Start(cmdCtx)
-
-	webServerInstance, webHost, webPort, webEnabled, webCleanup := startConcurrentWebServer(cmd, repo, mailbox)
-	defer webCleanup()
 
 	executeStory := func(ctx context.Context, currentStoryFile string) error {
 		specBytes, err := os.ReadFile(currentStoryFile)
@@ -417,6 +417,12 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 					continue
 				}
 			}
+		}
+
+		if webEnabled {
+			fmt.Printf("\n🚀 Executing %s (%s)\n➜  Web Dashboard: http://%s:%d\n\n", storyID, storyTitle, webHost, webPort)
+		} else {
+			fmt.Printf("\n🚀 Executing %s (%s)\n\n", storyID, storyTitle)
 		}
 
 		storyErr := executeStory(cmdCtx, currentStoryFile)
