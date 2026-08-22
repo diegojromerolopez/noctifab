@@ -237,7 +237,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 	// back into the struct). Keep everything on the local variable instead.
 	activeModel := c.Model
 	normModel := strings.ToLower(strings.TrimSpace(activeModel))
-	if normModel == "latest" || normModel == "auto" || strings.HasSuffix(normModel, "-latest") || normModel == "" {
+	if normModel == "latest" || normModel == "auto" || normModel == "" {
 		if resolved := c.resolveLatestModel(ctx, apiKey); resolved != "" {
 			fmt.Fprintf(os.Stderr, "ℹ Dynamically resolved model alias '%s' for provider %s to latest model: %s\n", activeModel, c.Provider, resolved)
 			activeModel = resolved

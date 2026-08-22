@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.50.1] - 2026-08-22
+
+### Fixed
+- **LLM Provider Alias Direct Pass-Through**:
+  - Removed aggressive dynamic `-latest` suffix resolution from `Complete(...)`, allowing native provider model aliases (such as `claude-3-7-sonnet-latest`, `claude-3-5-sonnet-latest`, `mistral-large-latest`, and `chatgpt-4o-latest`) to pass directly to upstream providers without being intercepted or incorrectly rewritten to other catalog models.
+  - Restricted dynamic model discovery via `/v1/models` strictly to explicit `latest`, `auto`, or empty model configurations.
+
 ## [0.50.0] - 2026-08-22
 
 ### Added

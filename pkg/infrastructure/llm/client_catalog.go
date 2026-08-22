@@ -190,31 +190,6 @@ func (c *Client) resolveLatestModel(ctx context.Context, apiKey string) string {
 		return ""
 	}
 
-	alias := normalizeModelID(c.Model)
-	if alias != "" && alias != "latest" && alias != "auto" {
-		// If the alias itself is a concrete, pinned model in the provider's
-		// catalog, use it verbatim — no resolution needed. A model counts as
-		// concrete only when it is NOT a moving alias: OpenRouter's `~`-pinned
-		// latest pointers (e.g. `~deepseek/deepseek-v4-flash-latest`) route to
-		// variable upstreams and are exactly what we want to resolve away.
-		for _, m := range available {
-			norm := normalizeModelID(m)
-			if norm == alias && !isMovingAlias(m) {
-				return m
-			}
-		}
-
-		// Scope resolution to the alias's own model family. Aggregators like
-		// OpenRouter expose thousands of unrelated models; ranking them all
-		// globally could resolve a `deepseek/*-latest` alias to an unrelated
-		// top-ranked model (e.g. sao10k/l3-lunaris-8b). Prefer models matching
-		// the alias base family before falling back to the provider-wide best.
-		if family := filterModelsForAlias(alias, parsedModels); len(family) > 0 {
-			sortProviderModels(family)
-			return family[0].Name
-		}
-	}
-
 	sortProviderModels(parsedModels)
 	return parsedModels[0].Name
 }
