@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.50.0] - 2026-08-22
+
+### Added
+- **Preflight Toolchain & Cross-Compiler Verification**:
+  - Implemented automatic extraction and validation of Makefile toolchains (e.g. `AS`, `LD`, `CC`, `CXX`, cross-compilers like `aarch64-linux-gnu-*`, `arm-none-eabi-*`) and story contract executable dependencies before story execution begins.
+- **Agent Git & Bytecode Hygiene Directives**:
+  - Injected strict `.gitignore` inspection and bytecode exclusion rules into all default generator and tester agent prompts, preventing uncommitted or intermediate compiler binaries, caches, and bytecode artifacts across Python, Java, C/C++, Rust, JS/TS, Go, and Ruby.
+- **Story Contract & QA Review Persistence**:
+  - Ensured story contracts are parsed and populated into system state at startup and task execution.
+  - Hardened QA review preparation and composite key deduplication across review phases.
+
 ## [0.49.1] - 2026-08-22
 
 ### Fixed
