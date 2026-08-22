@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.1] - 2026-08-22
+
+### Fixed
+- **Web Server Order Test Directory Isolation**:
+  - Initialized `mockRepo.state.ProjectPath` with `t.TempDir()` in `pkg/interfaces/web/server_test.go` to prevent unit tests for `POST /api/v1/orders` from creating temporary `.noctifab/stories/` artifacts inside the source tree.
+
 ## [0.49.0] - 2026-08-22
 
 ### Added

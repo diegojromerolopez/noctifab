@@ -6,9 +6,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
+	"github.com/stretchr/testify/require"
 )
 
 type mockRepo struct {
@@ -53,9 +55,21 @@ func (m *mockRepo) PruneFinishedStates(ctx context.Context, keepLast int) (int, 
 }
 
 func TestWebServer_Endpoints(t *testing.T) {
-	repo := &mockRepo{}
+	tempDir := t.TempDir()
+	repo := &mockRepo{
+		state: &domain.State{
+			StoryStatus: domain.StoryRunning,
+			ProjectPath: tempDir,
+			Tasks: []domain.Task{
+				{ID: "task-1", Title: "Initialize Schema", Status: domain.TaskSuccess},
+			},
+		},
+	}
+	mailboxCtx, cancelMailbox := context.WithCancel(context.Background())
+	defer cancelMailbox()
+
 	mailbox := services.NewCommandMailbox(repo)
-	go mailbox.Start(context.Background())
+	go mailbox.Start(mailboxCtx)
 
 	ws := NewWebServer(WebServerConfig{Port: 0, Host: "127.0.0.1"}, repo, mailbox, nil)
 	mux := ws.buildMux()
@@ -104,6 +118,10 @@ func TestWebServer_Endpoints(t *testing.T) {
 		if rec.Code != http.StatusAccepted {
 			t.Errorf("expected 202 Accepted, got %d", rec.Code)
 		}
+		require.Eventually(t, func() bool {
+			st, err := repo.Load(context.Background())
+			return err == nil && st != nil && len(st.Orders) > 0
+		}, 2*time.Second, 5*time.Millisecond, "expected order to be persisted into state by mailbox")
 	})
 
 	t.Run("POST /api/v1/pause pauses story", func(t *testing.T) {
