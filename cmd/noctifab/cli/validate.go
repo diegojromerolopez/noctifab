@@ -23,6 +23,13 @@ var validateCmd = &cobra.Command{
 		}
 
 		fmt.Println("Validating configuration...")
+		targetDir := "."
+		if len(args) > 0 {
+			targetDir = args[0]
+		}
+		if err := VerifyQualityAndReleaseGates(cfg, targetDir); err != nil {
+			return err
+		}
 		fmt.Println("Configuration is valid.")
 		fmt.Println("✔ Configuration loaded successfully.")
 		for _, role := range config.RoleCapabilities(cfg) {

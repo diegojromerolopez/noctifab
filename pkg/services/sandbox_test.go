@@ -163,3 +163,50 @@ func TestBuildCacheVolumeArgs(t *testing.T) {
 		t.Error("expected volume flag args in BuildCacheVolumeArgs")
 	}
 }
+
+func TestDetectDefaultTestCommand(t *testing.T) {
+	// 1. Makefile with test target
+	tmpMake := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpMake, "Makefile"), []byte("all:\n\ntest:\n\t@echo ok\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultTestCommand(tmpMake); got != "make test" {
+		t.Errorf("expected 'make test', got %q", got)
+	}
+
+	// 2. Cargo.toml
+	tmpRust := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpRust, "Cargo.toml"), []byte("[package]"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultTestCommand(tmpRust); got != "cargo test" {
+		t.Errorf("expected 'cargo test', got %q", got)
+	}
+
+	// 3. package.json
+	tmpJS := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpJS, "package.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultTestCommand(tmpJS); got != "npm test" {
+		t.Errorf("expected 'npm test', got %q", got)
+	}
+
+	// 4. Python
+	tmpPy := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpPy, "requirements.txt"), []byte("django\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultTestCommand(tmpPy); got != "python3 -m unittest discover -s tests" {
+		t.Errorf("expected 'python3 -m unittest discover -s tests', got %q", got)
+	}
+
+	// 5. Go
+	tmpGo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpGo, "go.mod"), []byte("module test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultTestCommand(tmpGo); got != "go test -v ./..." {
+		t.Errorf("expected 'go test -v ./...', got %q", got)
+	}
+}

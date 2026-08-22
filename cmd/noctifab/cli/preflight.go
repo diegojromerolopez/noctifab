@@ -43,9 +43,19 @@ func getRequiredSandboxBinaries(cfg *config.Config) []string {
 }
 
 // runPreFlightChecks executes environment and LLM provider connectivity diagnostics
-// before orchestrator launch, banning unreachable or slow providers and failing on missing host binaries.
-func runPreFlightChecks(cfg *config.Config) error {
+// before orchestrator launch, banning unreachable or slow providers, failing on missing host binaries,
+// and verifying release & quality gate non-triviality and language consistency.
+func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 	fmt.Println("Running pre-flight checks...")
+	pDir := "."
+	if len(projectDir) > 0 && projectDir[0] != "" {
+		pDir = projectDir[0]
+	}
+
+	if err := VerifyQualityAndReleaseGates(cfg, pDir); err != nil {
+		return err
+	}
+
 	tools := []string{"go", "docker", "python3", "rustc", "make", "gcc"}
 	var foundTools []string
 	for _, t := range tools {

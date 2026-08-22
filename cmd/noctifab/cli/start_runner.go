@@ -130,7 +130,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if err := runPreFlightChecks(cfg); err != nil {
+	if err := runPreFlightChecks(cfg, targetDir); err != nil {
 		return err
 	}
 
