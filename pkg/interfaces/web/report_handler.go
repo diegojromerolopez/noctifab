@@ -78,12 +78,11 @@ func (ws *WebServer) registerReportAndMetricsRoutes(mux *http.ServeMux) {
 			return
 		}
 
-		var fullPath string
 		if filepath.IsAbs(targetPath) {
-			fullPath = filepath.Clean(targetPath)
-		} else {
-			fullPath = filepath.Clean(filepath.Join(cleanBase, targetPath))
+			http.Error(w, "absolute paths are not allowed", http.StatusBadRequest)
+			return
 		}
+		fullPath := filepath.Clean(filepath.Join(cleanBase, targetPath))
 
 		// Security: Prevent path traversal outside project workspace
 		if !strings.HasPrefix(fullPath, cleanBase+string(filepath.Separator)) && fullPath != cleanBase {

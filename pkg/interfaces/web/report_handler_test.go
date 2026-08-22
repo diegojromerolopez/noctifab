@@ -78,6 +78,15 @@ func TestReportHandler_Endpoints(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
+	t.Run("GET /api/v1/files/content rejects absolute path", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/files/content?path=/etc/passwd", nil)
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Contains(t, rec.Body.String(), "absolute paths are not allowed")
+	})
+
 	t.Run("GET /api/v1/metrics returns aggregated telemetry", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
 		rec := httptest.NewRecorder()
