@@ -83,6 +83,28 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		}
 	}
 
+	requiredToolchains := DetectRequiredProjectToolchains(pDir)
+	if len(requiredToolchains) > 0 {
+		var missingToolchains []string
+		var availableToolchains []string
+		for _, bin := range requiredToolchains {
+			if _, err := exec.LookPath(bin); err == nil {
+				availableToolchains = append(availableToolchains, bin)
+			} else {
+				missingToolchains = append(missingToolchains, bin)
+			}
+		}
+		if len(availableToolchains) > 0 {
+			fmt.Printf("- Project required toolchains available: %s\n", strings.Join(availableToolchains, ", "))
+		}
+		if len(missingToolchains) > 0 {
+			if cfg.Sandbox.Mode == "" || strings.EqualFold(cfg.Sandbox.Mode, "host") {
+				return fmt.Errorf("pre-flight check failed: required toolchain binary not found on host $PATH: %s (please install the required toolchain or configure sandbox.mode: docker)", strings.Join(missingToolchains, ", "))
+			}
+			fmt.Printf("⚠️  Warning: missing required toolchain binaries on host (mode=%s): %s\n", cfg.Sandbox.Mode, strings.Join(missingToolchains, ", "))
+		}
+	}
+
 	if len(cfg.LLM.Providers) > 0 {
 		var activeProviders []config.ProviderSpec
 		var bannedNames []string

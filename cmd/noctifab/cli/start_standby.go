@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -131,20 +130,4 @@ func runStandbyMode(ctx context.Context, p StandbyParams) error {
 	}()
 
 	return engine.Run(standbyCtx)
-}
-
-func extractStoryTitle(filePath string) string {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return ""
-	}
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "# ") {
-			title := strings.TrimPrefix(line, "# ")
-			return strings.TrimSpace(title)
-		}
-	}
-	return ""
 }

@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -340,6 +342,62 @@ func TestQADisabledAndApplicability(t *testing.T) {
 	if result == nil || result.Phase.Status != domain.ReviewSkipped || result.Phase.TerminalReason != "disabled" || llm.calls != 0 {
 		t.Fatalf("unexpected disabled result: %+v calls=%d", result, llm.calls)
 	}
+
+	// Test prepareQA parses contract even when QA is disabled
+	tmpDir := t.TempDir()
+	storyFile := filepath.Join(tmpDir, "story.md")
+	storyMarkdown := "# Story\n```noctifab-contract\n{\"story_id\":\"US-999\",\"public_contracts\":[{\"id\":\"c1\",\"allowed_executables\":[\"./app\"],\"exit_codes\":[0]}]}\n```\n"
+	if err := os.WriteFile(storyFile, []byte(storyMarkdown), 0644); err != nil {
+		t.Fatalf("failed to write story file: %v", err)
+	}
+	st := &domain.State{
+		ProjectPath: tmpDir,
+		Metadata: domain.StateMetadata{
+			InputPath: "story.md",
+		},
+	}
+	contractParsed, resultWithContract := o.prepareQA(context.Background(), st, domain.Task{ID: "task-1"})
+	if contractParsed.StoryID != "US-999" {
+		t.Fatalf("expected contract StoryID US-999, got %q", contractParsed.StoryID)
+	}
+	if resultWithContract == nil || resultWithContract.Phase.StoryID != "US-999" || resultWithContract.Phase.Status != domain.ReviewSkipped {
+		t.Fatalf("expected skipped QA with StoryID US-999, got %+v", resultWithContract)
+	}
+
+	// Test upsertReviewPhase deduplicates by composite key
+	phase1 := domain.ReviewPhase{
+		ID: "uuid-1", StoryID: "US-999", TaskID: "task-1", Role: "qa", ArtifactID: "", Attempt: 1, Status: domain.ReviewSkipped,
+	}
+	phase2 := domain.ReviewPhase{
+		ID: "uuid-2", StoryID: "US-999", TaskID: "task-1", Role: "qa", ArtifactID: "", Attempt: 1, Status: domain.ReviewSkipped,
+	}
+	phases := upsertReviewPhase(nil, phase1)
+	phases = upsertReviewPhase(phases, phase2)
+	if len(phases) != 1 {
+		t.Fatalf("expected 1 phase after deduplicating composite key, got %d", len(phases))
+	}
+	if phases[0].ID != "uuid-2" {
+		t.Fatalf("expected updated phase ID uuid-2, got %q", phases[0].ID)
+	}
+
+	// Test UpsertStoryContract edge cases
+	UpsertStoryContract(nil, domain.StoryContract{StoryID: "US-1"})
+	stateWithContracts := &domain.State{
+		StoryContracts: []domain.StoryContract{{StoryID: "US-100", SourcePath: "old.md"}},
+	}
+	UpsertStoryContract(stateWithContracts, domain.StoryContract{StoryID: ""})
+	if len(stateWithContracts.StoryContracts) != 1 {
+		t.Fatalf("expected empty StoryID to be ignored, got %d", len(stateWithContracts.StoryContracts))
+	}
+	UpsertStoryContract(stateWithContracts, domain.StoryContract{StoryID: "US-100", SourcePath: "new.md"})
+	if len(stateWithContracts.StoryContracts) != 1 || stateWithContracts.StoryContracts[0].SourcePath != "new.md" {
+		t.Fatalf("expected in-place update for US-100, got %+v", stateWithContracts.StoryContracts)
+	}
+	UpsertStoryContract(stateWithContracts, domain.StoryContract{StoryID: "US-200", SourcePath: "us200.md"})
+	if len(stateWithContracts.StoryContracts) != 2 {
+		t.Fatalf("expected append for new US-200, got %d", len(stateWithContracts.StoryContracts))
+	}
+
 	contract := domain.StoryContract{PublicContracts: []domain.PublicContract{{
 		AllowedExecutables: []string{"./app"}, ApplicablePathPrefixes: []string{"cmd/"},
 	}}}

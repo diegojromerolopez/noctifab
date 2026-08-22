@@ -16,23 +16,31 @@ import (
 )
 
 func (o *Orchestrator) prepareQA(ctx context.Context, state *domain.State, task domain.Task) (domain.StoryContract, *QAReviewResult) {
-	if !o.cfg.QA.Enabled {
-		result := o.skippedQA(task.ID, "disabled")
-		return domain.StoryContract{}, &result
-	}
 	storyPath := state.Metadata.InputPath
-	if !filepath.IsAbs(storyPath) {
+	if storyPath != "" && !filepath.IsAbs(storyPath) {
 		storyPath = filepath.Join(state.ProjectPath, storyPath)
 	}
-	markdown, err := os.ReadFile(storyPath)
-	if err != nil {
-		result := o.skippedQA(task.ID, "missing_story_contract")
-		return domain.StoryContract{}, &result
+	var contract domain.StoryContract
+	if storyPath != "" {
+		if markdown, err := os.ReadFile(storyPath); err == nil {
+			parsed, pErr := ParseStoryContract(relativeStoryPath(state.ProjectPath, storyPath), string(markdown))
+			if pErr == nil {
+				contract = parsed
+			}
+		}
 	}
-	contract, err := ParseStoryContract(relativeStoryPath(state.ProjectPath, storyPath), string(markdown))
-	if err != nil || len(contract.PublicContracts) == 0 {
-		result := o.skippedQA(task.ID, "missing_story_contract")
-		return domain.StoryContract{}, &result
+
+	if contract.StoryID != "" && state != nil {
+		UpsertStoryContract(state, contract)
+	}
+
+	if !o.cfg.QA.Enabled {
+		result := o.skippedQAWithStory(task.ID, contract.StoryID, "disabled")
+		return contract, &result
+	}
+	if len(contract.PublicContracts) == 0 {
+		result := o.skippedQAWithStory(task.ID, contract.StoryID, "missing_story_contract")
+		return contract, &result
 	}
 	if !qaApplies(contract, task.TargetFiles, o.cfg.QA.ValidationCommands) {
 		result := o.skippedQAWithStory(task.ID, contract.StoryID, "not_applicable")
@@ -311,10 +319,6 @@ func upsertCompletedQAAgent(state *domain.State, phase domain.ReviewPhase) {
 	state.ActiveAgents = append(state.ActiveAgents, agent)
 }
 
-func (o *Orchestrator) skippedQA(taskID, reason string) QAReviewResult {
-	return o.skippedQAWithStory(taskID, "", reason)
-}
-
 func (o *Orchestrator) skippedQAWithStory(taskID, storyID, reason string) QAReviewResult {
 	now := time.Now()
 	return QAReviewResult{Phase: domain.ReviewPhase{
@@ -393,7 +397,11 @@ func relativeStoryPath(projectPath, sourcePath string) string {
 	return filepath.Base(sourcePath)
 }
 
-func upsertStoryContract(state *domain.State, contract domain.StoryContract) {
+// UpsertStoryContract updates an existing StoryContract or appends a new one to the state.
+func UpsertStoryContract(state *domain.State, contract domain.StoryContract) {
+	if state == nil || contract.StoryID == "" {
+		return
+	}
 	for i := range state.StoryContracts {
 		if state.StoryContracts[i].StoryID == contract.StoryID {
 			state.StoryContracts[i] = contract
@@ -403,14 +411,29 @@ func upsertStoryContract(state *domain.State, contract domain.StoryContract) {
 	state.StoryContracts = append(state.StoryContracts, contract)
 }
 
-func upsertReviewPhase(phases []domain.ReviewPhase, phase domain.ReviewPhase) []domain.ReviewPhase {
+func upsertStoryContract(state *domain.State, contract domain.StoryContract) {
+	UpsertStoryContract(state, contract)
+}
+
+// UpsertReviewPhase updates an existing ReviewPhase by ID or composite key, or appends a new one.
+func UpsertReviewPhase(phases []domain.ReviewPhase, phase domain.ReviewPhase) []domain.ReviewPhase {
 	for i := range phases {
-		if phases[i].ID == phase.ID {
+		if (phase.ID != "" && phases[i].ID == phase.ID) ||
+			(phase.StoryID != "" &&
+				phases[i].StoryID == phase.StoryID &&
+				phases[i].TaskID == phase.TaskID &&
+				phases[i].Role == phase.Role &&
+				phases[i].ArtifactID == phase.ArtifactID &&
+				phases[i].Attempt == phase.Attempt) {
 			phases[i] = phase
 			return phases
 		}
 	}
 	return append(phases, phase)
+}
+
+func upsertReviewPhase(phases []domain.ReviewPhase, phase domain.ReviewPhase) []domain.ReviewPhase {
+	return UpsertReviewPhase(phases, phase)
 }
 
 func containsScenario(scenarios []domain.QAScenario, phaseID, fingerprint string) bool {

@@ -127,7 +127,14 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	// Inject Black-Box Contract Scenarios if story contract is present
 	if state.Metadata.InputPath != "" {
-		if storyContent, err := os.ReadFile(state.Metadata.InputPath); err == nil {
+		storyPath := state.Metadata.InputPath
+		if !filepath.IsAbs(storyPath) {
+			storyPath = filepath.Join(state.ProjectPath, storyPath)
+		}
+		if storyContent, err := os.ReadFile(storyPath); err == nil {
+			if contract, err := ParseStoryContract(relativeStoryPath(state.ProjectPath, storyPath), string(storyContent)); err == nil && contract.StoryID != "" {
+				upsertStoryContract(state, contract)
+			}
 			if contractCtx := FormatContractPromptContext(state.Metadata.InputPath, string(storyContent)); contractCtx != "" {
 				fileContexts = append(fileContexts, contractCtx)
 			}
