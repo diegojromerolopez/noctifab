@@ -10,6 +10,7 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
+	"github.com/stretchr/testify/require"
 )
 
 type mockRepo struct {
@@ -117,7 +118,10 @@ func TestWebServer_Endpoints(t *testing.T) {
 		if rec.Code != http.StatusAccepted {
 			t.Errorf("expected 202 Accepted, got %d", rec.Code)
 		}
-		time.Sleep(20 * time.Millisecond)
+		require.Eventually(t, func() bool {
+			st, err := repo.Load(context.Background())
+			return err == nil && st != nil && len(st.Orders) > 0
+		}, 2*time.Second, 5*time.Millisecond, "expected order to be persisted into state by mailbox")
 	})
 
 	t.Run("POST /api/v1/pause pauses story", func(t *testing.T) {
