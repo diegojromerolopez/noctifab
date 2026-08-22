@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.49.0] - 2026-08-22
 
 ### Added
+- **Interactive Failure Diagnostics & Quick-Steer Hint Generation**:
+  - Added an automated Failure Diagnostics alert banner that surfaces the root-cause compiler error or test failure snippet when build health is failing.
+  - Added a "💡 Suggest Steering Directive" button that auto-generates actionable corrective directives and pre-fills the steering input.
+- **Workspace Changed Files Explorer**:
+  - Added a "📁 Changed Files" tab in the Split Viewer with an interactive file tree and click-to-inspect syntax-highlighted code viewer.
+  - Implemented secure workspace file reading at `GET /api/v1/files/content` with path traversal guards.
+- **Multi-Story Roadmap Timeline Bar**:
+  - Added a horizontal story scrubber above the Task DAG allowing developers to filter and inspect past, active, and upcoming user stories.
+- **Native Web Audio & Toast Notifications**:
+  - Integrated zero-dependency Web Audio API synthesizer for success chimes (story completion/PR merge) and alert chimes (clarifications/failures).
+  - Added a floating toast notification container and header sound toggle (`🔔 Sound: ON/OFF`).
+- **Telemetry & Token Metrics Modal**:
+  - Added a rich metrics modal (`#metrics-modal`) accessible from the Tokens pill, breaking down token consumption by role (`GENERATOR`, `TESTER`, `PLANNER`, `QA`), tool execution frequencies, and task completion metrics via `GET /api/v1/metrics`.
+- **Live Search & Filter in Terminal Console Drawer**:
+  - Added a real-time search input and tag filter chips (`All`, `Errors`, `Tools`, `Tests`) to filter streamed tool execution logs in the console drawer.
+- **One-Click Execution Report Viewer & Downloader**:
+  - Added a header action button and modal to view or download the latest Markdown execution report directly via `GET /api/v1/report?download=true`.
 - **Interactive Task & User Story Detail Inspector Modal**:
   - Added click interactions across task cards and user story headers in the web dashboard that open a rich detail modal.
   - Displays full Task Title, Description, **Definition of Done (DoD)** criteria checklist, Target Files, Dependencies, Assigned Agent, Injected Steering Directives, and formatted failure stack traces.
