@@ -189,6 +189,48 @@ func TestVerifyQualityAndReleaseGates_ValidProject(t *testing.T) {
 	}
 }
 
+func TestVerifyQualityAndReleaseGates_MakefileMultiTarget(t *testing.T) {
+	tmp := t.TempDir()
+	makefile := `all: build
+
+test check: build
+	@echo "running test suite"
+	./bin/test_runner
+`
+	if err := os.WriteFile(filepath.Join(tmp, "Makefile"), []byte(makefile), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{}
+	err := VerifyQualityAndReleaseGates(cfg, tmp)
+	if err != nil {
+		t.Fatalf("expected multi-target rule 'test check:' to pass, got error: %v", err)
+	}
+}
+
+func TestVerifyQualityAndReleaseGates_MakefileDelegationTarget(t *testing.T) {
+	tmp := t.TempDir()
+	makefile := `all: build
+
+test: test-unit test-python
+
+test-unit:
+	./bin/unit_tests
+
+test-python:
+	python3 -m unittest
+`
+	if err := os.WriteFile(filepath.Join(tmp, "Makefile"), []byte(makefile), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{}
+	err := VerifyQualityAndReleaseGates(cfg, tmp)
+	if err != nil {
+		t.Fatalf("expected delegated test target to pass, got error: %v", err)
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

@@ -66,11 +66,17 @@ func DetectProjectLanguages(projectDir string) map[string]bool {
 		langs["c"] = true
 	}
 
-	// Shallow file walk to detect source file extensions (max depth 3)
+	// Shallow file walk (max depth 3, capped at 1000 scanned files for performance)
+	fileCount := 0
 	_ = filepath.Walk(projectDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
+		if fileCount > 1000 {
+			return filepath.SkipDir
+		}
+		fileCount++
+
 		rel, rErr := filepath.Rel(projectDir, path)
 		if rErr != nil {
 			return nil
@@ -78,7 +84,8 @@ func DetectProjectLanguages(projectDir string) map[string]bool {
 		if info.IsDir() {
 			base := info.Name()
 			if base == ".git" || base == ".noctifab" || base == "node_modules" ||
-				base == "venv" || base == ".venv" || base == "build" || base == "dist" || base == "reports" {
+				base == "venv" || base == ".venv" || base == "build" || base == "dist" ||
+				base == "reports" || base == "target" || base == "vendor" || base == ".cache" {
 				return filepath.SkipDir
 			}
 			if strings.Count(rel, string(filepath.Separator)) > 3 {
@@ -112,7 +119,17 @@ func DetectProjectLanguages(projectDir string) map[string]bool {
 
 // IsTrivialCommand returns true if the command does nothing of substance (e.g. exit 0, true, echo pass).
 func IsTrivialCommand(cmdStr string) bool {
-	trimmed := strings.TrimSpace(cmdStr)
+	// Strip comments first
+	var nonComments []string
+	for _, line := range strings.Split(cmdStr, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		nonComments = append(nonComments, trimmed)
+	}
+	content := strings.Join(nonComments, " ")
+	trimmed := strings.TrimSpace(content)
 	if trimmed == "" {
 		return true
 	}
@@ -124,19 +141,36 @@ func IsTrivialCommand(cmdStr string) bool {
 	return trivialCmdRegex.MatchString(trimmed)
 }
 
-// ParseMakefileTargets extracts target names and their multi-line recipes from a Makefile.
+// ParseMakefileTargets extracts all declared target names and their multi-line recipes from a Makefile.
+// Supports multi-target rules (e.g. `test check:`), ignores variable assignments and .PHONY headers,
+// and strictly associates tab-indented recipes.
 func ParseMakefileTargets(content string) map[string]string {
 	targets := make(map[string]string)
 	scanner := bufio.NewScanner(strings.NewReader(content))
-	var currentTarget string
+	var currentTargets []string
 	var currentRecipe strings.Builder
 
-	targetHeaderRegex := regexp.MustCompile(`^([a-zA-Z0-9_-]+)\s*:\s*(?:.*?)$`)
+	flush := func() {
+		if len(currentTargets) > 0 {
+			recipe := currentRecipe.String()
+			for _, tgt := range currentTargets {
+				if existing, ok := targets[tgt]; ok && existing != "" {
+					targets[tgt] = existing + "\n" + recipe
+				} else {
+					targets[tgt] = recipe
+				}
+			}
+			currentTargets = nil
+			currentRecipe.Reset()
+		}
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "\t") || strings.HasPrefix(line, "  ") {
-			if currentTarget != "" {
+
+		// Real Makefile recipes are tab-indented
+		if strings.HasPrefix(line, "\t") {
+			if len(currentTargets) > 0 {
 				currentRecipe.WriteString(strings.TrimSpace(line))
 				currentRecipe.WriteString("\n")
 			}
@@ -148,23 +182,50 @@ func ParseMakefileTargets(content string) map[string]string {
 			continue
 		}
 
-		if match := targetHeaderRegex.FindStringSubmatch(line); len(match) > 1 {
-			if currentTarget != "" {
-				targets[currentTarget] = currentRecipe.String()
-			}
-			currentTarget = match[1]
-			currentRecipe.Reset()
-		} else if !strings.Contains(line, "=") {
-			if currentTarget != "" {
-				targets[currentTarget] = currentRecipe.String()
-				currentTarget = ""
-				currentRecipe.Reset()
+		// Skip variable assignments (=, :=, +=, ?=, !=)
+		if strings.Contains(line, ":=") || strings.Contains(line, "+=") ||
+			strings.Contains(line, "?=") || strings.Contains(line, "!=") {
+			flush()
+			continue
+		}
+		if eqIdx := strings.Index(line, "="); eqIdx != -1 {
+			colonIdx := strings.Index(line, ":")
+			if colonIdx == -1 || eqIdx < colonIdx {
+				flush()
+				continue
 			}
 		}
+
+		// Match target lines (e.g. `test:`, `test-unit test-all: build`, `all: bin/app`)
+		if colonIdx := strings.Index(line, ":"); colonIdx != -1 {
+			leftSide := strings.TrimSpace(line[:colonIdx])
+			rightSide := strings.TrimSpace(line[colonIdx+1:])
+
+			// Skip special targets starting with '.' like '.PHONY', '.DEFAULT', '.SILENT'
+			if strings.HasPrefix(leftSide, ".") {
+				flush()
+				continue
+			}
+
+			// Extract all target names before the colon
+			targetNames := strings.Fields(leftSide)
+			if len(targetNames) > 0 {
+				flush()
+				currentTargets = targetNames
+				// If target line itself has prerequisites (e.g. `test: test-unit test-python`),
+				// store prerequisite references as part of recipe metadata
+				if rightSide != "" {
+					currentRecipe.WriteString("# prereqs: ")
+					currentRecipe.WriteString(rightSide)
+					currentRecipe.WriteString("\n")
+				}
+			}
+		} else {
+			// Non-recipe, non-target line (e.g. conditional ifeq / endif)
+			flush()
+		}
 	}
-	if currentTarget != "" {
-		targets[currentTarget] = currentRecipe.String()
-	}
+	flush()
 	return targets
 }
 
@@ -280,8 +341,20 @@ func VerifyQualityAndReleaseGates(cfg *config.Config, projectDir string) error {
 		// Ensure found test target is not trivial
 		recipe := targets[foundTestTarget]
 		if IsTrivialCommand(recipe) {
-			return fmt.Errorf("pre-flight check failed: Makefile target %q in %s is trivial or empty; quality gate must execute real verification",
-				foundTestTarget, makefilePath)
+			// Check if it delegates to sub-targets (e.g. `test: test-unit test-python`)
+			hasNonTrivialPrereq := false
+			for otherTarget, otherRecipe := range targets {
+				if otherTarget != foundTestTarget && strings.Contains(recipe, otherTarget) {
+					if !IsTrivialCommand(otherRecipe) {
+						hasNonTrivialPrereq = true
+						break
+					}
+				}
+			}
+			if !hasNonTrivialPrereq {
+				return fmt.Errorf("pre-flight check failed: Makefile target %q in %s is trivial or empty; quality gate must execute real verification",
+					foundTestTarget, makefilePath)
+			}
 		}
 	}
 

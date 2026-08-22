@@ -52,10 +52,6 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		pDir = projectDir[0]
 	}
 
-	if err := VerifyQualityAndReleaseGates(cfg, pDir); err != nil {
-		return err
-	}
-
 	tools := []string{"go", "docker", "python3", "rustc", "make", "gcc"}
 	var foundTools []string
 	for _, t := range tools {
@@ -168,6 +164,9 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		fmt.Printf("OK (%dms)\n", latency.Milliseconds())
 	}
 	fmt.Printf("- Sandbox mode (%s): OK\n", cfg.Sandbox.Mode)
+	if err := VerifyQualityAndReleaseGates(cfg, pDir); err != nil {
+		return err
+	}
 	fmt.Println("Pre-flight checks passed successfully.")
 	return nil
 }
