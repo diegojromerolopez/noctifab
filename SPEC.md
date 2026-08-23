@@ -1741,6 +1741,32 @@ To guarantee the primary invariant—**Noctifab Never Gets Stuck**—the system 
    - Upon completion of all story tasks, executes a consolidated global test suite on `integrationBranch`.
    - If tests fail, spawns the Integration Repair Agent with the consolidated diff and failure traces (budget: max 2 turns) to repair cross-task discrepancies.
 
+### 3.6.14. Last-Resort Agent (Omni-Unblocker & Sovereign Repair Agent)
+
+The **Last-Resort Agent** (`pkg/services/orchestrator_last_resort.go`, `AgentRole: "LAST_RESORT"`) is an autonomous sovereign repair agent invoked by the orchestrator when normal execution encounters intractable roadblocks:
+1. **Trigger Conditions:**
+   - Exhausted retry budgets (`task.Retries >= task.MaxRetries`).
+   - Cyclic test failure or unblocker loops (`unblocker.stall_count >= 4`).
+   - Missing toolchains or sandbox failures (`FailureSandbox`).
+   - Post-merge integration failures where the standard 2-turn repair phase is insufficient.
+2. **Sovereign Permissions & Scope:**
+   - Multi-file code and test edits in a single turn.
+   - Specification alignment and contract mutation when tests and code are deadlocked over conflicting requirements.
+   - Fallback and dependency pruning when uninstalled external libraries stall compilation.
+3. **4-Tier Compromise Hierarchy:**
+   - **Tier 1 (Interface Harmonization):** Harmonize signature mismatches, types, and parameter counts between tests and implementation.
+   - **Tier 2 (Standard Library Fallback):** Replace missing external third-party packages with built-in standard library constructs.
+   - **Tier 3 (Scope Pruning):** Simplify, disable, or adjust failing test cases that test non-essential external toolchains or unreachable requirements.
+   - **Tier 4 (Safe Compiling Stub):** Implement a minimal, type-safe compiling stub returning default/fallback values to ensure the pipeline never breaks build compilation.
+4. **Strict Specification Quality Invariants:**
+   - Modularity: files must not exceed 500 lines.
+   - Architecture: Dependency Injection, SOLID, Domain-Driven Design (DDD).
+   - Security: Zero security compromises (no hardcoded credentials or sandbox breakouts).
+5. **Observability & Auditing:**
+   - Emits prominent critical log alerts (`🚨 [CRITICAL ALERT] LAST-RESORT AGENT SUMMONED`).
+   - Registers in `State.ActiveAgents` and logs structured actions to `State.LastActions`.
+   - Displays real-time status, badges, and filters in the Web Dashboard.
+
 ---
 
 ### 3.7. Specification Ingestion & External Clients
@@ -1926,6 +1952,11 @@ roles:
     model: "gemini-1.5-pro"
     temperature: 0.0
     profile: "tester"           # References .noctifab/profiles/tester.yaml
+  last_resort:
+    enabled: true               # Enable sovereign last-resort unblocker (default: true)
+    model: "claude-3-5-sonnet"  # High-reasoning model for sovereign recovery
+    temperature: 0.0
+    profile: "generator"        # References profile for sandbox permissions
 
 telemetry:
   enabled: false                 # Enable OpenTelemetry tracing
