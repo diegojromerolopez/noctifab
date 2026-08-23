@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Zero Host Installation & Container Mandate**:
   - Injected strict directives across all agent prompt templates (`generator`, `tester`, `planner`, `product_manager`) forbidding host package installations (`brew`, `apt-get`, `dnf`, `yum`) and mandating minimal Docker container execution when toolchains/utilities are missing.
   - Enhanced `CategorizeFailureLog` in `watchdog_repair.go` to categorize missing toolchain commands and script errors as `FailureSandbox` to fast-abort false retry loops.
+- **First-Class Generator Surgical Repair**:
+  - Registered `"surgical_repair"` action in `prompts.AgentGenerator` catalog and added template `pkg/infrastructure/prompts/defaults/generator/surgical_repair.tmpl`.
+  - Added single-turn targeted repair in `RunGeneratorAgent` (`maxTurns = 1`, skipped reader phase) injecting localized error traces.
+  - Added pre-retry hook in `orchestrator_execute.go` to attempt 1 fast surgical repair turn before task failure or multi-turn retries, avoiding repetitive full-agent regenerations.
 - **Zero-Token Pre-Commit Auto-Formatting**:
   - Updated `stageAndCommit` in `orchestrator_execute_turns.go` to execute the sandbox formatter command (`make format`, `ruff format .`, `go fmt ./...`) before `git add` and `git commit`, resolving whitespace and style offenses with 0 LLM tokens.
 - **Dedicated Stories Entity & Relational Tracking**:

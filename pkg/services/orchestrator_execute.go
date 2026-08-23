@@ -155,6 +155,16 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
 	// Run test suite validation
 	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, &taskState, *task)
+
+	// Issue 7: First-Class Generator Surgical Repair
+	category := CategorizeFailureLog(logMsg)
+	if !passed && qaBlocked == "" && (category == FailureCompile || category == FailureTestLogic) {
+		fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, category)
+		o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
+		passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
+		category = CategorizeFailureLog(logMsg)
+	}
+
 	if passed && qaBlocked == "" {
 		qaBlocked = o.runQAGate(ctx, &taskState, *task, taskGit, fileContexts)
 	}
@@ -182,7 +192,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	category := CategorizeFailureLog(logMsg)
+	category = CategorizeFailureLog(logMsg)
 	isSandboxFailure := !passed && category == FailureSandbox
 	shouldRetry := !passed && !isSandboxFailure && task.Retries < task.MaxRetries && task.MaxRetries > 0
 

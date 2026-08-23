@@ -19,13 +19,13 @@ func TestCatalog(t *testing.T) {
 		}
 	})
 
-	t.Run("when counting catalog keys it totals 21 actions", func(t *testing.T) {
+	t.Run("when counting catalog keys it totals 22 actions", func(t *testing.T) {
 		total := 0
 		for _, agent := range Agents() {
 			total += len(Actions(agent))
 		}
-		if total != 21 {
-			t.Fatalf("expected 21 (agent, action) keys, got %d", total)
+		if total != 22 {
+			t.Fatalf("expected 22 (agent, action) keys, got %d", total)
 		}
 	})
 
@@ -35,6 +35,9 @@ func TestCatalog(t *testing.T) {
 		}
 		if !IsValidKey("generator", "implement_breadth_first_fix") {
 			t.Error("expected generator/implement_breadth_first_fix to be valid")
+		}
+		if !IsValidKey("generator", "surgical_repair") {
+			t.Error("expected generator/surgical_repair to be valid")
 		}
 		if !IsValidKey("qa", "acceptance") {
 			t.Error("expected qa/acceptance to be valid")

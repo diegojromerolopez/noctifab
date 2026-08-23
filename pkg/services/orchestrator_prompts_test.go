@@ -183,4 +183,29 @@ func TestOrchestratorPromptRendering(t *testing.T) {
 			t.Errorf("tester fix prompt missing feedback, got:\n%s", got)
 		}
 	})
+
+	t.Run("when the generator surgical repair action runs it renders surgical repair instructions and limits to 1 turn", func(t *testing.T) {
+		tempDir := t.TempDir()
+		llm := &promptCapturingLLM{}
+		orch := newPromptTestOrchestrator(t, tempDir, llm, nil)
+		state := &domain.State{ProjectPath: tempDir}
+		task := domain.Task{ID: "t1", Title: "Fix off-by-one", Description: "Array index out of bounds"}
+
+		orch.RunGeneratorAgent(context.Background(), task, state, nil, "### TARGET FAILURE LOG TRACE: line 42 index out of range", "surgical_repair")
+
+		if len(llm.prompts) == 0 {
+			t.Fatal("expected at least one LLM call")
+		}
+		got := llm.prompts[len(llm.prompts)-1]
+		for _, needle := range []string{
+			"SURGICAL REPAIR MODE",
+			"Fix off-by-one - Array index out of bounds",
+			"TARGET FAILURE LOG TRACE: line 42 index out of range",
+			"SURGICAL REPAIR INSTRUCTIONS:",
+		} {
+			if !strings.Contains(got, needle) {
+				t.Errorf("surgical repair prompt missing %q", needle)
+			}
+		}
+	})
 }

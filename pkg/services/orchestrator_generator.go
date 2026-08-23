@@ -13,7 +13,7 @@ import (
 // RunGeneratorAgent runs the generator agent to implement task functionality.
 // action selects the generator prompt template (see the prompts package
 // catalog: implement, refactor, fix, single_pass, single_pass_fix,
-// implement_breadth_first, implement_breadth_first_fix).
+// implement_breadth_first, implement_breadth_first_fix, surgical_repair).
 func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, recentTestsContext string, action string) {
 	// Fail fast on unknown actions before doing any reader-phase work.
 	if err := prompts.ValidateKey(prompts.AgentGenerator, action); err != nil {
@@ -23,8 +23,11 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		return
 	}
 
-	// Reader Phase: collect inspection context first!
-	readerContexts := o.RunReaderPhase(ctx, "generator", task, state)
+	// Reader Phase: collect inspection context first (skip for single-turn surgical repair)
+	var readerContexts []string
+	if action != "surgical_repair" {
+		readerContexts = o.RunReaderPhase(ctx, "generator", task, state)
+	}
 
 	var promptContext []string
 	if len(fileContexts) > 0 {
@@ -84,6 +87,9 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 
 	currentPrompt := genPrompt
 	maxTurns := iterationsOrDefault(o.cfg.GeneratorsIterations)
+	if action == "surgical_repair" {
+		maxTurns = 1
+	}
 	var lastErr error
 	runTestsCalled := false
 	testFixRequestCount := 0
