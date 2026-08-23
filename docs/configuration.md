@@ -93,6 +93,15 @@ agents:
     number: 1
     iterations: 2
 
+  last_resort:
+    enabled: true
+    temperature: 0.1
+    max_turns: 2
+    timeout: 180s
+    allow_spec_mutation: true
+    allow_scope_reduction: true
+    enforce_spec_quality: true
+
 workspace_cache:
   enabled: true
 
@@ -111,6 +120,7 @@ clarification_timeout_action: abort
 - **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 3`).
 - **`qa`**: Reserves the experimental QA capability. It defaults to `enabled: false`; Phase 0 reports its capability but does not run QA.
 - **`unblocker`**: Configures Unblocker agents monitoring pipelines for stalls and re-dispatching tasks (`number: 1`, `iterations: 2`).
+- **`last_resort`**: Configures the sovereign Last-Resort Agent (*Omni-Unblocker* / *Chief Surgeon*) invoked when tasks reach critical stall thresholds, retry budget exhaustion, or toolchain deadlocks (`enabled: true`, `model: ""`, `temperature: 0.1`, `max_turns: 2`, `timeout: 180s`, `allow_spec_mutation: true`, `allow_scope_reduction: true`, `enforce_spec_quality: true`). Operates with cross-domain authority to refactor code, tests, and specifications under the 4-Tier Compromise Hierarchy while strictly preserving SOLID, DI, and security quality gates.
 - **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.
 - **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve a task clarification.
 - **`clarification_timeout_action`** (String): Action to take if a clarification times out (`abort` or `continue`).
@@ -359,6 +369,9 @@ roles:
   tester:
     profile: tester
     temperature: 0.0
+  last_resort:
+    profile: last_resort
+    temperature: 0.1
 
 profiles:
   generator:
@@ -370,6 +383,26 @@ profiles:
     allowed_commands:
       - "go"
       - "git"
+  last_resort:
+    allowed_tools:
+      - "read_file"
+      - "write_file"
+      - "edit_file"
+      - "apply_patch"
+      - "delete_file"
+      - "list_directory"
+      - "find_files"
+      - "grep_search"
+      - "run_tests"
+      - "run_linter"
+      - "noop"
+    allowed_commands:
+      - "go"
+      - "git"
+      - "npm"
+      - "python"
+      - "make"
+      - "cargo"
 ```
 
 ### Roles Config (`roles`)
@@ -378,6 +411,7 @@ Assigns model override configurations, temperature boundaries, and security prof
 - **`planner`**: Parses feature specs into the DAG roadmap.
 - **`generator`**: Writes feature implementation files in the sandbox.
 - **`tester`**: Writes and aligns validation tests.
+- **`last_resort`**: Sovereign emergency solver for resolving deadlocked tasks across code, tests, and specs.
 
 ### Profiles Config (`profiles`)
 Creates permission groups matching agent roles to whitelisted resources:
@@ -439,6 +473,13 @@ unblocker:
   stall_threshold: "5m"
   conflict_threshold: "15m"
   llm_assessment: true
+  last_resort_triggers:
+    retries_exhaustion: true
+    cyclic_loop_detection: true
+    missing_toolchain_fast_abort: true
+    qa_deadlock_turns: 2
+    watchdog_timeout_turns: 2
+    stall_count_threshold: 4
 ```
 
 - **`enabled`** (Boolean): Activate the unblocker goroutine (default: `true`). When `false`, no stall scanning is performed.
@@ -447,8 +488,15 @@ unblocker:
 - **`stall_threshold`** (Duration): How long a task must be frozen `IN_PROGRESS` with no progress update before it is classified as stalled (default: `5m`).
 - **`conflict_threshold`** (Duration): How long a `CONFLICT_BLOCKED` task waits before the unblocker intervenes (default: `15m`).
 - **`llm_assessment`** (Boolean): When `true` (default), the unblocker calls the LLM to diagnose each stall and choose the corrective action. When `false`, deterministic heuristics are applied instead (no LLM call, lower token consumption).
+- **`last_resort_triggers`**: Configures automatic escalation conditions that summon the sovereign Last-Resort Agent:
+  - **`retries_exhaustion`** (Boolean): Trigger Last-Resort Agent when task retries are exhausted (default: `true`).
+  - **`cyclic_loop_detection`** (Boolean): Trigger on detected repetitive compiler or test error cycles (default: `true`).
+  - **`missing_toolchain_fast_abort`** (Boolean): Fast-abort retry loops and summon Last-Resort Agent when build tools or packages are missing from the sandbox (default: `true`).
+  - **`qa_deadlock_turns`** (Integer): Number of consecutive QA deadlock turns before escalating (default: `2`).
+  - **`watchdog_timeout_turns`** (Integer): Number of watchdog timeout failures before escalating (default: `2`).
+  - **`stall_count_threshold`** (Integer): Number of cumulative Unblocker stall cycles before summoning Last-Resort Agent (default: `4`).
 
-See [unblocker_agent.md](unblocker_agent.md) for a full developer reference including the stall detection algorithm, command dispatch, and tuning guidelines.
+See [unblocker_agent.md](unblocker_agent.md) and [last_resort_agent.md](last_resort_agent.md) for full references on the two-tier deadlock defense and compromise hierarchy.
 
 ---
 
@@ -508,6 +556,56 @@ orchestrator:
   poll_interval: "10s"
   max_clarification_wait: "30m"
   clarification_timeout_action: "abort"
+
+agents:
+  architecture: "code_first"
+  task_execution_order: "generator_first"
+  orchestrator:
+    number: 1
+    iterations: 2
+  product_manager:
+    number: 1
+    iterations: 2
+    max_user_stories: 5
+    passes: 2
+  planner:
+    number: 1
+    iterations: 2
+  generators:
+    number: 3
+    iterations: 5
+  testers:
+    number: 2
+    iterations: 3
+  qa:
+    enabled: false
+    iterations: 1
+  unblocker:
+    number: 1
+    iterations: 2
+  last_resort:
+    enabled: true
+    temperature: 0.1
+    max_turns: 2
+    timeout: 180s
+    allow_spec_mutation: true
+    allow_scope_reduction: true
+    enforce_spec_quality: true
+
+unblocker:
+  enabled: true
+  poll_interval: "30s"
+  max_retries: 3
+  stall_threshold: "5m"
+  conflict_threshold: "15m"
+  llm_assessment: true
+  last_resort_triggers:
+    retries_exhaustion: true
+    cyclic_loop_detection: true
+    missing_toolchain_fast_abort: true
+    qa_deadlock_turns: 2
+    watchdog_timeout_turns: 2
+    stall_count_threshold: 4
 
 storage:
   provider: "sqlite"
@@ -580,6 +678,9 @@ roles:
   tester:
     profile: "tester"
     temperature: 0.0
+  last_resort:
+    profile: "last_resort"
+    temperature: 0.1
 
 profiles:
   generator:
@@ -605,6 +706,23 @@ profiles:
       - "run_tests"
       - "run_linter"
       - "noop"
+  last_resort:
+    allowed_tools:
+      - "read_file"
+      - "write_file"
+      - "edit_file"
+      - "apply_patch"
+      - "delete_file"
+      - "list_directory"
+      - "find_files"
+      - "grep_search"
+      - "run_tests"
+      - "run_linter"
+      - "noop"
+    allowed_commands:
+      - "cargo"
+      - "rustc"
+      - "git"
 
 telemetry:
   enabled: false

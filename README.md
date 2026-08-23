@@ -286,6 +286,12 @@ agents:
   unblocker:
     number: 1      # Autonomous pipeline stall detection & task re-dispatch (default: 1)
     iterations: 2
+
+  last_resort:
+    enabled: true  # Sovereign unblocker for deadlocked tasks across code, tests, and specs
+    temperature: 0.1
+    max_turns: 2
+    timeout: 180s
 ```
 
 1. **`code_first` (`cfv`)** (Default): Generator implements code first, followed by independent Tester verification turns.
@@ -364,7 +370,7 @@ Key features of Interactive Mode:
 - **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Auto-generates user stories in `roadmap/user-stories/` from `SPEC.md` if missing, and executes stories concurrently via the Story DAG Scheduler. Pass `-w` / `--web` to launch the concurrent live Visual Web Dashboard, `--web-open` to auto-open in browser, `-i` for interactive TUI, `--standby` for persistent always-on dark factory mode, and `--resume` to skip completed stories.
 - **`resume`**: Resumes execution of an interrupted or partially completed workspace, skipping already completed user stories (`StorySuccess`) and picking up execution at the first incomplete story (supports `-w` / `--web` and `--web-open` for concurrent web dashboard).
 - **`serve`**: Runs the long-running headless orchestrator daemon loop, polling and executing tasks in the background with local loopback REST API endpoints.
-- **`prompts`**: Inspects, customizes, initializes, and validates per-agent prompt templates (`list`, `show`, `init`, `validate`).
+- **`prompts`**: Inspects, customizes, initializes, and validates per-agent prompt templates (`list`, `show`, `init`, `validate`). Supports all 23 prompt templates across 7 agent roles.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
 - **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
