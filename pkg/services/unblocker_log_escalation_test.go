@@ -137,7 +137,7 @@ func TestUnblocker_FastPathAndEscalation(t *testing.T) {
 		assert.Contains(t, failCmd.Reason, "max stall escalations")
 	})
 
-	t.Run("pre-hard-stop escalates to Last-Resort Agent when StallCount == 4", func(t *testing.T) {
+	t.Run("pre-hard-stop escalates to Last-Resort Agent when StallCount >= 4", func(t *testing.T) {
 		state := &domain.State{
 			StoryStatus: domain.StoryRunning,
 			Tasks: []domain.Task{

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,5 +155,78 @@ func TestOrchestrator_RunLastResortAgent_TurnsExhausted(t *testing.T) {
 	}
 	if taskState.LastActions[len(taskState.LastActions)-1].Tool != "last_resort_agent_failed" {
 		t.Errorf("expected final action to be 'last_resort_agent_failed', got %q", taskState.LastActions[len(taskState.LastActions)-1].Tool)
+	}
+}
+
+func TestBuildLastResortContext_SanitizesSecrets(t *testing.T) {
+	rawLog := "Error: connection failed with api_key=sk-secretkey123456789012345678901234 and ghp_111122223333444455556666777788889999"
+	rawDiff := "+ token: \"sk-anothersecret999888777666555444333222\"\n- token: \"old\""
+
+	contextBlock := buildLastResortContext(rawLog, rawDiff, "unblocker_stall_escalation", 1, 2)
+
+	if strings.Contains(contextBlock, "sk-secretkey123456789012345678901234") {
+		t.Errorf("expected failure log secret to be redacted from context block")
+	}
+	if strings.Contains(contextBlock, "ghp_111122223333444455556666777788889999") {
+		t.Errorf("expected ghp token to be redacted from context block")
+	}
+	if strings.Contains(contextBlock, "sk-anothersecret999888777666555444333222") {
+		t.Errorf("expected diff secret to be redacted from context block")
+	}
+	if !strings.Contains(contextBlock, "[REDACTED_SECRET]") {
+		t.Errorf("expected [REDACTED_SECRET] placeholder in sanitized context block")
+	}
+}
+
+func TestOrchestrator_RunLastResortAgent_StallEscalation(t *testing.T) {
+	reg := NewToolRegistry()
+	reg.Register(&mockTool{name: "write_file"})
+
+	mockLLM := &testMockLLM{
+		responses: []*domain.LLMResponse{
+			{
+				Reasoning: "Resolving repeated stall deadlock",
+				Actions: []domain.LLMAction{
+					{
+						Tool: "write_file",
+						Args: map[string]interface{}{"path": "service.go", "content": "package service"},
+					},
+				},
+			},
+		},
+	}
+
+	sandbox := &mockLRASandbox{out: "FAIL: deadlocked"}
+	evaluator := NewTestValidator(sandbox, false, mockLLM, reg.Tools())
+
+	cfg := OrchestratorConfig{
+		LastResort: config.LastResortAgentConfig{
+			Enabled:  true,
+			MaxTurns: 2,
+		},
+	}
+
+	orch := &Orchestrator{
+		cfg:            cfg,
+		llmClient:      mockLLM,
+		registry:       reg,
+		evaluator:      evaluator,
+		promptRenderer: prompts.NewDefaultRenderer(),
+	}
+
+	task := domain.Task{
+		ID:                "T-400",
+		Title:             "Stalled Task",
+		StallCount:        4,
+		RecoveryDirective: "SOVEREIGN REPAIR DIRECTIVE: Task T-400 stalled 4 times.",
+	}
+	taskState := domain.State{ID: "story-1"}
+
+	passed, _ := orch.RunLastResortAgent(context.Background(), &task, &taskState, nil, task.RecoveryDirective, "unblocker_stall_escalation")
+	if !passed {
+		t.Errorf("expected RunLastResortAgent to return true for stall escalation resolution")
+	}
+	if !task.LastResortUsed {
+		t.Errorf("expected task.LastResortUsed to be true")
 	}
 }

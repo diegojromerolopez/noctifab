@@ -87,7 +87,9 @@ func (o *Orchestrator) RunLastResortAgent(
 			Success:   false,
 		})
 		if o.repo != nil {
-			_ = o.repo.Save(ctx, taskState)
+			if saveErr := o.repo.Save(ctx, taskState); saveErr != nil {
+				fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on trigger failed: %v\n", saveErr)
+			}
 		}
 	}
 
@@ -106,7 +108,7 @@ func (o *Orchestrator) RunLastResortAgent(
 			diffContext = diffOut
 		}
 
-		// Assemble multi-file context block
+		// Assemble multi-file context block with secret sanitization
 		contextBlock := buildLastResortContext(currentLog, diffContext, triggerReason, turn, maxTurns)
 
 		data := prompts.TaskPromptData{
@@ -158,8 +160,10 @@ func (o *Orchestrator) RunLastResortAgent(
 
 			// Stage and commit changes with standardized tag
 			if taskGit != nil {
-				_ = o.stageAndCommit(ctx, taskGit, task.ID,
-					"fix(lra): sovereign unblock for task %s - %s [turn %d/%d]", task.Title, turn, maxTurns)
+				if commitErr := o.stageAndCommit(ctx, taskGit, task.ID,
+					"fix(lra): sovereign unblock for task %s - %s [turn %d/%d]", task.Title, turn, maxTurns); commitErr != nil {
+					fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] Git commit failed on turn %d: %v\n", turn, commitErr)
+				}
 			}
 		}
 
@@ -181,7 +185,9 @@ func (o *Orchestrator) RunLastResortAgent(
 						Success:   true,
 					})
 					if o.repo != nil {
-						_ = o.repo.Save(ctx, taskState)
+						if saveErr := o.repo.Save(ctx, taskState); saveErr != nil {
+							fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on success failed: %v\n", saveErr)
+						}
 					}
 				}
 				return true, newLogMsg
@@ -203,7 +209,9 @@ func (o *Orchestrator) RunLastResortAgent(
 			Success:   false,
 		})
 		if o.repo != nil {
-			_ = o.repo.Save(ctx, taskState)
+			if saveErr := o.repo.Save(ctx, taskState); saveErr != nil {
+				fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on failure failed: %v\n", saveErr)
+			}
 		}
 	}
 
@@ -217,15 +225,17 @@ func buildLastResortContext(failureLog, diffContext, triggerReason string, turn,
 	fmt.Fprintf(&sb, "* **Active Turn:** %d of %d\n\n", turn, maxTurns)
 
 	sb.WriteString("#### Failing Error / Test Trace:\n```\n")
-	sb.WriteString(summarizeFailureLog(failureLog))
+	sanitizedLog := SanitizeLog(failureLog)
+	sb.WriteString(summarizeFailureLog(sanitizedLog))
 	sb.WriteString("\n```\n\n")
 
 	if strings.TrimSpace(diffContext) != "" {
+		sanitizedDiff := SanitizeLog(diffContext)
 		sb.WriteString("#### Recent Git Diff Context:\n```diff\n")
-		if len(diffContext) > 16000 {
-			diffContext = diffContext[:16000] + "\n...[diff truncated]..."
+		if len(sanitizedDiff) > 16000 {
+			sanitizedDiff = sanitizedDiff[:16000] + "\n...[diff truncated]..."
 		}
-		sb.WriteString(diffContext)
+		sb.WriteString(sanitizedDiff)
 		sb.WriteString("\n```\n\n")
 	}
 
