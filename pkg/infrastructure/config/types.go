@@ -91,16 +91,17 @@ type PromptOverride struct {
 }
 
 type AgentsConfig struct {
-	Architecture       string               `yaml:"architecture"`
-	TaskExecutionOrder string               `yaml:"task_execution_order,omitempty"`
-	Orchestrator       AgentRoleConfig      `yaml:"orchestrator"`
-	ProductManager     AgentRoleConfig      `yaml:"product_manager"`
-	Planner            AgentRoleConfig      `yaml:"planner"`
-	Generators         AgentRoleConfig      `yaml:"generators"`
-	Testers            AgentRoleConfig      `yaml:"testers"`
-	QA                 QAConfig             `yaml:"qa"`
-	Unblocker          AgentRoleConfig      `yaml:"unblocker"`
-	WorkspaceCache     WorkspaceCacheConfig `yaml:"workspace_cache"`
+	Architecture       string                `yaml:"architecture"`
+	TaskExecutionOrder string                `yaml:"task_execution_order,omitempty"`
+	Orchestrator       AgentRoleConfig       `yaml:"orchestrator"`
+	ProductManager     AgentRoleConfig       `yaml:"product_manager"`
+	Planner            AgentRoleConfig       `yaml:"planner"`
+	Generators         AgentRoleConfig       `yaml:"generators"`
+	Testers            AgentRoleConfig       `yaml:"testers"`
+	QA                 QAConfig              `yaml:"qa"`
+	Unblocker          AgentRoleConfig       `yaml:"unblocker"`
+	LastResort         LastResortAgentConfig `yaml:"last_resort"`
+	WorkspaceCache     WorkspaceCacheConfig  `yaml:"workspace_cache"`
 }
 
 // QAConfig reserves the bounded configuration contract for the experimental QA role.
@@ -342,6 +343,7 @@ type RolesConfig struct {
 	Tester       RoleSetting `yaml:"tester"`
 	QA           RoleSetting `yaml:"qa"`
 	Unblocker    RoleSetting `yaml:"unblocker"`
+	LastResort   RoleSetting `yaml:"last_resort"`
 }
 
 type ProfileConfig struct {
@@ -393,6 +395,8 @@ type UnblockerConfig struct {
 	// the unblocker applies heuristic-only corrections without calling the LLM
 	// (cheaper, but less precise) (default: true).
 	LLMAssessment bool `yaml:"llm_assessment"`
+	// LastResortTriggers controls the threshold and signals for summoning the Last-Resort Agent.
+	LastResortTriggers LastResortTriggersConfig `yaml:"last_resort_triggers"`
 }
 
 type ContextMode string

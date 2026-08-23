@@ -177,6 +177,7 @@ var serveCmd = &cobra.Command{
 			ExcludePaths:         cfg.Sandbox.ExcludePaths,
 			WorkspaceCache:       cfg.GetWorkspaceCache(),
 			QA:                   cfg.Agents.QA,
+			LastResort:           cfg.Agents.LastResort,
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.

@@ -279,6 +279,11 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 			}
 		case "unblocker":
 			agentRole = r.cfg.Agents.Unblocker
+		case "last_resort", "lastresort":
+			lr := r.cfg.Agents.LastResort
+			if len(lr.Providers) > 0 {
+				return config.RoleSetting{Model: lr.Model, Temperature: lr.Temperature, Profile: lr.Profile, Providers: lr.Providers}
+			}
 		}
 		if len(agentRole.Providers) > 0 {
 			return config.RoleSetting{
@@ -305,6 +310,8 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 		return r.roles.QA
 	case "unblocker":
 		return r.roles.Unblocker
+	case "last_resort", "lastresort":
+		return r.roles.LastResort
 	default:
 		return config.RoleSetting{}
 	}

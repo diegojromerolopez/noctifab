@@ -50,6 +50,7 @@ type Task struct {
 	RecoveryDirective string     `json:"recovery_directive,omitempty"`
 	UserDirectives    []string   `json:"user_directives,omitempty"`
 	StallCount        int        `json:"stall_count,omitempty"`
+	LastResortUsed    bool       `json:"last_resort_used,omitempty"`
 	Retries           int        `json:"retries"`
 	MaxRetries        int        `json:"max_retries"`
 	StoryID           string     `json:"story_id,omitempty"`

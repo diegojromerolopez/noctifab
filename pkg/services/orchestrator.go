@@ -53,6 +53,7 @@ type OrchestratorConfig struct {
 	Context                config.ContextConfig
 	WorkspaceCache         config.WorkspaceCacheConfig
 	QA                     config.QAConfig
+	LastResort             config.LastResortAgentConfig
 }
 
 // QADependencies contains the optional infrastructure used only when QA is enabled.
@@ -297,6 +298,9 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 }
 
 func (o *Orchestrator) updateStateWithRetry(ctx context.Context, updateFn func(state *domain.State) error) error {
+	if o.repo == nil {
+		return nil
+	}
 	if o.mailbox != nil && o.mailbox.IsRunning() {
 		return o.mailbox.SendSync(ctx, &StateMutationCmd{UpdateFn: updateFn})
 	}

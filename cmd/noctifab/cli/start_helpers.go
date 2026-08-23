@@ -93,5 +93,6 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		ExcludePaths:           cfg.Sandbox.ExcludePaths,
 		WorkspaceCache:         cfg.GetWorkspaceCache(),
 		QA:                     cfg.Agents.QA,
+		LastResort:             cfg.Agents.LastResort,
 	}
 }

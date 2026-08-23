@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.52.0] - 2026-08-23
+
+### Added
+- **Last-Resort Agent (Omni-Unblocker & Sovereign Repair Agent)**:
+  - Added `AgentRoleLastResort` (`"LAST_RESORT"`) constant to `domain.AgentRole`.
+  - Added `LastResortAgentConfig` (`Enabled`, `Model`, `Temperature`, `MaxTurns`, `Timeout`, `AllowSpecMutation`, `AllowScopeReduction`, `EnforceSpecQuality`) to `AgentsConfig`.
+  - Added `LastResortTriggersConfig` (`RetriesExhaustion`, `CyclicLoopDetection`, `MissingToolchainFastAbort`, `QADeadlockTurns`, `WatchdogTimeoutTurns`, `StallCountThreshold`) to `UnblockerConfig`.
+  - Populated canonical zero-config default values in `DefaultConfig()` and wired config through orchestrator runtime.
+  - Registered `last_resort` agent and `repair` action in prompt catalog (`pkg/infrastructure/prompts/keys.go`), embedded prompt template `defaults/last_resort/repair.tmpl`, and output contract schema `contracts/last_resort.txt`.
+  - Implemented `RunLastResortAgent` in `pkg/services/orchestrator_last_resort.go` featuring 4-Tier Compromise Hierarchy (Interface Harmonization $\rightarrow$ Standard Library Fallback $\rightarrow$ Scope Pruning $\rightarrow$ Safe Compiling Stub) with strict `SPEC.md` quality invariants (DI, SOLID, DDD, $\le 500$ lines, zero security compromises).
+  - Wired Last-Resort escalation triggers into task execution (`orchestrator_execute.go`), post-merge global integration repair (`orchestrator_repair.go`), and unblocker stall escalation at `StallCount == 4` (`unblocker.go`).
+  - Added prominent dual database & log alerting: emits high-visibility `🚨 [CRITICAL ALERT]` to stdout/stderr, registers `LAST_RESORT` agent in `ActiveAgents`, persists audit triggers (`last_resort_agent_trigger`, `last_resort_agent_success`, `last_resort_agent_failed`) to `State.LastActions` in SQLite/PostgreSQL, and logs `CRITICAL_LAST_RESORT_TRIGGERED` findings in the execution report.
+  - Added multi-provider and prioritized model fallback support (`agents.last_resort.providers` and `roles.last_resort`), integrating seamlessly with `ResilientLLMRouter` for dynamic failover across models/providers (matching the generator and planner agents).
+  - Enhanced Web User Interface (`pkg/interfaces/web/static/`): Added `LastResortUsed` to `domain.Task`, rendering high-visibility `🚨 LAST RESORT` badges on task nodes in the DAG, dynamic `🚨 Last Resort` filter chips, sovereign intervention alert sections in the Task Detail Modal, dedicated `🚨 LAST RESORT` worker cards in the Active Agents grid, and highlighted live event stream entries.
+- **Comprehensive Agent Architecture Documentation**:
+  - Authored `docs/last_resort_agent.md` detailing sovereign permissions, 4-tier compromise hierarchy, trigger taxonomy, and configuration schema.
+  - Updated `docs/unblocker_agent.md` and `docs/index.md` detailing the two-tier monitor/solver relationship.
+  - Updated `README.md` Autonomous Agent Roles & Relationship section covering all 7 dark factory roles.
+
 ## [0.51.0] - 2026-08-23
 
 ### Added

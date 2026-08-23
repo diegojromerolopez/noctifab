@@ -98,6 +98,15 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 		}
 	}
 
+	if o.cfg.LastResort.Enabled {
+		fmt.Printf("⚡ [Last-Resort Agent] Escalating post-merge integration failure to sovereign repair...\n")
+		lraPassed, _ := o.RunLastResortAgent(ctx, &testTask, state, o.git, logMsg, "post_merge_global_integration_failure")
+		if lraPassed {
+			fmt.Printf("✨ [Last-Resort Agent] Post-merge integration repaired successfully!\n")
+			return nil
+		}
+	}
+
 	fmt.Fprintf(os.Stderr, "⚠️ [Post-Merge Repair Complete] Remaining test warnings preserved for human review:\n%s\n", logMsg)
 	return nil
 }

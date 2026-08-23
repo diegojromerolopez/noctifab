@@ -171,6 +171,25 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		passed, logMsg = false, "QA blocked task: "+qaBlocked
 	}
 
+	// Last-Resort Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, or QA deadlock)
+	category := CategorizeFailureLog(logMsg)
+	isSandboxFailure := !passed && category == FailureSandbox
+	shouldRetry := !passed && !isSandboxFailure && task.Retries < task.MaxRetries && task.MaxRetries > 0
+
+	if !passed && o.cfg.LastResort.Enabled && (!shouldRetry || isSandboxFailure || qaBlocked != "") {
+		triggerReason := "retries_exhausted"
+		if isSandboxFailure {
+			triggerReason = "missing_toolchain_or_sandbox_error"
+		} else if qaBlocked != "" {
+			triggerReason = "qa_gate_deadlock"
+		}
+		lraPassed, lraLog := o.RunLastResortAgent(ctx, task, &taskState, taskGit, logMsg, triggerReason)
+		if lraPassed {
+			passed = true
+			logMsg = lraLog
+		}
+	}
+
 	// Clean up worktree before merging/finalizing branches in the main repo
 	if o.cfg.UseWorktrees {
 		cleanup()
@@ -191,9 +210,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	category := CategorizeFailureLog(logMsg)
-	isSandboxFailure := !passed && category == FailureSandbox
-	shouldRetry := !passed && !isSandboxFailure && task.Retries < task.MaxRetries && task.MaxRetries > 0
+	category = CategorizeFailureLog(logMsg)
+	isSandboxFailure = !passed && category == FailureSandbox
+	shouldRetry = !passed && !isSandboxFailure && task.Retries < task.MaxRetries && task.MaxRetries > 0
 
 	if !passed && !shouldRetry && !isSandboxFailure {
 		// Retries exhausted: perform optimistic merge to preserve generated code

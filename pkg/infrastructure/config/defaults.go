@@ -47,6 +47,16 @@ func DefaultConfig() *Config {
 				ValidationCommands: nil,
 				TesterPathPrefixes: []string{"test/", "tests/", "spec/", "specs/"},
 			},
+			LastResort: LastResortAgentConfig{
+				Enabled:             true,
+				Model:               "",
+				Temperature:         0.1,
+				MaxTurns:            2,
+				Timeout:             Duration(180 * time.Second),
+				AllowSpecMutation:   true,
+				AllowScopeReduction: true,
+				EnforceSpecQuality:  true,
+			},
 		},
 		WorkspaceCache: WorkspaceCacheConfig{
 			Enabled: boolPtr(true),
@@ -143,6 +153,7 @@ func DefaultConfig() *Config {
 			Planner:      RoleSetting{Profile: "planner", Temperature: 0.5},
 			Generator:    RoleSetting{Profile: "generator", Temperature: 0.0},
 			Tester:       RoleSetting{Profile: "tester", Temperature: 0.0},
+			LastResort:   RoleSetting{Profile: "last_resort", Temperature: 0.1},
 		},
 		Profiles: make(map[string]ProfileConfig),
 		Logging: LoggingConfig{
@@ -170,6 +181,14 @@ func DefaultConfig() *Config {
 			StallThreshold:    Duration(5 * time.Minute),
 			ConflictThreshold: Duration(15 * time.Minute),
 			LLMAssessment:     true,
+			LastResortTriggers: LastResortTriggersConfig{
+				RetriesExhaustion:         true,
+				CyclicLoopDetection:       true,
+				MissingToolchainFastAbort: true,
+				QADeadlockTurns:           2,
+				WatchdogTimeoutTurns:      2,
+				StallCountThreshold:       4,
+			},
 		},
 		Context: ContextConfig{
 			Mode:            "full",
