@@ -638,6 +638,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function isLastResortUsedForTask(task) {
+    if (!task) return false;
+    if (task.last_resort_used) return true;
+    if (task.assigned_to && task.assigned_to.toUpperCase() === 'LAST_RESORT') return true;
+    if (currentState && currentState.last_actions) {
+      return currentState.last_actions.some(a =>
+        (a.tool || '').includes('last_resort') &&
+        ((a.reasoning || '').includes(task.id) || (a.result || '').includes(task.id))
+      );
+    }
+    return false;
+  }
+
   // 9. Active Agents Grid
   function renderAgents(agents) {
     if (activeAgentsCount) {
@@ -654,14 +667,19 @@ document.addEventListener('DOMContentLoaded', () => {
         'planner': '🧠 PLANNER',
         'generator': '⚡ GENERATOR',
         'tester': '🧪 TESTER',
-        'qa': '🛡️ QA CONSENSUS'
+        'qa': '🛡️ QA CONSENSUS',
+        'unblocker': '🚑 UNBLOCKER',
+        'last_resort': '🚨 LAST RESORT',
+        'lastresort': '🚨 LAST RESORT'
       };
-      const roleLabel = roleIcons[ag.role ? ag.role.toLowerCase() : ''] || (ag.role || 'AGENT');
+      const roleLower = ag.role ? ag.role.toLowerCase() : '';
+      const isLastResort = roleLower === 'last_resort' || roleLower === 'lastresort';
+      const roleLabel = roleIcons[roleLower] || (ag.role || 'AGENT');
       return `
-        <div class="agent-card ${ag.status === 'WORKING' ? 'working' : ''}">
+        <div class="agent-card ${ag.status === 'WORKING' ? 'working' : ''} ${isLastResort ? 'last-resort' : ''}">
           <div class="agent-card-header">
-            <span class="agent-role">${escapeHtml(roleLabel)}</span>
-            <span class="badge ${ag.status === 'WORKING' ? 'badge-warning' : 'badge-success'}">${ag.status || 'ACTIVE'}</span>
+            <span class="agent-role" style="${isLastResort ? 'color: #f97316;' : ''}">${escapeHtml(roleLabel)}</span>
+            <span class="badge ${isLastResort ? 'badge-last-resort' : ag.status === 'WORKING' ? 'badge-warning' : 'badge-success'}">${ag.status || 'ACTIVE'}</span>
           </div>
           <div class="agent-tool-call">
             ${ag.task_id ? `Task: <strong>${escapeHtml(ag.task_id)}</strong>` : 'Analyzing requirements...'}
@@ -691,6 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (currentFilter === 'active') return t.status === 'IN_PROGRESS';
       if (currentFilter === 'failed') return t.status === 'FAILED' || t.status === 'CONFLICT_FAILED';
       if (currentFilter === 'done') return t.status === 'SUCCESS';
+      if (currentFilter === 'last-resort') return isLastResortUsedForTask(t);
       return true;
     });
 
@@ -732,17 +751,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const deps = t.depends_on && t.depends_on.length > 0 ? t.depends_on.join(', ') : null;
         const targetFiles = t.target_files && t.target_files.length > 0 ? t.target_files.join(', ') : null;
         const steering = t.user_directives && t.user_directives.length > 0 ? t.user_directives[t.user_directives.length - 1] : null;
+        const lastResortUsed = isLastResortUsedForTask(t);
 
         return `
-          <div class="task-node ${statusClass}" data-task-id="${escapeHtml(t.id)}" title="Click to inspect Definition of Done, criteria, and failure logs">
+          <div class="task-node ${statusClass} ${lastResortUsed ? 'last-resort-node' : ''}" data-task-id="${escapeHtml(t.id)}" title="Click to inspect Definition of Done, criteria, and failure logs">
             <div class="task-top-row">
               <div>
                 <span class="task-title"><strong>[${escapeHtml(t.id)}]</strong> ${escapeHtml(t.title || 'Untitled Task')}</span>
                 ${t.change_type ? `<span class="task-change-type">${escapeHtml(t.change_type)}</span>` : ''}
               </div>
-              <span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : t.status === 'IN_PROGRESS' ? 'badge-warning' : 'badge-danger'}">
-                ${t.status || 'PENDING'} (${progress}%)
-              </span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                ${lastResortUsed ? `<span class="badge badge-last-resort" title="Sovereign unblock executed by Last-Resort Agent">🚨 LAST RESORT</span>` : ''}
+                <span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : t.status === 'IN_PROGRESS' ? 'badge-warning' : 'badge-danger'}">
+                  ${t.status || 'PENDING'} (${progress}%)
+                </span>
+              </div>
             </div>
 
             <div class="progress-bar-container">
@@ -811,6 +834,14 @@ document.addEventListener('DOMContentLoaded', () => {
     countActive.textContent = tasks.filter(t => t.status === 'IN_PROGRESS').length;
     countFailed.textContent = tasks.filter(t => t.status === 'FAILED' || t.status === 'CONFLICT_FAILED').length;
     countDone.textContent = tasks.filter(t => t.status === 'SUCCESS').length;
+
+    const countLastResortEl = document.getElementById('count-last-resort');
+    const chipLastResortEl = document.getElementById('chip-last-resort');
+    const lastResortCount = tasks.filter(t => isLastResortUsedForTask(t)).length;
+    if (countLastResortEl) countLastResortEl.textContent = lastResortCount;
+    if (chipLastResortEl) {
+      chipLastResortEl.style.display = lastResortCount > 0 ? 'inline-flex' : 'none';
+    }
   }
 
   // 11. Task Detail Modal & Definition of Done Inspector
@@ -822,8 +853,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // Find parent story DoD
     let parentStory = currentRoadmapStories.find(s => task.id.startsWith(s.id));
     const dodItems = parentStory && parentStory.acceptance_criteria ? parentStory.acceptance_criteria : [];
+    const lastResortUsed = isLastResortUsedForTask(task);
 
     modalBody.innerHTML = `
+      ${lastResortUsed ? `
+        <div class="modal-section alert-last-resort-section">
+          <div class="modal-section-title" style="color: #f97316;">🚨 Last-Resort Agent Sovereign Intervention</div>
+          <div class="last-resort-banner-box">
+            <span class="banner-icon" style="font-size: 1.4rem;">⚡</span>
+            <div>
+              <strong style="color: #fed7aa;">Sovereign Repair Engaged</strong>
+              <p style="margin: 4px 0 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
+                This task encountered a persistent blocker or contradictory specification and was autonomously unblocked by the sovereign Last-Resort Agent.
+              </p>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
       <div class="modal-section">
         <div class="modal-section-title">📊 Execution Status & Metadata</div>
         <div class="modal-grid-2">
@@ -837,7 +884,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="modal-kv-item">
             <span class="modal-kv-label">Assigned Worker</span>
-            <span class="modal-kv-val">👤 ${escapeHtml(task.assigned_to || 'Auto-Scheduled Worker')}</span>
+            <span class="modal-kv-val">👤 ${escapeHtml(task.assigned_to || (lastResortUsed ? 'LAST_RESORT' : 'Auto-Scheduled Worker'))}</span>
           </div>
           <div class="modal-kv-item">
             <span class="modal-kv-label">Change Scope</span>
@@ -1101,7 +1148,10 @@ document.addEventListener('DOMContentLoaded', () => {
     actionCount.textContent = actions.length;
     actions.forEach(act => {
       const ts = act.timestamp ? new Date(act.timestamp).toLocaleTimeString() : 'now';
-      const cssClass = act.success ? 'tool-success' : 'tool-fail';
+      let cssClass = act.success ? 'tool-success' : 'tool-fail';
+      if ((act.tool || '').includes('last_resort')) {
+        cssClass = 'last-resort-alert';
+      }
       appendLogEntry(act.tool || 'ACTION', `Result: ${act.result || act.reasoning || 'Executed'}`, cssClass, ts);
     });
   }

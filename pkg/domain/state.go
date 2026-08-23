@@ -41,6 +41,8 @@ const (
 	// AgentRoleUnblocker monitors the pipeline for stalled tasks and agents and
 	// injects corrective actions to restore forward progress.
 	AgentRoleUnblocker AgentRole = "UNBLOCKER"
+	// AgentRoleLastResort executes deep holistic repairs with sovereign compromise authority.
+	AgentRoleLastResort AgentRole = "LAST_RESORT"
 )
 
 // AgentStatus tracks the lifecycle state of a worker agent.

@@ -176,6 +176,15 @@ func (u *UnblockerAgent) checkAndUnblock(ctx context.Context) {
 			continue
 		}
 
+		// Pre-hard-stop check: If task has stalled 4 or more times, escalate to Last-Resort Agent
+		if s.Task.StallCount >= 4 {
+			reason := fmt.Sprintf("unblocker: task %s reached stall count %d; escalating to Last-Resort Agent", s.Task.ID, s.Task.StallCount)
+			directive := fmt.Sprintf("SOVEREIGN REPAIR DIRECTIVE: Task %s has stalled %d times. Last-Resort Agent must execute with full cross-domain authority.", s.Task.ID, s.Task.StallCount)
+			fmt.Printf("⚡ [UnblockerAgent] Escalating task %s to Last-Resort Agent\n", s.Task.ID)
+			u.sendCmd(&ResetTaskCmd{TaskID: s.Task.ID, Reason: reason, Directive: directive})
+			continue
+		}
+
 		// Fast-path regex pre-filter for zero-token unblocking
 		if len(s.RecentLogs) > 0 {
 			combinedLogs := strings.Join(s.RecentLogs, "\n")

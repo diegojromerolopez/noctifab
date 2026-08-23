@@ -40,6 +40,7 @@ architecture
 api
 developer_guide
 unblocker_agent
+last_resort_agent
 secrets
 noctifab_evaluation_report
 ```

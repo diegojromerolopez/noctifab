@@ -379,7 +379,7 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 	})
 
 	t.Run("Scenario 12: Context role resolution across all role key types and agent roles", func(t *testing.T) {
-		rolesToTest := []string{"architect", "planner", "generators", "testers", "unblocker"}
+		rolesToTest := []string{"architect", "planner", "generators", "testers", "unblocker", "last_resort"}
 		for _, roleName := range rolesToTest {
 			ctx1 := context.WithValue(context.Background(), RoleContextKey{}, roleName)
 			assert.Equal(t, roleName, GetRoleFromContext(ctx1))
@@ -390,6 +390,41 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 			ctx3 := context.WithValue(context.Background(), stringKey("agent_role"), roleName)
 			assert.Equal(t, roleName, GetRoleFromContext(ctx3))
 		}
+	})
+
+	t.Run("Scenario 13: Last-Resort Agent with multi-provider prioritized models", func(t *testing.T) {
+		cfg := &config.Config{
+			LLM: config.LLMConfig{
+				Providers: []config.ProviderSpec{
+					{Name: "anthropic-deep", Provider: "anthropic", Model: "claude-3-7-sonnet"},
+					{Name: "openai-deep", Provider: "openai", Model: "o3-mini"},
+					{Name: "deepseek-local", Provider: "deepseek", Model: "deepseek-reasoner"},
+				},
+			},
+			Agents: config.AgentsConfig{
+				LastResort: config.LastResortAgentConfig{
+					Enabled: true,
+					Providers: []config.AgentProviderRef{
+						{Name: "anthropic-deep"},
+						{Name: "openai-deep"},
+						{Name: "deepseek-local"},
+					},
+				},
+			},
+		}
+
+		router := NewResilientLLMRouter(cfg, nil)
+		candidates := router.ResolveCandidatesForRole("last_resort")
+		require.Len(t, candidates, 3)
+
+		assert.Equal(t, "anthropic-deep", candidates[0].Name)
+		assert.Equal(t, "claude-3-7-sonnet", candidates[0].Model)
+
+		assert.Equal(t, "openai-deep", candidates[1].Name)
+		assert.Equal(t, "o3-mini", candidates[1].Model)
+
+		assert.Equal(t, "deepseek-local", candidates[2].Name)
+		assert.Equal(t, "deepseek-reasoner", candidates[2].Model)
 	})
 }
 

@@ -143,32 +143,61 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	arch := strings.ToLower(strings.TrimSpace(o.cfg.Architecture))
 	qaBlocked := ""
-	switch arch {
-	case "single_pass", "single_pass_execution", "spe":
-		o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
-	case "breadth_first", "breadth_first_generation", "bfg", "big":
-		o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
-	default:
-		qaBlocked = o.executeTaskCodeFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
-	}
+	var passed bool
+	var logMsg string
 
-	fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
-	// Run test suite validation
-	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, &taskState, *task)
+	if o.cfg.LastResort.Enabled && (task.StallCount >= 4 || strings.Contains(task.RecoveryDirective, "SOVEREIGN REPAIR DIRECTIVE")) {
+		fmt.Printf("⚡ [Orchestrator] Task %s reached stall count %d with sovereign repair directive; directly invoking Last-Resort Agent...\n", taskID, task.StallCount)
+		passed, logMsg = o.RunLastResortAgent(ctx, task, &taskState, taskGit, task.RecoveryDirective, "unblocker_stall_escalation")
+	} else {
+		switch arch {
+		case "single_pass", "single_pass_execution", "spe":
+			o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
+		case "breadth_first", "breadth_first_generation", "bfg", "big":
+			o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
+		default:
+			qaBlocked = o.executeTaskCodeFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
+		}
 
-	// Issue 7: First-Class Generator Surgical Repair
-	initCategory := CategorizeFailureLog(logMsg)
-	if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic) {
-		fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, initCategory)
-		o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
+		fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
+		// Run test suite validation
 		passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
-	}
 
-	if passed && qaBlocked == "" {
-		qaBlocked = o.runQAGate(ctx, &taskState, *task, taskGit, fileContexts)
-	}
-	if qaBlocked != "" {
-		passed, logMsg = false, "QA blocked task: "+qaBlocked
+		// First-Class Generator Surgical Repair
+		initCategory := CategorizeFailureLog(logMsg)
+		if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic) {
+			fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, initCategory)
+			o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
+			passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
+		}
+
+		if passed && qaBlocked == "" {
+			qaBlocked = o.runQAGate(ctx, &taskState, *task, taskGit, fileContexts)
+		}
+		if qaBlocked != "" {
+			passed, logMsg = false, "QA blocked task: "+qaBlocked
+		}
+
+		// Last-Resort Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, QA deadlock, or stall count >= 4)
+		category := CategorizeFailureLog(logMsg)
+		isSandbox := !passed && category == FailureSandbox
+		canRetry := !passed && !isSandbox && task.Retries < task.MaxRetries && task.MaxRetries > 0
+
+		if !passed && o.cfg.LastResort.Enabled && (!canRetry || isSandbox || qaBlocked != "" || task.StallCount >= 4) {
+			triggerReason := "retries_exhausted"
+			if isSandbox {
+				triggerReason = "missing_toolchain_or_sandbox_error"
+			} else if qaBlocked != "" {
+				triggerReason = "qa_gate_deadlock"
+			} else if task.StallCount >= 4 {
+				triggerReason = "unblocker_stall_escalation"
+			}
+			lraPassed, lraLog := o.RunLastResortAgent(ctx, task, &taskState, taskGit, logMsg, triggerReason)
+			if lraPassed {
+				passed = true
+				logMsg = lraLog
+			}
+		}
 	}
 
 	// Clean up worktree before merging/finalizing branches in the main repo

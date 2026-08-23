@@ -57,11 +57,11 @@ To balance token budget with diagnostic depth, log tail windowing scales dynamic
 | **Level 1 (1st Stall)** | **50 lines** (~60s) | 90% of routine CLI hangs (stdin waits, port collisions, spinners). |
 | **Level 2 (2nd Stall)** | **500 lines** (10x) | Stack trace roots, missing environment variables, build compilation errors. |
 | **Level 3 (3rd Stall)** | **5,000 lines** (100x / Cap) | Systemic process lifecycle & initialization history. |
-
-If a task stalls a 4th time after Level 3, the Unblocker permanently fails the task with `StallReasonUnrecoverable` to prevent infinite retry loops.
+| **Level 4 (4th Stall)** | **Full Workspace** | **Last-Resort Agent Escalation**: Orchestrator summons the sovereign Last-Resort Agent to refactor code, tests, and specs. |
+| **Level 5 (5th Stall)** | — | **Hard Stop**: Task permanently failed if Last-Resort sovereign repair fails. |
 
 ### 4. Task Stall Recovery Directives
-Upon task reset, the Unblocker attaches a `RecoveryDirective` to the task state. When the Generator Agent picks up the re-queued task, `[STALL RECOVERY DIRECTIVE]` is injected into its prompt context so the worker avoids repeating the hanging command.
+Upon task reset, the Unblocker attaches a `RecoveryDirective` to the task state. When the Generator Agent picks up the re-queued task, `[STALL RECOVERY DIRECTIVE]` is injected into its prompt context so the worker avoids repeating the hanging command. When a task reaches 4 stalls, a sovereign escalation directive is injected.
 
 ---
 
@@ -201,9 +201,20 @@ Duration values follow Go's `time.ParseDuration` format (e.g., `"30s"`, `"1m"`, 
 
 ---
 
+## Relationship with the Last-Resort Agent
+
+The Unblocker and the Last-Resort Agent form a collaborative two-tier defense against pipeline deadlocks:
+
+* **Unblocker Agent (Monitor / Sentry)**: Continuously observes the workspace state in the background, applies 0-token fast-path regex fixes, and resets stalled tasks with diagnostic guidance. It never edits source code or test suites directly.
+* **Last-Resort Agent (Chief Surgeon / Solver)**: Summoned ephemerally when a task exceeds stall or retry thresholds (`StallCount >= 4` or retries exhausted). It has sovereign authority to modify production code, rewrite test assertions, substitute standard-library fallbacks, and adapt User Stories to guarantee a working build.
+
+For full architectural details, compromise hierarchies, and configuration schemas, see [Last-Resort Agent](last_resort_agent.md).
+
+---
+
 ## Agent Role
 
-The Unblocker registers as `AgentRole = "UNBLOCKER"` (`domain.AgentRoleUnblocker`) in the shared domain model. This constant is available in [`pkg/domain/state.go`](../pkg/domain/state.go) alongside `PLANNER`, `GENERATOR`, `TESTER`, and `RESOLVER`.
+The Unblocker registers as `AgentRole = "UNBLOCKER"` (`domain.AgentRoleUnblocker`) in the shared domain model. This constant is available in [`pkg/domain/state.go`](../pkg/domain/state.go) alongside `PLANNER`, `GENERATOR`, `TESTER`, `RESOLVER`, and `LAST_RESORT`.
 
 ---
 
