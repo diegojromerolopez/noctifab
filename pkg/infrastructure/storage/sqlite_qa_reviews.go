@@ -113,6 +113,10 @@ func (r *SQLiteRepository) loadSQLiteReviewResults(ctx context.Context, state *d
 		}
 		state.ReviewPhases = append(state.ReviewPhases, phase)
 	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
@@ -139,6 +143,10 @@ func (r *SQLiteRepository) loadSQLiteScenariosAndFindings(ctx context.Context, s
 			return err
 		}
 		state.QAScenarios = append(state.QAScenarios, scenario)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
 	}
 	if err := rows.Close(); err != nil {
 		return err

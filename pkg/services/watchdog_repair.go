@@ -45,7 +45,10 @@ func CategorizeFailureLog(log string) FailureCategory {
 		strings.Contains(lower, "not found in %path%") ||
 		strings.Contains(lower, "executable file not found") ||
 		strings.Contains(lower, "exit status 127") ||
-		strings.Contains(lower, ": not found"):
+		strings.Contains(lower, ": not found") ||
+		strings.Contains(lower, "cannot execute binary file") ||
+		strings.Contains(lower, "is not recognized as an internal or external command") ||
+		(strings.Contains(lower, "failed with:") && strings.Contains(lower, "not found")):
 		return FailureSandbox
 	case strings.Contains(lower, "compile error"),
 		strings.Contains(lower, "syntax error"),

@@ -144,11 +144,31 @@ func (o *Orchestrator) executeRetryTurn(
 	return qaBlocked
 }
 
+func (o *Orchestrator) executeSurgicalRepairTurn(
+	ctx context.Context,
+	task *domain.Task,
+	taskState *domain.State,
+	taskGit *GitClient,
+	failureLog string,
+) {
+	o.updateTaskProgress(ctx, task.ID, 85)
+	summary := summarizeFailureLog(failureLog)
+	errorContext := fmt.Sprintf("### 🎯 TARGET FAILURE LOG TRACE FOR SURGICAL REPAIR:\n```\n%s\n```\nFix this specific error using minimal edits in 'edit_file'. Do not rewrite working code.", summary)
+	o.RunGeneratorAgent(ctx, *task, taskState, nil, errorContext, "surgical_repair")
+	_ = o.stageAndCommit(ctx, taskGit, task.ID, "fix(core): surgical repair for task %s - %s", task.Title)
+}
+
 func (o *Orchestrator) stageAndCommit(ctx context.Context, taskGit *GitClient, taskID string, format string, args ...interface{}) error {
 	statusOut, _ := taskGit.Run(ctx, false, "status", "--porcelain")
 	if strings.TrimSpace(statusOut) == "" {
 		return nil
 	}
+
+	// Issue 6: Zero-token auto-formatting before git commit
+	if o.evaluator != nil && o.evaluator.FormatterCommand != "" && o.evaluator.Runner != nil && taskGit != nil && taskGit.Dir() != "" {
+		_, _ = o.evaluator.Runner.RunCommand(ctx, taskGit.Dir(), o.evaluator.FormatterCommand, "")
+	}
+
 	_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
 	stagedOut, _ := taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
 	if strings.TrimSpace(stagedOut) == "" {

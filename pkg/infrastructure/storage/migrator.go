@@ -98,6 +98,9 @@ func Migrate(ctx context.Context, db *sql.DB, dbType string) error {
 		}
 		applied[v] = true
 	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed during migrations iteration: %w", err)
+	}
 
 	for _, m := range migrations {
 		if applied[m.version] {

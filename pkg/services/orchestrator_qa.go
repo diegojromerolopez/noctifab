@@ -48,7 +48,7 @@ func (o *Orchestrator) prepareQA(ctx context.Context, state *domain.State, task 
 	}
 	if o.qa == nil || len(o.cfg.QA.BuildCommand) == 0 || len(o.cfg.QA.ValidationCommands) == 0 {
 		result := o.skippedQAWithStory(task.ID, contract.StoryID, "validation_surface_unavailable")
-		result.Phase.Status = domain.ReviewInconclusive
+		result.Phase.Status = domain.ReviewSkipped
 		return contract, &result
 	}
 	return contract, nil

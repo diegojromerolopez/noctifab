@@ -62,9 +62,12 @@ func DefaultConfig() *Config {
 		MaxClarificationWait:       Duration(30 * time.Minute),
 		ClarificationTimeoutAction: "abort",
 		Runtime: RuntimeConfig{
-			SpecSource:  "",
-			MaxActions:  100,
-			MaxDuration: Duration(0),
+			SpecSource:             "",
+			MaxActions:             100,
+			MaxDuration:            Duration(0),
+			MaxSilentStallDuration: Duration(30 * time.Minute),
+			MaxTokensPerStory:      0,
+			MaxTokensPerTask:       0,
 		},
 		Storage: StorageConfig{
 			Provider:           "sqlite",

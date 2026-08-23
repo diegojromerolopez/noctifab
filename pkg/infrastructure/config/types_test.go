@@ -187,3 +187,37 @@ func TestWorkspaceCacheConfig_IsEnabled(t *testing.T) {
 		}
 	})
 }
+
+func TestRuntimeConfig_YAML(t *testing.T) {
+	yamlData := `
+spec_source: "roadmap/user-stories/US-001.md"
+max_actions: 150
+max_duration: "45m"
+max_silent_stall_duration: "20m"
+max_tokens_per_story: 2000000
+max_tokens_per_task: 500000
+`
+	var rc RuntimeConfig
+	if err := yaml.Unmarshal([]byte(yamlData), &rc); err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+
+	if rc.SpecSource != "roadmap/user-stories/US-001.md" {
+		t.Errorf("expected spec_source 'roadmap/user-stories/US-001.md', got %q", rc.SpecSource)
+	}
+	if rc.MaxActions != 150 {
+		t.Errorf("expected max_actions 150, got %d", rc.MaxActions)
+	}
+	if time.Duration(rc.MaxDuration) != 45*time.Minute {
+		t.Errorf("expected max_duration 45m, got %v", time.Duration(rc.MaxDuration))
+	}
+	if time.Duration(rc.MaxSilentStallDuration) != 20*time.Minute {
+		t.Errorf("expected max_silent_stall_duration 20m, got %v", time.Duration(rc.MaxSilentStallDuration))
+	}
+	if rc.MaxTokensPerStory != 2000000 {
+		t.Errorf("expected max_tokens_per_story 2000000, got %d", rc.MaxTokensPerStory)
+	}
+	if rc.MaxTokensPerTask != 500000 {
+		t.Errorf("expected max_tokens_per_task 500000, got %d", rc.MaxTokensPerTask)
+	}
+}

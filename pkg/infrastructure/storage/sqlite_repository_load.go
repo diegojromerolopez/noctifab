@@ -53,7 +53,7 @@ func (r *SQLiteRepository) LoadAll(ctx context.Context) ([]*domain.State, error)
 			}
 			states = append(states, state)
 		}
-		return nil
+		return rows.Err()
 	}()
 	if err != nil {
 		return nil, err
@@ -109,11 +109,43 @@ func (r *SQLiteRepository) scanStateRows(ctx context.Context, rows *sql.Rows) (*
 	return &state, nil
 }
 
-// loadStateRelations loads all nested relationships (Tasks, Clarifications, Actions, Files, ValidationCriteria, ActiveAgents) for a given State.
+// loadStateRelations loads all nested relationships (Stories, Tasks, Clarifications, Actions, Files, ValidationCriteria, ActiveAgents) for a given State.
 func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain.State) error {
+	// Load Stories
+	rowsSt, err := r.db.QueryContext(ctx,
+		`SELECT id, state_id, title, file_path, status, started_at, completed_at, tokens_used, created_at, updated_at
+		FROM stories WHERE state_id = ? ORDER BY id ASC`, state.ID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rowsSt.Close() }()
+	state.Stories = []domain.Story{}
+	for rowsSt.Next() {
+		var story domain.Story
+		var statusStr string
+		var startedAt, completedAt sql.NullTime
+		if err := rowsSt.Scan(
+			&story.ID, &story.StateID, &story.Title, &story.FilePath, &statusStr,
+			&startedAt, &completedAt, &story.TokensUsed, &story.CreatedAt, &story.UpdatedAt,
+		); err != nil {
+			return err
+		}
+		story.Status = domain.StoryStatus(statusStr)
+		if startedAt.Valid {
+			story.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			story.CompletedAt = &completedAt.Time
+		}
+		state.Stories = append(state.Stories, story)
+	}
+	if err := rowsSt.Err(); err != nil {
+		return err
+	}
+
 	// Load Tasks
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at
+		`SELECT id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at, COALESCE(story_id, ''), started_at, completed_at
 		FROM tasks WHERE state_id = ?`, state.ID)
 	if err != nil {
 		return err
@@ -125,16 +157,25 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 		var task domain.Task
 		var statusStr, changeTypeStr, dependsOnStr, targetFilesStr, partialChangelogStr string
 		var failureLogNull sql.NullString
+		var storyID string
+		var taskStartedAt, taskCompletedAt sql.NullTime
 		err := rows.Scan(
 			&task.ID, &task.Title, &task.Description, &statusStr, &changeTypeStr, &task.AssignedTo,
 			&task.Progress, &dependsOnStr, &targetFilesStr, &partialChangelogStr, &task.Retries, &task.MaxRetries,
-			&failureLogNull, &task.CreatedAt, &task.UpdatedAt,
+			&failureLogNull, &task.CreatedAt, &task.UpdatedAt, &storyID, &taskStartedAt, &taskCompletedAt,
 		)
 		if err != nil {
 			return err
 		}
 		if failureLogNull.Valid {
 			task.FailureLog = failureLogNull.String
+		}
+		task.StoryID = storyID
+		if taskStartedAt.Valid {
+			task.StartedAt = &taskStartedAt.Time
+		}
+		if taskCompletedAt.Valid {
+			task.CompletedAt = &taskCompletedAt.Time
 		}
 		task.Status = domain.TaskStatus(statusStr)
 		task.ChangeType = domain.ChangeType(changeTypeStr)
@@ -153,6 +194,9 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 			}
 		}
 		state.Tasks = append(state.Tasks, task)
+	}
+	if err := rows.Err(); err != nil {
+		return err
 	}
 
 	// Load Clarifications
@@ -174,6 +218,9 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 		}
 		clar.Resolved = resolvedInt != 0
 		state.Clarifications = append(state.Clarifications, clar)
+	}
+	if err := rowsCl.Err(); err != nil {
+		return err
 	}
 
 	// Load Actions
@@ -200,6 +247,9 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 		}
 		state.LastActions = append(state.LastActions, act)
 	}
+	if err := rowsAc.Err(); err != nil {
+		return err
+	}
 
 	// Load Files
 	rowsFi, err := r.db.QueryContext(ctx,
@@ -218,6 +268,9 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 			return err
 		}
 		state.Files = append(state.Files, file)
+	}
+	if err := rowsFi.Err(); err != nil {
+		return err
 	}
 
 	// Load Validation Criteria
@@ -241,6 +294,9 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 		crit.Type = domain.ValidationType(typeStr)
 		crit.Passed = passedInt != 0
 		state.ValidationCriteria = append(state.ValidationCriteria, crit)
+	}
+	if err := rowsVc.Err(); err != nil {
+		return err
 	}
 
 	// Load Active Agents
@@ -273,6 +329,9 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 			agent.CompletedAt = completedAtNull.Time
 		}
 		state.ActiveAgents = append(state.ActiveAgents, agent)
+	}
+	if err := rowsAa.Err(); err != nil {
+		return err
 	}
 
 	return r.loadQAReviews(ctx, state)

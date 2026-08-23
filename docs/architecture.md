@@ -321,10 +321,21 @@ The core guarantee is: **as long as the provider's `/models` endpoint returns at
 
 When a provider adopts a completely new naming convention (e.g., changing from `"claude-3-*"` to a scheme without the `"claude"` prefix), the `RequiredPrefix` in the parser should be updated or removed in the corresponding provider file (e.g. [anthropic.go](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/anthropic.go)). No other files need to be changed.
 
-### 4. Safety Circuit Breakers
+### 4. Safety Circuit Breakers & Stall Protection
 - **`runtime.max_actions`**: Specifies a limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
+- **`runtime.max_silent_stall_duration`**: Story-level watchdog (default `30m`). If no task makes state updates or progress within this duration, the orchestrator fails remaining tasks and aborts the story cleanly.
+- **`runtime.max_tokens_per_story` & `runtime.max_tokens_per_task`**: Hard token budget ceilings to terminate runaway tasks/stories.
 - **`runtime.max_duration`**: Specifies a story-level wall-clock timeout.
 - **`sandbox.timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
+
+#### First-Class Generator Surgical Repair (`surgical_repair`)
+When a task fails test validation due to a compilation error or test assertion failure, the orchestrator triggers a single-turn **Surgical Repair Pass** (`surgical_repair` prompt template). It bypasses the reader context collection phase to minimize token latency, passing the exact compiler/test failure stack trace directly to the Generator Agent to perform minimal, targeted edits in `edit_file` without rewriting working code.
+
+#### Zero-Token Pre-Commit Auto-Formatting
+Before Git commits are staged and committed (`stageAndCommit`), the orchestrator automatically executes the project's configured formatter (`sandbox.formatter_command`, e.g. `go fmt ./...`) directly within the active task worktree, ensuring syntax and style compliance with zero LLM turns.
+
+#### Host QA Sandbox Runner (`pkg/services/qa_sandbox_host.go`)
+The QA subsystem provides `HostQABuildSandbox` and `HostQASandboxRunner` to execute QA build and validation commands within host runtime directories (`tmp`, `home`, `cache`), safely isolating review workspaces.
 
 ### 5. Self-Correcting & Dynamic Prompts Framework
 

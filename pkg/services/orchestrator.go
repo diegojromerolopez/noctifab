@@ -27,29 +27,32 @@ type PromptRenderer interface {
 }
 
 type OrchestratorConfig struct {
-	Architecture         string
-	TaskExecutionOrder   string
-	GeneratorsNumber     int
-	GeneratorsIterations int
-	TestersNumber        int
-	TestersIterations    int
-	PollInterval         time.Duration
-	MaxRetries           int
-	Concurrency          int
-	UseWorktrees         bool
-	OCCMaxRetries        int
-	OCCBackoffBase       time.Duration
-	OCCBackoffFactor     float64
-	MaxDuration          time.Duration
-	AutoCreatePR         bool
-	CreateBranch         bool
-	MaxActions           int
-	ExcludePaths         []string
-	MetricsEnabled       bool
-	MetricsOutputPath    string
-	Context              config.ContextConfig
-	WorkspaceCache       config.WorkspaceCacheConfig
-	QA                   config.QAConfig
+	Architecture           string
+	TaskExecutionOrder     string
+	GeneratorsNumber       int
+	GeneratorsIterations   int
+	TestersNumber          int
+	TestersIterations      int
+	PollInterval           time.Duration
+	MaxRetries             int
+	Concurrency            int
+	UseWorktrees           bool
+	OCCMaxRetries          int
+	OCCBackoffBase         time.Duration
+	OCCBackoffFactor       float64
+	MaxDuration            time.Duration
+	MaxSilentStallDuration time.Duration
+	MaxTokensPerStory      int64
+	MaxTokensPerTask       int64
+	AutoCreatePR           bool
+	CreateBranch           bool
+	MaxActions             int
+	ExcludePaths           []string
+	MetricsEnabled         bool
+	MetricsOutputPath      string
+	Context                config.ContextConfig
+	WorkspaceCache         config.WorkspaceCacheConfig
+	QA                     config.QAConfig
 }
 
 // QADependencies contains the optional infrastructure used only when QA is enabled.

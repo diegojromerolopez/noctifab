@@ -2,8 +2,10 @@ package services
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -14,6 +16,7 @@ import (
 
 type testMockLLM struct {
 	responses []*domain.LLMResponse
+	prompts   []string
 	callCount int
 	mu        sync.Mutex
 }
@@ -21,6 +24,7 @@ type testMockLLM struct {
 func (m *testMockLLM) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.prompts = append(m.prompts, prompt)
 	if m.callCount >= len(m.responses) {
 		return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "noop"}}}, nil
 	}
@@ -198,4 +202,66 @@ func TestSyncRootManifests(t *testing.T) {
 	dstPkg, errPkg := os.ReadFile(filepath.Join(dstDir, "package.json"))
 	require.NoError(t, errPkg)
 	assert.Equal(t, pkgContent, dstPkg)
+}
+
+func TestOrchestrator_SurgicalRepairTriggeredOnCompileFailure(t *testing.T) {
+	repoDir, _, cleanup := setupTestGitRepo(t)
+	defer cleanup()
+
+	state := &domain.State{
+		ID:          "state-surgical-test",
+		ProjectPath: repoDir,
+		Tasks: []domain.Task{
+			{ID: "task-compile-err", Title: "Compile Error Task", TargetFiles: []string{"main.go"}, Status: domain.TaskPending, MaxRetries: 1},
+		},
+		Metadata: domain.StateMetadata{
+			BaseBranch:        "main",
+			IntegrationBranch: "noctifab/feature-state-surgical-test",
+		},
+	}
+
+	repo := &mockRepo{state: state}
+	reg := NewToolRegistry()
+	reg.Register(&mockTool{name: "read_file"})
+	reg.Register(&mockTool{name: "write_file"})
+	reg.Register(&mockTool{name: "edit_file"})
+	reg.Register(&mockTool{name: "run_tests"})
+
+	llmClient := &testMockLLM{
+		responses: []*domain.LLMResponse{
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+		},
+	}
+	validator := NewPolicyValidator(nil, "main", nil)
+	scheduler := NewScheduler(NewFileLockRegistry())
+	git := NewGitClient(repoDir)
+	queue := NewRebaseQueue(git)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go queue.Start(ctx)
+
+	evaluator := NewTestValidator(&mockSandbox{Out: "syntax error: unexpected identifier on line 12", Err: errors.New("exit 1")}, false, llmClient, nil)
+	vcsClient := &mockVCS{}
+	cfg := OrchestratorConfig{
+		Concurrency:  1,
+		UseWorktrees: true,
+	}
+
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
+	orch.executeTask(context.Background(), "state-surgical-test", "task-compile-err")
+
+	// Verify that a surgical repair prompt was rendered and sent to the LLM
+	foundSurgicalPrompt := false
+	for _, p := range llmClient.prompts {
+		if strings.Contains(p, "SURGICAL REPAIR MODE") || strings.Contains(p, "TARGET FAILURE LOG TRACE FOR SURGICAL REPAIR") {
+			foundSurgicalPrompt = true
+			break
+		}
+	}
+	assert.True(t, foundSurgicalPrompt, "expected surgical repair prompt to be dispatched to LLM on compile error")
 }

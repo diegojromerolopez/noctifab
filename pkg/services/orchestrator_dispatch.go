@@ -58,7 +58,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 			for i := range st.Tasks {
 				if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
 					st.Tasks[i].Status = domain.TaskFailed
-					st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_actions ceiling %d (executed %d)", st.Tasks[i].MaxRetries, currentActions)
+					st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_actions ceiling %d (executed %d)", o.cfg.MaxActions, currentActions)
 					st.Tasks[i].UpdatedAt = time.Now()
 				}
 			}
@@ -103,6 +103,66 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 				return nil
 			}); err != nil {
 				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist max_duration abort: %v\n", err)
+			}
+			return false, nil
+		}
+	}
+
+	// 2c. Story-level token ceiling enforcement (Circuit Breaker).
+	if o.cfg.MaxTokensPerStory > 0 && len(state.Tasks) > 0 {
+		totalTokens := int64(state.Metadata.TotalTokensUsed)
+		if totalTokens >= o.cfg.MaxTokensPerStory && !o.allTasksFinished(state) {
+			fmt.Printf("Orchestrator: story exceeded max_tokens_per_story ceiling %d (consumed %d); failing remaining tasks and aborting story.\n", o.cfg.MaxTokensPerStory, totalTokens)
+			if err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+				for i := range st.Tasks {
+					if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
+						st.Tasks[i].Status = domain.TaskFailed
+						st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_tokens_per_story ceiling %d (consumed %d tokens)", o.cfg.MaxTokensPerStory, totalTokens)
+						st.Tasks[i].UpdatedAt = time.Now()
+					}
+				}
+				st.BuildStatus = domain.BuildFailing
+				st.StoryStatus = domain.StoryFailed
+				return nil
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist max_tokens_per_story abort: %v\n", err)
+			}
+			return false, nil
+		}
+	}
+
+	// 2d. Story-level silent stall enforcement (30-Minute Livelock Ceiling).
+	if o.cfg.MaxSilentStallDuration > 0 && len(state.Tasks) > 0 {
+		var lastActivity time.Time
+		for _, a := range state.LastActions {
+			if a.Timestamp.After(lastActivity) {
+				lastActivity = a.Timestamp
+			}
+		}
+		for _, t := range state.Tasks {
+			if t.UpdatedAt.After(lastActivity) {
+				lastActivity = t.UpdatedAt
+			}
+		}
+		if lastActivity.IsZero() {
+			lastActivity = o.getStoryStartedAt()
+		}
+		if !lastActivity.IsZero() && time.Since(lastActivity) > o.cfg.MaxSilentStallDuration && !o.allTasksFinished(state) {
+			elapsed := time.Since(lastActivity)
+			fmt.Printf("Orchestrator: story exceeded max_silent_stall_duration %s without progress (elapsed %s); failing remaining tasks and aborting story.\n", o.cfg.MaxSilentStallDuration, elapsed.Truncate(time.Second))
+			if err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+				for i := range st.Tasks {
+					if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
+						st.Tasks[i].Status = domain.TaskFailed
+						st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_silent_stall_duration %s without progress (elapsed %s)", o.cfg.MaxSilentStallDuration, elapsed.Truncate(time.Second))
+						st.Tasks[i].UpdatedAt = time.Now()
+					}
+				}
+				st.BuildStatus = domain.BuildFailing
+				st.StoryStatus = domain.StoryFailed
+				return nil
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist max_silent_stall_duration abort: %v\n", err)
 			}
 			return false, nil
 		}

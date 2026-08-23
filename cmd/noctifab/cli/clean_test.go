@@ -193,6 +193,9 @@ func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
 	if _, statErr := os.Stat(patchFile); !os.IsNotExist(statErr) {
 		t.Errorf("expected patch file to be deleted, stat error: %v", statErr)
 	}
+	if _, statErr := os.Stat(filepath.Join(noctifabDir, "data")); !os.IsNotExist(statErr) {
+		t.Errorf("expected data dir to be deleted, stat error: %v", statErr)
+	}
 	if _, statErr := os.Stat(pidFile); !os.IsNotExist(statErr) {
 		t.Errorf("expected pid file to be deleted, stat error: %v", statErr)
 	}

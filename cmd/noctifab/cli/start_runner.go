@@ -19,7 +19,6 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/reportfs"
-	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/diegojromerolopez/noctifab/pkg/services/reporting"
@@ -134,17 +133,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Initialize repository
-	var repo domain.StateRepository
-	if strings.ToLower(cfg.Storage.Provider) == "postgres" {
-		repo, err = storage.NewPostgresRepository(context.Background(), cfg.Storage.ConnString, 10, 10)
-	} else {
-		dbPath := cfg.Storage.ConnString
-		if dbPath == "" {
-			dbPath = ".noctifab/data/noctifab.db"
-		}
-		repo, err = storage.NewSQLiteRepository(context.Background(), dbPath)
-	}
+	repo, budgetStore, err := initStorageRepo(cfg)
 	if err != nil {
 		return err
 	}
@@ -164,32 +153,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 	}
 
-	reg := services.NewToolRegistry()
-	reg.Register(&services.AddTaskTool{})
-	reg.Register(&services.CompleteTaskTool{})
-	reg.Register(&services.LogMessageTool{})
-	reg.Register(&services.NoopTool{})
-	reg.Register(&services.ReadFileTool{})
-	reg.Register(&services.WriteFileTool{})
-	reg.Register(&services.DeleteFileTool{})
-	reg.Register(&services.EditFileTool{})
-	reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-	reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-	reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-	runTimeout := 5 * time.Minute
-	if cfg.Sandbox.TimeoutSeconds > 0 {
-		runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
-	}
-	reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
-	reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand, FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.MaxLinterIssues, Timeout: runTimeout})
-	reg.Register(&services.RequestTestFixTool{})
-
-	var budgetStore domain.BudgetStore
-	if sqliteRepo, ok := repo.(*storage.SQLiteRepository); ok {
-		budgetStore = storage.NewSQLiteBudgetStore(sqliteRepo.DB())
-	} else if pgRepo, ok := repo.(*storage.PostgresRepository); ok {
-		budgetStore = storage.NewPostgresBudgetStore(pgRepo.DB())
-	}
+	reg := initToolRegistry(cfg, sandboxRunner)
 	llmClient := llm.BuildFailoverClient(cfg, budgetStore)
 
 	cmdCtx := cmd.Context()
@@ -259,28 +223,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 	repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
 
-	orchConfig := services.OrchestratorConfig{
-		Architecture:         cfg.Agents.Architecture,
-		TaskExecutionOrder:   cfg.Agents.TaskExecutionOrder,
-		GeneratorsNumber:     cfg.Agents.Generators.Number,
-		GeneratorsIterations: cfg.Agents.Generators.Iterations,
-		TestersNumber:        cfg.Agents.Testers.Number,
-		TestersIterations:    cfg.Agents.Testers.Iterations,
-		PollInterval:         time.Duration(cfg.PollInterval),
-		MaxRetries:           10,
-		Concurrency:          effectiveConcurrency(cfg.VCS.UseWorktrees, cfg.Agents.Generators.Number),
-		UseWorktrees:         cfg.VCS.UseWorktrees,
-		OCCMaxRetries:        cfg.Storage.OCC.MaxRetries,
-		OCCBackoffBase:       time.Duration(cfg.Storage.OCC.BackoffBase),
-		OCCBackoffFactor:     cfg.Storage.OCC.BackoffFactor,
-		MaxDuration:          time.Duration(cfg.Runtime.MaxDuration),
-		MaxActions:           cfg.Runtime.MaxActions,
-		AutoCreatePR:         cfg.VCS.PullRequest.AutoCreate,
-		CreateBranch:         cfg.VCS.IsCreateBranchEnabled(),
-		ExcludePaths:         cfg.Sandbox.ExcludePaths,
-		WorkspaceCache:       cfg.GetWorkspaceCache(),
-		QA:                   cfg.Agents.QA,
-	}
+	orchConfig := buildOrchestratorConfig(cfg)
 
 	executeStory := func(ctx context.Context, currentStoryFile string) error {
 		specBytes, err := os.ReadFile(currentStoryFile)
@@ -323,8 +266,38 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			}
 		}
 		state.Metadata.InputPath = currentStoryFile
+		state.Metadata.FeatureName = featName
+		state.Metadata.BaseBranch = baseBranch
+		state.Metadata.IntegrationBranch = integrationBranch
 		state.Tasks = nil
 		state.StoryStatus = domain.StoryRunning
+
+		now := time.Now().UTC()
+		foundStory := false
+		for i, st := range state.Stories {
+			if st.ID == featName || st.FilePath == currentStoryFile {
+				state.Stories[i].Status = domain.StoryRunning
+				if state.Stories[i].StartedAt == nil {
+					state.Stories[i].StartedAt = &now
+				}
+				state.Stories[i].UpdatedAt = now
+				foundStory = true
+				break
+			}
+		}
+		if !foundStory {
+			state.Stories = append(state.Stories, domain.Story{
+				ID:        featName,
+				StateID:   state.ID,
+				Title:     featName,
+				FilePath:  currentStoryFile,
+				Status:    domain.StoryRunning,
+				StartedAt: &now,
+				CreatedAt: now,
+				UpdatedAt: now,
+			})
+		}
+
 		storyPath := currentStoryFile
 		if !filepath.IsAbs(storyPath) {
 			storyPath = filepath.Join(targetDir, storyPath)
@@ -414,6 +387,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	for idx, currentStoryFile := range storyFiles {
 		storyID := fmt.Sprintf("story-%04d", idx+1)
+		featName := strings.TrimSuffix(filepath.Base(currentStoryFile), filepath.Ext(currentStoryFile))
 		storyTitle := extractStoryTitle(currentStoryFile)
 		storyMeta := domain.StoryMetadata{
 			StoryID:     storyID,
@@ -443,12 +417,36 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		storyErr := executeStory(cmdCtx, currentStoryFile)
 		if storyErr != nil {
 			executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionFailed)
+			if st, err := repo.Load(cmdCtx); err == nil && st != nil {
+				now := time.Now().UTC()
+				for i, s := range st.Stories {
+					if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
+						st.Stories[i].Status = domain.StoryFailed
+						st.Stories[i].CompletedAt = &now
+						st.Stories[i].UpdatedAt = now
+						break
+					}
+				}
+				_ = repo.Save(cmdCtx, st)
+			}
 			if executionReporter != nil {
 				executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "story_execution", At: time.Now().UTC()})
 			}
 			return storyErr
 		}
 		executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionSuccess)
+		if st, err := repo.Load(cmdCtx); err == nil && st != nil {
+			now := time.Now().UTC()
+			for i, s := range st.Stories {
+				if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
+					st.Stories[i].Status = domain.StorySuccess
+					st.Stories[i].CompletedAt = &now
+					st.Stories[i].UpdatedAt = now
+					break
+				}
+			}
+			_ = repo.Save(cmdCtx, st)
+		}
 	}
 
 	if executionReporter != nil {

@@ -204,3 +204,10 @@ func nullTime(t time.Time) any {
 	}
 	return t
 }
+
+func nullTimePtr(t *time.Time) any {
+	if t == nil || t.IsZero() {
+		return nil
+	}
+	return *t
+}

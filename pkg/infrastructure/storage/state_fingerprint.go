@@ -12,6 +12,7 @@ import (
 // Relation group names shared by the SQLite and PostgreSQL repositories.
 // They match the underlying relation table names.
 const (
+	groupStories            = "stories"
 	groupTasks              = "tasks"
 	groupClarifications     = "clarifications"
 	groupActions            = "actions"
@@ -31,6 +32,7 @@ var stateRelationGroups = []string{
 	groupValidationCriteria,
 	groupActiveAgents,
 	groupQAReviews,
+	groupStories,
 }
 
 // stateRelationTables lists physical child tables in foreign-key-safe delete order.
@@ -45,6 +47,7 @@ var stateRelationTables = []string{
 	groupWorkspaceFiles,
 	groupValidationCriteria,
 	groupActiveAgents,
+	groupStories,
 }
 
 // groupFingerprint is a content hash of a deterministic serialization of one
@@ -59,6 +62,7 @@ type stateFingerprints map[string]groupFingerprint
 // Action.Args maps serialize deterministically).
 func computeStateFingerprints(state *domain.State) (stateFingerprints, error) {
 	groups := map[string]any{
+		groupStories:            state.Stories,
 		groupTasks:              state.Tasks,
 		groupClarifications:     state.Clarifications,
 		groupActions:            state.LastActions,

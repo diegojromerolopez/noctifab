@@ -48,6 +48,13 @@ func NewGitClient(dir string, opts ...GitClientOption) *GitClient {
 	return g
 }
 
+func (g *GitClient) Dir() string {
+	if g == nil {
+		return ""
+	}
+	return g.dir
+}
+
 func (g *GitClient) Run(ctx context.Context, isWrite bool, args ...string) (string, error) {
 	if g == nil {
 		return "", errors.New("git client is nil")

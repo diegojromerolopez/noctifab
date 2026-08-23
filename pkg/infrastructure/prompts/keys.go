@@ -43,6 +43,7 @@ var catalog = map[string][]string{
 		"implement", "refactor", "fix",
 		"single_pass", "single_pass_fix",
 		"implement_breadth_first", "implement_breadth_first_fix",
+		"surgical_repair",
 	},
 }
 

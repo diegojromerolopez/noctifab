@@ -56,3 +56,4 @@ Every user story content generated or refined MUST include an explicit, language
   }]
 }
 ```
+9. Zero Host Package Installations Mandate: When user stories specify test harnesses, black-box validation suites, or external service dependencies (e.g. redis-cli, databases, external daemons), the DoD MUST specify that the validation harness executes within containerized services (e.g. dual-service docker-compose or minimal container runners) without requiring any system packages to be installed on the host operating system.

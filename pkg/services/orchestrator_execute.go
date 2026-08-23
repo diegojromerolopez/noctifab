@@ -155,6 +155,15 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
 	// Run test suite validation
 	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, &taskState, *task)
+
+	// Issue 7: First-Class Generator Surgical Repair
+	initCategory := CategorizeFailureLog(logMsg)
+	if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic) {
+		fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, initCategory)
+		o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
+		passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
+	}
+
 	if passed && qaBlocked == "" {
 		qaBlocked = o.runQAGate(ctx, &taskState, *task, taskGit, fileContexts)
 	}

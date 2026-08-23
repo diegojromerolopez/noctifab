@@ -67,9 +67,12 @@ type NotificationsConfig struct {
 }
 
 type RuntimeConfig struct {
-	SpecSource  string   `yaml:"spec_source"`
-	MaxActions  int      `yaml:"max_actions"`
-	MaxDuration Duration `yaml:"max_duration"`
+	SpecSource             string   `yaml:"spec_source"`
+	MaxActions             int      `yaml:"max_actions"`
+	MaxDuration            Duration `yaml:"max_duration"`
+	MaxSilentStallDuration Duration `yaml:"max_silent_stall_duration,omitempty"`
+	MaxTokensPerStory      int64    `yaml:"max_tokens_per_story,omitempty"`
+	MaxTokensPerTask       int64    `yaml:"max_tokens_per_task,omitempty"`
 }
 
 type LoggingConfig struct {

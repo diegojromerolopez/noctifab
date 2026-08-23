@@ -52,6 +52,9 @@ type Task struct {
 	StallCount        int        `json:"stall_count,omitempty"`
 	Retries           int        `json:"retries"`
 	MaxRetries        int        `json:"max_retries"`
+	StoryID           string     `json:"story_id,omitempty"`
+	StartedAt         *time.Time `json:"started_at,omitempty"`
+	CompletedAt       *time.Time `json:"completed_at,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 }

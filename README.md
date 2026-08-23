@@ -166,28 +166,33 @@ The core engine runs a continuous polling event loop that drives all development
 6. **Dynamic Model Fallback Engine (Zero-Stall Resilience)**: If the configured LLM returns an error (rate limits HTTP 429, authentication/quota failure HTTP 401/402, or server error HTTP 5xx), `noctifab` automatically queries the provider's API endpoint (`GET /models` or `/v1/models`) **live** to discover accessible models. It applies custom provider-specific capacity ranking algorithms (`parse<Provider>Model`) to select and transparently fall back to the next highest-capacity model from that provider without interrupting dark factory execution.
 7. **Parallel Prompt Compaction Engine (`context.compaction`)**: Compresses HTTP prompt payloads using `simple_english` (active voice, simplified vocabulary) or `caveman` (telegraphic Markdown compaction) modes. Parallelizes line block compaction across worker goroutines for inputs $> 20$ KB to reduce latency and token usage by 25%+ while preserving code blocks, JSON schemas, file paths, and technical invariants.
 8. **Automatic Tool Formatting & Makefile Tab Normalization**: Dynamically converts space-indented recipe lines in `Makefile` and `*.mk` files into tab-indented (`\t`) lines during `write_file` and `edit_file` execution, maintaining build tool syntax invariants automatically.
-9. **Safety Circuit Breakers**:
+9. **Safety Circuit Breakers & Token Ceilings**:
    - **`runtime.max_actions`**: Config value (default: `100`) that sets a ceiling on the total task execution loops. If the system exceeds this limit, the orchestrator aborts the story to protect the LLM token budget from infinite loops.
+   - **`runtime.max_silent_stall_duration`**: Story-level livelock watchdog (default: `30m`). If no task makes progress or updates state within this window, the orchestrator fails remaining tasks and aborts the stalled story cleanly.
+   - **`runtime.max_tokens_per_story` & `runtime.max_tokens_per_task`**: Hard budget token caps to guard against excessive token consumption.
    - **`max_user_stories`**: Ceiling on Product Manager roadmap story generation (default: `5`).
    - **`runtime.max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
-10. **Structured Roadmap Directories & Task Serialization (`roadmap/tasks/`)**:
+10. **First-Class Generator Surgical Repair (`surgical_repair`)**: When task verification fails due to a compilation error or test assertion failure, the orchestrator immediately triggers a single-turn surgical repair pass (`surgical_repair` prompt template) without context-gathering overhead to apply minimal, localized fixes without rewriting working code.
+11. **Zero-Token Pre-Commit Auto-Formatting**: Executes configured language formatters (`sandbox.formatter_command`, e.g. `go fmt ./...`, `npx prettier --write .`, `ruff format .`) automatically before staging Git commits, ensuring clean formatting without burning LLM turns.
+12. **Anthropic Adaptive Parameter Retry**: Dynamically detects Anthropic HTTP 400 Bad Request parameter deprecations and constraints (`temperature` deprecations on newer models, excessive `max_tokens` clamped to 4096, and unsupported `cache_control` headers), self-correcting and retrying automatically. Fully supports Claude 5 series (`claude-sonnet-5`, `claude-opus-5`, `claude-haiku-5`).
+13. **Structured Roadmap Directories & Task Serialization (`roadmap/tasks/`)**:
    - Organizes user story specifications into `roadmap/user-stories/` using title slug filenames (`US-XXX-title-slug.md`).
    - Automatically serializes task models into markdown files in `roadmap/tasks/` (`US-XXX-TASK-YYY-slug.md`) for full auditability.
-11. **User Story DAG Scheduler (`depends_on` Cross-Story Parallelism)**:
+14. **User Story DAG Scheduler (`depends_on` Cross-Story Parallelism)**:
    - Parses `depends_on` dependencies from User Story YAML frontmatter.
    - Concurrently executes all unblocked user stories across worker slots, dynamically unblocking dependent stories as prerequisites complete.
-12. **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: Enables resuming interrupted or partially completed project executions, skipping completed stories (`StorySuccess`) and picking up execution at the first incomplete story.
-13. **Zero-Stall Resilient Architecture (Optimistic Merging, 5-Tier Merge Engine, Tool Degradation & Post-Merge Repair)**:
+15. **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: Enables resuming interrupted or partially completed project executions, skipping completed stories (`StorySuccess`) and picking up execution at the first incomplete story.
+16. **Zero-Stall Resilient Architecture (Optimistic Merging, 5-Tier Merge Engine, Tool Degradation & Post-Merge Repair)**:
    - **Dynamic Tool Degradation & Eviction**: Auto-detects missing binaries (e.g. exit code 127, `pytest: command not found`). Evicts missing tools and transitions validation to degraded mode (`[Validation Degraded]`), preventing endless retry stalls.
    - **Optimistic Task Merging**: Optimistically merges completed task code into `integrationBranch` with warnings (`MERGED_WITH_WARNINGS`) even when tests fail, unblocking dependent tasks.
    - **5-Tier Merge Engine**: Features non-interactive merge, deterministic conflict marker stripping, **Whole-File Dual Reimplementation by the Generator Agent** (prompting the LLM to rewrite the entire file combining all features from both branches), optimistic line union merge, and direct diff overlay.
    - **Stale Git Lock Sanitizer**: Automatically cleans stale `.git/index.lock` and worktree lock files older than 5 seconds.
    - **Post-Merge Integration Repair Agent**: Runs an automated repair phase on the consolidated `integrationBranch` after all tasks finish to fix cross-task discrepancies and broken tests with a strict 2-turn budget.
-14. **Configurable Task Execution Order (`agents.task_execution_order`)**: Configurable verification sequence mode (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
-15. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
-16. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
-17. **Pre-Flight Diagnostics & LLM Provider Ping**: Validates Git CLI availability, state database connectivity, LLM provider `/models` endpoint reachability, and sandbox mode before launching the orchestrator.
+17. **Configurable Task Execution Order (`agents.task_execution_order`)**: Configurable verification sequence mode (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
+18. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
+19. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
+20. **Pre-Flight Diagnostics & LLM Provider Ping**: Validates Git CLI availability, state database connectivity, LLM provider `/models` endpoint reachability, and sandbox mode before launching the orchestrator.
 
 ---
 
@@ -585,7 +590,7 @@ OPENAI_API_KEY: "sk-..."
 ```yaml
 llm:
   provider: anthropic
-  model: claude-3-5-sonnet-latest  # fallback chain: → claude-3-5-haiku-latest
+  model: claude-sonnet-5          # fallback chain: claude-sonnet-5 → claude-3-5-sonnet-latest → claude-3-5-haiku-latest
   api_key: "secret:ANTHROPIC_API_KEY"
 ```
 

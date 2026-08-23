@@ -364,7 +364,8 @@ func TestPostgresRepository_Save(t *testing.T) {
 			WithArgs(state.Tasks[0].ID, state.ID, state.Tasks[0].Title, state.Tasks[0].Description,
 				string(state.Tasks[0].Status), string(state.Tasks[0].ChangeType), state.Tasks[0].AssignedTo,
 				state.Tasks[0].Progress, dependsOnJSON, targetFilesJSON, partialChangelogJSON,
-				state.Tasks[0].Retries, state.Tasks[0].MaxRetries, state.Tasks[0].FailureLog, state.Tasks[0].CreatedAt, state.Tasks[0].UpdatedAt).
+				state.Tasks[0].Retries, state.Tasks[0].MaxRetries, state.Tasks[0].FailureLog, state.Tasks[0].CreatedAt, state.Tasks[0].UpdatedAt,
+				state.Tasks[0].StoryID, nullTimePtr(state.Tasks[0].StartedAt), nullTimePtr(state.Tasks[0].CompletedAt)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		mock.ExpectExec(`DELETE FROM clarifications WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -400,6 +401,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM qa_scenarios WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec(`DELETE FROM review_phases WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec(`DELETE FROM story_contracts WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM stories WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 
 		mock.ExpectCommit()
 
@@ -446,6 +448,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM qa_scenarios WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec(`DELETE FROM review_phases WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec(`DELETE FROM story_contracts WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec(`DELETE FROM stories WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 
 		mock.ExpectCommit()
 

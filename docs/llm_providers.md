@@ -132,7 +132,7 @@ llms:
 
 ### Anthropic (Claude)
 
-**Models**: `claude-3-opus-*`, `claude-3-5-sonnet-*`, `claude-3-5-haiku-*`, `claude-3-7-sonnet-*`
+**Models**: `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-5`, `claude-3-7-sonnet-*`, `claude-3-5-sonnet-*`, `claude-3-5-haiku-*`, `claude-3-opus-*`
 **Fallback chain**: `opus` → `sonnet` → `haiku`
 **Ranking**: tier keyword (`opus` > `sonnet` > `haiku`) + version multiplier × 10.
 
@@ -143,14 +143,14 @@ ANTHROPIC_API_KEY: "sk-ant-api03-..."
 # .noctifab/config.yaml
 llm:
   provider: "anthropic"
-  model: "claude-3-5-sonnet-latest"
+  model: "claude-sonnet-5"
   api_key: "secret:ANTHROPIC_API_KEY"
   max_retries: 3
   streaming: true
 ```
 
 > [!TIP]
-> **Prompt Caching Support**: `noctifab` automatically includes Anthropic prompt caching beta headers (`anthropic-beta: prompt-caching-2024-07-31`) and attaches ephemeral cache markers (`cache_control: {"type": "ephemeral"}`) for payloads larger than 2,048 bytes, reducing input token processing by up to 90% and dramatically accelerating multi-turn task loops.
+> **Adaptive Parameter Retry & Prompt Caching**: `noctifab` features self-correcting adaptive parameter retry for Anthropic. If the provider returns HTTP 400 Bad Request due to deprecated `temperature` parameters on newer models, excessive `max_tokens` limits (automatically clamped to 4096), or unsupported `cache_control` headers, the client transparently adjusts parameters and retries immediately without failing. For large prompts (>2,048 bytes), prompt caching beta headers (`anthropic-beta: prompt-caching-2024-07-31`) and ephemeral cache markers are used automatically.
 
 ---
 

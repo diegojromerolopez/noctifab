@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -66,47 +67,13 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		maxTokens = 4096
 	}
 
-	var messageContent any = prompt
-	if len(prompt) > 2048 {
-		messageContent = []map[string]any{
-			{
-				"type":          "text",
-				"text":          prompt,
-				"cache_control": map[string]string{"type": "ephemeral"},
-			},
-		}
-	}
-
-	payload := map[string]any{
-		"model": model,
-		"messages": []map[string]any{
-			{"role": "user", "content": messageContent},
-		},
-		"max_tokens": maxTokens,
-	}
-	if temperature > 0 {
-		payload["temperature"] = temperature
-	}
-	reqBody, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
+	useCacheControl := len(prompt) > 2048
+	currentTemp := temperature
+	currentMaxTokens := maxTokens
 
 	timeout := a.timeout
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
-	}
-
-	postCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, err
-	}
-
-	for k, v := range headers {
-		req.Header.Set(k, v)
 	}
 
 	client := &http.Client{
@@ -115,21 +82,88 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 		},
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+	for attempt := 0; attempt < 3; attempt++ {
+		var messageContent any = prompt
+		if useCacheControl {
+			messageContent = []map[string]any{
+				{
+					"type":          "text",
+					"text":          prompt,
+					"cache_control": map[string]string{"type": "ephemeral"},
+				},
+			}
+		}
+
+		payload := map[string]any{
+			"model": model,
+			"messages": []map[string]any{
+				{"role": "user", "content": messageContent},
+			},
+			"max_tokens": currentMaxTokens,
+		}
+		if currentTemp > 0 {
+			payload["temperature"] = currentTemp
+		}
+
+		reqBody, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+
+		postCtx, cancel := context.WithTimeout(ctx, timeout)
+		req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+
+		resp, err := client.Do(req)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+
+		respBody, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			return a.parseResponse(respBody)
+		}
+
+		bodyStr := string(respBody)
+		if resp.StatusCode == http.StatusBadRequest {
+			if looksLikeInvalidTemperature(bodyStr) && currentTemp > 0 {
+				fmt.Fprintln(os.Stderr, "⚠ Server rejected the temperature value; retrying with the provider default.")
+				currentTemp = 0
+				continue
+			}
+			if looksLikeMaxTokensRejection(bodyStr) && currentMaxTokens > 4096 {
+				fmt.Fprintln(os.Stderr, "⚠ Server rejected max_tokens parameter; retrying with max_tokens=4096.")
+				currentMaxTokens = 4096
+				continue
+			}
+			if useCacheControl && (strings.Contains(strings.ToLower(bodyStr), "cache_control") || strings.Contains(strings.ToLower(bodyStr), "prompt-caching")) {
+				fmt.Fprintln(os.Stderr, "⚠ Server rejected cache_control parameter; retrying without prompt caching.")
+				useCacheControl = false
+				continue
+			}
+		}
+
+		return nil, &httpError{StatusCode: resp.StatusCode, Body: bodyStr, Header: resp.Header}
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, &httpError{StatusCode: resp.StatusCode, Body: string(respBody), Header: resp.Header}
-	}
+	return nil, fmt.Errorf("failed to complete Anthropic request after parameter retries")
+}
 
+func (a *anthropicProviderClient) parseResponse(respBody []byte) ([]byte, error) {
 	var result map[string]any
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, err

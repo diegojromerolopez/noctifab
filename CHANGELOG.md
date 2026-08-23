@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.51.0] - 2026-08-23
+
+### Added
+- **Token Circuit Breakers & Dynamic Story Re-Scoping**:
+  - Added `max_tokens_per_story` (default: 2,000,000) and `max_tokens_per_task` (default: 500,000) to `RuntimeConfig`.
+  - Wired story-level token circuit breaker in `orchestrator_dispatch.go` to abort runaways and prevent runaway token consumption.
+  - Injected configuration settings across all 16 validation project configurations.
+- **30-Minute Livelock Ceiling & 60-Second HTTP Max Timeout**:
+  - Added `max_silent_stall_duration` (default: `30m`) to `RuntimeConfig` and wired livelock watchdog in `orchestrator_dispatch.go` to terminate silent stall goroutines if no activity occurs within 30 minutes.
+  - Capped HTTP request timeouts at 60 seconds across all validation projects.
+- **Zero Host Installation & Container Mandate**:
+  - Injected strict directives across all agent prompt templates (`generator`, `tester`, `planner`, `product_manager`) forbidding host package installations (`brew`, `apt-get`, `dnf`, `yum`) and mandating minimal Docker container execution when toolchains/utilities are missing.
+  - Enhanced `CategorizeFailureLog` in `watchdog_repair.go` to categorize missing toolchain commands and script errors as `FailureSandbox` to fast-abort false retry loops.
+- **First-Class Generator Surgical Repair**:
+  - Registered `"surgical_repair"` action in `prompts.AgentGenerator` catalog and added template `pkg/infrastructure/prompts/defaults/generator/surgical_repair.tmpl`.
+  - Added single-turn targeted repair in `RunGeneratorAgent` (`maxTurns = 1`, skipped reader phase) injecting localized error traces.
+  - Added pre-retry hook in `orchestrator_execute.go` to attempt 1 fast surgical repair turn before task failure or multi-turn retries, avoiding repetitive full-agent regenerations.
+- **Zero-Token Pre-Commit Auto-Formatting**:
+  - Updated `stageAndCommit` in `orchestrator_execute_turns.go` to execute the sandbox formatter command (`make format`, `ruff format .`, `go fmt ./...`) before `git add` and `git commit`, resolving whitespace and style offenses with 0 LLM tokens.
+- **Dedicated Stories Entity & Relational Tracking**:
+  - Added `stories` table schema migration (`0007_add_stories.sql`) for SQLite and PostgreSQL.
+  - Added `Story` domain model and `Stories []Story` slice to `domain.State` tracking `id`, `state_id`, `title`, `file_path`, `status`, `started_at`, `completed_at`, `tokens_used`, `created_at`, and `updated_at`.
+  - Added audit and linkage columns: `story_id`, `started_at`, `completed_at` to `tasks`, `story_id`, `provider`, `model` to `token_usage`, and `story_id` to `actions`.
+  - Updated `start_runner.go` to upsert story records on start, track running status, and record completion status and timestamps on finish.
+- **QA Sandbox Host Mode Decoupling**:
+  - Implemented `HostQABuildSandbox` and `HostQASandboxRunner` in `pkg/services/qa_sandbox_host.go`.
+  - Sanitized daemon build commands (`make run`, `npm start`, `python -m src.main`) during QA verification and gracefully skipped unavailable validation surfaces.
+
+### Fixed
+- **Story Finalize Status Matching**:
+  - Aligned story matching on execution completion in `start_runner.go` to match by ID (`s.ID == featName || s.ID == storyID`) in addition to `s.FilePath == currentStoryFile`, ensuring `StorySuccess`/`StoryFailed` terminal statuses and timestamps are consistently recorded.
+- **Story Row Scan & Query Error Handling**:
+  - Explicitly propagated `QueryContext` and `rowsSt.Scan` errors in SQLite and PostgreSQL `loadStateRelations` / `loadPostgresStateRelations` loaders.
+- **QA Daemon Command Sanitization**:
+  - Enhanced `isDaemonBuildCommand` in `qa_sandbox_host.go` to use token-aware command and argument boundary matching instead of unbounded substring matches, preventing accidental skipping of valid build targets like `make run-tests` or `make runtime-check`.
+- **SQL Rows Error Handling (`sqlrowserr`)**:
+  - Added explicit `rows.Err()` checks across all database loaders in SQLite, PostgreSQL, QA reviews, and schema migrations.
+- **Orchestrator Static Analysis (`staticcheck SA4006`)**:
+  - Fixed redundant variable reassignment in `orchestrator_execute.go` for task failure categorization.
+- **Workspace Clean Reset**:
+  - Enhanced `noctifab clean --yes` to remove `.noctifab/data` directory and include `stories` and `qa_reviews` in table truncation allowlists.
+
+## [0.50.2] - 2026-08-23
+
+### Fixed
+- **Anthropic LLM Adaptive Parameter Retry**:
+  - Implemented adaptive parameter recovery in `anthropicProviderClient.Call` for HTTP 400 parameter rejections.
+  - Automatically strips rejected sampling `temperature` when models (such as Claude 5 / Opus 5 / Sonnet 5) signal that `temperature` is deprecated or unsupported.
+  - Automatically bounds and adjusts `max_tokens` when an upstream model rejects excessive token limits.
+  - Gracefully recovers from unsupported `cache_control` or beta header rejections without aborting the LLM completion loop.
+- **Claude Model Configurations**:
+  - Updated default Claude model name to `claude-sonnet-5` across all validation project configurations and target repository templates.
+
 ## [0.50.1] - 2026-08-22
 
 ### Fixed

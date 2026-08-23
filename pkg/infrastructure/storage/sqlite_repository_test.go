@@ -84,9 +84,23 @@ func TestSQLiteRepository(t *testing.T) {
 					ErrorLog:    "",
 				},
 			},
+			Stories: []domain.Story{
+				{
+					ID:         "US-001",
+					StateID:    stateID,
+					Title:      "User Authentication",
+					FilePath:   "roadmap/user-stories/US-001.md",
+					Status:     domain.StorySuccess,
+					StartedAt:  &now,
+					TokensUsed: 1200,
+					CreatedAt:  now,
+					UpdatedAt:  now,
+				},
+			},
 			Tasks: []domain.Task{
 				{
 					ID:               "task-1",
+					StoryID:          "US-001",
 					Title:            "Implement Auth",
 					Description:      "Add auth endpoint",
 					Status:           domain.TaskSuccess,
@@ -97,6 +111,7 @@ func TestSQLiteRepository(t *testing.T) {
 					PartialChangelog: []string{"Added auth endpoint"},
 					Retries:          0,
 					MaxRetries:       3,
+					StartedAt:        &now,
 					CreatedAt:        now,
 					UpdatedAt:        now,
 				},
@@ -166,8 +181,16 @@ func TestSQLiteRepository(t *testing.T) {
 		require.Len(t, loadedState.ValidationCriteria, 1)
 		assert.Equal(t, initialState.ValidationCriteria[0], loadedState.ValidationCriteria[0])
 
+		require.Len(t, loadedState.Stories, 1)
+		assert.Equal(t, initialState.Stories[0].ID, loadedState.Stories[0].ID)
+		assert.Equal(t, initialState.Stories[0].Title, loadedState.Stories[0].Title)
+		assert.Equal(t, initialState.Stories[0].FilePath, loadedState.Stories[0].FilePath)
+		assert.Equal(t, initialState.Stories[0].Status, loadedState.Stories[0].Status)
+		assert.Equal(t, initialState.Stories[0].TokensUsed, loadedState.Stories[0].TokensUsed)
+
 		require.Len(t, loadedState.Tasks, 1)
 		assert.Equal(t, initialState.Tasks[0].ID, loadedState.Tasks[0].ID)
+		assert.Equal(t, initialState.Tasks[0].StoryID, loadedState.Tasks[0].StoryID)
 		assert.Equal(t, initialState.Tasks[0].Title, loadedState.Tasks[0].Title)
 		assert.Equal(t, initialState.Tasks[0].DependsOn, loadedState.Tasks[0].DependsOn)
 		assert.Equal(t, initialState.Tasks[0].TargetFiles, loadedState.Tasks[0].TargetFiles)

@@ -13,7 +13,7 @@ There are **15 customizable templates across 5 agents**:
 | `product_manager` | `generate`, `audit` |
 | `planner` | `decompose` |
 | `tester` | `write`, `fix`, `refactor`, `write_breadth_first` |
-| `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `implement_breadth_first`, `implement_breadth_first_fix` |
+| `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `implement_breadth_first`, `implement_breadth_first_fix`, `surgical_repair` |
 | `qa` | `acceptance` |
 
 Run `noctifab prompts list` to see the catalog with each action's effective
@@ -98,7 +98,7 @@ with named placeholders. The available placeholders per agent:
 | `{{.Description}}` | Detailed task description |
 | `{{.Context}}` | Combined context block: existing file contents, inspection results, recent tests, recovery directives, previous failure summaries. Empty or starts with a blank line — append it verbatim. |
 | `{{.Feedback}}` | Generator's test-fix feedback (`tester/fix` only) |
-| `{{.RecentTestsContext}}` | Recently written test files (generator refactor/fix paths) |
+| `{{.RecentTestsContext}}` | Recently written test files or failure log traces (generator refactor/fix/surgical_repair paths) |
 | `{{.RecoveryDirective}}` | Stall-recovery directive from the unblocker, if any |
 | `{{.TargetFiles}}` | Relative file paths the task targets |
 
