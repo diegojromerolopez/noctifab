@@ -110,6 +110,20 @@ const (
 	StoryCancelled StoryStatus = "CANCELLED"
 )
 
+// Story represents a discrete user story on the roadmap with lifecycle timestamps and token metrics.
+type Story struct {
+	ID          string      `json:"id"` // e.g. "US-001"
+	StateID     string      `json:"state_id,omitempty"`
+	Title       string      `json:"title"`
+	FilePath    string      `json:"file_path"`
+	Status      StoryStatus `json:"status"` // PENDING, RUNNING, SUCCESS, FAILED, CANCELLED
+	StartedAt   *time.Time  `json:"started_at,omitempty"`
+	CompletedAt *time.Time  `json:"completed_at,omitempty"`
+	TokensUsed  int64       `json:"tokens_used"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+}
+
 // StoryOrder tracks a developer prompt order in the persistent work queue.
 type StoryOrder struct {
 	ID        string    `json:"id"`
@@ -127,6 +141,7 @@ type State struct {
 	Version            int                   `json:"version"` // Optimistic Concurrency version tag
 	Clarifications     []Clarification       `json:"clarifications,omitempty"`
 	ValidationCriteria []ValidationCriterion `json:"validation_criteria,omitempty"`
+	Stories            []Story               `json:"stories,omitempty"`
 	Tasks              []Task                `json:"tasks"`
 	ActiveAgents       []Agent               `json:"active_agents"`
 	Files              []FileInfo            `json:"files"`

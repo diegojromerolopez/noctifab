@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.51.0] - 2026-08-23
+
+### Added
+- **Dedicated Stories Entity & Relational Tracking**:
+  - Added `stories` table schema migration (`0007_add_stories.sql`) for SQLite and PostgreSQL.
+  - Added `Story` domain model and `Stories []Story` slice to `domain.State` tracking `id`, `state_id`, `title`, `file_path`, `status`, `started_at`, `completed_at`, `tokens_used`, `created_at`, and `updated_at`.
+  - Added audit and linkage columns: `story_id`, `started_at`, `completed_at` to `tasks`, `story_id`, `provider`, `model` to `token_usage`, and `story_id` to `actions`.
+  - Updated `start_runner.go` to upsert story records on start, track running status, and record completion status and timestamps on finish.
+- **QA Sandbox Host Mode Decoupling**:
+  - Implemented `HostQABuildSandbox` and `HostQASandboxRunner` in `pkg/services/qa_sandbox_host.go`.
+  - Sanitized daemon build commands (`make run`, `npm start`, `python -m src.main`) during QA verification and gracefully skipped unavailable validation surfaces.
+
+### Fixed
+- **SQL Rows Error Handling (`sqlrowserr`)**:
+  - Added explicit `rows.Err()` checks across all database loaders in SQLite, PostgreSQL, QA reviews, and schema migrations.
+- **Workspace Clean Reset**:
+  - Enhanced `noctifab clean --yes` to remove `.noctifab/data` directory and include `stories` and `qa_reviews` in table truncation allowlists.
+
 ## [0.50.2] - 2026-08-23
 
 ### Fixed

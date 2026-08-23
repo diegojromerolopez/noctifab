@@ -48,6 +48,7 @@ func TestPostgresRepositorySaveQAReviews(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO qa_findings`).WithArgs(finding.ID, state.ID, finding.ReviewPhaseID, finding.TaskID,
 		finding.ArtifactID, finding.ScenarioFingerprint, finding.PublicContractID, finding.Severity, finding.Expected,
 		finding.Actual, finding.Evidence, finding.Disposition).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`DELETE FROM stories WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
 	err = repo.Save(context.Background(), state)

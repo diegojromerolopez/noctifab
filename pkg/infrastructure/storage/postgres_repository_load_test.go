@@ -41,6 +41,7 @@ func TestPostgresRepository_Load_Errors(t *testing.T) {
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
+		mock.ExpectQuery("SELECT id, state_id, title").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		mock.ExpectQuery("SELECT id, title").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		mock.ExpectQuery("SELECT question").WillReturnRows(sqlmock.NewRows([]string{"question"}))
 		mock.ExpectQuery("SELECT timestamp").WillReturnRows(sqlmock.NewRows([]string{"timestamp"}))
@@ -64,6 +65,7 @@ func TestPostgresRepository_Load_Errors(t *testing.T) {
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
+		mock.ExpectQuery("SELECT id, state_id, title").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		mock.ExpectQuery("SELECT id, title").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		mock.ExpectQuery("SELECT question").WillReturnRows(sqlmock.NewRows([]string{"question"}))
 		mock.ExpectQuery("SELECT timestamp").WillReturnRows(sqlmock.NewRows([]string{"timestamp"}))
@@ -94,11 +96,12 @@ func TestPostgresRepository_Load(t *testing.T) {
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
+		mock.ExpectQuery("SELECT id, state_id, title").WithArgs("state-1").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 		taskRows := sqlmock.NewRows([]string{
-			"id", "title", "description", "status", "change_type", "assigned_to", "progress", "depends_on", "target_files", "partial_changelog", "retries", "max_retries", "failure_log", "created_at", "updated_at",
+			"id", "title", "description", "status", "change_type", "assigned_to", "progress", "depends_on", "target_files", "partial_changelog", "retries", "max_retries", "failure_log", "created_at", "updated_at", "story_id", "started_at", "completed_at",
 		}).AddRow(
-			"task-1", "Task Title", "Desc", "PENDING", "FIX", "agent-1", 45, `["task-0"]`, `["foo.go"]`, `["Changelog"]`, 0, 3, "Test Failure Log", now, now,
+			"task-1", "Task Title", "Desc", "PENDING", "FIX", "agent-1", 45, `["task-0"]`, `["foo.go"]`, `["Changelog"]`, 0, 3, "Test Failure Log", now, now, "", now, now,
 		)
 		mock.ExpectQuery("SELECT id, title").WithArgs("state-1").WillReturnRows(taskRows)
 

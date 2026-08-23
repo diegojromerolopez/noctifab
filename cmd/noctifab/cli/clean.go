@@ -102,6 +102,7 @@ func runDryClean(cfg *config.Config) error {
 	}
 
 	dryRunDataArtifacts()
+	printDryRunItem(".noctifab/data")
 	printDryRunItem(daemonPIDFile)
 	printDryRunItem(".noctifab/logs")
 	printDryRunItem(".noctifab/worktrees")
@@ -131,6 +132,7 @@ func runActualClean(cfg *config.Config) error {
 	}
 
 	cleanDataArtifacts()
+	removeDataDirectory()
 	removePIDFile()
 	removeLogs()
 	cleanWorktrees()
@@ -138,6 +140,19 @@ func runActualClean(cfg *config.Config) error {
 
 	fmt.Println("✅ noctifab state cleared. Run 'noctifab init' and 'noctifab start' to begin fresh.")
 	return nil
+}
+
+func removeDataDirectory() {
+	dataDir := ".noctifab/data"
+	if _, err := os.Stat(dataDir); err == nil {
+		if err := os.RemoveAll(dataDir); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Could not remove data directory at %s: %v\n", dataDir, err)
+		} else {
+			fmt.Printf("Removed data directory: %s\n", dataDir)
+		}
+	} else if !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "⚠ Could not access data directory at %s: %v\n", dataDir, err)
+	}
 }
 
 func cleanPostgres(cfg *config.Config) error {
@@ -302,6 +317,7 @@ func validateTables(tables []string) error {
 	allowedTables := map[string]bool{
 		"actions":             true,
 		"clarifications":      true,
+		"stories":             true,
 		"tasks":               true,
 		"workspace_files":     true,
 		"token_usage":         true,
@@ -310,6 +326,11 @@ func validateTables(tables []string) error {
 		"validation_criteria": true,
 		"active_agents":       true,
 		"budget_usage":        true,
+		"qa_reviews":          true,
+		"qa_findings":         true,
+		"qa_scenarios":        true,
+		"review_phases":       true,
+		"story_contracts":     true,
 	}
 	for _, tbl := range tables {
 		if !allowedTables[tbl] {

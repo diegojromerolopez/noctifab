@@ -14,6 +14,8 @@ import (
 // relation group within the save transaction.
 func (r *PostgresRepository) rewriteRelationGroup(ctx context.Context, tx *sql.Tx, state *domain.State, group string) error {
 	switch group {
+	case groupStories:
+		return r.saveStories(ctx, tx, state)
 	case groupTasks:
 		return r.saveTasks(ctx, tx, state)
 	case groupClarifications:
@@ -33,11 +35,34 @@ func (r *PostgresRepository) rewriteRelationGroup(ctx context.Context, tx *sql.T
 	}
 }
 
+func (r *PostgresRepository) saveStories(ctx context.Context, tx *sql.Tx, state *domain.State) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM stories WHERE state_id = $1", state.ID); err != nil {
+		return err
+	}
+	for _, story := range state.Stories {
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO stories (id, state_id, title, file_path, status, started_at, completed_at, tokens_used, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			story.ID, state.ID, story.Title, story.FilePath, string(story.Status),
+			nullTimePtr(story.StartedAt), nullTimePtr(story.CompletedAt), story.TokensUsed, story.CreatedAt, story.UpdatedAt,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *PostgresRepository) saveTasks(ctx context.Context, tx *sql.Tx, state *domain.State) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM tasks WHERE state_id = $1", state.ID); err != nil {
 		return err
 	}
+	seen := make(map[string]bool, len(state.Tasks))
 	for _, task := range state.Tasks {
+		if seen[task.ID] {
+			return fmt.Errorf("duplicate task ID in state: %s", task.ID)
+		}
+		seen[task.ID] = true
 		dependsOnJSON, err := json.Marshal(task.DependsOn)
 		if err != nil {
 			return err
@@ -52,11 +77,12 @@ func (r *PostgresRepository) saveTasks(ctx context.Context, tx *sql.Tx, state *d
 		}
 
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at, story_id, started_at, completed_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
 			task.ID, state.ID, task.Title, task.Description, string(task.Status), string(task.ChangeType),
 			task.AssignedTo, task.Progress, dependsOnJSON, targetFilesJSON, partialChangelogJSON,
 			task.Retries, task.MaxRetries, task.FailureLog, task.CreatedAt, task.UpdatedAt,
+			task.StoryID, nullTimePtr(task.StartedAt), nullTimePtr(task.CompletedAt),
 		)
 		if err != nil {
 			return err

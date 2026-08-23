@@ -82,6 +82,10 @@ func (r *PostgresRepository) loadQAReviews(ctx context.Context, state *domain.St
 		}
 		state.StoryContracts = append(state.StoryContracts, contract)
 	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
@@ -114,6 +118,10 @@ func (r *PostgresRepository) loadPostgresReviewResults(ctx context.Context, stat
 		}
 		state.ReviewPhases = append(state.ReviewPhases, phase)
 	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
@@ -140,6 +148,10 @@ func (r *PostgresRepository) loadPostgresScenariosAndFindings(ctx context.Contex
 			return err
 		}
 		state.QAScenarios = append(state.QAScenarios, scenario)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
 	}
 	if err := rows.Close(); err != nil {
 		return err
