@@ -17,13 +17,16 @@ These settings are defined at the root level of the configuration file.
 
 ## Runtime Settings (`runtime`)
 
-Configures operational execution limits and target specification fallback paths.
+Configures operational execution limits, token circuit breakers, stall watchdogs, and target specification fallback paths.
 
 ```yaml
 runtime:
   spec_source: ""
   max_actions: 100
   max_duration: "45m"
+  max_silent_stall_duration: "30m"
+  max_tokens_per_story: 2000000
+  max_tokens_per_task: 500000
 ```
 
 | Key | Type | Default | Description |
@@ -31,6 +34,9 @@ runtime:
 | `spec_source` | String | `""` | Default file path (e.g. `./roadmap/user-stories/US-001.md`) or issue URL to fetch the feature specification. |
 | `max_actions` | Integer | `100` | Maximum number of LLM actions permitted per task loop execution to avoid infinite loops. |
 | `max_duration` | Duration | `0` (unlimited) | Max wall-clock time limit for the entire run. Supports duration strings (e.g. `2h`, `45m`). |
+| `max_silent_stall_duration` | Duration | `30m` | Maximum wall-clock duration a story can run without task progress before the orchestrator aborts it. |
+| `max_tokens_per_story` | Integer | `0` (unlimited) | Token consumption ceiling per user story before aborting. |
+| `max_tokens_per_task` | Integer | `0` (unlimited) | Token consumption ceiling per individual task. |
 
 ---
 
@@ -489,6 +495,9 @@ runtime:
   spec_source: "./roadmap/user-stories/US-001.md"
   max_actions: 100
   max_duration: "45m"
+  max_silent_stall_duration: "30m"
+  max_tokens_per_story: 2000000
+  max_tokens_per_task: 500000
 
 logging:
   level: "info"

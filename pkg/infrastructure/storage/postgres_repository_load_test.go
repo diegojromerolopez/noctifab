@@ -96,12 +96,14 @@ func TestPostgresRepository_Load(t *testing.T) {
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
-		mock.ExpectQuery("SELECT id, state_id, title").WithArgs("state-1").WillReturnRows(sqlmock.NewRows([]string{"id"}))
+		mock.ExpectQuery("SELECT id, state_id, title").WithArgs("state-1").WillReturnRows(sqlmock.NewRows([]string{
+			"id", "state_id", "title", "file_path", "status", "started_at", "completed_at", "tokens_used", "created_at", "updated_at",
+		}).AddRow("US-001", "state-1", "Feature Auth", "roadmap/user-stories/US-001.md", "RUNNING", now, now, 1500, now, now))
 
 		taskRows := sqlmock.NewRows([]string{
 			"id", "title", "description", "status", "change_type", "assigned_to", "progress", "depends_on", "target_files", "partial_changelog", "retries", "max_retries", "failure_log", "created_at", "updated_at", "story_id", "started_at", "completed_at",
 		}).AddRow(
-			"task-1", "Task Title", "Desc", "PENDING", "FIX", "agent-1", 45, `["task-0"]`, `["foo.go"]`, `["Changelog"]`, 0, 3, "Test Failure Log", now, now, "", now, now,
+			"task-1", "Task Title", "Desc", "PENDING", "FIX", "agent-1", 45, `["task-0"]`, `["foo.go"]`, `["Changelog"]`, 0, 3, "Test Failure Log", now, now, "US-001", now, now,
 		)
 		mock.ExpectQuery("SELECT id, title").WithArgs("state-1").WillReturnRows(taskRows)
 
@@ -129,8 +131,14 @@ func TestPostgresRepository_Load(t *testing.T) {
 		assert.NoError(t, err)
 		require.NotNil(t, state)
 		assert.Equal(t, "state-1", state.ID)
+		require.Len(t, state.Stories, 1)
+		assert.Equal(t, "US-001", state.Stories[0].ID)
+		assert.Equal(t, "Feature Auth", state.Stories[0].Title)
+		assert.Equal(t, domain.StoryRunning, state.Stories[0].Status)
+		assert.Equal(t, int64(1500), state.Stories[0].TokensUsed)
 		require.Len(t, state.Tasks, 1)
 		assert.Equal(t, "task-1", state.Tasks[0].ID)
+		assert.Equal(t, "US-001", state.Tasks[0].StoryID)
 		assert.Equal(t, 45, state.Tasks[0].Progress)
 		require.Len(t, state.StoryContracts, 1)
 		assert.Equal(t, []string{"./app"}, state.StoryContracts[0].PublicContracts[0].AllowedExecutables)

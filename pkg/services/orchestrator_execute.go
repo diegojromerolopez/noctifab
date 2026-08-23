@@ -157,12 +157,11 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, &taskState, *task)
 
 	// Issue 7: First-Class Generator Surgical Repair
-	category := CategorizeFailureLog(logMsg)
-	if !passed && qaBlocked == "" && (category == FailureCompile || category == FailureTestLogic) {
-		fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, category)
+	initCategory := CategorizeFailureLog(logMsg)
+	if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic) {
+		fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, initCategory)
 		o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
 		passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
-		category = CategorizeFailureLog(logMsg)
 	}
 
 	if passed && qaBlocked == "" {
@@ -192,7 +191,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 	}
 
-	category = CategorizeFailureLog(logMsg)
+	category := CategorizeFailureLog(logMsg)
 	isSandboxFailure := !passed && category == FailureSandbox
 	shouldRetry := !passed && !isSandboxFailure && task.Retries < task.MaxRetries && task.MaxRetries > 0
 

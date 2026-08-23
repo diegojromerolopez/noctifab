@@ -25,6 +25,15 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if time.Duration(cfg.Runtime.MaxDuration) != 0 {
 		t.Errorf("expected Runtime.MaxDuration 0, got %v", time.Duration(cfg.Runtime.MaxDuration))
 	}
+	if time.Duration(cfg.Runtime.MaxSilentStallDuration) != 30*time.Minute {
+		t.Errorf("expected Runtime.MaxSilentStallDuration 30m, got %v", time.Duration(cfg.Runtime.MaxSilentStallDuration))
+	}
+	if cfg.Runtime.MaxTokensPerStory != 0 {
+		t.Errorf("expected Runtime.MaxTokensPerStory 0, got %d", cfg.Runtime.MaxTokensPerStory)
+	}
+	if cfg.Runtime.MaxTokensPerTask != 0 {
+		t.Errorf("expected Runtime.MaxTokensPerTask 0, got %d", cfg.Runtime.MaxTokensPerTask)
+	}
 
 	// 2. Logging
 	if cfg.Logging.Level != "info" {

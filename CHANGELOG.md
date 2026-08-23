@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **SQL Rows Error Handling (`sqlrowserr`)**:
   - Added explicit `rows.Err()` checks across all database loaders in SQLite, PostgreSQL, QA reviews, and schema migrations.
+- **Orchestrator Static Analysis (`staticcheck SA4006`)**:
+  - Fixed redundant variable reassignment in `orchestrator_execute.go` for task failure categorization.
 - **Workspace Clean Reset**:
   - Enhanced `noctifab clean --yes` to remove `.noctifab/data` directory and include `stories` and `qa_reviews` in table truncation allowlists.
 
