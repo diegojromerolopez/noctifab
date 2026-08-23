@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.51.0] - 2026-08-23
 
 ### Added
+- **Token Circuit Breakers & Dynamic Story Re-Scoping**:
+  - Added `max_tokens_per_story` (default: 2,000,000) and `max_tokens_per_task` (default: 500,000) to `RuntimeConfig`.
+  - Wired story-level token circuit breaker in `orchestrator_dispatch.go` to abort runaways and prevent runaway token consumption.
+  - Injected configuration settings across all 16 validation project configurations.
+- **30-Minute Livelock Ceiling & 60-Second HTTP Max Timeout**:
+  - Added `max_silent_stall_duration` (default: `30m`) to `RuntimeConfig` and wired livelock watchdog in `orchestrator_dispatch.go` to terminate silent stall goroutines if no activity occurs within 30 minutes.
+  - Capped HTTP request timeouts at 60 seconds across all validation projects.
+- **Zero Host Installation & Container Mandate**:
+  - Injected strict directives across all agent prompt templates (`generator`, `tester`, `planner`, `product_manager`) forbidding host package installations (`brew`, `apt-get`, `dnf`, `yum`) and mandating minimal Docker container execution when toolchains/utilities are missing.
+  - Enhanced `CategorizeFailureLog` in `watchdog_repair.go` to categorize missing toolchain commands and script errors as `FailureSandbox` to fast-abort false retry loops.
+- **Zero-Token Pre-Commit Auto-Formatting**:
+  - Updated `stageAndCommit` in `orchestrator_execute_turns.go` to execute the sandbox formatter command (`make format`, `ruff format .`, `go fmt ./...`) before `git add` and `git commit`, resolving whitespace and style offenses with 0 LLM tokens.
 - **Dedicated Stories Entity & Relational Tracking**:
   - Added `stories` table schema migration (`0007_add_stories.sql`) for SQLite and PostgreSQL.
   - Added `Story` domain model and `Stories []Story` slice to `domain.State` tracking `id`, `state_id`, `title`, `file_path`, `status`, `started_at`, `completed_at`, `tokens_used`, `created_at`, and `updated_at`.

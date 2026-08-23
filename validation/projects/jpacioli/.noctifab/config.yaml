@@ -96,8 +96,8 @@ llm:
     api_keys: QWENCLOUD_API_KEY
     max_retries: 2
     retry_backoff: 50ms
-    max_timeout: 600s
-    idle_timeout: 600s
+    max_timeout: 60s
+    idle_timeout: 60s
     max_tokens: 32768
     temperature: 0.3
     streaming: true
@@ -107,8 +107,8 @@ llm:
     api_keys: DEEPSEEK_API_KEY
     max_retries: 2
     retry_backoff: 50ms
-    max_timeout: 600s
-    idle_timeout: 600s
+    max_timeout: 60s
+    idle_timeout: 60s
     max_tokens: 32768
     temperature: 0.3
     streaming: true
@@ -118,8 +118,8 @@ llm:
     api_keys: CLAUDE_API_KEY
     max_retries: 2
     retry_backoff: 50ms
-    max_timeout: 600s
-    idle_timeout: 600s
+    max_timeout: 60s
+    idle_timeout: 60s
     max_tokens: 32768
     temperature: 0.3
     streaming: true
@@ -129,8 +129,8 @@ llm:
     api_keys: GEMINI_API_KEY
     max_retries: 2
     retry_backoff: 50ms
-    max_timeout: 600s
-    idle_timeout: 600s
+    max_timeout: 60s
+    idle_timeout: 60s
     max_tokens: 32768
     temperature: 0.3
     streaming: true
@@ -140,8 +140,8 @@ llm:
     api_keys: GEMINI_API_KEY
     max_retries: 2
     retry_backoff: 50ms
-    max_timeout: 600s
-    idle_timeout: 600s
+    max_timeout: 60s
+    idle_timeout: 60s
     max_tokens: 32768
     temperature: 0.3
     streaming: true
@@ -151,8 +151,8 @@ llm:
     api_keys: OPENAI_API_KEY
     max_retries: 2
     retry_backoff: 50ms
-    max_timeout: 600s
-    idle_timeout: 600s
+    max_timeout: 60s
+    idle_timeout: 60s
     max_tokens: 32768
     temperature: 0.3
     streaming: true
@@ -162,8 +162,8 @@ llm:
     api_keys: QWENCLOUD_API_KEY
     max_retries: 2
     retry_backoff: 50ms
-    max_timeout: 600s
-    idle_timeout: 600s
+    max_timeout: 60s
+    idle_timeout: 60s
     max_tokens: 32768
     temperature: 0.3
     streaming: true
@@ -175,8 +175,8 @@ llm:
     api_keys: OPENCODE_ZEN_API_KEY
     max_retries: 2
     retry_backoff: 50ms
-    max_timeout: 600s
-    idle_timeout: 600s
+    max_timeout: 60s
+    idle_timeout: 60s
     max_tokens: 32768
     temperature: 0.3
     streaming: true
@@ -186,8 +186,8 @@ llm:
     api_keys: OPENROUTER_API_KEY
     max_retries: 2
     retry_backoff: 50ms
-    max_timeout: 600s
-    idle_timeout: 600s
+    max_timeout: 60s
+    idle_timeout: 60s
     max_tokens: 32768
     temperature: 0.3
     streaming: true
@@ -242,6 +242,9 @@ runtime:
   spec_source: ''
   max_actions: 100
   max_duration: 30m
+  max_silent_stall_duration: 30m
+  max_tokens_per_story: 2000000
+  max_tokens_per_task: 500000
 logging:
   level: info
   file: ''
