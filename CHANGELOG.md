@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.52.1] - 2026-08-23
+
+### Fixed
+- **Documentation Consistency & Comprehensive Feature Review**:
+  - Aligned prompt customization documentation in `docs/prompts.md` and `docs/cli_usage.md` to cover all 23 prompt templates across 7 agent roles (`product_manager`, `planner`, `tester`, `generator`, `qa`, `last_resort`, `spec`), including `SpecPromptData` and `LastResortPromptData` template contracts.
+  - Documented `last_resort` agent configuration (`agents.last_resort`), unblocker triggers (`unblocker.last_resort_triggers`), role settings (`roles.last_resort`), and security profiles in `docs/configuration.md`, `docs/configuration_examples.md`, and `README.md`.
+  - Added `resolver` and `last_resort` agents and the Two-Tier Deadlock Defense architecture section to `docs/architecture.md`.
+  - Documented visual web dashboard and Spec Studio REST endpoints (`/api/v1/spec*`, `/api/v1/report`, `/api/v1/files/content`, `/api/v1/metrics`, `/api/v1/roadmap`, `/api/v1/states`, `/api/v1/orders/list`) in `docs/api.md`.
+  - Fixed obsolete file reference to `cmd/noctifab/cli/run_once.go` in `docs/developer_guide.md`.
+  - Enhanced feature highlight index in `docs/index.md` with Last-Resort Agent and Spec Studio capabilities.
+  - Removed obsolete architectural proposals directory (`docs/proposals/`).
+  - Removed root `LAST_RESORT_AGENT.md` (documentation canonicalized in `docs/last_resort_agent.md`).
+  - Removed historical architecture report `docs/cumulative_branching_bug_and_proposals.md`.
+
 ## [0.52.0] - 2026-08-23
 
 ### Added

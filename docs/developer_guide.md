@@ -52,7 +52,7 @@ func (t *MyCustomTool) Execute(ctx context.Context, state *domain.State, args ma
 }
 ```
 
-After implementing the tool, register it in the initialization pipelines inside `cmd/noctifab/cli/start.go` and `cmd/noctifab/cli/run_once.go`:
+After implementing the tool, register it in the initialization pipelines inside `cmd/noctifab/cli/start_runner.go`:
 
 ```go
 reg.Register(&services.MyCustomTool{})

@@ -6,7 +6,7 @@ and one action; the effective template is resolved per `(agent, action)` key.
 
 ## The (agent, action) catalog
 
-There are **15 customizable templates across 5 agents**:
+There are **23 customizable templates across 7 agents**:
 
 | Agent | Actions |
 | --- | --- |
@@ -15,6 +15,8 @@ There are **15 customizable templates across 5 agents**:
 | `tester` | `write`, `fix`, `refactor`, `write_breadth_first` |
 | `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `implement_breadth_first`, `implement_breadth_first_fix`, `surgical_repair` |
 | `qa` | `acceptance` |
+| `last_resort` | `repair` |
+| `spec` | `pm_draft`, `architect_enrich`, `tester_enrich`, `qa_enrich`, `consensus_audit`, `refine` |
 
 Run `noctifab prompts list` to see the catalog with each action's effective
 source.
@@ -31,7 +33,7 @@ order (first hit wins):
 3. **Embedded default** — shipped inside the binary.
 
 All files are optional; a missing file means the embedded default is used.
-A project typically overrides one or two actions, not all 14.
+A project typically overrides one or two actions, not all 23.
 
 ```
 .noctifab/prompts/
@@ -90,7 +92,7 @@ prompts:
 Templates use Go [`text/template`](https://pkg.go.dev/text/template) syntax
 with named placeholders. The available placeholders per agent:
 
-### `tester/*` and `generator/*` — TaskPromptData
+### `tester/*`, `generator/*`, and `last_resort/*` — TaskPromptData
 
 | Placeholder | Content |
 | --- | --- |
@@ -126,6 +128,16 @@ with named placeholders. The available placeholders per agent:
 | `{{.MaxScenarios}}` | Maximum scenarios accepted for the review |
 
 The QA contract permits exactly one declarative `propose_scenarios` action. It does not grant an executable tool or workspace mutation access.
+
+### `spec/*` — SpecPromptData
+
+| Placeholder | Content |
+| --- | --- |
+| `{{.UserPrompt}}` | Initial prompt describing requirements or feature request |
+| `{{.ExistingSpec}}` | Raw existing specification content |
+| `{{.DraftSpec}}` | Candidate draft specification content being refined or audited |
+| `{{.HumanHistory}}` | Review session history and previous turn feedback |
+| `{{.Feedback}}` | Specific feedback or directive provided during review session |
 
 ### Strictness and escaping
 

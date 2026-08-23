@@ -41,6 +41,11 @@ agents:
   unblocker:
     number: 1      # Stall detection & task re-dispatch (default: 1)
     iterations: 2
+  last_resort:
+    enabled: true  # Sovereign solver for deadlocked tasks (default: true)
+    temperature: 0.1
+    max_turns: 2
+    timeout: 180s
 
 workspace_cache:
   enabled: true    # In-memory caching of workspace filesystem reads until mutation (default: true)
@@ -326,6 +331,12 @@ agents:
       - name: "openai-primary"
         model: "gpt-4o-mini" # Quick diagnostic checks
       - name: "anthropic-backup" # Escalate if diagnostic stalls
+
+  last_resort:
+    temperature: 0.1
+    providers:
+      - name: "anthropic-backup" # Claude Sonnet for deep sovereign code & test surgery
+      - name: "openai-primary"
 ```
 
 ### 5.2. Local-First Privacy Setup (Ollama Default + Cloud Planning)

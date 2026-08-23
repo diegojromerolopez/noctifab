@@ -242,7 +242,7 @@ curl http://127.0.0.1:8080/api/v1/state
 ### 10. `prompts`
 Inspects, initializes, customizes, and validates per-agent prompt templates without rebuilding the binary.
 ```bash
-# List all 15 agent action prompts and their active sources (embedded vs override)
+# List all 23 agent action prompts across 7 agent roles and their active sources (embedded vs override)
 noctifab prompts list
 
 # Show the active prompt template body and variable contract for an agent action

@@ -104,10 +104,18 @@ Noctifab exposes the following implemented roles and retained experimental capab
 | **`planner`** | Task Planner Agent | Decomposes User Stories into a Directed Acyclic Graph (DAG) of executable technical tasks, automatically serializing task entities into `roadmap/tasks/`. |
 | **`generators`** | Generator Agent | Writes production source code and initial feature logic in task branches. |
 | **`testers`** | Tester Agent | Independently writes black-box test suites (unit, integration, e2e) against public contracts. |
+| **`resolver`** | Resolver Agent | Resolves complex 3-way Git merge and rebase conflicts across parallel worker branches using a 5-tier merge engine (including whole-file dual reimplementation). |
 | **`qa`** | Experimental QA capability | Retained but disabled in Phase 0; no QA runtime executes. |
-| **`unblocker`** | Unblocker Daemon Agent | Continuously monitors execution pipelines for stalls, deadlocks, and task re-queueing. |
+| **`unblocker`** | Unblocker Daemon Agent | Continuously monitors execution pipelines for stalls, deadlocks, and task re-queueing (0-token fast-path regex and progressive log escalation). |
+| **`last_resort`** | Last-Resort Agent | Sovereign Chief Surgeon & Omni-Solver summoned upon critical stall thresholds or retry exhaustion. Operates with sovereign compromise authority across code, tests, and specs under the 4-Tier Compromise Hierarchy. |
 
 Architecture, security, performance, documentation, and infrastructure work is represented by explicit planner tasks and deterministic validators, not specialist agents.
+
+### Two-Tier Deadlock Defense (Unblocker $\rightarrow$ Last-Resort)
+
+To prevent execution livelocks and breaking loops, `noctifab` separates stall detection from deep holistic surgery into two cooperative layers:
+1. **Unblocker Agent (Sentry / Monitor)**: Non-invasive background daemon that polls state every 30s. Fixes routine CLI hangs via 0-token regex fast-paths and resets stalled tasks with injected recovery directives without altering code.
+2. **Last-Resort Agent (Chief Surgeon / Solver)**: Ephemerally summoned when a task accumulates 4 stalls, exhausts retry budgets, or encounters missing toolchains. Operates with sovereign authority across implementation files, test assertions, and roadmap contracts to force a compiling, test-passing build.
 
 ---
 

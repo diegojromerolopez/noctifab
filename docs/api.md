@@ -141,6 +141,43 @@ Noctifab exposes local HTTP APIs for headless orchestration, supervisor LLM cont
 
 ---
 
+### 15. Visual Spec Studio & Specification Endpoints
+* **`GET /api/v1/spec`**: Returns current `SPEC.md` content, revision versions, and active iteration state.
+* **`POST /api/v1/spec`**: Initiates multi-agent specification drafting from a prompt payload (`{"prompt":"..."}`).
+* **`POST /api/v1/spec/refine`**: Submits iterative refinement feedback (`{"feedback":"..."}`).
+* **`POST /api/v1/spec/checkout`**: Time-travel rollbacks to a previous version (`{"version": 1}`).
+* **`POST /api/v1/spec/approve`**: Approves specification and triggers automatic roadmap story decomposition.
+
+---
+
+### 16. Execution Report Endpoint
+* **`GET /api/v1/report`**: Returns the latest synthesized markdown execution report (`<TIMESTAMP>_<PROJECT>.md`) and metadata.
+
+---
+
+### 17. Modified Files Content Inspector
+* **`GET /api/v1/files/content?file=<path>`**: Returns raw source code, line counts, and diff metadata for workspace files modified during task runs.
+
+---
+
+### 18. Telemetry & Token Metrics Endpoint
+* **`GET /api/v1/metrics`**: Returns token consumption broken down by agent role (`GENERATOR`, `TESTER`, `PLANNER`, `QA`) and tool action distributions.
+
+---
+
+### 19. Roadmap & User Story Status Endpoint
+* **`GET /api/v1/roadmap`**: Returns parsed user story specifications, dependency DAGs, and task completion percentages.
+
+---
+
+### 20. State History Snapshots Endpoint
+* **`GET /api/v1/states`**: Returns historical state transitions and timeline snapshots for visual timeline scrubbers.
+
+---
+
+### 21. Queued Feature Orders List Endpoint
+* **`GET /api/v1/orders/list`**: Returns the queue of submitted prompt orders and their processing statuses.
+
 ---
 
 ## LLM Provider Infrastructure & API Key Authentication
