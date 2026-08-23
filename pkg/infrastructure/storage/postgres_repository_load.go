@@ -123,30 +123,32 @@ func (r *PostgresRepository) loadPostgresStateRelations(ctx context.Context, sta
 	rowsSt, err := r.db.QueryContext(ctx,
 		`SELECT id, state_id, title, file_path, status, started_at, completed_at, tokens_used, created_at, updated_at
 		FROM stories WHERE state_id = $1 ORDER BY id ASC`, state.ID)
-	if err == nil {
-		defer func() { _ = rowsSt.Close() }()
-		state.Stories = []domain.Story{}
-		for rowsSt.Next() {
-			var story domain.Story
-			var statusStr string
-			var startedAt, completedAt sql.NullTime
-			if scanErr := rowsSt.Scan(
-				&story.ID, &story.StateID, &story.Title, &story.FilePath, &statusStr,
-				&startedAt, &completedAt, &story.TokensUsed, &story.CreatedAt, &story.UpdatedAt,
-			); scanErr == nil {
-				story.Status = domain.StoryStatus(statusStr)
-				if startedAt.Valid {
-					story.StartedAt = &startedAt.Time
-				}
-				if completedAt.Valid {
-					story.CompletedAt = &completedAt.Time
-				}
-				state.Stories = append(state.Stories, story)
-			}
-		}
-		if err := rowsSt.Err(); err != nil {
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rowsSt.Close() }()
+	state.Stories = []domain.Story{}
+	for rowsSt.Next() {
+		var story domain.Story
+		var statusStr string
+		var startedAt, completedAt sql.NullTime
+		if err := rowsSt.Scan(
+			&story.ID, &story.StateID, &story.Title, &story.FilePath, &statusStr,
+			&startedAt, &completedAt, &story.TokensUsed, &story.CreatedAt, &story.UpdatedAt,
+		); err != nil {
 			return err
 		}
+		story.Status = domain.StoryStatus(statusStr)
+		if startedAt.Valid {
+			story.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			story.CompletedAt = &completedAt.Time
+		}
+		state.Stories = append(state.Stories, story)
+	}
+	if err := rowsSt.Err(); err != nil {
+		return err
 	}
 
 	// Load Tasks

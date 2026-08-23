@@ -387,6 +387,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	for idx, currentStoryFile := range storyFiles {
 		storyID := fmt.Sprintf("story-%04d", idx+1)
+		featName := strings.TrimSuffix(filepath.Base(currentStoryFile), filepath.Ext(currentStoryFile))
 		storyTitle := extractStoryTitle(currentStoryFile)
 		storyMeta := domain.StoryMetadata{
 			StoryID:     storyID,
@@ -419,7 +420,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			if st, err := repo.Load(cmdCtx); err == nil && st != nil {
 				now := time.Now().UTC()
 				for i, s := range st.Stories {
-					if s.FilePath == currentStoryFile {
+					if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
 						st.Stories[i].Status = domain.StoryFailed
 						st.Stories[i].CompletedAt = &now
 						st.Stories[i].UpdatedAt = now
@@ -437,7 +438,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		if st, err := repo.Load(cmdCtx); err == nil && st != nil {
 			now := time.Now().UTC()
 			for i, s := range st.Stories {
-				if s.FilePath == currentStoryFile {
+				if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
 					st.Stories[i].Status = domain.StorySuccess
 					st.Stories[i].CompletedAt = &now
 					st.Stories[i].UpdatedAt = now

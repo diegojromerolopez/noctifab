@@ -44,9 +44,7 @@ func (s *HostQABuildSandbox) Run(
 	}
 
 	// Sanitize long-running server start commands for interpreted projects (e.g. "make run", "npm start")
-	fullCmd := strings.ToLower(strings.Join(command, " "))
-	if strings.Contains(fullCmd, "make run") || strings.Contains(fullCmd, "npm start") ||
-		strings.Contains(fullCmd, "python -m src.main") || strings.Contains(fullCmd, "python3 -m src.main") {
+	if isDaemonBuildCommand(command) {
 		// Interpreted languages do not require compilation; skip blocking synchronous server execution
 		return QACommandResult{ExitCode: 0}, nil
 	}
@@ -157,4 +155,39 @@ func (r *HostQASandboxRunner) Run(ctx context.Context, command QACommand) (QACom
 		return result, fmt.Errorf("host qa sandbox: command failed: %w", err)
 	}
 	return result, nil
+}
+
+func isDaemonBuildCommand(command []string) bool {
+	if len(command) == 0 {
+		return false
+	}
+	bin := strings.ToLower(strings.TrimSpace(command[0]))
+	args := make([]string, len(command)-1)
+	for i, a := range command[1:] {
+		args[i] = strings.ToLower(strings.TrimSpace(a))
+	}
+
+	switch bin {
+	case "make":
+		for _, arg := range args {
+			if arg == "run" || arg == "start" || arg == "server" || arg == "daemon" {
+				return true
+			}
+		}
+	case "npm", "yarn", "pnpm", "bun":
+		if len(args) >= 1 && (args[0] == "start" || args[0] == "dev" || args[0] == "serve") {
+			return true
+		}
+		if len(args) >= 2 && args[0] == "run" && (args[1] == "start" || args[1] == "dev" || args[1] == "serve") {
+			return true
+		}
+	case "python", "python3":
+		if len(args) >= 2 && args[0] == "-m" && (args[1] == "src.main" || args[1] == "app.main" || args[1] == "src" || args[1] == "app") {
+			return true
+		}
+		if len(args) >= 1 && (args[0] == "main.py" || args[0] == "app.py" || args[0] == "src/main.py" || args[0] == "src/app.py") {
+			return true
+		}
+	}
+	return false
 }

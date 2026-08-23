@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Sanitized daemon build commands (`make run`, `npm start`, `python -m src.main`) during QA verification and gracefully skipped unavailable validation surfaces.
 
 ### Fixed
+- **Story Finalize Status Matching**:
+  - Aligned story matching on execution completion in `start_runner.go` to match by ID (`s.ID == featName || s.ID == storyID`) in addition to `s.FilePath == currentStoryFile`, ensuring `StorySuccess`/`StoryFailed` terminal statuses and timestamps are consistently recorded.
+- **Story Row Scan & Query Error Handling**:
+  - Explicitly propagated `QueryContext` and `rowsSt.Scan` errors in SQLite and PostgreSQL `loadStateRelations` / `loadPostgresStateRelations` loaders.
+- **QA Daemon Command Sanitization**:
+  - Enhanced `isDaemonBuildCommand` in `qa_sandbox_host.go` to use token-aware command and argument boundary matching instead of unbounded substring matches, preventing accidental skipping of valid build targets like `make run-tests` or `make runtime-check`.
 - **SQL Rows Error Handling (`sqlrowserr`)**:
   - Added explicit `rows.Err()` checks across all database loaders in SQLite, PostgreSQL, QA reviews, and schema migrations.
 - **Orchestrator Static Analysis (`staticcheck SA4006`)**:

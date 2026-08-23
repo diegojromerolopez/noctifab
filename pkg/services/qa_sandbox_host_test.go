@@ -31,21 +31,53 @@ func TestHostQABuildSandbox_Run(t *testing.T) {
 }
 
 func TestHostQABuildSandbox_SkipsServerDaemon(t *testing.T) {
-	workspace := t.TempDir()
-	process := &recordingQAProcess{results: []QAProcessResult{}}
-	sandbox := NewHostQABuildSandbox(process, OSQAFileSystem{}, time.Minute)
+	t.Run("skips make run", func(t *testing.T) {
+		workspace := t.TempDir()
+		process := &recordingQAProcess{results: []QAProcessResult{}}
+		sandbox := NewHostQABuildSandbox(process, OSQAFileSystem{}, time.Minute)
 
-	result, err := sandbox.Run(context.Background(), ReviewWorkspace{Path: workspace},
-		[]string{"make", "run"}, 1024)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.ExitCode != 0 {
-		t.Fatalf("expected exit code 0 on skipped daemon build, got %d", result.ExitCode)
-	}
-	if len(process.processes) != 0 {
-		t.Fatalf("expected 0 process calls for daemon command, got %d", len(process.processes))
-	}
+		result, err := sandbox.Run(context.Background(), ReviewWorkspace{Path: workspace},
+			[]string{"make", "run"}, 1024)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.ExitCode != 0 {
+			t.Fatalf("expected exit code 0 on skipped daemon build, got %d", result.ExitCode)
+		}
+		if len(process.processes) != 0 {
+			t.Fatalf("expected 0 process calls for daemon command, got %d", len(process.processes))
+		}
+	})
+
+	t.Run("does not skip make run-tests or make runtime-check", func(t *testing.T) {
+		workspace := t.TempDir()
+		process := &recordingQAProcess{results: []QAProcessResult{
+			{Stdout: "tests ran", ExitCode: 0},
+			{Stdout: "check passed", ExitCode: 0},
+		}}
+		sandbox := NewHostQABuildSandbox(process, OSQAFileSystem{}, time.Minute)
+
+		result1, err := sandbox.Run(context.Background(), ReviewWorkspace{Path: workspace},
+			[]string{"make", "run-tests"}, 1024)
+		if err != nil {
+			t.Fatalf("unexpected error on make run-tests: %v", err)
+		}
+		if result1.Stdout != "tests ran" {
+			t.Errorf("expected stdout 'tests ran', got %q", result1.Stdout)
+		}
+
+		result2, err := sandbox.Run(context.Background(), ReviewWorkspace{Path: workspace},
+			[]string{"make", "runtime-check"}, 1024)
+		if err != nil {
+			t.Fatalf("unexpected error on make runtime-check: %v", err)
+		}
+		if result2.Stdout != "check passed" {
+			t.Errorf("expected stdout 'check passed', got %q", result2.Stdout)
+		}
+		if len(process.processes) != 2 {
+			t.Fatalf("expected 2 process executions, got %d", len(process.processes))
+		}
+	})
 }
 
 func TestHostQASandboxRunner_VerifyAndRun(t *testing.T) {
