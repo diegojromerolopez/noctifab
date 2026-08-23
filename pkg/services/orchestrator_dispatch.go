@@ -58,7 +58,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 			for i := range st.Tasks {
 				if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
 					st.Tasks[i].Status = domain.TaskFailed
-					st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_actions ceiling %d (executed %d)", st.Tasks[i].MaxRetries, currentActions)
+					st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_actions ceiling %d (executed %d)", o.cfg.MaxActions, currentActions)
 					st.Tasks[i].UpdatedAt = time.Now()
 				}
 			}
