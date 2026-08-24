@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Progressive Vertical Slices in Product Manager & Planner**:
   - Added Progressive Vertical Slices Mandates to `product_manager` (`generate.tmpl`, `audit.tmpl`) and `planner` (`decompose.tmpl`) prompt templates, ensuring specs decompose into end-to-end runnable, verifiable slices starting from Story 1 rather than horizontal architectural layers.
 
+### Fixed
+- **Pre-Merge & Last-Resort Resilience Edge Cases**:
+  - Aligned retry count evaluation (`canRetry`) in `pkg/services/orchestrator_execute.go` with `effectiveMaxRetries` to prevent premature LRA triggering when `Task.MaxRetries` is uninitialized.
+  - Added defensive nil checks for `evaluator`, `git`, `llmClient`, and `registry` in `RunPostMergeRepairPhase` (`pkg/services/orchestrator_repair.go`).
+  - Added Docker daemon connection error signatures to `CategorizeFailureLog` in `pkg/services/watchdog_repair.go` for accurate `FailureSandbox` fast-abort handling.
+  - Added comprehensive test suites for pre-merge gate retries/aborts (`pkg/services/orchestrator_premerge_test.go`), RebaseQueue total failure error propagation (`pkg/services/rebase_queue_test.go`), and post-merge repair state transitions (`pkg/services/orchestrator_repair_test.go`).
+
 ## [0.52.1] - 2026-08-23
 
 ### Fixed

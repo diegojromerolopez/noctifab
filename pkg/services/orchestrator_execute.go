@@ -178,10 +178,18 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			passed, logMsg = false, "QA blocked task: "+qaBlocked
 		}
 
+		effectiveMaxRetries := task.MaxRetries
+		if effectiveMaxRetries <= 0 && o.cfg.MaxRetries > 0 {
+			effectiveMaxRetries = o.cfg.MaxRetries
+		}
+		if effectiveMaxRetries <= 0 {
+			effectiveMaxRetries = 3
+		}
+
 		// Last-Resort Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, QA deadlock, or stall count >= 4)
 		category := CategorizeFailureLog(logMsg)
 		isSandbox := !passed && category == FailureSandbox
-		canRetry := !passed && !isSandbox && task.Retries < task.MaxRetries && task.MaxRetries > 0
+		canRetry := !passed && !isSandbox && task.Retries < effectiveMaxRetries
 
 		if !passed && o.cfg.LastResort.Enabled && (!canRetry || isSandbox || qaBlocked != "" || task.StallCount >= 4) {
 			triggerReason := "retries_exhausted"

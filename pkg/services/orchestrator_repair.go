@@ -26,6 +26,10 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 		))
 	defer span.End()
 
+	if o.evaluator == nil || o.git == nil {
+		return nil
+	}
+
 	integrationBranch := state.Metadata.IntegrationBranch
 	baseBranch := ResolveBaseBranch(ctx, o.git, state.Metadata.BaseBranch)
 	if integrationBranch == "" {
@@ -61,6 +65,10 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 			diffOut, _ = o.git.Run(ctx, false, "diff", "HEAD~1")
 		}
 
+		if o.llmClient == nil {
+			break
+		}
+
 		repairPrompt := buildPostMergeRepairPrompt(state, logMsg, diffOut, turn)
 		llmCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		llmCtx = context.WithValue(llmCtx, AgentRoleKey, "generator")
@@ -76,11 +84,13 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 
 		if resp != nil && len(resp.Actions) > 0 {
 			for _, action := range resp.Actions {
-				tool, ok := o.registry.Get(action.Tool)
-				if ok {
-					_, execErr := tool.Execute(ctx, state, action.Args)
-					if execErr != nil {
-						fmt.Fprintf(os.Stderr, "⚠ [Repair Tool Failed] %s: %v\n", action.Tool, execErr)
+				if o.registry != nil {
+					tool, ok := o.registry.Get(action.Tool)
+					if ok {
+						_, execErr := tool.Execute(ctx, state, action.Args)
+						if execErr != nil {
+							fmt.Fprintf(os.Stderr, "⚠ [Repair Tool Failed] %s: %v\n", action.Tool, execErr)
+						}
 					}
 				}
 			}
