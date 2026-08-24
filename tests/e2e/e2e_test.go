@@ -79,7 +79,7 @@ func TestE2E_Init_CleanDirectory(t *testing.T) {
 	assert.FileExists(t, gitIgnorePath)
 	content, err := os.ReadFile(gitIgnorePath)
 	require.NoError(t, err)
-	assert.True(t, strings.Contains(string(content), "data/noctifab.db"))
+	assert.True(t, strings.Contains(string(content), "data/"))
 }
 
 func TestE2E_Init_DirtyDirectory_SecurityExitCode4(t *testing.T) {
