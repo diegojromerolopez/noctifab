@@ -178,7 +178,7 @@ GITHUB_TOKEN: ""
 	// 6. Create local VCS ignore file (.noctifab/.gitignore)
 	gitIgnorePath := filepath.Join(noctifabDir, ".gitignore")
 	if _, err := os.Stat(gitIgnorePath); os.IsNotExist(err) {
-		ignoreContent := "data/noctifab.db\ndata/noctifab.db-shm\ndata/noctifab.db-wal\nlogs/\nworktrees/\nnoctifab.pid\nsecrets.yaml\n"
+		ignoreContent := "data/\nlogs/\nworktrees/\nnoctifab.pid\nsecrets.yaml\n"
 		if err := os.WriteFile(gitIgnorePath, []byte(ignoreContent), 0644); err != nil {
 			return false, fmt.Errorf("failed to create .gitignore: %w", err)
 		}
