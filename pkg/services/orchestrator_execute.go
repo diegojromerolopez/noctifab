@@ -222,7 +222,16 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	category := CategorizeFailureLog(logMsg)
 	isSandboxFailure := !passed && category == FailureSandbox
-	shouldRetry := !passed && !isSandboxFailure && task.Retries < task.MaxRetries && task.MaxRetries > 0
+
+	effectiveMaxRetries := task.MaxRetries
+	if effectiveMaxRetries <= 0 && o.cfg.MaxRetries > 0 {
+		effectiveMaxRetries = o.cfg.MaxRetries
+	}
+	if effectiveMaxRetries <= 0 {
+		effectiveMaxRetries = 3
+	}
+
+	shouldRetry := !passed && !isSandboxFailure && task.Retries < effectiveMaxRetries
 
 	if !passed && !o.cfg.UseWorktrees {
 		// Ensure non-worktree mode returns to the integration branch
@@ -239,6 +248,10 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 		if targetTask == nil {
 			return fmt.Errorf("task %s not found in state", taskID)
+		}
+
+		if targetTask.MaxRetries <= 0 {
+			targetTask.MaxRetries = effectiveMaxRetries
 		}
 
 		if passed {
@@ -265,7 +278,11 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			targetTask.Progress = 0
 			targetTask.FailureLog = logMsg
 			st.BuildStatus = domain.BuildFailing
-			fmt.Printf("❌ [Pre-Merge Gate Rejected] Task %s (%s) failed test validation after exhausting retries. Branch %s isolated without merging into %s.\n", taskID, task.Title, branchName, integrationBranch)
+			if strings.Contains(logMsg, "Failed to merge task branch") || strings.Contains(logMsg, "failed to integrate branch") {
+				fmt.Printf("❌ [Merge-Back Failed] Task %s (%s) failed merge-back into %s: %s. Branch %s isolated without merging.\n", taskID, task.Title, integrationBranch, logMsg, branchName)
+			} else {
+				fmt.Printf("❌ [Pre-Merge Gate Rejected] Task %s (%s) failed test validation after exhausting retries. Branch %s isolated without merging into %s.\n", taskID, task.Title, branchName, integrationBranch)
+			}
 		}
 		targetTask.UpdatedAt = time.Now()
 

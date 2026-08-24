@@ -29,13 +29,22 @@ func (o *Orchestrator) RunLastResortAgent(
 	failureLog string,
 	triggerReason string,
 ) (bool, string) {
-	if !o.cfg.LastResort.Enabled {
+	if !o.cfg.LastResort.Enabled || o.llmClient == nil {
 		return false, failureLog
+	}
+
+	effectiveTask := domain.Task{
+		ID:          "sovereign-repair",
+		Title:       "Sovereign Repair",
+		Description: "Sovereign repair task",
+	}
+	if task != nil {
+		effectiveTask = *task
 	}
 
 	ctx, span := telemetry.Tracer().Start(ctx, "RunLastResortAgent",
 		trace.WithAttributes(
-			attribute.String("task.id", task.ID),
+			attribute.String("task.id", effectiveTask.ID),
 			attribute.String("trigger.reason", triggerReason),
 		))
 	defer span.End()
@@ -51,16 +60,16 @@ func (o *Orchestrator) RunLastResortAgent(
 	}
 
 	// 1. Prominent Console & Stderr Alert
-	alertMsg := fmt.Sprintf("🚨 [CRITICAL ALERT] Last-Resort Agent triggered for task %s (Reason: %s)!", task.ID, triggerReason)
+	alertMsg := fmt.Sprintf("🚨 [CRITICAL ALERT] Last-Resort Agent triggered for task %s (Reason: %s)!", effectiveTask.ID, triggerReason)
 	fmt.Fprintf(os.Stderr, "%s\n", alertMsg)
 	fmt.Printf("%s Starting sovereign repair (Max turns: %d)...\n", alertMsg, maxTurns)
 
 	// 2. Telemetry & Execution Observer Recording
-	o.registerAgentStart(ctx, string(domain.AgentRoleLastResort), task.ID)
+	o.registerAgentStart(ctx, string(domain.AgentRoleLastResort), effectiveTask.ID)
 	if o.observer != nil {
 		o.observer.Observe(ctx, domain.ExecutionEvent{
 			Kind:          domain.EventFindingRecorded,
-			TaskID:        task.ID,
+			TaskID:        effectiveTask.ID,
 			AgentRole:     string(domain.AgentRoleLastResort),
 			ErrorCategory: "CRITICAL_LAST_RESORT_TRIGGERED",
 			Evidence:      fmt.Sprintf("Trigger: %s; Summary: %s", triggerReason, summarizeFailureLog(failureLog)),
@@ -74,7 +83,7 @@ func (o *Orchestrator) RunLastResortAgent(
 	}
 	if taskState != nil {
 		for i := range taskState.Tasks {
-			if taskState.Tasks[i].ID == task.ID {
+			if taskState.Tasks[i].ID == effectiveTask.ID {
 				taskState.Tasks[i].LastResortUsed = true
 				break
 			}
@@ -82,7 +91,7 @@ func (o *Orchestrator) RunLastResortAgent(
 		taskState.LastActions = append(taskState.LastActions, domain.Action{
 			Timestamp: time.Now().UTC(),
 			Tool:      "last_resort_agent_trigger",
-			Reasoning: fmt.Sprintf("CRITICAL: Summoned Last-Resort Agent for task %s due to %s", task.ID, triggerReason),
+			Reasoning: fmt.Sprintf("CRITICAL: Summoned Last-Resort Agent for task %s due to %s", effectiveTask.ID, triggerReason),
 			Result:    summarizeFailureLog(failureLog),
 			Success:   false,
 		})
@@ -96,7 +105,7 @@ func (o *Orchestrator) RunLastResortAgent(
 	currentLog := failureLog
 
 	for turn := 1; turn <= maxTurns; turn++ {
-		fmt.Printf("🔧 [Last-Resort Agent] Starting sovereign turn %d/%d for task %s...\n", turn, maxTurns, task.ID)
+		fmt.Printf("🔧 [Last-Resort Agent] Starting sovereign turn %d/%d for task %s...\n", turn, maxTurns, effectiveTask.ID)
 
 		// Collect recent diff context from git
 		diffContext := ""
@@ -112,10 +121,10 @@ func (o *Orchestrator) RunLastResortAgent(
 		contextBlock := buildLastResortContext(currentLog, diffContext, triggerReason, turn, maxTurns)
 
 		data := prompts.TaskPromptData{
-			Title:       task.Title,
-			Description: task.Description,
+			Title:       effectiveTask.Title,
+			Description: effectiveTask.Description,
 			Context:     contextBlock,
-			TargetFiles: task.TargetFiles,
+			TargetFiles: effectiveTask.TargetFiles,
 		}
 
 		var promptBody string
@@ -128,7 +137,7 @@ func (o *Orchestrator) RunLastResortAgent(
 
 		if promptBody == "" {
 			promptBody = fmt.Sprintf("Last-Resort Agent Repair:\nTask: %s - %s\n%s\n%s",
-				task.Title, task.Description, contextBlock, prompts.Contract(prompts.AgentLastResort))
+				effectiveTask.Title, effectiveTask.Description, contextBlock, prompts.Contract(prompts.AgentLastResort))
 		}
 
 		llmCtx, cancel := context.WithTimeout(ctx, turnTimeout)
@@ -149,19 +158,21 @@ func (o *Orchestrator) RunLastResortAgent(
 				if action.Tool == "noop" {
 					continue
 				}
-				tool, ok := o.registry.Get(action.Tool)
-				if ok {
-					_, execErr := tool.Execute(ctx, taskState, action.Args)
-					if execErr != nil {
-						fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Tool Failed] %s: %v\n", action.Tool, execErr)
+				if o.registry != nil {
+					tool, ok := o.registry.Get(action.Tool)
+					if ok {
+						_, execErr := tool.Execute(ctx, taskState, action.Args)
+						if execErr != nil {
+							fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Tool Failed] %s: %v\n", action.Tool, execErr)
+						}
 					}
 				}
 			}
 
 			// Stage and commit changes with standardized tag
 			if taskGit != nil {
-				if commitErr := o.stageAndCommit(ctx, taskGit, task.ID,
-					"fix(lra): sovereign unblock for task %s - %s [turn %d/%d]", task.Title, turn, maxTurns); commitErr != nil {
+				if commitErr := o.stageAndCommit(ctx, taskGit, effectiveTask.ID,
+					"fix(lra): sovereign unblock for task %s - %s [turn %d/%d]", effectiveTask.Title, turn, maxTurns); commitErr != nil {
 					fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] Git commit failed on turn %d: %v\n", turn, commitErr)
 				}
 			}
@@ -169,18 +180,18 @@ func (o *Orchestrator) RunLastResortAgent(
 
 		// Re-evaluate tests
 		if o.evaluator != nil {
-			passed, newLogMsg, _ := o.evaluator.ValidateTask(ctx, taskState, *task)
+			passed, newLogMsg, _ := o.evaluator.ValidateTask(ctx, taskState, effectiveTask)
 			if passed {
-				successMsg := fmt.Sprintf("✨ [Last-Resort Agent] Sovereign unblock successful on turn %d/%d for task %s!", turn, maxTurns, task.ID)
+				successMsg := fmt.Sprintf("✨ [Last-Resort Agent] Sovereign unblock successful on turn %d/%d for task %s!", turn, maxTurns, effectiveTask.ID)
 				fmt.Println(successMsg)
 				fmt.Fprintf(os.Stderr, "%s\n", successMsg)
 
-				o.registerAgentComplete(ctx, string(domain.AgentRoleLastResort), task.ID, nil)
+				o.registerAgentComplete(ctx, string(domain.AgentRoleLastResort), effectiveTask.ID, nil)
 				if taskState != nil {
 					taskState.LastActions = append(taskState.LastActions, domain.Action{
 						Timestamp: time.Now().UTC(),
 						Tool:      "last_resort_agent_success",
-						Reasoning: fmt.Sprintf("Sovereign repair succeeded on turn %d/%d for task %s", turn, maxTurns, task.ID),
+						Reasoning: fmt.Sprintf("Sovereign repair succeeded on turn %d/%d for task %s", turn, maxTurns, effectiveTask.ID),
 						Result:    "All tests passed after sovereign repair",
 						Success:   true,
 					})
@@ -196,15 +207,15 @@ func (o *Orchestrator) RunLastResortAgent(
 		}
 	}
 
-	failAlert := fmt.Sprintf("🚨 [CRITICAL ALERT] Last-Resort Agent completed %d turns without resolving task %s.", maxTurns, task.ID)
+	failAlert := fmt.Sprintf("🚨 [CRITICAL ALERT] Last-Resort Agent completed %d turns without resolving task %s.", maxTurns, effectiveTask.ID)
 	fmt.Fprintf(os.Stderr, "%s Remaining failure trace:\n%s\n", failAlert, currentLog)
 
-	o.registerAgentComplete(ctx, string(domain.AgentRoleLastResort), task.ID, fmt.Errorf("last resort repair unexhausted after %d turns", maxTurns))
+	o.registerAgentComplete(ctx, string(domain.AgentRoleLastResort), effectiveTask.ID, fmt.Errorf("last resort repair unexhausted after %d turns", maxTurns))
 	if taskState != nil {
 		taskState.LastActions = append(taskState.LastActions, domain.Action{
 			Timestamp: time.Now().UTC(),
 			Tool:      "last_resort_agent_failed",
-			Reasoning: fmt.Sprintf("Last-Resort Agent failed to unblock task %s after %d turns", task.ID, maxTurns),
+			Reasoning: fmt.Sprintf("Last-Resort Agent failed to unblock task %s after %d turns", effectiveTask.ID, maxTurns),
 			Result:    summarizeFailureLog(currentLog),
 			Success:   false,
 		})
