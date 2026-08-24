@@ -265,3 +265,60 @@ func TestOrchestrator_SurgicalRepairTriggeredOnCompileFailure(t *testing.T) {
 	}
 	assert.True(t, foundSurgicalPrompt, "expected surgical repair prompt to be dispatched to LLM on compile error")
 }
+
+func TestOrchestrator_PreMergeGate_RejectsFailingTaskOnRetryExhaustion(t *testing.T) {
+	repoDir, _, cleanup := setupTestGitRepo(t)
+	defer cleanup()
+
+	state := &domain.State{
+		ID:          "state-premerge-fail",
+		ProjectPath: repoDir,
+		Tasks: []domain.Task{
+			{ID: "task-failing-exhausted", Title: "Failing Task on Limit", TargetFiles: []string{"broken.go"}, Status: domain.TaskPending, Retries: 1, MaxRetries: 1},
+		},
+		Metadata: domain.StateMetadata{
+			BaseBranch:        "main",
+			IntegrationBranch: "noctifab/feature-state-premerge-fail",
+		},
+	}
+
+	repo := &mockRepo{state: state}
+	reg := NewToolRegistry()
+	reg.Register(&mockTool{name: "read_file"})
+	reg.Register(&mockTool{name: "write_file"})
+	reg.Register(&mockTool{name: "edit_file"})
+	reg.Register(&mockTool{name: "run_tests"})
+
+	llmClient := &testMockLLM{
+		responses: []*domain.LLMResponse{
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+		},
+	}
+	validator := NewPolicyValidator(nil, "main", nil)
+	scheduler := NewScheduler(NewFileLockRegistry())
+	git := NewGitClient(repoDir)
+	queue := NewRebaseQueue(git)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go queue.Start(ctx)
+
+	evaluator := NewTestValidator(&mockSandbox{Out: "FAIL: test failed on assertions", Err: errors.New("exit 1")}, false, llmClient, nil)
+	vcsClient := &mockVCS{}
+	cfg := OrchestratorConfig{
+		Concurrency:  1,
+		UseWorktrees: true,
+	}
+
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
+	orch.executeTask(context.Background(), "state-premerge-fail", "task-failing-exhausted")
+
+	updatedState, err := repo.Load(context.Background())
+	require.NoError(t, err)
+
+	// Verify Sovereign Pre-Merge Rejection: Task is marked TaskFailed and progress is 0
+	assert.Equal(t, domain.TaskFailed, updatedState.Tasks[0].Status)
+	assert.Equal(t, 0, updatedState.Tasks[0].Progress)
+	assert.Equal(t, domain.BuildFailing, updatedState.BuildStatus)
+}

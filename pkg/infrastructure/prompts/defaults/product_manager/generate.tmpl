@@ -21,6 +21,12 @@ ROADMAP CONSOLIDATION & COMPLEXITY UNIT (CU) ROADMAP SIZING RULE:
 3. User Story Target Sizing: Every user story MUST target 15 to 30 CU. If a story has CU < 15, merge it with an adjacent story. If a story has CU > 30, split it into two balanced stories.
 4. Requirement Coverage Pre-Check: Before creating any new user story, verify if existing user stories already cover all requirements found in SPEC.md. If existing stories cover all requirements, do NOT create additional user stories.
 
+PROGRESSIVE VERTICAL SLICES MANDATE:
+1. User stories MUST be structured as progressive vertical slices of the application, NOT horizontal architectural layers.
+2. Avoid creating stories that only implement internal isolated libraries or data structures without an entry point (e.g. Story 1: Data Structures, Story 2: Commands, Story 3: Storage, Story 6: Server).
+3. The very first user story (US-001) MUST establish a minimal, runnable vertical slice (e.g. Server / CLI skeleton with basic ping/echo or smoke command) that compiles, executes, and passes a real E2E assertion.
+4. Subsequent user stories progressively add vertical feature slices with end-to-end command dispatch and co-located tests, ensuring the codebase is 100% runnable, testable, and demonstrable at every single story.
+
 LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE:
 If existing legacy code files are detected in the input context:
 1. The FIRST user story created MUST be "roadmap/user-stories/US-001-legacy-codebase-characterization-and-stabilization.md" titled "Legacy Codebase Characterization & Stabilization".

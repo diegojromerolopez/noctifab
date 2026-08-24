@@ -22,6 +22,12 @@ If existing user story files are provided in the prompt:
 ROADMAP CONSOLIDATION & STORY LIMIT RULE:
 1. Max User Stories: Do NOT generate more user stories than necessary. For concise applications or specifications under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/user-stories/US-001-all-features.md") containing all specification requirements.
 2. Requirement Coverage Pre-Check: Before creating any new user story, you MUST verify if existing user stories already cover all requirements found in SPEC.md. If existing user stories already implement all SPEC.md requirements, do NOT create additional user stories.
+ 
+PROGRESSIVE VERTICAL SLICES MANDATE:
+1. User stories MUST be structured as progressive vertical slices of the application, NOT horizontal architectural layers.
+2. Avoid creating stories that only implement internal isolated libraries or data structures without an entry point (e.g. Story 1: Data Structures, Story 2: Commands, Story 3: Storage, Story 6: Server).
+3. The very first user story (US-001) MUST establish a minimal, runnable vertical slice (e.g. Server / CLI skeleton with basic ping/echo or smoke command) that compiles, executes, and passes a real E2E assertion.
+4. Subsequent user stories progressively add vertical feature slices with end-to-end command dispatch and co-located tests, ensuring the codebase is 100% runnable, testable, and demonstrable at every single story.
 
 LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE:
 If existing legacy code files are detected in the input context:

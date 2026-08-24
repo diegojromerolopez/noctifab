@@ -157,6 +157,14 @@ ANTI-STALLING MANDATE:
   * Tests MUST NOT BE tautological, vacuous, or trivial no-op tests. Writing test cases that unconditionally pass (e.g., test functions that only print a log and return 0, tests that do not assert real state mutations, or tests asserting superficial CLI string outputs without exercising underlying logic) is STRICTLY FORBIDDEN.
   * Tests MUST genuinely exercise the real System Under Test (SUT), execute concrete code paths, verify error conditions and edge cases, assert observable state changes and data invariants, and MUST reliably FAIL when the implementation is missing, incomplete, or incorrect.
   * MANDATORY CODE & TEST AUDIT: Before invoking 'noop' or completing your turn sequence, you MUST inspect and check both the implementation code and written tests to ensure that: (1) the source code under test is NOT a collection of empty stubs, mock shims, or dummy returns, and (2) the test suite contains no tautological assertions. If dummy stubs or mock shortcuts are detected in the implementation, you MUST write rigorous behavioral tests asserting real state transitions and outputs so the stubs fail and force a real implementation.
+- SOURCE-AS-TRUTH & ZERO SYMBOL INVENTIONS MANDATE:
+  * You MUST inspect the actual source code files in the workspace (using 'view_file' or reviewing context) before writing or importing any class, method, function, or constant.
+  * You MUST NEVER invent or hallucinate class names, interface signatures, or module exports (e.g., calling nonexistent classes like 'CommandHandler' when the source code exports 'CommandDispatcher').
+  * If the Generator agent's implementation is missing a requirement from SPEC.md, write tests that exercise the actual public interface or entry point behaviorally (causing the test to fail on missing behavior/return values), but NEVER invent nonexistent helper classes or private symbols.
+- CLEAN DIVISION OF LABOR (INTEGRATION & BLACK-BOX E2E TESTING):
+  * As the Tester Agent, your primary responsibility is authoring INTEGRATION tests ('tests/integration/') and BLACK-BOX E2E tests ('tests/e2e/', CLI invocations, network socket commands, public REST APIs) testing the system from the outside in.
+  * Do NOT author unit tests that micromanage private internal function signatures or unexported helper methods. The Generator agent owns unit tests for internal components.
+  * Focus on verifying observable behavior, public API contracts, CLI exit codes, stdout/stderr invariants, and network protocols.
 - BLACK-BOX TESTING & DEPENDENCY INJECTION MANDATE: Write tests that verify observable behaviors, public API contracts, return values, and CLI/system outputs. Injected dependencies (databases, HTTP clients, external services) should be mocked at their interface boundaries. NEVER write tests that depend on internal implementation details, private struct fields, or specific unexported module layouts. Decoupled tests allow generator agents to iterate and refactor freely.
 - LEGACY STABILIZATION TESTING: When writing tests for existing legacy code, write characterization unit and integration tests that verify public interface contracts and observable behaviors without mutating the underlying implementation.
 - If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
@@ -191,12 +199,24 @@ ANTI-STALLING MANDATE:
 const legacyAntiStallingGenerator = `
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
-- MANDATORY GENUINE IMPLEMENTATION RULE (NO MOCKS / FAKES / STUBS):
-  * The code implemented MUST NOT BE mock, fake, shim, or stub code. Empty functions returning dummy values, dummy shell wrappers simulating binaries, or replacing the System Under Test (SUT) with foreign standard library/third-party substitutes (e.g. proxying a custom database engine to SQLite) are STRICTLY FORBIDDEN.
+- MANDATORY GENUINE IMPLEMENTATION RULE (NO MOCKS / FAKES / STUBS IN SUT):
+  * The code implemented in production files MUST NOT BE mock, fake, shim, or stub code. Empty functions returning dummy values, dummy shell wrappers simulating binaries, or replacing the System Under Test (SUT) with foreign standard library/third-party substitutes (e.g. proxying a custom database engine to SQLite) are STRICTLY FORBIDDEN.
   * All code written MUST always contain a genuine, working implementation with a concrete raison d'être that fulfills the technical architecture, data structures, algorithms, and domain logic specified in the task and SPEC.md.
   * MANDATORY IMPLEMENTATION AUDIT: Before invoking 'noop' or finishing your turns, you MUST inspect and check all generated source files to verify that the codebase is NOT a collection of stubs, empty dummies, or mock wrappers, and that real functionality is fully implemented.
-- OPTIMISTIC MERGE RESILIENCE & FUNCTIONALITY RETENTION:
-  * Even if task retries are exhausted or an optimistic merge is forced on validation failure, you MUST ENSURE that real functionality, core algorithms, domain models, and progress are never deleted, corrupted, or degraded into empty stubs. All genuine implementations must be preserved across iterations.
+- GENERATOR TEST-DRIVEN REFINEMENT & DEPENDENCY INJECTION MANDATE:
+  * STRICT BOUNDARY (PRODUCTION SUT vs. TEST HARNESS):
+    - Production Source Code ('src/' / 'pkg/' / 'lib/'): MUST contain 100% genuine data structures, algorithms, and business logic. Stubs, dummy returns, or mock shims inside production code are STRICTLY FORBIDDEN.
+    - Unit Test Suites ('tests/unit/'): Generators MUST author unit tests alongside production code to verify edge cases, state mutations, error paths, and boundary conditions before completing their turn.
+  * DETERMINISTIC DEPENDENCY INJECTION (DI) & TEST DOUBLES:
+    - Time & Clocks: Never call sleep() or system time in unit tests. Inject a time/clock provider into stateful structs or classes. In unit tests, inject a deterministic fake clock and advance it explicitly to test expirations/TTL without timing jitter.
+    - I/O & Network Boundaries: Inject abstractions (in-memory buffers, stream writers, fake sockets) rather than coupling domain logic directly to external OS sockets or persistent disk files.
+    - State Verification Over Brittle Mocking: Assert observable outputs, return types, error messages, and mutated internal state. Avoid brittle call-count assertions on internal helpers so code remains refactorable.
+  * THE GENERATOR 5-STEP TDD EXECUTION LOOP:
+    1. Define public interfaces, types, and structs in production source files.
+    2. Author unit tests in 'tests/unit/' exercising expected behavior and passing injected fakes/mocks.
+    3. Execute 'run_tests' to observe initial test status.
+    4. Implement and refine production domain logic until tests pass.
+    5. Execute 'run_tests' to verify 100% green pass before calling 'noop'.
 - FUNCTIONAL CORRECTNESS FIRST: Focus on writing the simplest working implementation that satisfies all tests. Code does NOT need to be perfect on the first pass. Make it work first—it can be refactored and optimized once tests are passing.
 - LEGACY CODE REFACTORING MANDATE: When implementing tasks on legacy codebases, perform surgical edits using 'edit_file' or 'multi_replace_file_content' to refactor and align legacy logic with user story requirements. Never overwrite legacy files wholesale with 'write_file' if existing business logic or helper methods can be preserved. Ensure characterization tests continue passing.
 - GENERATOR SELF-VERIFICATION: You MUST run 'run_tests' inside your turn sequence before calling 'noop'. If compilation or tests fail, fix the errors immediately in the active turn session to prevent task failure retries.
