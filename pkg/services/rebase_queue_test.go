@@ -183,3 +183,32 @@ func TestOptimisticUnionMerge(t *testing.T) {
 		}
 	})
 }
+
+func TestRebaseQueue_TotalFailure_ReturnsExplicitError(t *testing.T) {
+	t.Run("when all 5 merge tiers fail it returns an explicit error", func(t *testing.T) {
+		repoDir, _, cleanup := setupTestGitRepo(t)
+		defer cleanup()
+
+		git := NewGitClient(repoDir)
+		q := NewRebaseQueue(git)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go q.Start(ctx)
+
+		deadline := time.Now().Add(2 * time.Second)
+		for !q.started.Load() && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+
+		// Non-existent branches will cause git checkout / merge to fail
+		err := q.Push(ctx, "nonexistent-branch-123", "nonexistent-base-456")
+		if err == nil {
+			t.Fatal("expected error when merging nonexistent branches, got nil")
+		}
+		if !strings.Contains(err.Error(), "failed to") {
+			t.Errorf("expected error message to contain failure details, got: %v", err)
+		}
+	})
+}
+

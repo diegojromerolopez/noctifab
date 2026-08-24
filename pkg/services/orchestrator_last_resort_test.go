@@ -10,6 +10,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
+	"github.com/stretchr/testify/assert"
 )
 
 type mockLRASandbox struct {
@@ -230,3 +231,22 @@ func TestOrchestrator_RunLastResortAgent_StallEscalation(t *testing.T) {
 		t.Errorf("expected task.LastResortUsed to be true")
 	}
 }
+
+func TestOrchestrator_RunLastResortAgent_NilGuards(t *testing.T) {
+	cfg := OrchestratorConfig{
+		LastResort: config.LastResortAgentConfig{
+			Enabled:  true,
+			MaxTurns: 2,
+		},
+	}
+
+	// Orchestrator with nil llmClient, registry, evaluator should return false safely without panic
+	orch := &Orchestrator{
+		cfg: cfg,
+	}
+
+	passed, logOut := orch.RunLastResortAgent(context.Background(), nil, nil, nil, "some failure", "retries_exhausted")
+	assert.False(t, passed)
+	assert.Equal(t, "some failure", logOut)
+}
+

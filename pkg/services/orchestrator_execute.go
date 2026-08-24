@@ -178,10 +178,18 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			passed, logMsg = false, "QA blocked task: "+qaBlocked
 		}
 
+		effectiveMaxRetries := task.MaxRetries
+		if effectiveMaxRetries <= 0 && o.cfg.MaxRetries > 0 {
+			effectiveMaxRetries = o.cfg.MaxRetries
+		}
+		if effectiveMaxRetries <= 0 {
+			effectiveMaxRetries = 3
+		}
+
 		// Last-Resort Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, QA deadlock, or stall count >= 4)
 		category := CategorizeFailureLog(logMsg)
 		isSandbox := !passed && category == FailureSandbox
-		canRetry := !passed && !isSandbox && task.Retries < task.MaxRetries && task.MaxRetries > 0
+		canRetry := !passed && !isSandbox && task.Retries < effectiveMaxRetries
 
 		if !passed && o.cfg.LastResort.Enabled && (!canRetry || isSandbox || qaBlocked != "" || task.StallCount >= 4) {
 			triggerReason := "retries_exhausted"
@@ -222,18 +230,20 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 	category := CategorizeFailureLog(logMsg)
 	isSandboxFailure := !passed && category == FailureSandbox
-	shouldRetry := !passed && !isSandboxFailure && task.Retries < task.MaxRetries && task.MaxRetries > 0
 
-	if !passed && !shouldRetry && !isSandboxFailure {
-		// Retries exhausted: perform optimistic merge to preserve generated code
-		if pushErr := o.rebaseQueue.Push(ctx, branchName, integrationBranch); pushErr != nil {
-			fmt.Fprintf(os.Stderr, "Orchestrator: optimistic merge of %s into %s failed for task %s: %v\n", branchName, integrationBranch, taskID, pushErr)
-		} else {
-			if !o.cfg.UseWorktrees {
-				_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
-			}
-			_, _ = o.git.Run(ctx, true, "branch", "-D", branchName)
-		}
+	effectiveMaxRetries := task.MaxRetries
+	if effectiveMaxRetries <= 0 && o.cfg.MaxRetries > 0 {
+		effectiveMaxRetries = o.cfg.MaxRetries
+	}
+	if effectiveMaxRetries <= 0 {
+		effectiveMaxRetries = 3
+	}
+
+	shouldRetry := !passed && !isSandboxFailure && task.Retries < effectiveMaxRetries
+
+	if !passed && !o.cfg.UseWorktrees {
+		// Ensure non-worktree mode returns to the integration branch
+		_, _ = o.git.Run(ctx, true, "checkout", integrationBranch)
 	}
 
 	err = o.updateStateWithRetry(ctx, func(st *domain.State) error {
@@ -246,6 +256,10 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 		if targetTask == nil {
 			return fmt.Errorf("task %s not found in state", taskID)
+		}
+
+		if targetTask.MaxRetries <= 0 {
+			targetTask.MaxRetries = effectiveMaxRetries
 		}
 
 		if passed {
@@ -267,11 +281,16 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			targetTask.Status = domain.TaskPending
 			st.BuildStatus = domain.BuildFailing
 		} else {
-			// Optimistic completion on retry limit
-			targetTask.Status = domain.TaskSuccess
-			targetTask.Progress = 100
+			// Sovereign Pre-Merge Rejection: Do not merge broken code into integration branch
+			targetTask.Status = domain.TaskFailed
+			targetTask.Progress = 0
 			targetTask.FailureLog = logMsg
-			fmt.Printf("⚠️  [Optimistic Merge] Task %s (%s) merged into %s with warnings (post-merge repair/human review needed)\n", taskID, task.Title, integrationBranch)
+			st.BuildStatus = domain.BuildFailing
+			if strings.Contains(logMsg, "Failed to merge task branch") || strings.Contains(logMsg, "failed to integrate branch") {
+				fmt.Printf("❌ [Merge-Back Failed] Task %s (%s) failed merge-back into %s: %s. Branch %s isolated without merging.\n", taskID, task.Title, integrationBranch, logMsg, branchName)
+			} else {
+				fmt.Printf("❌ [Pre-Merge Gate Rejected] Task %s (%s) failed test validation after exhausting retries. Branch %s isolated without merging into %s.\n", taskID, task.Title, branchName, integrationBranch)
+			}
 		}
 		targetTask.UpdatedAt = time.Now()
 

@@ -316,8 +316,8 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 		return nil
 	}
 
-	fmt.Fprintf(os.Stderr, "⚠️ [RebaseQueue] Merge tiers completed for branch %q.\n", branch)
-	return nil
+	fmt.Fprintf(os.Stderr, "⚠️ [RebaseQueue] All merge tiers failed for branch %q.\n", branch)
+	return fmt.Errorf("all merge fallback tiers (1-5) failed to integrate branch %s into %s", branch, base)
 }
 
 // MockVCSClient stubs remote VCS operations (e.g. creating PRs)

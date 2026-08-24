@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.53.0] - 2026-08-24
+
+### Added
+- **Sovereign Pre-Merge Gate & Poisoned Merge Elimination**:
+  - Eliminated optimistic merging on retry exhaustion in `pkg/services/orchestrator_execute.go`.
+  - When a task exhausts retries and fails test validation, its worker branch is isolated without merging into the integration trunk, preserving repository integrity and preventing downstream QA deadlocks.
+- **"Source-As-Truth" Tester Ground-Truth Rule**:
+  - Mandated that Tester agents inspect existing source ASTs and exported module symbols before authoring test imports, strictly forbidding symbol or class hallucinations across all Tester prompt templates (`write.tmpl`, `refactor.tmpl`, `fix.tmpl`, `write_breadth_first.tmpl`).
+- **Clean Division of Labor (Unit vs Integration & E2E)**:
+  - Designated `tests/unit/` ownership to the Generator Agent (for internal components, branch coverage, and deterministic fakes) and `tests/integration/` / `tests/e2e/` ownership to the Tester Agent (for black-box API, CLI, and socket verification).
+- **Generator Test-Driven Refinement & Dependency Injection Mandate**:
+  - Integrated language-agnostic DI guidelines, deterministic clock/IO test doubles, and a 5-step autonomous TDD loop into all Generator prompt templates (`implement.tmpl`, `refactor.tmpl`, `fix.tmpl`, `single_pass.tmpl`, `single_pass_fix.tmpl`, `implement_breadth_first.tmpl`, `implement_breadth_first_fix.tmpl`, `surgical_repair.tmpl`).
+- **Progressive Vertical Slices in Product Manager & Planner**:
+  - Added Progressive Vertical Slices Mandates to `product_manager` (`generate.tmpl`, `audit.tmpl`) and `planner` (`decompose.tmpl`) prompt templates, ensuring specs decompose into end-to-end runnable, verifiable slices starting from Story 1 rather than horizontal architectural layers.
+
+### Fixed
+- **Pre-Merge & Last-Resort Resilience Edge Cases**:
+  - Aligned retry count evaluation (`canRetry`) in `pkg/services/orchestrator_execute.go` with `effectiveMaxRetries` to prevent premature LRA triggering when `Task.MaxRetries` is uninitialized.
+  - Added defensive nil checks for `evaluator`, `git`, `llmClient`, and `registry` in `RunPostMergeRepairPhase` (`pkg/services/orchestrator_repair.go`).
+  - Added Docker daemon connection error signatures to `CategorizeFailureLog` in `pkg/services/watchdog_repair.go` for accurate `FailureSandbox` fast-abort handling.
+  - Added comprehensive test suites for pre-merge gate retries/aborts (`pkg/services/orchestrator_premerge_test.go`), RebaseQueue total failure error propagation (`pkg/services/rebase_queue_test.go`), and post-merge repair state transitions (`pkg/services/orchestrator_repair_test.go`).
+
 ## [0.52.1] - 2026-08-23
 
 ### Fixed

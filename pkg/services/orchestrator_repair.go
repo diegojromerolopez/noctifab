@@ -26,6 +26,10 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 		))
 	defer span.End()
 
+	if o.evaluator == nil || o.git == nil {
+		return nil
+	}
+
 	integrationBranch := state.Metadata.IntegrationBranch
 	baseBranch := ResolveBaseBranch(ctx, o.git, state.Metadata.BaseBranch)
 	if integrationBranch == "" {
@@ -44,6 +48,10 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 	passed, logMsg, _ := o.evaluator.ValidateTask(ctx, state, testTask)
 	if passed {
 		fmt.Printf("✅ [Post-Merge Tests Passed] Global integration suite passed on %s.\n", integrationBranch)
+		_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+			st.BuildStatus = domain.BuildPassing
+			return nil
+		})
 		return nil
 	}
 
@@ -55,6 +63,10 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 		diffOut, _ := o.git.Run(ctx, false, "diff", baseBranch+"..."+integrationBranch)
 		if strings.TrimSpace(diffOut) == "" {
 			diffOut, _ = o.git.Run(ctx, false, "diff", "HEAD~1")
+		}
+
+		if o.llmClient == nil {
+			break
 		}
 
 		repairPrompt := buildPostMergeRepairPrompt(state, logMsg, diffOut, turn)
@@ -72,11 +84,13 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 
 		if resp != nil && len(resp.Actions) > 0 {
 			for _, action := range resp.Actions {
-				tool, ok := o.registry.Get(action.Tool)
-				if ok {
-					_, execErr := tool.Execute(ctx, state, action.Args)
-					if execErr != nil {
-						fmt.Fprintf(os.Stderr, "⚠ [Repair Tool Failed] %s: %v\n", action.Tool, execErr)
+				if o.registry != nil {
+					tool, ok := o.registry.Get(action.Tool)
+					if ok {
+						_, execErr := tool.Execute(ctx, state, action.Args)
+						if execErr != nil {
+							fmt.Fprintf(os.Stderr, "⚠ [Repair Tool Failed] %s: %v\n", action.Tool, execErr)
+						}
 					}
 				}
 			}
@@ -94,6 +108,10 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 		passed, logMsg, _ = o.evaluator.ValidateTask(ctx, state, testTask)
 		if passed {
 			fmt.Printf("✨ [Integration Repair Success] All tests passed after repair turn %d!\n", turn)
+			_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+				st.BuildStatus = domain.BuildPassing
+				return nil
+			})
 			return nil
 		}
 	}
@@ -103,10 +121,18 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 		lraPassed, _ := o.RunLastResortAgent(ctx, &testTask, state, o.git, logMsg, "post_merge_global_integration_failure")
 		if lraPassed {
 			fmt.Printf("✨ [Last-Resort Agent] Post-merge integration repaired successfully!\n")
+			_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+				st.BuildStatus = domain.BuildPassing
+				return nil
+			})
 			return nil
 		}
 	}
 
+	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+		st.BuildStatus = domain.BuildFailing
+		return nil
+	})
 	fmt.Fprintf(os.Stderr, "⚠️ [Post-Merge Repair Complete] Remaining test warnings preserved for human review:\n%s\n", logMsg)
 	return nil
 }
