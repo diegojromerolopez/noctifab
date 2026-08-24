@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -74,12 +73,45 @@ func TestE2E_Init_CleanDirectory(t *testing.T) {
 	// Verify database file
 	assert.FileExists(t, filepath.Join(noctifabDir, "data", "noctifab.db"))
 
-	// Verify .gitignore
+	// Verify .gitignore using git itself: initialise a repo, plant realistic
+	// SQLite runtime files in data/, then assert git treats them as ignored.
 	gitIgnorePath := filepath.Join(noctifabDir, ".gitignore")
 	assert.FileExists(t, gitIgnorePath)
-	content, err := os.ReadFile(gitIgnorePath)
-	require.NoError(t, err)
-	assert.True(t, strings.Contains(string(content), "data/noctifab.db"))
+
+	// Bootstrap a real git repo so git check-ignore works.
+	gitInit := exec.Command("git", "init")
+	gitInit.Dir = tempDir
+	require.NoError(t, gitInit.Run(), "git init failed")
+
+	gitCfgUser := exec.Command("git", "config", "user.email", "test@noctifab.test")
+	gitCfgUser.Dir = tempDir
+	require.NoError(t, gitCfgUser.Run())
+	gitCfgName := exec.Command("git", "config", "user.name", "Noctifab Test")
+	gitCfgName.Dir = tempDir
+	require.NoError(t, gitCfgName.Run())
+
+	// Create realistic SQLite runtime side-car files that should be ignored.
+	dataDir := filepath.Join(noctifabDir, "data")
+	runtimeFiles := []string{
+		"noctifab.db",
+		"noctifab.db-shm",
+		"noctifab.db-wal",
+	}
+	for _, f := range runtimeFiles {
+		require.NoError(t, os.WriteFile(filepath.Join(dataDir, f), []byte{}, 0644))
+	}
+
+	// Also verify a hypothetical future file in data/ would be ignored.
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "future-file.bin"), []byte{}, 0644))
+	runtimeFiles = append(runtimeFiles, "future-file.bin")
+
+	// git check-ignore exits 0 when the path is ignored, 1 when it is not.
+	for _, f := range runtimeFiles {
+		relPath := filepath.Join(".noctifab", "data", f)
+		out, err := exec.Command("git", "-C", tempDir, "check-ignore", "-v", relPath).CombinedOutput()
+		assert.NoError(t, err,
+			"expected git to ignore .noctifab/data/%s but it did not; git check-ignore output: %s", f, string(out))
+	}
 }
 
 func TestE2E_Init_DirtyDirectory_SecurityExitCode4(t *testing.T) {
