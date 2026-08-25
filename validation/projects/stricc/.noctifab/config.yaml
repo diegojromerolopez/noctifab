@@ -56,6 +56,17 @@ agents:
     - name: qwen
     - name: opencode
     - name: openrouter
+  auditor:
+    number: 1
+    iterations: 2
+    providers:
+    - name: claude
+    - name: gemini
+    - name: openai
+    - name: deepseek-pro
+    - name: qwen
+    - name: opencode
+    - name: openrouter
   unblocker:
     number: 1
     iterations: 2

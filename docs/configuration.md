@@ -89,6 +89,10 @@ agents:
     enabled: false
     iterations: 1
 
+  auditor:
+    number: 1
+    iterations: 2
+
   unblocker:
     number: 1
     iterations: 2
@@ -119,6 +123,7 @@ clarification_timeout_action: abort
 - **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 5`).
 - **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 3`).
 - **`qa`**: Reserves the experimental QA capability. It defaults to `enabled: false`; Phase 0 reports its capability but does not run QA.
+- **`auditor`**: Configures the Acceptance Auditor Agent (`number: 1`, `iterations: 2`) verifying whole-project compliance against `SPEC.md` prior to Pull Request creation.
 - **`unblocker`**: Configures Unblocker agents monitoring pipelines for stalls and re-dispatching tasks (`number: 1`, `iterations: 2`).
 - **`last_resort`**: Configures the sovereign Last-Resort Agent (*Omni-Unblocker* / *Chief Surgeon*) invoked when tasks reach critical stall thresholds, retry budget exhaustion, or toolchain deadlocks (`enabled: true`, `model: ""`, `temperature: 0.1`, `max_turns: 2`, `timeout: 180s`, `allow_spec_mutation: true`, `allow_scope_reduction: true`, `enforce_spec_quality: true`). Operates with cross-domain authority to refactor code, tests, and specifications under the 4-Tier Compromise Hierarchy while strictly preserving SOLID, DI, and security quality gates.
 - **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.

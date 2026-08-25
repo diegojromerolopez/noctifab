@@ -160,4 +160,76 @@ func TestOrchestrator_FinalizeUserStory(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Contains(t, branches, "refs/heads/noctifab/story-us-0001")
 	})
+
+	t.Run("when only a subset of tasks succeeded (some pending or failed), it strictly skips PR creation", func(t *testing.T) {
+		vcs := &mockVCSForFinalize{}
+		orch := &Orchestrator{
+			vcsClient: vcs,
+		}
+
+		state := &domain.State{
+			Metadata: domain.StateMetadata{
+				FeatureName: "US-0002",
+			},
+			Tasks: []domain.Task{
+				{ID: "t1", Status: domain.TaskSuccess},
+				{ID: "t2", Status: domain.TaskPending},
+			},
+		}
+
+		err := orch.FinalizeUserStory(context.Background(), state)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, vcs.prCalls, "PR creation must be skipped if any task is pending or failed")
+	})
+
+	t.Run("when all tasks succeeded but whole-project acceptance audit fails, it skips PR creation", func(t *testing.T) {
+		repoDir, _, cleanup := setupTestGitRepo(t)
+		defer cleanup()
+
+		err := os.WriteFile(filepath.Join(repoDir, "VERSION"), []byte("1.0.0"), 0644)
+		require.NoError(t, err)
+
+		vcs := &mockVCSForFinalize{}
+		git := NewGitClient(repoDir)
+		mockLLM := &mockAuditorLLM{
+			response: &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "submit_acceptance_audit",
+						Args: map[string]any{
+							"passed":  false,
+							"summary": "Missing Redis PING, EXPIRE, and KEYS commands from SPEC.md.",
+							"gaps":    []any{"PING command missing", "KEYS command missing"},
+						},
+					},
+				},
+			},
+		}
+
+		orch := &Orchestrator{
+			vcsClient:         vcs,
+			git:               git,
+			cfg:               OrchestratorConfig{AutoCreatePR: true},
+			acceptanceAuditor: NewAcceptanceAuditor(mockLLM, nil),
+		}
+
+		state := &domain.State{
+			ProjectPath: repoDir,
+			Metadata: domain.StateMetadata{
+				FeatureName:       "US-0003",
+				IntegrationBranch: "noctifab/story-us-0003",
+				BaseBranch:        "main",
+			},
+			Tasks: []domain.Task{
+				{ID: "t1", Title: "Partial command dispatch", Status: domain.TaskSuccess},
+			},
+		}
+
+		// Write a SPEC.md
+		require.NoError(t, os.WriteFile(filepath.Join(repoDir, "SPEC.md"), []byte("# Redis Spec\nPING, GET, SET, KEYS"), 0644))
+
+		err = orch.FinalizeUserStory(context.Background(), state)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, vcs.prCalls, "PR creation must be aborted when acceptance audit fails")
+	})
 }

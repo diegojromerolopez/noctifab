@@ -99,6 +99,7 @@ type AgentsConfig struct {
 	Generators         AgentRoleConfig       `yaml:"generators"`
 	Testers            AgentRoleConfig       `yaml:"testers"`
 	QA                 QAConfig              `yaml:"qa"`
+	Auditor            AgentRoleConfig       `yaml:"auditor"`
 	Unblocker          AgentRoleConfig       `yaml:"unblocker"`
 	LastResort         LastResortAgentConfig `yaml:"last_resort"`
 	WorkspaceCache     WorkspaceCacheConfig  `yaml:"workspace_cache"`

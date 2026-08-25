@@ -108,7 +108,21 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 			}
 
 			storiesCount := 0
+			specRefined := false
 			for _, act := range resp.Actions {
+				if act.Tool == "refine_spec" {
+					content, _ := act.Args["content"].(string)
+					if content == "" {
+						content, _ = act.Args["spec"].(string)
+					}
+					if strings.TrimSpace(content) != "" && strings.TrimSpace(content) != strings.TrimSpace(string(specBytes)) {
+						if err := os.WriteFile(specPath, []byte(content), 0644); err == nil {
+							specBytes = []byte(content)
+							specRefined = true
+							fmt.Printf("ℹ [Product Manager] Refined and updated SPEC.md with resolved inconsistencies/missing details\n")
+						}
+					}
+				}
 				if act.Tool == "create_story" {
 					filename, _ := act.Args["filename"].(string)
 					content, _ := act.Args["content"].(string)
@@ -129,14 +143,14 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 				}
 			}
 
-			if storiesCount > 0 {
+			if storiesCount > 0 || specRefined {
 				passSuccess = true
 				if passes > 1 {
 					fmt.Printf("ℹ [Product Manager] Completed pass %d/%d (wrote/refined %d user story files)\n", p, passes, storiesCount)
 				}
 				break
 			}
-			lastErr = fmt.Errorf("LLM did not return any valid create_story actions on pass %d/%d", p, passes)
+			lastErr = fmt.Errorf("LLM did not return any valid create_story or refine_spec actions on pass %d/%d", p, passes)
 		}
 
 		if !passSuccess {

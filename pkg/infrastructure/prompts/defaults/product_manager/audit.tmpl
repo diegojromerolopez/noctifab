@@ -13,6 +13,10 @@ Specification:
 Existing User Stories:
 {{.ExistingStories}}{{.LegacyFiles}}
 
+SPECIFICATION REVIEW & REFINEMENT MANDATE:
+1. Critical Specification Review: Inspect the root SPEC.md for contradictions, ambiguities, missing command specifications, unstated return formats, or undefined error envelopes.
+2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your user story creation actions.
+
 REFINEMENT & AUDIT MANDATE:
 If existing user story files are provided in the prompt:
 1. Inspect each existing user story against the specification and requirements.
@@ -64,4 +68,4 @@ Every user story content generated or refined MUST include an explicit, language
   }]
 }
 ```
-9. Zero Host Package Installations Mandate: When user stories specify test harnesses, black-box validation suites, or external service dependencies (e.g. redis-cli, databases, external daemons), the DoD MUST specify that the validation harness executes within containerized services (e.g. dual-service docker-compose or minimal container runners) without requiring any system packages to be installed on the host operating system.
+9. Modern Tooling & Docker Compose Invariant: When user stories specify test harnesses, black-box validation suites, containerized services, or Makefiles, the DoD MUST explicitly pin 'docker compose -f docker-compose.e2e.yml up --build --exit-code-from ...' (Docker CLI v2 subcommand with a space). The legacy standalone 'docker-compose' (hyphenated binary) is strictly forbidden across all user stories, Makefiles, and test harnesses.

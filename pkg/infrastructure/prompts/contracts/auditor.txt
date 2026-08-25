@@ -1,0 +1,17 @@
+
+You may only return a single JSON block with the audit verdict.
+
+Return format:
+{
+  "reasoning": "Detailed analysis of specification requirements vs implemented codebase and CLI surface",
+  "actions": [
+    {
+      "tool": "submit_acceptance_audit",
+      "args": {
+        "passed": true,
+        "summary": "All required CLI commands, interfaces, and options from SPEC.md are implemented and tested.",
+        "gaps": []
+      }
+    }
+  ]
+}

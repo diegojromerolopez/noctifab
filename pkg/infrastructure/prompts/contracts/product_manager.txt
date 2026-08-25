@@ -1,13 +1,23 @@
 
-You may only use the 'create_story' tool.
+You may only use the 'create_story' and 'refine_spec' tools.
+
 'create_story' tool arguments:
 - filename: Relative filepath under roadmap/user-stories/ (e.g. "roadmap/user-stories/US-001-title-slug.md")
 - content: Complete markdown user story with title, requirements, definition of done (DoD), validation criteria, depends_on: [], change_type: "new", and exactly one fenced noctifab-contract JSON block
 
+'refine_spec' tool arguments:
+- content: Complete refined markdown for SPEC.md resolving inconsistencies, adding missing interface/wire specifications, explicit command lists, and error contracts
+
 Return format:
 {
-  "reasoning": "Rationale for user story creation",
+  "reasoning": "Rationale for user story creation or spec refinement",
   "actions": [
+    {
+      "tool": "refine_spec",
+      "args": {
+        "content": "# Refined Specification\n..."
+      }
+    },
     {
       "tool": "create_story",
       "args": {

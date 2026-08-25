@@ -93,6 +93,7 @@ type Orchestrator struct {
 	taskCompletedChan chan struct{}
 	lastWorkspaceSync time.Time
 	observer          domain.ExecutionObserver
+	acceptanceAuditor *AcceptanceAuditor
 	// executeTaskFn is the task execution entry point used by the dispatch
 	// loop. It defaults to (*Orchestrator).executeTask and exists as an
 	// injection seam for unit tests.
@@ -100,11 +101,12 @@ type Orchestrator struct {
 }
 
 type OrchestratorRuntimeDependencies struct {
-	Mailbox        *CommandMailbox
-	WatchdogRepair RepairHandler
-	PromptRenderer PromptRenderer
-	QA             *QARuntimeCoordinator
-	Observer       domain.ExecutionObserver
+	Mailbox           *CommandMailbox
+	WatchdogRepair    RepairHandler
+	PromptRenderer    PromptRenderer
+	QA                *QARuntimeCoordinator
+	Observer          domain.ExecutionObserver
+	AcceptanceAuditor *AcceptanceAuditor
 }
 
 func NewOrchestratorWithRuntime(
@@ -126,6 +128,10 @@ func NewOrchestratorWithRuntime(
 	if runtime.Observer == nil {
 		runtime.Observer = &NoopExecutionReporter{}
 	}
+	auditor := runtime.AcceptanceAuditor
+	if auditor == nil {
+		auditor = NewAcceptanceAuditor(client, runtime.PromptRenderer)
+	}
 	o := &Orchestrator{
 		repo:              repo,
 		registry:          reg,
@@ -144,12 +150,18 @@ func NewOrchestratorWithRuntime(
 		metricsCollector:  NewMetricsCollector(cfg.MetricsEnabled),
 		taskCompletedChan: make(chan struct{}, 100),
 		observer:          runtime.Observer,
+		acceptanceAuditor: auditor,
 	}
 	o.executeTaskFn = o.executeTask
 	if queue != nil {
 		queue.SetConflictResolver(o.resolveGitRebaseConflict)
 	}
 	return o
+}
+
+// SetAcceptanceAuditor overrides the acceptance auditor service (useful for tests).
+func (o *Orchestrator) SetAcceptanceAuditor(auditor *AcceptanceAuditor) {
+	o.acceptanceAuditor = auditor
 }
 
 func NewOrchestrator(

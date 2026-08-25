@@ -109,7 +109,7 @@ func TestGenerateRoadmap_NoValidActions(t *testing.T) {
 	}
 	err = services.GenerateRoadmap(context.Background(), tempDir, mockLL, nil)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "did not return any valid create_story actions")
+	assert.Contains(t, err.Error(), "did not return any valid create_story or refine_spec actions")
 }
 
 func TestGenerateRoadmap_RefineExistingStories(t *testing.T) {
@@ -274,4 +274,41 @@ func TestNormalizeStoryPath_And_ToSlug(t *testing.T) {
 		assert.Equal(t, "user-story-001-test", services.ToSlug("User Story 001: Test!"))
 		assert.Equal(t, "framing-streaming", services.ToSlug("Framing & Streaming"))
 	})
+}
+
+func TestGenerateRoadmap_RefineSpec(t *testing.T) {
+	tempDir := t.TempDir()
+	specPath := filepath.Join(tempDir, "SPEC.md")
+	err := os.WriteFile(specPath, []byte("# Incomplete Spec\nMissing commands"), 0644)
+	require.NoError(t, err)
+
+	refinedSpec := "# Complete Spec\n## 1. Commands\nGET, SET, DEL, PING\n## 2. Wire Protocol\nRESP2"
+	mockLLM := &mockRoadmapLLMClient{
+		Response: &domain.LLMResponse{
+			Reasoning: "Refining spec to add missing commands and wire protocol",
+			Actions: []domain.LLMAction{
+				{
+					Tool: "refine_spec",
+					Args: map[string]any{
+						"content": refinedSpec,
+					},
+				},
+				{
+					Tool: "create_story",
+					Args: map[string]any{
+						"filename": "roadmap/user-stories/US-001-complete.md",
+						"content":  "# US-001 Complete",
+					},
+				},
+			},
+		},
+	}
+
+	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLM, nil)
+	assert.NoError(t, err)
+
+	// Verify SPEC.md on disk was updated with the refined content
+	updatedBytes, err := os.ReadFile(specPath)
+	assert.NoError(t, err)
+	assert.Equal(t, refinedSpec, string(updatedBytes))
 }

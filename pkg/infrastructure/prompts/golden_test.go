@@ -133,6 +133,24 @@ func TestGoldenQAContract(t *testing.T) {
 	}
 }
 
+func TestGoldenAuditorContract(t *testing.T) {
+	rendered, err := NewDefaultRenderer().Render(AgentAuditor, "acceptance_audit", AcceptanceAuditPromptData{
+		Spec:            "# SPEC.md\nCommands: PING, GET, SET",
+		WorkspaceFiles:  "main.go\ncommands.go",
+		StoryContracts:  "US-001",
+		PublicContracts: "cli.run",
+		TaskSummaries:   "task-1: completed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, needle := range []string{"Whole-Project Acceptance Auditor Agent", "SPECIFICATION (SPEC.md):", "submit_acceptance_audit", `"passed": true`, "gaps"} {
+		if !strings.Contains(rendered.Full(), needle) {
+			t.Errorf("Auditor prompt missing %q", needle)
+		}
+	}
+}
+
 // TestGoldenFixedVariants asserts the NEW, corrected assembly for the 4
 // variants that previously bypassed their role bodies via the prefix-dispatch
 // bug (CUSTOM_PROMPTS.md §1.1). Their instruction text is preserved and the

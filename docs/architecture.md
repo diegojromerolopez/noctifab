@@ -106,6 +106,7 @@ Noctifab exposes the following implemented roles and retained experimental capab
 | **`testers`** | Tester Agent | Independently writes black-box test suites (unit, integration, e2e) against public contracts. |
 | **`resolver`** | Resolver Agent | Resolves complex 3-way Git merge and rebase conflicts across parallel worker branches using a 5-tier merge engine (including whole-file dual reimplementation). |
 | **`qa`** | Experimental QA capability | Retained but disabled in Phase 0; no QA runtime executes. |
+| **`auditor`** | Acceptance Auditor Agent | Evaluates whole-project compliance against root `SPEC.md` and story contracts prior to PR creation, halting release if critical command or interface omissions are found. |
 | **`unblocker`** | Unblocker Daemon Agent | Continuously monitors execution pipelines for stalls, deadlocks, and task re-queueing (0-token fast-path regex and progressive log escalation). |
 | **`last_resort`** | Last-Resort Agent | Sovereign Chief Surgeon & Omni-Solver summoned upon critical stall thresholds or retry exhaustion. Operates with sovereign compromise authority across code, tests, and specs under the 4-Tier Compromise Hierarchy. |
 
