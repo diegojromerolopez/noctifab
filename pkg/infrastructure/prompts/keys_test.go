@@ -6,9 +6,9 @@ import (
 )
 
 func TestCatalog(t *testing.T) {
-	t.Run("when listing agents it returns the 7 catalog agents sorted", func(t *testing.T) {
+	t.Run("when listing agents it returns the 8 catalog agents sorted", func(t *testing.T) {
 		agents := Agents()
-		want := []string{"generator", "last_resort", "planner", "product_manager", "qa", "spec", "tester"}
+		want := []string{"auditor", "generator", "last_resort", "planner", "product_manager", "qa", "spec", "tester"}
 		if len(agents) != len(want) {
 			t.Fatalf("expected %d agents, got %v", len(want), agents)
 		}
@@ -19,13 +19,13 @@ func TestCatalog(t *testing.T) {
 		}
 	})
 
-	t.Run("when counting catalog keys it totals 23 actions", func(t *testing.T) {
+	t.Run("when counting catalog keys it totals 24 actions", func(t *testing.T) {
 		total := 0
 		for _, agent := range Agents() {
 			total += len(Actions(agent))
 		}
-		if total != 23 {
-			t.Fatalf("expected 23 (agent, action) keys, got %d", total)
+		if total != 24 {
+			t.Fatalf("expected 24 (agent, action) keys, got %d", total)
 		}
 	})
 
@@ -36,8 +36,14 @@ func TestCatalog(t *testing.T) {
 		if err := ValidateKey("last_resort", "repair"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		if err := ValidateKey("auditor", "acceptance_audit"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if !IsValidKey("last_resort", "repair") {
 			t.Error("expected last_resort/repair to be valid")
+		}
+		if !IsValidKey("auditor", "acceptance_audit") {
+			t.Error("expected auditor/acceptance_audit to be valid")
 		}
 		if !IsValidKey("generator", "implement_breadth_first_fix") {
 			t.Error("expected generator/implement_breadth_first_fix to be valid")
@@ -91,6 +97,9 @@ func TestFixtureData(t *testing.T) {
 		}
 		if _, ok := FixtureData("qa").(QAPromptData); !ok {
 			t.Error("expected QAPromptData for qa")
+		}
+		if _, ok := FixtureData("auditor").(AcceptanceAuditPromptData); !ok {
+			t.Error("expected AcceptanceAuditPromptData for auditor")
 		}
 	})
 }

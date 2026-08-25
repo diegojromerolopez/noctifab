@@ -28,16 +28,28 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 		integrationBranch = baseBranch
 	}
 
-	anySuccess := false
-	for _, t := range state.Tasks {
-		if t.Status == domain.TaskSuccess {
-			anySuccess = true
-			break
-		}
+	// 1. Strict PR Release Invariant: All tasks in the story MUST be TaskSuccess.
+	// A PR is strictly forbidden if any task remains PENDING or FAILED.
+	if !o.allTasksSucceeded(state) {
+		fmt.Printf("⚠ Story %s: not all tasks succeeded (pending or failed tasks remain) — skipping PR creation.\n", state.Metadata.FeatureName)
+		return nil
 	}
 
-	if !anySuccess {
-		fmt.Printf("⚠ Story %s: no tasks completed successfully — skipping PR creation.\n", state.Metadata.FeatureName)
+	// 2. Whole-Project Acceptance Audit Gate: Verify implemented codebase against SPEC.md
+	auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
+	if auditErr != nil {
+		fmt.Fprintf(os.Stderr, "⚠ Warning: Acceptance audit encountered an error for story %s: %v\n", state.Metadata.FeatureName, auditErr)
+	} else if auditResult != nil && !auditResult.Passed {
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "⚠ Story %s: Whole-project Acceptance Audit FAILED.\nSummary: %s\n", state.Metadata.FeatureName, auditResult.Summary)
+		if len(auditResult.Gaps) > 0 {
+			sb.WriteString("Unimplemented specification gaps detected:\n")
+			for _, gap := range auditResult.Gaps {
+				fmt.Fprintf(&sb, " - %s\n", gap)
+			}
+		}
+		sb.WriteString("Skipping PR creation to prevent releasing incomplete specification implementation.\n")
+		fmt.Print(sb.String())
 		return nil
 	}
 
@@ -83,7 +95,7 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	// Create pull request
 	if o.cfg.AutoCreatePR && integrationBranch != baseBranch {
 		prTitle := fmt.Sprintf("feat: %s", state.Metadata.FeatureName)
-		prBody := buildPRBody(state)
+		prBody := buildPRBody(state, auditResult)
 		_, prErr := o.vcsClient.CreatePullRequest(ctx, prTitle, prBody, integrationBranch, baseBranch)
 		if prErr != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to create Pull Request for story %s: %v. Preserving generated code locally.\n", state.Metadata.FeatureName, prErr)
@@ -99,11 +111,23 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	return nil
 }
 
+// RunAcceptanceAudit executes the Whole-Project Acceptance Audit Gate against SPEC.md.
+func (o *Orchestrator) RunAcceptanceAudit(ctx context.Context, state *domain.State) (*AcceptanceAuditResult, error) {
+	if o.acceptanceAuditor == nil {
+		return &AcceptanceAuditResult{Passed: true, Summary: "No acceptance auditor configured"}, nil
+	}
+	return o.acceptanceAuditor.AuditProjectAcceptance(ctx, state)
+}
+
 // buildPRBody assembles a markdown pull request description from the completed state.
-func buildPRBody(state *domain.State) string {
+func buildPRBody(state *domain.State, audit *AcceptanceAuditResult) string {
 	body := fmt.Sprintf("## Automated Pull Request — %s\n\n", state.Metadata.FeatureName)
 	body += fmt.Sprintf("**Source:** %s\n", state.Metadata.InputPath)
 	body += fmt.Sprintf("**Branch:** `%s` → `%s`\n\n", state.Metadata.IntegrationBranch, state.Metadata.BaseBranch)
+	if audit != nil && strings.TrimSpace(audit.Summary) != "" {
+		body += "### Specification Acceptance Audit\n\n"
+		body += fmt.Sprintf("✅ **Audit Status:** Passed\n**Summary:** %s\n\n", audit.Summary)
+	}
 	body += "### Tasks\n\n"
 	for _, t := range state.Tasks {
 		icon := "✅"

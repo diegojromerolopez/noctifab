@@ -7,6 +7,7 @@ import (
 
 func TestRoleCapabilities(t *testing.T) {
 	want := []RoleCapability{
+		{Name: "auditor", Capability: "implemented"},
 		{Name: "generator", Capability: "implemented"},
 		{Name: "orchestrator", Capability: "deterministic-controller"},
 		{Name: "planner", Capability: "implemented"},
@@ -20,7 +21,7 @@ func TestRoleCapabilities(t *testing.T) {
 	}
 	cfg := DefaultConfig()
 	cfg.Agents.QA.Enabled = true
-	if got := RoleCapabilities(cfg)[4].Capability; got != "experimental-enabled" {
+	if got := RoleCapabilities(cfg)[5].Capability; got != "experimental-enabled" {
 		t.Fatalf("enabled QA capability = %q", got)
 	}
 }

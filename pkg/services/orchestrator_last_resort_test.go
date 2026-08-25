@@ -249,4 +249,3 @@ func TestOrchestrator_RunLastResortAgent_NilGuards(t *testing.T) {
 	assert.False(t, passed)
 	assert.Equal(t, "some failure", logOut)
 }
-

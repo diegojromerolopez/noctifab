@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.54.0] - 2026-08-25
+
+### Added
+- **Strict PR Release Invariant (All Tasks or No PR)**:
+  - Enforced in `pkg/services/orchestrator_finalize.go` that `FinalizeUserStory` verifies `o.allTasksSucceeded(state)`.
+  - PR creation and version tagging are strictly skipped if any task in the story remains in `PENDING` or `FAILED` state, preventing partial or broken feature releases.
+- **Whole-Project Acceptance Audit Gate**:
+  - Introduced `AcceptanceAuditor` service in `pkg/services/acceptance_auditor.go` and `AgentRoleAuditor` in domain state.
+  - Prior to final release and PR creation, the acceptance auditor rigorously compares the implemented codebase, CLI entrypoints, and wire protocol surface against the root `SPEC.md`.
+  - If critical commands, options, or interface omissions are detected, the auditor produces a detailed gap report and halts PR release.
+  - Integrated audit verdict and summary directly into automated PR descriptions.
+- **Product Manager SPEC.md Review & Refinement**:
+  - Empowered the Product Manager Agent to critically review the root `SPEC.md` for contradictions, ambiguities, missing command tables, or undefined error envelopes during roadmap generation and audit passes.
+  - Added `refine_spec` tool action in `pkg/services/roadmap_generator.go` and prompt contract `pkg/infrastructure/prompts/contracts/product_manager.txt` to automatically write back refined and enriched `SPEC.md` definitions to the project workspace.
+- **Modern Tooling & Docker Compose Invariant**:
+  - Enforced in Product Manager prompt templates (`generate.tmpl`, `audit.tmpl`) that story Definitions of Done (DoD) MUST explicitly pin `docker compose -f docker-compose.e2e.yml up --build --exit-code-from ...` (Docker CLI v2 subcommand with a space) and forbid the legacy `docker-compose` binary.
+  - Instructed the Acceptance Auditor (`acceptance_audit.tmpl`) to scan repository files, Makefiles, and shell scripts for deprecated tooling (`docker-compose`, uninstalled package managers, obsolete Python 2 idioms), treating them as blocking specification gaps.
+- **Auditor Prompt Template & Output Contract**:
+  - Added default template `pkg/infrastructure/prompts/defaults/auditor/acceptance_audit.tmpl` and non-overridable output contract `pkg/infrastructure/prompts/contracts/auditor.txt` supporting the declarative `submit_acceptance_audit` action.
+
 ## [0.53.1] - 2026-08-24
 
 ### Fixed

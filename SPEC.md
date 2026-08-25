@@ -1767,6 +1767,20 @@ The **Last-Resort Agent** (`pkg/services/orchestrator_last_resort.go`, `AgentRol
    - Registers in `State.ActiveAgents` and logs structured actions to `State.LastActions`.
    - Displays real-time status, badges, and filters in the Web Dashboard.
 
+### 3.6.15. Whole-Project Acceptance Auditor Agent
+
+The **Acceptance Auditor Agent** (`pkg/services/acceptance_auditor.go`, `AgentRole: "AUDITOR"`) is a pre-release quality gate that executes at the end of every user story before version tagging, branch pushing, and pull request creation.
+
+1. **Role & Mandate:**
+   - Cross-references the implemented codebase, CLI entrypoint binaries, and wire protocol handlers against the root `SPEC.md` document and story public contracts.
+   - Prevents partial or "green-washed" releases where individual task unit tests passed but core specification requirements (e.g. missing CLI subcommands, omitted wire protocol commands, or unimplemented flag permutations) were omitted.
+2. **Audit Action (`submit_acceptance_audit`):**
+   - Dispatched via the prompt template `auditor/acceptance_audit` with `SPEC.md`, workspace file tree, source code snippets, and task execution summaries.
+   - Emits a structured verdict (`{"passed": bool, "summary": string, "gaps": []string}`).
+3. **Strict Release Invariant:**
+   - If `passed == false` or any specification gaps are listed, the orchestrator logs the detected omissions, skips version bumping/PR creation, and halts the release pipeline.
+   - When passed, the audit summary is automatically incorporated into the generated Pull Request body.
+
 ---
 
 ### 3.7. Specification Ingestion & External Clients
@@ -1782,7 +1796,12 @@ To support dynamic task generation from multiple workflow sources, `noctifab` ab
 *   **Authentication:** Uses the standard `NOCTIFAB_VCS_TOKEN` environment variable or the VCS token configuration setting.
 
 ### 3.8. Automatic Commits, Centralized Versioning, & Pull Requests
-When the automated commit setting is enabled (via CLI flag `--auto-commit` or environment variable `NOCTIFAB_AUTO_COMMIT=true`), the orchestrator automatically manages the integration pipeline: branch creation, centralized version bumping, changelog updates, and pull request creation.
+When the automated commit setting is enabled (via CLI flag `--auto-commit` or environment variable `NOCTIFAB_AUTO_COMMIT=true`), the orchestrator automatically manages the integration pipeline:
+
+1. **Strict PR Release Invariant (All Tasks or No PR):** The orchestrator strictly validates `o.allTasksSucceeded(state)`. If ANY task in the story remains in `PENDING` or `FAILED` state, PR creation, version tagging, and remote pushing are completely aborted.
+2. **Acceptance Audit Gate:** The Acceptance Auditor evaluates the whole project against `SPEC.md`. If critical specification omissions are reported, PR creation is aborted.
+3. **Centralized Version Bumping & Changelog:** Bumps `VERSION` and updates `CHANGELOG.md` according to semantic versioning.
+4. **Pull Request Assembly:** Creates an automated pull request containing task deliverables and the specification acceptance audit verdict.
 
 *   **Command Interaction Policy:** The `--auto-commit` option only applies to execution-related commands (`noctifab start`). These commands manage the integration pipeline: branch creation, conventional commits, version bumping, and PR creation. The `--auto-commit` flag has no effect on read-only commands such as `noctifab validate` or `noctifab maintenance`.
 

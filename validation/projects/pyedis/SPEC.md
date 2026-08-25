@@ -6,6 +6,12 @@
 
 The project deliberately exercises the validation host's Python-ecosystem seam: async TCP socket streams (`asyncio.start_server`), zero-copy stream parsing, dependency injection (clock + store + AOF logger), absolute timestamp durability, and lock-protected async concurrency.
 
+> [!IMPORTANT]
+> **STRICT TESTING MANDATE: ZERO PYTEST USAGE (STANDARD LIBRARY `unittest` ONLY)**
+> - **`pytest` is STRICTLY FORBIDDEN:** The project MUST NOT use `pytest` under ANY circumstances.
+> - **Zero `pytest` Dependencies or Artifacts:** Do NOT import `pytest`, do NOT list `pytest` in `requirements.txt` or `pyproject.toml`, do NOT create `conftest.py` or `pytest.ini`, and do NOT invoke `pytest` anywhere in Makefiles, scripts, or story contracts.
+> - **Standard Library `unittest` Throughout:** All unit and integration tests MUST subclass `unittest.TestCase` (or `unittest.IsolatedAsyncioTestCase` for async tests) using `unittest.mock`. All test suites must be executed via `python3 -m unittest discover -s tests -v`.
+
 ## 2. Pinned Directory Layout
 
 ```

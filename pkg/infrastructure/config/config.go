@@ -199,6 +199,7 @@ func (cfg *Config) Validate() error {
 		"planner":         cfg.Agents.Planner,
 		"generators":      cfg.Agents.Generators,
 		"testers":         cfg.Agents.Testers,
+		"auditor":         cfg.Agents.Auditor,
 		"unblocker":       cfg.Agents.Unblocker,
 	}
 	for roleName, roleCfg := range roles {

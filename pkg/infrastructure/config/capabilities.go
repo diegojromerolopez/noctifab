@@ -22,6 +22,7 @@ func RoleCapabilities(cfg *Config) []RoleCapability {
 		{Name: "tester", Capability: "implemented"},
 		{Name: "unblocker", Capability: "implemented"},
 		{Name: "qa", Capability: qaCapability},
+		{Name: "auditor", Capability: "implemented"},
 	}
 	sort.Slice(capabilities, func(i, j int) bool { return capabilities[i].Name < capabilities[j].Name })
 	return capabilities

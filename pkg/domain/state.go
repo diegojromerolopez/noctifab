@@ -43,6 +43,8 @@ const (
 	AgentRoleUnblocker AgentRole = "UNBLOCKER"
 	// AgentRoleLastResort executes deep holistic repairs with sovereign compromise authority.
 	AgentRoleLastResort AgentRole = "LAST_RESORT"
+	// AgentRoleAuditor performs whole-project specification acceptance audits prior to release.
+	AgentRoleAuditor AgentRole = "AUDITOR"
 )
 
 // AgentStatus tracks the lifecycle state of a worker agent.

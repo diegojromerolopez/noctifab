@@ -211,4 +211,3 @@ func TestRebaseQueue_TotalFailure_ReturnsExplicitError(t *testing.T) {
 		}
 	})
 }
-

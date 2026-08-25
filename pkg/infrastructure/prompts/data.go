@@ -52,6 +52,15 @@ type QAPromptData struct {
 	MaxScenarios       int
 }
 
+// AcceptanceAuditPromptData backs the auditor/acceptance_audit action template.
+type AcceptanceAuditPromptData struct {
+	Spec            string
+	WorkspaceFiles  string
+	StoryContracts  string
+	PublicContracts string
+	TaskSummaries   string
+}
+
 // SpecPromptData backs the spec/* action templates.
 type SpecPromptData struct {
 	UserPrompt   string
@@ -80,6 +89,14 @@ func FixtureData(agent string) any {
 			StoryContract:      "fixture story contract",
 			ValidationCommands: []string{"./dist/example"},
 			MaxScenarios:       8,
+		}
+	case AgentAuditor:
+		return AcceptanceAuditPromptData{
+			Spec:            "fixture specification",
+			WorkspaceFiles:  "main.go\ncommands.go",
+			StoryContracts:  "fixture story contract",
+			PublicContracts: "cli.run",
+			TaskSummaries:   "task-1: completed",
 		}
 	case AgentSpec:
 		return SpecPromptData{
