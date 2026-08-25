@@ -38,8 +38,10 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	// 2. Whole-Project Acceptance Audit Gate: Verify implemented codebase against SPEC.md
 	auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
 	if auditErr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ Warning: Acceptance audit encountered an error for story %s: %v\n", state.Metadata.FeatureName, auditErr)
-	} else if auditResult != nil && !auditResult.Passed {
+		fmt.Fprintf(os.Stderr, "⚠ Story %s: Whole-project Acceptance Audit encountered an error: %v\nSkipping PR creation to prevent releasing unverified changes.\n", state.Metadata.FeatureName, auditErr)
+		return nil
+	}
+	if auditResult != nil && !auditResult.Passed {
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "⚠ Story %s: Whole-project Acceptance Audit FAILED.\nSummary: %s\n", state.Metadata.FeatureName, auditResult.Summary)
 		if len(auditResult.Gaps) > 0 {
@@ -125,8 +127,14 @@ func buildPRBody(state *domain.State, audit *AcceptanceAuditResult) string {
 	body += fmt.Sprintf("**Source:** %s\n", state.Metadata.InputPath)
 	body += fmt.Sprintf("**Branch:** `%s` → `%s`\n\n", state.Metadata.IntegrationBranch, state.Metadata.BaseBranch)
 	if audit != nil && strings.TrimSpace(audit.Summary) != "" {
+		statusText := "Passed"
+		statusIcon := "✅"
+		if !audit.Passed {
+			statusText = "Failed"
+			statusIcon = "❌"
+		}
 		body += "### Specification Acceptance Audit\n\n"
-		body += fmt.Sprintf("✅ **Audit Status:** Passed\n**Summary:** %s\n\n", audit.Summary)
+		body += fmt.Sprintf("%s **Audit Status:** %s\n**Summary:** %s\n\n", statusIcon, statusText, audit.Summary)
 	}
 	body += "### Tasks\n\n"
 	for _, t := range state.Tasks {
