@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestDefaultConfig_Exhaustive(t *testing.T) {
@@ -171,17 +173,32 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.Sandbox.TestCommand != "go test -v ./..." {
 		t.Errorf("expected Sandbox.TestCommand 'go test -v ./...', got %q", cfg.Sandbox.TestCommand)
 	}
-	if cfg.Sandbox.LinterCommand != "golangci-lint run" {
-		t.Errorf("expected Sandbox.LinterCommand 'golangci-lint run', got %q", cfg.Sandbox.LinterCommand)
-	}
 	if cfg.Sandbox.FormatterCommand != "go fmt ./..." {
 		t.Errorf("expected Sandbox.FormatterCommand 'go fmt ./...', got %q", cfg.Sandbox.FormatterCommand)
 	}
-	if cfg.Sandbox.MaxLinterRetries != 3 {
-		t.Errorf("expected Sandbox.MaxLinterRetries 3, got %d", cfg.Sandbox.MaxLinterRetries)
+	if cfg.Sandbox.Linter.Command != "golangci-lint run" {
+		t.Errorf("expected Sandbox.Linter.Command 'golangci-lint run', got %q", cfg.Sandbox.Linter.Command)
 	}
-	if cfg.Sandbox.MaxLinterIssues != 100 {
-		t.Errorf("expected Sandbox.MaxLinterIssues 100, got %d", cfg.Sandbox.MaxLinterIssues)
+	if cfg.Sandbox.Linter.MaxRetries != 3 {
+		t.Errorf("expected Sandbox.Linter.MaxRetries 3, got %d", cfg.Sandbox.Linter.MaxRetries)
+	}
+	if cfg.Sandbox.Linter.MaxIssues != 100 {
+		t.Errorf("expected Sandbox.Linter.MaxIssues 100, got %d", cfg.Sandbox.Linter.MaxIssues)
+	}
+	if cfg.Sandbox.Linter.ConsecutiveFailures != 2 {
+		t.Errorf("expected Sandbox.Linter.ConsecutiveFailures 2, got %d", cfg.Sandbox.Linter.ConsecutiveFailures)
+	}
+	if cfg.Sandbox.GetLinterCommand() != "golangci-lint run" {
+		t.Errorf("expected GetLinterCommand 'golangci-lint run', got %q", cfg.Sandbox.GetLinterCommand())
+	}
+	if cfg.Sandbox.GetMaxLinterIssues() != 100 {
+		t.Errorf("expected GetMaxLinterIssues 100, got %d", cfg.Sandbox.GetMaxLinterIssues())
+	}
+	if cfg.Sandbox.GetMaxLinterConsecutiveFailures() != 2 {
+		t.Errorf("expected GetMaxLinterConsecutiveFailures 2, got %d", cfg.Sandbox.GetMaxLinterConsecutiveFailures())
+	}
+	if cfg.Sandbox.GetMaxLinterRetries() != 3 {
+		t.Errorf("expected GetMaxLinterRetries 3, got %d", cfg.Sandbox.GetMaxLinterRetries())
 	}
 	if !reflect.DeepEqual(cfg.Sandbox.ExcludePaths, []string{".noctifab"}) {
 		t.Errorf("expected ExcludePaths ['.noctifab'], got %v", cfg.Sandbox.ExcludePaths)
@@ -206,4 +223,59 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.Context.GetMode() != "full" {
 		t.Errorf("expected Context.GetMode 'full', got %q", cfg.Context.GetMode())
 	}
+}
+
+func TestSandboxLinterConfig_YAMLUnmarshaling(t *testing.T) {
+	t.Run("when structured sandbox.linter is configured it overrides flat defaults", func(t *testing.T) {
+		yamlData := `
+sandbox:
+  linter:
+    command: make lint
+    max_issues: 50
+    consecutive_failures: 3
+    max_retries: 5
+`
+		cfg := DefaultConfig()
+		if err := yaml.Unmarshal([]byte(yamlData), cfg); err != nil {
+			t.Fatalf("unexpected yaml unmarshal error: %v", err)
+		}
+		if cfg.Sandbox.GetLinterCommand() != "make lint" {
+			t.Errorf("expected GetLinterCommand 'make lint', got %q", cfg.Sandbox.GetLinterCommand())
+		}
+		if cfg.Sandbox.GetMaxLinterIssues() != 50 {
+			t.Errorf("expected GetMaxLinterIssues 50, got %d", cfg.Sandbox.GetMaxLinterIssues())
+		}
+		if cfg.Sandbox.GetMaxLinterConsecutiveFailures() != 3 {
+			t.Errorf("expected GetMaxLinterConsecutiveFailures 3, got %d", cfg.Sandbox.GetMaxLinterConsecutiveFailures())
+		}
+		if cfg.Sandbox.GetMaxLinterRetries() != 5 {
+			t.Errorf("expected GetMaxLinterRetries 5, got %d", cfg.Sandbox.GetMaxLinterRetries())
+		}
+	})
+
+	t.Run("when legacy flat sandbox keys are configured they are correctly returned by accessors", func(t *testing.T) {
+		yamlData := `
+sandbox:
+  linter_command: ruff check
+  max_linter_issues: 25
+  max_linter_consecutive_failures: 4
+  max_linter_retries: 6
+`
+		cfg := DefaultConfig()
+		if err := yaml.Unmarshal([]byte(yamlData), cfg); err != nil {
+			t.Fatalf("unexpected yaml unmarshal error: %v", err)
+		}
+		if cfg.Sandbox.GetLinterCommand() != "ruff check" {
+			t.Errorf("expected GetLinterCommand 'ruff check', got %q", cfg.Sandbox.GetLinterCommand())
+		}
+		if cfg.Sandbox.GetMaxLinterIssues() != 25 {
+			t.Errorf("expected GetMaxLinterIssues 25, got %d", cfg.Sandbox.GetMaxLinterIssues())
+		}
+		if cfg.Sandbox.GetMaxLinterConsecutiveFailures() != 4 {
+			t.Errorf("expected GetMaxLinterConsecutiveFailures 4, got %d", cfg.Sandbox.GetMaxLinterConsecutiveFailures())
+		}
+		if cfg.Sandbox.GetMaxLinterRetries() != 6 {
+			t.Errorf("expected GetMaxLinterRetries 6, got %d", cfg.Sandbox.GetMaxLinterRetries())
+		}
+	})
 }

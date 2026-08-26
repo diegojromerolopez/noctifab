@@ -136,13 +136,13 @@ func DefaultConfig() *Config {
 			TimeoutSeconds:     300,
 			IdleTimeoutSeconds: 30,
 			TestCommand:        "go test -v ./...",
-			LinterCommand:      "golangci-lint run",
 			FormatterCommand:   "go fmt ./...",
-			MaxLinterRetries:   3,
-			// MaxLinterIssues: a completed project with ≤100 style warnings is
-			// far better than a permanently stalled task. Projects that need
-			// stricter enforcement can set this to 0.
-			MaxLinterIssues: 100,
+			Linter: LinterConfig{
+				Command:             "golangci-lint run",
+				MaxIssues:           100,
+				ConsecutiveFailures: 2,
+				MaxRetries:          3,
+			},
 			ExcludePaths:    []string{".noctifab"},
 			AllowedCommands: []string{"go", "git", "npm", "python", "make"},
 			AutoInstallDeps: false,
