@@ -197,9 +197,12 @@ sandbox:
   mode: host
   timeout_seconds: 300
   test_command: 'coverage run --source=frontpunch -m unittest discover -s tests && coverage report --fail-under=100'
-  linter_command: 'ruff check . && mypy .'
   formatter_command: black --line-length 120 .
-  max_linter_retries: 3
+  linter:
+    command: 'ruff check . && mypy .'
+    max_issues: 100
+    consecutive_failures: 2
+    max_retries: 3
   exclude_paths:
   - node_modules/
   - vendor/

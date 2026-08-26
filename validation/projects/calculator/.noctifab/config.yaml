@@ -197,9 +197,12 @@ sandbox:
   mode: host
   timeout_seconds: 300
   test_command: rspec spec/
-  linter_command: rubocop
   formatter_command: rubocop -A
-  max_linter_retries: 3
+  linter:
+    command: rubocop
+    max_issues: 100
+    consecutive_failures: 2
+    max_retries: 3
   exclude_paths:
   - vendor/
   - bin/
