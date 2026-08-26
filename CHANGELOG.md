@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.55.0] - 2026-08-26
+
+### Added
+- **Linter Deferral & Configurable Tolerances**:
+  - Eliminated strict zero-linter blocking rules from intermediate feature task quality gates across all agent prompt templates (`product_manager`, `generator`, `tester`).
+  - Standardized pre-commit automatic formatting as the zero-token mechanism for cosmetic and layout style consistency during feature implementation.
+  - Added structured `sandbox.linter` configuration schema grouping `command` (e.g. `make lint`), `max_issues` (default 100), `consecutive_failures` (default 2), and `max_retries` (default 3), wired directly into `TestValidator` and sandbox tools with backward compatibility for legacy flat keys.
+- **Mandatory Final Hardening Story (`US-FINAL`)**:
+  - Product Manager agents (`generate.tmpl`, `audit.tmpl`) now generate a dedicated `US-FINAL: Project Hardening, Maintenance Readiness & Code Quality` story composed of 4 sequential, bounded tasks (Tier 1 blocker fixes, Tier 2 warning reduction, regression test verification, and documentation refresh).
+  - Generator execution in `US-FINAL` is strictly time-boxed to a maximum of 2 turns per task with monotonicity checks and tolerance thresholds to prevent endless linter fighting loops.
+- **Chicago-School (Classical) Unit Testing & Anti Mock-Creep**:
+  - Generator prompt templates (`implement.tmpl`, `fix.tmpl`, `refactor.tmpl`, `single_pass.tmpl`, `single_pass_fix.tmpl`, `implement_breadth_first.tmpl`) enforce Chicago-school unit testing where real collaborating domain objects are instantiated and observable state transitions are asserted.
+  - Mandated Dependency Injection (DI) for non-deterministic boundaries (`FakeClock`, stream buffers) while strictly forbidding mocking of internal domain objects or asserting private helper method call counts (`assert_called_with`).
+- **Comprehensive Black-Box E2E Testing & Daemon Readiness Polling**:
+  - Tester prompt templates (`write.tmpl`, `fix.tmpl`, `write_breadth_first.tmpl`) mandate black-box E2E suites covering all scenarios (happy paths, non-zero exit codes, stderr error envelopes, and edge cases).
+  - Enforced daemon/server readiness polling (socket retries up to 2s) and process exit cleanup traps over brittle static `sleep()` calls.
+
 ## [0.54.0] - 2026-08-25
 
 ### Added

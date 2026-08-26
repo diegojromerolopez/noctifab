@@ -40,21 +40,25 @@ type TestValidator struct {
 	// MaxLinterIssues is the maximum number of linter issues tolerated before
 	// failing validation. 0 means strict. -1 means disabled. Default 0.
 	MaxLinterIssues int
+	// MaxLinterConsecutiveFailures is the consecutive failure count threshold
+	// before linter enforcement is deferred to prevent infinite lock-in loops.
+	// Defaults to 2 if <= 0.
+	MaxLinterConsecutiveFailures int
 	// linterConsecutiveFailures tracks consecutive linter failures without
-	// any file mutation in between. When this reaches 2, linter enforcement
-	// is deferred for the remainder of the task to prevent lock-in.
+	// any file mutation in between.
 	linterConsecutiveFailures int
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
 	return &TestValidator{
-		Runner:        runner,
-		Strict:        strict,
-		LinterCommand: "",
-		LLMClient:     llmClient,
-		Tools:         tools,
-		RunTimeout:    5 * time.Minute,
-		Runs:          1,
+		Runner:                       runner,
+		Strict:                       strict,
+		LinterCommand:                "",
+		LLMClient:                    llmClient,
+		Tools:                        tools,
+		RunTimeout:                   5 * time.Minute,
+		Runs:                         1,
+		MaxLinterConsecutiveFailures: 2,
 	}
 }
 
@@ -84,8 +88,12 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	}
 
 	if v.LinterCommand != "" {
+		maxConsecutive := v.MaxLinterConsecutiveFailures
+		if maxConsecutive <= 0 {
+			maxConsecutive = 2
+		}
 		// Enforce linter unless consecutive failures have indicated a lock-in loop.
-		if v.linterConsecutiveFailures >= 2 {
+		if v.linterConsecutiveFailures >= maxConsecutive {
 			fmt.Fprintf(os.Stderr, "⚠ Linter deferred: failed %d consecutive times without file changes — skipping linter enforcement to allow task completion.\n", v.linterConsecutiveFailures)
 		} else {
 			out, err := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")

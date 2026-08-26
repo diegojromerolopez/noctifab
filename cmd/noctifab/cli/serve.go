@@ -104,7 +104,7 @@ var serveCmd = &cobra.Command{
 			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
 		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
-		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand, FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.MaxLinterIssues, Timeout: runTimeout})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM client with database budget store.
@@ -140,8 +140,9 @@ var serveCmd = &cobra.Command{
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
 		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
-		evaluator.LinterCommand = cfg.Sandbox.LinterCommand
-		evaluator.MaxLinterIssues = cfg.Sandbox.MaxLinterIssues
+		evaluator.LinterCommand = cfg.Sandbox.GetLinterCommand()
+		evaluator.MaxLinterIssues = cfg.Sandbox.GetMaxLinterIssues()
+		evaluator.MaxLinterConsecutiveFailures = cfg.Sandbox.GetMaxLinterConsecutiveFailures()
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}

@@ -11,10 +11,11 @@ import (
 )
 
 func TestGetRequiredSandboxBinaries(t *testing.T) {
+	linterCmd := "flake8 ."
 	cfg := &config.Config{
 		Sandbox: config.SandboxConfig{
 			TestCommand:      "pytest -v",
-			LinterCommand:    "flake8 .",
+			LinterCommand:    &linterCmd,
 			FormatterCommand: "black .",
 		},
 	}

@@ -296,12 +296,19 @@ func VerifyQualityAndReleaseGates(cfg *config.Config, projectDir string) error {
 	detectedLangs := DetectProjectLanguages(projectDir)
 
 	// 1. Audit Sandbox Configured Commands
+	var linterCmd string
+	if cfg.Sandbox.Linter.Command != nil {
+		linterCmd = *cfg.Sandbox.Linter.Command
+	} else if cfg.Sandbox.LinterCommand != nil {
+		linterCmd = *cfg.Sandbox.LinterCommand
+	}
+
 	commands := []struct {
 		name string
 		cmd  string
 	}{
 		{"test_command", cfg.Sandbox.TestCommand},
-		{"linter_command", cfg.Sandbox.LinterCommand},
+		{"linter_command", linterCmd},
 		{"formatter_command", cfg.Sandbox.FormatterCommand},
 	}
 

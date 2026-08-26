@@ -24,9 +24,10 @@ If existing user story files are provided in the prompt:
 3. Emit 'create_story' tool actions with the target filename under roadmap/user-stories/ in the form 'roadmap/user-stories/US-XXX-title-slug.md' and the updated markdown content.
 
 ROADMAP CONSOLIDATION & STORY LIMIT RULE:
-1. Max User Stories: Do NOT generate more user stories than necessary. For concise applications or specifications under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/user-stories/US-001-all-features.md") containing all specification requirements.
-2. Requirement Coverage Pre-Check: Before creating any new user story, you MUST verify if existing user stories already cover all requirements found in SPEC.md. If existing user stories already implement all SPEC.md requirements, do NOT create additional user stories.
- 
+1. Max User Stories: Do NOT generate more feature user stories than necessary. For concise applications or specifications under 500 LOC, generate exactly ONE comprehensive user story ("roadmap/user-stories/US-001-all-features.md") containing all specification requirements, followed by the mandatory final hardening story.
+2. Requirement Coverage Pre-Check: Before creating any new user story, you MUST verify if existing user stories already cover all requirements found in SPEC.md. If existing user stories already implement all SPEC.md requirements, do NOT create additional feature user stories.
+3. Mandatory Final Hardening User Story: In addition to functional feature stories, you MUST ALWAYS generate or maintain a final user story ("roadmap/user-stories/US-XXX-project-hardening-and-maintenance.md") titled "Project Hardening, Maintenance Readiness & Code Quality" that sets 'depends_on' to all preceding feature stories. This story is implemented by Generator agents and HARD-SUPERVISED by QA agents with 4 sequential tasks: (1) Repository-wide auto-formatting & import hygiene, (2) Best-effort static analysis & popular linter compliance within a tolerance budget, (3) QA-supervised regression & all-scenario black-box E2E matrix verification (0 regressions), and (4) Packaging, documentation & executable sanity checks.
+
 PROGRESSIVE VERTICAL SLICES MANDATE:
 1. User stories MUST be structured as progressive vertical slices of the application, NOT horizontal architectural layers.
 2. Avoid creating stories that only implement internal isolated libraries or data structures without an entry point (e.g. Story 1: Data Structures, Story 2: Commands, Story 3: Storage, Story 6: Server).
@@ -50,10 +51,12 @@ Every user story content generated or refined MUST include an explicit, language
 2. Standard I/O & Output Formatting Invariants: Specify exact stdout/stderr output strings, error message prefixes (e.g. "Error: ..."), exit status codes (0 for success, non-zero for error), and interactive REPL prompt characters.
 3. Explicit Data Representation & Number Formats: Specify number precision (integer vs float output representations), edge case boundaries, and empty input behaviors.
 4. Comprehensive Scenario & Edge Case Matrix: Include input validation edge cases, boundary values, error conditions, and unexpected input handling scenarios.
-5. Verification Criteria: Mandate zero-failure test suite execution and zero linter error requirements.
-6. Deterministic Time & Mock Clock Invariants: Every feature involving time, timers, dates, TTL, expiration, or wall-clock schedules MUST mandate deterministic mock clocks (e.g. Store(clock=FakeClock())) in the DoD to eliminate 1-second boundary assertion race conditions.
-7. Pinned Directory & Required File Paths: If SPEC.md specifies a pinned directory layout or explicitly named required manifest/source files (e.g. pyproject.toml, Cargo.toml, package.json, Makefile, src/main.py, src/main.rs, cmd/todo/main.go), the Definition of Done MUST explicitly list EVERY ONE of those required file paths by exact name so downstream planners and generators create all required files.
-8. Machine-Readable Story Contract: Include exactly one fenced `noctifab-contract` JSON block in every story. It MUST contain `story_id` and at least one `public_contracts` entry with a unique lowercase ID, interface, repository-relative allowed executable paths, and at least one declared observable expectation (`exit_codes`, `stdout_contains`, or `stderr_prefixes`). Use this exact shape:
+5. Verification Criteria: Mandate 100% pass rate on unit, integration, and black-box E2E test suites with zero test failures. Do NOT include zero-linter-error requirements in intermediate feature stories; linting is non-blocking advisory during feature delivery.
+6. Chicago-School Testing & Dependency Injection (DI) Invariant: DoD MUST mandate Chicago-school unit tests (testing observable state transitions on real domain objects, strictly forbidding mocking internal collaborators) with Dependency Injection for external boundaries (e.g. Store(clock=FakeClock()), in-memory stream buffers).
+7. Black-Box E2E All-Scenario Invariant: DoD MUST mandate black-box E2E tests covering all scenarios (happy paths, boundary conditions, error exit codes, and output formatting) executed with socket readiness polling rather than static sleep delays.
+8. Deterministic Time & Mock Clock Invariants: Every feature involving time, timers, dates, TTL, expiration, or wall-clock schedules MUST mandate deterministic mock clocks (e.g. Store(clock=FakeClock())) in the DoD to eliminate 1-second boundary assertion race conditions.
+9. Pinned Directory & Required File Paths: If SPEC.md specifies a pinned directory layout or explicitly named required manifest/source files (e.g. pyproject.toml, Cargo.toml, package.json, Makefile, src/main.py, src/main.rs, cmd/todo/main.go), the Definition of Done MUST explicitly list EVERY ONE of those required file paths by exact name so downstream planners and generators create all required files.
+10. Machine-Readable Story Contract: Include exactly one fenced `noctifab-contract` JSON block in every story. It MUST contain `story_id` and at least one `public_contracts` entry with a unique lowercase ID, interface, repository-relative allowed executable paths, and at least one declared observable expectation (`exit_codes`, `stdout_contains`, or `stderr_prefixes`). Use this exact shape:
 ```noctifab-contract
 {
   "story_id": "US-001",
@@ -68,4 +71,4 @@ Every user story content generated or refined MUST include an explicit, language
   }]
 }
 ```
-9. Modern Tooling & Docker Compose Invariant: When user stories specify test harnesses, black-box validation suites, containerized services, or Makefiles, the DoD MUST explicitly pin 'docker compose -f docker-compose.e2e.yml up --build --exit-code-from ...' (Docker CLI v2 subcommand with a space). The legacy standalone 'docker-compose' (hyphenated binary) is strictly forbidden across all user stories, Makefiles, and test harnesses.
+11. Modern Tooling & Docker Compose Invariant: When user stories specify test harnesses, black-box validation suites, containerized services, or Makefiles, the DoD MUST explicitly pin 'docker compose -f docker-compose.e2e.yml up --build --exit-code-from ...' (Docker CLI v2 subcommand with a space). The legacy standalone 'docker-compose' (hyphenated binary) is strictly forbidden across all user stories, Makefiles, and test harnesses.

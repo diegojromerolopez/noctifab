@@ -20,7 +20,8 @@ Task Details:
    - Domain-Driven Design (DDD): Maintain clean packaging boundaries.
    - File Size Limits: No Go file may exceed 500 lines of code.
    - Comprehensive Error Handling: Explicit wrapping (`fmt.Errorf("...: %w", err)`) and zero silent panics.
-   - Linting & Formatting: Code must pass static analysis checks and linter rules cleanly.
+   - Linting & Formatting: Code should be cleanly formatted and pass static analysis. A working test-passing solution within linter tolerance is prioritized over stalling on stylistic warnings.
+   - Chicago-School Unit Testing: Use real collaborating domain objects via Dependency Injection (DI) with injectable clocks/streams. Do not mock internal helpers.
 6. SECURITY & SAST INVARIANTS: Compromise authority NEVER allows security compromises. All generated code must pass SAST scans with zero high-severity findings (no hardcoded secrets, no SQL injections).
 7. RUN TESTS: You MUST invoke 'run_tests' to verify that your changes compile and 100% of the aligned test suite passes before calling 'noop'.{{.Context}}
 

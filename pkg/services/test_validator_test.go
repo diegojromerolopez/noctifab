@@ -190,4 +190,28 @@ func TestTestValidatorValidateTask(t *testing.T) {
 			t.Fatalf("expected pass on 3rd run due to linter deferral, got ok=%v msg=%q err=%v", ok3, msg3, err3)
 		}
 	})
+
+	t.Run("when MaxLinterConsecutiveFailures is customized to 1 it defers enforcement on the second call", func(t *testing.T) {
+		linterErr := errors.New("linter exit status 1")
+		linterOut := "app.py:1:1: E501 line too long\n"
+
+		// 1st run: linter fail (counter becomes 1)
+		sb1 := &scriptedSandbox{results: []error{linterErr}, outputs: []string{linterOut}}
+		v := NewTestValidator(sb1, false, nil, nil)
+		v.LinterCommand = "make lint"
+		v.MaxLinterConsecutiveFailures = 1
+
+		ok1, _, _ := v.ValidateTask(context.Background(), state, validatorTask())
+		if ok1 {
+			t.Fatal("expected failure on 1st linter run")
+		}
+
+		// 2nd run: counter >= 1 -> linter skipped, tests run and pass!
+		sb2 := &scriptedSandbox{results: []error{nil}, outputs: []string{"PASS: 1 test passed"}}
+		v.Runner = sb2
+		ok2, msg2, err2 := v.ValidateTask(context.Background(), state, validatorTask())
+		if err2 != nil || !ok2 {
+			t.Fatalf("expected pass on 2nd run due to threshold=1 deferral, got ok=%v msg=%q err=%v", ok2, msg2, err2)
+		}
+	})
 }

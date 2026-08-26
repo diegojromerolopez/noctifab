@@ -36,7 +36,11 @@ func getRequiredSandboxBinaries(cfg *config.Config) []string {
 	}
 
 	add(cfg.Sandbox.TestCommand)
-	add(cfg.Sandbox.LinterCommand)
+	if cfg.Sandbox.Linter.Command != nil {
+		add(*cfg.Sandbox.Linter.Command)
+	} else if cfg.Sandbox.LinterCommand != nil {
+		add(*cfg.Sandbox.LinterCommand)
+	}
 	add(cfg.Sandbox.FormatterCommand)
 
 	return list

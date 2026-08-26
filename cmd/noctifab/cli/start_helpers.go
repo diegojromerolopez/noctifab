@@ -59,9 +59,9 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *servi
 	reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
 	reg.Register(&services.RunLinterTool{
 		Runner:           sandboxRunner,
-		LinterCommand:    cfg.Sandbox.LinterCommand,
+		LinterCommand:    cfg.Sandbox.GetLinterCommand(),
 		FormatterCommand: cfg.Sandbox.FormatterCommand,
-		MaxLinterIssues:  cfg.Sandbox.MaxLinterIssues,
+		MaxLinterIssues:  cfg.Sandbox.GetMaxLinterIssues(),
 		Timeout:          runTimeout,
 	})
 	reg.Register(&services.RequestTestFixTool{})
