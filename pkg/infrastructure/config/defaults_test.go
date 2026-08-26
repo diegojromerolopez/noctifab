@@ -176,18 +176,6 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.Sandbox.FormatterCommand != "go fmt ./..." {
 		t.Errorf("expected Sandbox.FormatterCommand 'go fmt ./...', got %q", cfg.Sandbox.FormatterCommand)
 	}
-	if cfg.Sandbox.Linter.Command != "golangci-lint run" {
-		t.Errorf("expected Sandbox.Linter.Command 'golangci-lint run', got %q", cfg.Sandbox.Linter.Command)
-	}
-	if cfg.Sandbox.Linter.MaxRetries != 3 {
-		t.Errorf("expected Sandbox.Linter.MaxRetries 3, got %d", cfg.Sandbox.Linter.MaxRetries)
-	}
-	if cfg.Sandbox.Linter.MaxIssues != 100 {
-		t.Errorf("expected Sandbox.Linter.MaxIssues 100, got %d", cfg.Sandbox.Linter.MaxIssues)
-	}
-	if cfg.Sandbox.Linter.ConsecutiveFailures != 2 {
-		t.Errorf("expected Sandbox.Linter.ConsecutiveFailures 2, got %d", cfg.Sandbox.Linter.ConsecutiveFailures)
-	}
 	if cfg.Sandbox.GetLinterCommand() != "golangci-lint run" {
 		t.Errorf("expected GetLinterCommand 'golangci-lint run', got %q", cfg.Sandbox.GetLinterCommand())
 	}
@@ -250,6 +238,86 @@ sandbox:
 		}
 		if cfg.Sandbox.GetMaxLinterRetries() != 5 {
 			t.Errorf("expected GetMaxLinterRetries 5, got %d", cfg.Sandbox.GetMaxLinterRetries())
+		}
+	})
+
+	t.Run("structured command equal to default still wins over legacy", func(t *testing.T) {
+		yamlData := `
+sandbox:
+  linter:
+    command: golangci-lint run
+  linter_command: ruff check
+`
+		cfg := DefaultConfig()
+		if err := yaml.Unmarshal([]byte(yamlData), cfg); err != nil {
+			t.Fatalf("unexpected yaml unmarshal error: %v", err)
+		}
+		if cfg.Sandbox.GetLinterCommand() != "golangci-lint run" {
+			t.Errorf("expected structured default to win, got %q", cfg.Sandbox.GetLinterCommand())
+		}
+	})
+
+	t.Run("structured max_issues 0 means strict mode and wins over legacy", func(t *testing.T) {
+		yamlData := `
+sandbox:
+  linter:
+    max_issues: 0
+  max_linter_issues: 25
+`
+		cfg := DefaultConfig()
+		if err := yaml.Unmarshal([]byte(yamlData), cfg); err != nil {
+			t.Fatalf("unexpected yaml unmarshal error: %v", err)
+		}
+		if cfg.Sandbox.GetMaxLinterIssues() != 0 {
+			t.Errorf("expected strict 0, got %d", cfg.Sandbox.GetMaxLinterIssues())
+		}
+	})
+
+	t.Run("structured max_issues equal to default 100 wins over legacy", func(t *testing.T) {
+		yamlData := `
+sandbox:
+  linter:
+    max_issues: 100
+  max_linter_issues: 25
+`
+		cfg := DefaultConfig()
+		if err := yaml.Unmarshal([]byte(yamlData), cfg); err != nil {
+			t.Fatalf("unexpected yaml unmarshal error: %v", err)
+		}
+		if cfg.Sandbox.GetMaxLinterIssues() != 100 {
+			t.Errorf("expected structured 100, got %d", cfg.Sandbox.GetMaxLinterIssues())
+		}
+	})
+
+	t.Run("structured consecutive_failures equal to default 2 wins over legacy", func(t *testing.T) {
+		yamlData := `
+sandbox:
+  linter:
+    consecutive_failures: 2
+  max_linter_consecutive_failures: 9
+`
+		cfg := DefaultConfig()
+		if err := yaml.Unmarshal([]byte(yamlData), cfg); err != nil {
+			t.Fatalf("unexpected yaml unmarshal error: %v", err)
+		}
+		if cfg.Sandbox.GetMaxLinterConsecutiveFailures() != 2 {
+			t.Errorf("expected structured 2, got %d", cfg.Sandbox.GetMaxLinterConsecutiveFailures())
+		}
+	})
+
+	t.Run("structured max_retries equal to default 3 wins over legacy", func(t *testing.T) {
+		yamlData := `
+sandbox:
+  linter:
+    max_retries: 3
+  max_linter_retries: 10
+`
+		cfg := DefaultConfig()
+		if err := yaml.Unmarshal([]byte(yamlData), cfg); err != nil {
+			t.Fatalf("unexpected yaml unmarshal error: %v", err)
+		}
+		if cfg.Sandbox.GetMaxLinterRetries() != 3 {
+			t.Errorf("expected structured 3, got %d", cfg.Sandbox.GetMaxLinterRetries())
 		}
 	})
 

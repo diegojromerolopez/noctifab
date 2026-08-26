@@ -104,7 +104,7 @@ var serveCmd = &cobra.Command{
 			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
 		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
-		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.LinterCommand, FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.MaxLinterIssues, Timeout: runTimeout})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM client with database budget store.
