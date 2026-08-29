@@ -255,6 +255,26 @@ func (s *Scheduler) GetReadyTasks(state *domain.State, concurrencyLimit int) []d
 			}
 		}
 
+		// Story Completion Milestone Barrier:
+		// Ensure tasks belonging to a downstream story (e.g. US-002) do not execute
+		// until all tasks belonging to earlier upstream stories (e.g. US-001) have reached TaskSuccess.
+		if depsMet && t.StoryID != "" {
+			tStoryIndex := parseStoryIndex(t.StoryID)
+			if tStoryIndex > 0 {
+				for _, other := range state.Tasks {
+					if other.StoryID != "" && other.ID != t.ID {
+						otherStoryIndex := parseStoryIndex(other.StoryID)
+						if otherStoryIndex > 0 && otherStoryIndex < tStoryIndex {
+							if other.Status != domain.TaskSuccess {
+								depsMet = false
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
 		if depsMet {
 			// Check file locks
 			if s.lockRegistry.TryAcquireLocks(t.ID, t.TargetFiles) {
@@ -271,4 +291,17 @@ func (s *Scheduler) GetReadyTasks(state *domain.State, concurrencyLimit int) []d
 
 func (s *Scheduler) ReleaseLocks(taskID string) {
 	s.lockRegistry.ReleaseLocks(taskID)
+}
+
+func parseStoryIndex(storyID string) int {
+	if storyID == "" {
+		return 0
+	}
+	var num int
+	for _, r := range storyID {
+		if r >= '0' && r <= '9' {
+			num = num*10 + int(r-'0')
+		}
+	}
+	return num
 }

@@ -48,6 +48,14 @@ func (o *Orchestrator) executeTesterFirstTurn(
 	o.RunTesterAgent(ctx, *task, taskState, fileContexts, "write", "")
 	_ = o.stageAndCommit(ctx, taskGit, taskID, "test(core): write tests for task %s - %s", task.Title)
 
+	// Post-Tester Quality Gate: ensure test suite is non-tautological and free of error-masking
+	if testViolations := o.auditTesterTestOutput(taskState.ProjectPath); len(testViolations) > 0 {
+		fmt.Printf("⚠️  [Post-Tester Gate] Task %s: Tester produced %d vacuous/tautological test violation(s). Triggering remediation turn...\n", taskID, len(testViolations))
+		remediationCtx := append(fileContexts, o.formatTesterAntiStubViolations(testViolations))
+		o.RunTesterAgent(ctx, *task, taskState, remediationCtx, "fix", "")
+		_ = o.stageAndCommit(ctx, taskGit, taskID, "test(core): remediate vacuous tests for task %s - %s", task.Title)
+	}
+
 	// 2. Run Generator Agent (role "generator") to implement feature functionality to pass tests
 	o.updateTaskProgress(ctx, taskID, 50)
 	o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "implement")
@@ -66,9 +74,8 @@ func (o *Orchestrator) executeTesterFirstTurn(
 		qaBlocked = "generator_commit_failed"
 	}
 	generatorHeadAfter, generatorAfterErr := taskGit.Run(ctx, false, "rev-parse", "HEAD")
-	if o.cfg.QA.Enabled && (generatorHeadErr != nil || generatorAfterErr != nil ||
-		strings.TrimSpace(generatorHeadBefore) == strings.TrimSpace(generatorHeadAfter)) {
-		qaBlocked = "generator_commit_failed"
+	if qaBlocked == "" {
+		qaBlocked = o.evaluateGeneratorTurnResult(ctx, taskState, task, generatorHeadBefore, generatorHeadAfter, generatorHeadErr, generatorAfterErr)
 	}
 	return qaBlocked
 }
@@ -81,15 +88,34 @@ func (o *Orchestrator) executeGeneratorFirstTurn(
 	fileContexts []string,
 	taskID string,
 ) string {
+	// Ensure minimal compilation stub files exist before running generator on Turn 1
+	o.ensureTargetStubFilesExist(taskState.ProjectPath, task)
+
 	// 1. Run Generator Agent (role "generator") to implement minimal functionality
 	o.updateTaskProgress(ctx, taskID, 25)
 	o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "implement")
 	_ = o.stageAndCommit(ctx, taskGit, taskID, "feat(core): implement minimal functionality for task %s - %s", task.Title)
 
+	// Pre-Tester Quality Gate: ensure generator output is functional and contains no stubs
+	if violations := o.auditGeneratorFunctionalOutput(taskState.ProjectPath, task.TargetFiles); len(violations) > 0 {
+		fmt.Printf("⚠️  [Pre-Tester Gate] Task %s: Generator produced %d non-functional stub(s). Triggering remediation turn before testing...\n", taskID, len(violations))
+		remediationCtx := append(fileContexts, o.formatAntiStubViolations(violations))
+		o.RunGeneratorAgent(ctx, *task, taskState, remediationCtx, "", "fix")
+		_ = o.stageAndCommit(ctx, taskGit, taskID, "feat(core): remediate non-functional stubs for task %s - %s", task.Title)
+	}
+
 	// 2. Run Test Writer Agent (role "tester") to write tests against the minimal implementation
 	o.updateTaskProgress(ctx, taskID, 50)
 	o.RunTesterAgent(ctx, *task, taskState, fileContexts, "write", "")
 	_ = o.stageAndCommit(ctx, taskGit, taskID, "test(core): write tests for task %s - %s", task.Title)
+
+	// Post-Tester Quality Gate: ensure test suite is non-tautological and free of error-masking
+	if testViolations := o.auditTesterTestOutput(taskState.ProjectPath); len(testViolations) > 0 {
+		fmt.Printf("⚠️  [Post-Tester Gate] Task %s: Tester produced %d vacuous/tautological test violation(s). Triggering remediation turn...\n", taskID, len(testViolations))
+		remediationCtx := append(fileContexts, o.formatTesterAntiStubViolations(testViolations))
+		o.RunTesterAgent(ctx, *task, taskState, remediationCtx, "fix", "")
+		_ = o.stageAndCommit(ctx, taskGit, taskID, "test(core): remediate vacuous tests for task %s - %s", task.Title)
+	}
 
 	// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
 	recentTestsContext := o.collectRecentTestsContext(ctx, taskGit, taskState.ProjectPath)
@@ -104,9 +130,8 @@ func (o *Orchestrator) executeGeneratorFirstTurn(
 		qaBlocked = "generator_commit_failed"
 	}
 	generatorHeadAfter, generatorAfterErr := taskGit.Run(ctx, false, "rev-parse", "HEAD")
-	if o.cfg.QA.Enabled && (generatorHeadErr != nil || generatorAfterErr != nil ||
-		strings.TrimSpace(generatorHeadBefore) == strings.TrimSpace(generatorHeadAfter)) {
-		qaBlocked = "generator_commit_failed"
+	if qaBlocked == "" {
+		qaBlocked = o.evaluateGeneratorTurnResult(ctx, taskState, task, generatorHeadBefore, generatorHeadAfter, generatorHeadErr, generatorAfterErr)
 	}
 	return qaBlocked
 }
@@ -124,6 +149,14 @@ func (o *Orchestrator) executeRetryTurn(
 	o.RunTesterAgent(ctx, *task, taskState, fileContexts, "refactor", "")
 	_ = o.stageAndCommit(ctx, taskGit, taskID, "test(core): fix/refactor tests for task %s - %s", task.Title)
 
+	// Post-Tester Quality Gate: ensure test suite is non-tautological and free of error-masking
+	if testViolations := o.auditTesterTestOutput(taskState.ProjectPath); len(testViolations) > 0 {
+		fmt.Printf("⚠️  [Post-Tester Gate] Task %s: Tester produced %d vacuous/tautological test violation(s). Triggering remediation turn...\n", taskID, len(testViolations))
+		remediationCtx := append(fileContexts, o.formatTesterAntiStubViolations(testViolations))
+		o.RunTesterAgent(ctx, *task, taskState, remediationCtx, "fix", "")
+		_ = o.stageAndCommit(ctx, taskGit, taskID, "test(core): remediate vacuous tests for task %s - %s", task.Title)
+	}
+
 	// Read recently written/fixed tests from git to pass to the Generator Agent
 	recentTestsContext := o.collectRecentTestsContext(ctx, taskGit, taskState.ProjectPath)
 
@@ -137,11 +170,40 @@ func (o *Orchestrator) executeRetryTurn(
 		qaBlocked = "generator_commit_failed"
 	}
 	generatorHeadAfter, generatorAfterErr := taskGit.Run(ctx, false, "rev-parse", "HEAD")
-	if o.cfg.QA.Enabled && (generatorHeadErr != nil || generatorAfterErr != nil ||
-		strings.TrimSpace(generatorHeadBefore) == strings.TrimSpace(generatorHeadAfter)) {
-		qaBlocked = "generator_commit_failed"
+	if qaBlocked == "" {
+		qaBlocked = o.evaluateGeneratorTurnResult(ctx, taskState, task, generatorHeadBefore, generatorHeadAfter, generatorHeadErr, generatorAfterErr)
 	}
 	return qaBlocked
+}
+
+func (o *Orchestrator) evaluateGeneratorTurnResult(
+	ctx context.Context,
+	taskState *domain.State,
+	task *domain.Task,
+	beforeHead, afterHead string,
+	beforeErr, afterErr error,
+) string {
+	if !o.cfg.QA.Enabled {
+		return ""
+	}
+	if beforeErr != nil || afterErr != nil {
+		return "generator_commit_failed"
+	}
+	if strings.TrimSpace(beforeHead) == strings.TrimSpace(afterHead) {
+		// Generator made no new commit in this refactor phase.
+		// Check if the current workspace already satisfies validation.
+		if o.evaluator != nil {
+			passed, valMsg, _ := o.evaluator.ValidateTask(ctx, taskState, *task)
+			if passed {
+				// Clean state: workspace already passes validation without additional edits.
+				return ""
+			}
+			task.FailureLog = fmt.Sprintf("Generator produced no changes, but validation is FAILING:\n%s", valMsg)
+			return "generator_no_op_validation_failed"
+		}
+		return "generator_commit_failed"
+	}
+	return ""
 }
 
 func (o *Orchestrator) executeSurgicalRepairTurn(
@@ -204,4 +266,36 @@ func (o *Orchestrator) collectRecentTestsContext(ctx context.Context, taskGit *G
 		return "\n\nWritten/Fixed tests context:\n" + strings.Join(testFileContexts, "\n\n")
 	}
 	return ""
+}
+
+func (o *Orchestrator) auditGeneratorFunctionalOutput(projectPath string, targetFiles []string) []AntiStubViolation {
+	antiStub := NewAntiStubValidator()
+	violations, _ := antiStub.ValidateWorkspace(projectPath, targetFiles)
+	return violations
+}
+
+func (o *Orchestrator) formatAntiStubViolations(violations []AntiStubViolation) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "\n\n⚠️ PRE-TEST FUNCTIONAL AUDIT REJECTION (%d violation(s)):\n", len(violations))
+	sb.WriteString("Your implementation was rejected because it contains placeholder stubs or non-functional dummies. You MUST implement real, working functional logic:\n")
+	for _, v := range violations {
+		fmt.Fprintf(&sb, "- %s:%d: [%s] %s\n", v.Path, v.Line, v.Rule, v.Snippet)
+	}
+	return sb.String()
+}
+
+func (o *Orchestrator) auditTesterTestOutput(projectPath string) []AntiStubViolation {
+	antiStub := NewAntiStubValidator()
+	violations, _ := antiStub.ValidateWorkspace(projectPath, nil)
+	return violations
+}
+
+func (o *Orchestrator) formatTesterAntiStubViolations(violations []AntiStubViolation) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "\n\n⚠️ TEST SUITE AUDIT REJECTION (%d violation(s)):\n", len(violations))
+	sb.WriteString("Your test suite was rejected because it contains vacuous/tautological assertions or shell error masking. You MUST write real, behavioral tests:\n")
+	for _, v := range violations {
+		fmt.Fprintf(&sb, "- %s:%d: [%s] %s\n", v.Path, v.Line, v.Rule, v.Snippet)
+	}
+	return sb.String()
 }

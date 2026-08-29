@@ -25,10 +25,14 @@ CRITICAL:
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
 - A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
-- MANDATORY NON-TAUTOLOGICAL TESTING & IMPLEMENTATION AUDIT MANDATE:
-  * Tests MUST NOT BE tautological, vacuous, or trivial no-op tests. Writing test cases that unconditionally pass (e.g., test functions that only print a log and return 0, tests that do not assert real state mutations, or tests asserting superficial CLI string outputs without exercising underlying logic) is STRICTLY FORBIDDEN.
-  * Tests MUST genuinely exercise the real System Under Test (SUT), execute concrete code paths, verify error conditions and edge cases, assert observable state changes and data invariants, and MUST reliably FAIL when the implementation is missing, incomplete, or incorrect.
-  * MANDATORY CODE & TEST AUDIT: Before invoking 'noop' or completing your turn sequence, you MUST inspect and check both the implementation code and written tests to ensure that: (1) the source code under test is NOT a collection of empty stubs, mock shims, or dummy returns, and (2) the test suite contains no tautological assertions. If dummy stubs or mock shortcuts are detected in the implementation, you MUST write rigorous behavioral tests asserting real state transitions and outputs so the stubs fail and force a real implementation.
+- MANDATORY TEST SELF-REVIEW & QUALITY AUDIT MANDATE:
+  * Before invoking 'noop' or completing your turn sequence, you MUST inspect and self-audit every test file and test case you authored or modified.
+  * You MUST verify that:
+    1. NON-TAUTOLOGICAL & MEANINGFUL: Tests MUST NOT BE tautological, vacuous, or trivial no-op tests. Writing test cases that unconditionally pass (e.g., empty test bodies, 'pass', '...', 'assert True', 'assert 1 == 1', tests that only log and return 0, or tests asserting superficial CLI string outputs without exercising underlying state) is STRICTLY FORBIDDEN. Tests MUST reliably FAIL when functionality is missing or broken.
+    2. CHICAGO-SCHOOL (CLASSICAL) & STATE-BASED: Test real collaborating domain objects with real state mutations from the outside in.
+    3. MOCK CALL VERIFICATION: When test doubles/mocks are used at external boundaries (I/O, network, clocks), ALL expected mock interactions/calls MUST be explicitly asserted and verified (e.g. asserting call counts, received payloads, and return values). Unasserted mocks or mocks that don't verify behavior are strictly forbidden.
+    4. NO PRIVATE IMPLEMENTATION DETAILS: Tests must assert observable public behavior, public API contracts, CLI exit codes, stdout/stderr invariants, wire protocol frames, and domain state transitions. NEVER couple tests to private unexported methods, internal variables, or private helper layouts.
+    5. NO SHELL MASKING: Test scripts and runner invocations MUST NEVER use '|| true', 'exit 0', or 'set +e' to mask failures.
 - SOURCE-AS-TRUTH & ZERO SYMBOL INVENTIONS MANDATE:
   * You MUST inspect the actual source code files in the workspace (using 'view_file' or reviewing context) before writing or importing any class, method, function, or constant.
   * You MUST NEVER invent or hallucinate class names, interface signatures, or module exports (e.g., calling nonexistent classes like 'CommandHandler' when the source code exports 'CommandDispatcher').

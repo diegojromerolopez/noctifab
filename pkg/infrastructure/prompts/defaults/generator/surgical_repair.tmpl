@@ -15,10 +15,10 @@ SURGICAL REPAIR INSTRUCTIONS:
 
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
-- MANDATORY GENUINE IMPLEMENTATION RULE (NO MOCKS / FAKES / STUBS IN SUT):
-  * The code implemented in production files MUST NOT BE mock, fake, shim, or stub code. Empty functions returning dummy values, dummy shell wrappers simulating binaries, or replacing the System Under Test (SUT) with foreign standard library/third-party substitutes (e.g. proxying a custom database engine to SQLite) are STRICTLY FORBIDDEN.
-  * All code written MUST always contain a genuine, working implementation with a concrete raison d'être that fulfills the technical architecture, data structures, algorithms, and domain logic specified in the task and SPEC.md.
-  * MANDATORY IMPLEMENTATION AUDIT: Before invoking 'noop' or finishing your turns, you MUST inspect and check all generated source files to verify that the codebase is NOT a collection of stubs, empty dummies, or mock wrappers, and that real functionality is fully implemented.
+- MANDATORY PRE-TEST FUNCTIONAL SELF-AUDIT & ANTI-STUB MANDATE:
+  * Before invoking 'noop' or completing your turn, you MUST inspect and self-audit every single generated function, method, and class.
+  * You MUST verify that all code accomplishes the functional goal of the task and implements real logic (state mutations, data processing, algorithms, protocol encoders/decoders, error envelopes).
+  * Every function MUST have a genuine function. Stubs ('pass', '...', 'raise NotImplementedError', empty function bodies), dummy shims, or fake static returns are STRICTLY FORBIDDEN and will cause immediate rejection by the pre-tester quality gate.
 - GENERATOR TEST-DRIVEN REFINEMENT & DEPENDENCY INJECTION MANDATE:
   * STRICT BOUNDARY (PRODUCTION SUT vs. TEST HARNESS):
     - Production Source Code ('src/' / 'pkg/' / 'lib/'): MUST contain 100% genuine data structures, algorithms, and business logic. Stubs, dummy returns, or mock shims inside production code are STRICTLY FORBIDDEN.

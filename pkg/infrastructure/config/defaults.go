@@ -78,6 +78,8 @@ func DefaultConfig() *Config {
 			MaxSilentStallDuration: Duration(30 * time.Minute),
 			MaxTokensPerStory:      0,
 			MaxTokensPerTask:       0,
+			MaxTokens:              100000000,
+			Loops:                  1,
 		},
 		Storage: StorageConfig{
 			Provider:           "sqlite",

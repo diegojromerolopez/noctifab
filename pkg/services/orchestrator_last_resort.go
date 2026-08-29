@@ -82,23 +82,34 @@ func (o *Orchestrator) RunLastResortAgent(
 		task.LastResortUsed = true
 	}
 	if taskState != nil {
+		// Update local copy so unit tests and subsequent steps see it
 		for i := range taskState.Tasks {
 			if taskState.Tasks[i].ID == effectiveTask.ID {
 				taskState.Tasks[i].LastResortUsed = true
 				break
 			}
 		}
-		taskState.LastActions = append(taskState.LastActions, domain.Action{
+		triggerAction := domain.Action{
 			Timestamp: time.Now().UTC(),
 			Tool:      "last_resort_agent_trigger",
 			Reasoning: fmt.Sprintf("CRITICAL: Summoned Last-Resort Agent for task %s due to %s", effectiveTask.ID, triggerReason),
 			Result:    summarizeFailureLog(failureLog),
 			Success:   false,
-		})
-		if o.repo != nil {
-			if saveErr := o.repo.Save(ctx, taskState); saveErr != nil {
-				fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on trigger failed: %v\n", saveErr)
+		}
+		taskState.LastActions = append(taskState.LastActions, triggerAction)
+
+		saveErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+			for i := range st.Tasks {
+				if st.Tasks[i].ID == effectiveTask.ID {
+					st.Tasks[i].LastResortUsed = true
+					break
+				}
 			}
+			st.LastActions = append(st.LastActions, triggerAction)
+			return nil
+		})
+		if saveErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on trigger failed: %v\n", saveErr)
 		}
 	}
 
@@ -188,17 +199,21 @@ func (o *Orchestrator) RunLastResortAgent(
 
 				o.registerAgentComplete(ctx, string(domain.AgentRoleLastResort), effectiveTask.ID, nil)
 				if taskState != nil {
-					taskState.LastActions = append(taskState.LastActions, domain.Action{
+					successAction := domain.Action{
 						Timestamp: time.Now().UTC(),
 						Tool:      "last_resort_agent_success",
 						Reasoning: fmt.Sprintf("Sovereign repair succeeded on turn %d/%d for task %s", turn, maxTurns, effectiveTask.ID),
 						Result:    "All tests passed after sovereign repair",
 						Success:   true,
+					}
+					taskState.LastActions = append(taskState.LastActions, successAction)
+
+					saveErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+						st.LastActions = append(st.LastActions, successAction)
+						return nil
 					})
-					if o.repo != nil {
-						if saveErr := o.repo.Save(ctx, taskState); saveErr != nil {
-							fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on success failed: %v\n", saveErr)
-						}
+					if saveErr != nil {
+						fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on success failed: %v\n", saveErr)
 					}
 				}
 				return true, newLogMsg
@@ -212,17 +227,21 @@ func (o *Orchestrator) RunLastResortAgent(
 
 	o.registerAgentComplete(ctx, string(domain.AgentRoleLastResort), effectiveTask.ID, fmt.Errorf("last resort repair unexhausted after %d turns", maxTurns))
 	if taskState != nil {
-		taskState.LastActions = append(taskState.LastActions, domain.Action{
+		failAction := domain.Action{
 			Timestamp: time.Now().UTC(),
 			Tool:      "last_resort_agent_failed",
 			Reasoning: fmt.Sprintf("Last-Resort Agent failed to unblock task %s after %d turns", effectiveTask.ID, maxTurns),
 			Result:    summarizeFailureLog(currentLog),
 			Success:   false,
+		}
+		taskState.LastActions = append(taskState.LastActions, failAction)
+
+		saveErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+			st.LastActions = append(st.LastActions, failAction)
+			return nil
 		})
-		if o.repo != nil {
-			if saveErr := o.repo.Save(ctx, taskState); saveErr != nil {
-				fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on failure failed: %v\n", saveErr)
-			}
+		if saveErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on failure failed: %v\n", saveErr)
 		}
 	}
 

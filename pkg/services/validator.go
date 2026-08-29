@@ -12,8 +12,10 @@ import (
 )
 
 type agentRoleKeyType string
+type taskIDKeyType string
 
 const AgentRoleKey agentRoleKeyType = "agent_role"
+const TaskIDKey taskIDKeyType = "task_id"
 
 // ValidationResult records the outcome of a security check or target validation check.
 type ValidationResult struct {

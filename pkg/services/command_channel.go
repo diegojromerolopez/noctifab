@@ -229,6 +229,9 @@ func (c *AddTaskCmd) Execute(ctx context.Context, repo domain.StateRepository) e
 	if err != nil {
 		return err
 	}
+	if c.Task.StoryID == "" && state.Metadata.InputPath != "" {
+		c.Task.StoryID = ExtractStoryID(state.Metadata.InputPath)
+	}
 	state.Tasks = append(state.Tasks, c.Task)
 	_ = WriteTaskMarkdown(state.ProjectPath, state.Metadata.InputPath, c.Task)
 	return repo.Save(ctx, state)

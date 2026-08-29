@@ -57,8 +57,13 @@ func generateStubContent(filePath string) string {
 	nameWithoutExt := strings.TrimSuffix(baseName, ext)
 
 	switch ext {
-	case ".py":
+	case ".py", ".sh", ".yaml", ".yml", ".toml", ".ini", ".conf", ".cfg":
 		return fmt.Sprintf("# Stub implementation for %s\n", baseName)
+	case "":
+		if strings.ToLower(baseName) == "makefile" || strings.ToLower(baseName) == "dockerfile" {
+			return fmt.Sprintf("# Stub implementation for %s\n", baseName)
+		}
+		return fmt.Sprintf("// Stub implementation for %s\n", baseName)
 	case ".go":
 		pkg := nameWithoutExt
 		if pkg == "main" || pkg == "app" {

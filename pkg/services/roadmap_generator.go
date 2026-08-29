@@ -266,7 +266,12 @@ func scanLegacyFiles(projectPath string) ([]string, error) {
 		".vscode": true, ".gemini": true, ".antigravity": true, "roadmap": true,
 		"user-stories": true, "tasks": true,
 		"output": true, "dist": true, "target": true, "node_modules": true,
-		"vendor": true, "bin": true, "build": true,
+		"vendor": true, "bin": true, "build": true, "obj": true,
+		".venv": true, "venv": true, "env": true, "__pycache__": true,
+		".mypy_cache": true, ".ruff_cache": true, ".pytest_cache": true,
+		".next": true, ".nuxt": true, ".turbo": true, ".cache": true,
+		".gradle": true, ".mvn": true, "out": true, "_build": true, "deps": true,
+		"cmake-build-debug": true, "cmake-build-release": true,
 	}
 
 	ignoredFiles := map[string]bool{
@@ -274,12 +279,17 @@ func scanLegacyFiles(projectPath string) ([]string, error) {
 		"license": true, "version": true, ".gitignore": true,
 		"dockerfile": true, "docker-compose.yml": true, "docker-compose.yaml": true,
 		"makefile": true, ".readthedocs.yaml": true, ".readthedocs.yml": true,
+		"uv.lock": true, "poetry.lock": true, "package-lock.json": true,
+		"pnpm-lock.yaml": true, "yarn.lock": true, "cargo.lock": true,
+		"go.sum": true, "gemfile.lock": true, "composer.lock": true, "mix.lock": true,
+		"noctifab_evaluation_report.md": true,
 	}
 
 	ignoredExts := map[string]bool{
 		".log": true, ".db": true, ".sqlite": true, ".out": true,
 		".o": true, ".exe": true, ".so": true, ".dll": true,
-		".dylib": true, ".tmp": true,
+		".dylib": true, ".tmp": true, ".pyc": true, ".pyo": true,
+		".a": true, ".rlib": true, ".class": true, ".jar": true,
 	}
 
 	var legacyFiles []string

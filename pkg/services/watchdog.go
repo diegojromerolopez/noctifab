@@ -93,6 +93,7 @@ func (w *Watchdog) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 	for {
 		select {
 		case err := <-done:
+			_ = killProcessGroup(cmd)
 			return capturer.Output(), err
 
 		case <-maxTimer.C:

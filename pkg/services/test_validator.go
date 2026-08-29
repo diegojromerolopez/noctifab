@@ -81,6 +81,19 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		))
 	defer span.End()
 
+	// Anti-Stub & Anti-Gaming Gate:
+	// Inspect target files (or entire workspace) for placeholder stubs, shell masks, and vacuum tests.
+	antiStub := NewAntiStubValidator()
+	violations, _ := antiStub.ValidateWorkspace(state.ProjectPath, task.TargetFiles)
+	if len(violations) > 0 {
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "Anti-stub / anti-gaming validation failed with %d violation(s):\n", len(violations))
+		for _, v := range violations {
+			fmt.Fprintf(&sb, "- %s:%d: [%s] %s\n", v.Path, v.Line, v.Rule, v.Snippet)
+		}
+		return false, sb.String(), nil
+	}
+
 	if v.FormatterCommand != "" {
 		// Deterministic Auto-Formatter Pre-Pass:
 		// Automatically run auto-fix formatter before linter evaluation.

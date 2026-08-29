@@ -21,7 +21,10 @@ func WriteTaskMarkdown(projectPath, storyPath string, task domain.Task) error {
 		return fmt.Errorf("failed to create tasks directory %q: %w", tasksDir, err)
 	}
 
-	storyID := ExtractStoryID(storyPath)
+	storyID := task.StoryID
+	if storyID == "" {
+		storyID = ExtractStoryID(storyPath)
+	}
 	if storyID == "" {
 		storyID = "US-001"
 	}

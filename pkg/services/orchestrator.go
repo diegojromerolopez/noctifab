@@ -44,6 +44,7 @@ type OrchestratorConfig struct {
 	MaxSilentStallDuration time.Duration
 	MaxTokensPerStory      int64
 	MaxTokensPerTask       int64
+	MaxTokens              int64
 	AutoCreatePR           bool
 	CreateBranch           bool
 	MaxActions             int
@@ -94,6 +95,7 @@ type Orchestrator struct {
 	lastWorkspaceSync time.Time
 	observer          domain.ExecutionObserver
 	acceptanceAuditor *AcceptanceAuditor
+	storyQAAuditor    *StoryQAAuditor
 	// executeTaskFn is the task execution entry point used by the dispatch
 	// loop. It defaults to (*Orchestrator).executeTask and exists as an
 	// injection seam for unit tests.
@@ -107,6 +109,7 @@ type OrchestratorRuntimeDependencies struct {
 	QA                *QARuntimeCoordinator
 	Observer          domain.ExecutionObserver
 	AcceptanceAuditor *AcceptanceAuditor
+	StoryQAAuditor    *StoryQAAuditor
 }
 
 func NewOrchestratorWithRuntime(
@@ -132,6 +135,14 @@ func NewOrchestratorWithRuntime(
 	if auditor == nil {
 		auditor = NewAcceptanceAuditor(client, runtime.PromptRenderer)
 	}
+	storyAuditor := runtime.StoryQAAuditor
+	if storyAuditor == nil {
+		var runner Sandbox
+		if eval != nil {
+			runner = eval.Runner
+		}
+		storyAuditor = NewStoryQAAuditor(client, runner)
+	}
 	o := &Orchestrator{
 		repo:              repo,
 		registry:          reg,
@@ -151,6 +162,7 @@ func NewOrchestratorWithRuntime(
 		taskCompletedChan: make(chan struct{}, 100),
 		observer:          runtime.Observer,
 		acceptanceAuditor: auditor,
+		storyQAAuditor:    storyAuditor,
 	}
 	o.executeTaskFn = o.executeTask
 	if queue != nil {

@@ -169,7 +169,9 @@ The core engine runs a continuous polling event loop that drives all development
 9. **Safety Circuit Breakers & Token Ceilings**:
    - **`runtime.max_actions`**: Config value (default: `100`) that sets a ceiling on the total task execution loops. If the system exceeds this limit, the orchestrator aborts the story to protect the LLM token budget from infinite loops.
    - **`runtime.max_silent_stall_duration`**: Story-level livelock watchdog (default: `30m`). If no task makes progress or updates state within this window, the orchestrator fails remaining tasks and aborts the stalled story cleanly.
-   - **`runtime.max_tokens_per_story` & `runtime.max_tokens_per_task`**: Hard budget token caps to guard against excessive token consumption.
+   - **`runtime.max_tokens_per_story` & `runtime.max_tokens_per_task`**: Hard budget token caps to guard against excessive token consumption per story or task.
+   - **`runtime.max_tokens`**: Global token consumption ceiling across the entire execution run (default: `100000000` / 100M).
+   - **`runtime.loops`**: Number of isolated execution loop passes per `noctifab start` run (default: `1`).
    - **`max_user_stories`**: Ceiling on Product Manager roadmap story generation (default: `5`).
    - **`runtime.max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.

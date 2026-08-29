@@ -153,10 +153,14 @@ const legacyAntiStallingTester = `
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
 - A bad scaffold or failing scaffold verification test MUST NOT stop development. Continue making progress on implementing core requirements even if there are scaffolding or setup errors. It is better to have an imperfect or partial solution that works than to stall.
-- MANDATORY NON-TAUTOLOGICAL TESTING & IMPLEMENTATION AUDIT MANDATE:
-  * Tests MUST NOT BE tautological, vacuous, or trivial no-op tests. Writing test cases that unconditionally pass (e.g., test functions that only print a log and return 0, tests that do not assert real state mutations, or tests asserting superficial CLI string outputs without exercising underlying logic) is STRICTLY FORBIDDEN.
-  * Tests MUST genuinely exercise the real System Under Test (SUT), execute concrete code paths, verify error conditions and edge cases, assert observable state changes and data invariants, and MUST reliably FAIL when the implementation is missing, incomplete, or incorrect.
-  * MANDATORY CODE & TEST AUDIT: Before invoking 'noop' or completing your turn sequence, you MUST inspect and check both the implementation code and written tests to ensure that: (1) the source code under test is NOT a collection of empty stubs, mock shims, or dummy returns, and (2) the test suite contains no tautological assertions. If dummy stubs or mock shortcuts are detected in the implementation, you MUST write rigorous behavioral tests asserting real state transitions and outputs so the stubs fail and force a real implementation.
+- MANDATORY TEST SELF-REVIEW & QUALITY AUDIT MANDATE:
+  * Before invoking 'noop' or completing your turn sequence, you MUST inspect and self-audit every test file and test case you authored or modified.
+  * You MUST verify that:
+    1. NON-TAUTOLOGICAL & MEANINGFUL: Tests MUST NOT BE tautological, vacuous, or trivial no-op tests. Writing test cases that unconditionally pass (e.g., empty test bodies, 'pass', '...', 'assert True', 'assert 1 == 1', tests that only log and return 0, or tests asserting superficial CLI string outputs without exercising underlying state) is STRICTLY FORBIDDEN. Tests MUST reliably FAIL when functionality is missing or broken.
+    2. CHICAGO-SCHOOL (CLASSICAL) & STATE-BASED: Test real collaborating domain objects with real state mutations from the outside in.
+    3. MOCK CALL VERIFICATION: When test doubles/mocks are used at external boundaries (I/O, network, clocks), ALL expected mock interactions/calls MUST be explicitly asserted and verified (e.g. asserting call counts, received payloads, and return values). Unasserted mocks or mocks that don't verify behavior are strictly forbidden.
+    4. NO PRIVATE IMPLEMENTATION DETAILS: Tests must assert observable public behavior, public API contracts, CLI exit codes, stdout/stderr invariants, wire protocol frames, and domain state transitions. NEVER couple tests to private unexported methods, internal variables, or private helper layouts.
+    5. NO SHELL MASKING: Test scripts and runner invocations MUST NEVER use '|| true', 'exit 0', or 'set +e' to mask failures.
 - SOURCE-AS-TRUTH & ZERO SYMBOL INVENTIONS MANDATE:
   * You MUST inspect the actual source code files in the workspace (using 'view_file' or reviewing context) before writing or importing any class, method, function, or constant.
   * You MUST NEVER invent or hallucinate class names, interface signatures, or module exports (e.g., calling nonexistent classes like 'CommandHandler' when the source code exports 'CommandDispatcher').
@@ -201,10 +205,10 @@ ANTI-STALLING MANDATE:
 const legacyAntiStallingGenerator = `
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.
-- MANDATORY GENUINE IMPLEMENTATION RULE (NO MOCKS / FAKES / STUBS IN SUT):
-  * The code implemented in production files MUST NOT BE mock, fake, shim, or stub code. Empty functions returning dummy values, dummy shell wrappers simulating binaries, or replacing the System Under Test (SUT) with foreign standard library/third-party substitutes (e.g. proxying a custom database engine to SQLite) are STRICTLY FORBIDDEN.
-  * All code written MUST always contain a genuine, working implementation with a concrete raison d'être that fulfills the technical architecture, data structures, algorithms, and domain logic specified in the task and SPEC.md.
-  * MANDATORY IMPLEMENTATION AUDIT: Before invoking 'noop' or finishing your turns, you MUST inspect and check all generated source files to verify that the codebase is NOT a collection of stubs, empty dummies, or mock wrappers, and that real functionality is fully implemented.
+- MANDATORY PRE-TEST FUNCTIONAL SELF-AUDIT & ANTI-STUB MANDATE:
+  * Before invoking 'noop' or completing your turn, you MUST inspect and self-audit every single generated function, method, and class.
+  * You MUST verify that all code accomplishes the functional goal of the task and implements real logic (state mutations, data processing, algorithms, protocol encoders/decoders, error envelopes).
+  * Every function MUST have a genuine function. Stubs ('pass', '...', 'raise NotImplementedError', empty function bodies), dummy shims, or fake static returns are STRICTLY FORBIDDEN and will cause immediate rejection by the pre-tester quality gate.
 - GENERATOR TEST-DRIVEN REFINEMENT & DEPENDENCY INJECTION MANDATE:
   * STRICT BOUNDARY (PRODUCTION SUT vs. TEST HARNESS):
     - Production Source Code ('src/' / 'pkg/' / 'lib/'): MUST contain 100% genuine data structures, algorithms, and business logic. Stubs, dummy returns, or mock shims inside production code are STRICTLY FORBIDDEN.
@@ -315,7 +319,7 @@ func legacyBuildGeneratorPrompt(taskDetails string) string {
 
 You are a software factory automation agent operating in a restricted workspace sandbox.
 You are acting as the Generator Agent.
-Your task is to implement the specified task. Note that the tests for this task have already been written by the Test Writer Agent. Your job is to implement the functionality to make all tests pass successfully.
+Your task is to implement the specified task. If test files already exist in the workspace, make the tests pass successfully. If no test files have been written yet, implement the baseline functionality first so tests can be written against it later.
 
 Task Details:
 %s

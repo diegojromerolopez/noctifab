@@ -79,3 +79,36 @@ func TestScheduler_FuzzyDependencyMatching(t *testing.T) {
 		}
 	})
 }
+
+func TestScheduler_StoryMilestoneBarrier(t *testing.T) {
+	t.Run("when upstream story US-001 has incomplete tasks, downstream US-002 tasks are blocked", func(t *testing.T) {
+		state := &domain.State{
+			Tasks: []domain.Task{
+				{ID: "task-1", Title: "Core Server Socket", Status: domain.TaskPending, StoryID: "US-001"},
+				{ID: "task-2", Title: "Expiration Engine", Status: domain.TaskPending, StoryID: "US-002"},
+				{ID: "task-3", Title: "CI Workflow", Status: domain.TaskPending, StoryID: "US-006"},
+			},
+		}
+
+		scheduler := NewScheduler(NewFileLockRegistry())
+		ready := scheduler.GetReadyTasks(state, 5)
+
+		// Only US-001 task should be ready
+		if len(ready) != 1 {
+			t.Fatalf("expected exactly 1 ready task from US-001, got %d", len(ready))
+		}
+		if ready[0].ID != "task-1" {
+			t.Errorf("expected task-1 to be ready, got %s", ready[0].ID)
+		}
+
+		// When task-1 succeeds, US-002 task becomes ready
+		state.Tasks[0].Status = domain.TaskSuccess
+		ready = scheduler.GetReadyTasks(state, 5)
+		if len(ready) != 1 {
+			t.Fatalf("expected exactly 1 ready task from US-002, got %d", len(ready))
+		}
+		if ready[0].ID != "task-2" {
+			t.Errorf("expected task-2 to be ready, got %s", ready[0].ID)
+		}
+	})
+}
