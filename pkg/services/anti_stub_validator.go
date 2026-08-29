@@ -61,7 +61,7 @@ func (v *AntiStubValidator) ValidateWorkspace(rootPath string, targetFiles []str
 	if len(targetFiles) > 0 {
 		for _, rel := range targetFiles {
 			fullPath := filepath.Join(rootPath, rel)
-			if stat, err := os.Stat(fullPath); err == nil && !stat.IsDir() {
+			if stat, err := os.Stat(fullPath); err == nil && !stat.IsDir() && stat.Mode().IsRegular() && stat.Size() <= 1024*1024 {
 				content, rErr := os.ReadFile(fullPath)
 				if rErr == nil {
 					violations = append(violations, v.ValidateContent(rel, string(content))...)
@@ -72,10 +72,17 @@ func (v *AntiStubValidator) ValidateWorkspace(rootPath string, targetFiles []str
 	}
 
 	err := filepath.Walk(rootPath, func(path string, info os.FileInfo, wErr error) error {
-		if wErr != nil || info.IsDir() {
-			if info != nil && info.IsDir() && (info.Name() == ".git" || info.Name() == ".venv" || info.Name() == "node_modules" || info.Name() == "__pycache__") {
+		if wErr != nil || info == nil {
+			return nil
+		}
+		if info.IsDir() {
+			name := info.Name()
+			if name == ".git" || name == ".venv" || name == "node_modules" || name == "__pycache__" || name == ".noctifab" || name == "dist" || name == "build" || name == "target" {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if !info.Mode().IsRegular() || info.Size() > 1024*1024 {
 			return nil
 		}
 		rel, rErr := filepath.Rel(rootPath, path)
