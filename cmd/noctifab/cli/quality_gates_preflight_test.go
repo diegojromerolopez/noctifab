@@ -231,6 +231,31 @@ test-python:
 	}
 }
 
+func TestVerifyQualityAndReleaseGates_MakefileMissingTargetFallback(t *testing.T) {
+	tmp := t.TempDir()
+	makefile := `all: build
+build:
+	@echo building
+`
+	if err := os.WriteFile(filepath.Join(tmp, "Makefile"), []byte(makefile), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Sandbox: config.SandboxConfig{
+			TestCommand: "pytest -v",
+		},
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "requirements.txt"), []byte("pytest\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := VerifyQualityAndReleaseGates(cfg, tmp)
+	if err != nil {
+		t.Fatalf("expected fallback to valid TestCommand when Makefile lacks test target, got error: %v", err)
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.57.1] - 2026-08-30
+
+### Fixed
+- **Preflight Sandbox Executable & Makefile Quality Gate Robustness**:
+  - Excluded relative and absolute project paths (containing path separators or starting with `./`) from host `$PATH` lookup requirements in `getRequiredSandboxBinaries` to prevent pre-flight crashes on local scripts.
+  - Removed erroneous `Makefile` mapping to `c` language in `DetectProjectLanguages` so Makefiles in Go/Python/Rust projects do not falsely flag language mismatches.
+  - Enhanced `VerifyQualityAndReleaseGates` to fall back gracefully to configured non-trivial `test_command` when a project's Makefile lacks standard test targets or has empty stub recipes.
+  - Updated `validateCommandToolLanguage` to inspect all tokens in linter/test command expressions (e.g. wrapped `docker run ...` invocations).
+
 ## [0.57.0] - 2026-08-29
 
 ### Added

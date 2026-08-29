@@ -24,14 +24,19 @@ func getRequiredSandboxBinaries(cfg *config.Config) []string {
 			return
 		}
 		fields := strings.Fields(bin)
-		if len(fields) > 0 {
-			bin = fields[0]
+		if len(fields) == 0 {
+			return
 		}
-		// Strip any directory path prefix to get base binary name
-		bin = filepath.Base(bin)
-		if !seen[bin] {
-			seen[bin] = true
-			list = append(list, bin)
+		exe := fields[0]
+		// If executable is a relative or absolute file path (e.g. ./bin/app, bin/test, /usr/local/bin/cmd),
+		// do not treat it as a host $PATH binary requirement.
+		if strings.HasPrefix(exe, ".") || strings.HasPrefix(exe, "/") || strings.Contains(exe, "/") || strings.Contains(exe, "\\") {
+			return
+		}
+		binName := filepath.Base(exe)
+		if !seen[binName] {
+			seen[binName] = true
+			list = append(list, binName)
 		}
 	}
 

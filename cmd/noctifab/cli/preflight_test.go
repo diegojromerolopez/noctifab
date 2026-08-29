@@ -24,6 +24,16 @@ func TestGetRequiredSandboxBinaries(t *testing.T) {
 	assert.Contains(t, binaries, "pytest")
 	assert.Contains(t, binaries, "flake8")
 	assert.Contains(t, binaries, "black")
+
+	t.Run("ignore relative executable paths", func(t *testing.T) {
+		cfgRel := &config.Config{
+			Sandbox: config.SandboxConfig{
+				TestCommand: "./bin/test_runner -v",
+			},
+		}
+		binariesRel := getRequiredSandboxBinaries(cfgRel)
+		assert.NotContains(t, binariesRel, "test_runner")
+	})
 }
 
 func TestExtractMakefileToolchains(t *testing.T) {

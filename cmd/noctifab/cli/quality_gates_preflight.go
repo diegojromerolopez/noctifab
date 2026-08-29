@@ -59,9 +59,6 @@ func DetectProjectLanguages(projectDir string) map[string]bool {
 	if _, err := os.Stat(filepath.Join(projectDir, "Gemfile")); err == nil {
 		langs["ruby"] = true
 	}
-	if _, err := os.Stat(filepath.Join(projectDir, "Makefile")); err == nil {
-		langs["c"] = true
-	}
 	if _, err := os.Stat(filepath.Join(projectDir, "CMakeLists.txt")); err == nil {
 		langs["c"] = true
 	}
@@ -235,12 +232,6 @@ func validateCommandToolLanguage(cmdType, cmdStr string, detectedLangs map[strin
 		return nil
 	}
 
-	fields := strings.Fields(trimmed)
-	if len(fields) == 0 {
-		return nil
-	}
-	bin := filepath.Base(fields[0])
-
 	toolToLang := map[string]string{
 		"go":            "go",
 		"golangci-lint": "go",
@@ -270,18 +261,20 @@ func validateCommandToolLanguage(cmdType, cmdStr string, detectedLangs map[strin
 		"rubocop":       "ruby",
 	}
 
-	if requiredLang, ok := toolToLang[bin]; ok {
-		if !detectedLangs[requiredLang] {
-			return fmt.Errorf("pre-flight check failed: configured %s %q uses %s toolchain, but no %s code or manifests exist in project",
-				cmdType, cmdStr, requiredLang, requiredLang)
+	fields := strings.Fields(trimmed)
+	for _, f := range fields {
+		bin := filepath.Base(f)
+		if requiredLang, ok := toolToLang[bin]; ok {
+			if !detectedLangs[requiredLang] {
+				return fmt.Errorf("pre-flight check failed: configured %s %q uses %s toolchain, but no %s code or manifests exist in project",
+					cmdType, cmdStr, requiredLang, requiredLang)
+			}
 		}
-	}
-
-	// Handle `python` / `python3` invocations (e.g. `python3 -m unittest ...`)
-	if bin == "python" || bin == "python3" {
-		if !detectedLangs["python"] {
-			return fmt.Errorf("pre-flight check failed: configured %s %q uses Python toolchain, but no Python code or manifests exist in project",
-				cmdType, cmdStr)
+		if bin == "python" || bin == "python3" {
+			if !detectedLangs["python"] {
+				return fmt.Errorf("pre-flight check failed: configured %s %q uses Python toolchain, but no Python code or manifests exist in project",
+					cmdType, cmdStr)
+			}
 		}
 	}
 
@@ -331,7 +324,7 @@ func VerifyQualityAndReleaseGates(cfg *config.Config, projectDir string) error {
 		targets := ParseMakefileTargets(string(data))
 
 		// Check that at least one test target is declared
-		testTargets := []string{"test", "test-all", "test-unit", "check"}
+		testTargets := []string{"test", "tests", "test-all", "test-unit", "unit-test", "test-e2e", "check", "test_all", "test_unit"}
 		foundTestTarget := ""
 		for _, tt := range testTargets {
 			if _, exists := targets[tt]; exists {
@@ -341,26 +334,36 @@ func VerifyQualityAndReleaseGates(cfg *config.Config, projectDir string) error {
 		}
 
 		if foundTestTarget == "" {
-			return fmt.Errorf("pre-flight check failed: Makefile found at %s but missing required quality gate target (one of: %s)",
-				makefilePath, strings.Join(testTargets, ", "))
-		}
-
-		// Ensure found test target is not trivial
-		recipe := targets[foundTestTarget]
-		if IsTrivialCommand(recipe) {
-			// Check if it delegates to sub-targets (e.g. `test: test-unit test-python`)
-			hasNonTrivialPrereq := false
-			for otherTarget, otherRecipe := range targets {
-				if otherTarget != foundTestTarget && strings.Contains(recipe, otherTarget) {
-					if !IsTrivialCommand(otherRecipe) {
-						hasNonTrivialPrereq = true
-						break
+			if cfg.Sandbox.TestCommand != "" && !IsTrivialCommand(cfg.Sandbox.TestCommand) {
+				fmt.Printf("⚠️  Warning: Makefile found at %s but missing standard test target (%s); using configured test_command %q\n",
+					makefilePath, strings.Join(testTargets, ", "), cfg.Sandbox.TestCommand)
+			} else {
+				return fmt.Errorf("pre-flight check failed: Makefile found at %s but missing required quality gate target (one of: %s)",
+					makefilePath, strings.Join(testTargets, ", "))
+			}
+		} else {
+			// Ensure found test target is not trivial
+			recipe := targets[foundTestTarget]
+			if IsTrivialCommand(recipe) {
+				// Check if it delegates to sub-targets (e.g. `test: test-unit test-python`)
+				hasNonTrivialPrereq := false
+				for otherTarget, otherRecipe := range targets {
+					if otherTarget != foundTestTarget && strings.Contains(recipe, otherTarget) {
+						if !IsTrivialCommand(otherRecipe) {
+							hasNonTrivialPrereq = true
+							break
+						}
 					}
 				}
-			}
-			if !hasNonTrivialPrereq {
-				return fmt.Errorf("pre-flight check failed: Makefile target %q in %s is trivial or empty; quality gate must execute real verification",
-					foundTestTarget, makefilePath)
+				if !hasNonTrivialPrereq {
+					if cfg.Sandbox.TestCommand != "" && !IsTrivialCommand(cfg.Sandbox.TestCommand) {
+						fmt.Printf("⚠️  Warning: Makefile target %q in %s is currently trivial or empty; using configured test_command %q\n",
+							foundTestTarget, makefilePath, cfg.Sandbox.TestCommand)
+					} else {
+						return fmt.Errorf("pre-flight check failed: Makefile target %q in %s is trivial or empty; quality gate must execute real verification",
+							foundTestTarget, makefilePath)
+					}
+				}
 			}
 		}
 	}
