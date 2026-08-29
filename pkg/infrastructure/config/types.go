@@ -73,6 +73,8 @@ type RuntimeConfig struct {
 	MaxSilentStallDuration Duration `yaml:"max_silent_stall_duration,omitempty"`
 	MaxTokensPerStory      int64    `yaml:"max_tokens_per_story,omitempty"`
 	MaxTokensPerTask       int64    `yaml:"max_tokens_per_task,omitempty"`
+	MaxTokens              int64    `yaml:"max_tokens,omitempty"`
+	Loops                  int      `yaml:"loops,omitempty"`
 }
 
 type LoggingConfig struct {

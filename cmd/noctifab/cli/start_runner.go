@@ -43,6 +43,10 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		targetDir = filepath.Dir(targetPath)
 	}
 
+	if abs, err := filepath.Abs(targetDir); err == nil {
+		targetDir = abs
+	}
+
 	createdSpec, initErr := EnsureWorkspaceInitialized(targetDir)
 	if initErr != nil {
 		return fmt.Errorf("failed to initialize workspace in %q: %w", targetDir, initErr)
@@ -57,6 +61,17 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Please edit SPEC.md with your project requirements, set your API key in .noctifab/secrets.yaml, and run 'noctifab start' again.\n")
 		}
 		return nil
+	}
+
+	// Change working directory to targetDir
+	if err := os.Chdir(targetDir); err != nil {
+		return fmt.Errorf("failed to change working directory to %q: %w", targetDir, err)
+	}
+
+	// Reload the configuration now that we are in the target directory
+	cfg, err = config.Load(cmd)
+	if err != nil {
+		return err
 	}
 
 	// Reporter activation point (§2.7)
@@ -168,28 +183,25 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	webServerInstance, webHost, webPort, webEnabled, webCleanup := startConcurrentWebServer(cmd, repo, mailbox)
 	defer webCleanup()
 
-	// Discover stories
 	hasExistingStories := len(discoverStoryFiles(targetDir)) > 0
-
-	if hasExistingStories {
-		fmt.Printf("Spawning Product Manager Agent to audit and refine existing roadmap user stories in %s/roadmap...\n", targetDir)
-	} else {
-		fmt.Printf("No user stories found in %s/roadmap. Spawning Product Manager Agent to generate roadmap from SPEC.md...\n", targetDir)
-	}
-
 	promptRenderer, rendErr := prompts.NewRenderer(targetDir, cfg.PromptOverrides())
 	if rendErr != nil {
 		fmt.Printf("Warning: prompt template rendering initialization failed: %v\n", rendErr)
 	}
 
-	if executionReporter != nil {
-		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "roadmap_generation", At: time.Now().UTC()})
-	}
-	if genErr := services.GenerateRoadmap(cmdCtx, targetDir, llmClient, promptRenderer); genErr != nil {
-		fmt.Printf("Warning: Product Manager Agent story refinement skipped: %v\n", genErr)
-	}
-	if executionReporter != nil {
-		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "roadmap_generation", At: time.Now().UTC()})
+	if hasExistingStories {
+		fmt.Printf("ℹ [Roadmap] Existing roadmap user stories found; skipping Product Manager Agent refinement to preserve existing roadmap files.\n")
+	} else {
+		fmt.Printf("No user stories found in %s/roadmap. Spawning Product Manager Agent to generate roadmap from SPEC.md...\n", targetDir)
+		if executionReporter != nil {
+			executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "roadmap_generation", At: time.Now().UTC()})
+		}
+		if genErr := services.GenerateRoadmap(cmdCtx, targetDir, llmClient, promptRenderer); genErr != nil {
+			fmt.Printf("Warning: Product Manager Agent story generation failed: %v\n", genErr)
+		}
+		if executionReporter != nil {
+			executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "roadmap_generation", At: time.Now().UTC()})
+		}
 	}
 
 	storyFiles := discoverStoryFiles(targetDir)
@@ -370,6 +382,11 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 					return err
 				}
 				if allTasksFinished(st) {
+					for _, t := range st.Tasks {
+						if t.Status == domain.TaskFailed {
+							return fmt.Errorf("story execution failed: task %s (%s) failed", t.ID, t.Title)
+						}
+					}
 					return nil
 				}
 			}
@@ -385,44 +402,86 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			resumeRequested = true
 		}
 	}
-
-	for idx, currentStoryFile := range storyFiles {
-		storyID := fmt.Sprintf("story-%04d", idx+1)
-		featName := strings.TrimSuffix(filepath.Base(currentStoryFile), filepath.Ext(currentStoryFile))
-		storyTitle := extractStoryTitle(currentStoryFile)
-		storyMeta := domain.StoryMetadata{
-			StoryID:     storyID,
-			Source:      currentStoryFile,
-			FeatureName: filepath.Base(currentStoryFile),
-			Title:       storyTitle,
-			Sequence:    idx + 1,
-			StartedAt:   time.Now().UTC(),
+	if !resumeRequested {
+		if st, err := repo.Load(cmdCtx); err == nil && st != nil && len(st.Stories) > 0 {
+			resumeRequested = true
 		}
-		executionReporter.BeginStory(cmdCtx, storyMeta)
+	}
 
-		if resumeRequested {
-			if st, err := repo.Load(cmdCtx); err == nil && st != nil {
-				if st.Metadata.InputPath == currentStoryFile && st.StoryStatus == domain.StorySuccess && allTasksFinished(st) {
-					fmt.Printf("ℹ [Resume] Skipping already completed story %s (%s) — all tasks succeeded\n", storyID, storyTitle)
-					continue
+	totalLoops := cfg.Runtime.Loops
+	if totalLoops <= 0 {
+		totalLoops = 1
+	}
+
+	for loopIdx := 1; loopIdx <= totalLoops; loopIdx++ {
+		if totalLoops > 1 {
+			fmt.Printf("\n🔁 [Loop %d/%d] Executing Noctifab iteration loop...\n", loopIdx, totalLoops)
+		}
+		for idx, currentStoryFile := range storyFiles {
+			storyID := fmt.Sprintf("story-%04d", idx+1)
+			featName := strings.TrimSuffix(filepath.Base(currentStoryFile), filepath.Ext(currentStoryFile))
+			storyTitle := extractStoryTitle(currentStoryFile)
+			storyMeta := domain.StoryMetadata{
+				StoryID:     storyID,
+				Source:      currentStoryFile,
+				FeatureName: filepath.Base(currentStoryFile),
+				Title:       storyTitle,
+				Sequence:    idx + 1,
+				StartedAt:   time.Now().UTC(),
+			}
+			executionReporter.BeginStory(cmdCtx, storyMeta)
+
+			if resumeRequested {
+				if st, err := repo.Load(cmdCtx); err == nil && st != nil {
+					isCompleted := false
+					for _, s := range st.Stories {
+						if (s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile) && s.Status == domain.StorySuccess {
+							isCompleted = true
+							break
+						}
+					}
+					if st.Metadata.InputPath == currentStoryFile && st.StoryStatus == domain.StorySuccess && allTasksFinished(st) {
+						isCompleted = true
+					}
+					if isCompleted {
+						fmt.Printf("ℹ [Resume] Skipping already completed story %s (%s) — all tasks succeeded\n", storyID, storyTitle)
+						continue
+					}
 				}
 			}
-		}
 
-		if webEnabled {
-			fmt.Printf("\n🚀 Executing %s (%s)\n➜  Web Dashboard: http://%s:%d\n\n", storyID, storyTitle, webHost, webPort)
-		} else {
-			fmt.Printf("\n🚀 Executing %s (%s)\n\n", storyID, storyTitle)
-		}
+			if webEnabled {
+				fmt.Printf("\n🚀 Executing %s (%s)\n➜  Web Dashboard: http://%s:%d\n\n", storyID, storyTitle, webHost, webPort)
+			} else {
+				fmt.Printf("\n🚀 Executing %s (%s)\n\n", storyID, storyTitle)
+			}
 
-		storyErr := executeStory(cmdCtx, currentStoryFile)
-		if storyErr != nil {
-			executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionFailed)
+			storyErr := executeStory(cmdCtx, currentStoryFile)
+			if storyErr != nil {
+				executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionFailed)
+				if st, err := repo.Load(cmdCtx); err == nil && st != nil {
+					now := time.Now().UTC()
+					for i, s := range st.Stories {
+						if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
+							st.Stories[i].Status = domain.StoryFailed
+							st.Stories[i].CompletedAt = &now
+							st.Stories[i].UpdatedAt = now
+							break
+						}
+					}
+					_ = repo.Save(cmdCtx, st)
+				}
+				if executionReporter != nil {
+					executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "story_execution", At: time.Now().UTC()})
+				}
+				return storyErr
+			}
+			executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionSuccess)
 			if st, err := repo.Load(cmdCtx); err == nil && st != nil {
 				now := time.Now().UTC()
 				for i, s := range st.Stories {
 					if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
-						st.Stories[i].Status = domain.StoryFailed
+						st.Stories[i].Status = domain.StorySuccess
 						st.Stories[i].CompletedAt = &now
 						st.Stories[i].UpdatedAt = now
 						break
@@ -430,23 +489,6 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 				}
 				_ = repo.Save(cmdCtx, st)
 			}
-			if executionReporter != nil {
-				executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "story_execution", At: time.Now().UTC()})
-			}
-			return storyErr
-		}
-		executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionSuccess)
-		if st, err := repo.Load(cmdCtx); err == nil && st != nil {
-			now := time.Now().UTC()
-			for i, s := range st.Stories {
-				if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
-					st.Stories[i].Status = domain.StorySuccess
-					st.Stories[i].CompletedAt = &now
-					st.Stories[i].UpdatedAt = now
-					break
-				}
-			}
-			_ = repo.Save(cmdCtx, st)
 		}
 	}
 

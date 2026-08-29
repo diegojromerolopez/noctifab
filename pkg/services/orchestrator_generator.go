@@ -49,7 +49,36 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	}
 	// Add previous failure context and git diff if retrying
 	if task.Retries > 0 {
-		if task.FailureLog != "" {
+		if task.FailureEnvelope != nil {
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "### ⚠️ PREVIOUS ATTEMPT FAILURE DIAGNOSTICS (Stage: %s)\n", task.FailureEnvelope.Stage)
+			if task.FailureEnvelope.Command != "" {
+				fmt.Fprintf(&sb, "- **Command:** `%s`\n", task.FailureEnvelope.Command)
+			}
+			if task.FailureEnvelope.ExitCode != 0 {
+				fmt.Fprintf(&sb, "- **Exit Code:** `%d`\n", task.FailureEnvelope.ExitCode)
+			}
+			if len(task.FailureEnvelope.FailingFiles) > 0 {
+				fmt.Fprintf(&sb, "- **Failing Files:** `%s`\n", strings.Join(task.FailureEnvelope.FailingFiles, "`, `"))
+			}
+			if task.FailureEnvelope.Stderr != "" || task.FailureEnvelope.Stdout != "" {
+				sb.WriteString("\n#### Output Logs:\n```\n")
+				if task.FailureEnvelope.Stdout != "" {
+					sb.WriteString(task.FailureEnvelope.Stdout)
+					if !strings.HasSuffix(task.FailureEnvelope.Stdout, "\n") {
+						sb.WriteString("\n")
+					}
+				}
+				if task.FailureEnvelope.Stderr != "" {
+					sb.WriteString(task.FailureEnvelope.Stderr)
+					if !strings.HasSuffix(task.FailureEnvelope.Stderr, "\n") {
+						sb.WriteString("\n")
+					}
+				}
+				sb.WriteString("```\n")
+			}
+			promptContext = append(promptContext, sb.String())
+		} else if task.FailureLog != "" {
 			warning := "WARNING: The previous implementation/refactoring changes from the failed attempt have been preserved in the workspace files. You must inspect the existing code/tests, identify the bugs, and modify the files to fix the failures."
 			summary := summarizeFailureLog(task.FailureLog)
 			promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the code to address these specific errors.", warning, summary))
@@ -266,7 +295,7 @@ func summarizeFailureLog(log string) string {
 		}
 		if capture {
 			importantLines = append(importantLines, line)
-		} else if strings.Contains(line, "Error:") || strings.Contains(line, "Exception") || strings.Contains(line, "FAILED") {
+		} else if strings.Contains(line, "Error:") || strings.Contains(line, "Exception") || strings.Contains(line, "FAILED") || strings.Contains(line, "error:") || strings.Contains(line, "Anti-stub") {
 			importantLines = append(importantLines, line)
 		}
 	}

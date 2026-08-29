@@ -87,6 +87,7 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		MaxSilentStallDuration: time.Duration(cfg.Runtime.MaxSilentStallDuration),
 		MaxTokensPerStory:      cfg.Runtime.MaxTokensPerStory,
 		MaxTokensPerTask:       cfg.Runtime.MaxTokensPerTask,
+		MaxTokens:              cfg.Runtime.MaxTokens,
 		MaxActions:             cfg.Runtime.MaxActions,
 		AutoCreatePR:           cfg.VCS.PullRequest.AutoCreate,
 		CreateBranch:           cfg.VCS.IsCreateBranchEnabled(),

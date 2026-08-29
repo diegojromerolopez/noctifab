@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.57.0] - 2026-08-29
+
+### Added
+- **Global Token Ceiling Configuration (`runtime.max_tokens`)**:
+  - Implemented `runtime.max_tokens` (default `100000000` / 100 million) to set a global token consumption circuit breaker ceiling across the entire execution run.
+  - Enforced global token ceiling check in `pkg/services/orchestrator_dispatch.go`.
+  - Updated configuration schema (`pkg/infrastructure/config/types.go` and `defaults.go`) and all 16 validation projects' `.noctifab/config.yaml` files.
+- **Isolated Execution Loop Passes (`runtime.loops`)**:
+  - Implemented `runtime.loops` (default `1`) to execute multiple isolated execution loop passes per `noctifab start` invocation.
+  - Wrapped story processing pipeline in `cmd/noctifab/cli/start_runner.go` to iterate through configured loops while preserving SQLite DB state (`.noctifab/data/noctifab.db`), roadmap files (`roadmap/`), and workspace code across passes.
+- **Per-Story Token Limit Calculation Fix**:
+  - Refactored `MaxTokensPerStory` in `pkg/services/orchestrator_dispatch.go` to evaluate token usage per active story rather than global cumulative database lifetime tokens.
+  - Added `TokensUsed` tracking to `domain.Task` and context propagation via `TaskIDKey`.
+
+## [0.56.0] - 2026-08-28
+
+### Added
+- **Anti-Stub & Anti-Gaming Code Quality Gate**:
+  - Implemented `AntiStubValidator` in `pkg/services/anti_stub_validator.go` to detect and reject placeholder stubs (`pass`, `...`, `NotImplementedError`, empty function blocks, unfulfilled handlers), shell error masking (`|| true`, `|| exit 0`, `set +e`), and tautological or vacuum tests (`assert True`, `assert 1 == 1`, unasserted mock counters) across all languages.
+  - Integrated `AntiStubValidator` as a mandatory pre-validation step in `TestValidator.ValidateTask`.
+- **Topological Story Milestone Barrier in Scheduler**:
+  - Enforced in `pkg/services/scheduler.go:GetReadyTasks` that tasks belonging to downstream user stories (e.g. `US-002`, `US-006`) are strictly gated and cannot execute until all tasks belonging to earlier upstream stories (e.g. `US-001`) have achieved `TaskSuccess`.
+  - Fixed `bootstrap_tools.go`, `command_channel.go`, and `task_writer.go` to always populate and persist `task.StoryID`.
+- **Rich Failure Telemetry & Structured Diagnostics on Retries**:
+  - Introduced `domain.TaskFailureEnvelope` in `pkg/domain/task.go` capturing failure stage, command, exit code, failing files, and stdout/stderr logs.
+  - Upgraded `pkg/services/orchestrator_generator.go` retry prompt construction to format rich diagnostic blocks for generators and last resort agents.
+  - Resolved `generator_commit_failed` no-op retry deadlock in `pkg/services/orchestrator_execute_turns.go` by verifying whether the existing workspace satisfies validation before raising a deadlock.
+- **Product Manager Black-Box DoD & Contract Specification**:
+  - Updated Product Manager prompt templates (`generate.tmpl`) to enforce observable black-box Definition of Done (DoD) criteria and `.noctifab-contract` blocks (CLI commands, flags, exit codes, output substrings, network protocols) while strictly forbidding specification of internal function signatures or private classes.
+  - Updated `prepareQA` in `pkg/services/orchestrator_qa.go` to reliably resolve story contracts via `task.StoryID` fallback across state and roadmap story files.
+- **Tester Pre-Commit Self-Review & Anti-Tautological Quality Gate**:
+  - Enhanced all tester prompt templates (`write.tmpl`, `write_breadth_first.tmpl`, `refactor.tmpl`, `fix.tmpl`) with a mandatory Test Self-Review & Quality Audit directive requiring the tester agent to verify that all authored tests are non-tautological (no `assert True`, `assert 1 == 1`, empty test bodies), adhere to Chicago-school testing on real domain objects, explicitly verify mock calls when test doubles are used, avoid coupling to private implementation details, and contain no shell error masking.
+  - Implemented `auditTesterTestOutput` in `pkg/services/orchestrator_execute_turns.go`: immediately after the tester agent writes or fixes tests, the orchestrator scans the test suite for vacuous assertions and shell masks, triggering an automatic remediation turn if violations are detected.
+- **Generator Pre-Test Functional Self-Audit & Anti-Stub Quality Gate**:
+  - Added a mandatory Pre-Test Functional Self-Audit directive across all generator prompt templates (`implement.tmpl`, `refactor.tmpl`, `fix.tmpl`, `surgical_repair.tmpl`, `implement_breadth_first.tmpl`, `single_pass.tmpl`, `single_pass_fix.tmpl`), requiring the generator to verify that all code accomplishes the target goal, implements real working logic, and contains no stubs, empty dummies, or static fake returns.
+  - Implemented `auditGeneratorFunctionalOutput` in `pkg/services/orchestrator_execute_turns.go`: immediately after the generator executes (and before the tester agent is invoked), the orchestrator scans the target files for non-functional stubs or shell masks. If violations are found, it immediately triggers a generator remediation turn with structured violation diagnostics, preventing the tester from wasting turns on fake or non-functional code.
+- **Story-Level QA Feature Completeness Gate & Automated E2E Execution**:
+  - Implemented `StoryQAAuditor` in `pkg/services/story_qa_auditor.go` to evaluate accumulated code and git diff against active user story requirements and Definitions of Done upon task completion.
+  - Added automated E2E test suite execution (`detectE2ECommand` supporting `docker-compose.e2e.yml`, `make e2e`, or custom `e2e_command`) to leverage real multi-container client-server integration checks before a story can be finalized.
+  - In `pkg/services/orchestrator_dispatch.go` and `pkg/services/orchestrator_finalize.go`, when all tasks in a story finish, the QA Agent audits feature completeness and executes E2E verification. If features are missing or E2E tests fail, the orchestrator dynamically queues a remediation task (`qa-remediation-<story>-<attempt>`), immediately launching a new Generator-Tester cycle within the active story.
+- **Guaranteed Test Process Teardown & Port Conflict Prevention**:
+  - Enhanced `Watchdog.Run` in `pkg/services/watchdog.go` to unconditionally execute `killProcessGroup(cmd)` with `SIGKILL` upon completion of every command run, ensuring no background servers, orphan subprocesses, or daemon processes linger to block socket ports across test turns.
+
 ## [0.55.0] - 2026-08-26
 
 ### Added

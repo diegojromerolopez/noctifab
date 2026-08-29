@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +30,16 @@ var _ domain.StateRepository = (*SQLiteRepository)(nil)
 
 // NewSQLiteRepository creates, initializes and runs migrations on a SQLite database.
 func NewSQLiteRepository(ctx context.Context, dsn string) (*SQLiteRepository, error) {
+	// Ensure parent directory exists for file-based sqlite databases
+	if dsn != ":memory:" && !strings.HasPrefix(dsn, "file::memory:") && !strings.Contains(dsn, "mode=memory") {
+		dir := filepath.Dir(dsn)
+		if dir != "." && dir != "/" {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return nil, fmt.Errorf("failed to create sqlite parent directory %q: %w", dir, err)
+			}
+		}
+	}
+
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)

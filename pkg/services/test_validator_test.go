@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -40,7 +42,31 @@ func validatorTask() domain.Task {
 }
 
 func TestTestValidatorValidateTask(t *testing.T) {
-	state := &domain.State{ProjectPath: "/tmp"}
+	tmpDir := t.TempDir()
+	state := &domain.State{ProjectPath: tmpDir}
+
+	t.Run("when anti-stub validator detects stubs it fails before running commands", func(t *testing.T) {
+		taskDir := t.TempDir()
+		taskState := &domain.State{ProjectPath: taskDir}
+		_ = os.WriteFile(filepath.Join(taskDir, "stub.py"), []byte("def hello():\n    raise NotImplementedError()\n"), 0644)
+		task := domain.Task{ID: "T1", Title: "stub task", TargetFiles: []string{"stub.py"}}
+
+		sb := &scriptedSandbox{results: []error{nil}, outputs: []string{"ok 1 test"}}
+		v := NewTestValidator(sb, false, nil, nil)
+		ok, msg, err := v.ValidateTask(context.Background(), taskState, task)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Fatal("expected validation failure due to anti-stub violation")
+		}
+		if !strings.Contains(msg, "Anti-stub / anti-gaming validation failed") {
+			t.Errorf("expected anti-stub failure message, got %q", msg)
+		}
+		if sb.calls != 0 {
+			t.Errorf("expected 0 command runner calls when anti-stub fails, got %d", sb.calls)
+		}
+	})
 
 	t.Run("when constructed via NewTestValidator it defaults to a single run", func(t *testing.T) {
 		v := NewTestValidator(&scriptedSandbox{}, false, nil, nil)

@@ -21,8 +21,17 @@ func (o *Orchestrator) recordTokenUsage(ctx context.Context, prompt string, resp
 	if tokens <= 0 {
 		return
 	}
+	taskID, _ := ctx.Value(TaskIDKey).(string)
 	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		st.Metadata.TotalTokensUsed += tokens
+		if taskID != "" {
+			for i := range st.Tasks {
+				if st.Tasks[i].ID == taskID {
+					st.Tasks[i].TokensUsed += tokens
+					break
+				}
+			}
+		}
 		return nil
 	})
 }

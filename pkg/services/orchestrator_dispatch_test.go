@@ -228,4 +228,59 @@ func TestRunOnce_ContinuousDispatch(t *testing.T) {
 			t.Errorf("expected BuildStatus to be BuildFailing, got: %s", st.BuildStatus)
 		}
 	})
+
+	t.Run("when story tasks are done but QA detects missing features, a remediation task is queued", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		state := &domain.State{
+			ID:          "story-qa-test",
+			ProjectPath: tmpDir,
+			Metadata: domain.StateMetadata{
+				FeatureName: "US-001",
+				InputPath:   "roadmap/user-stories/US-001.md",
+			},
+			Tasks: []domain.Task{
+				{ID: "task-1", Title: "Task 1", Status: domain.TaskSuccess, StoryID: "US-001"},
+			},
+		}
+		orch, repo := newDispatchTestOrchestrator(t, state, 2)
+		orch.cfg.QA.Enabled = true
+		mockLLM := &mockStoryQALLM{
+			response: &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "submit_story_qa_audit",
+						Args: map[string]any{
+							"passed":           false,
+							"summary":          "Missing SET and GET commands",
+							"missing_features": []any{"SET command", "GET command"},
+						},
+					},
+				},
+			},
+		}
+		orch.storyQAAuditor = NewStoryQAAuditor(mockLLM)
+
+		continued, err := orch.RunOnce(context.Background())
+		if err != nil {
+			t.Fatalf("RunOnce returned error: %v", err)
+		}
+		if !continued {
+			t.Errorf("expected RunOnce to return true (continued work for remediation task)")
+		}
+
+		st, err := repo.Load(context.Background())
+		if err != nil {
+			t.Fatalf("failed to load state: %v", err)
+		}
+		if len(st.Tasks) != 2 {
+			t.Fatalf("expected 2 tasks after remediation queueing, got %d", len(st.Tasks))
+		}
+		remediationTask := st.Tasks[1]
+		if remediationTask.ID != "qa-remediation-us-001-1" {
+			t.Errorf("expected task ID qa-remediation-us-001-1, got %s", remediationTask.ID)
+		}
+		if remediationTask.Status != domain.TaskPending {
+			t.Errorf("expected remediation task status to be PENDING, got %s", remediationTask.Status)
+		}
+	})
 }

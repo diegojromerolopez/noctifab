@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
@@ -119,6 +120,89 @@ func (o *Orchestrator) RunAcceptanceAudit(ctx context.Context, state *domain.Sta
 		return &AcceptanceAuditResult{Passed: true, Summary: "No acceptance auditor configured"}, nil
 	}
 	return o.acceptanceAuditor.AuditProjectAcceptance(ctx, state)
+}
+
+// AuditStoryCompleteness executes the Story-Level QA Feature Completeness Gate against the user story.
+func (o *Orchestrator) AuditStoryCompleteness(ctx context.Context, state *domain.State) (*StoryQAResult, error) {
+	if o.storyQAAuditor == nil {
+		return &StoryQAResult{Passed: true, Summary: "No story QA auditor configured"}, nil
+	}
+	return o.storyQAAuditor.AuditStoryCompleteness(ctx, state, state.Metadata.InputPath)
+}
+
+func (o *Orchestrator) shouldAuditStoryCompleteness(state *domain.State) bool {
+	if !o.cfg.QA.Enabled || o.storyQAAuditor == nil || state == nil {
+		return false
+	}
+	// Count existing remediation tasks for this story to avoid exceeding max retry threshold (2)
+	remediationCount := 0
+	for _, t := range state.Tasks {
+		if strings.HasPrefix(t.ID, "qa-remediation-") {
+			remediationCount++
+		}
+	}
+	return remediationCount < 2
+}
+
+func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *domain.State, qaResult *StoryQAResult) bool {
+	if state == nil || qaResult == nil || len(qaResult.MissingFeatures) == 0 {
+		return false
+	}
+
+	remediationCount := 0
+	var prevTaskIDs []string
+	currentStoryID := ""
+	for _, t := range state.Tasks {
+		if strings.HasPrefix(t.ID, "qa-remediation-") {
+			remediationCount++
+		}
+		if t.StoryID != "" && currentStoryID == "" {
+			currentStoryID = t.StoryID
+		}
+		prevTaskIDs = append(prevTaskIDs, t.ID)
+	}
+	if currentStoryID == "" {
+		currentStoryID = ExtractStoryID(state.Metadata.InputPath)
+	}
+	if currentStoryID == "" {
+		currentStoryID = "US-001"
+	}
+
+	taskID := fmt.Sprintf("qa-remediation-%s-%d", strings.ToLower(currentStoryID), remediationCount+1)
+	title := fmt.Sprintf("QA Remediation: Implement Missing Features for %s", currentStoryID)
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "QA Acceptance Review detected missing or incomplete features for %s:\n", currentStoryID)
+	for _, f := range qaResult.MissingFeatures {
+		fmt.Fprintf(&sb, "- %s\n", f)
+	}
+	fmt.Fprintf(&sb, "\nSummary: %s\n\nImplement the missing functionality and verify with tests.", qaResult.Summary)
+
+	remediationTask := domain.Task{
+		ID:          taskID,
+		Title:       title,
+		Description: sb.String(),
+		StoryID:     currentStoryID,
+		Status:      domain.TaskPending,
+		DependsOn:   prevTaskIDs,
+		CreatedAt:   time.Now().UTC(),
+		Retries:     0,
+	}
+
+	fmt.Printf("🔍 [Story QA Gate] Missing features detected in %s. Triggering remediation cycle (Task: %s)...\n", currentStoryID, taskID)
+
+	err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+		st.Tasks = append(st.Tasks, remediationTask)
+		st.LastActions = append(st.LastActions, domain.Action{
+			Timestamp: time.Now().UTC(),
+			Tool:      "story_qa_remediation_trigger",
+			Reasoning: fmt.Sprintf("Triggered Generator-Tester remediation task %s for missing features in %s", taskID, currentStoryID),
+			Result:    qaResult.Summary,
+			Success:   false,
+		})
+		return nil
+	})
+	return err == nil
 }
 
 // buildPRBody assembles a markdown pull request description from the completed state.

@@ -110,14 +110,17 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 
 	// 2c. Story-level token ceiling enforcement (Circuit Breaker).
 	if o.cfg.MaxTokensPerStory > 0 && len(state.Tasks) > 0 {
-		totalTokens := int64(state.Metadata.TotalTokensUsed)
-		if totalTokens >= o.cfg.MaxTokensPerStory && !o.allTasksFinished(state) {
-			fmt.Printf("Orchestrator: story exceeded max_tokens_per_story ceiling %d (consumed %d); failing remaining tasks and aborting story.\n", o.cfg.MaxTokensPerStory, totalTokens)
+		storyTokens := int64(0)
+		for _, t := range state.Tasks {
+			storyTokens += t.TokensUsed
+		}
+		if storyTokens >= o.cfg.MaxTokensPerStory && !o.allTasksFinished(state) {
+			fmt.Printf("Orchestrator: story exceeded max_tokens_per_story ceiling %d (consumed %d); failing remaining tasks and aborting story.\n", o.cfg.MaxTokensPerStory, storyTokens)
 			if err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
 				for i := range st.Tasks {
 					if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
 						st.Tasks[i].Status = domain.TaskFailed
-						st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_tokens_per_story ceiling %d (consumed %d tokens)", o.cfg.MaxTokensPerStory, totalTokens)
+						st.Tasks[i].FailureLog = fmt.Sprintf("story exceeded max_tokens_per_story ceiling %d (consumed %d tokens)", o.cfg.MaxTokensPerStory, storyTokens)
 						st.Tasks[i].UpdatedAt = time.Now()
 					}
 				}
@@ -126,6 +129,29 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 				return nil
 			}); err != nil {
 				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist max_tokens_per_story abort: %v\n", err)
+			}
+			return false, nil
+		}
+	}
+
+	// 2c2. Global-level token ceiling enforcement (runtime.max_tokens).
+	if o.cfg.MaxTokens > 0 && len(state.Tasks) > 0 {
+		globalTokens := int64(state.Metadata.TotalTokensUsed)
+		if globalTokens >= o.cfg.MaxTokens && !o.allTasksFinished(state) {
+			fmt.Printf("Orchestrator: execution exceeded global max_tokens ceiling %d (consumed %d); failing remaining tasks and aborting run.\n", o.cfg.MaxTokens, globalTokens)
+			if err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+				for i := range st.Tasks {
+					if st.Tasks[i].Status != domain.TaskSuccess && st.Tasks[i].Status != domain.TaskFailed {
+						st.Tasks[i].Status = domain.TaskFailed
+						st.Tasks[i].FailureLog = fmt.Sprintf("execution exceeded global max_tokens ceiling %d (consumed %d tokens)", o.cfg.MaxTokens, globalTokens)
+						st.Tasks[i].UpdatedAt = time.Now()
+					}
+				}
+				st.BuildStatus = domain.BuildFailing
+				st.StoryStatus = domain.StoryFailed
+				return nil
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist max_tokens abort: %v\n", err)
 			}
 			return false, nil
 		}
@@ -179,6 +205,19 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 
 			buildOK := o.allTasksSucceeded(state)
 			if buildOK {
+				// Story-Level QA Feature Completeness Gate:
+				// Review the user story requirements vs generated codebase.
+				// If features are missing and remediation attempts remain, queue remediation task to trigger another Generator-Tester cycle.
+				if o.shouldAuditStoryCompleteness(state) {
+					storyQAResult, qaErr := o.AuditStoryCompleteness(ctx, state)
+					if qaErr == nil && storyQAResult != nil && !storyQAResult.Passed && len(storyQAResult.MissingFeatures) > 0 {
+						if o.queueStoryRemediationTask(ctx, state, storyQAResult) {
+							// Return true to continue the task processing loop with the newly added remediation task.
+							return true, nil
+						}
+					}
+				}
+
 				if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
 					fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
 				}

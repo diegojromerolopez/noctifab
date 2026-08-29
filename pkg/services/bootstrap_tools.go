@@ -76,6 +76,7 @@ func (t *AddTaskTool) Execute(ctx context.Context, state *domain.State, args map
 		}
 	}
 
+	storyID := ExtractStoryID(state.Metadata.InputPath)
 	task := domain.Task{
 		ID:          id,
 		Title:       title,
@@ -84,6 +85,7 @@ func (t *AddTaskTool) Execute(ctx context.Context, state *domain.State, args map
 		ChangeType:  changeType,
 		DependsOn:   dependsOn,
 		TargetFiles: targetFiles,
+		StoryID:     storyID,
 		Retries:     0,
 		MaxRetries:  maxRetriesVal,
 		CreatedAt:   time.Now(),
