@@ -49,7 +49,7 @@ func NewAnthropicProviderClient(url string, timeout, idleTimeout time.Duration, 
 	return &anthropicProviderClient{url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
 }
 
-func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) ([]byte, error) {
+func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) (*ProviderCallResult, error) {
 	var url string
 	if a.url != "" {
 		url = a.url
@@ -163,7 +163,7 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	return nil, fmt.Errorf("failed to complete Anthropic request after parameter retries")
 }
 
-func (a *anthropicProviderClient) parseResponse(respBody []byte) ([]byte, error) {
+func (a *anthropicProviderClient) parseResponse(respBody []byte) (*ProviderCallResult, error) {
 	var result map[string]any
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, err
@@ -172,6 +172,23 @@ func (a *anthropicProviderClient) parseResponse(respBody []byte) ([]byte, error)
 	if !ok || len(content) == 0 {
 		return nil, fmt.Errorf("unexpected Anthropic response: %s", string(respBody))
 	}
+
+	var inputTokens, cacheReadTokens, cacheCreationTokens, outputTokens int64
+	if usageMap, ok := result["usage"].(map[string]any); ok {
+		if v, ok := usageMap["input_tokens"].(float64); ok {
+			inputTokens = int64(v)
+		}
+		if v, ok := usageMap["cache_read_input_tokens"].(float64); ok {
+			cacheReadTokens = int64(v)
+		}
+		if v, ok := usageMap["cache_creation_input_tokens"].(float64); ok {
+			cacheCreationTokens = int64(v)
+		}
+		if v, ok := usageMap["output_tokens"].(float64); ok {
+			outputTokens = int64(v)
+		}
+	}
+	usage := ExtractAnthropicTokenUsage(inputTokens, cacheReadTokens, cacheCreationTokens, outputTokens)
 
 	var textBlocks []string
 	var fallbackTextBlocks []string
@@ -191,14 +208,19 @@ func (a *anthropicProviderClient) parseResponse(respBody []byte) ([]byte, error)
 		}
 	}
 
+	var bodyBytes []byte
 	if len(textBlocks) > 0 {
-		return []byte(strings.Join(textBlocks, "\n")), nil
-	}
-	if len(fallbackTextBlocks) > 0 {
-		return []byte(strings.Join(fallbackTextBlocks, "\n")), nil
+		bodyBytes = []byte(strings.Join(textBlocks, "\n"))
+	} else if len(fallbackTextBlocks) > 0 {
+		bodyBytes = []byte(strings.Join(fallbackTextBlocks, "\n"))
+	} else {
+		return nil, fmt.Errorf("unexpected Anthropic response content: %s", string(respBody))
 	}
 
-	return nil, fmt.Errorf("unexpected Anthropic response content: %s", string(respBody))
+	return &ProviderCallResult{
+		Body:  bodyBytes,
+		Usage: usage,
+	}, nil
 }
 
 func (a *anthropicProviderClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {

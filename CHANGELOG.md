@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.58.0] - 2026-08-30
+
+### Added
+- **3-Tier Token Accountability System**:
+  - Implemented 3-tier token consumption tracking across global state metadata (Tier 1), user story milestone levels (Tier 2), and task/agent worker attempts (Tier 3).
+  - Extended provider client token extractors (`pkg/infrastructure/llm/token_extractor.go`) for OpenAI streaming (`IncludeUsage: true`), Anthropic (`cache_read_input_tokens`, `input_tokens`, `output_tokens`), Gemini (`usageMetadata`), and OpenTelemetry GenAI attributes (`gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`).
+  - Added SQLite (`0008_token_accountability.sql`) and PostgreSQL (`0008_token_accountability.sql`) schema migrations and repository load/save token persistence.
+  - Implemented thread-safe `TokenAccountingService` in `pkg/services/token_accounting.go` and integrated it into `Orchestrator`.
+  - Updated Markdown execution report renderer and terminal TUI dashboard to display input/output token breakdowns.
+  - Added comprehensive documentation in `docs/token_accountability.md` and updated `README.md`.
+
 ## [0.57.1] - 2026-08-30
 
 ### Fixed

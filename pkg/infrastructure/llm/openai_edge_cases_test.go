@@ -136,8 +136,8 @@ func TestOpenAIEdgeCases_LegacyGatewayMaxCompletionTokensRejection(t *testing.T)
 		if err != nil {
 			t.Fatalf("expected legacy gateway call to adapt and succeed, got %v", err)
 		}
-		if string(body) != `{"ok":true}` {
-			t.Errorf("unexpected response body: %s", body)
+		if string(body.Body) != `{"ok":true}` {
+			t.Errorf("unexpected response body: %s", body.Body)
 		}
 		if got := atomic.LoadInt64(&calls); got != 2 {
 			t.Errorf("expected exactly 2 calls (initial rejection + adapted retry), got %d", got)
@@ -165,8 +165,8 @@ func TestOpenAIEdgeCases_LegacyGatewayMaxCompletionTokensRejection(t *testing.T)
 		if err != nil {
 			t.Fatalf("expected extraBody-adapted call to succeed, got %v", err)
 		}
-		if string(body) != `{"ok":true}` {
-			t.Errorf("unexpected response body: %s", body)
+		if string(body.Body) != `{"ok":true}` {
+			t.Errorf("unexpected response body: %s", body.Body)
 		}
 		if got := atomic.LoadInt64(&calls); got != 2 {
 			t.Errorf("expected 2 calls, got %d", got)

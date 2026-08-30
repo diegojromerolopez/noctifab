@@ -16,15 +16,17 @@ import (
 
 // MetricsResponse represents runtime execution metrics for the telemetry dashboard.
 type MetricsResponse struct {
-	TotalTokens      int64            `json:"total_tokens"`
-	TokensByRole     map[string]int64 `json:"tokens_by_role"`
-	ToolCounts       map[string]int   `json:"tool_counts"`
-	TaskDistribution map[string]int   `json:"task_distribution"`
-	TotalStories     int              `json:"total_stories"`
-	CompletedStories int              `json:"completed_stories"`
-	BuildStatus      string           `json:"build_status"`
-	ElapsedDuration  string           `json:"elapsed_duration"`
-	CalculatedAt     time.Time        `json:"calculated_at"`
+	TotalInputTokens  int64            `json:"total_input_tokens"`
+	TotalOutputTokens int64            `json:"total_output_tokens"`
+	TotalTokens       int64            `json:"total_tokens"`
+	TokensByRole      map[string]int64 `json:"tokens_by_role"`
+	ToolCounts        map[string]int   `json:"tool_counts"`
+	TaskDistribution  map[string]int   `json:"task_distribution"`
+	TotalStories      int              `json:"total_stories"`
+	CompletedStories  int              `json:"completed_stories"`
+	BuildStatus       string           `json:"build_status"`
+	ElapsedDuration   string           `json:"elapsed_duration"`
+	CalculatedAt      time.Time        `json:"calculated_at"`
 }
 
 // ReportResponse represents execution report content for browser viewing and download.
@@ -201,6 +203,8 @@ func (ws *WebServer) calculateMetrics(ctx context.Context, baseDir string) Metri
 		if st.BuildStatus == domain.BuildFailing {
 			resp.BuildStatus = "FAILING"
 		}
+		resp.TotalInputTokens += st.Metadata.TotalInputTokens
+		resp.TotalOutputTokens += st.Metadata.TotalOutputTokens
 		resp.TotalTokens += st.Metadata.TotalTokensUsed
 
 		for _, ag := range st.ActiveAgents {

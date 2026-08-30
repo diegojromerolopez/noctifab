@@ -353,7 +353,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 				string(state.StoryStatus), state.StoryError,
 				state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 				state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
-				state.Metadata.TotalTokensUsed).
+				state.Metadata.TotalInputTokens, state.Metadata.TotalOutputTokens, state.Metadata.TotalTokensUsed).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		mock.ExpectExec(`DELETE FROM tasks WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -365,7 +365,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 				string(state.Tasks[0].Status), string(state.Tasks[0].ChangeType), state.Tasks[0].AssignedTo,
 				state.Tasks[0].Progress, dependsOnJSON, targetFilesJSON, partialChangelogJSON,
 				state.Tasks[0].Retries, state.Tasks[0].MaxRetries, state.Tasks[0].FailureLog, state.Tasks[0].CreatedAt, state.Tasks[0].UpdatedAt,
-				state.Tasks[0].StoryID, nullTimePtr(state.Tasks[0].StartedAt), nullTimePtr(state.Tasks[0].CompletedAt)).
+				state.Tasks[0].StoryID, nullTimePtr(state.Tasks[0].StartedAt), nullTimePtr(state.Tasks[0].CompletedAt), state.Tasks[0].InputTokens, state.Tasks[0].OutputTokens, state.Tasks[0].TokensUsed).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		mock.ExpectExec(`DELETE FROM clarifications WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -395,7 +395,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 		mock.ExpectExec(`INSERT INTO active_agents`).
 			WithArgs(state.ActiveAgents[0].ID, state.ID, state.ActiveAgents[0].Name, string(state.ActiveAgents[0].Role),
 				string(state.ActiveAgents[0].Status), state.ActiveAgents[0].TaskID, state.ActiveAgents[0].StartedAt,
-				state.ActiveAgents[0].CompletedAt, state.ActiveAgents[0].TokensUsed, state.ActiveAgents[0].LastError).
+				state.ActiveAgents[0].CompletedAt, state.ActiveAgents[0].InputTokens, state.ActiveAgents[0].OutputTokens, state.ActiveAgents[0].TokensUsed, state.ActiveAgents[0].LastError).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec(`DELETE FROM qa_findings WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec(`DELETE FROM qa_scenarios WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -435,7 +435,7 @@ func TestPostgresRepository_Save(t *testing.T) {
 				string(state.StoryStatus), state.StoryError,
 				state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 				state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
-				state.Metadata.TotalTokensUsed, state.ID).
+				state.Metadata.TotalInputTokens, state.Metadata.TotalOutputTokens, state.Metadata.TotalTokensUsed, state.ID).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		mock.ExpectExec(`DELETE FROM tasks WHERE state_id = \$1`).WithArgs(state.ID).WillReturnResult(sqlmock.NewResult(0, 0))

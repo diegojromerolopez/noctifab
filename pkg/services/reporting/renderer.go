@@ -305,7 +305,24 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 
 	// LLM and Token Usage
 	sb.WriteString("## LLM and Token Usage\n\n")
-	fmt.Fprintf(&sb, "- **Tokens:** %d measured\n\n", snapshot.MeasuredTokens)
+	if snapshot.TotalInputTokens > 0 || snapshot.TotalOutputTokens > 0 {
+		fmt.Fprintf(&sb, "- **Total Input Tokens:** %d\n", snapshot.TotalInputTokens)
+		fmt.Fprintf(&sb, "- **Total Output Tokens:** %d\n", snapshot.TotalOutputTokens)
+		fmt.Fprintf(&sb, "- **Total Tokens:** %d\n\n", snapshot.TotalInputTokens+snapshot.TotalOutputTokens)
+	} else {
+		fmt.Fprintf(&sb, "- **Tokens:** %d measured\n\n", snapshot.MeasuredTokens)
+	}
+
+	if len(snapshot.StoryTokenBreakdowns) > 0 {
+		sb.WriteString("### Story Token Breakdown\n\n")
+		sb.WriteString("| Story ID | Input Tokens | Output Tokens | Total Tokens |\n")
+		sb.WriteString("| :--- | ---: | ---: | ---: |\n")
+		for _, st := range snapshot.StoryTokenBreakdowns {
+			fmt.Fprintf(&sb, "| %s | %d | %d | %d |\n",
+				r.sanitizeCell(st.StoryID), st.InputTokens, st.OutputTokens, st.TotalTokens)
+		}
+		sb.WriteString("\n")
+	}
 
 	// Evidence and Limitations (only render if non-empty)
 	if len(snapshot.Limitations) > 0 {

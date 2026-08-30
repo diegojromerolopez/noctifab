@@ -59,7 +59,7 @@ func NewGeminiProviderClient(url string, timeout, idleTimeout time.Duration, str
 	return &geminiProviderClient{url: url, timeout: timeout, idleTimeout: idleTimeout, streaming: streaming}
 }
 
-func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) ([]byte, error) {
+func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) (*ProviderCallResult, error) {
 	var url string
 	if g.url != "" {
 		url = g.url
@@ -132,6 +132,21 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, err
 	}
+
+	var promptCount, candidatesCount, cachedCount int64
+	if usageMeta, ok := result["usageMetadata"].(map[string]any); ok {
+		if v, ok := usageMeta["promptTokenCount"].(float64); ok {
+			promptCount = int64(v)
+		}
+		if v, ok := usageMeta["candidatesTokenCount"].(float64); ok {
+			candidatesCount = int64(v)
+		}
+		if v, ok := usageMeta["cachedContentTokenCount"].(float64); ok {
+			cachedCount = int64(v)
+		}
+	}
+	usage := ExtractGeminiTokenUsage(promptCount, candidatesCount, cachedCount)
+
 	candidates, ok := result["candidates"].([]any)
 	if !ok || len(candidates) == 0 {
 		return nil, fmt.Errorf("unexpected Gemini response: %s", string(respBody))
@@ -153,7 +168,10 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 		return nil, fmt.Errorf("unexpected Gemini response: part is not a map")
 	}
 	text, _ := part["text"].(string)
-	return []byte(text), nil
+	return &ProviderCallResult{
+		Body:  []byte(text),
+		Usage: usage,
+	}, nil
 }
 
 func (g *geminiProviderClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {

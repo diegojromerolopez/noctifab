@@ -117,23 +117,23 @@ func (r *PostgresRepository) saveTx(ctx context.Context, state *domain.State, fr
 	nextVersion := state.Version + 1
 	if currentVersion == 0 {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO state (id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			`INSERT INTO state (id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_input_tokens, total_output_tokens, total_tokens_used)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 			state.ID, state.ProjectPath, nextVersion, string(state.BuildStatus),
 			string(state.StoryStatus), state.StoryError,
 			state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 			state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
-			state.Metadata.TotalTokensUsed,
+			state.Metadata.TotalInputTokens, state.Metadata.TotalOutputTokens, state.Metadata.TotalTokensUsed,
 		)
 	} else {
 		_, err = tx.ExecContext(ctx,
-			`UPDATE state SET project_path = $1, version = $2, build_status = $3, story_status = $4, story_error = $5, input_source = $6, input_path = $7, integration_branch = $8, feature_name = $9, base_branch = $10, project_version = $11, total_tokens_used = $12
-			WHERE id = $13`,
+			`UPDATE state SET project_path = $1, version = $2, build_status = $3, story_status = $4, story_error = $5, input_source = $6, input_path = $7, integration_branch = $8, feature_name = $9, base_branch = $10, project_version = $11, total_input_tokens = $12, total_output_tokens = $13, total_tokens_used = $14
+			WHERE id = $15`,
 			state.ProjectPath, nextVersion, string(state.BuildStatus),
 			string(state.StoryStatus), state.StoryError,
 			state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 			state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
-			state.Metadata.TotalTokensUsed,
+			state.Metadata.TotalInputTokens, state.Metadata.TotalOutputTokens, state.Metadata.TotalTokensUsed,
 			state.ID,
 		)
 	}
@@ -165,7 +165,7 @@ func (r *PostgresRepository) Load(ctx context.Context) (*domain.State, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "Load")
 	defer span.End()
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used
+		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_input_tokens, total_output_tokens, total_tokens_used
 		FROM state
 		ORDER BY CASE WHEN story_status = 'RUNNING' THEN 0 ELSE 1 END, id DESC
 		LIMIT 1`)

@@ -245,6 +245,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 	}
 
 	for {
+		var callRes *ProviderCallResult
 		var responseBody []byte
 		var err error
 
@@ -263,8 +264,9 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		creditExhausted := false
 		attemptStart := time.Now()
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			responseBody, err = pClient.Call(ctx, activeModel, activeKey, prompt, c.MaxTokens, c.Temperature)
-			if err == nil {
+			callRes, err = pClient.Call(ctx, activeModel, activeKey, prompt, c.MaxTokens, c.Temperature)
+			if err == nil && callRes != nil {
+				responseBody = callRes.Body
 				fmt.Fprintf(os.Stderr, "ℹ [llm] %s/%s call OK after %v (attempt %d)\n", c.Provider, activeModel, time.Since(attemptStart), attempt+1)
 				break
 			}
@@ -327,10 +329,16 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			backoff *= 2
 		}
 
-		if err == nil {
+		if err == nil && callRes != nil {
+			usage := callRes.Usage
 			resp, parseErr := parseAndUnmarshal(responseBody)
 			if parseErr == nil {
-				emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, resp, nil)
+				if usage.TotalTokens <= 0 {
+					usage = FallbackTokenUsage(prompt, resp)
+				}
+				resp.Usage = usage
+				AttachGenAIOtelAttributes(span, usage)
+				emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, resp, usage, nil)
 				return resp, nil
 			}
 			// Defensive one-shot format-reminder retry: when the model
@@ -340,20 +348,33 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			fmt.Fprintf(os.Stderr, "⚠ LLM response was not a valid JSON envelope (%v). Sending a one-shot format reminder and retrying...\n", parseErr)
 			reminderPrompt := buildJSONReminderPrompt(prompt, responseBody)
 			reminderCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-			reminderBody, rErr := pClient.Call(reminderCtx, activeModel, apiKey, reminderPrompt, c.MaxTokens, c.Temperature)
+			reminderRes, rErr := pClient.Call(reminderCtx, activeModel, apiKey, reminderPrompt, c.MaxTokens, c.Temperature)
 			cancel()
-			if rErr == nil {
-				resp2, pErr2 := parseAndUnmarshal(reminderBody)
+			if rErr == nil && reminderRes != nil {
+				resp2, pErr2 := parseAndUnmarshal(reminderRes.Body)
 				if pErr2 == nil {
-					emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), reminderPrompt, resp2, nil)
+					usage2 := reminderRes.Usage
+					if usage2.TotalTokens <= 0 {
+						usage2 = FallbackTokenUsage(reminderPrompt, resp2)
+					}
+					combinedUsage := domain.TokenUsage{
+						InputTokens:     usage.InputTokens + usage2.InputTokens,
+						OutputTokens:    usage.OutputTokens + usage2.OutputTokens,
+						ReasoningTokens: usage.ReasoningTokens + usage2.ReasoningTokens,
+						CachedTokens:    usage.CachedTokens + usage2.CachedTokens,
+						TotalTokens:     usage.TotalTokens + usage2.TotalTokens,
+					}
+					resp2.Usage = combinedUsage
+					AttachGenAIOtelAttributes(span, combinedUsage)
+					emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), reminderPrompt, resp2, combinedUsage, nil)
 					return resp2, nil
 				}
 				fmt.Fprintf(os.Stderr, "⚠ One-shot format reminder did not yield a parseable JSON response: %v\n", pErr2)
-				emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), reminderPrompt, nil, pErr2)
+				emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), reminderPrompt, nil, usage, pErr2)
 				return nil, pErr2
 			}
 			fmt.Fprintf(os.Stderr, "⚠ Format reminder call failed: %v\n", rErr)
-			emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, parseErr)
+			emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, usage, parseErr)
 			return nil, parseErr
 		}
 
@@ -389,17 +410,17 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 
 		if creditExhausted && c.SkipOnCreditExhausted {
 			errResult := fmt.Errorf("%w (provider %s, model %s): %v", ErrCreditExhausted, c.Provider, activeModel, err)
-			emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, errResult)
+			emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, domain.TokenUsage{}, errResult)
 			return nil, errResult
 		}
 
 		errResult := fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
-		emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, errResult)
+		emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, domain.TokenUsage{}, errResult)
 		return nil, errResult
 	}
 }
 
-func emitLLMEvent(ctx context.Context, provider, model string, duration time.Duration, prompt string, resp *domain.LLMResponse, err error) {
+func emitLLMEvent(ctx context.Context, provider, model string, duration time.Duration, prompt string, resp *domain.LLMResponse, usage domain.TokenUsage, err error) {
 	obs := domain.ObserverFromContext(ctx)
 	if obs == nil {
 		return
@@ -409,8 +430,14 @@ func emitLLMEvent(ctx context.Context, provider, model string, duration time.Dur
 	if err != nil {
 		outcome = domain.OutcomeFailed
 	}
-	pTokens := estimatePromptTokens(prompt)
-	cTokens := estimateCompletionTokens(resp)
+	pTokens := usage.InputTokens
+	if pTokens <= 0 {
+		pTokens = estimatePromptTokens(prompt)
+	}
+	cTokens := usage.OutputTokens
+	if cTokens <= 0 {
+		cTokens = estimateCompletionTokens(resp)
+	}
 	event := domain.ExecutionEvent{
 		Kind:             domain.EventLLMCallFinished,
 		At:               time.Now().UTC(),

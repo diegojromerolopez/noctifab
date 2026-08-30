@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )
@@ -187,7 +188,7 @@ func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
 // exactly one option is relaxed and the call retried, up to three attempts.
 // Unrecognised errors are returned immediately so the caller's retry/fallback
 // ladder can classify them.
-func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) ([]byte, error) {
+func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) (*ProviderCallResult, error) {
 	opts := completionOptions{
 		enforceJSON:     !globalCapabilityCache.isJSONModeUnsupported(model),
 		disableJSONMode: o.disableJSONMode || globalCapabilityCache.isJSONModeUnsupported(model),
@@ -203,9 +204,9 @@ func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt strin
 	}
 	var lastErr error
 	for range 3 {
-		respBody, err := o.sendCompletion(ctx, model, apiKey, prompt, opts)
+		res, err := o.sendCompletion(ctx, model, apiKey, prompt, opts)
 		if err == nil {
-			return respBody, nil
+			return res, nil
 		}
 		lastErr = err
 		adapted, ok := adaptOptionsForError(opts, err, model)
@@ -222,15 +223,15 @@ func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt strin
 // response_format=json_object so the assistant is constrained to a JSON
 // object, and the prompt is guaranteed to contain the word "json" as the
 // OpenAI spec requires for that mode.
-func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, prompt string, opts completionOptions) ([]byte, error) {
+func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, prompt string, opts completionOptions) (*ProviderCallResult, error) {
 	if opts.enforceJSON {
 		prompt = ensureJSONKeyword(prompt)
 	}
 
 	if o.streaming {
-		respBody, err := o.sendCompletionStreaming(ctx, model, apiKey, prompt, opts)
-		if err == nil && len(respBody) > 0 {
-			return respBody, nil
+		res, err := o.sendCompletionStreaming(ctx, model, apiKey, prompt, opts)
+		if err == nil && res != nil && len(res.Body) > 0 {
+			return res, nil
 		}
 		// A structured HTTP rejection is deterministic: the non-streaming
 		// POST would receive the identical rejection, doubling latency and
@@ -278,7 +279,8 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 	}
 	fmt.Fprintf(os.Stderr, "ℹ [llm] model %s returned finish=%q contentLen=%d first100=%q\n",
 		model, choice.FinishReason, len(content), truncate(content, 100))
-	return []byte(content), nil
+	usage := ExtractOpenAITokenUsage(completion.Usage)
+	return &ProviderCallResult{Body: []byte(content), Usage: usage}, nil
 }
 
 func truncate(s string, n int) string {
@@ -306,7 +308,7 @@ func tempOrDefault(t float64) float64 {
 // cancelled only when no chunk has arrived for idleTimeout. Long responses
 // that keep streaming are never cut short — total duration remains capped by
 // the http.Client timeout (max_timeout).
-func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, apiKey, prompt string, opts completionOptions) ([]byte, error) {
+func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, apiKey, prompt string, opts completionOptions) (*ProviderCallResult, error) {
 	client := o.sdkClient(apiKey)
 	params := buildChatParams(model, prompt, opts)
 
@@ -334,6 +336,7 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 
 	var acc openai.ChatCompletionAccumulator
 	var reasoning strings.Builder
+	var usage domain.TokenUsage
 	streamStart := time.Now()
 	for stream.Next() {
 		if idleTimer != nil {
@@ -341,6 +344,9 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 		}
 		chunk := stream.Current()
 		acc.AddChunk(chunk)
+		if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 {
+			usage = ExtractOpenAITokenUsage(chunk.Usage)
+		}
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content == "" {
 			reasoning.WriteString(extractReasoningContent(chunk.Choices[0].Delta.JSON.ExtraFields))
 		}
@@ -350,6 +356,10 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 			return nil, fmt.Errorf("stream idle timeout: no data received for %v: %w", o.idleTimeout, err)
 		}
 		return nil, o.sdkError(err)
+	}
+
+	if usage.TotalTokens == 0 && acc.Usage.TotalTokens > 0 {
+		usage = ExtractOpenAITokenUsage(acc.Usage)
 	}
 
 	elapsed := time.Since(streamStart)
@@ -363,7 +373,7 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 	}
 	fmt.Fprintf(os.Stderr, "ℹ [llm] SSE stream for model %s completed: %d bytes, total=%v\n", model, len(content), elapsed)
 
-	return []byte(content), nil
+	return &ProviderCallResult{Body: []byte(content), Usage: usage}, nil
 }
 
 // sdkError converts SDK errors into the codebase's httpError type when the

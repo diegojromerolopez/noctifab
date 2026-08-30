@@ -41,10 +41,10 @@ func (r *PostgresRepository) saveStories(ctx context.Context, tx *sql.Tx, state 
 	}
 	for _, story := range state.Stories {
 		_, err := tx.ExecContext(ctx,
-			`INSERT INTO stories (id, state_id, title, file_path, status, started_at, completed_at, tokens_used, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			`INSERT INTO stories (id, state_id, title, file_path, status, started_at, completed_at, input_tokens, output_tokens, tokens_used, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 			story.ID, state.ID, story.Title, story.FilePath, string(story.Status),
-			nullTimePtr(story.StartedAt), nullTimePtr(story.CompletedAt), story.TokensUsed, story.CreatedAt, story.UpdatedAt,
+			nullTimePtr(story.StartedAt), nullTimePtr(story.CompletedAt), story.InputTokens, story.OutputTokens, story.TokensUsed, story.CreatedAt, story.UpdatedAt,
 		)
 		if err != nil {
 			return err
@@ -77,12 +77,12 @@ func (r *PostgresRepository) saveTasks(ctx context.Context, tx *sql.Tx, state *d
 		}
 
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at, story_id, started_at, completed_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at, story_id, started_at, completed_at, input_tokens, output_tokens, tokens_used)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
 			task.ID, state.ID, task.Title, task.Description, string(task.Status), string(task.ChangeType),
 			task.AssignedTo, task.Progress, dependsOnJSON, targetFilesJSON, partialChangelogJSON,
 			task.Retries, task.MaxRetries, task.FailureLog, task.CreatedAt, task.UpdatedAt,
-			task.StoryID, nullTimePtr(task.StartedAt), nullTimePtr(task.CompletedAt),
+			task.StoryID, nullTimePtr(task.StartedAt), nullTimePtr(task.CompletedAt), task.InputTokens, task.OutputTokens, task.TokensUsed,
 		)
 		if err != nil {
 			return err
@@ -170,10 +170,10 @@ func (r *PostgresRepository) saveActiveAgents(ctx context.Context, tx *sql.Tx, s
 	}
 	for _, agent := range state.ActiveAgents {
 		_, err := tx.ExecContext(ctx,
-			`INSERT INTO active_agents (id, state_id, name, role, status, task_id, started_at, completed_at, tokens_used, last_error)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			`INSERT INTO active_agents (id, state_id, name, role, status, task_id, started_at, completed_at, input_tokens, output_tokens, tokens_used, last_error)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 			agent.ID, state.ID, agent.Name, string(agent.Role), string(agent.Status), agent.TaskID,
-			nullTime(agent.StartedAt), nullTime(agent.CompletedAt), agent.TokensUsed, agent.LastError,
+			nullTime(agent.StartedAt), nullTime(agent.CompletedAt), agent.InputTokens, agent.OutputTokens, agent.TokensUsed, agent.LastError,
 		)
 		if err != nil {
 			return err

@@ -35,9 +35,9 @@ func TestPostgresRepository_Load_Errors(t *testing.T) {
 
 		repo := &PostgresRepository{db: db}
 		stateRows := sqlmock.NewRows([]string{
-			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_tokens_used",
+			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_input_tokens", "total_output_tokens", "total_tokens_used",
 		}).AddRow(
-			"state-1", "/src", 2, "PASSING", "", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100,
+			"state-1", "/src", 2, "PASSING", "", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 80, 20, 100,
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
@@ -59,9 +59,9 @@ func TestPostgresRepository_Load_Errors(t *testing.T) {
 
 		repo := &PostgresRepository{db: db}
 		stateRows := sqlmock.NewRows([]string{
-			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_tokens_used",
+			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_input_tokens", "total_output_tokens", "total_tokens_used",
 		}).AddRow(
-			"state-1", "/src", 2, "PASSING", "", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100,
+			"state-1", "/src", 2, "PASSING", "", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 80, 20, 100,
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
@@ -90,20 +90,20 @@ func TestPostgresRepository_Load(t *testing.T) {
 		now := time.Now()
 
 		stateRows := sqlmock.NewRows([]string{
-			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_tokens_used",
+			"id", "project_path", "version", "build_status", "story_status", "story_error", "input_source", "input_path", "integration_branch", "feature_name", "base_branch", "project_version", "total_input_tokens", "total_output_tokens", "total_tokens_used",
 		}).AddRow(
-			"state-1", "/src", 2, "PASSING", "RUNNING", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 100,
+			"state-1", "/src", 2, "PASSING", "RUNNING", "", "jira", "https://jira.com/1", "feature/foo", "Foo", "main", "1.0.0", 80, 20, 100,
 		)
 
 		mock.ExpectQuery("SELECT id, project_path").WillReturnRows(stateRows)
 		mock.ExpectQuery("SELECT id, state_id, title").WithArgs("state-1").WillReturnRows(sqlmock.NewRows([]string{
-			"id", "state_id", "title", "file_path", "status", "started_at", "completed_at", "tokens_used", "created_at", "updated_at",
-		}).AddRow("US-001", "state-1", "Feature Auth", "roadmap/user-stories/US-001.md", "RUNNING", now, now, 1500, now, now))
+			"id", "state_id", "title", "file_path", "status", "started_at", "completed_at", "input_tokens", "output_tokens", "tokens_used", "created_at", "updated_at",
+		}).AddRow("US-001", "state-1", "Feature Auth", "roadmap/user-stories/US-001.md", "RUNNING", now, now, 1000, 500, 1500, now, now))
 
 		taskRows := sqlmock.NewRows([]string{
-			"id", "title", "description", "status", "change_type", "assigned_to", "progress", "depends_on", "target_files", "partial_changelog", "retries", "max_retries", "failure_log", "created_at", "updated_at", "story_id", "started_at", "completed_at",
+			"id", "title", "description", "status", "change_type", "assigned_to", "progress", "depends_on", "target_files", "partial_changelog", "retries", "max_retries", "failure_log", "created_at", "updated_at", "story_id", "started_at", "completed_at", "input_tokens", "output_tokens", "tokens_used",
 		}).AddRow(
-			"task-1", "Task Title", "Desc", "PENDING", "FIX", "agent-1", 45, `["task-0"]`, `["foo.go"]`, `["Changelog"]`, 0, 3, "Test Failure Log", now, now, "US-001", now, now,
+			"task-1", "Task Title", "Desc", "PENDING", "FIX", "agent-1", 45, `["task-0"]`, `["foo.go"]`, `["Changelog"]`, 0, 3, "Test Failure Log", now, now, "US-001", now, now, 800, 200, 1000,
 		)
 		mock.ExpectQuery("SELECT id, title").WithArgs("state-1").WillReturnRows(taskRows)
 

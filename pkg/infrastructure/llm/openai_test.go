@@ -57,8 +57,8 @@ func TestOpenAIProviderClient_Call(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(res) != "openai response text" {
-			t.Errorf("expected 'openai response text', got %s", string(res))
+		if string(res.Body) != "openai response text" {
+			t.Errorf("expected 'openai response text', got %s", string(res.Body))
 		}
 	})
 
@@ -125,8 +125,8 @@ func TestOpenAIProviderClient_Streaming(t *testing.T) {
 		t.Fatalf("expected nil error on streaming call, got %v", err)
 	}
 
-	if !strings.Contains(string(resp), "reasoning") {
-		t.Fatalf("expected response to contain 'reasoning', got %s", string(resp))
+	if !strings.Contains(string(resp.Body), "reasoning") {
+		t.Fatalf("expected response to contain 'reasoning', got %s", string(resp.Body))
 	}
 }
 
