@@ -210,6 +210,13 @@ sandbox:
   - vendor/
   - bin/
   - dist/
+  - build/
+  - _build/
+  - __pycache__/
+  - .venv/
+  - venv/
+  - .pytest_cache/
+  - .mypy_cache/
   - .noctifab/
   - .git/
   - data/

@@ -143,7 +143,7 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 		diffContext, _ = git.Run(ctx, false, "diff", "HEAD~1")
 	}
 
-	workspaceSnapshot := a.collectSourceFiles(state.ProjectPath)
+	workspaceSnapshot := CollectWorkspaceSourceSnapshot(ctx, state.ProjectPath, nil, 50, 3000)
 	prompt := a.buildPrompt(storyContent, workspaceSnapshot, diffContext, state)
 
 	auditCtx := context.WithValue(ctx, AgentRoleKey, "qa")
@@ -198,44 +198,6 @@ Respond ONLY with a JSON object in this exact schema:
   ]
 }
 `)
-	return sb.String()
-}
-
-func (a *StoryQAAuditor) collectSourceFiles(projectPath string) string {
-	var sb strings.Builder
-	ignoredDirs := map[string]bool{
-		".git": true, ".noctifab": true, "node_modules": true,
-		".venv": true, "venv": true, "__pycache__": true,
-		"target": true, "dist": true, "build": true,
-	}
-
-	_ = filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			if ignoredDirs[info.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		ext := filepath.Ext(path)
-		switch ext {
-		case ".go", ".py", ".rs", ".js", ".ts", ".c", ".h", ".cpp", ".java", ".rb":
-			rel, rErr := filepath.Rel(projectPath, path)
-			if rErr == nil {
-				fmt.Fprintf(&sb, "--- File: %s ---\n", rel)
-				content, readErr := os.ReadFile(path)
-				if readErr == nil {
-					sb.WriteString(capText(string(content), 3000))
-					sb.WriteString("\n\n")
-				}
-			}
-		}
-		return nil
-	})
-
 	return sb.String()
 }
 

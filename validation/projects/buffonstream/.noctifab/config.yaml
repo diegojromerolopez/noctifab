@@ -206,6 +206,7 @@ sandbox:
     consecutive_failures: 2
     max_retries: 3
   exclude_paths:
+  - vendor/
   - bin/
   - dist/
   - .noctifab/

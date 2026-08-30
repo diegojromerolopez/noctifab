@@ -77,7 +77,7 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		}, nil
 	}
 
-	workspaceFiles := a.collectWorkspaceSnapshot(state.ProjectPath)
+	workspaceFiles := a.collectWorkspaceSnapshot(ctx, state.ProjectPath)
 	storyContracts := a.formatStoryContracts(state)
 	taskSummaries := a.formatTaskSummaries(state)
 
@@ -105,50 +105,28 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 	return a.parseAuditResponse(resp), nil
 }
 
-func (a *AcceptanceAuditor) collectWorkspaceSnapshot(projectPath string) string {
-	var files []string
-	var codeSnippets []string
-
-	ignoredDirs := map[string]bool{
-		".git": true, ".noctifab": true, "node_modules": true,
-		".venv": true, "venv": true, "__pycache__": true,
-		"target": true, "dist": true, "build": true,
+func (a *AcceptanceAuditor) collectWorkspaceSnapshot(ctx context.Context, projectPath string) string {
+	files, err := ListWorkspaceSourceFiles(ctx, projectPath, nil)
+	if err != nil || len(files) == 0 {
+		return "Workspace File Tree: (empty)"
 	}
 
-	_ = filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		rel, relErr := filepath.Rel(projectPath, path)
-		if relErr != nil || rel == "." {
-			return nil
-		}
-		if info.IsDir() {
-			if ignoredDirs[info.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		// Only collect regular files under 1MB
-		if info.Size() > 1024*1024 {
-			return nil
-		}
-		files = append(files, rel)
-
-		// Sample key entrypoints / command handlers / build scripts
+	var codeSnippets []string
+	for _, rel := range files {
 		lower := strings.ToLower(rel)
 		if strings.Contains(lower, "command") || strings.Contains(lower, "main") ||
 			strings.Contains(lower, "cli") || strings.Contains(lower, "server") ||
 			strings.Contains(lower, "app") || strings.HasSuffix(lower, "makefile") ||
 			strings.Contains(lower, "compose") || strings.HasSuffix(lower, ".sh") ||
-			strings.HasSuffix(lower, "pyproject.toml") || strings.HasSuffix(lower, "go.mod") {
-			if content, readErr := os.ReadFile(path); readErr == nil {
+			strings.HasSuffix(lower, "pyproject.toml") || strings.HasSuffix(lower, "go.mod") ||
+			strings.HasSuffix(lower, "cargo.toml") {
+			fullPath := filepath.Join(projectPath, rel)
+			if content, readErr := os.ReadFile(fullPath); readErr == nil {
 				snippet := capText(string(content), 3000)
 				codeSnippets = append(codeSnippets, fmt.Sprintf("--- %s ---\n%s\n", rel, snippet))
 			}
 		}
-		return nil
-	})
+	}
 
 	var sb strings.Builder
 	sb.WriteString("Workspace File Tree:\n")
@@ -158,7 +136,14 @@ func (a *AcceptanceAuditor) collectWorkspaceSnapshot(projectPath string) string 
 		sb.WriteString("\n")
 	}
 	if len(codeSnippets) > 0 {
-		sb.WriteString("\nKey Implementation Source Snippets:\n")
+		sb.WriteString("\nKey Source Implementations:\n")
+		for _, s := range codeSnippets {
+			sb.WriteString(s)
+			sb.WriteString("\n")
+		}
+	}
+	if len(codeSnippets) > 0 {
+		sb.WriteString("\nKey Source Implementations:\n")
 		for _, s := range codeSnippets {
 			sb.WriteString(s)
 			sb.WriteString("\n")

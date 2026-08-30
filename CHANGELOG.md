@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.4] - 2026-08-31
+
+### Added
+- **Centralized Language-Agnostic Workspace Discovery & Git-Aware Gating**:
+  - Implemented `WorkspaceScanner`, `ListWorkspaceSourceFiles`, `CollectWorkspaceSourceSnapshot`, and `IsTextFile` in `pkg/services/workspace_discovery.go`.
+  - Replaced ad-hoc hardcoded directory names and language extensions across `story_qa_auditor.go`, `acceptance_auditor.go`, `anti_stub_validator.go`, `reporting/churn.go`, and `roadmap_generator.go` with git-aware ignore checks (`git ls-files`, `git check-ignore`), project `.gitignore` compliance, and configured `sandbox.exclude_paths`.
+  - Added binary detection (`IsTextFile`) to automatically filter out compiled binaries, objects (`.o`), libraries (`.so`, `.rlib`), and compiler caches from LLM prompt contexts.
+  - Added `target_container/` to `sandbox.exclude_paths` in `validation/projects/wc/.noctifab/config.yaml`.
+
+## [0.59.3] - 2026-08-30
+
+### Changed
+- **Immediate Task Dispatch (Zero Startup Latency)**:
+  - Added immediate initial `orchestrator.RunOnce` dispatch in `cmd/noctifab/cli/start_story_executor.go` directly after story planning, eliminating the 2-second idle sleep before the first ticker tick.
+- **Cleaned Up TestValidator Deprecations**:
+  - Removed deprecated and unused `LinterCommand`, `MaxLinterIssues`, and `MaxLinterConsecutiveFailures` fields from `TestValidator` struct and constructor in `pkg/services/test_validator.go`.
+- **Anti-Stub Validator Traversal Optimization**:
+  - Enhanced skipped directory filtering in `pkg/services/anti_stub_validator.go` to ignore build and dependency caches (`.pytest_cache`, `.mypy_cache`, `.tox`, `vendor`).
+- **Validation Projects Config Standardization**:
+  - Reverted `validation/projects/wc/.noctifab/config.yaml` `runtime.loop.count` to `1` in adherence to the Configuration Immutability Mandate.
+
 ## [0.59.2] - 2026-08-30
 
 ### Changed

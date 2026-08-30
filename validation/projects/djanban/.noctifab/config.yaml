@@ -210,11 +210,15 @@ sandbox:
   - vendor/
   - bin/
   - dist/
+  - build/
   - .noctifab/
   - .git/
   - data/
   - __pycache__/
   - .venv/
+  - venv/
+  - .pytest_cache/
+  - .mypy_cache/
   allowed_commands:
   - python3
   - python

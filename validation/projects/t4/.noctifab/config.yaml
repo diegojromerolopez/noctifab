@@ -211,6 +211,7 @@ sandbox:
   - vendor/
   - bin/
   - dist/
+  - build/
   - .noctifab/
   - .git/
   - data/

@@ -352,11 +352,11 @@ sandbox:
 - **`linter_command`** (String): Command executed to run project static analysis linter tasks.
 - **`formatter_command`** (String): Command executed to run code format checks (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_linter` runs this pre-step auto-fixer first before linter diagnostics.
 - **`max_linter_retries`** (Integer): Maximum linter fix retry turns per task (default: `3`). Prevents infinite agent loops on unfixable linter offenses.
-- **`exclude_paths`** (List of Strings): Directory trees ignored by the repository indexer and file walker (e.g. `node_modules/`, `.git/`).
+- **`exclude_paths`** (List of Strings): Directory trees, prefixes, or wildcard patterns ignored by the workspace discovery engine, Story QA auditor, anti-stub validator, and churn calculator (e.g. `node_modules/`, `vendor/`, `target/`, `target_container/`, `build/`, `_build/`, `*.tmp`). Works seamlessly with Git's `.gitignore` rules and automated binary detection (`IsTextFile`).
 - **`allowed_commands`** (List of Strings): Whitelist of executable binaries permitted inside the sandbox process runner.
 - **`auto_install_deps`** (Boolean): Allow sandbox to auto-detect and attempt to install missing build dependencies.
 - **`package_managers`** (List of Strings): Authorized tool package managers (e.g. `pip`, `go`, `npm`, `brew`).
-- **`forbidden_patterns`** (List of Strings): Regex patterns disallowed in tool inputs or parameters.
+- **`forbidden_patterns`** (List of Strings): Regex patterns disallowed in tool inputs or parameters (e.g. `\bunsafe\s*\{`).
 - **`context.compaction`** (String): Prompt & spec markdown compaction strategy. Options: `none` (default, no compaction), `simple_english` (active voice, simplified vocabulary, stripping conversational preambles), `caveman` (telegraphic markdown compaction stripping dividers and headers). `caveman_compaction: true` is supported as a legacy backward-compatible alias for `caveman`.
 
 ---

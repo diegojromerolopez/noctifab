@@ -205,6 +205,8 @@ sandbox:
     max_retries: 3
   exclude_paths:
   - target/
+  - target_container/
+  - dist/
   - .noctifab/
   - .git/
   allowed_commands:

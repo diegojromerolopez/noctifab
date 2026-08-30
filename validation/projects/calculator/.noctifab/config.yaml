@@ -205,7 +205,9 @@ sandbox:
     max_retries: 3
   exclude_paths:
   - vendor/
+  - .bundle/
   - bin/
+  - dist/
   - .noctifab/
   - .git/
   allowed_commands:

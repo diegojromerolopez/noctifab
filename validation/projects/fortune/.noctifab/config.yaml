@@ -205,6 +205,8 @@ sandbox:
     max_retries: 3
   exclude_paths:
   - build/
+  - bin/
+  - dist/
   - .noctifab/
   - .git/
   allowed_commands:

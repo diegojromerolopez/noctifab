@@ -24,37 +24,27 @@ type TestRunResult struct {
 // TestValidator validates a task by running the project's tests. By default
 // it performs a single validation run; when Runs is configured to a value
 // greater than 1 it runs the suite N times and passes on a strict majority
-// vote (passCount > runs/2). It optionally runs formatter/linter pre-passes.
+// vote (passCount > runs/2). It optionally runs an auto-fix formatter pre-pass.
 type TestValidator struct {
 	Runner           Sandbox
 	Strict           bool
 	FormatterCommand string
-	LinterCommand    string
 	LLMClient        domain.LLMClient
 	Tools            map[string]Tool
 	RunTimeout       time.Duration
 	// Runs is the number of test suite executions per validation. Values
 	// <= 0 default to 1 (single run, no consensus voting).
 	Runs int
-	// MaxLinterIssues is the maximum number of linter issues tolerated before
-	// failing validation. 0 means strict. -1 means disabled. Default 0.
-	MaxLinterIssues int
-	// MaxLinterConsecutiveFailures is the consecutive failure count threshold
-	// before linter enforcement is deferred to prevent infinite lock-in loops.
-	// Defaults to 2 if <= 0.
-	MaxLinterConsecutiveFailures int
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
 	return &TestValidator{
-		Runner:                       runner,
-		Strict:                       strict,
-		LinterCommand:                "",
-		LLMClient:                    llmClient,
-		Tools:                        tools,
-		RunTimeout:                   5 * time.Minute,
-		Runs:                         1,
-		MaxLinterConsecutiveFailures: 2,
+		Runner:     runner,
+		Strict:     strict,
+		LLMClient:  llmClient,
+		Tools:      tools,
+		RunTimeout: 5 * time.Minute,
+		Runs:       1,
 	}
 }
 

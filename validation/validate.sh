@@ -65,7 +65,8 @@ git init
 git checkout -b main
 git config user.name "Noctifab Tester"
 git config user.email "tester@noctifab.local"
-cat <<EOF > .gitignore
+if [ ! -f .gitignore ]; then
+  cat <<EOF > .gitignore
 __pycache__/
 *.pyc
 .noctifab/data/
@@ -73,7 +74,21 @@ __pycache__/
 todo.json
 *.json
 target/
+target_container/
+build/
+_build/
+dist/
+bin/
+.venv/
+node_modules/
 EOF
+else
+  for PATTERN in ".noctifab/data/" ".noctifab/logs/" "target_container/" "dist/" "bin/"; do
+    if ! grep -qxF "${PATTERN}" .gitignore; then
+      echo "${PATTERN}" >> .gitignore
+    fi
+  done
+fi
 git add .
 git commit -m "initial project structures and gitignore"
 
