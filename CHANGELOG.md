@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.1] - 2026-08-30
+
+### Fixed
+- **Story QA Audit & Definition of Done Finalization State Transition**:
+  - Corrected the orchestrator dispatch condition in `pkg/services/orchestrator_dispatch.go` to evaluate story finalization and execute the Story QA Audit gate (`StoryQAAuditor.AuditStoryCompleteness`) when `StoryStatus` is `StoryRunning` or `StoryIdle`.
+  - Updated `cmd/noctifab/cli/start_story_executor.go` to explicitly verify `StoryStatus` transitions (`StorySuccess` vs `StoryFailed`) before completing execution.
+
 ## [0.59.0] - 2026-08-30
 
 ### Added

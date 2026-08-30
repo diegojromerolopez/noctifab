@@ -197,9 +197,9 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 	if len(ready) == 0 {
 		// Finalize exactly once: guarded by StoryStatus (not BuildStatus, which
 		// may have been set to FAILING mid-run by a failing task and could
-		// recover on retry). StoryStatus transitions Idle -> Success/Failed
+		// recover on retry). StoryStatus transitions Idle/Running -> Success/Failed
 		// exactly once when all tasks are finished.
-		if o.allTasksFinished(state) && state.StoryStatus == domain.StoryIdle {
+		if o.allTasksFinished(state) && (state.StoryStatus == domain.StoryIdle || state.StoryStatus == domain.StoryRunning) {
 			// Run Post-Merge Repair Phase before release finalization
 			_ = o.RunPostMergeRepairPhase(ctx, state)
 

@@ -260,4 +260,3 @@ func TestStartCmd_LoopsFlag(t *testing.T) {
 	assert.NotNil(t, rFlag, "resumeCmd should have a --loops flag")
 	assert.Equal(t, "0", flag.DefValue)
 }
-
