@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -44,9 +43,6 @@ type TestValidator struct {
 	// before linter enforcement is deferred to prevent infinite lock-in loops.
 	// Defaults to 2 if <= 0.
 	MaxLinterConsecutiveFailures int
-	// linterConsecutiveFailures tracks consecutive linter failures without
-	// any file mutation in between.
-	linterConsecutiveFailures int
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
@@ -96,51 +92,8 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 
 	if v.FormatterCommand != "" {
 		// Deterministic Auto-Formatter Pre-Pass:
-		// Automatically run auto-fix formatter before linter evaluation.
+		// Automatically run auto-fix formatter before test execution.
 		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
-	}
-
-	if v.LinterCommand != "" {
-		maxConsecutive := v.MaxLinterConsecutiveFailures
-		if maxConsecutive <= 0 {
-			maxConsecutive = 2
-		}
-		// Enforce linter unless consecutive failures have indicated a lock-in loop.
-		if v.linterConsecutiveFailures >= maxConsecutive {
-			fmt.Fprintf(os.Stderr, "⚠ Linter deferred: failed %d consecutive times without file changes — skipping linter enforcement to allow task completion.\n", v.linterConsecutiveFailures)
-		} else {
-			out, err := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
-			if err != nil && v.FormatterCommand != "" {
-				// Try auto-formatting once more to resolve formatting/style linter offenses automatically
-				_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
-				outRetry, errRetry := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
-				if errRetry == nil {
-					out = outRetry
-					err = nil
-				}
-			}
-			if err != nil {
-				// Apply MaxLinterIssues threshold: -1 = disabled, >0 = tolerance.
-				linterBlocking := true
-				if v.MaxLinterIssues < 0 {
-					fmt.Fprintf(os.Stderr, "⚠ Linter issues suppressed (max_linter_issues=-1).\n")
-					linterBlocking = false
-				} else if v.MaxLinterIssues > 0 {
-					issueCount := countLinterIssues(out)
-					if issueCount <= v.MaxLinterIssues {
-						fmt.Fprintf(os.Stderr, "⚠ Linter advisory: %d issue(s) within max_linter_issues=%d threshold — continuing.\n", issueCount, v.MaxLinterIssues)
-						linterBlocking = false
-					}
-				}
-				if linterBlocking {
-					v.linterConsecutiveFailures++
-					return false, fmt.Sprintf("Linter validation failed. Command: %s. Output:\n%s", v.LinterCommand, out), nil
-				}
-			} else {
-				// Linter passed — reset consecutive failure counter.
-				v.linterConsecutiveFailures = 0
-			}
-		}
 	}
 
 	runs := v.Runs

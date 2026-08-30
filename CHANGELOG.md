@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.2] - 2026-08-30
+
+### Changed
+- **Task Evaluation Linter Decoupling**:
+  - Removed blocking linter gates from individual task execution in `pkg/services/test_validator.go` (`ValidateTask`).
+  - Per-task verification focuses purely on compilation, unit/integration test suite passage, and anti-stub validation, preventing dead-code or incomplete-entrypoint linter warnings from blocking intermediate domain model tasks before downstream wiring is completed. Linters and clerical cleanup are deferred to dedicated maintenance stories.
+
 ## [0.59.1] - 2026-08-30
 
 ### Fixed
