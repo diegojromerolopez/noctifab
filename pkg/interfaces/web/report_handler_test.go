@@ -95,4 +95,14 @@ func TestReportHandler_Endpoints(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "total_tokens")
 	})
+
+	t.Run("GET /api/v1/convergence returns loop convergence summary", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/convergence", nil)
+		rec := httptest.NewRecorder()
+
+		mux.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Body.String(), "total_stories")
+		assert.Contains(t, rec.Body.String(), "completed_stories")
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -131,7 +132,7 @@ func (o *Orchestrator) AuditStoryCompleteness(ctx context.Context, state *domain
 }
 
 func (o *Orchestrator) shouldAuditStoryCompleteness(state *domain.State) bool {
-	if !o.cfg.QA.Enabled || o.storyQAAuditor == nil || state == nil {
+	if o.storyQAAuditor == nil || state == nil {
 		return false
 	}
 	// Count existing remediation tasks for this story to avoid exceeding max retry threshold (2)
@@ -189,7 +190,9 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 		Retries:     0,
 	}
 
-	fmt.Printf("🔍 [Story QA Gate] Missing features detected in %s. Triggering remediation cycle (Task: %s)...\n", currentStoryID, taskID)
+	refineStoryFileWithGaps(state.ProjectPath, state.Metadata.InputPath, currentStoryID, qaResult)
+
+	fmt.Printf("🔍 [Story QA Gate] Missing features detected in %s. Refined story specification and triggering remediation cycle (Task: %s)...\n", currentStoryID, taskID)
 
 	err := o.updateStateWithRetry(ctx, func(st *domain.State) error {
 		st.Tasks = append(st.Tasks, remediationTask)
@@ -203,6 +206,47 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 		return nil
 	})
 	return err == nil
+}
+
+func refineStoryFileWithGaps(projectPath, inputPath, storyID string, qaResult *StoryQAResult) {
+	if qaResult == nil || len(qaResult.MissingFeatures) == 0 {
+		return
+	}
+	storyPath := inputPath
+	if storyPath == "" {
+		storyPath = filepath.Join("roadmap", "user-stories", fmt.Sprintf("%s.md", storyID))
+	}
+	if !filepath.IsAbs(storyPath) && projectPath != "" {
+		storyPath = filepath.Join(projectPath, storyPath)
+	}
+
+	contentBytes, err := os.ReadFile(storyPath)
+	if err != nil {
+		return
+	}
+	content := string(contentBytes)
+	sectionHeader := "## Refined Acceptance Criteria & Missing Requirements"
+	if strings.Contains(content, sectionHeader) {
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString(content)
+	if !strings.HasSuffix(content, "\n") {
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n")
+	sb.WriteString(sectionHeader)
+	sb.WriteString("\n\n")
+	sb.WriteString("The QA Acceptance Review identified the following incomplete features and requirements that MUST be implemented to satisfy the Definition of Done:\n\n")
+	for _, f := range qaResult.MissingFeatures {
+		fmt.Fprintf(&sb, "- [ ] **Missing Feature**: %s\n", f)
+	}
+	if strings.TrimSpace(qaResult.Summary) != "" {
+		fmt.Fprintf(&sb, "\n**Audit Summary**: %s\n", qaResult.Summary)
+	}
+
+	_ = os.WriteFile(storyPath, []byte(sb.String()), 0600)
 }
 
 // buildPRBody assembles a markdown pull request description from the completed state.

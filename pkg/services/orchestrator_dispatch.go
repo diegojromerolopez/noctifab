@@ -215,11 +215,19 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 							// Return true to continue the task processing loop with the newly added remediation task.
 							return true, nil
 						}
+						// If remediation attempts are exhausted, the story fails Definition of Done review
+						buildOK = false
+						fmt.Printf("❌ Story %s: Definition of Done audit failed with %d missing feature(s):\n", state.Metadata.FeatureName, len(storyQAResult.MissingFeatures))
+						for _, f := range storyQAResult.MissingFeatures {
+							fmt.Printf(" - %s\n", f)
+						}
 					}
 				}
 
-				if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
-					fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
+				if buildOK {
+					if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
+						fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
+					}
 				}
 			} else {
 				fmt.Printf("Orchestrator: one or more tasks failed test validation; marking build as FAILING and skipping release finalization.\n")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -149,4 +150,66 @@ func TestStoryQAAuditor_AuditStoryCompleteness(t *testing.T) {
 			t.Errorf("unexpected discovered e2e command: %s", cmd)
 		}
 	})
+
+	t.Run("when refineStoryFileWithGaps is called, it appends missing DoD requirements to story file", func(t *testing.T) {
+		refineStoryPath := filepath.Join(storyDir, "US-002.md")
+		initialStory := "# US-002: Advanced Commands\n## Acceptance Criteria\n- LPUSH\n"
+		_ = os.WriteFile(refineStoryPath, []byte(initialStory), 0600)
+
+		qaRes := &StoryQAResult{
+			Passed:          false,
+			Summary:         "LPOP and LRANGE are missing",
+			MissingFeatures: []string{"LPOP command", "LRANGE command"},
+		}
+
+		refineStoryFileWithGaps(tmpDir, "roadmap/user-stories/US-002.md", "US-002", qaRes)
+
+		updated, err := os.ReadFile(refineStoryPath)
+		if err != nil {
+			t.Fatalf("failed to read updated story file: %v", err)
+		}
+		updatedContent := string(updated)
+		if !strings.Contains(updatedContent, "## Refined Acceptance Criteria & Missing Requirements") {
+			t.Errorf("expected section header in story file, got:\n%s", updatedContent)
+		}
+		if !strings.Contains(updatedContent, "- [ ] **Missing Feature**: LPOP command") {
+			t.Errorf("expected LPOP missing feature in story file, got:\n%s", updatedContent)
+		}
+	})
+
+	t.Run("when whole-workspace test suite fails, audit fails with regression error", func(t *testing.T) {
+		regressDir := t.TempDir()
+		mockRunner := &mockStoryQASandbox{
+			runCmdFunc: func(ctx context.Context, projectPath, command, pkg string) (string, error) {
+				return "FAIL: TestOtherModuleRegressed (panic)", os.ErrInvalid
+			},
+		}
+
+		goModPath := filepath.Join(regressDir, "go.mod")
+		_ = os.WriteFile(goModPath, []byte("module testmod\n\ngo 1.22\n"), 0644)
+		regressStoryPath := filepath.Join(regressDir, "US-001.md")
+		_ = os.WriteFile(regressStoryPath, []byte(storyContent), 0644)
+
+		regressState := &domain.State{
+			ProjectPath: regressDir,
+			Metadata: domain.StateMetadata{
+				FeatureName: "US-001",
+				InputPath:   regressStoryPath,
+			},
+		}
+
+		auditor := NewStoryQAAuditor(&mockStoryQALLM{}, mockRunner)
+		res, err := auditor.AuditStoryCompleteness(context.Background(), regressState, regressStoryPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Passed {
+			t.Errorf("expected audit to fail when whole-workspace tests fail")
+		}
+		if len(res.MissingFeatures) == 0 || !strings.Contains(res.Summary, "Whole-workspace regression detected") {
+			t.Errorf("expected regression summary, got: %s", res.Summary)
+		}
+	})
 }
+
+

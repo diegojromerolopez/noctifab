@@ -28,7 +28,8 @@ runtime:
   max_tokens_per_story: 2000000
   max_tokens_per_task: 500000
   max_tokens: 100000000
-  loops: 1
+  loop:
+    count: 1
 ```
 
 | Key | Type | Default | Description |
@@ -40,7 +41,7 @@ runtime:
 | `max_tokens_per_story` | Integer | `0` (unlimited) | Token consumption ceiling per user story before aborting. |
 | `max_tokens_per_task` | Integer | `0` (unlimited) | Token consumption ceiling per individual task. |
 | `max_tokens` | Integer | `100000000` | Global token consumption ceiling across the entire execution run (default: 100 million). |
-| `loops` | Integer | `1` | Number of isolated execution loop passes per `noctifab start` run (default: 1). |
+| `loop.count` | Integer | `1` | Number of execution iteration loops per `noctifab start` run (default: 1). Legacy `loops` is also supported. |
 
 ---
 

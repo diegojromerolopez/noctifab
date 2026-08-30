@@ -54,6 +54,8 @@ func Load(cmd *cobra.Command) (*Config, error) {
 			if err := validateYAMLContract(data); err != nil {
 				return nil, err
 			}
+			cfg.Runtime.Loops = 0
+			cfg.Runtime.Loop.Count = 0
 			decoder := yaml.NewDecoder(bytes.NewReader(data))
 			decoder.KnownFields(true)
 			if err := decoder.Decode(cfg); err != nil {
@@ -193,6 +195,10 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
+	if err := validateRuntimeLoops(&cfg.Runtime); err != nil {
+		return err
+	}
+
 	roles := map[string]AgentRoleConfig{
 		"orchestrator":    cfg.Agents.Orchestrator,
 		"product_manager": cfg.Agents.ProductManager,
@@ -208,6 +214,12 @@ func (cfg *Config) Validate() error {
 		}
 		if roleCfg.Iterations < 0 {
 			return fmt.Errorf("agent role %s iterations must be non-negative, got %d", roleName, roleCfg.Iterations)
+		}
+		if roleCfg.MaxUserStories < 0 {
+			return fmt.Errorf("agent role %s max_user_stories must be non-negative, got %d", roleName, roleCfg.MaxUserStories)
+		}
+		if roleCfg.Passes < 0 {
+			return fmt.Errorf("agent role %s passes must be non-negative, got %d", roleName, roleCfg.Passes)
 		}
 	}
 
@@ -378,4 +390,25 @@ func NormalizeArchitecture(arch string) string {
 	default:
 		return arch
 	}
+}
+
+func validateRuntimeLoops(runtime *RuntimeConfig) error {
+	if runtime.Loops < 0 {
+		return fmt.Errorf("runtime loops must be positive, got %d", runtime.Loops)
+	}
+	if runtime.Loop.Count < 0 {
+		return fmt.Errorf("runtime loop count must be positive, got %d", runtime.Loop.Count)
+	}
+	if runtime.Loops > 0 && runtime.Loop.Count > 0 && runtime.Loops != runtime.Loop.Count {
+		return fmt.Errorf("conflicting loop count settings: runtime.loops (%d) != runtime.loop.count (%d)", runtime.Loops, runtime.Loop.Count)
+	}
+	if runtime.Loop.Count > 0 && runtime.Loops == 0 {
+		runtime.Loops = runtime.Loop.Count
+	} else if runtime.Loops > 0 && runtime.Loop.Count == 0 {
+		runtime.Loop.Count = runtime.Loops
+	} else if runtime.Loops == 0 && runtime.Loop.Count == 0 {
+		runtime.Loops = 1
+		runtime.Loop.Count = 1
+	}
+	return nil
 }

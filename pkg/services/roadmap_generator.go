@@ -18,12 +18,17 @@ import (
 // and saves the updated markdown files to projectPath/roadmap/.
 // renderer may be nil, in which case the embedded default templates are used.
 func GenerateRoadmap(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer) error {
-	return GenerateRoadmapWithPasses(ctx, projectPath, llmClient, renderer, 1)
+	return GenerateRoadmapWithConfig(ctx, projectPath, llmClient, renderer, 1, 0)
 }
 
 // GenerateRoadmapWithPasses executes a multi-pass Product Manager roadmap generation & audit loop.
 // Pass 1 generates initial user stories; Passes 2+ perform cross-story audits to refine contracts and dependencies.
-func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int) (lastErr error) {
+func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int) error {
+	return GenerateRoadmapWithConfig(ctx, projectPath, llmClient, renderer, passes, 0)
+}
+
+// GenerateRoadmapWithConfig executes a multi-pass Product Manager roadmap generation with an optional max user stories ceiling.
+func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int, maxUserStories int) (lastErr error) {
 	if passes <= 0 {
 		passes = 1
 	}
@@ -86,6 +91,7 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 			Spec:            string(specBytes),
 			ExistingStories: strings.Join(existingStories, "\n"),
 			LegacyFiles:     legacyBlock,
+			MaxUserStories:  maxUserStories,
 		})
 		if err != nil {
 			return fmt.Errorf("product manager prompt rendering failed (pass %d/%d): %w", p, passes, err)

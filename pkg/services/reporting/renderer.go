@@ -324,6 +324,19 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 		sb.WriteString("\n")
 	}
 
+	// Multi-Loop Convergence Matrix (rendered when multi-loop data exists)
+	if len(snapshot.Convergence) > 0 {
+		sb.WriteString("## Multi-Loop Convergence Matrix\n\n")
+		sb.WriteString("| Loop # | Stories Attempted | Stories Succeeded | Remediations Triggered | Tokens Used | Duration | Outcome |\n")
+		sb.WriteString("| :--- | ---: | ---: | ---: | ---: | :--- | :--- |\n")
+		for _, c := range snapshot.Convergence {
+			fmt.Fprintf(&sb, "| **Loop %d** | %d | %d | %d | %d | %s | %s |\n",
+				c.LoopIndex, c.StoriesAttempted, c.StoriesSucceeded, c.RemediationsTriggered,
+				c.TokensUsed, r.formatDuration(c.DurationMS), c.Outcome)
+		}
+		sb.WriteString("\n")
+	}
+
 	// Evidence and Limitations (only render if non-empty)
 	if len(snapshot.Limitations) > 0 {
 		sb.WriteString("## Evidence and Limitations\n\n")

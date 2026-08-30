@@ -2,30 +2,9 @@ package config
 
 import (
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
-
-// Duration is a wrapper around time.Duration to support YAML unmarshaling of duration strings.
-type Duration time.Duration
-
-func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
-	var s string
-	if err := value.Decode(&s); err != nil {
-		return err
-	}
-	dur, err := time.ParseDuration(s)
-	if err != nil {
-		return err
-	}
-	*d = Duration(dur)
-	return nil
-}
-
-func (d Duration) MarshalYAML() (interface{}, error) {
-	return time.Duration(d).String(), nil
-}
 
 type Config struct {
 	ConfigVersion  string                   `yaml:"config_version"`
@@ -59,27 +38,6 @@ type Config struct {
 	MaxClarificationWait       Duration `yaml:"max_clarification_wait"`
 	ClarificationTimeoutAction string   `yaml:"clarification_timeout_action"`
 	ExecutionReport            string   `yaml:"execution_report,omitempty"`
-}
-
-type NotificationsConfig struct {
-	Desktop    bool   `yaml:"desktop"`
-	WebhookURL string `yaml:"webhook_url"`
-}
-
-type RuntimeConfig struct {
-	SpecSource             string   `yaml:"spec_source"`
-	MaxActions             int      `yaml:"max_actions"`
-	MaxDuration            Duration `yaml:"max_duration"`
-	MaxSilentStallDuration Duration `yaml:"max_silent_stall_duration,omitempty"`
-	MaxTokensPerStory      int64    `yaml:"max_tokens_per_story,omitempty"`
-	MaxTokensPerTask       int64    `yaml:"max_tokens_per_task,omitempty"`
-	MaxTokens              int64    `yaml:"max_tokens,omitempty"`
-	Loops                  int      `yaml:"loops,omitempty"`
-}
-
-type LoggingConfig struct {
-	Level string `yaml:"level"`
-	File  string `yaml:"file"`
 }
 
 // PromptOverride customizes the prompt template of one agent action.

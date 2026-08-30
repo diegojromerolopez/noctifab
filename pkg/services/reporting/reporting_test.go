@@ -124,9 +124,50 @@ func TestReportingPipeline(t *testing.T) {
 			assert.Empty(t, reporting.RenderFilesystemTree(nil))
 			assert.Empty(t, reporting.RenderFilesystemTree([]string{}))
 		})
+
+		t.Run("it renders multi-loop convergence matrix when convergence data is present", func(t *testing.T) {
+			renderer := reporting.NewRenderer(nil)
+			snapshot := &reporting.ReportSnapshot{
+				Run: domain.RunMetadata{
+					RunID:           "run-test-conv",
+					Command:         "noctifab start",
+					ProjectPath:     "/work/project",
+					ReportPath:      reportPath,
+					StartedAt:       clock.Now(),
+					NoctifabVersion: "2.0.0",
+				},
+				Status: domain.ExecutionSuccess,
+				Convergence: []reporting.LoopConvergenceSummary{
+					{
+						LoopIndex:             1,
+						StoriesAttempted:      4,
+						StoriesSucceeded:      3,
+						RemediationsTriggered: 2,
+						TokensUsed:            125000,
+						DurationMS:            180000,
+						Outcome:               domain.ExecutionFailed,
+					},
+					{
+						LoopIndex:             2,
+						StoriesAttempted:      1,
+						StoriesSucceeded:      1,
+						RemediationsTriggered: 1,
+						TokensUsed:            45000,
+						DurationMS:            65000,
+						Outcome:               domain.ExecutionSuccess,
+					},
+				},
+			}
+
+			output := string(renderer.RenderMarkdown(snapshot))
+			assert.Contains(t, output, "## Multi-Loop Convergence Matrix")
+			assert.Contains(t, output, "| **Loop 1** | 4 | 3 | 2 | 125000 | 3m | FAILED |")
+			assert.Contains(t, output, "| **Loop 2** | 1 | 1 | 1 | 45000 | 1m 5s | SUCCESS |")
+		})
 	})
 }
 
 func pointerInt64(v int64) *int64 {
 	return &v
 }
+

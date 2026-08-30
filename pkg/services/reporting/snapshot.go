@@ -88,6 +88,16 @@ type SelfCorrectionSummary struct {
 	TaskSuccesses        int `json:"task_successes"`
 }
 
+type LoopConvergenceSummary struct {
+	LoopIndex             int                     `json:"loop_index"`
+	StoriesAttempted      int                     `json:"stories_attempted"`
+	StoriesSucceeded      int                     `json:"stories_succeeded"`
+	RemediationsTriggered int                     `json:"remediations_triggered"`
+	TokensUsed            int64                   `json:"tokens_used"`
+	DurationMS            int64                   `json:"duration_ms"`
+	Outcome               domain.ExecutionOutcome `json:"outcome"`
+}
+
 type ReportSnapshot struct {
 	Run                  domain.RunMetadata                 `json:"run"`
 	Status               domain.ExecutionOutcome            `json:"status"`
@@ -127,4 +137,5 @@ type ReportSnapshot struct {
 	Limitations          []string                           `json:"limitations"`
 	Diagnostics          []string                           `json:"diagnostics"`
 	Report               *domain.ExecutionReport            `json:"report,omitempty"`
+	Convergence          []LoopConvergenceSummary           `json:"convergence,omitempty"`
 }

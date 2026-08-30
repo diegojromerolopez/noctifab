@@ -76,9 +76,21 @@ noctifab start [target_dir] -i
 # Run with visual web dashboard
 noctifab start [target_dir] -w --web-open
 
+# Run with 3 iterative self-healing loops
+noctifab start [target_dir] --loops 3
+
 # Run as a continuous background daemon in standby mode
 noctifab start [target_dir] --standby -d
 ```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--loops` | `-L` | `0` | Override the number of iteration loops to execute (defaults to config.yaml value) |
+| `--web` | `-w` | `false` | Launch the real-time visual web dashboard in browser concurrently |
+| `--web-open` | | `false` | Automatically open the visual web dashboard in the default browser |
+| `--standby` | | `false` | Keep daemon alive in standby mode after finishing initial stories to accept prompt orders |
+| `--spec` | `-s` | `SPEC.md` | Path to feature specification file |
+| `--resume` | | `false` | Resume execution from the first incomplete user story, skipping completed stories |
 
 ### 4. `demo`
 Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Ideal for testing Noctifab's dark factory loop with zero LLM API keys.
@@ -144,11 +156,21 @@ noctifab validate
 ```
 
 ### 9. `resume`
-Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story. Supports `-w` / `--web` to launch the visual web dashboard concurrently, and `--web-open` to auto-open in browser.
+Resumes execution of an interrupted or partially completed project workspace, skipping user stories that have already reached `SUCCESS` with all tasks completed, and picking up execution at the first incomplete story. Supports `-w` / `--web` to launch the visual web dashboard concurrently, `--web-open` to auto-open in browser, and `--loops` / `-L` to override iteration loops.
 ```bash
 # Resume execution in target project folder with concurrent web dashboard
 noctifab resume /path/to/my-project -w --web-open
+
+# Resume execution with 2 iterative remediation loops
+noctifab resume /path/to/my-project --loops 2
 ```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--loops` | `-L` | `0` | Override the number of iteration loops to execute (defaults to config.yaml value) |
+| `--web` | `-w` | `false` | Launch the real-time visual web dashboard in browser concurrently |
+| `--web-open` | | `false` | Automatically open the visual web dashboard in the default browser |
+| `--spec` | `-s` | `SPEC.md` | Path to feature specification file |
 
 ### 10. `serve`
 Starts the long-running headless orchestrator daemon loop in the background, continuously polling and executing actions until completion or cancellation. Exposes the internal loopback REST API on `127.0.0.1:8080`.

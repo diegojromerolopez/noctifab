@@ -18,5 +18,6 @@ func init() {
 	resumeCmd.Flags().Int("web-port", 8080, "Port for the concurrent visual web dashboard")
 	resumeCmd.Flags().String("web-host", "127.0.0.1", "Host address to bind the concurrent visual web dashboard")
 	resumeCmd.Flags().Bool("web-open", false, "Automatically open the visual web dashboard in the default browser")
+	resumeCmd.Flags().IntP("loops", "L", 0, "Override the number of iteration loops to execute (defaults to config.yaml value)")
 	RootCmd.AddCommand(resumeCmd)
 }
