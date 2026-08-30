@@ -198,8 +198,8 @@ func TestCallAdaptiveFallback(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected adapted call to succeed, got %v", err)
 		}
-		if string(body) != `{"ok":true}` {
-			t.Errorf("unexpected body: %s", body)
+		if string(body.Body) != `{"ok":true}` {
+			t.Errorf("unexpected body: %s", body.Body)
 		}
 		if got := atomic.LoadInt64(&calls); got != 2 {
 			t.Errorf("expected exactly 2 requests (rejected + adapted), got %d", got)
@@ -277,8 +277,8 @@ func TestReasoningContentFallback(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(body) != `{"greeting":"hello"}` {
-			t.Errorf("expected reasoning_content fallback, got %q", body)
+		if string(body.Body) != `{"greeting":"hello"}` {
+			t.Errorf("expected reasoning_content fallback, got %q", body.Body)
 		}
 	})
 
@@ -300,8 +300,8 @@ func TestReasoningContentFallback(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(body) != `{"greeting":"hello"}` {
-			t.Errorf("expected accumulated reasoning_content, got %q", body)
+		if string(body.Body) != `{"greeting":"hello"}` {
+			t.Errorf("expected accumulated reasoning_content, got %q", body.Body)
 		}
 	})
 }
@@ -328,8 +328,8 @@ func TestSlidingIdleTimeout(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected steady stream to survive sliding idle timeout, got %v", err)
 		}
-		if string(body) != "xxxxxx" {
-			t.Errorf("unexpected content: %q", body)
+		if string(body.Body) != "xxxxxx" {
+			t.Errorf("unexpected content: %q", body.Body)
 		}
 	})
 

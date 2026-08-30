@@ -139,23 +139,23 @@ func (r *SQLiteRepository) saveTx(ctx context.Context, state *domain.State, fres
 	nextVersion := state.Version + 1
 	if currentVersion == 0 {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO state (id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO state (id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_input_tokens, total_output_tokens, total_tokens_used)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			state.ID, state.ProjectPath, nextVersion, string(state.BuildStatus),
 			string(state.StoryStatus), state.StoryError,
 			state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 			state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
-			state.Metadata.TotalTokensUsed,
+			state.Metadata.TotalInputTokens, state.Metadata.TotalOutputTokens, state.Metadata.TotalTokensUsed,
 		)
 	} else {
 		_, err = tx.ExecContext(ctx,
-			`UPDATE state SET project_path = ?, version = ?, build_status = ?, story_status = ?, story_error = ?, input_source = ?, input_path = ?, integration_branch = ?, feature_name = ?, base_branch = ?, project_version = ?, total_tokens_used = ?
+			`UPDATE state SET project_path = ?, version = ?, build_status = ?, story_status = ?, story_error = ?, input_source = ?, input_path = ?, integration_branch = ?, feature_name = ?, base_branch = ?, project_version = ?, total_input_tokens = ?, total_output_tokens = ?, total_tokens_used = ?
 			WHERE id = ?`,
 			state.ProjectPath, nextVersion, string(state.BuildStatus),
 			string(state.StoryStatus), state.StoryError,
 			state.Metadata.InputSource, state.Metadata.InputPath, state.Metadata.IntegrationBranch,
 			state.Metadata.FeatureName, state.Metadata.BaseBranch, state.Metadata.ProjectVersion,
-			state.Metadata.TotalTokensUsed,
+			state.Metadata.TotalInputTokens, state.Metadata.TotalOutputTokens, state.Metadata.TotalTokensUsed,
 			state.ID,
 		)
 	}
@@ -187,7 +187,7 @@ func (r *SQLiteRepository) Load(ctx context.Context) (*domain.State, error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "Load")
 	defer span.End()
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used
+		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_input_tokens, total_output_tokens, total_tokens_used
 		FROM state
 		ORDER BY CASE WHEN story_status = 'RUNNING' THEN 0 ELSE 1 END, id DESC
 		LIMIT 1`)

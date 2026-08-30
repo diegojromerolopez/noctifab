@@ -53,8 +53,8 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(res) != "anthropic response text" {
-			t.Errorf("expected 'anthropic response text', got %s", string(res))
+		if string(res.Body) != "anthropic response text" {
+			t.Errorf("expected 'anthropic response text', got %s", string(res.Body))
 		}
 	})
 
@@ -84,8 +84,8 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		expected := `{"reasoning": "done", "actions": []}`
-		if string(res) != expected {
-			t.Errorf("expected '%s', got '%s'", expected, string(res))
+		if string(res.Body) != expected {
+			t.Errorf("expected '%s', got '%s'", expected, string(res.Body))
 		}
 	})
 
@@ -115,8 +115,8 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		expected := "part 1\npart 2"
-		if string(res) != expected {
-			t.Errorf("expected '%s', got '%s'", expected, string(res))
+		if string(res.Body) != expected {
+			t.Errorf("expected '%s', got '%s'", expected, string(res.Body))
 		}
 	})
 
@@ -148,8 +148,8 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(res) != "ok" {
-			t.Errorf("expected 'ok', got '%s'", string(res))
+		if string(res.Body) != "ok" {
+			t.Errorf("expected 'ok', got '%s'", string(res.Body))
 		}
 	})
 
@@ -220,8 +220,8 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(res) != "success without temperature" {
-			t.Errorf("expected 'success without temperature', got %s", string(res))
+		if string(res.Body) != "success without temperature" {
+			t.Errorf("expected 'success without temperature', got %s", string(res.Body))
 		}
 		if callCount != 2 {
 			t.Errorf("expected 2 calls, got %d", callCount)
@@ -263,8 +263,8 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(res) != "success with max_tokens=4096" {
-			t.Errorf("expected 'success with max_tokens=4096', got %s", string(res))
+		if string(res.Body) != "success with max_tokens=4096" {
+			t.Errorf("expected 'success with max_tokens=4096', got %s", string(res.Body))
 		}
 		if callCount != 2 {
 			t.Errorf("expected 2 calls, got %d", callCount)
@@ -303,8 +303,8 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(res) != "success without prompt caching" {
-			t.Errorf("expected 'success without prompt caching', got %s", string(res))
+		if string(res.Body) != "success without prompt caching" {
+			t.Errorf("expected 'success without prompt caching', got %s", string(res.Body))
 		}
 		if callCount != 2 {
 			t.Errorf("expected 2 calls, got %d", callCount)

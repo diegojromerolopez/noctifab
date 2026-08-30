@@ -31,6 +31,8 @@ type SpecRevision struct {
 	Kind         SpecTurnKind      `json:"kind"`
 	ParentVer    int               `json:"parent_version,omitempty"`
 	DiffSummary  string            `json:"diff_summary,omitempty"`
+	InputTokens  int64             `json:"input_tokens,omitempty"`
+	OutputTokens int64             `json:"output_tokens,omitempty"`
 	TokensUsed   int64             `json:"tokens_used"`
 	ModelRoles   map[string]string `json:"model_roles,omitempty"`
 	CreatedAt    time.Time         `json:"created_at"`

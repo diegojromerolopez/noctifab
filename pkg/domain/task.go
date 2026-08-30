@@ -79,6 +79,8 @@ type Task struct {
 	Retries           int                  `json:"retries"`
 	MaxRetries        int                  `json:"max_retries"`
 	StoryID           string               `json:"story_id,omitempty"`
+	InputTokens       int64                `json:"input_tokens,omitempty"`
+	OutputTokens      int64                `json:"output_tokens,omitempty"`
 	TokensUsed        int64                `json:"tokens_used,omitempty"`
 	StartedAt         *time.Time           `json:"started_at,omitempty"`
 	CompletedAt       *time.Time           `json:"completed_at,omitempty"`

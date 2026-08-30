@@ -55,6 +55,9 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(prompt),
 		},
+		StreamOptions: openai.ChatCompletionStreamOptionsParam{
+			IncludeUsage: openai.Bool(true),
+		},
 	}
 	if opts.temperature != nil && !isNoTemperatureModel(model) && !globalCapabilityCache.isTemperatureUnsupported(model) {
 		params.Temperature = openai.Float(tempOrDefault(*opts.temperature))

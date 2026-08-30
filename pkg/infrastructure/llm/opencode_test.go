@@ -48,8 +48,8 @@ func TestOpenCodeProviderClient_Call(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(res) != "opencode glm-5.2 response" {
-			t.Errorf("expected 'opencode glm-5.2 response', got %s", string(res))
+		if string(res.Body) != "opencode glm-5.2 response" {
+			t.Errorf("expected 'opencode glm-5.2 response', got %s", string(res.Body))
 		}
 	})
 

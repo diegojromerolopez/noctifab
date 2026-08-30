@@ -255,6 +255,18 @@ Report paths are resolved strictly within workspace boundaries, timestamped with
 
 ---
 
+### 3-Tier Token Accountability System
+
+`noctifab` tracks, persists, and reports LLM token metrics across three distinct hierarchical tiers:
+
+1. **Tier 1 (Global State Metadata)**: Tracks total prompt (`TotalInputTokens`) and completion (`TotalOutputTokens`) tokens across the entire dark factory run lifetime.
+2. **Tier 2 (User Story Level)**: Tracks accumulated input and output tokens for individual user story milestones (`US-001`, `US-002`, etc.) and renders them in execution reports as the `### Story Token Breakdown` table.
+3. **Tier 3 (Task & Agent Worker Level)**: Tracks input/output tokens per task attempt and agent worker goroutine.
+
+Token extraction is integrated natively across OpenAI (stream options `IncludeUsage`), Anthropic (`cache_read_input_tokens`, `input_tokens`, `output_tokens`), Gemini (`usageMetadata`), and OpenOTel GenAI telemetry attributes (`gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`). For detailed documentation, see [docs/token_accountability.md](file:///Users/diegoj/repos/noctifab/docs/token_accountability.md).
+
+---
+
 ### Agent Architecture Modes & Team Configuration (`agents:`)
 
 `noctifab` supports unified configuration for its implemented roles under the **`agents:`** section in `.noctifab/config.yaml`. QA is retained as an experimental capability and is disabled by default.

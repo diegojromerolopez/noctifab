@@ -34,6 +34,13 @@ const (
 	ExecutionInterrupted ExecutionOutcome = "INTERRUPTED"
 )
 
+type StoryTokenBreakdown struct {
+	StoryID      string `json:"story_id"`
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
+	TotalTokens  int64  `json:"total_tokens"`
+}
+
 type EvidenceRef struct {
 	EventID string `json:"event_id"`
 	Excerpt string `json:"excerpt,omitempty"`

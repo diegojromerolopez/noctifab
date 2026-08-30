@@ -48,8 +48,8 @@ func TestGeminiProviderClient_Call(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if string(res) != "gemini response text" {
-			t.Errorf("expected 'gemini response text', got %s", string(res))
+		if string(res.Body) != "gemini response text" {
+			t.Errorf("expected 'gemini response text', got %s", string(res.Body))
 		}
 	})
 

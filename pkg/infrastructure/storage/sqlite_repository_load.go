@@ -16,7 +16,7 @@ func (r *SQLiteRepository) LoadByID(ctx context.Context, id string) (*domain.Sta
 	defer span.End()
 
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used
+		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_input_tokens, total_output_tokens, total_tokens_used
 		FROM state WHERE id = ?`, id)
 
 	state, err := r.scanStateRow(ctx, row)
@@ -37,7 +37,7 @@ func (r *SQLiteRepository) LoadAll(ctx context.Context) ([]*domain.State, error)
 	defer span.End()
 
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_tokens_used
+		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_input_tokens, total_output_tokens, total_tokens_used
 		FROM state ORDER BY CASE WHEN story_status = 'RUNNING' THEN 0 ELSE 1 END, id DESC`)
 	if err != nil {
 		return nil, err
@@ -77,7 +77,7 @@ func (r *SQLiteRepository) scanStateRow(ctx context.Context, row *sql.Row) (*dom
 		&storyStatusStr, &state.StoryError,
 		&state.Metadata.InputSource, &state.Metadata.InputPath, &state.Metadata.IntegrationBranch,
 		&state.Metadata.FeatureName, &state.Metadata.BaseBranch, &state.Metadata.ProjectVersion,
-		&state.Metadata.TotalTokensUsed,
+		&state.Metadata.TotalInputTokens, &state.Metadata.TotalOutputTokens, &state.Metadata.TotalTokensUsed,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -99,7 +99,7 @@ func (r *SQLiteRepository) scanStateRows(ctx context.Context, rows *sql.Rows) (*
 		&storyStatusStr, &state.StoryError,
 		&state.Metadata.InputSource, &state.Metadata.InputPath, &state.Metadata.IntegrationBranch,
 		&state.Metadata.FeatureName, &state.Metadata.BaseBranch, &state.Metadata.ProjectVersion,
-		&state.Metadata.TotalTokensUsed,
+		&state.Metadata.TotalInputTokens, &state.Metadata.TotalOutputTokens, &state.Metadata.TotalTokensUsed,
 	)
 	if err != nil {
 		return nil, err
@@ -113,7 +113,7 @@ func (r *SQLiteRepository) scanStateRows(ctx context.Context, rows *sql.Rows) (*
 func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain.State) error {
 	// Load Stories
 	rowsSt, err := r.db.QueryContext(ctx,
-		`SELECT id, state_id, title, file_path, status, started_at, completed_at, tokens_used, created_at, updated_at
+		`SELECT id, state_id, title, file_path, status, started_at, completed_at, input_tokens, output_tokens, tokens_used, created_at, updated_at
 		FROM stories WHERE state_id = ? ORDER BY id ASC`, state.ID)
 	if err != nil {
 		return err
@@ -126,7 +126,7 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 		var startedAt, completedAt sql.NullTime
 		if err := rowsSt.Scan(
 			&story.ID, &story.StateID, &story.Title, &story.FilePath, &statusStr,
-			&startedAt, &completedAt, &story.TokensUsed, &story.CreatedAt, &story.UpdatedAt,
+			&startedAt, &completedAt, &story.InputTokens, &story.OutputTokens, &story.TokensUsed, &story.CreatedAt, &story.UpdatedAt,
 		); err != nil {
 			return err
 		}
@@ -145,7 +145,7 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 
 	// Load Tasks
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at, COALESCE(story_id, ''), started_at, completed_at
+		`SELECT id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at, COALESCE(story_id, ''), started_at, completed_at, input_tokens, output_tokens, tokens_used
 		FROM tasks WHERE state_id = ?`, state.ID)
 	if err != nil {
 		return err
@@ -163,6 +163,7 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 			&task.ID, &task.Title, &task.Description, &statusStr, &changeTypeStr, &task.AssignedTo,
 			&task.Progress, &dependsOnStr, &targetFilesStr, &partialChangelogStr, &task.Retries, &task.MaxRetries,
 			&failureLogNull, &task.CreatedAt, &task.UpdatedAt, &storyID, &taskStartedAt, &taskCompletedAt,
+			&task.InputTokens, &task.OutputTokens, &task.TokensUsed,
 		)
 		if err != nil {
 			return err
@@ -301,7 +302,7 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 
 	// Load Active Agents
 	rowsAa, err := r.db.QueryContext(ctx,
-		`SELECT id, name, role, status, task_id, started_at, completed_at, tokens_used, last_error
+		`SELECT id, name, role, status, task_id, started_at, completed_at, input_tokens, output_tokens, tokens_used, last_error
 		FROM active_agents WHERE state_id = ?`, state.ID)
 	if err != nil {
 		return err
@@ -315,7 +316,7 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 		var startedAtNull, completedAtNull sql.NullTime
 		err := rowsAa.Scan(
 			&agent.ID, &agent.Name, &roleStr, &statusStr, &agent.TaskID,
-			&startedAtNull, &completedAtNull, &agent.TokensUsed, &agent.LastError,
+			&startedAtNull, &completedAtNull, &agent.InputTokens, &agent.OutputTokens, &agent.TokensUsed, &agent.LastError,
 		)
 		if err != nil {
 			return err

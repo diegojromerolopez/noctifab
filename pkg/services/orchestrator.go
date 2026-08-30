@@ -96,10 +96,26 @@ type Orchestrator struct {
 	observer          domain.ExecutionObserver
 	acceptanceAuditor *AcceptanceAuditor
 	storyQAAuditor    *StoryQAAuditor
+	tokenAccounting   TokenAccountingService
 	// executeTaskFn is the task execution entry point used by the dispatch
 	// loop. It defaults to (*Orchestrator).executeTask and exists as an
 	// injection seam for unit tests.
 	executeTaskFn func(ctx context.Context, stateID, taskID string)
+}
+
+// TokenAccounting returns the token accounting service instance.
+func (o *Orchestrator) TokenAccounting() TokenAccountingService {
+	if o == nil {
+		return nil
+	}
+	return o.tokenAccounting
+}
+
+// SetTokenAccounting sets a custom token accounting service instance.
+func (o *Orchestrator) SetTokenAccounting(svc TokenAccountingService) {
+	if o != nil {
+		o.tokenAccounting = svc
+	}
 }
 
 type OrchestratorRuntimeDependencies struct {
@@ -163,6 +179,7 @@ func NewOrchestratorWithRuntime(
 		observer:          runtime.Observer,
 		acceptanceAuditor: auditor,
 		storyQAAuditor:    storyAuditor,
+		tokenAccounting:   NewTokenAccountingService(),
 	}
 	o.executeTaskFn = o.executeTask
 	if queue != nil {

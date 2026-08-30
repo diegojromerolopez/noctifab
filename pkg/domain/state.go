@@ -61,15 +61,17 @@ const (
 
 // Agent represents a processing worker in the execution environment.
 type Agent struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Role        AgentRole   `json:"role"`
-	Status      AgentStatus `json:"status"`
-	TaskID      string      `json:"task_id,omitempty"`
-	StartedAt   time.Time   `json:"started_at,omitempty"`
-	CompletedAt time.Time   `json:"completed_at,omitempty"`
-	TokensUsed  int64       `json:"tokens_used"`
-	LastError   string      `json:"last_error,omitempty"`
+	ID           string      `json:"id"`
+	Name         string      `json:"name"`
+	Role         AgentRole   `json:"role"`
+	Status       AgentStatus `json:"status"`
+	TaskID       string      `json:"task_id,omitempty"`
+	StartedAt    time.Time   `json:"started_at,omitempty"`
+	CompletedAt  time.Time   `json:"completed_at,omitempty"`
+	InputTokens  int64       `json:"input_tokens,omitempty"`
+	OutputTokens int64       `json:"output_tokens,omitempty"`
+	TokensUsed   int64       `json:"tokens_used"`
+	LastError    string      `json:"last_error,omitempty"`
 }
 
 // FileInfo contains simple metadata about files inside the workspace.
@@ -99,7 +101,9 @@ type StateMetadata struct {
 	FeatureName       string `json:"feature_name"`       // Human-readable name of the feature being built
 	BaseBranch        string `json:"base_branch"`        // Branch from which the integration branch was created (e.g., "main")
 	ProjectVersion    string `json:"project_version"`    // Current project version from VERSION file (e.g., "0.0.1")
-	TotalTokensUsed   int64  `json:"total_tokens_used"`  // Cumulative token count across all agents
+	TotalInputTokens  int64  `json:"total_input_tokens,omitempty"`
+	TotalOutputTokens int64  `json:"total_output_tokens,omitempty"`
+	TotalTokensUsed   int64  `json:"total_tokens_used"` // Cumulative token count across all agents
 }
 
 // StoryStatus tracks the lifecycle of a user story being processed by the daemon.
@@ -116,16 +120,18 @@ const (
 
 // Story represents a discrete user story on the roadmap with lifecycle timestamps and token metrics.
 type Story struct {
-	ID          string      `json:"id"` // e.g. "US-001"
-	StateID     string      `json:"state_id,omitempty"`
-	Title       string      `json:"title"`
-	FilePath    string      `json:"file_path"`
-	Status      StoryStatus `json:"status"` // PENDING, RUNNING, SUCCESS, FAILED, CANCELLED
-	StartedAt   *time.Time  `json:"started_at,omitempty"`
-	CompletedAt *time.Time  `json:"completed_at,omitempty"`
-	TokensUsed  int64       `json:"tokens_used"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID           string      `json:"id"` // e.g. "US-001"
+	StateID      string      `json:"state_id,omitempty"`
+	Title        string      `json:"title"`
+	FilePath     string      `json:"file_path"`
+	Status       StoryStatus `json:"status"` // PENDING, RUNNING, SUCCESS, FAILED, CANCELLED
+	StartedAt    *time.Time  `json:"started_at,omitempty"`
+	CompletedAt  *time.Time  `json:"completed_at,omitempty"`
+	InputTokens  int64       `json:"input_tokens,omitempty"`
+	OutputTokens int64       `json:"output_tokens,omitempty"`
+	TokensUsed   int64       `json:"tokens_used"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
 }
 
 // StoryOrder tracks a developer prompt order in the persistent work queue.

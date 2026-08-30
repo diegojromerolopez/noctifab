@@ -30,6 +30,8 @@ type ReviewPhase struct {
 	StartedAt        time.Time               `json:"started_at"`
 	DeadlineAt       time.Time               `json:"deadline_at"`
 	CompletedAt      time.Time               `json:"completed_at,omitempty"`
+	InputTokens      int64                   `json:"input_tokens,omitempty"`
+	OutputTokens     int64                   `json:"output_tokens,omitempty"`
 	TokensUsed       int64                   `json:"tokens_used"`
 }
 
