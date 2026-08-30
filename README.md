@@ -317,6 +317,70 @@ agents:
 
 ---
 
+## 🔁 Multi-Loop Dark Factory Orchestration & Quality Architecture
+
+`noctifab` utilizes a multi-loop execution architecture to achieve high-resilience autonomous software delivery. In unattended dark factory runs, complex systems cannot always be fully implemented in a single linear pass. The multi-loop engine provides autonomous self-healing, progressive convergence, whole-workspace regression guarding, and strict quality verification.
+
+```mermaid
+flowchart TD
+    A[Start Multi-Loop Run: Loop 1..N] --> B[Execute 100% Discovered Stories in Backlog]
+    B --> C{Story Execution Complete?}
+    C -->|Task Failed / Timeout| D[Record Diagnostics -> Continue Backlog Pass]
+    C -->|All Tasks Succeeded| E[Stage 2: Definition of Done & Whole-Workspace Regression Audit]
+    E --> F{DoD Satisfied & Zero Workspace Regressions?}
+    F -->|No: Missing Features / Regressions| G{Remediations Remaining?}
+    G -->|Yes| H[Refine Story MD & Queue qa-remediation Task]
+    H --> B
+    G -->|No| D
+    F -->|Yes: 100% Verified| I[Mark StorySuccess & Finalize Story]
+    D --> J{All Stories in Backlog Succeeded?}
+    I --> J
+    J -->|Yes| K[✨ Early Exit: 100% Backlog Converged]
+    J -->|No: Incomplete Stories Remain| L{Loop Stagnation Detected?}
+    L -->|Yes: 0 Diff & Identical Errors| M[⚠️ Stagnation Circuit Breaker: Early Terminate]
+    L -->|No: Loops Remaining| N[Advance to Next Loop Pass: Loop k+1]
+    N --> B
+```
+
+### Core Invariants
+
+1. **Backlog Iteration Guarantee**: Every loop pass attempts 100% of discovered user stories in `roadmap/user-stories/`. A failure in an intermediate story records diagnostic telemetry but does not halt the loop, allowing downstream stories to proceed.
+2. **Two-Stage Story Verification**: A user story is only marked `StorySuccess` when:
+   - **Stage 1 (Task Integrity)**: 100% of planned tasks achieve `TaskSuccess`.
+   - **Stage 2 (DoD & Behavioral Review)**: The `StoryQAAuditor` verifies that the generated codebase satisfies all Definition of Done (DoD) criteria and passes both E2E test suites and whole-workspace regression checks.
+3. **Automated Story Refinement**: If a story is incomplete or missing DoD features, Noctifab automatically enriches `roadmap/user-stories/<story>.md` with a `## Refined Acceptance Criteria & Missing Requirements` section and queues a targeted remediation task for the worker pool.
+4. **Whole-Workspace Regression Guarding**: In Loop $k \ge 2$, before finalizing any story, the test validator executes the entire repository's test suite (`go test ./...`, `pytest`, `cargo test`, `npm test`, or `make test`) to guarantee changes in shared packages didn't break earlier modules.
+5. **Loop Stagnation Circuit Breaker**: If Loop $k+1$ generates 0 codebase mutations and repeats identical failure signatures as Loop $k$, the orchestrator detects stagnation and terminates early to prevent token waste.
+6. **Early Convergence Exit**: If all user stories in the backlog achieve verified `StorySuccess` on Loop $k$, Noctifab completes immediately without burning tokens on remaining loops.
+
+### Configuration & CLI Usage
+
+In `.noctifab/config.yaml`:
+
+```yaml
+runtime:
+  loop:
+    count: 3                # Number of iteration loops (default: 1)
+  max_tokens: 500000        # Global token consumption boundary
+  max_duration: "10m"       # Total execution time limit
+
+agents:
+  product_manager:
+    max_user_stories: 5     # Maximum user stories in roadmap backlog (default: 5)
+```
+
+Override the loop count dynamically from the CLI:
+
+```bash
+# Execute with 3 iterative self-healing loops
+noctifab start . --loops 3
+
+# Resume from first incomplete story with 2 loops
+noctifab resume . -L 2
+```
+
+---
+
 ## Quick Start
 
 ### Installation

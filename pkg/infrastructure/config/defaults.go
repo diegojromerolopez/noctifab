@@ -80,6 +80,7 @@ func DefaultConfig() *Config {
 			MaxTokensPerTask:       0,
 			MaxTokens:              100000000,
 			Loops:                  1,
+			Loop:                   LoopConfig{Count: 1},
 		},
 		Storage: StorageConfig{
 			Provider:           "sqlite",

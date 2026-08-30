@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.0] - 2026-08-30
+
+### Added
+- **Multi-Loop Orchestration & Backlog Lifecycle Guarantees**:
+  - Implemented full-backlog multi-loop story iteration in `cmd/noctifab/cli/start_runner.go` and `start_story_executor.go`. Every execution loop now visits and attempts 100% of discovered user stories in the roadmap.
+  - Added non-fatal story failure handling so that intermediate task/story failures in Loop $k$ record diagnostics without halting execution of subsequent stories, allowing Loop $k+1$ to iteratively refine and repair incomplete stories.
+  - Added structured `runtime.loop.count` support alongside `runtime.loops` in `pkg/infrastructure/config/runtime_types.go` with bidirectional normalization and `GetLoops()` helper.
+  - Enforced strict configuration validation in `pkg/infrastructure/config/config.go` (`validateRuntimeLoops`): rejects conflicting loop settings, negative loop counts, and negative `agents.product_manager.max_user_stories` or `passes`.
+  - Added CLI flag `--loops <N>` / `-L <N>` to `noctifab start` and `noctifab resume` to easily override loop iteration counts from the command line.
+  - Added **Multi-Loop Convergence Matrix** telemetry to Markdown execution reports (`## Multi-Loop Convergence Matrix`), console logs, and the Web Dashboard (`GET /api/v1/convergence`).
+  - Added **Whole-Workspace Regression Guarding** across loop passes in `pkg/services/story_qa_auditor.go` to ensure shared code changes do not break existing test suites in other modules.
+  - Added **Loop Stagnation & Deadlock Circuit Breaker** in `cmd/noctifab/cli/start_runner.go` to detect 0-diff/repeated failure loops and early-terminate to prevent token waste.
+  - Added automated **User Story Specification Refinement** (`refineStoryFileWithGaps`) in `pkg/services/orchestrator_finalize.go` to append missing Definition of Done requirements to story markdown files on disk for downstream loops.
+  - Updated Product Manager roadmap generation in `pkg/services/roadmap_generator.go` to pass and enforce `agents.product_manager.max_user_stories` as the global project backlog capacity ceiling.
+
 ## [0.58.0] - 2026-08-30
 
 ### Added

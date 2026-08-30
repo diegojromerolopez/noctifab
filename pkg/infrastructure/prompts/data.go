@@ -36,6 +36,8 @@ type ProductManagerPromptData struct {
 	// LegacyFiles is the pre-formatted legacy codebase context block, or
 	// empty when no legacy files were detected.
 	LegacyFiles string
+	// MaxUserStories is the ceiling on the number of user stories to generate (0 = unlimited).
+	MaxUserStories int
 }
 
 // PlannerPromptData backs the planner/* action templates.

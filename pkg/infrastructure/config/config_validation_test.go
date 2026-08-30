@@ -296,6 +296,46 @@ func TestConfigValidation_Comprehensive(t *testing.T) {
 			wantErr:     true,
 			errContains: "invalid VCS provider",
 		},
+		{
+			name:        "Valid structured loop configuration",
+			yamlContent: "config_version: \"2.0\"\nllm:\n  provider: \"ollama\"\nruntime:\n  loop:\n    count: 3\n",
+			wantErr:     false,
+		},
+		{
+			name:        "Valid matching loops and loop.count",
+			yamlContent: "config_version: \"2.0\"\nllm:\n  provider: \"ollama\"\nruntime:\n  loops: 2\n  loop:\n    count: 2\n",
+			wantErr:     false,
+		},
+		{
+			name:        "Conflicting loops and loop.count rejected",
+			yamlContent: "config_version: \"2.0\"\nruntime:\n  loops: 2\n  loop:\n    count: 3\n",
+			wantErr:     true,
+			errContains: "conflicting loop count settings",
+		},
+		{
+			name:        "Negative runtime.loops rejected",
+			yamlContent: "config_version: \"2.0\"\nruntime:\n  loops: -1\n",
+			wantErr:     true,
+			errContains: "runtime loops must be positive",
+		},
+		{
+			name:        "Negative runtime.loop.count rejected",
+			yamlContent: "config_version: \"2.0\"\nruntime:\n  loop:\n    count: -2\n",
+			wantErr:     true,
+			errContains: "runtime loop count must be positive",
+		},
+		{
+			name:        "Negative product_manager max_user_stories rejected",
+			yamlContent: "config_version: \"2.0\"\nagents:\n  product_manager:\n    max_user_stories: -1\n",
+			wantErr:     true,
+			errContains: "agent role product_manager max_user_stories must be non-negative",
+		},
+		{
+			name:        "Negative product_manager passes rejected",
+			yamlContent: "config_version: \"2.0\"\nagents:\n  product_manager:\n    passes: -1\n",
+			wantErr:     true,
+			errContains: "agent role product_manager passes must be non-negative",
+		},
 	}
 
 	for _, tt := range tests {

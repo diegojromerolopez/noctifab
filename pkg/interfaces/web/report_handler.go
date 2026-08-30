@@ -127,6 +127,25 @@ func (ws *WebServer) registerReportAndMetricsRoutes(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(metrics)
 	})
+
+	// GET /api/v1/convergence — Multi-loop convergence summary
+	mux.HandleFunc("/api/v1/convergence", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		baseDir := ws.getProjectBaseDir(r.Context())
+		metrics := ws.calculateMetrics(r.Context(), baseDir)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"total_stories":     metrics.TotalStories,
+			"completed_stories": metrics.CompletedStories,
+			"build_status":      metrics.BuildStatus,
+			"elapsed_duration":  metrics.ElapsedDuration,
+		})
+	})
 }
 
 // loadExecutionReport loads the latest markdown report from disk or renders a fallback summary.

@@ -33,6 +33,18 @@ func allTasksFinished(state *domain.State) bool {
 	return true
 }
 
+func allTasksSucceeded(state *domain.State) bool {
+	if state == nil || len(state.Tasks) == 0 {
+		return false
+	}
+	for _, t := range state.Tasks {
+		if t.Status != domain.TaskSuccess {
+			return false
+		}
+	}
+	return true
+}
+
 func isTemplateSpec(content string) bool {
 	return strings.Contains(content, "Specification: New Project")
 }
@@ -49,5 +61,6 @@ func init() {
 	startCmd.Flags().String("web-host", "127.0.0.1", "Host address to bind the concurrent visual web dashboard")
 	startCmd.Flags().Bool("web-open", false, "Automatically open the visual web dashboard in the default browser")
 	startCmd.Flags().Bool("standby", false, "Keep daemon alive in standby mode after finishing initial stories to accept prompt orders")
+	startCmd.Flags().IntP("loops", "L", 0, "Override the number of iteration loops to execute (defaults to config.yaml value)")
 	RootCmd.AddCommand(startCmd)
 }

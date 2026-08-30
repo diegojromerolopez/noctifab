@@ -75,6 +75,25 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 		fmt.Printf("✅ [Story QA] E2E verification passed successfully.\n")
 	}
 
+	// 2. Whole-Workspace Regression Guarding Gate:
+	// Execute full project test suite to guarantee that modifications didn't introduce regressions to other modules.
+	testCmd := a.detectWorkspaceTestCommand(state.ProjectPath)
+	if testCmd != "" && testCmd != e2eCmd && a.runner != nil {
+		fmt.Printf("🔍 [Story QA] Running Whole-Workspace Regression Guard: %q...\n", testCmd)
+		testOut, testErr := a.runner.RunCommand(ctx, state.ProjectPath, testCmd, "")
+		if testErr != nil {
+			fmt.Printf("❌ [Story QA] Whole-workspace regression detected: %v\n", testErr)
+			return &StoryQAResult{
+				Passed:  false,
+				Summary: fmt.Sprintf("Whole-workspace regression detected (%s): %v\n%s", testCmd, testErr, capText(testOut, 1500)),
+				MissingFeatures: []string{
+					fmt.Sprintf("Regression in whole-workspace test suite (%s): %s", testCmd, capText(testOut, 500)),
+				},
+			}, nil
+		}
+		fmt.Printf("✅ [Story QA] Whole-workspace regression check passed.\n")
+	}
+
 	ctx, span := telemetry.Tracer().Start(ctx, "AuditStoryCompleteness",
 		trace.WithAttributes(
 			attribute.String("project_path", state.ProjectPath),
@@ -292,6 +311,30 @@ func (a *StoryQAAuditor) detectE2ECommand(projectPath string) string {
 		if rErr == nil && strings.Contains(string(content), "e2e:") {
 			return "make e2e"
 		}
+	}
+	return ""
+}
+
+func (a *StoryQAAuditor) detectWorkspaceTestCommand(projectPath string) string {
+	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
+		if content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile")); rErr == nil {
+			c := string(content)
+			if strings.Contains(c, "test:") || strings.Contains(c, "test-all:") || strings.Contains(c, "check:") {
+				return "make test"
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+		return "go test ./..."
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "pyproject.toml")); err == nil {
+		return "pytest -v"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
+		return "cargo test"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
+		return "npm test"
 	}
 	return ""
 }
