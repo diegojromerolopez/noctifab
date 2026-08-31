@@ -19,7 +19,7 @@ agents:
     - name: claude
   planner:
     number: 1
-    iterations: 2
+    iterations: 5
   generators:
     number: 6
     iterations: 10
@@ -34,7 +34,7 @@ agents:
     - name: claude
   testers:
     number: 2
-    iterations: 5
+    iterations: 10
     providers:
     - name: gemini-flash
     - name: gemini

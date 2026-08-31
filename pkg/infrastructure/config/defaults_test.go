@@ -86,14 +86,14 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.Agents.ProductManager.Number != 1 || cfg.Agents.ProductManager.Iterations != 2 || cfg.Agents.ProductManager.Passes != 2 || cfg.Agents.ProductManager.MaxUserStories != 5 {
 		t.Errorf("expected ProductManager {1, 2, 2, 5}, got %+v", cfg.Agents.ProductManager)
 	}
-	if cfg.Agents.Planner.Number != 1 || cfg.Agents.Planner.Iterations != 2 {
-		t.Errorf("expected Planner {1, 2}, got %+v", cfg.Agents.Planner)
+	if cfg.Agents.Planner.Number != 1 || cfg.Agents.Planner.Iterations != 5 {
+		t.Errorf("expected Planner {1, 5}, got %+v", cfg.Agents.Planner)
 	}
 	if cfg.Agents.Generators.Number != 3 || cfg.Agents.Generators.Iterations != 10 {
 		t.Errorf("expected Generators {3, 10}, got %+v", cfg.Agents.Generators)
 	}
-	if cfg.Agents.Testers.Number != 2 || cfg.Agents.Testers.Iterations != 5 {
-		t.Errorf("expected Testers {2, 5}, got %+v", cfg.Agents.Testers)
+	if cfg.Agents.Testers.Number != 2 || cfg.Agents.Testers.Iterations != 10 {
+		t.Errorf("expected Testers {2, 10}, got %+v", cfg.Agents.Testers)
 	}
 	if cfg.Agents.QA.Enabled || cfg.Agents.QA.Iterations != 1 {
 		t.Errorf("expected QA {Enabled: false, Iterations: 1}, got %+v", cfg.Agents.QA)

@@ -24,7 +24,7 @@ func DefaultConfig() *Config {
 			},
 			Planner: AgentRoleConfig{
 				Number:     1,
-				Iterations: 2,
+				Iterations: 5,
 			},
 			Generators: AgentRoleConfig{
 				Number:     3,
@@ -32,7 +32,7 @@ func DefaultConfig() *Config {
 			},
 			Testers: AgentRoleConfig{
 				Number:     2,
-				Iterations: 5,
+				Iterations: 10,
 			},
 			QA: QAConfig{
 				Enabled:            false,
