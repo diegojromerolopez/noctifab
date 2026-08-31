@@ -3,6 +3,7 @@ package cli_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/cmd/noctifab/cli"
@@ -72,4 +73,42 @@ agents:
 	if cfg.Agents.ProductManager.Ensemble.MinModels != 2 {
 		t.Errorf("expected min_models 2, got %d", cfg.Agents.ProductManager.Ensemble.MinModels)
 	}
+}
+
+func TestRepairConfigWithAIAndExplanation(t *testing.T) {
+	brokenYAML := "config_version: '1.0'\n"
+	fixedYAML := "EXPLANATION:\n- Upgraded version to 2.0\n\n```yaml\nconfig_version: '2.0'\n```"
+
+	mockClient := &mockRepairLLM{responseYAML: "config_version: '2.0'"}
+	mockClient.err = nil
+	// Override Complete directly for custom formatting
+	customClient := &customMockRepairLLM{content: fixedYAML}
+
+	repaired, explanation, err := cli.RepairConfigWithAIAndExplanation(context.Background(), brokenYAML, errors.New("invalid version"), customClient)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(repaired, "config_version: '2.0'") {
+		t.Errorf("expected repaired config_version: '2.0', got %s", repaired)
+	}
+	if !strings.Contains(explanation, "Upgraded version to 2.0") {
+		t.Errorf("expected explanation to contain upgrade text, got %q", explanation)
+	}
+}
+
+type customMockRepairLLM struct {
+	content string
+}
+
+func (c *customMockRepairLLM) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	return &domain.LLMResponse{
+		Reasoning: "Completed repair",
+		Actions: []domain.LLMAction{
+			{
+				Tool: "write_file",
+				Args: map[string]any{"content": c.content},
+			},
+		},
+	}, nil
 }

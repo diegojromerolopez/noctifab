@@ -11,6 +11,7 @@ const (
 	EnsembleStrategyDecomposed    EnsembleStrategy = "decomposed"
 	EnsembleStrategyCascade       EnsembleStrategy = "cascade"
 	EnsembleStrategyBestOfNScored EnsembleStrategy = "best_of_n_scored"
+	EnsembleStrategyAdaptive      EnsembleStrategy = "adaptive"
 )
 
 // EnsembleConfig defines configuration for multi-model ensembling on an agent role.
@@ -36,6 +37,11 @@ type EnsembleConfig struct {
 
 	// Tiered Cascade Strategy
 	Tiers []AgentProviderRef `yaml:"tiers,omitempty"`
+
+	// Adaptive Dynamic Strategy Tiers
+	FastTier     []AgentProviderRef `yaml:"fast_tier,omitempty"`
+	StandardTier []AgentProviderRef `yaml:"standard_tier,omitempty"`
+	HeavyTier    []AgentProviderRef `yaml:"heavy_tier,omitempty"`
 
 	// Decomposed Divide-and-Conquer Strategy
 	Targets []DecomposedTargetSpec `yaml:"targets,omitempty"`

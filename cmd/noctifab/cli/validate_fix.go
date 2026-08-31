@@ -49,7 +49,7 @@ func runAIConfigFix(cmd *cobra.Command, configPath string, parseErr error, autoY
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	repairedYAML, err := RepairConfigWithAI(ctx, string(data), parseErr, repairClient)
+	repairedYAML, explanation, err := RepairConfigWithAIAndExplanation(ctx, string(data), parseErr, repairClient)
 	if err != nil {
 		return fmt.Errorf("AI configuration repair failed: %w", err)
 	}
@@ -60,6 +60,19 @@ func runAIConfigFix(cmd *cobra.Command, configPath string, parseErr error, autoY
 	}
 
 	fmt.Println("✔ Repaired configuration parsed and validated cleanly!")
+	if explanation != "" {
+		fmt.Println("\n🔧 AI Diagnosis & Repair Summary:")
+		for _, line := range strings.Split(explanation, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.EqualFold(line, "EXPLANATION:") {
+				if strings.HasPrefix(line, "-") || strings.HasPrefix(line, "*") || strings.HasPrefix(line, "•") {
+					line = strings.TrimLeft(line, "-*• ")
+				}
+				fmt.Printf("   • %s\n", line)
+			}
+		}
+	}
+
 	fmt.Println("\n--- Proposed Changes ---")
 	printSimpleDiff(string(data), repairedYAML)
 	fmt.Println("------------------------")
@@ -91,10 +104,10 @@ func runAIConfigFix(cmd *cobra.Command, configPath string, parseErr error, autoY
 	return nil
 }
 
-// RepairConfigWithAI sends the broken configuration and parser error to an LLM for correction.
-func RepairConfigWithAI(ctx context.Context, brokenYAML string, parseErr error, client domain.LLMClient) (string, error) {
+// RepairConfigWithAIAndExplanation sends the broken configuration and parser error to an LLM for correction and explanation.
+func RepairConfigWithAIAndExplanation(ctx context.Context, brokenYAML string, parseErr error, client domain.LLMClient) (string, string, error) {
 	if client == nil {
-		return "", fmt.Errorf("no LLM client provided for repair")
+		return "", "", fmt.Errorf("no LLM client provided for repair")
 	}
 
 	prompt := fmt.Sprintf(`You are an expert Noctifab Configuration AI Repair Engine.
@@ -192,12 +205,20 @@ CANONICAL NOCTIFAB CONFIGURATION REFERENCE & SCHEMA:
 REPAIR INSTRUCTIONS:
 - Fix all syntax errors, bad indentation, typos (e.g. 'stratgy' -> 'strategy', 'min_proposers' -> 'min_models'), and schema mismatches.
 - Preserve all existing provider configurations, API keys, secrets, model names, comments, and valid settings.
-- Output ONLY the repaired YAML document enclosed in a single `+"```yaml"+` code block.
+- Format your response with an EXPLANATION: bulleted section followed by the YAML code block:
+EXPLANATION:
+- Fixed typo: stratgy -> strategy
+- Fixed indentation under agents.product_manager.ensemble
+
+`+"```yaml"+`
+config_version: '2.0'
+...
+`+"```"+`
 `, parseErr, brokenYAML)
 
 	resp, err := client.Complete(ctx, prompt)
 	if err != nil {
-		return "", fmt.Errorf("LLM completion error: %w", err)
+		return "", "", fmt.Errorf("LLM completion error: %w", err)
 	}
 
 	content := ""
@@ -215,16 +236,34 @@ REPAIR INSTRUCTIONS:
 		}
 	}
 
+	explanation := ""
+	if idx := strings.Index(content, "```"); idx != -1 {
+		prefix := strings.TrimSpace(content[:idx])
+		if strings.Contains(prefix, "EXPLANATION:") {
+			explanation = strings.TrimSpace(prefix[strings.Index(prefix, "EXPLANATION:"):])
+		} else if len(prefix) > 0 {
+			explanation = prefix
+		}
+	} else if resp != nil && resp.Reasoning != "" {
+		explanation = resp.Reasoning
+	}
+
 	matches := yamlFenceRE.FindStringSubmatch(content)
 	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1]) + "\n", nil
+		return strings.TrimSpace(matches[1]) + "\n", explanation, nil
 	}
 
 	if strings.Contains(content, "config_version:") {
-		return strings.TrimSpace(content) + "\n", nil
+		return strings.TrimSpace(content) + "\n", explanation, nil
 	}
 
-	return "", fmt.Errorf("LLM did not return a valid YAML code block")
+	return "", "", fmt.Errorf("LLM did not return a valid YAML code block")
+}
+
+// RepairConfigWithAI is a backwards-compatible wrapper returning only the repaired YAML string.
+func RepairConfigWithAI(ctx context.Context, brokenYAML string, parseErr error, client domain.LLMClient) (string, error) {
+	repaired, _, err := RepairConfigWithAIAndExplanation(ctx, brokenYAML, parseErr, client)
+	return repaired, err
 }
 
 func resolveRepairClient(configPath string) (domain.LLMClient, string, error) {
@@ -262,10 +301,10 @@ func resolveRepairClient(configPath string) (domain.LLMClient, string, error) {
 	if data, err := os.ReadFile(configPath); err == nil {
 		var raw struct {
 			LLM struct {
-				Provider  string                 `yaml:"provider"`
-				Model     string                 `yaml:"model"`
-				URL       string                 `yaml:"url"`
-				Providers []config.ProviderSpec  `yaml:"providers"`
+				Provider  string                `yaml:"provider"`
+				Model     string                `yaml:"model"`
+				URL       string                `yaml:"url"`
+				Providers []config.ProviderSpec `yaml:"providers"`
 			} `yaml:"llm"`
 		}
 		_ = yaml.Unmarshal(data, &raw)

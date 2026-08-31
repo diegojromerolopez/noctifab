@@ -55,6 +55,7 @@ type modelResult struct {
 
 // Complete executes fan-out to models and synthesizes the winning proposals.
 func (p *ParallelClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	GlobalTelemetry().RecordInvocation("parallel")
 	if len(p.models) == 0 {
 		if p.synthesizer != nil {
 			return p.synthesizer.Complete(ctx, prompt)
@@ -136,6 +137,10 @@ collectLoop:
 			return p.synthesizer.Complete(ctx, prompt)
 		}
 		return nil, fmt.Errorf("all parallel ensemble models failed and fallback_to_single is false")
+	}
+
+	if len(successfulResults) >= p.minModels {
+		GlobalTelemetry().RecordQuorum(len(p.models) - len(successfulResults))
 	}
 
 	// If we have only 1 model or no synthesizer configured, return the best proposal directly

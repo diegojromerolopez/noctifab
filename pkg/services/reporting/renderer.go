@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm/ensemble"
 )
 
 type Renderer struct {
@@ -353,6 +354,39 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 			fmt.Fprintf(&sb, "- %s\n", r.sanitizeCell(diag))
 		}
 		sb.WriteString("\n")
+	}
+
+	// Ensemble Performance & Observability Matrix
+	ensSnap := ensemble.GlobalTelemetry().Snapshot()
+	if ensSnap.TotalInvocations > 0 {
+		sb.WriteString("## Ensemble Performance & Observability\n\n")
+		fmt.Fprintf(&sb, "- **Total Multi-Model Ensembles:** %d\n", ensSnap.TotalInvocations)
+		if ensSnap.SpeculativeQuorumWins > 0 {
+			fmt.Fprintf(&sb, "- **Speculative Quorum Completions:** %d (%d straggler calls cancelled)\n",
+				ensSnap.SpeculativeQuorumWins, ensSnap.StragglersCancelled)
+		}
+		if ensSnap.EarlyExitPasses > 0 {
+			fmt.Fprintf(&sb, "- **Deterministic Early Exits:** %d passes (~%d tokens saved)\n",
+				ensSnap.EarlyExitPasses, ensSnap.EstimatedTokensSaved)
+		}
+		if ensSnap.ConsensusUnanimous > 0 || ensSnap.ConsensusTieBreakers > 0 {
+			fmt.Fprintf(&sb, "- **Consensus Voting:** %d unanimous passes, %d tie-breakers escalated\n",
+				ensSnap.ConsensusUnanimous, ensSnap.ConsensusTieBreakers)
+		}
+		if ensSnap.AdaptiveFastPaths > 0 || ensSnap.AdaptiveStandardPaths > 0 || ensSnap.AdaptiveHeavyPaths > 0 {
+			fmt.Fprintf(&sb, "- **Adaptive Routing Decisions:** %d Fast Tier (1–3s), %d Standard Tier, %d Heavy Tier\n",
+				ensSnap.AdaptiveFastPaths, ensSnap.AdaptiveStandardPaths, ensSnap.AdaptiveHeavyPaths)
+		}
+		sb.WriteString("\n")
+
+		if len(ensSnap.InvocationsByStrategy) > 0 {
+			sb.WriteString("| Strategy Topology | Invocations |\n")
+			sb.WriteString("| :--- | ---: |\n")
+			for strat, count := range ensSnap.InvocationsByStrategy {
+				fmt.Fprintf(&sb, "| `%s` | %d |\n", strat, count)
+			}
+			sb.WriteString("\n")
+		}
 	}
 
 	content := sb.String()

@@ -33,6 +33,7 @@ func NewConsensusClient(
 
 // Complete executes parallel voting and resolves divergence via tie-breaker.
 func (c *ConsensusClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	GlobalTelemetry().RecordInvocation("consensus")
 	if len(c.voters) == 0 {
 		if c.tieBreaker != nil {
 			return c.tieBreaker.Complete(ctx, prompt)
@@ -88,10 +89,13 @@ func (c *ConsensusClient) Complete(ctx context.Context, prompt string) (*domain.
 	}
 
 	if len(validResults) == 1 || c.isUnanimous(validResults) {
+		GlobalTelemetry().RecordConsensus(true)
 		best := validResults[0].resp
 		best.Usage = CombineUsage(totalUsages...)
 		return best, nil
 	}
+
+	GlobalTelemetry().RecordConsensus(false)
 
 	// Disagreement: Invoke Tie-Breaker
 	if c.tieBreaker == nil {

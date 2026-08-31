@@ -69,6 +69,13 @@ TOPOLOGY 7: Deterministic Scored Selection (best_of_n_scored)
 │ Agent Prompt ├─────►│ Candidate 2 (openai)    ├──┼──► Local Engine Evaluator (AST + Anti-Stub + Line Bound) ──► Highest Score Promoted
 │              ├─────►│ Candidate 3 (deepseek)  ├──┘    (Zero LLM Synthesis Cost)
 └──────────────┘      └─────────────────────────┘
+
+TOPOLOGY 8: Adaptive Self-Tuning Dynamic Routing (adaptive)
+┌──────────────┐      ┌───────────────────────────────────┐
+│              ├─────►│ Fast Tier (Docs/Typos)            ├──► Race / Fast-Path (1–3s)
+│ Agent Prompt ├─────►│ Standard Tier (Features/Tests)    ├──► Frontier Model / Scored
+│              ├─────►│ Heavy Tier (Concurrency/Assembly) ├──► Speculative Quorum / Serial Refinement
+└──────────────┘      └───────────────────────────────────┘
 ```
 
 ---
@@ -102,6 +109,13 @@ TOPOLOGY 7: Deterministic Scored Selection (best_of_n_scored)
 ### 7. `best_of_n_scored`: Deterministic Scored Selection
 - **How it works:** Dispatches to $N$ models in parallel. Noctifab's local CPU grading engine evaluates each candidate completion (checking AST validity, anti-stub violations, line count limits, and test assertions) and promotes the highest-scoring candidate directly.
 - **Best for:** **Tester Agent** (selecting the most comprehensive, non-tautological test suite with **zero LLM synthesis overhead**).
+
+### 8. `adaptive`: Adaptive Self-Tuning Dynamic Routing
+- **How it works:** Dynamically classifies the incoming task complexity and routes to the optimal tier:
+  - **Fast Tier (Documentation, comments, typos, version bumps):** Routes to fast speculative racing (1–3s, lowest token cost).
+  - **Heavy Tier (Concurrency, mutexes, low-level binary framing, syscalls, error remediation):** Routes to speculative quorum or serial multi-stage refinement.
+  - **Standard Tier (General domain logic, unit tests):** Routes to primary frontier models.
+- **Best for:** **All-around generators and general agent configurations** seeking optimal speed and quality balance.
 
 ---
 
@@ -233,6 +247,25 @@ agents:
       strategy: "best_of_n_scored"
       timeout_seconds: 30
       models:
+        - name: "claude"
+        - name: "openai"
+        - name: "deepseek"
+```
+
+### Example 8: `adaptive` for Self-Tuning Dynamic Routing
+```yaml
+agents:
+  generators:
+    max_tokens: -1
+    ensemble:
+      strategy: "adaptive"
+      timeout_seconds: 45
+      fast_tier:
+        - name: "gemini-flash"
+        - name: "cerebras-llama"
+      standard_tier:
+        - name: "claude"
+      heavy_tier:
         - name: "claude"
         - name: "openai"
         - name: "deepseek"

@@ -33,8 +33,9 @@ func NewSerialClient(
 	}
 }
 
-// Complete executes sequential refinement across configured stages.
+// Complete executes the multi-stage serial refinement pipeline.
 func (s *SerialClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	GlobalTelemetry().RecordInvocation("serial")
 	if len(s.stages) == 0 {
 		return nil, fmt.Errorf("serial ensemble has no stages configured")
 	}
@@ -75,9 +76,10 @@ func (s *SerialClient) Complete(ctx context.Context, prompt string) (*domain.LLM
 			currentResponse = resp
 
 			// Check Early Exit on Stage 1 (or any intermediate stage)
-			if s.earlyExitOnPass {
+			if s.earlyExitOnPass && i < len(s.stages)-1 {
 				if valid, _ := ValidateCodeResponse(resp); valid {
 					// Clean code with zero stubs, valid syntax: early exit!
+					GlobalTelemetry().RecordEarlyExit(5000)
 					resp.Usage = CombineUsage(totalUsages...)
 					return resp, nil
 				}

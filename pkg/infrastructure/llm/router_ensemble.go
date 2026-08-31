@@ -138,9 +138,45 @@ func (r *ResilientLLMRouter) buildEnsembleCandidate(roleName string, ens config.
 			Model:    string(ens.Strategy),
 			Client:   c,
 		}
-	}
 
-	return nil
+	case config.EnsembleStrategyAdaptive:
+		var fastClient, standardClient, heavyClient domain.LLMClient
+		if len(ens.FastTier) > 0 {
+			fastNamed := r.resolveNamedClients(ens.FastTier)
+			if len(fastNamed) > 1 {
+				fastClient = ensemble.NewRaceClient(fastNamed, timeout)
+			} else if len(fastNamed) == 1 {
+				fastClient = fastNamed[0].Client
+			}
+		}
+		if len(ens.StandardTier) > 0 {
+			standardNamed := r.resolveNamedClients(ens.StandardTier)
+			if len(standardNamed) > 0 {
+				standardClient = standardNamed[0].Client
+			}
+		} else if r.defaultClient != nil {
+			standardClient = r.defaultClient
+		}
+		if len(ens.HeavyTier) > 0 {
+			heavyNamed := r.resolveNamedClients(ens.HeavyTier)
+			if len(heavyNamed) > 1 {
+				heavyClient = ensemble.NewParallelClient(heavyNamed, standardClient, 2, softTimeout, timeout, true)
+			} else if len(heavyNamed) == 1 {
+				heavyClient = heavyNamed[0].Client
+			}
+		}
+		ac := ensemble.NewAdaptiveClient(fastClient, standardClient, heavyClient, timeout)
+		c := ensemble.NewClient(ens.Strategy, ac)
+		return &RouterCandidate{
+			Name:     roleName + "-ensemble-adaptive",
+			Provider: "ensemble",
+			Model:    string(ens.Strategy),
+			Client:   c,
+		}
+
+	default:
+		return nil
+	}
 }
 
 func (r *ResilientLLMRouter) resolveNamedClients(refs []config.AgentProviderRef) []ensemble.NamedClient {
