@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Increased Agent Turn Limits**:
-  - Increased generator loop action turn limit to 10 iterations (`generators.iterations: 10`).
-  - Increased tester loop action turn limit to 10 iterations (`testers.iterations: 10`).
+  - Increased generator loop action turn limit to 20 iterations (`generators.iterations: 20`).
+  - Increased tester loop action turn limit to 15 iterations (`testers.iterations: 15`).
   - Increased planner loop action turn limit to 5 iterations (`planner.iterations: 5`).
   - Updated default fallbacks in `pkg/infrastructure/config/defaults.go` and `pkg/services/prompt_utils.go`.
   - Updated agent iterations across all 16 validation project configurations (`validation/projects/*/.noctifab/config.yaml`).

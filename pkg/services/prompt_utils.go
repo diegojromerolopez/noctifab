@@ -13,7 +13,7 @@ const (
 	fileContextCapChars = 16000
 	// defaultAgentIterations is the fallback number of agent loop turns when
 	// no per-role iterations value is configured.
-	defaultAgentIterations = 10
+	defaultAgentIterations = 20
 )
 
 // capText caps s to approximately max characters, keeping the head and tail
