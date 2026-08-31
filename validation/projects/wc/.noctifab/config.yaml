@@ -1,7 +1,7 @@
 config_version: '2.0'
 execution_report: "/app/report_mount/execution_report.md"
 agents:
-  architecture: breadth_first
+  architecture: code_first
   orchestrator:
     number: 1
     iterations: 2
@@ -9,56 +9,101 @@ agents:
     number: 1
     iterations: 2
     max_user_stories: 5
+    max_tokens: -1
+    ensemble:
+      strategy: parallel
+      timeout_seconds: 45
+      soft_timeout_seconds: 15
+      min_models: 2
+      fallback_to_single: true
+      models:
+      - name: claude
+        temperature: 0.2
+      - name: openai
+        temperature: 0.2
+      - name: gemini
+        temperature: 0.1
+      synthesizer:
+        name: gemini
     providers:
+    - name: claude
     - name: gemini
     - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
     - name: openrouter
-    - name: claude
   planner:
     number: 1
     iterations: 5
   generators:
     number: 6
     iterations: 20
+    max_tokens: -1
+    ensemble:
+      strategy: adaptive
+      timeout_seconds: 45
+      fast_tier:
+      - name: gemini-flash
+      standard_tier:
+      - name: claude
+      heavy_tier:
+      - name: claude
+      - name: openai
+      - name: deepseek-pro
     providers:
     - name: gemini-flash
+    - name: claude
     - name: gemini
     - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
     - name: openrouter
-    - name: claude
   testers:
     number: 2
     iterations: 15
+    max_tokens: -1
+    ensemble:
+      strategy: best_of_n_scored
+      timeout_seconds: 30
+      models:
+      - name: claude
+      - name: openai
+      - name: deepseek-pro
     providers:
     - name: gemini-flash
+    - name: claude
     - name: gemini
     - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
     - name: openrouter
-    - name: claude
   qa:
     enabled: false
     iterations: 2
     providers:
     - name: gemini-flash
+    - name: claude
     - name: gemini
     - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
     - name: openrouter
-    - name: claude
   auditor:
     number: 1
     iterations: 2
+    max_tokens: -1
+    ensemble:
+      strategy: consensus
+      timeout_seconds: 30
+      voters:
+      - name: claude
+      - name: gemini
+      tie_breaker:
+        name: openai
     providers:
     - name: claude
     - name: gemini
@@ -70,6 +115,7 @@ agents:
   unblocker:
     number: 1
     iterations: 2
+    max_tokens: -1
 workspace_cache:
   enabled: true
 poll_interval: 10s
@@ -103,7 +149,7 @@ llm:
     retry_backoff: 50ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: gemini-flash
@@ -114,7 +160,7 @@ llm:
     retry_backoff: 50ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: gemini
@@ -125,7 +171,7 @@ llm:
     retry_backoff: 50ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: openai
@@ -136,7 +182,7 @@ llm:
     retry_backoff: 50ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: deepseek-pro
@@ -147,7 +193,7 @@ llm:
     retry_backoff: 50ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: qwen
@@ -158,7 +204,7 @@ llm:
     retry_backoff: 50ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
     enable_thinking: true
@@ -171,7 +217,7 @@ llm:
     retry_backoff: 50ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: openrouter
@@ -182,7 +228,7 @@ llm:
     retry_backoff: 50ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
 vcs:
@@ -219,9 +265,9 @@ runtime:
   max_actions: 100
   max_duration: 30m
   max_silent_stall_duration: 30m
-  max_tokens_per_story: 2000000
-  max_tokens_per_task: 500000
-  max_tokens: 100000000
+  max_tokens_per_story: -1
+  max_tokens_per_task: -1
+  max_tokens: -1
   loop:
     count: 1
 logging:

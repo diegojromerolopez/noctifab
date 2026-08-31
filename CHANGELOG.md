@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ensemble Observability & Performance Telemetry**:
   - Added real-time thread-safe telemetry tracker (`pkg/infrastructure/llm/ensemble/telemetry.go`) recording speculative quorum completions, early exits, consensus agreement rates, and token savings.
   - Enhanced markdown execution reports (`pkg/services/reporting/renderer.go`) with a dedicated **Ensemble Performance & Observability** matrix.
+- **Validation Projects Upgrade**:
+  - Upgraded all 16 target validation project configurations under `validation/projects/*/` with high-performance ensemble topologies (`parallel` quorum for Product Manager, `adaptive` routing for Generators, `best_of_n_scored` for Testers, `consensus` for Auditor, and unlimited token budgets `-1`).
 
 ## [0.59.5] - 2026-08-31
 
