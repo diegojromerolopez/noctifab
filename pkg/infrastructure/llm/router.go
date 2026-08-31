@@ -139,6 +139,14 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 
 	roleSetting := r.getRoleSetting(roleName)
 
+	// 0. If ensemble strategy is configured for this role, build ensemble candidate as top priority
+	if roleSetting.Ensemble.IsEnabled() {
+		ensCand := r.buildEnsembleCandidate(roleName, roleSetting.Ensemble)
+		if ensCand != nil {
+			candidates = append(candidates, *ensCand)
+		}
+	}
+
 	// 1. Process role-specific providers if configured
 	if len(roleSetting.Providers) > 0 {
 		for _, ref := range roleSetting.Providers {
@@ -256,79 +264,6 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 	}
 
 	return candidates
-}
-
-func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting {
-	if r.cfg != nil {
-		var agentRole config.AgentRoleConfig
-		switch strings.ToLower(roleName) {
-		case "orchestrator":
-			agentRole = r.cfg.Agents.Orchestrator
-		case "product_manager", "productmanager":
-			agentRole = r.cfg.Agents.ProductManager
-		case "planner":
-			agentRole = r.cfg.Agents.Planner
-		case "generator", "generators":
-			agentRole = r.cfg.Agents.Generators
-		case "tester", "testers":
-			agentRole = r.cfg.Agents.Testers
-		case "qa":
-			qa := r.cfg.Agents.QA
-			if len(qa.Providers) > 0 {
-				return config.RoleSetting{Model: qa.Model, Temperature: qa.Temperature, Profile: qa.Profile, Providers: qa.Providers}
-			}
-		case "auditor":
-			qa := r.cfg.Agents.QA
-			if len(qa.Providers) > 0 {
-				return config.RoleSetting{Model: qa.Model, Temperature: qa.Temperature, Profile: qa.Profile, Providers: qa.Providers}
-			}
-			pm := r.cfg.Agents.ProductManager
-			if len(pm.Providers) > 0 {
-				return config.RoleSetting{Model: pm.Model, Temperature: pm.Temperature, Profile: pm.Profile, Providers: pm.Providers}
-			}
-		case "unblocker":
-			agentRole = r.cfg.Agents.Unblocker
-		case "last_resort", "lastresort":
-			lr := r.cfg.Agents.LastResort
-			if len(lr.Providers) > 0 {
-				return config.RoleSetting{Model: lr.Model, Temperature: lr.Temperature, Profile: lr.Profile, Providers: lr.Providers}
-			}
-		}
-		if len(agentRole.Providers) > 0 {
-			return config.RoleSetting{
-				Model:       agentRole.Model,
-				Temperature: agentRole.Temperature,
-				Profile:     agentRole.Profile,
-				Providers:   agentRole.Providers,
-			}
-		}
-	}
-
-	switch strings.ToLower(roleName) {
-	case "orchestrator":
-		return r.roles.Orchestrator
-	case "product_manager", "productmanager":
-		return config.RoleSetting{}
-	case "planner":
-		return r.roles.Planner
-	case "generator", "generators":
-		return r.roles.Generator
-	case "tester", "testers":
-		return r.roles.Tester
-	case "qa":
-		return r.roles.QA
-	case "auditor":
-		if r.roles.QA.Model != "" || len(r.roles.QA.Providers) > 0 {
-			return r.roles.QA
-		}
-		return r.roles.Orchestrator
-	case "unblocker":
-		return r.roles.Unblocker
-	case "last_resort", "lastresort":
-		return r.roles.LastResort
-	default:
-		return config.RoleSetting{}
-	}
 }
 
 func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelOverride string) domain.LLMClient {

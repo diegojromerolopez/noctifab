@@ -33,6 +33,7 @@ getting_started
 cli_usage
 configuration
 configuration_examples
+ensembles
 llm_providers
 execution_report
 prompts

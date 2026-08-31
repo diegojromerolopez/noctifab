@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.60.0] - 2026-08-31
+
+### Added
+- **Multi-Model Ensembling (Mixture of Models / MoM)**:
+  - Implemented 7 multi-model topologies in `pkg/infrastructure/llm/ensemble`:
+    - **`parallel`** (`ParallelClient`): Speculative Quorum ($K \ge \text{min\_models}$) fan-out with structured action synthesis and straggler elimination.
+    - **`serial`** (`SerialClient`): Multi-stage sequential refinement with deterministic AST/anti-stub Early Exit (`early_exit_on_pass: true`).
+    - **`consensus`** (`ConsensusClient`): Dual-perspective parallel voting with fast 1-hop unanimous approval and tie-breaker escalation.
+    - **`race`** (`RaceClient`): Speculative first-valid race returning in 1–3s with instant cancellation of slower models.
+    - **`cascade`** (`CascadeClient`): Tiered fast-path execution with automatic escalation to frontier models on stubs/errors.
+    - **`decomposed`** (`DecomposedClient`): Parallel specialist generation across domains/services with deterministic action merging.
+    - **`best_of_n_scored`** (`ScoredClient`): Local CPU scoring (AST parse, anti-stub scanner, line bounds, assertions) promoting highest quality candidates with zero synthesis cost.
+  - Added `EnsembleConfig`, `EnsembleStrategy`, `EnsembleStageSpec`, and `DecomposedTargetSpec` in `pkg/infrastructure/config/ensemble_types.go`.
+  - Added support for unlimited token budgets across runtime, story, and agent tiers using `max_tokens: -1` (or `0`).
+  - Added per-model parameter overrides (`model`, `temperature`, `max_tokens`, `enable_thinking`, `thinking_budget`, `extra_params`) in `AgentProviderRef`.
+  - Integrated ensemble candidate construction into `ResilientLLMRouter` (`pkg/infrastructure/llm/router_ensemble.go`).
+  - Added user-facing documentation in `docs/ensembles.md` and updated `docs/index.md`.
+
 ## [0.59.5] - 2026-08-31
 
 ### Changed

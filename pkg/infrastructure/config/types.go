@@ -83,6 +83,8 @@ type QAConfig struct {
 	Temperature        float64            `yaml:"temperature,omitempty"`
 	Profile            string             `yaml:"profile,omitempty"`
 	Providers          []AgentProviderRef `yaml:"providers,omitempty"`
+	MaxTokens          int64              `yaml:"max_tokens,omitempty"`
+	Ensemble           EnsembleConfig     `yaml:"ensemble,omitempty"`
 }
 
 type AgentRoleConfig struct {
@@ -94,6 +96,8 @@ type AgentRoleConfig struct {
 	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
 	MaxUserStories int                `yaml:"max_user_stories,omitempty"`
 	Passes         int                `yaml:"passes,omitempty"`
+	MaxTokens      int64              `yaml:"max_tokens,omitempty"`
+	Ensemble       EnsembleConfig     `yaml:"ensemble,omitempty"`
 }
 
 type OCCConfig struct {
@@ -260,12 +264,15 @@ func (v VCSConfig) GetIntegrationBranch() string {
 }
 
 type AgentProviderRef struct {
-	Name           string   `yaml:"name,omitempty"`
-	Provider       string   `yaml:"provider,omitempty"`
-	Model          string   `yaml:"model,omitempty"`
-	Models         []string `yaml:"models,omitempty"`
-	EnableThinking *bool    `yaml:"enable_thinking,omitempty"`
-	ThinkingBudget *int     `yaml:"thinking_budget,omitempty"`
+	Name           string            `yaml:"name,omitempty"`
+	Provider       string            `yaml:"provider,omitempty"`
+	Model          string            `yaml:"model,omitempty"`
+	Models         []string          `yaml:"models,omitempty"`
+	MaxTokens      *int              `yaml:"max_tokens,omitempty"`
+	Temperature    *float64          `yaml:"temperature,omitempty"`
+	EnableThinking *bool             `yaml:"enable_thinking,omitempty"`
+	ThinkingBudget *int              `yaml:"thinking_budget,omitempty"`
+	ExtraParams    map[string]string `yaml:"extra_params,omitempty"`
 }
 
 type RoleSetting struct {
@@ -273,6 +280,8 @@ type RoleSetting struct {
 	Temperature float64            `yaml:"temperature"`
 	Profile     string             `yaml:"profile,omitempty"`
 	Providers   []AgentProviderRef `yaml:"providers,omitempty"`
+	MaxTokens   int64              `yaml:"max_tokens,omitempty"`
+	Ensemble    EnsembleConfig     `yaml:"ensemble,omitempty"`
 }
 
 type RolesConfig struct {
