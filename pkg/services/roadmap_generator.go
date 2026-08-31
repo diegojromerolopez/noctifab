@@ -267,70 +267,27 @@ func ToSlug(text string) string {
 // scanLegacyFiles walks projectPath and returns relative paths of existing legacy source files,
 // ignoring metadata directories, documentation, binary artifacts, and generated roadmap files.
 func scanLegacyFiles(projectPath string) ([]string, error) {
-	ignoredDirs := map[string]bool{
-		".git": true, ".noctifab": true, ".github": true, ".idea": true,
-		".vscode": true, ".gemini": true, ".antigravity": true, "roadmap": true,
-		"user-stories": true, "tasks": true,
-		"output": true, "dist": true, "target": true, "node_modules": true,
-		"vendor": true, "bin": true, "build": true, "obj": true,
-		".venv": true, "venv": true, "env": true, "__pycache__": true,
-		".mypy_cache": true, ".ruff_cache": true, ".pytest_cache": true,
-		".next": true, ".nuxt": true, ".turbo": true, ".cache": true,
-		".gradle": true, ".mvn": true, "out": true, "_build": true, "deps": true,
-		"cmake-build-debug": true, "cmake-build-release": true,
-	}
-
 	ignoredFiles := map[string]bool{
 		"spec.md": true, "readme.md": true, "changelog.md": true,
 		"license": true, "version": true, ".gitignore": true,
-		"dockerfile": true, "docker-compose.yml": true, "docker-compose.yaml": true,
-		"makefile": true, ".readthedocs.yaml": true, ".readthedocs.yml": true,
-		"uv.lock": true, "poetry.lock": true, "package-lock.json": true,
-		"pnpm-lock.yaml": true, "yarn.lock": true, "cargo.lock": true,
-		"go.sum": true, "gemfile.lock": true, "composer.lock": true, "mix.lock": true,
 		"noctifab_evaluation_report.md": true,
 	}
 
-	ignoredExts := map[string]bool{
-		".log": true, ".db": true, ".sqlite": true, ".out": true,
-		".o": true, ".exe": true, ".so": true, ".dll": true,
-		".dylib": true, ".tmp": true, ".pyc": true, ".pyo": true,
-		".a": true, ".rlib": true, ".class": true, ".jar": true,
+	exclude := []string{"roadmap", "user-stories", "tasks", "output", "dist"}
+	files, err := ListWorkspaceSourceFiles(context.Background(), projectPath, exclude)
+	if err != nil {
+		return nil, err
 	}
 
 	var legacyFiles []string
-	err := filepath.WalkDir(projectPath, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		rel, err := filepath.Rel(projectPath, path)
-		if err != nil {
-			return nil
-		}
-
-		if d.IsDir() {
-			base := filepath.Base(path)
-			if ignoredDirs[strings.ToLower(base)] && rel != "." {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		baseLower := strings.ToLower(filepath.Base(path))
+	for _, rel := range files {
+		baseLower := strings.ToLower(filepath.Base(rel))
 		if ignoredFiles[baseLower] {
-			return nil
+			continue
 		}
-
-		extLower := strings.ToLower(filepath.Ext(path))
-		if ignoredExts[extLower] {
-			return nil
-		}
-
 		legacyFiles = append(legacyFiles, rel)
-		return nil
-	})
+	}
 
 	sort.Strings(legacyFiles)
-	return legacyFiles, err
+	return legacyFiles, nil
 }

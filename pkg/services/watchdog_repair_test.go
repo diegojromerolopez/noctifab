@@ -133,7 +133,6 @@ func TestAttemptRepair_FailurePropagatesOutput(t *testing.T) {
 	}
 
 	evaluator := NewTestValidator(sandbox, false, nil, nil)
-	evaluator.LinterCommand = "rubocop"
 
 	wr := NewWatchdogRepair(llm, sandbox, map[string]Tool{"noop": &noopTool{}}, evaluator)
 

@@ -172,6 +172,9 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			return err
 		}
 
+		// Immediate dispatch of initial ready tasks without waiting for the first ticker tick.
+		_, _ = orchestrator.RunOnce(ctx)
+
 		ticker := time.NewTicker(storyExecInterval(deps.cfg))
 		defer ticker.Stop()
 		for {
@@ -190,7 +193,12 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 							return fmt.Errorf("story execution failed: task %s (%s) failed", t.ID, t.Title)
 						}
 					}
-					return nil
+					if st.StoryStatus == domain.StoryFailed {
+						return fmt.Errorf("story execution failed: story finalization status marked as failed")
+					}
+					if st.StoryStatus == domain.StorySuccess {
+						return nil
+					}
 				}
 			}
 		}

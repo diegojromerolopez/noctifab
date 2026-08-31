@@ -95,12 +95,12 @@ func TestIterationsOrDefault(t *testing.T) {
 		}
 	})
 
-	t.Run("when the configured value is zero or negative, it defaults to 5", func(t *testing.T) {
-		if got := iterationsOrDefault(0); got != 5 {
-			t.Errorf("expected default 5 for 0, got %d", got)
+	t.Run("when the configured value is zero or negative, it defaults to 20", func(t *testing.T) {
+		if got := iterationsOrDefault(0); got != 20 {
+			t.Errorf("expected default 20 for 0, got %d", got)
 		}
-		if got := iterationsOrDefault(-3); got != 5 {
-			t.Errorf("expected default 5 for -3, got %d", got)
+		if got := iterationsOrDefault(-3); got != 20 {
+			t.Errorf("expected default 20 for -3, got %d", got)
 		}
 	})
 }

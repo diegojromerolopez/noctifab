@@ -51,17 +51,18 @@ func collectStoryContracts(projectPath string) []domain.PublicContract {
 	return contracts
 }
 
-func isVendorOrArtifactPath(filePath string) bool {
+func isVendorOrArtifactPath(projectPath, filePath string) bool {
 	filePath = filepath.ToSlash(strings.TrimSpace(filePath))
 	parts := strings.Split(filePath, "/")
-	ignoredDirs := map[string]bool{
-		"node_modules": true, "vendor": true, "dist": true,
-		"target": true, ".next": true, "build": true, "bin": true,
-		"__pycache__": true, "venv": true, ".venv": true,
-		".noctifab": true, ".git": true, "output": true,
-	}
 	for _, part := range parts {
-		if ignoredDirs[strings.ToLower(part)] {
+		if part == ".git" || part == ".noctifab" {
+			return true
+		}
+	}
+	if projectPath != "" {
+		cmd := exec.Command("git", "check-ignore", "-q", filePath)
+		cmd.Dir = projectPath
+		if cmd.Run() == nil {
 			return true
 		}
 	}
@@ -89,7 +90,7 @@ func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 				continue
 			}
 			filePath := parts[2]
-			if isVendorOrArtifactPath(filePath) {
+			if isVendorOrArtifactPath(projectPath, filePath) {
 				continue
 			}
 			var added, deleted int64
@@ -132,7 +133,7 @@ func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 				continue
 			}
 			filePath := strings.TrimSpace(line[2:])
-			if filePath == "" || isVendorOrArtifactPath(filePath) {
+			if filePath == "" || isVendorOrArtifactPath(projectPath, filePath) {
 				continue
 			}
 			changedMap[filePath] = true
@@ -159,7 +160,7 @@ func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 			return nil
 		}
 		relSlash := filepath.ToSlash(rel)
-		if isVendorOrArtifactPath(relSlash) {
+		if isVendorOrArtifactPath(projectPath, relSlash) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}

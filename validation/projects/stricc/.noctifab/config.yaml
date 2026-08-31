@@ -19,10 +19,10 @@ agents:
     - name: openrouter
   planner:
     number: 1
-    iterations: 2
+    iterations: 5
   generators:
     number: 6
-    iterations: 5
+    iterations: 20
     providers:
     - name: gemini-flash
     - name: claude
@@ -34,7 +34,7 @@ agents:
     - name: openrouter
   testers:
     number: 2
-    iterations: 3
+    iterations: 15
     providers:
     - name: gemini-flash
     - name: claude
@@ -205,6 +205,8 @@ sandbox:
     max_retries: 3
   exclude_paths:
   - target/
+  - target_container/
+  - dist/
   - .noctifab/
   - .git/
   allowed_commands:

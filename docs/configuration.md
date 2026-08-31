@@ -80,15 +80,15 @@ agents:
 
   planner:
     number: 1
-    iterations: 2
+    iterations: 5
 
   generators:
     number: 3
-    iterations: 5
+    iterations: 20
 
   testers:
     number: 2
-    iterations: 3
+    iterations: 15
 
   qa:
     enabled: false
@@ -124,9 +124,9 @@ clarification_timeout_action: abort
 - **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls allowed per agent response turn.
 - **`orchestrator`**: Configures Orchestrator agents managing task lifecycle and state synchronization (`number: 1`, `iterations: 2`).
 - **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `max_user_stories: 5`, `passes: 2`). Supports an optional `max_user_stories` setting (e.g. `5`) to hard-cap story generation, and a `passes` setting (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit).
-- **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs, automatically serializing task models into `roadmap/tasks/` (`number: 1`, `iterations: 2`).
-- **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 5`).
-- **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 3`).
+- **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs, automatically serializing task models into `roadmap/tasks/` (`number: 1`, `iterations: 5`).
+- **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 20`).
+- **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 15`).
 - **`qa`**: Reserves the experimental QA capability. It defaults to `enabled: false`; Phase 0 reports its capability but does not run QA.
 - **`auditor`**: Configures the Acceptance Auditor Agent (`number: 1`, `iterations: 2`) verifying whole-project compliance against `SPEC.md` prior to Pull Request creation.
 - **`unblocker`**: Configures Unblocker agents monitoring pipelines for stalls and re-dispatching tasks (`number: 1`, `iterations: 2`).
@@ -201,14 +201,14 @@ llm:
 agents:
   generators:
     number: 4
-    iterations: 5
+    iterations: 20
     providers:
       - name: "deepseek-coder"
       - name: "openai-primary"
 
   testers:
     number: 2
-    iterations: 3
+    iterations: 15
     providers:
       - name: "openai-primary"
       - name: "anthropic-backup"
@@ -352,11 +352,11 @@ sandbox:
 - **`linter_command`** (String): Command executed to run project static analysis linter tasks.
 - **`formatter_command`** (String): Command executed to run code format checks (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_linter` runs this pre-step auto-fixer first before linter diagnostics.
 - **`max_linter_retries`** (Integer): Maximum linter fix retry turns per task (default: `3`). Prevents infinite agent loops on unfixable linter offenses.
-- **`exclude_paths`** (List of Strings): Directory trees ignored by the repository indexer and file walker (e.g. `node_modules/`, `.git/`).
+- **`exclude_paths`** (List of Strings): Directory trees, prefixes, or wildcard patterns ignored by the workspace discovery engine, Story QA auditor, anti-stub validator, and churn calculator (e.g. `node_modules/`, `vendor/`, `target/`, `target_container/`, `build/`, `_build/`, `*.tmp`). Works seamlessly with Git's `.gitignore` rules and automated binary detection (`IsTextFile`).
 - **`allowed_commands`** (List of Strings): Whitelist of executable binaries permitted inside the sandbox process runner.
 - **`auto_install_deps`** (Boolean): Allow sandbox to auto-detect and attempt to install missing build dependencies.
 - **`package_managers`** (List of Strings): Authorized tool package managers (e.g. `pip`, `go`, `npm`, `brew`).
-- **`forbidden_patterns`** (List of Strings): Regex patterns disallowed in tool inputs or parameters.
+- **`forbidden_patterns`** (List of Strings): Regex patterns disallowed in tool inputs or parameters (e.g. `\bunsafe\s*\{`).
 - **`context.compaction`** (String): Prompt & spec markdown compaction strategy. Options: `none` (default, no compaction), `simple_english` (active voice, simplified vocabulary, stripping conversational preambles), `caveman` (telegraphic markdown compaction stripping dividers and headers). `caveman_compaction: true` is supported as a legacy backward-compatible alias for `caveman`.
 
 ---
@@ -582,13 +582,13 @@ agents:
     passes: 2
   planner:
     number: 1
-    iterations: 2
+    iterations: 5
   generators:
     number: 3
-    iterations: 5
+    iterations: 20
   testers:
     number: 2
-    iterations: 3
+    iterations: 15
   qa:
     enabled: false
     iterations: 1

@@ -13,7 +13,7 @@ const (
 	fileContextCapChars = 16000
 	// defaultAgentIterations is the fallback number of agent loop turns when
 	// no per-role iterations value is configured.
-	defaultAgentIterations = 5
+	defaultAgentIterations = 20
 )
 
 // capText caps s to approximately max characters, keeping the head and tail
@@ -51,7 +51,7 @@ func joinCappedToolOutputs(outputs []string) string {
 }
 
 // iterationsOrDefault returns the configured per-role iterations value, or the
-// default (5) when the configured value is zero or negative.
+// default (10) when the configured value is zero or negative.
 func iterationsOrDefault(v int) int {
 	if v <= 0 {
 		return defaultAgentIterations

@@ -359,11 +359,12 @@ The **Unblocker Agent** runs as an autonomous background goroutine on an indepen
 
 See [docs/unblocker_agent.md](unblocker_agent.md) for full developer reference.
 
-#### B. Legacy Codebase Scanning & Characterization Mandate (`pkg/usecase/roadmap_generator.go`)
-When initialized in a project directory containing existing source code:
-1. **Workspace Legacy Scanning (`scanLegacyFiles`)**: Detects pre-existing source files while ignoring build outputs, vendor paths, and `.noctifab` metadata.
-2. **Product Manager Legacy Directive (`prompt_templates.go`)**: Injects `LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE` into the PM prompt. The PM automatically generates `roadmap/user-stories/US-001.md` titled `"Legacy Codebase Characterization & Stabilization"`, requiring unit/integration characterization tests before refactoring or new feature work.
-3. **Dynamic Role Prompt Adaptation**: Planner, Generator, and Tester prompts dynamically adapt with characterization testing requirements and surgical refactoring directives (`edit_file`, `apply_patch`).
+#### B. Git-Aware & Language-Agnostic Workspace Discovery (`pkg/services/workspace_discovery.go`)
+1. **Unified Workspace Scanning (`ListWorkspaceSourceFiles`, `CollectWorkspaceSourceSnapshot`)**: Replaces language-specific directory lists with Git-aware discovery (`git ls-files -c -o --exclude-standard` / `git check-ignore`), automatically ignoring project `.gitignore` patterns, container targets (e.g. `target_container/`), and compiler caches across any language toolchain.
+2. **Binary Content & Size Gating (`IsTextFile`)**: Evaluates initial file bytes for null characters (0x00) and enforces a 1MB file size ceiling to completely prevent object files (`.o`), static/dynamic libraries (`.a`, `.so`, `.rlib`), executables, and compiler metadata from leaking into LLM prompts.
+3. **Workspace Legacy Scanning (`scanLegacyFiles`)**: Detects pre-existing source files using the centralized scanner while ignoring build outputs, vendor paths, and `.noctifab` metadata.
+4. **Product Manager Legacy Directive (`prompt_templates.go`)**: Injects `LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE` into the PM prompt. The PM automatically generates `roadmap/user-stories/US-001.md` titled `"Legacy Codebase Characterization & Stabilization"`, requiring unit/integration characterization tests before refactoring or new feature work.
+5. **Dynamic Role Prompt Adaptation**: Planner, Generator, and Tester prompts dynamically adapt with characterization testing requirements and surgical refactoring directives (`edit_file`, `apply_patch`).
 
 #### C. Pre-Flight LLM Provider Capability Caching (`openai_adapt.go` & `openai.go`)
 1. **Parameter Rejection Detection**: Tracks provider parameter rejections (e.g. `temperature`, `max_tokens`, `response_format` for reasoning models) upon receiving an initial HTTP 400 error.

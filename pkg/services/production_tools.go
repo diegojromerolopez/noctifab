@@ -245,19 +245,7 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 }
 
 func isPathExcluded(rel string, excludePaths []string) bool {
-	parts := strings.Split(rel, string(filepath.Separator))
-	for _, part := range parts {
-		if part == ".noctifab" || part == ".git" {
-			return true
-		}
-		for _, exp := range excludePaths {
-			cleanExp := strings.Trim(exp, "/")
-			if cleanExp != "" && part == cleanExp {
-				return true
-			}
-		}
-	}
-	return false
+	return IsPathExcluded(rel, excludePaths)
 }
 
 // ListDirectoryTool implements list_directory.

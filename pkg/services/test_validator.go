@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -25,40 +24,27 @@ type TestRunResult struct {
 // TestValidator validates a task by running the project's tests. By default
 // it performs a single validation run; when Runs is configured to a value
 // greater than 1 it runs the suite N times and passes on a strict majority
-// vote (passCount > runs/2). It optionally runs formatter/linter pre-passes.
+// vote (passCount > runs/2). It optionally runs an auto-fix formatter pre-pass.
 type TestValidator struct {
 	Runner           Sandbox
 	Strict           bool
 	FormatterCommand string
-	LinterCommand    string
 	LLMClient        domain.LLMClient
 	Tools            map[string]Tool
 	RunTimeout       time.Duration
 	// Runs is the number of test suite executions per validation. Values
 	// <= 0 default to 1 (single run, no consensus voting).
 	Runs int
-	// MaxLinterIssues is the maximum number of linter issues tolerated before
-	// failing validation. 0 means strict. -1 means disabled. Default 0.
-	MaxLinterIssues int
-	// MaxLinterConsecutiveFailures is the consecutive failure count threshold
-	// before linter enforcement is deferred to prevent infinite lock-in loops.
-	// Defaults to 2 if <= 0.
-	MaxLinterConsecutiveFailures int
-	// linterConsecutiveFailures tracks consecutive linter failures without
-	// any file mutation in between.
-	linterConsecutiveFailures int
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
 	return &TestValidator{
-		Runner:                       runner,
-		Strict:                       strict,
-		LinterCommand:                "",
-		LLMClient:                    llmClient,
-		Tools:                        tools,
-		RunTimeout:                   5 * time.Minute,
-		Runs:                         1,
-		MaxLinterConsecutiveFailures: 2,
+		Runner:     runner,
+		Strict:     strict,
+		LLMClient:  llmClient,
+		Tools:      tools,
+		RunTimeout: 5 * time.Minute,
+		Runs:       1,
 	}
 }
 
@@ -96,51 +82,8 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 
 	if v.FormatterCommand != "" {
 		// Deterministic Auto-Formatter Pre-Pass:
-		// Automatically run auto-fix formatter before linter evaluation.
+		// Automatically run auto-fix formatter before test execution.
 		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
-	}
-
-	if v.LinterCommand != "" {
-		maxConsecutive := v.MaxLinterConsecutiveFailures
-		if maxConsecutive <= 0 {
-			maxConsecutive = 2
-		}
-		// Enforce linter unless consecutive failures have indicated a lock-in loop.
-		if v.linterConsecutiveFailures >= maxConsecutive {
-			fmt.Fprintf(os.Stderr, "⚠ Linter deferred: failed %d consecutive times without file changes — skipping linter enforcement to allow task completion.\n", v.linterConsecutiveFailures)
-		} else {
-			out, err := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
-			if err != nil && v.FormatterCommand != "" {
-				// Try auto-formatting once more to resolve formatting/style linter offenses automatically
-				_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
-				outRetry, errRetry := v.Runner.RunCommand(ctx, state.ProjectPath, v.LinterCommand, "")
-				if errRetry == nil {
-					out = outRetry
-					err = nil
-				}
-			}
-			if err != nil {
-				// Apply MaxLinterIssues threshold: -1 = disabled, >0 = tolerance.
-				linterBlocking := true
-				if v.MaxLinterIssues < 0 {
-					fmt.Fprintf(os.Stderr, "⚠ Linter issues suppressed (max_linter_issues=-1).\n")
-					linterBlocking = false
-				} else if v.MaxLinterIssues > 0 {
-					issueCount := countLinterIssues(out)
-					if issueCount <= v.MaxLinterIssues {
-						fmt.Fprintf(os.Stderr, "⚠ Linter advisory: %d issue(s) within max_linter_issues=%d threshold — continuing.\n", issueCount, v.MaxLinterIssues)
-						linterBlocking = false
-					}
-				}
-				if linterBlocking {
-					v.linterConsecutiveFailures++
-					return false, fmt.Sprintf("Linter validation failed. Command: %s. Output:\n%s", v.LinterCommand, out), nil
-				}
-			} else {
-				// Linter passed — reset consecutive failure counter.
-				v.linterConsecutiveFailures = 0
-			}
-		}
 	}
 
 	runs := v.Runs

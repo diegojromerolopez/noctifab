@@ -140,9 +140,6 @@ var serveCmd = &cobra.Command{
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
 		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
-		evaluator.LinterCommand = cfg.Sandbox.GetLinterCommand()
-		evaluator.MaxLinterIssues = cfg.Sandbox.GetMaxLinterIssues()
-		evaluator.MaxLinterConsecutiveFailures = cfg.Sandbox.GetMaxLinterConsecutiveFailures()
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}

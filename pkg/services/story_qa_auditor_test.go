@@ -211,5 +211,3 @@ func TestStoryQAAuditor_AuditStoryCompleteness(t *testing.T) {
 		}
 	})
 }
-
-

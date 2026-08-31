@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,32 +72,18 @@ func (v *AntiStubValidator) ValidateWorkspace(rootPath string, targetFiles []str
 		return violations, nil
 	}
 
-	err := filepath.Walk(rootPath, func(path string, info os.FileInfo, wErr error) error {
-		if wErr != nil || info == nil {
-			return nil
-		}
-		if info.IsDir() {
-			name := info.Name()
-			if name == ".git" || name == ".venv" || name == "node_modules" || name == "__pycache__" || name == ".noctifab" || name == "dist" || name == "build" || name == "target" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !info.Mode().IsRegular() || info.Size() > 1024*1024 {
-			return nil
-		}
-		rel, rErr := filepath.Rel(rootPath, path)
-		if rErr != nil {
-			rel = path
-		}
-		content, rErr := os.ReadFile(path)
+	files, err := ListWorkspaceSourceFiles(context.Background(), rootPath, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, rel := range files {
+		fullPath := filepath.Join(rootPath, rel)
+		content, rErr := os.ReadFile(fullPath)
 		if rErr == nil {
 			violations = append(violations, v.ValidateContent(rel, string(content))...)
 		}
-		return nil
-	})
-
-	return violations, err
+	}
+	return violations, nil
 }
 
 // ValidateContent scans a single file's string content for forbidden stubs, masks, and vacuum tests.

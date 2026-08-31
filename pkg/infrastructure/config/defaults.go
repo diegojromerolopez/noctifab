@@ -24,15 +24,15 @@ func DefaultConfig() *Config {
 			},
 			Planner: AgentRoleConfig{
 				Number:     1,
-				Iterations: 2,
+				Iterations: 5,
 			},
 			Generators: AgentRoleConfig{
 				Number:     3,
-				Iterations: 5,
+				Iterations: 20,
 			},
 			Testers: AgentRoleConfig{
 				Number:     2,
-				Iterations: 3,
+				Iterations: 15,
 			},
 			QA: QAConfig{
 				Enabled:            false,
