@@ -72,14 +72,14 @@ llm:
 agents:
   generators:
     number: 4
-    iterations: 5
+    iterations: 20
     providers:
       - name: "deepseek-coder"
       - name: "openai-primary"
 
   testers:
     number: 2
-    iterations: 3
+    iterations: 15
     providers:
       - name: "openai-primary"
       - name: "anthropic-backup"

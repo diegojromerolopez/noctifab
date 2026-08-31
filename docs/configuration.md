@@ -80,15 +80,15 @@ agents:
 
   planner:
     number: 1
-    iterations: 2
+    iterations: 5
 
   generators:
     number: 3
-    iterations: 5
+    iterations: 20
 
   testers:
     number: 2
-    iterations: 3
+    iterations: 15
 
   qa:
     enabled: false
@@ -124,9 +124,9 @@ clarification_timeout_action: abort
 - **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls allowed per agent response turn.
 - **`orchestrator`**: Configures Orchestrator agents managing task lifecycle and state synchronization (`number: 1`, `iterations: 2`).
 - **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `max_user_stories: 5`, `passes: 2`). Supports an optional `max_user_stories` setting (e.g. `5`) to hard-cap story generation, and a `passes` setting (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit).
-- **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs, automatically serializing task models into `roadmap/tasks/` (`number: 1`, `iterations: 2`).
-- **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 5`).
-- **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 3`).
+- **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs, automatically serializing task models into `roadmap/tasks/` (`number: 1`, `iterations: 5`).
+- **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 20`).
+- **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 15`).
 - **`qa`**: Reserves the experimental QA capability. It defaults to `enabled: false`; Phase 0 reports its capability but does not run QA.
 - **`auditor`**: Configures the Acceptance Auditor Agent (`number: 1`, `iterations: 2`) verifying whole-project compliance against `SPEC.md` prior to Pull Request creation.
 - **`unblocker`**: Configures Unblocker agents monitoring pipelines for stalls and re-dispatching tasks (`number: 1`, `iterations: 2`).
@@ -201,14 +201,14 @@ llm:
 agents:
   generators:
     number: 4
-    iterations: 5
+    iterations: 20
     providers:
       - name: "deepseek-coder"
       - name: "openai-primary"
 
   testers:
     number: 2
-    iterations: 3
+    iterations: 15
     providers:
       - name: "openai-primary"
       - name: "anthropic-backup"
@@ -582,13 +582,13 @@ agents:
     passes: 2
   planner:
     number: 1
-    iterations: 2
+    iterations: 5
   generators:
     number: 3
-    iterations: 5
+    iterations: 20
   testers:
     number: 2
-    iterations: 3
+    iterations: 15
   qa:
     enabled: false
     iterations: 1

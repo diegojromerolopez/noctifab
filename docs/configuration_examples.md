@@ -28,13 +28,13 @@ agents:
     iterations: 2
   planner:
     number: 1      # Task DAG decomposition
-    iterations: 2
+    iterations: 5
   generators:
     number: 3      # Number of parallel Generator agents (default: 3)
-    iterations: 5  # Maximum turns per task (default: 5)
+    iterations: 20 # Maximum turns per task (default: 20)
   testers:
     number: 2      # Number of parallel Tester agents (default: 2)
-    iterations: 3  # Maximum turns per task (default: 3)
+    iterations: 15 # Maximum turns per task (default: 15)
   qa:
     enabled: false # Experimental capability; no Phase 0 runtime
     iterations: 1
@@ -305,7 +305,7 @@ agents:
 
   generators:
     number: 4
-    iterations: 5
+    iterations: 20
     providers:
       - name: "deepseek-coder"   # DeepSeek Coder for code generation
       - name: "openai-primary"
@@ -313,7 +313,7 @@ agents:
 
   testers:
     number: 2
-    iterations: 3
+    iterations: 15
     providers:
       - name: "openai-primary"
       - name: "anthropic-backup"
