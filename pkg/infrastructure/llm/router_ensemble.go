@@ -267,6 +267,17 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 				}
 			}
 		case "auditor":
+			auditor := r.cfg.Agents.Auditor
+			if len(auditor.Providers) > 0 || auditor.Ensemble.IsEnabled() {
+				return config.RoleSetting{
+					Model:       auditor.Model,
+					Temperature: auditor.Temperature,
+					Profile:     auditor.Profile,
+					Providers:   auditor.Providers,
+					MaxTokens:   auditor.MaxTokens,
+					Ensemble:    auditor.Ensemble,
+				}
+			}
 			qa := r.cfg.Agents.QA
 			if len(qa.Providers) > 0 || qa.Ensemble.IsEnabled() {
 				return config.RoleSetting{

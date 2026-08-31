@@ -32,6 +32,7 @@ A "Dark Factory" (in a software engineering context) is a fully automated reposi
 getting_started
 cli_usage
 configuration
+configuration_guidelines
 configuration_examples
 ensembles
 llm_providers

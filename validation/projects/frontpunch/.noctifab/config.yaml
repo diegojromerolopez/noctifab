@@ -120,14 +120,14 @@ workspace_cache:
   enabled: true
 poll_interval: 10s
 max_clarification_wait: 30m0s
-clarification_timeout_action: abort
+clarification_timeout_action: continue
 storage:
   provider: sqlite
   conn_string: .noctifab/data/noctifab.db
   json_file_path: .noctifab/data/state.json
   occ:
-    max_retries: 5
-    backoff_base: 50ms
+    max_retries: 20
+    backoff_base: 100ms
     backoff_factor: 2
 llm:
   token_usage_limit: 0
@@ -145,8 +145,8 @@ llm:
     provider: anthropic
     model: claude-sonnet-5
     api_keys: CLAUDE_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
     max_tokens: -1
@@ -156,8 +156,8 @@ llm:
     provider: gemini
     model: gemini-3.6-flash
     api_keys: GEMINI_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
     max_tokens: -1
@@ -167,8 +167,8 @@ llm:
     provider: gemini
     model: gemini-3.6-pro
     api_keys: GEMINI_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
     max_tokens: -1
@@ -178,8 +178,8 @@ llm:
     provider: openai
     model: gpt-5.6-luna
     api_keys: OPENAI_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
     max_tokens: -1
@@ -189,8 +189,8 @@ llm:
     provider: qwencloud
     model: deepseek-v4-pro
     api_keys: QWENCLOUD_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
     max_tokens: -1
@@ -200,21 +200,21 @@ llm:
     provider: qwencloud
     model: qwen3.8-max
     api_keys: QWENCLOUD_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
     max_tokens: -1
     temperature: 0.3
     streaming: true
     enable_thinking: true
-    thinking_budget: 8192
+    thinking_budget: 2048
   - name: opencode
     provider: opencode
     model: glm-5.2
     api_keys: OPENCODE_ZEN_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
     max_tokens: -1
@@ -224,8 +224,8 @@ llm:
     provider: openrouter
     model: deepseek/deepseek-v4-flash-0731
     api_keys: OPENROUTER_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
     max_tokens: -1
@@ -239,6 +239,8 @@ vcs:
   use_worktrees: true
   token: secret:GITHUB_TOKEN
   token_env: GITHUB_TOKEN
+  pull_request:
+    auto_create: false
 sandbox:
   mode: host
   timeout_seconds: 300
@@ -264,6 +266,9 @@ sandbox:
   - .git/
   allowed_commands:
   - python
+  - python3
+  - coverage
+  - pytest
   - git
   - pip
   - ruff
@@ -272,8 +277,8 @@ sandbox:
 runtime:
   spec_source: ''
   max_actions: 100
-  max_duration: 30m
-  max_silent_stall_duration: 30m
+  max_duration: 10m
+  max_silent_stall_duration: 10m
   max_tokens_per_story: -1
   max_tokens_per_task: -1
   max_tokens: -1

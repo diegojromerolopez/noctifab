@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.60.1] - 2026-08-31
+
+### Fixed
+- **Validation Projects Toolchain & Docker Images**:
+  - Pre-installed `rustfmt`, `clippy`, and `build-base` in `validation/projects/stricc/Dockerfile` to ensure linters and formatters run cleanly without runtime network dependencies.
+  - Pre-installed `django`, `pytest`, `pytest-django`, `ruff`, `mypy`, and `django-stubs` in `validation/projects/djanban/Dockerfile`.
+  - Pre-installed `fastapi`, `uvicorn`, `redis`, `pytest`, `pytest-asyncio`, `ruff`, `mypy`, `httpx`, `beautifulsoup4`, `lxml`, and `asyncpg` in `validation/projects/searchthedocs/Dockerfile`.
+- **Validation Projects Configuration & Sandbox Whitelists**:
+  - Added `make` to `sandbox.allowed_commands` in `pyedis` and `echo` validation projects.
+  - Added `coverage`, `pytest`, and `python3` to `sandbox.allowed_commands` in `frontpunch` validation project.
+  - Added `clang`, `clang-format`, `clang-tidy`, `sh`, and `bash` to `sandbox.allowed_commands` in `fortune` validation project.
+  - Corrected `vcs.repository` in `searchthedocs` from `diegojromerolopez/searchreadthedocs` to `diegojromerolopez/searchthedocs`.
+  - Configured `context.mode: full` for `calculator` project.
+  - Reordered `llm.priority` in `jpacioli` to prioritize active providers before missing API keys.
+- **OCC Concurrency & Failure Resilience**:
+  - Increased SQLite OCC concurrency retries across all 16 validation projects to `max_retries: 20`, `backoff_base: 100ms`, `backoff_factor: 2` to eliminate OCC write collisions under 6 concurrent generators.
+  - Set `clarification_timeout_action: continue` across all validation projects to prevent premature halts on unprompted questions.
+  - Enforced 10-minute maximum runtime (`max_duration: 10m`, `max_silent_stall_duration: 10m`) across all validation project configurations per AGENTS.md mandate.
+  - Optimized Qwen provider reasoning latency by capping `thinking_budget: 2048` across all projects.
+  - Configured LLM provider retries to `max_retries: 3`, `retry_backoff: 500ms` for resilient exponential backoff on transient HTTP 429 rate-limits.
+- **Router Ensemble Auditor Resolution**:
+  - Fixed auditor consensus ensemble configuration resolution in `pkg/infrastructure/llm/router_ensemble.go` to properly resolve `r.cfg.Agents.Auditor`.
+
+### Added
+- **Configuration Guidelines Documentation**:
+  - Added comprehensive Noctifab configuration guidelines and best practices in `docs/configuration_guidelines.md` covering OCC tuning, clarification flows, runtime watchdogs, LLM provider hierarchies, MoM topology selection, and language-specific sandbox templates.
+
 ## [0.60.0] - 2026-08-31
 
 ### Added
