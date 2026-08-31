@@ -13,6 +13,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -161,7 +162,76 @@ CANONICAL NOCTIFAB CONFIGURATION RULES & SCHEMA:
 }
 
 func resolveRepairClient(configPath string) (domain.LLMClient, string, error) {
-	// 1. Check environment variables
+	// Merge secrets from global and local secrets.yaml
+	secrets := make(map[string]string)
+	if homeSecretsPath := config.GlobalSecretsPath(); homeSecretsPath != "" {
+		if s, err := config.LoadSecrets(homeSecretsPath); err == nil {
+			for k, v := range s {
+				secrets[k] = v
+			}
+		}
+	}
+	if s, err := config.LoadSecrets(".noctifab/secrets.yaml"); err == nil {
+		for k, v := range s {
+			secrets[k] = v
+		}
+	}
+
+	resolveKey := func(keyNames ...string) string {
+		for _, kn := range keyNames {
+			if kn == "" {
+				continue
+			}
+			if val, ok := secrets[kn]; ok && strings.TrimSpace(val) != "" {
+				return val
+			}
+			if val := os.Getenv(kn); strings.TrimSpace(val) != "" {
+				return val
+			}
+		}
+		return ""
+	}
+
+	// 1. Try to pick the FIRST LLM provider defined directly in the configuration file
+	if data, err := os.ReadFile(configPath); err == nil {
+		var raw struct {
+			LLM struct {
+				Provider  string                 `yaml:"provider"`
+				Model     string                 `yaml:"model"`
+				URL       string                 `yaml:"url"`
+				Providers []config.ProviderSpec  `yaml:"providers"`
+			} `yaml:"llm"`
+		}
+		_ = yaml.Unmarshal(data, &raw)
+
+		// Check the first provider in llm.providers
+		if len(raw.LLM.Providers) > 0 {
+			first := raw.LLM.Providers[0]
+			key := first.APIKeyValue
+			if key == "" {
+				var keyCandidates []string
+				keyCandidates = append(keyCandidates, first.APIKeys...)
+				keyCandidates = append(keyCandidates, strings.ToUpper(first.Provider)+"_API_KEY")
+				keyCandidates = append(keyCandidates, strings.ToUpper(first.Name)+"_API_KEY")
+				key = resolveKey(keyCandidates...)
+			}
+			if key != "" || strings.HasPrefix(first.URL, "http://localhost") || strings.HasPrefix(first.URL, "http://127.0.0.1") {
+				c := llm.NewClient(first.Provider, first.Model, key, 2, 50*time.Millisecond, first.URL)
+				return c, fmt.Sprintf("%s (%s / %s)", first.Name, first.Provider, first.Model), nil
+			}
+		}
+
+		// Check top-level llm.provider
+		if raw.LLM.Provider != "" {
+			key := resolveKey(strings.ToUpper(raw.LLM.Provider) + "_API_KEY")
+			if key != "" || strings.HasPrefix(raw.LLM.URL, "http://localhost") {
+				c := llm.NewClient(raw.LLM.Provider, raw.LLM.Model, key, 2, 50*time.Millisecond, raw.LLM.URL)
+				return c, fmt.Sprintf("%s (%s)", raw.LLM.Provider, raw.LLM.Model), nil
+			}
+		}
+	}
+
+	// 2. Fallback: check environment or secrets for the first available provider
 	keyChecks := []struct {
 		envVar   string
 		provider string
@@ -178,28 +248,9 @@ func resolveRepairClient(configPath string) (domain.LLMClient, string, error) {
 	}
 
 	for _, kc := range keyChecks {
-		if val := os.Getenv(kc.envVar); strings.TrimSpace(val) != "" {
+		if val := resolveKey(kc.envVar); val != "" {
 			c := llm.NewClient(kc.provider, kc.model, val, 2, 50*time.Millisecond, "")
 			return c, kc.provider, nil
-		}
-	}
-
-	// 2. Check global and local secrets.yaml
-	secretsPaths := []string{
-		config.GlobalSecretsPath(),
-		".noctifab/secrets.yaml",
-	}
-	for _, sp := range secretsPaths {
-		if sp == "" {
-			continue
-		}
-		if secrets, err := config.LoadSecrets(sp); err == nil {
-			for _, kc := range keyChecks {
-				if val, exists := secrets[kc.envVar]; exists && strings.TrimSpace(val) != "" {
-					c := llm.NewClient(kc.provider, kc.model, val, 2, 50*time.Millisecond, "")
-					return c, fmt.Sprintf("%s (from %s)", kc.provider, sp), nil
-				}
-			}
 		}
 	}
 
