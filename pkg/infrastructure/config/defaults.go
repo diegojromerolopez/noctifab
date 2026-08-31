@@ -28,11 +28,11 @@ func DefaultConfig() *Config {
 			},
 			Generators: AgentRoleConfig{
 				Number:     3,
-				Iterations: 5,
+				Iterations: 10,
 			},
 			Testers: AgentRoleConfig{
 				Number:     2,
-				Iterations: 3,
+				Iterations: 5,
 			},
 			QA: QAConfig{
 				Enabled:            false,

@@ -63,14 +63,14 @@ func TestAgentLoopIterationsConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("when GeneratorsIterations is zero, the generator loop defaults to 5 turns", func(t *testing.T) {
+	t.Run("when GeneratorsIterations is zero, the generator loop defaults to 10 turns", func(t *testing.T) {
 		llm := &turnCountingLLM{}
 		orch, state := newIterationsTestOrchestrator(t, llm, OrchestratorConfig{
 			PollInterval: 10 * time.Millisecond,
 		})
 		orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "implement")
-		if got := llm.turns(); got != 5 {
-			t.Errorf("expected default 5 generator turns, got %d", got)
+		if got := llm.turns(); got != 10 {
+			t.Errorf("expected default 10 generator turns, got %d", got)
 		}
 	})
 
@@ -86,15 +86,15 @@ func TestAgentLoopIterationsConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("when TestersIterations is negative, the tester loop defaults to 5 turns", func(t *testing.T) {
+	t.Run("when TestersIterations is negative, the tester loop defaults to 10 turns", func(t *testing.T) {
 		llm := &turnCountingLLM{}
 		orch, state := newIterationsTestOrchestrator(t, llm, OrchestratorConfig{
 			PollInterval:      10 * time.Millisecond,
 			TestersIterations: -1,
 		})
 		orch.RunTesterAgent(context.Background(), task, state, nil, "write", "")
-		if got := llm.turns(); got != 5 {
-			t.Errorf("expected default 5 tester turns, got %d", got)
+		if got := llm.turns(); got != 10 {
+			t.Errorf("expected default 10 tester turns, got %d", got)
 		}
 	})
 }

@@ -23,7 +23,7 @@ agents:
     iterations: 2
   generators:
     number: 6
-    iterations: 5
+    iterations: 10
     providers:
     - name: gemini-flash
     - name: claude
@@ -35,7 +35,7 @@ agents:
     - name: openrouter
   testers:
     number: 2
-    iterations: 3
+    iterations: 5
     providers:
     - name: gemini-flash
     - name: claude

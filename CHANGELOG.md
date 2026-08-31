@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.5] - 2026-08-31
+
+### Changed
+- **Increased Agent Turn Limits**:
+  - Increased generator loop action turn limit from 5 to 10 iterations (`generators.iterations: 10`).
+  - Increased tester loop action turn limit from 3 to 5 iterations (`testers.iterations: 5`).
+  - Updated default fallbacks in `pkg/infrastructure/config/defaults.go` and `pkg/services/prompt_utils.go`.
+  - Updated agent iterations across all 16 validation project configurations (`validation/projects/*/.noctifab/config.yaml`).
+
 ## [0.59.4] - 2026-08-31
 
 ### Added
