@@ -108,25 +108,91 @@ BROKEN YAML CONTENT:
 %s
 `+"```"+`
 
-CANONICAL NOCTIFAB CONFIGURATION RULES & SCHEMA:
-1. Root version: config_version: '2.0'
-2. Valid top-level sections: config_version, agents, runtime, storage, llm, vcs, sandbox, workspace_cache, telemetry, context, logging, poll_interval, max_clarification_wait, clarification_timeout_action, execution_report.
-3. Agent roles: orchestrator, product_manager, planner, generators, testers, qa, auditor, unblocker, last_resort.
-4. Ensemble topologies (under agents.<role>.ensemble or roles.<role>.ensemble):
-   - strategy: 'parallel' | 'serial' | 'consensus' | 'race' | 'cascade' | 'decomposed' | 'best_of_n_scored'
-   - models: list of model objects (e.g. - name: <provider>, optional model, temperature, max_tokens, enable_thinking, extra_params)
-   - min_models: integer (speculative quorum threshold)
-   - soft_timeout_seconds: integer
-   - early_exit_on_pass: boolean (for serial refinement)
-   - stages: list of stages for serial (with name, refinement_prompt)
-   - voters: list of voters for consensus (with name)
-   - tie_breaker: object with name for consensus
-   - tiers: list of tiers for cascade
-   - targets: list of targets for decomposed (with name, role_prompt)
-5. Token ceilings: max_tokens: -1 (unlimited), max_tokens_per_story: -1.
-6. Fix all indentation errors, typos, unrecognized keys, and schema mismatches.
-7. Preserve all existing provider configurations, API keys, secrets, model names, comments, and valid settings.
-8. Output ONLY the repaired YAML document enclosed in a single `+"```yaml"+` code block.
+CANONICAL NOCTIFAB CONFIGURATION REFERENCE & SCHEMA:
+1. Root Level:
+   - config_version: '2.0' (REQUIRED)
+   - execution_report: string (path for generated report)
+   - poll_interval: duration string (e.g. '10s', '5m')
+   - max_clarification_wait: duration string (e.g. '30m')
+   - clarification_timeout_action: 'abort' | 'proceed'
+
+2. agents / roles:
+   - architecture: 'code_first' | 'test_first' | 'classic'
+   - Roles: orchestrator, product_manager, planner, generators, testers, qa, auditor, unblocker, last_resort
+   - Common fields per role: number (int), iterations (int), max_tokens (int64, use -1 for unlimited), providers (list of AgentProviderRef), profile (string)
+   - Multi-Model Ensemble topologies (under agents.<role>.ensemble or roles.<role>.ensemble):
+     * strategy: 'parallel' | 'serial' | 'consensus' | 'race' | 'cascade' | 'decomposed' | 'best_of_n_scored'
+     * models: list of provider refs (- name: <provider>, optional: model, temperature, max_tokens, enable_thinking, thinking_budget, extra_params)
+     * min_models: integer (speculative quorum threshold for parallel)
+     * soft_timeout_seconds: integer (speculative quorum soft deadline)
+     * early_exit_on_pass: boolean (for serial refinement with local AST check)
+     * fallback_to_single: boolean
+     * fallback_on_stage_failure: boolean
+     * synthesizer: provider ref (- name: <provider>) for parallel
+     * stages: list of stages for serial (- name: <provider>, refinement_prompt: string)
+     * voters: list of voter provider refs for consensus
+     * tie_breaker: provider ref for consensus
+     * tiers: list of provider refs for cascade
+     * targets: list of targets for decomposed (- name: <provider>, role_prompt: string)
+
+3. llm:
+   - token_usage_limit: integer (use 0 or -1 for unlimited)
+   - priority: list of provider names
+   - providers: list of ProviderSpec
+     * name: string (e.g. 'claude', 'openai', 'gemini', 'deepseek')
+     * provider: 'anthropic' | 'openai' | 'gemini' | 'qwencloud' | 'opencode' | 'openrouter' | 'ollama' | 'vllm'
+     * model: string (e.g. 'claude-3-5-sonnet-20241022', 'gpt-4o', 'gemini-2.5-pro')
+     * api_keys: string or list of strings naming the env/secret keys
+     * max_tokens: integer
+     * temperature: float (0.0 to 1.0)
+     * streaming: boolean
+     * enable_thinking: boolean
+     * thinking_budget: integer
+     * extra_params: map of key-value string pairs
+
+4. runtime:
+   - max_tokens: -1 (unlimited global token ceiling)
+   - max_tokens_per_story: -1 (unlimited per-story token ceiling)
+   - max_tokens_per_task: -1
+   - max_actions: integer (default 100)
+   - max_duration: duration string (e.g. '45m', '0' for unlimited)
+   - max_silent_stall_duration: duration string (e.g. '30m')
+   - loop.count: integer (number of execution loops)
+
+5. storage:
+   - provider: 'sqlite' | 'postgres'
+   - conn_string: string (e.g. '.noctifab/data/noctifab.db' or postgres DSN)
+   - json_file_path: string (e.g. '.noctifab/data/state.json')
+   - occ: max_retries, backoff_base, backoff_factor
+
+6. sandbox:
+   - mode: 'host' | 'docker'
+   - timeout_seconds: integer
+   - test_command: string (e.g. 'make test')
+   - formatter_command: string (e.g. 'make format')
+   - linter: command (string), max_issues (int), consecutive_failures (int), max_retries (int)
+   - exclude_paths: list of string glob patterns
+   - allowed_commands: list of permitted binary names
+
+7. vcs:
+   - provider: 'github' | 'gitlab'
+   - repository: string
+   - base_branch: string (e.g. 'main')
+   - branch_prefix: string (e.g. 'noctifab/')
+   - use_worktrees: boolean
+   - token: string (e.g. 'secret:GITHUB_TOKEN')
+   - pull_request: auto_create (boolean)
+
+8. workspace_cache, telemetry, context, logging:
+   - workspace_cache: enabled (boolean)
+   - telemetry: enabled (boolean), metrics: enabled (boolean)
+   - context: mode ('full' | 'diff' | 'ast'), compaction ('none' | 'caveman')
+   - logging: level ('info' | 'debug' | 'warn' | 'error')
+
+REPAIR INSTRUCTIONS:
+- Fix all syntax errors, bad indentation, typos (e.g. 'stratgy' -> 'strategy', 'min_proposers' -> 'min_models'), and schema mismatches.
+- Preserve all existing provider configurations, API keys, secrets, model names, comments, and valid settings.
+- Output ONLY the repaired YAML document enclosed in a single `+"```yaml"+` code block.
 `, parseErr, brokenYAML)
 
 	resp, err := client.Complete(ctx, prompt)
