@@ -335,6 +335,28 @@ func validateYAMLContract(data []byte) error {
 	return nil
 }
 
+// ValidateBytes validates raw YAML configuration bytes and decodes into a Config struct.
+func ValidateBytes(data []byte) (*Config, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, fmt.Errorf("configuration data is empty")
+	}
+	if err := validateYAMLContract(data); err != nil {
+		return nil, err
+	}
+	cfg := DefaultConfig()
+	cfg.Runtime.Loops = 0
+	cfg.Runtime.Loop.Count = 0
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+	}
+	if err := validateConfigVersion(cfg.ConfigVersion); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 // validLLMProviders is the allowlist of LLM provider names accepted by
 // configuration validation. It must stay in sync with the provider registry in
 // the llm package (pkg/infrastructure/llm/provider_registry.go); the drift

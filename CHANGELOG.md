@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added per-model parameter overrides (`model`, `temperature`, `max_tokens`, `enable_thinking`, `thinking_budget`, `extra_params`) in `AgentProviderRef`.
   - Integrated ensemble candidate construction into `ResilientLLMRouter` (`pkg/infrastructure/llm/router_ensemble.go`).
   - Added user-facing documentation in `docs/ensembles.md` and updated `docs/index.md`.
+- **AI-Driven Configuration Repair (`noctifab validate --fix`)**:
+  - Implemented automatic diagnosis, LLM-based repair, and interactive visual diff application for malformed or invalid `.noctifab/config.yaml` files via `cmd/noctifab/cli/validate_fix.go`.
+  - Added `--fix` (`-f`) and `--yes` (`-y`) flags to `noctifab validate`.
+  - Added automated backup generation (`.noctifab/config.yaml.bak`) prior to applying AI-repaired configuration files.
+  - Implemented `ValidateBytes` in `pkg/infrastructure/config/config.go` for pre-write verification.
 
 ## [0.59.5] - 2026-08-31
 
