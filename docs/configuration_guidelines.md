@@ -216,6 +216,7 @@ agents:
       timeout_seconds: 30
       models:
         - name: claude
+          count: 2      # Spawns 2 parallel Claude candidate completions
         - name: openai
         - name: deepseek-pro
 
@@ -228,6 +229,7 @@ agents:
       timeout_seconds: 30
       voters:
         - name: claude
+          count: 2      # Dual self-consistency Claude voters
         - name: gemini
       tie_breaker:
         name: openai
@@ -237,8 +239,12 @@ agents:
 
 1. **Product Manager (`parallel` Quorum)**: Fan-out to multiple frontier models ensures user stories are exhaustive and free from hallucinated APIs. The synthesizer unifies them into a single cohesive story.
 2. **Generators (`adaptive` Routing)**: Automatically sends simple edits (typos, docs) to Fast Tier (1–3s latency), standard code to Standard Tier, and complex logic/concurrency to Heavy Tier.
-3. **Testers (`best_of_n_scored`)**: Generates candidate test suites in parallel and scores them locally via CPU (AST parsing, anti-stub scanner, assertion density) with **zero synthesis cost**.
-4. **Auditor (`consensus`)**: Uses dual-perspective voting with tie-breaking for strict compliance checking against `SPEC.md`.
+3. **Testers (`best_of_n_scored` with `count: N`)**: Generates candidate test suites in parallel—including multiple stochastic samples from top-tier models (`count: 2`)—and scores them locally via CPU (AST parsing, anti-stub scanner, assertion density) with **zero synthesis cost**.
+4. **Auditor (`consensus` with Self-Consistency)**: Uses multi-voter consensus with tie-breaking for strict compliance checking against `SPEC.md`.
+
+> [!TIP]
+> **Homogeneous Sampling (`count: N`)**: Because LLMs are stochastic at $T > 0$, sampling multiple times from the *same* frontier model (e.g. `count: 3` on Claude or GPT-4.5) often outperforms mixing in weaker models. `count` defaults to `1` when omitted.
+
 
 ---
 

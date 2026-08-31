@@ -244,8 +244,17 @@ agents:
   - **`thinking_budget`** (Integer): Token budget cap for reasoning output when `enable_thinking` is enabled (e.g. `8192`).
   - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when `enable_thinking: true`, but can be explicitly set for third-party gateways that reject forced JSON schemas.
   - **`extra_params`** (Map of Strings): Custom key-value pairs merged verbatim into the provider request body for provider-specific extensions.
-- **`roles.<agent>.providers`** (List of Agent Provider Refs): Role-specific provider priority list. Allows configuring different model priorities per agent role (`architect`, `planner`, `generator`, `tester`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`).
+- **`roles.<agent>.providers`** / **`agents.<role>.ensemble.models`** (List of Agent Provider Refs): Role-specific provider or ensemble model references:
+  - **`name`** (String): References a provider declared in `llm.providers`.
+  - **`count`** (Integer): Number of independent model instances/samples to spawn for this provider spec (default: `1`). Useful for Self-Consistency voting in `consensus`, multi-sample generation in `best_of_n_scored`, and parallel quorum scaling in `parallel`.
+  - **`model`** (String): Optional model override.
+  - **`temperature`** (Float): Optional temperature override.
+  - **`max_tokens`** (Integer): Optional max token override (`-1` for unlimited).
+  - **`enable_thinking`** (Boolean): Optional reasoning mode toggle.
+  - **`thinking_budget`** (Integer): Optional reasoning token budget cap.
+  - **`extra_params`** (Map of Strings): Optional request body overrides.
 - **`max_timeout`** (Duration): Maximum overall completion timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines.
+
 - **`idle_timeout`** (Duration): Maximum stream/socket inactivity timeout allowed for LLM API calls (e.g. `15s`). Defaults to `15s` to cancel and fail over stalled stream connections without truncating active long responses.
 - **`streaming`** (Boolean): Enable or disable HTTP Server-Sent Events (SSE) token streaming (e.g. `true`). Defaults to `true` to stream completion tokens in real time and enforce sliding socket idle timeouts.
 - **`skip_on_credit_exhausted`** (Boolean): When `true` (default), an HTTP 402 (or a credit/quota-limited 429) is treated as a hard "skip this provider chain" signal: `noctifab` stops retrying and skips lower-model fallback immediately, so the router moves straight to the next provider in `llm.priority`. When `false`, the client rotates to the next `api_keys` pool entry and keeps retrying as usual. Set this to `false` only if you use key pools where a spend-limited key is expected to be superseded by a funded sibling key.

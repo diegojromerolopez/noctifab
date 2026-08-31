@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -182,13 +183,20 @@ func (r *ResilientLLMRouter) buildEnsembleCandidate(roleName string, ens config.
 func (r *ResilientLLMRouter) resolveNamedClients(refs []config.AgentProviderRef) []ensemble.NamedClient {
 	var list []ensemble.NamedClient
 	for _, ref := range refs {
-		client := r.resolveClientFromRef(ref)
-		if client != nil {
-			list = append(list, ensemble.NamedClient{
-				Name:      ref.Name,
-				Client:    client,
-				MaxTokens: ref.MaxTokens,
-			})
+		count := ref.GetCount()
+		for i := 0; i < count; i++ {
+			client := r.resolveClientFromRef(ref)
+			if client != nil {
+				name := ref.Name
+				if count > 1 {
+					name = fmt.Sprintf("%s-%d", ref.Name, i+1)
+				}
+				list = append(list, ensemble.NamedClient{
+					Name:      name,
+					Client:    client,
+					MaxTokens: ref.MaxTokens,
+				})
+			}
 		}
 	}
 	return list

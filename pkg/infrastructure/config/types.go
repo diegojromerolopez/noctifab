@@ -268,11 +268,20 @@ type AgentProviderRef struct {
 	Provider       string            `yaml:"provider,omitempty"`
 	Model          string            `yaml:"model,omitempty"`
 	Models         []string          `yaml:"models,omitempty"`
+	Count          int               `yaml:"count,omitempty"`
 	MaxTokens      *int              `yaml:"max_tokens,omitempty"`
 	Temperature    *float64          `yaml:"temperature,omitempty"`
 	EnableThinking *bool             `yaml:"enable_thinking,omitempty"`
 	ThinkingBudget *int              `yaml:"thinking_budget,omitempty"`
 	ExtraParams    map[string]string `yaml:"extra_params,omitempty"`
+}
+
+// GetCount returns the number of model instances configured, defaulting to 1.
+func (a AgentProviderRef) GetCount() int {
+	if a.Count <= 0 {
+		return 1
+	}
+	return a.Count
 }
 
 type RoleSetting struct {

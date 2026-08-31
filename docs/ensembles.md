@@ -131,6 +131,27 @@ To prevent long-running tasks or multi-model collaboration from being artificial
 * Set `max_tokens: -1` (or `0`) at **Runtime level** (`runtime.max_tokens: -1`), **Story level** (`runtime.max_tokens_per_story: -1`), or **Agent level** (`agents.<role>.max_tokens: -1`).
 * Setting `-1` designates an **unlimited token budget**.
 
+### 3.2 Multi-Instance Sampling (`count: N`)
+
+Because LLM generation is stochastic, sampling multiple independent paths from the *same* high-performing model at non-zero temperature often outperforms mixing in weaker models (Self-Consistency / Best-of-N).
+
+The `count` field (default: `1`) allows spawning multiple independent client instances of a single provider spec without duplicate YAML boilerplate:
+
+```yaml
+models:
+  - name: "claude"
+    count: 3            # Spawns 3 independent parallel instances: claude-1, claude-2, claude-3
+    temperature: 0.6
+  - name: "openai"
+    count: 2            # Spawns 2 independent parallel instances: openai-1, openai-2
+    temperature: 0.4
+```
+
+- **In `best_of_n_scored` (Testers):** Evaluates all $N$ attempts via local CPU AST/anti-stub scoring and promotes the highest scoring test suite without LLM synthesis costs.
+- **In `parallel` (Product Manager):** Fans out $N$ parallel story formulations to achieve a high-quality speculative quorum.
+- **In `consensus` (Auditor):** Spawns $N$ independent voters from the same model to achieve self-consistent consensus voting.
+- **In `race` (Fast-Path):** Fans out $N$ parallel requests to hedge against API tail latency.
+
 ---
 
 ## 4. Configuration Examples

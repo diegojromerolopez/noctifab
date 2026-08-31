@@ -18,6 +18,7 @@ agents:
       fallback_to_single: true
       models:
       - name: claude
+        count: 2
         temperature: 0.2
       - name: openai
         temperature: 0.2

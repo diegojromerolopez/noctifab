@@ -121,3 +121,45 @@ func TestRouter_UnlimitedTokenBudget(t *testing.T) {
 	}
 	_ = ctx
 }
+
+func TestRouter_EnsembleCountSupport(t *testing.T) {
+	cfg := &config.Config{
+		LLM: config.LLMConfig{
+			Providers: []config.ProviderSpec{
+				{
+					Name:        "claude",
+					Provider:    "anthropic",
+					Model:       "claude-3-5-sonnet",
+					APIKeyValue: "test-claude-key",
+				},
+				{
+					Name:        "gemini",
+					Provider:    "gemini",
+					Model:       "gemini-2.5-pro",
+					APIKeyValue: "test-gemini-key",
+				},
+			},
+		},
+		Agents: config.AgentsConfig{
+			Testers: config.AgentRoleConfig{
+				Ensemble: config.EnsembleConfig{
+					Strategy:       config.EnsembleStrategyBestOfNScored,
+					TimeoutSeconds: 30,
+					Models: []config.AgentProviderRef{
+						{Name: "claude", Count: 3},
+						{Name: "gemini", Count: 2},
+					},
+				},
+			},
+		},
+	}
+
+	router := llm.NewResilientLLMRouter(cfg, nil)
+	candidates := router.ResolveCandidatesForRole("testers")
+	if len(candidates) == 0 {
+		t.Fatalf("expected candidates for testers")
+	}
+	if candidates[0].Provider != "ensemble" || candidates[0].Model != "best_of_n_scored" {
+		t.Errorf("expected best_of_n_scored ensemble candidate, got %+v", candidates[0])
+	}
+}

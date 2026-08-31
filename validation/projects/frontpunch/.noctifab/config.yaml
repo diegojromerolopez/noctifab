@@ -69,6 +69,7 @@ agents:
       timeout_seconds: 30
       models:
       - name: claude
+        count: 2
       - name: openai
       - name: deepseek-pro
     providers:

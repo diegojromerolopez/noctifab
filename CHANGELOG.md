@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.61.0] - 2026-09-01
+
+### Added
+- **Multi-Instance Sampling for Ensemble Models (`count: N`)**:
+  - Added `count` field (default: `1`) to `AgentProviderRef` in `pkg/infrastructure/config/types.go` and `GetCount()` helper.
+  - Updated `ResilientLLMRouter.resolveNamedClients` in `pkg/infrastructure/llm/router_ensemble.go` to instantiate $N$ independent candidate handles per model reference with indexed candidate naming (`<name>-1`, `<name>-2`, ...).
+  - Enables homogeneous self-consistency majority voting in `consensus`, multi-sample candidate generation in `best_of_n_scored`, and parallel quorum expansion in `parallel` without duplicating YAML boilerplate.
+  - Added `count: 2` to validation project configurations for `auth-vault` (Testers and Auditor), `frontpunch` (Testers), and `stricc` (Product Manager).
+  - Documented `count` field usage in `docs/ensembles.md`, `docs/configuration.md`, and `docs/configuration_guidelines.md`.
+
 ## [0.60.1] - 2026-08-31
 
 ### Fixed
