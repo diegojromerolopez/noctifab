@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.62.0] - 2026-09-01
+
+### Added
+- **Preflight Model Verification & Auto-Resolution (`/models`)**:
+  - Implemented `PingAndResolveModel` in `pkg/infrastructure/llm/ping.go` and integrated it into `cmd/noctifab/cli/preflight.go`.
+  - Automatically queries the provider's `/models` endpoint during preflight, validates configured model identifiers, and auto-upgrades deprecated/missing models or aliases (`auto`, `latest`, empty) to the highest-ranked active model upfront, eliminating startup failover delays.
+- **SHA-256 Context Deduplication & Integrity Verification**:
+  - Implemented cryptographic SHA-256 content checksum verification in `TaskDiagnosticCache` (`pkg/services/diagnostic_cache.go`).
+  - When agents call `read_file` on unmodified files already present in the prompt context (such as `SPEC.md` or user stories), the cache returns a concise reference instead of re-injecting duplicate multi-kilobyte payloads, preventing token bloat.
+  - Automatically verifies disk checksums on each read and invalidates the cache if any tool or process modifies the file on disk.
+- **Persistent Model Parameter Capability Cache (`globalCapabilityCache`)**:
+  - Implemented in-memory parameter capability caching with normalized model keys in `pkg/infrastructure/llm/openai_adapt.go`.
+  - Memorizes rejected parameters (`temperature`, `max_tokens`, `response_format`, `extra_body`) on first error, guaranteeing subsequent calls to that model never re-send the invalid parameter.
+  - Added proactive reasoning model adaptation for `o1`, `o3`, `o4`, `gpt-5`, `luna`, and `claude` (omitting temperature and using `max_completion_tokens`).
+- **2-Turn Surgical Repair Budget & Pre-Reading**:
+  - Enhanced `executeSurgicalRepairTurn` in `pkg/services/orchestrator_execute_turns.go` to pre-read failing diagnostic files and inject them directly into the surgical repair generator's context.
+  - Expanded surgical repair turn budget from 1 to 2 turns in `pkg/services/orchestrator_generator.go` and prompt template `surgical_repair.tmpl`.
+
+### Fixed
+- **Alpine BusyBox `validate.sh` Workspace Collision**:
+  - Fixed `validation/validate.sh` by cleaning `/app/src_mount` before setup and replacing colliding `cp -a` commands with recursive directory copy (`cp -Rf`) to eliminate BusyBox file-exists collisions.
+- **Reportfs Atomic Writer & Terminal Status Resilience**:
+  - Made POSIX `Chmod(0600)` non-fatal in `pkg/infrastructure/reportfs/atomic_writer.go` for virtual Docker bind mounts.
+  - Added direct fallback in `pkg/services/reporting/agent.go` ensuring reports are always marked with final status (`SUCCESS` / `FAILED`).
+- **Inspection Tool-Call Churn Elimination**:
+  - Added prompt Rule 10 forbidding redundant re-reading of prompt context files across all generator prompt templates.
+  - Seeded initial file contexts into `TaskDiagnosticCache` on task start.
+
 ## [0.61.0] - 2026-09-01
 
 ### Added

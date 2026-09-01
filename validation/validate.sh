@@ -30,7 +30,8 @@ fi
 if [ -d "/app/src_mount" ]; then
   TMP_DIR="/app/src_mount"
   echo "Validating project: ${PROJECT} (real-time mounted workspace at ${TMP_DIR})..." >&2
-  find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -not -name "report" -not -name "log" -not -name "dist" -not -name ".noctifab" -exec rm -rf {} + || true
+  # Clean previous run workspace files to avoid BusyBox cp collisions
+  rm -rf "${TMP_DIR:?}"/* "${TMP_DIR:?}"/.[!.]* "${TMP_DIR:?}"/..?* 2>/dev/null || true
 else
   TMP_DIR="$(pwd)/${PROJECT}"
   echo "Validating project: ${PROJECT}..." >&2
@@ -40,7 +41,11 @@ else
 fi
 
 # 3. Copy project files into workspace
-cp -a "${PROJECT_SRC}/." "${TMP_DIR}/"
+cp -Rf "${PROJECT_SRC}"/* "${TMP_DIR}/" 2>/dev/null || true
+if [ -d "${PROJECT_SRC}/.noctifab" ]; then
+  mkdir -p "${TMP_DIR}/.noctifab"
+  cp -Rf "${PROJECT_SRC}/.noctifab"/* "${TMP_DIR}/.noctifab/" 2>/dev/null || true
+fi
 cd "${TMP_DIR}"
 
 # Mount the secret file from the runtime Docker secret into the workspace.

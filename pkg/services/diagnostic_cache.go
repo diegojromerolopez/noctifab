@@ -1,19 +1,32 @@
 package services
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"os"
+	"regexp"
 	"sort"
 	"strings"
 )
 
 type cachedReadResult struct {
-	output string
-	err    error
+	output     string
+	checksum   string
+	err        error
+	isFromSeed bool
+}
+
+// computeSHA256 returns the hex-encoded SHA-256 checksum of a byte slice.
+func computeSHA256(data []byte) string {
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
 }
 
 // TaskDiagnosticCache manages in-memory caching for workspace filesystem inspection tools
 // (list_directory, read_file, find_files, grep_search) and diagnostic tools (run_tests and run_linter).
-// The cache is automatically invalidated whenever a file-mutating tool action is executed.
+// The cache is automatically invalidated whenever a file-mutating tool action is executed,
+// and file content identity is cryptographically verified via SHA-256 checksums.
 type TaskDiagnosticCache struct {
 	enabled          bool
 	isDirty          bool
@@ -30,8 +43,46 @@ type TaskDiagnosticCache struct {
 func NewTaskDiagnosticCache(enabled bool) *TaskDiagnosticCache {
 	return &TaskDiagnosticCache{
 		enabled:         enabled,
-		isDirty:         true,
+		isDirty:         false,
 		inspectionCache: make(map[string]cachedReadResult),
+	}
+}
+
+var fileContextRegex = regexp.MustCompile("(?s)(?:File|Project Manifest \\()([^\\):\\s]+)(?:\\)|:).*?```(?:\\w+)?\n(.*?)\n```")
+
+// SeedFileContent seeds pre-read file content into the inspection cache with its SHA-256 checksum.
+func (c *TaskDiagnosticCache) SeedFileContent(path string, content string) {
+	if c == nil || !c.enabled || path == "" {
+		return
+	}
+	key := buildArgsKey("read_file", map[string]any{"path": path})
+	c.inspectionCache[key] = cachedReadResult{
+		output:     content,
+		checksum:   computeSHA256([]byte(content)),
+		err:        nil,
+		isFromSeed: true,
+	}
+	c.isDirty = false
+}
+
+// SeedContexts parses pre-loaded file contexts and seeds them into the inspection cache.
+func (c *TaskDiagnosticCache) SeedContexts(contexts ...[]string) {
+	if c == nil || !c.enabled {
+		return
+	}
+	for _, ctxList := range contexts {
+		for _, ctxStr := range ctxList {
+			matches := fileContextRegex.FindAllStringSubmatch(ctxStr, -1)
+			for _, m := range matches {
+				if len(m) >= 3 {
+					path := strings.TrimSpace(m[1])
+					content := m[2]
+					if path != "" && content != "" {
+						c.SeedFileContent(path, content)
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -78,7 +129,11 @@ func (c *TaskDiagnosticCache) OnToolExecuted(toolName string, args map[string]an
 	case "list_directory", "read_file", "find_files", "grep_search":
 		if err == nil {
 			key := buildArgsKey(toolName, args)
-			c.inspectionCache[key] = cachedReadResult{output: output, err: err}
+			c.inspectionCache[key] = cachedReadResult{
+				output:   output,
+				checksum: computeSHA256([]byte(output)),
+				err:      err,
+			}
 			c.isDirty = false
 		}
 	}
@@ -98,7 +153,8 @@ func (c *TaskDiagnosticCache) TryGetCachedResult(toolName string) (string, error
 	return "", nil, false
 }
 
-// TryGetCachedInspection checks if a valid cached inspection result exists for read-only tools.
+// TryGetCachedInspection checks if a valid cached inspection result exists for read-only tools,
+// validating file integrity against disk SHA-256 checksums before serving.
 func (c *TaskDiagnosticCache) TryGetCachedInspection(toolName string, args map[string]any) (string, error, bool) {
 	if c == nil || !c.enabled || c.isDirty {
 		return "", nil, false
@@ -107,6 +163,22 @@ func (c *TaskDiagnosticCache) TryGetCachedInspection(toolName string, args map[s
 	res, found := c.inspectionCache[key]
 	if !found {
 		return "", nil, false
+	}
+	if toolName == "read_file" {
+		path, _ := args["path"].(string)
+		if path != "" {
+			if diskContent, err := os.ReadFile(path); err == nil {
+				diskChecksum := computeSHA256(diskContent)
+				if diskChecksum != res.checksum {
+					// File on disk has changed: invalidate cached entry to fetch fresh content
+					delete(c.inspectionCache, key)
+					return "", nil, false
+				}
+			}
+		}
+		if res.isFromSeed {
+			return fmt.Sprintf("[Cached - SHA256 Verified Unmodified] File %q is already present in your initial prompt context above.", path), nil, true
+		}
 	}
 	return fmt.Sprintf("[Cached Result - Workspace Unmodified]\n%s", res.output), res.err, true
 }

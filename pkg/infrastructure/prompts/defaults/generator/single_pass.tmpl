@@ -19,6 +19,7 @@ CRITICAL:
 7. All code implemented/modified MUST compile cleanly. You MUST invoke run_tests to verify correctness before calling noop.
 8. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
 9. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
+10. DO NOT RE-READ UNMODIFIED FILES ALREADY IN PROMPT: Inspect the 'Existing files context' and 'Inspection context gathered' sections above. If the file you need is already present in your prompt and has not been modified in the workspace, DO NOT call 'read_file', 'find_files', or 'list_directory' again. Proceed directly to editing and implementation tools ('write_file', 'edit_file', 'multi_replace_file_content', 'run_tests').
 
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.

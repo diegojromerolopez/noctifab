@@ -34,15 +34,25 @@ type completionOptions struct {
 	extraBody map[string]interface{}
 }
 
-func isNoTemperatureModel(model string) bool {
-	low := strings.ToLower(model)
+func normalizeModelKey(model string) string {
+	low := strings.ToLower(strings.TrimSpace(model))
+	low = strings.TrimPrefix(low, "~")
+	low = strings.TrimPrefix(low, "models/")
 	if parts := strings.Split(low, "/"); len(parts) > 1 {
-		low = parts[len(parts)-1]
+		return parts[len(parts)-1]
 	}
+	return low
+}
+
+func isNoTemperatureModel(model string) bool {
+	low := normalizeModelKey(model)
 	if strings.Contains(low, "claude") {
 		return true
 	}
 	if strings.HasPrefix(low, "o1") || strings.HasPrefix(low, "o3") || strings.HasPrefix(low, "o4") {
+		return true
+	}
+	if strings.Contains(low, "luna") || strings.Contains(low, "gpt-5") {
 		return true
 	}
 	return false
@@ -126,61 +136,92 @@ func looksLikeExtraBodyRejection(body string, extra map[string]interface{}) stri
 }
 
 type providerCapabilityCache struct {
-	mu            sync.RWMutex
-	noTemperature map[string]bool
-	noMaxTokens   map[string]bool
-	noJSONMode    map[string]bool
+	mu                     sync.RWMutex
+	noTemperature          map[string]bool
+	noMaxTokens            map[string]bool
+	noJSONMode             map[string]bool
+	unsupportedExtraParams map[string]map[string]bool
 }
 
 var globalCapabilityCache = &providerCapabilityCache{
-	noTemperature: make(map[string]bool),
-	noMaxTokens:   make(map[string]bool),
-	noJSONMode:    make(map[string]bool),
+	noTemperature:          make(map[string]bool),
+	noMaxTokens:            make(map[string]bool),
+	noJSONMode:             make(map[string]bool),
+	unsupportedExtraParams: make(map[string]map[string]bool),
 }
 
 func (c *providerCapabilityCache) isTemperatureUnsupported(model string) bool {
+	key := normalizeModelKey(model)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.noTemperature[model]
+	return c.noTemperature[key]
 }
 
 func (c *providerCapabilityCache) isMaxTokensUnsupported(model string) bool {
+	key := normalizeModelKey(model)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.noMaxTokens[model]
+	return c.noMaxTokens[key]
 }
 
 func (c *providerCapabilityCache) isJSONModeUnsupported(model string) bool {
+	key := normalizeModelKey(model)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.noJSONMode[model]
+	return c.noJSONMode[key]
+}
+
+func (c *providerCapabilityCache) isExtraParamUnsupported(model, param string) bool {
+	key := normalizeModelKey(model)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if params, ok := c.unsupportedExtraParams[key]; ok {
+		return params[param]
+	}
+	return false
 }
 
 func (c *providerCapabilityCache) markTemperatureUnsupported(model string) {
 	if model == "" {
 		return
 	}
+	key := normalizeModelKey(model)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.noTemperature[model] = true
+	c.noTemperature[key] = true
 }
 
 func (c *providerCapabilityCache) markMaxTokensUnsupported(model string) {
 	if model == "" {
 		return
 	}
+	key := normalizeModelKey(model)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.noMaxTokens[model] = true
+	c.noMaxTokens[key] = true
 }
 
 func (c *providerCapabilityCache) markJSONModeUnsupported(model string) {
 	if model == "" {
 		return
 	}
+	key := normalizeModelKey(model)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.noJSONMode[model] = true
+	c.noJSONMode[key] = true
+}
+
+func (c *providerCapabilityCache) markExtraParamUnsupported(model, param string) {
+	if model == "" || param == "" {
+		return
+	}
+	key := normalizeModelKey(model)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.unsupportedExtraParams[key] == nil {
+		c.unsupportedExtraParams[key] = make(map[string]bool)
+	}
+	c.unsupportedExtraParams[key][param] = true
 }
 
 // adaptOptionsForError inspects a provider error and, when the failure is
@@ -218,6 +259,7 @@ func adaptOptionsForError(opts completionOptions, err error, model string) (comp
 	case he.StatusCode == http.StatusBadRequest && len(opts.extraBody) > 0:
 		if key := looksLikeExtraBodyRejection(he.Body, opts.extraBody); key != "" {
 			fmt.Fprintf(os.Stderr, "⚠ Server rejected parameter %q; retrying without it.\n", key)
+			globalCapabilityCache.markExtraParamUnsupported(model, key)
 			newExtra := make(map[string]interface{}, len(opts.extraBody)-1)
 			for k, v := range opts.extraBody {
 				if k != key {

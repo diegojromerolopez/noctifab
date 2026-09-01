@@ -117,12 +117,13 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	currentPrompt := genPrompt
 	maxTurns := iterationsOrDefault(o.cfg.GeneratorsIterations)
 	if action == "surgical_repair" {
-		maxTurns = 1
+		maxTurns = 2
 	}
 	var lastErr error
 	runTestsCalled := false
 	testFixRequestCount := 0
 	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
+	diagCache.SeedContexts(fileContexts, readerContexts)
 	// consecutiveLinterFailures tracks back-to-back run_linter failures without
 	// any file mutation in between. When it reaches 2, run_linter is skipped
 	// for the remainder of this task to prevent the stale-cache lock-in spiral.

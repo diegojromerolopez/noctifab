@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -216,7 +217,38 @@ func (o *Orchestrator) executeSurgicalRepairTurn(
 	o.updateTaskProgress(ctx, task.ID, 85)
 	summary := summarizeFailureLog(failureLog)
 	errorContext := fmt.Sprintf("### 🎯 TARGET FAILURE LOG TRACE FOR SURGICAL REPAIR:\n```\n%s\n```\nFix this specific error using minimal edits in 'edit_file'. Do not rewrite working code.", summary)
-	o.RunGeneratorAgent(ctx, *task, taskState, nil, errorContext, "surgical_repair")
+
+	var fileContexts []string
+	seenFiles := make(map[string]bool)
+
+	// Pre-read failing files from diagnostic log
+	diagnostics := extractDiagnostics(failureLog)
+	for _, d := range diagnostics {
+		if d.FilePath != "" && !seenFiles[d.FilePath] {
+			seenFiles[d.FilePath] = true
+			if taskGit != nil && taskGit.Dir() != "" {
+				fullPath := filepath.Join(taskGit.Dir(), d.FilePath)
+				if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
+					fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", d.FilePath, string(content)))
+				}
+			}
+		}
+	}
+
+	// Pre-read target files if not already read
+	for _, target := range task.TargetFiles {
+		if target != "" && !seenFiles[target] {
+			seenFiles[target] = true
+			if taskGit != nil && taskGit.Dir() != "" {
+				fullPath := filepath.Join(taskGit.Dir(), target)
+				if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
+					fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", target, string(content)))
+				}
+			}
+		}
+	}
+
+	o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, errorContext, "surgical_repair")
 	_ = o.stageAndCommit(ctx, taskGit, task.ID, "fix(core): surgical repair for task %s - %s", task.Title)
 }
 

@@ -361,6 +361,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	var lastErr error
 	runTestsCalled := false
 	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
+	diagCache.SeedContexts(fileContexts, readerContexts)
 	// consecutiveLinterFailures tracks back-to-back run_linter failures without
 	// any file mutation in between. When it reaches 2, run_linter is skipped
 	// for the remainder of this task to prevent the stale-cache lock-in spiral.
