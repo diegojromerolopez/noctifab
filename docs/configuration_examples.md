@@ -414,4 +414,78 @@ roles:
     providers:
       - name: "anthropic-provider"
 
+---
+
+## 6. Model-Per-Agent Specialized Routing (ninline Pattern)
+
+A clean, high-performance configuration routing a single specialized model per agent role without ensemble overhead. Featured in the `ninline` validation project (Generalized $N$-in-a-Line game engine):
+
+- **Product Manager**: Claude 3.5 Sonnet for exhaustive Definition of Done and edge-case matrices.
+- **Planner**: GPT-4o for structured task graph decomposition.
+- **Generators**: DeepSeek Coder for fast, idiomatic algorithmic implementations.
+- **Testers**: Gemini Flash for rapid, adversarial test synthesis.
+- **Auditor**: Claude Sonnet for zero-tolerance compliance checks.
+
+```yaml
+config_version: "2.0"
+
+agents:
+  architecture: "code_first"
+  product_manager:
+    number: 1
+    max_user_stories: 5
+    providers:
+      - name: "claude"
+  planner:
+    number: 1
+    providers:
+      - name: "openai"
+  generators:
+    number: 4
+    iterations: 20
+    providers:
+      - name: "deepseek-pro"
+  testers:
+    number: 2
+    iterations: 15
+    providers:
+      - name: "gemini-flash"
+  auditor:
+    number: 1
+    providers:
+      - name: "claude"
+  unblocker:
+    number: 1
+    providers:
+      - name: "gemini-flash"
+
+llm:
+  priority:
+    - "claude"
+    - "openai"
+    - "deepseek-pro"
+    - "gemini-flash"
+  providers:
+    - name: "claude"
+      provider: "anthropic"
+      model: "claude-sonnet-5"
+      api_keys: "CLAUDE_API_KEY"
+    - name: "openai"
+      provider: "openai"
+      model: "gpt-5.6-luna"
+      api_keys: "OPENAI_API_KEY"
+    - name: "deepseek-pro"
+      provider: "qwencloud"
+      model: "deepseek-v4-pro"
+      api_keys: "QWENCLOUD_API_KEY"
+    - name: "gemini-flash"
+      provider: "gemini"
+      model: "gemini-3.6-flash"
+      api_keys: "GEMINI_API_KEY"
+
+sandbox:
+  mode: "host"
+  test_command: "make test"
+  linter_command: "make lint"
+  formatter_command: "make format"
 ```

@@ -103,14 +103,15 @@ The E2E test suite validates the orchestration loop end-to-end under mock scenar
   ```
 
 ### 4. Running Validation Projects (Local E2E Matrix)
-To validate the system implementing features autonomously within isolated target directories, run a validation project container:
+To validate the system implementing features autonomously within isolated target directories, run a validation project container (e.g. `ninline`, `wc`, `pyedis`, `t4`):
 ```bash
-make validate PROJECT=wc
+make validate PROJECT=ninline
 ```
 To run all validation projects in parallel:
 ```bash
 make validate-all
 ```
+For the recommended execution order, capability ladder, and tier classification, consult [`validation/projects/TESTING_GUIDE.md`](../validation/projects/TESTING_GUIDE.md).
 *Note: These E2E validation runs utilize host compiler and package manager mount caching (Go and Cargo) to speed up iterations and support near-instantaneous incremental testing.*
 
 ---
