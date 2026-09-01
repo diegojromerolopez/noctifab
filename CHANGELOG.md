@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **2-Turn Surgical Repair Budget & Pre-Reading**:
   - Enhanced `executeSurgicalRepairTurn` in `pkg/services/orchestrator_execute_turns.go` to pre-read failing diagnostic files and inject them directly into the surgical repair generator's context.
   - Expanded surgical repair turn budget from 1 to 2 turns in `pkg/services/orchestrator_generator.go` and prompt template `surgical_repair.tmpl`.
+- **`ninline` Model-Per-Agent Validation Project**:
+  - Added `validation/projects/ninline/` testing generalized $(M,N,K)$-game CLI & engine development in Python 3.
+  - Configured pure Model-Per-Agent routing (Product Manager: Claude 3.5 Sonnet, Planner: GPT-4o, Generators: DeepSeek Coder, Testers: Gemini Flash, Auditor: Claude Sonnet) with zero ensemble overhead.
+  - Registered `ninline` in `validation/projects/TESTING_GUIDE.md` under Tier 1.
 
 ### Fixed
 - **Alpine BusyBox `validate.sh` Workspace Collision**:
