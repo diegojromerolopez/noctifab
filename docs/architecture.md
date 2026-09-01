@@ -91,6 +91,21 @@ The `CommandMailbox` serves as the centralized, serial event loop for all state 
 - **Wakeup Interrupts**: The mailbox exposes a `Wakeup()` notification channel. The orchestrator's fallback OCC sleep (`SleepWithInterrupt`) selects on this channel, allowing operator commands (abort, steer, model switch) to interrupt backoff immediately without waiting for timers to expire.
 - **Loopback REST Server**: Binds on `127.0.0.1:18080` to allow operators and dashboard interfaces to inspect runtime health (`/healthz`, `/statusz`) and dynamically steer execution. See [docs/api.md](api.md) for the complete endpoint reference.
 
+### 7. Task Diagnostic Cache & SHA-256 Context Deduplication (`pkg/services/diagnostic_cache.go`)
+`TaskDiagnosticCache` provides in-memory caching and cryptographic deduplication across agent turns:
+- **SHA-256 Content Verification**: When pre-loaded files (e.g., `SPEC.md` or story contracts) are injected into the prompt context at task startup, their SHA-256 checksums are cached. If an agent calls `read_file` on an unmodified file, the cache returns a concise reference notice instead of re-injecting duplicate multi-kilobyte payloads into subsequent prompt turns, drastically cutting token consumption.
+- **Dynamic Invalidation**: When any file-mutating tool (`write_file`, `edit_file`, `delete_file`) executes, cached diagnostic results (`run_tests`, `run_linter`) and inspection buffers are automatically invalidated.
+- **Disk Integrity Checks**: On each `read_file` inspection, the file's on-disk checksum is compared against the cached hash; any external or command-induced mutation immediately bypasses the cache to fetch fresh content.
+
+### 8. Two-Turn Surgical Repair Pipeline (`pkg/services/orchestrator_execute_turns.go`)
+When a test failure occurs during code generation:
+- **Diagnostic Pre-Reading**: The orchestrator parses the compiler or test failure log, extracts the offending file paths, and pre-reads their current disk content into the surgical generator's context buffer.
+- **Two-Turn Budget**: Surgical repair runs with a dedicated 2-turn budget. In Turn 1, the agent applies targeted fixes directly via `write_file`/`edit_file`. In Turn 2, verification checks and final adjustments are completed, avoiding unbounded single-action inspection loops.
+
+### 9. Persistent LLM Capability Cache & Upfront Model Resolution (`pkg/infrastructure/llm/`)
+- **Preflight Model Discovery**: `PingAndResolveModel` queries `/models` at startup to validate configured model identifiers. Deprecated or 404 models are automatically upgraded to the highest-ranked available flagship model before orchestrator dispatch.
+- **In-Memory Capability Memory (`globalCapabilityCache`)**: Memorizes unsupported parameters (`temperature`, `max_tokens`, `response_format`, `extra_body`) on the first API rejection, ensuring subsequent calls across all agent roles automatically omit incompatible options without repetitive retry churn.
+
 ---
 
 ## Multi-Agent Roles & Team Pipeline
