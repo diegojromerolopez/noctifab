@@ -48,6 +48,9 @@ var (
 	// Vacuous / Tautological test patterns
 	tautologyPyRE = regexp.MustCompile(`(?i)^\s*(?:assert\s+(?:True|1\s*==\s*1|0\s*==\s*0)\b|self\.assertTrue\s*\(\s*True\s*\)|self\.assertEqual\s*\(\s*(?:1\s*,\s*1|0\s*,\s*0|True\s*,\s*True)\s*\))`)
 	tautologyGoRE = regexp.MustCompile(`assert\.(?:True|Equal)\s*\(\s*t\s*,\s*(?:true|1\s*,\s*1)\s*\)`)
+
+	// Makefile stub patterns
+	makeStubEchoRE = regexp.MustCompile(`(?i)^\s*@?echo\s+["'].*["']\s*$|^\s*@?echo\s+[^"'].*$|^\s*@?true\s*$|^\s*:\s*$`)
 )
 
 // NewAntiStubValidator initializes an AntiStubValidator.
@@ -207,6 +210,38 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 					Rule:    "javascript_not_implemented_stub",
 					Snippet: trimmed,
 				})
+			}
+		}
+
+		// Makefile stub checks
+		baseName := strings.ToLower(filepath.Base(path))
+		if baseName == "makefile" || baseName == "gnumakefile" || ext == ".mk" {
+			if strings.HasPrefix(trimmed, "test:") || strings.HasPrefix(trimmed, "build:") || strings.HasPrefix(trimmed, "e2e:") || strings.HasPrefix(trimmed, "check:") {
+				hasRealRecipe := false
+				hasEchoStub := false
+				for nextIdx := idx + 1; nextIdx < numLines; nextIdx++ {
+					nextRaw := lines[nextIdx]
+					nextTrimmed := strings.TrimSpace(nextRaw)
+					if nextTrimmed == "" || strings.HasPrefix(nextTrimmed, "#") {
+						continue
+					}
+					if !strings.HasPrefix(nextRaw, "\t") && !strings.HasPrefix(nextRaw, "  ") {
+						break
+					}
+					if makeStubEchoRE.MatchString(nextTrimmed) {
+						hasEchoStub = true
+					} else {
+						hasRealRecipe = true
+					}
+				}
+				if hasEchoStub && !hasRealRecipe {
+					violations = append(violations, AntiStubViolation{
+						Path:    path,
+						Line:    lineNum,
+						Rule:    "stub_makefile_target",
+						Snippet: fmt.Sprintf("%s (target only echoes message or exits 0 without invoking real test/build tools)", trimmed),
+					})
+				}
 			}
 		}
 

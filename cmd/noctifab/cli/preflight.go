@@ -215,10 +215,39 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 			fmt.Printf("OK (%dms)\n", latency.Milliseconds())
 		}
 	}
+	resolveRoleAgentModels(cfg)
 	fmt.Printf("- Sandbox mode (%s): OK\n", cfg.Sandbox.Mode)
 	if err := VerifyQualityAndReleaseGates(cfg, pDir); err != nil {
 		return err
 	}
 	fmt.Println("Pre-flight checks passed successfully.")
 	return nil
+}
+
+// resolveRoleAgentModels iterates through role-specific provider configs and dynamically resolves models
+func resolveRoleAgentModels(cfg *config.Config) {
+	providerSlices := [][]config.AgentProviderRef{
+		cfg.Agents.ProductManager.Providers,
+		cfg.Agents.Planner.Providers,
+		cfg.Agents.Generators.Providers,
+		cfg.Agents.Testers.Providers,
+		cfg.Agents.Auditor.Providers,
+		cfg.Agents.LastResort.Providers,
+	}
+	for _, providers := range providerSlices {
+		for i, ref := range providers {
+			if ref.Model == "" || strings.EqualFold(ref.Model, "auto") {
+				continue
+			}
+			for _, p := range cfg.LLM.Providers {
+				if strings.EqualFold(p.Name, ref.Name) || strings.EqualFold(p.Provider, ref.Name) {
+					_, resolved, err := llm.PingAndResolveModel(context.Background(), p.Provider, p.APIKeyValue, p.URL, ref.Model)
+					if err == nil && resolved != "" && !strings.EqualFold(resolved, ref.Model) {
+						providers[i].Model = resolved
+					}
+					break
+				}
+			}
+		}
+	}
 }

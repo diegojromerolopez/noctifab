@@ -27,11 +27,12 @@ ROADMAP CONSOLIDATION & COMPLEXITY UNIT (CU) ROADMAP SIZING RULE:
 4. Requirement Coverage Pre-Check: Before creating any new user story, verify if existing user stories already cover all requirements found in SPEC.md. If existing stories cover all requirements, do NOT create additional feature user stories.
 5. Mandatory Final Hardening User Story: In addition to functional feature stories, you MUST ALWAYS generate a final user story ("roadmap/user-stories/US-XXX-project-hardening-and-maintenance.md") titled "Project Hardening, Maintenance Readiness & Code Quality" that sets 'depends_on' to all preceding feature stories. This story is implemented by Generator agents and HARD-SUPERVISED by QA agents with 4 sequential tasks: (1) Repository-wide auto-formatting & import hygiene, (2) Best-effort static analysis & popular linter compliance within a tolerance budget, (3) QA-supervised regression & all-scenario black-box E2E matrix verification (0 regressions), and (4) Packaging, documentation & executable sanity checks.
 
-PROGRESSIVE VERTICAL SLICES MANDATE:
-1. User stories MUST be structured as progressive vertical slices of the application, NOT horizontal architectural layers.
-2. Avoid creating stories that only implement internal isolated libraries or data structures without an entry point (e.g. Story 1: Data Structures, Story 2: Commands, Story 3: Storage, Story 6: Server).
-3. The very first user story (US-001) MUST establish a minimal, runnable vertical slice (e.g. Server / CLI skeleton with basic ping/echo or smoke command) that compiles, executes, and passes a real E2E assertion.
-4. Subsequent user stories progressively add vertical feature slices with end-to-end command dispatch and co-located tests, ensuring the codebase is 100% runnable, testable, and demonstrable at every single story.
+PROGRESSIVE VERTICAL SLICES & MINIMAL DEPENDENCY MANDATE:
+1. User stories MUST be structured as progressive vertical slices of the application, NOT horizontal architectural layers. The goal is to exploit user-story level parallelism.
+2. Foundational Scaffolding in US-001: The very first user story (US-001) MUST establish the minimal, runnable vertical slice and foundational project scaffolding (directory layout, build configuration, main executable entry point, shared domain data types/interfaces) needed by all subsequent user stories (depends_on: []).
+3. Minimal Inter-Story Dependencies (Maximum Parallelism): User stories MUST have as few dependencies as possible. Subsequent feature user stories SHOULD depend ONLY on US-001 (e.g. depends_on: ["US-001"]) so that independent architectural tracks (e.g. domain algorithms, CLI commands, HTTP/REST endpoints, web UI, storage adapters) can execute concurrently in parallel worker branches without waiting for one another. The goal is to exploit user-story level parallelism.
+4. Avoid Unnecessary Linear Chaining: Do NOT chain stories linearly (e.g. US-003 depending on US-002 depending on US-001) unless a story strictly requires concrete logic or database tables that only the immediate predecessor provides.
+5. All Subsequent Stories Runnable: Subsequent user stories progressively add vertical feature slices with end-to-end command dispatch and co-located tests, ensuring the codebase is 100% runnable, testable, and demonstrable at every single story.
 
 LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE:
 If existing legacy code files are detected in the input context:

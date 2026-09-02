@@ -10,6 +10,14 @@ On a grid of $M$ rows $\times N$ columns, two players (`X` and `O`) take turns p
 1. **Interactive ANSI Game**: Beautiful terminal board renderer with keyboard/coordinate move input, two-player local mode, and AI opponent mode.
 2. **Headless CLI / JSON Engine**: Deterministic CLI subcommands (`eval`, `move`, `best-move`, `info`) designed for programmatic integration, testing, and script pipelines.
 
+### 1.1 Minimal Project Skeleton (Walking Skeleton Priority for US-001)
+The first user story (`roadmap/US-001.md`) MUST establish a runnable minimal walking skeleton:
+1. `Makefile` (`build`, `test`, `lint`, `format`) and `pyproject.toml`.
+2. `src/ninline/board.py` & `src/ninline/engine.py`: Basic $(m,n,k)$ grid representation, move application, and win checking.
+3. `src/ninline/cli.py`: Minimal CLI entrypoint supporting `eval` and `move` subcommands.
+4. `tests/test_board.py` and `tests/test_cli.py`: Baseline tests ensuring `make test` runs and passes 100%.
+Subsequent stories build the ANSI terminal renderer (`ninline play`) and alpha-beta minimax AI opponent (`best-move`).
+
 ---
 
 ## 2. Directory Layout & Package Structure

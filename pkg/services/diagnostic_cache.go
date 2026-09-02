@@ -182,3 +182,23 @@ func (c *TaskDiagnosticCache) TryGetCachedInspection(toolName string, args map[s
 	}
 	return fmt.Sprintf("[Cached Result - Workspace Unmodified]\n%s", res.output), res.err, true
 }
+
+// IsFileDependentTool returns true if the tool's execution depends on workspace files.
+func IsFileDependentTool(tool string) bool {
+	switch tool {
+	case "read_file", "find_files", "list_directory", "grep_search", "run_tests", "run_linter":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsMutatingTool returns true if the tool modifies workspace files.
+func IsMutatingTool(tool string) bool {
+	switch tool {
+	case "write_file", "write_files", "edit_file", "multi_replace_file_content", "apply_patch", "delete_file":
+		return true
+	default:
+		return false
+	}
+}

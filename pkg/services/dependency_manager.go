@@ -23,6 +23,10 @@ type pkgEntry struct {
 var toolPackageMap = map[string]pkgEntry{
 	"cargo":         {"curl", "curl -sSf https://sh.rustup.rs | sh -s -- -y"},
 	"pytest":        {"pip", "pip install pytest"},
+	"pytest-cov":    {"pip", "pip install pytest-cov"},
+	"coverage":      {"pip", "pip install coverage"},
+	"vitest":        {"npm", "npm install -g vitest"},
+	"dune":          {"opam", "opam install -y dune"},
 	"golangci-lint": {"go", "go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"},
 	"node":          {"brew", "brew install node"},
 	"npm":           {"brew", "brew install node"},

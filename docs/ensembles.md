@@ -111,11 +111,12 @@ TOPOLOGY 8: Adaptive Self-Tuning Dynamic Routing (adaptive)
 - **Best for:** **Tester Agent** (selecting the most comprehensive, non-tautological test suite with **zero LLM synthesis overhead**).
 
 ### 8. `adaptive`: Adaptive Self-Tuning Dynamic Routing
-- **How it works:** Dynamically classifies the incoming task complexity and routes to the optimal tier:
-  - **Fast Tier (Documentation, comments, typos, version bumps):** Routes to fast speculative racing (1–3s, lowest token cost).
-  - **Heavy Tier (Concurrency, mutexes, low-level binary framing, syscalls, error remediation):** Routes to speculative quorum or serial multi-stage refinement.
-  - **Standard Tier (General domain logic, unit tests):** Routes to primary frontier models.
-- **Best for:** **All-around generators and general agent configurations** seeking optimal speed and quality balance.
+- **How it works:** Dynamically classifies incoming task complexity using semantic, structural, and failure indicators to route each task to the optimal model tier:
+  - **Fast Tier (`fast_tier`):** Low-latency models (e.g. Gemini Flash, Haiku, Cerebras LLaMA, 1–2s response) for initial file scaffolding, `.gitignore`, DTOs, dataclasses, documentation, typos, and version bumps.
+  - **Standard Tier (`standard_tier`):** Balanced frontier models (e.g. Claude 3.5 Sonnet, Gemini 3.1 Pro, GPT-4o, 3–5s response) for standard domain business logic, CRUD endpoints, and unit test suites.
+  - **Heavy Tier (`heavy_tier`):** Frontier reasoning models (e.g. DeepSeek Reasoner, OpenAI o3-mini, Qwen Max, 10–20s response) for complex algorithmic problems (Minimax AI, fixpoint solvers, graph traversal), multi-threaded concurrency/mutexes, low-level binary framing, and multi-round test repair loops.
+- **Dynamic Escalation:** If a task fails `run_tests` $\ge 2$ times consecutively in a lower tier, the Orchestrator automatically escalates the generator turn to the `heavy_tier` reasoning model.
+- **Best for:** **Generators and coding workers** seeking to cut 60–80% of boilerplate turn latency while preserving heavy reasoning power for complex tasks.
 
 ---
 

@@ -65,7 +65,7 @@ Acts as a security checkpoint before any LLM-proposed tool is executed. It match
 #### Tool Sandboxing & Hermetic Package Resolution
 Noctifab restricts agent capabilities to guarantee deterministic execution and security:
 - **No Direct Terminal Execution (`exec` Disabled)**: Neither `generator` nor `tester` agents are granted access to terminal execution tools (`exec`). Agents cannot directly invoke shell installation commands such as `pip install`, `npm install`, `cargo add`, or `go get`.
-- **Manifest File Declarations**: Generator agents **can** modify project manifest files (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) using `write_file` or `edit_file`. If a package is pre-cached or listed in `SPEC.md`, `run_tests` will link it cleanly.
+- **Manifest File Declarations & Batch Operations**: Generator agents modify project manifest files and source code using `write_file`, `write_files`, `edit_file`, or `apply_patch`. The `write_files` tool allows atomic multi-file creation in a single LLM turn, reducing scaffolding latency by over 70%.
 - **Hermetic Offline Failures & Standard Library Preference**: In containerized, offline, or dark-factory validation environments, introducing un-cached third-party dependencies causes `run_tests` to fail with module import errors (e.g. `ModuleNotFoundError`). All agent prompts enforce a **Standard Library First Mandate**: if `run_tests` fails on an uninstalled package, the agent is instructed to immediately refactor the implementation to use built-in standard library primitives (e.g. `asyncio`, `net/http`, `node:fs`, `socket`) rather than burning retries on un-fetchable imports.
 
 ### 4. Sandboxed Runner (`pkg/services/sandbox.go`)
@@ -94,17 +94,28 @@ The `CommandMailbox` serves as the centralized, serial event loop for all state 
 ### 7. Task Diagnostic Cache & SHA-256 Context Deduplication (`pkg/services/diagnostic_cache.go`)
 `TaskDiagnosticCache` provides in-memory caching and cryptographic deduplication across agent turns:
 - **SHA-256 Content Verification**: When pre-loaded files (e.g., `SPEC.md` or story contracts) are injected into the prompt context at task startup, their SHA-256 checksums are cached. If an agent calls `read_file` on an unmodified file, the cache returns a concise reference notice instead of re-injecting duplicate multi-kilobyte payloads into subsequent prompt turns, drastically cutting token consumption.
-- **Dynamic Invalidation**: When any file-mutating tool (`write_file`, `edit_file`, `delete_file`) executes, cached diagnostic results (`run_tests`, `run_linter`) and inspection buffers are automatically invalidated.
+- **Dynamic Invalidation**: When any file-mutating tool (`write_file`, `write_files`, `edit_file`, `delete_file`, `apply_patch`) executes, cached diagnostic results (`run_tests`, `run_linter`) and inspection buffers are automatically invalidated.
 - **Disk Integrity Checks**: On each `read_file` inspection, the file's on-disk checksum is compared against the cached hash; any external or command-induced mutation immediately bypasses the cache to fetch fresh content.
 
-### 8. Two-Turn Surgical Repair Pipeline (`pkg/services/orchestrator_execute_turns.go`)
+### 8. Walking Skeleton Slicing Mandate (`US-001`)
+The autonomous dark factory architecture prioritizes a **Vertical Walking Skeleton** over horizontal abstraction layers:
+- The Product Manager Agent formats the initial user story (`roadmap/user-stories/US-001.md`) to produce an end-to-end compiling binary with baseline test verification.
+- Delivering a working entrypoint in the first 2 minutes establishes the compilation pipeline and baseline black-box test passes before downstream stories expand deeper domain schemas or auxiliary interfaces.
+
+### 9. Two-Turn Surgical Repair Pipeline (`pkg/services/orchestrator_execute_turns.go`)
 When a test failure occurs during code generation:
 - **Diagnostic Pre-Reading**: The orchestrator parses the compiler or test failure log, extracts the offending file paths, and pre-reads their current disk content into the surgical generator's context buffer.
 - **Two-Turn Budget**: Surgical repair runs with a dedicated 2-turn budget. In Turn 1, the agent applies targeted fixes directly via `write_file`/`edit_file`. In Turn 2, verification checks and final adjustments are completed, avoiding unbounded single-action inspection loops.
 
-### 9. Persistent LLM Capability Cache & Upfront Model Resolution (`pkg/infrastructure/llm/`)
+### 10. Persistent LLM Capability Cache & Upfront Model Resolution (`pkg/infrastructure/llm/`)
 - **Preflight Model Discovery**: `PingAndResolveModel` queries `/models` at startup to validate configured model identifiers. Deprecated or 404 models are automatically upgraded to the highest-ranked available flagship model before orchestrator dispatch.
 - **In-Memory Capability Memory (`globalCapabilityCache`)**: Memorizes unsupported parameters (`temperature`, `max_tokens`, `response_format`, `extra_body`) on the first API rejection, ensuring subsequent calls across all agent roles automatically omit incompatible options without repetitive retry churn.
+
+### 11. Story-Level Parallelism & DAG Scheduling (`pkg/services/story_dag_scheduler.go`)
+Noctifab supports two tiers of concurrent execution:
+- **Story-Level Parallelism**: Independent feature user stories branch from the walking skeleton (`US-001`) with minimal inter-story dependencies (`depends_on: ["US-001"]`). When `agents.orchestrator.number > 1` or `vcs.use_worktrees: true`, the `StoryDAGScheduler` dispatches unblocked user stories concurrently across isolated worker branches.
+- **Task-Level Parallelism**: Within each active user story, independent tasks are processed in parallel across Generator and Tester worker pools (`scheduler.max_parallel_workers > 1`), merging safely through the serialized `RebaseQueue`.
+- **Multi-Loop Succeeded Caching**: When running remediation iteration loops (`runtime.loops > 1`), completed user stories are pre-marked as succeeded (`MarkStoryCompleted`), immediately unlocking dependent downstream stories without re-executing passing code.
 
 ---
 

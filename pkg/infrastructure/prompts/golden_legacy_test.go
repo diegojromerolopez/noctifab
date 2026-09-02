@@ -290,6 +290,7 @@ CRITICAL:
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
 - write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+- write_files: atomically create or overwrite multiple files at once. Args: {"files": {"path/to/file1.ext": "content1", "path/to/file2.ext": "content2"}}
 - edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace (must match the file content exactly; never include '[TRUNCATED]' or other placeholders)", "replacement_content": "new code block"}
 - apply_patch: apply a unified diff patch string (Git / diff -u format) to one or more files in the workspace. Args: {"patch": "unified diff patch content", "path": "optional file path"}
 - list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
@@ -340,6 +341,7 @@ CRITICAL:
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
 - write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+- write_files: atomically create or overwrite multiple files at once. Args: {"files": {"path/to/file1.ext": "content1", "path/to/file2.ext": "content2"}}
 - edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace (must match the file content exactly; never include '[TRUNCATED]' or other placeholders)", "replacement_content": "new code block"}
 - apply_patch: apply a unified diff patch string (Git / diff -u format) to one or more files in the workspace. Args: {"patch": "unified diff patch content", "path": "optional file path"}
 - list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}

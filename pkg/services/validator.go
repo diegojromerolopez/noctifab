@@ -49,11 +49,11 @@ var defaultRoleProfiles = map[string]ProfileConfig{
 		AllowedCommands: []string{},
 	},
 	"tester": {
-		AllowedTools:    []string{"read_file", "write_file", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "write_files", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
 		AllowedCommands: []string{},
 	},
 	"generator": {
-		AllowedTools:    []string{"read_file", "write_file", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "request_test_fix", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "write_files", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "request_test_fix", "noop"},
 		AllowedCommands: []string{},
 	},
 }
@@ -183,6 +183,60 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 
 	// 2. Global sandbox path checks (always enforced)
 	switch action.Tool {
+	case "write_files":
+		entries, err := parseWriteFilesArgs(action.Args)
+		if err != nil {
+			return &ValidationResult{Allowed: false, Reason: fmt.Sprintf("invalid write_files args: %v", err)}, nil
+		}
+		cleanProj := filepath.Clean(state.ProjectPath)
+		for _, entry := range entries {
+			var absPath string
+			if filepath.IsAbs(entry.path) {
+				absPath = filepath.Clean(entry.path)
+			} else {
+				absPath = filepath.Clean(filepath.Join(cleanProj, entry.path))
+			}
+			if !strings.HasPrefix(absPath, cleanProj) {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  fmt.Sprintf("Sandbox violation: path '%s' resolves outside the workspace boundary '%s'", entry.path, state.ProjectPath),
+				}, nil
+			}
+			if strings.Contains(absPath, "tests/holdout") || strings.Contains(absPath, "holdout") {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Sandbox violation: tests/holdout directory must not be created, modified, or used under any circumstance",
+				}, nil
+			}
+			rel, err := filepath.Rel(cleanProj, absPath)
+			if err == nil {
+				parts := strings.Split(rel, string(filepath.Separator))
+				for _, part := range parts {
+					if part == ".noctifab" || part == ".git" {
+						return &ValidationResult{
+							Allowed: false,
+							Reason:  fmt.Sprintf("Sandbox violation: path '%s' targets blacklisted directory '%s'", entry.path, part),
+						}, nil
+					}
+					for _, exp := range v.ExcludePaths {
+						cleanExp := strings.Trim(exp, "/")
+						if cleanExp != "" && part == cleanExp {
+							return &ValidationResult{
+								Allowed: false,
+								Reason:  fmt.Sprintf("Sandbox violation: path '%s' targets excluded path segment '%s'. Do NOT attempt to create files in this excluded directory, and UPDATE any test files to omit assertions on excluded paths.", entry.path, cleanExp),
+							}, nil
+						}
+					}
+				}
+			}
+			if hit := v.findForbiddenPattern(entry.content); hit != "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  fmt.Sprintf("SPEC violation: file content for %q matches forbidden pattern %q. This constraint must be respected: %s", entry.path, hit, hit),
+				}, nil
+			}
+		}
+
 	case "write_file", "edit_file", "apply_patch", "read_file", "delete_file":
 		path, ok := action.Args["path"].(string)
 		if !ok && action.Tool == "apply_patch" {

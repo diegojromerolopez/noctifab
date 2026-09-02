@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.63.0] - 2026-09-02
+
+### Added
+- **Story-Level Parallelism & DAG Scheduling (`noctifab start`)**:
+  - Integrated `StoryDAGScheduler` and `start_dag_loop.go` into `cmd/noctifab/cli/start_runner.go`.
+  - Dispatches independent user stories concurrently across isolated worker branches when `agents.orchestrator.number > 1` or `vcs.use_worktrees: true`.
+  - Automatically caches succeeded stories across iteration loops with `MarkStoryCompleted` to immediately unblock dependent downstream stories.
+- **Product Manager Minimal Dependency & Parallelism Slicing Mandate**:
+  - Updated `generate.tmpl` and `audit.tmpl` with the explicit directive: *"The goal is to exploit user-story level parallelism."*
+  - Enforced that `US-001` provides foundational scaffolding (`depends_on: []`), while subsequent feature stories declare dependencies strictly on `["US-001"]` to enable maximum parallel concurrency.
+- **Batched Multi-File Creation Tool (`write_files`)**:
+  - Implemented `WriteFilesTool` in `pkg/services/batch_tools.go` supporting structured multi-file creation in a single LLM response turn.
+  - Updated tool registries, diagnostic cache invalidation, and prompt contracts.
+- **Per-Agent Adaptive Complexity Routing**:
+  - Configured fast, standard, and heavy complexity routing tiers per agent in ensemble configurations.
+
 ## [0.62.0] - 2026-09-01
 
 ### Added

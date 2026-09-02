@@ -186,3 +186,27 @@ func TestTaskDiagnosticCache_SHA256DiskIntegrityVerification(t *testing.T) {
 		t.Fatalf("expected cache miss after disk modification changed SHA-256 checksum, got hit")
 	}
 }
+
+func TestIsFileDependentToolAndIsMutatingTool(t *testing.T) {
+	fileDependent := []string{"read_file", "find_files", "list_directory", "grep_search", "run_tests", "run_linter"}
+	for _, tool := range fileDependent {
+		if !IsFileDependentTool(tool) {
+			t.Errorf("expected %s to be file dependent", tool)
+		}
+	}
+
+	if IsFileDependentTool("noop") || IsFileDependentTool("request_test_fix") {
+		t.Errorf("noop and request_test_fix should not be file dependent")
+	}
+
+	mutating := []string{"write_file", "edit_file", "multi_replace_file_content", "apply_patch", "delete_file"}
+	for _, tool := range mutating {
+		if !IsMutatingTool(tool) {
+			t.Errorf("expected %s to be mutating tool", tool)
+		}
+	}
+
+	if IsMutatingTool("read_file") || IsMutatingTool("run_tests") {
+		t.Errorf("read_file and run_tests should not be mutating tools")
+	}
+}

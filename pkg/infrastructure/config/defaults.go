@@ -19,7 +19,7 @@ func DefaultConfig() *Config {
 			ProductManager: AgentRoleConfig{
 				Number:         1,
 				Iterations:     2,
-				MaxUserStories: 5,
+				MaxUserStories: 15,
 				Passes:         2,
 			},
 			Planner: AgentRoleConfig{
@@ -141,9 +141,18 @@ func DefaultConfig() *Config {
 			TestCommand:        "go test -v ./...",
 			FormatterCommand:   "go fmt ./...",
 			ExcludePaths:       []string{".noctifab"},
-			AllowedCommands:    []string{"go", "git", "npm", "python", "make"},
-			AutoInstallDeps:    false,
-			PackageManagers:    []string{"pip", "go", "brew", "curl", "npm"},
+			AllowedCommands: []string{
+				"go", "git", "make", "cmake", "ninja", "gcc", "clang", "g++", "clang++",
+				"python", "python3", "pytest", "pytest-cov", "coverage", "tox", "nox", "flake8", "black", "isort", "ruff", "mypy",
+				"npm", "npx", "node", "pnpm", "yarn", "vitest", "jest", "tsc", "eslint", "prettier",
+				"cargo", "rustc", "cargo-tarpaulin", "cargo-nextest", "rustfmt", "clippy-driver",
+				"ruby", "bundle", "gem", "rspec", "rubocop", "rake",
+				"java", "javac", "gradle", "mvn",
+				"ocaml", "opam", "dune",
+				"gcov", "lcov", "valgrind", "clang-format", "clang-tidy",
+			},
+			AutoInstallDeps: false,
+			PackageManagers: []string{"pip", "go", "brew", "curl", "npm", "cargo", "gem", "opam", "gradle"},
 		},
 		Roles: RolesConfig{
 			Orchestrator: RoleSetting{Profile: "orchestrator", Temperature: 0.0},

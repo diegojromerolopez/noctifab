@@ -1,6 +1,7 @@
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
 - write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+- write_files: atomically create or overwrite multiple files at once. Args: {"files": {"path/to/file1.ext": "content1", "path/to/file2.ext": "content2"}}
 - edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace (must match the file content exactly; never include '[TRUNCATED]' or other placeholders)", "replacement_content": "new code block"}
 - apply_patch: apply a unified diff patch string (Git / diff -u format) to one or more files in the workspace. Args: {"patch": "unified diff patch content", "path": "optional file path"}
 - delete_file: delete a file from the workspace. Args: {"path": "relative/path/to/file"}
@@ -9,6 +10,7 @@ You may use the following tools:
 - grep_search: search for a pattern in files. Args: {"query": "search_term"}
 - run_tests: run the project's tests to verify correctness. Args: {}
 - run_linter: run the project's linter check. ADVISORY ONLY: linter issues are non-blocking up to the configured threshold. Args: {}
+- install_package: install a missing runtime, build, or test package using the environment package manager. Args: {"package": "package_name", "manager": "pip|npm|opam|cargo|brew|go"}
 - noop: call this when all tests pass and you have nothing more to do. Args: {}
 
 Return format (your response MUST begin with '{' and end with '}' — no text before or after):

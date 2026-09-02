@@ -76,13 +76,13 @@ var serveCmd = &cobra.Command{
 
 		// Initialize sandbox runner.
 		var sandboxRunner services.Sandbox
+		var depMgr *services.DependencyManager
+		if cfg.Sandbox.AutoInstallDeps || cfg.Sandbox.Mode != "docker" {
+			depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
+		}
 		if cfg.Sandbox.Mode == "docker" {
 			sandboxRunner = services.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			var depMgr *services.DependencyManager
-			if cfg.Sandbox.AutoInstallDeps {
-				depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
-			}
 			sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 		}
 
@@ -94,6 +94,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.NoopTool{})
 		reg.Register(&services.ReadFileTool{})
 		reg.Register(&services.WriteFileTool{})
+		reg.Register(&services.WriteFilesTool{})
 		reg.Register(&services.DeleteFileTool{})
 		reg.Register(&services.EditFileTool{})
 		reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
@@ -106,6 +107,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
 		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
+		reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})
 
 		// Initialize LLM client with database budget store.
 		var budgetStore domain.BudgetStore

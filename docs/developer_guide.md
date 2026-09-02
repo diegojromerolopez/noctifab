@@ -69,6 +69,10 @@ profiles:
   generator:
     allowed_tools:
       - "read_file"
+      - "write_file"
+      - "write_files"
+      - "edit_file"
+      - "apply_patch"
       - "run_tests"
       - "run_linter"
       - "noop"

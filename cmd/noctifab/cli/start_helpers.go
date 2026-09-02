@@ -46,6 +46,7 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *servi
 	reg.Register(&services.NoopTool{})
 	reg.Register(&services.ReadFileTool{})
 	reg.Register(&services.WriteFileTool{})
+	reg.Register(&services.WriteFilesTool{})
 	reg.Register(&services.DeleteFileTool{})
 	reg.Register(&services.EditFileTool{})
 	reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
@@ -65,6 +66,8 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *servi
 		Timeout:          runTimeout,
 	})
 	reg.Register(&services.RequestTestFixTool{})
+	depMgr := services.NewDependencyManager(cfg.Sandbox.PackageManagers)
+	reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})
 	return reg
 }
 

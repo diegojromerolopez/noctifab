@@ -267,6 +267,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			targetTask.Progress = 100
 			targetTask.FailureLog = ""
 			fmt.Printf("✅ [Validation Passed] Task %s (%s) passed test validation and merged into %s\n", taskID, task.Title, integrationBranch)
+			_ = WriteTaskMarkdown(st.ProjectPath, st.Metadata.InputPath, *targetTask)
 		} else if isSandboxFailure {
 			fmt.Printf("❌ [Unrecoverable Environment Failure] Task %s fast aborting: %s\n", taskID, logMsg)
 			targetTask.Status = domain.TaskFailed

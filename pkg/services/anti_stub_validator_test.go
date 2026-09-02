@@ -160,3 +160,29 @@ func TestAntiStubValidator_ValidateWorkspace(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, targetViolations)
 }
+
+func TestAntiStubValidator_MakefileStubs(t *testing.T) {
+	v := services.NewAntiStubValidator()
+
+	t.Run("when Makefile test target only echoes message, it detects violation", func(t *testing.T) {
+		makefile := `
+.PHONY: test
+test:
+	@echo "Running unit tests..."
+`
+		violations := v.ValidateContent("Makefile", makefile)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "stub_makefile_target", violations[0].Rule)
+	})
+
+	t.Run("when Makefile test target runs real test command, it is allowed", func(t *testing.T) {
+		makefile := `
+.PHONY: test
+test:
+	@echo "Running tests..."
+	npm run test
+`
+		violations := v.ValidateContent("Makefile", makefile)
+		assert.Empty(t, violations)
+	})
+}

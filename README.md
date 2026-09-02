@@ -202,13 +202,16 @@ The core engine runs a continuous polling event loop that drives all development
 
 `noctifab` incorporates an end-to-end pipelined acceleration engine delivering **5x–10x faster dark factory throughput**:
 
-1. **Parallel DAG Task Worker Pools**: Executes independent tasks concurrently (`scheduler.max_parallel_workers > 1`), assigning each task an isolated Git worktree (`.noctifab/worktrees/task-<id>`) and merging completed worker branches asynchronously via a serialized rebase queue (`pkg/usecase/rebase_queue.go`).
-2. **Tiered LLM Provider Routing**: Directs deep reasoning models to spec decomposition and planning (`product_manager`, `planner`), while routing implementation and test workers (`generators`, `testers`) to high-throughput, low-latency coding models.
-3. **Parallel 3x Majority-Vote Test Validation**: Dispatches 3 test validation runs concurrently using Go goroutines, reducing verification latency from ~15s to ~3s.
-4. **Unified Diff Multi-File Patching (`apply_patch`)**: Enables agents to apply multi-file unified diff patches (`diff -u` / Git format) in a single turn with fuzzy matching and sandbox security validation.
-5. **Spec-Level Deterministic Mock Clocks**: Enforces mock clock invariants (`Store(clock=FakeClock())`) at the Product Manager specification layer (`US-xxx.md`), ensuring time-dependent tests pass deterministically on the first attempt.
-6. **Aggressive Suffix-Only Prompt Pruning**: Truncates prompt history on retries to preserve LLM KV cache prefixes while providing exact failure tracebacks.
-7. **Speculative Next-Task Prefetching**: Prefetches file contexts for candidate downstream tasks while current task verification executes in parallel.
+1. **Story-Level Parallelism & DAG Scheduling**: Executes independent user stories concurrently (`agents.orchestrator.number > 1`), branching orthogonal tracks from the walking skeleton (`US-001`) with minimal inter-story dependencies to dramatically reduce greenfield project lead times.
+2. **Parallel DAG Task Worker Pools**: Executes independent tasks concurrently (`scheduler.max_parallel_workers > 1`), assigning each task an isolated Git worktree (`.noctifab/worktrees/task-<id>`) and merging completed worker branches asynchronously via a serialized rebase queue (`pkg/services/rebase_queue.go`).
+3. **Batched Multi-File Creation (`write_files`)**: Enables agents to atomically create or overwrite multiple workspace files in a single LLM turn (via `{"files": {"path/a": "...", "path/b": "..."}}`), eliminating 70% of single-file tool roundtrip latency during scaffolding.
+4. **Per-Agent Adaptive Complexity Routing**: Dynamically routes agent tasks to optimal model tiers (`fast_tier` for scaffolding, `standard_tier` for domain features, `heavy_tier` for complex algorithms and repair turns) to minimize reasoning latency without sacrificing capability.
+5. **Walking Skeleton Slicing Priority (`US-001`)**: Enforces that the initial user story delivers a minimal compiling and test-passing vertical slice, guaranteeing a working runnable baseline within the first 2 minutes.
+6. **Parallel 3x Majority-Vote Test Validation**: Dispatches 3 test validation runs concurrently using Go goroutines, reducing verification latency from ~15s to ~3s.
+7. **Unified Diff Multi-File Patching (`apply_patch`)**: Enables agents to apply multi-file unified diff patches (`diff -u` / Git format) in a single turn with fuzzy matching and sandbox security validation.
+8. **Spec-Level Deterministic Mock Clocks**: Enforces mock clock invariants (`Store(clock=FakeClock())`) at the Product Manager specification layer (`US-xxx.md`), ensuring time-dependent tests pass deterministically on the first attempt.
+9. **Aggressive Suffix-Only Prompt Pruning**: Truncates prompt history on retries to preserve LLM KV cache prefixes while providing exact failure tracebacks.
+10. **Speculative Next-Task Prefetching**: Prefetches file contexts for candidate downstream tasks while current task verification executes in parallel.
 
 ### Autonomous Agent Roles & Relationship
 To prevent "evaluation gaming" (where code generators approve their own buggy code) and break deadlock traps, `noctifab` partitions cognitive execution into specialized, cooperative agent roles:

@@ -6,112 +6,10 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
-	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 )
-
-func (o *Orchestrator) recordTokenUsage(ctx context.Context, prompt string, resp *domain.LLMResponse) {
-	if o == nil || o.repo == nil || resp == nil {
-		return
-	}
-	tokens := llm.EstimateUsageTokens(prompt, resp)
-	if tokens <= 0 {
-		return
-	}
-	taskID, _ := ctx.Value(TaskIDKey).(string)
-	_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
-		st.Metadata.TotalTokensUsed += tokens
-		if taskID != "" {
-			for i := range st.Tasks {
-				if st.Tasks[i].ID == taskID {
-					st.Tasks[i].TokensUsed += tokens
-					break
-				}
-			}
-		}
-		return nil
-	})
-}
-
-func (o *Orchestrator) registerAgentStart(ctx context.Context, role string, taskID string) {
-	agentID := fmt.Sprintf("agent-%s-%s", role, taskID)
-	name := fmt.Sprintf("%s-%s", role, taskID)
-	if o.observer != nil {
-		o.observer.Observe(ctx, domain.ExecutionEvent{
-			Kind:              domain.EventAgentStarted,
-			AgentInvocationID: agentID,
-			AgentRole:         role,
-			TaskID:            taskID,
-			At:                time.Now().UTC(),
-		})
-	}
-	updateErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
-		found := false
-		for i := range st.ActiveAgents {
-			if st.ActiveAgents[i].ID == agentID {
-				st.ActiveAgents[i].Status = domain.AgentWorking
-				st.ActiveAgents[i].TaskID = taskID
-				st.ActiveAgents[i].StartedAt = time.Now()
-				st.ActiveAgents[i].CompletedAt = time.Time{}
-				found = true
-				break
-			}
-		}
-		if !found {
-			st.ActiveAgents = append(st.ActiveAgents, domain.Agent{
-				ID:        agentID,
-				Name:      name,
-				Role:      domain.AgentRole(strings.ToUpper(role)),
-				Status:    domain.AgentWorking,
-				TaskID:    taskID,
-				StartedAt: time.Now(),
-			})
-		}
-		return nil
-	})
-	if updateErr != nil {
-		fmt.Fprintf(os.Stderr, "Orchestrator: failed to register agent start for role %s task %s: %v\n", role, taskID, updateErr)
-	}
-}
-
-func (o *Orchestrator) registerAgentComplete(ctx context.Context, role string, taskID string, err error) {
-	agentID := fmt.Sprintf("agent-%s-%s", role, taskID)
-	if o.observer != nil {
-		outcome := domain.OutcomeSuccess
-		if err != nil {
-			outcome = domain.OutcomeFailed
-		}
-		o.observer.Observe(ctx, domain.ExecutionEvent{
-			Kind:              domain.EventAgentFinished,
-			AgentInvocationID: agentID,
-			AgentRole:         role,
-			TaskID:            taskID,
-			Outcome:           outcome,
-			At:                time.Now().UTC(),
-		})
-	}
-	updateErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
-		for i := range st.ActiveAgents {
-			if st.ActiveAgents[i].ID == agentID {
-				st.ActiveAgents[i].Status = domain.AgentCompleted
-				st.ActiveAgents[i].CompletedAt = time.Now()
-				if err != nil {
-					st.ActiveAgents[i].LastError = err.Error()
-				} else {
-					st.ActiveAgents[i].LastError = ""
-				}
-				break
-			}
-		}
-		return nil
-	})
-	if updateErr != nil {
-		fmt.Fprintf(os.Stderr, "Orchestrator: failed to register agent completion for role %s task %s: %v\n", role, taskID, updateErr)
-	}
-}
 
 // readerPromptTail is the static suffix of the Reader (context gathering)
 // prompt: inspection tool list and JSON output schema. Kept as a separate
@@ -367,6 +265,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	// for the remainder of this task to prevent the stale-cache lock-in spiral.
 	consecutiveLinterFailures := 0
 	linterDeferred := false
+	seenFileDependentCalls := make(map[string]bool)
 
 	for turn := 0; turn < maxTurns; turn++ {
 		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
@@ -404,6 +303,17 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] action %s blocked: %s\n", task.ID, action.Tool, reason)
 				turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s blocked by policy: %s", action.Tool, reason))
 				continue
+			}
+
+			// Precondition: A tool that depends on files cannot be called twice with identical arguments if no file mutations have occurred in between
+			if IsFileDependentTool(action.Tool) {
+				key := buildArgsKey(action.Tool, action.Args)
+				if seenFileDependentCalls[key] {
+					fmt.Printf("Orchestrator: Task %s [Tester] action %s rejected: duplicate call without file mutations\n", task.ID, action.Tool)
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[TOOL CALL REJECTED: NO WORKSPACE CHANGES] You have already executed '%s' with identical arguments and no files have been modified since. Re-running inspection or diagnostic tools without modifying code produces identical results. You MUST now call write_file, edit_file, or apply_patch to implement your changes.", action.Tool))
+					continue
+				}
+				seenFileDependentCalls[key] = true
 			}
 
 			if cachedOut, cachedErr, hasCache := diagCache.TryGetCachedInspection(action.Tool, action.Args); hasCache {
@@ -455,10 +365,10 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				} else {
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
-					// Reset linter failure counter on any successful file mutation.
-					switch action.Tool {
-					case "write_file", "edit_file", "multi_replace_file_content", "delete_file":
+					// Reset linter failure counter and duplicate tool tracker on any successful file mutation.
+					if IsMutatingTool(action.Tool) {
 						consecutiveLinterFailures = 0
+						seenFileDependentCalls = make(map[string]bool)
 					}
 				}
 			}

@@ -82,6 +82,21 @@ func (s *StoryDAGScheduler) AddStory(item StoryWorkItem) {
 	s.nodes[storyID] = node
 }
 
+// MarkStoryCompleted marks a story node as already succeeded without executing it, unblocking dependent stories.
+func (s *StoryDAGScheduler) MarkStoryCompleted(storyIDOrPath string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	storyID := ExtractStoryID(storyIDOrPath)
+	if storyID == "" {
+		storyID = filepath.Base(storyIDOrPath)
+	}
+
+	if node, exists := s.nodes[storyID]; exists {
+		node.Status = StoryNodeSuccess
+	}
+}
+
 // Execute runs all queued user stories concurrently according to the dependency DAG.
 // processFunc is invoked concurrently for each unblocked user story.
 func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx context.Context, item StoryWorkItem) error) error {
