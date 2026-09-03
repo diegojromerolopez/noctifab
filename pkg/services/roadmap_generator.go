@@ -29,6 +29,11 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 
 // GenerateRoadmapWithConfig executes a multi-pass Product Manager roadmap generation with an optional max user stories ceiling.
 func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int, maxUserStories int) (lastErr error) {
+	return GenerateRoadmapWithFullConfig(ctx, projectPath, llmClient, renderer, passes, maxUserStories, 0, 0)
+}
+
+// GenerateRoadmapWithFullConfig executes a multi-pass Product Manager roadmap generation with user story limits and complexity bounds.
+func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int, maxUserStories int, minComplexity int, maxComplexity int) (lastErr error) {
 	if passes <= 0 {
 		passes = 1
 	}
@@ -92,6 +97,8 @@ func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClien
 			ExistingStories: strings.Join(existingStories, "\n"),
 			LegacyFiles:     legacyBlock,
 			MaxUserStories:  maxUserStories,
+			MinComplexity:   minComplexity,
+			MaxComplexity:   maxComplexity,
 		})
 		if err != nil {
 			return fmt.Errorf("product manager prompt rendering failed (pass %d/%d): %w", p, passes, err)

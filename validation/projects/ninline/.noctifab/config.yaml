@@ -8,7 +8,11 @@ agents:
   product_manager:
     number: 1
     iterations: 2
-    max_user_stories: 5
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
     max_tokens: -1
     providers:
     - name: claude
@@ -264,4 +268,4 @@ telemetry:
 context:
   mode: full
   diff_window_lines: 15
-  compaction: caveman
+  compaction: off

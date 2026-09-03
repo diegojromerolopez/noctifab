@@ -8,7 +8,11 @@ agents:
   product_manager:
     number: 1
     iterations: 2
-    max_user_stories: 5
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
     max_tokens: -1
     ensemble:
       strategy: parallel
@@ -37,7 +41,7 @@ agents:
     number: 1
     iterations: 5
   generators:
-    number: 6
+    number: 2
     iterations: 20
     max_tokens: -1
     ensemble:
@@ -236,7 +240,7 @@ vcs:
   repository: diegojromerolopez/wc
   base_branch: main
   branch_prefix: noctifab/
-  use_worktrees: true
+  use_worktrees: false
   token: secret:GITHUB_TOKEN
   token_env: GITHUB_TOKEN
 sandbox:

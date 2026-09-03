@@ -94,6 +94,14 @@ func (t *ReadFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	return string(content), nil
 }
 
+func determineFilePerm(path string) os.FileMode {
+	cleanRel := filepath.ToSlash(filepath.Clean(path))
+	if strings.HasPrefix(cleanRel, "bin/") || strings.HasPrefix(cleanRel, "exe/") || strings.HasPrefix(cleanRel, "scripts/") || strings.HasSuffix(cleanRel, ".sh") {
+		return 0755
+	}
+	return 0644
+}
+
 // WriteFileTool implements write_file.
 type WriteFileTool struct{}
 
@@ -118,8 +126,12 @@ func (t *WriteFileTool) Execute(ctx context.Context, state *domain.State, args m
 		return "", err
 	}
 	content = normalizeMakefileTabs(path, content)
-	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+	perm := determineFilePerm(path)
+	if err := os.WriteFile(fullPath, []byte(content), perm); err != nil {
 		return "", err
+	}
+	if perm == 0755 {
+		_ = os.Chmod(fullPath, 0755)
 	}
 	if err := checkPythonSyntax(ctx, fullPath); err != nil {
 		return "", err

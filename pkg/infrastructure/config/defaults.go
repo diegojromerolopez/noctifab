@@ -19,8 +19,15 @@ func DefaultConfig() *Config {
 			ProductManager: AgentRoleConfig{
 				Number:         1,
 				Iterations:     2,
-				MaxUserStories: 15,
-				Passes:         2,
+				MaxUserStories: 5,
+				UserStories: UserStoriesConfig{
+					MaxCount: 5,
+					Complexity: UserStoryComplexityConfig{
+						Min: 15,
+						Max: 35,
+					},
+				},
+				Passes: 2,
 			},
 			Planner: AgentRoleConfig{
 				Number:     1,

@@ -194,7 +194,8 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		if executionReporter != nil {
 			executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "roadmap_generation", At: time.Now().UTC()})
 		}
-		if genErr := services.GenerateRoadmapWithConfig(cmdCtx, targetDir, llmClient, promptRenderer, cfg.Agents.ProductManager.Passes, cfg.Agents.ProductManager.MaxUserStories); genErr != nil {
+		pmCfg := cfg.Agents.ProductManager
+		if genErr := services.GenerateRoadmapWithFullConfig(cmdCtx, targetDir, llmClient, promptRenderer, pmCfg.Passes, pmCfg.GetMaxUserStories(), pmCfg.GetMinComplexity(), pmCfg.GetMaxComplexity()); genErr != nil {
 			fmt.Printf("Warning: Product Manager Agent story generation failed: %v\n", genErr)
 		}
 		if executionReporter != nil {

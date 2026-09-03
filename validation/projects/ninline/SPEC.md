@@ -1,94 +1,68 @@
-# ninline Specification: Generalized N-in-a-Line (M,N,K)-Game CLI & Engine in Python
+# ninline Specification: Generalized (M,N,K)-Game CLI & Engine in Python
 
-## 1. Overview
-
-`ninline` is a clean, modular, zero-runtime-dependency Python 3 command-line game engine and interactive CLI for **generalized $N$-in-a-line games** (known mathematically as $(m,n,k)$-games).
-
-On a grid of $M$ rows $\times N$ columns, two players (`X` and `O`) take turns placing their mark. The first player to achieve $K$ consecutive marks in an unbroken straight line (horizontally, vertically, or diagonally) wins the game. If all grid cells are filled without any player achieving $K$ in a line, the game ends in a draw.
-
-`ninline` serves as a dual-mode tool:
-1. **Interactive ANSI Game**: Beautiful terminal board renderer with keyboard/coordinate move input, two-player local mode, and AI opponent mode.
-2. **Headless CLI / JSON Engine**: Deterministic CLI subcommands (`eval`, `move`, `best-move`, `info`) designed for programmatic integration, testing, and script pipelines.
-
-### 1.1 Minimal Project Skeleton (Walking Skeleton Priority for US-001)
-The first user story (`roadmap/US-001.md`) MUST establish a runnable minimal walking skeleton:
-1. `Makefile` (`build`, `test`, `lint`, `format`) and `pyproject.toml`.
-2. `src/ninline/board.py` & `src/ninline/engine.py`: Basic $(m,n,k)$ grid representation, move application, and win checking.
-3. `src/ninline/cli.py`: Minimal CLI entrypoint supporting `eval` and `move` subcommands.
-4. `tests/test_board.py` and `tests/test_cli.py`: Baseline tests ensuring `make test` runs and passes 100%.
-Subsequent stories build the ANSI terminal renderer (`ninline play`) and alpha-beta minimax AI opponent (`best-move`).
+> **Goal**: High-performance, zero-dependency Python 3 CLI game engine for generalized $N$-in-a-line ($(m,n,k)$-games) on an $M \times N$ grid with target line length $K$. Supports interactive ANSI terminal play and deterministic headless JSON subcommands.
 
 ---
 
-## 2. Directory Layout & Package Structure
+## ⚡ 1. TL;DR & Core System Invariants
 
-```
+* **Language**: Python 3 (Strict type annotations verified by `mypy --strict`, formatted by `ruff`).
+* **Dependencies**: Python standard library ONLY (`argparse`, `json`, `dataclasses`, `enum`, `typing`, `sys`, `random`).
+* **Game Rules**:
+  * Grid dimensions: $M$ rows $\times N$ columns ($3 \le M, N \le 50$).
+  * Target length: $K$ consecutive marks in a straight line to win ($3 \le K \le \max(M, N)$).
+  * Players: `X` (First player) and `O` (Second player).
+  * Cell states: `X`, `O`, or `.` (empty).
+  * Game states: `"IN_PROGRESS"`, `"WIN"`, `"DRAW"`, `"INVALID"`.
+
+---
+
+## 📁 2. Pinned Directory Layout
+
+```text
 ninline/
-├── Makefile                 # build, test, lint, format, clean targets (REQUIRED)
-├── pyproject.toml           # Package metadata, tool.ruff, tool.mypy, tool.pytest configurations
-├── README.md                # Usage instructions, CLI reference, game rules
-├── .gitignore               # Ignore __pycache__/, .pytest_cache/, .mypy_cache/, .ruff_cache/, dist/
+├── Makefile                 # build, test, lint, format, clean (REQUIRED)
+├── pyproject.toml           # ruff, mypy, pytest configs
+├── README.md                # usage & API contract
+├── .gitignore               # __pycache__, .pytest_cache, .mypy_cache
 ├── src/
 │   └── ninline/
-│       ├── __init__.py      # Package version and public exports
-│       ├── cli.py           # CLI entrypoint with argparse subcommands (play, eval, move, best-move, info)
-│       ├── board.py         # Board domain model, serialization, boundary validation, coordinate mapping
-│       ├── engine.py        # Ray-casting line scanner, win/draw detection, game state evaluator
-│       ├── ai.py            # Minimax AI with alpha-beta pruning and heuristic evaluation for large grids
-│       └── renderer.py      # ANSI terminal board renderer with coordinate labels & winning line highlight
+│       ├── __init__.py      # Package version & exports
+│       ├── cli.py           # CLI dispatch (play, eval, move, best-move, info)
+│       ├── board.py         # Board domain model, serialization, boundary checks
+│       ├── engine.py        # Ray-casting line scanner, win/draw evaluator
+│       ├── ai.py            # Alpha-Beta Minimax AI & heuristic search
+│       └── renderer.py      # ANSI terminal box-drawing board renderer
 └── tests/
-    ├── __init__.py
-    ├── test_board.py        # Unit tests: grid creation, move placement, bounds checking, string serialization
-    ├── test_engine.py       # Unit tests: ray-casting win detection (horizontal, vertical, diagonal, antidiagonal, draws)
-    ├── test_ai.py           # Unit tests: AI winning move completion, opponent block detection
-    └── test_cli.py          # E2E & black-box CLI tests: subcommands, JSON output schema, error exit codes
+    ├── test_board.py        # Grid creation, move placement, bounds, serialization
+    ├── test_engine.py       # Ray-casting win detection (H, V, Diagonals, Draws)
+    ├── test_ai.py           # Immediate win completion & block detection
+    └── test_cli.py          # E2E CLI subcommands, JSON schemas, exit codes
 ```
 
 ---
 
-## 3. Build, Invocation, and Quality Gates
+## 🛠️ 3. Quality & Build Commands (Makefile)
 
-### 3.1 Makefile Targets (All REQUIRED)
-- `make build` → validates package setup and creates executable wrapper or wheel.
-- `make test` → runs unit and CLI tests via `pytest -v tests/` (must pass 100% with zero failures).
-- `make lint` → runs static analysis via `ruff check .` and `mypy --strict src/` (must pass with ZERO warnings/errors).
-- `make format` → runs `ruff format --check .` (or `ruff format .` to format idempotently).
-- `make clean` → removes build artifacts, cache directories, and temporary files.
-
-### 3.2 Linter & Type Safety Gates
-- **`ruff`**: Must adhere to strict style rules without suppression comments.
-- **`mypy`**: Must pass `--strict` mode (all functions, methods, and return values explicitly typed).
-- **Standard Library Only**: Runtime implementation in `src/ninline/` MUST NOT require third-party libraries (uses Python standard library: `argparse`, `json`, `dataclasses`, `enum`, `typing`, `sys`, `random`).
+* `make build` → Validates package structure and executable entrypoint.
+* `make test` → Runs all tests via `pytest -v tests/` (100% pass, 0 failures).
+* `make lint` → Runs `ruff check .` and `mypy --strict src/` (0 warnings, 0 errors).
+* `make format` → Runs `ruff format --check .` (idempotent code formatting).
+* `make clean` → Removes `__pycache__`, `.pytest_cache`, and build artifacts.
 
 ---
 
-## 4. CLI Contract & Subcommands
+## 🕹️ 4. CLI Subcommand Contracts (Deterministic JSON stdout)
 
-### 4.1 `ninline play` (Interactive Terminal Mode)
-Starts an interactive terminal session with ANSI box-drawing board layout.
+### 4.1 Board Serialization Invariant
+* Rows are joined by `|`.
+* Example $3 \times 3$ grid: `"X.O|.X.|..X"`
 
+### 4.2 `ninline eval` (Evaluate Board State)
 ```bash
-ninline play [--rows M] [--cols N] [--win-length K] [--ai {none,easy,hard}] [--first {X,O}]
+ninline eval --board "X.O|.X.|..X" --win-length 3
 ```
-
-- `--rows M` (int, default: 3, minimum: 3, maximum: 50): Number of rows.
-- `--cols N` (int, default: 3, minimum: 3, maximum: 50): Number of columns.
-- `--win-length K` (int, default: 3, minimum: 3): Winning line length $K \le \max(M, N)$.
-- `--ai {none,easy,hard}` (default: `none`): AI opponent mode.
-- `--first {X,O}` (default: `X`): Player to move first.
-
-### 4.2 `ninline eval` (Headless Board Evaluation)
-Evaluates the current state of a serialized board and outputs structured JSON to `stdout`.
-
-```bash
-ninline eval --board "<SERIALIZED_BOARD>" --win-length K
-```
-
-**Board Serialization Format**:
-Rows are separated by `|`. Each cell is `X`, `O`, or `.` (empty). Example for $3 \times 3$:
-`"X.O|.X.|..X"`
-
-**JSON Output Format**:
+* **Output Format (stdout)**:
 ```json
 {
   "status": "WIN",
@@ -102,54 +76,42 @@ Rows are separated by `|`. Each cell is `X`, `O`, or `.` (empty). Example for $3
 }
 ```
 
-Status outcomes: `"IN_PROGRESS"`, `"WIN"`, `"DRAW"`, `"INVALID"`.
-
-### 4.3 `ninline move` (Apply Move)
-Applies a move to a serialized board state and returns the updated board state in JSON.
-
+### 4.3 `ninline move` (Apply Single Move)
 ```bash
-ninline move --board "<SERIALIZED_BOARD>" --win-length K --player {X,O} --row R --col C
+ninline move --board "X.O|...|..." --win-length 3 --player O --row 1 --col 1
 ```
-
-**JSON Output Format**:
+* **Output Format (stdout)**:
 ```json
 {
   "success": true,
-  "board": "X.O|.X.|..X",
-  "status": "WIN",
-  "winner": "X",
-  "is_terminal": true,
+  "board": "X.O|.O.|...",
+  "status": "IN_PROGRESS",
+  "winner": null,
+  "is_terminal": false,
   "error": null
 }
 ```
+* If move is invalid (occupied or out of bounds): exits `1` with `{"success": false, "error": "<reason>"}`.
 
-If the move is invalid (out of bounds or cell already occupied), exit code is `1` and JSON output has `"success": false, "error": "<reason>"`.
-
-### 4.4 `ninline best-move` (AI Move Recommendation)
-Calculates the recommended next move for the active player.
-
+### 4.4 `ninline best-move` (AI Move Recommender)
 ```bash
-ninline best-move --board "<SERIALIZED_BOARD>" --win-length K --player {X,O} [--difficulty {easy,hard}]
+ninline best-move --board "XX.|OO.|..." --win-length 3 --player X --difficulty hard
 ```
-
-**JSON Output Format**:
+* **Output Format (stdout)**:
 ```json
 {
-  "row": 1,
-  "col": 1,
+  "row": 0,
+  "col": 2,
   "player": "X",
   "evaluation_score": 100
 }
 ```
 
-### 4.5 `ninline info` (Grid Information & Capabilities)
-Prints game metrics for given $(M,N,K)$ parameters.
-
+### 4.5 `ninline info` (Board Metrics)
 ```bash
-ninline info --rows M --cols N --win-length K
+ninline info --rows 6 --cols 7 --win-length 4
 ```
-
-**JSON Output Format**:
+* **Output Format (stdout)**:
 ```json
 {
   "rows": 6,
@@ -163,31 +125,26 @@ ninline info --rows M --cols N --win-length K
 }
 ```
 
+### 4.6 `ninline play` (Interactive ANSI Game)
+```bash
+ninline play --rows 3 --cols 3 --win-length 3 --ai easy --first X
+```
+
 ---
 
-## 5. Game Engine Requirements & Algorithms
+## 🧠 5. Algorithms & Implementation Details
 
 1. **Ray-Casting Win Scanner (`engine.py`)**:
-   - Direction vectors:
-     - Horizontal: `(0, 1)`
-     - Vertical: `(1, 0)`
-     - Diagonal Down-Right: `(1, 1)`
-     - Diagonal Up-Right: `(-1, 1)`
-   - Computes uninterrupted consecutive sequences of length $\ge K$.
-   - Highlights exact coordinates of the winning line upon victory.
-
-2. **Move Validation (`board.py`)**:
-   - Zero-indexed row and column coordinates: $0 \le r < M$, $0 \le c < N$.
-   - Strict turn-order checking: Player marks must not exceed a difference of 1 (`count(X) == count(O)` or `count(X) == count(O) + 1`).
-
-3. **AI Strategy (`ai.py`)**:
-   - For small state spaces ($3 \times 3$): Exact Minimax with Alpha-Beta pruning.
-   - For larger grids ($> 4 \times 4$): Depth-limited heuristic search evaluating open $K-1$ and $K-2$ chains, center proximity, and immediate winning/blocking moves.
-
----
-
-## 6. Exit Codes
-
-- `0`: Success / Valid computation.
-- `1`: Invalid move, out-of-bounds coordinate, or malformed board string.
-- `2`: CLI argument parse error (invalid flags).
+   * Scan 4 direction vectors from every non-empty cell:
+     * Horizontal: `(0, 1)`
+     * Vertical: `(1, 0)`
+     * Diagonal Main: `(1, 1)`
+     * Diagonal Anti: `(-1, 1)`
+   * Check bounds: $0 \le r + k \cdot dr < M$ and $0 \le c + k \cdot dc < N$.
+2. **AI Decision Engine (`ai.py`)**:
+   * Exact Minimax with Alpha-Beta pruning for boards with $\le 9$ open cells.
+   * Depth-limited search ($\text{depth} \le 4$) with weighted pattern scoring (immediate wins, opponent blocks, center control) for larger boards.
+3. **Exit Codes**:
+   * `0`: Normal completion / successful computation.
+   * `1`: Invalid move or illegal board state.
+   * `2`: CLI argument parse error.

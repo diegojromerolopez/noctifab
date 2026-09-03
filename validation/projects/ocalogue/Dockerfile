@@ -12,7 +12,6 @@ COPY --from=noctifab-artifacts /app/validate.sh /app/validate.sh
 RUN chmod +x /app/validate.sh
 RUN mkdir -p /app && chown -R opam:opam /app
 
-USER opam
 ENV OPAMROOT=/home/opam/.opam
 ENV OPAM_SWITCH_PREFIX=/home/opam/.opam/5.2
 ENV PATH="/home/opam/.opam/5.2/bin:${PATH}"

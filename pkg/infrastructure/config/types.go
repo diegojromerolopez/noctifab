@@ -87,6 +87,16 @@ type QAConfig struct {
 	Ensemble           EnsembleConfig     `yaml:"ensemble,omitempty"`
 }
 
+type UserStoryComplexityConfig struct {
+	Min int `yaml:"min,omitempty"`
+	Max int `yaml:"max,omitempty"`
+}
+
+type UserStoriesConfig struct {
+	MaxCount   int                       `yaml:"max_count,omitempty"`
+	Complexity UserStoryComplexityConfig `yaml:"complexity,omitempty"`
+}
+
 type AgentRoleConfig struct {
 	Number         int                `yaml:"number"`
 	Iterations     int                `yaml:"iterations"`
@@ -95,9 +105,25 @@ type AgentRoleConfig struct {
 	Profile        string             `yaml:"profile,omitempty"`
 	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
 	MaxUserStories int                `yaml:"max_user_stories,omitempty"`
+	UserStories    UserStoriesConfig  `yaml:"user_stories,omitempty"`
 	Passes         int                `yaml:"passes,omitempty"`
 	MaxTokens      int64              `yaml:"max_tokens,omitempty"`
 	Ensemble       EnsembleConfig     `yaml:"ensemble,omitempty"`
+}
+
+func (a AgentRoleConfig) GetMaxUserStories() int {
+	if a.UserStories.MaxCount > 0 {
+		return a.UserStories.MaxCount
+	}
+	return a.MaxUserStories
+}
+
+func (a AgentRoleConfig) GetMinComplexity() int {
+	return a.UserStories.Complexity.Min
+}
+
+func (a AgentRoleConfig) GetMaxComplexity() int {
+	return a.UserStories.Complexity.Max
 }
 
 type OCCConfig struct {

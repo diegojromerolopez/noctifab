@@ -1,14 +1,21 @@
 config_version: '2.0'
 execution_report: "/app/report_mount/execution_report.md"
 agents:
-  architecture: code_first
+  # Using single_pass architecture for JVM/Spring Boot projects to avoid repetitive Gradle/JVM
+  # bootstrap latency (15-25s per test run across multiple turns). In single_pass, implementation
+  # and tests are co-generated in a single cohesive turn, reducing Gradle invocations by >60%.
+  architecture: single_pass
   orchestrator:
     number: 1
     iterations: 2
   product_manager:
     number: 1
     iterations: 2
-    max_user_stories: 5
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
     max_tokens: -1
     ensemble:
       strategy: parallel

@@ -83,8 +83,8 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.Agents.TaskExecutionOrder != "generator_first" {
 		t.Errorf("expected TaskExecutionOrder 'generator_first', got %q", cfg.Agents.TaskExecutionOrder)
 	}
-	if cfg.Agents.ProductManager.Number != 1 || cfg.Agents.ProductManager.Iterations != 2 || cfg.Agents.ProductManager.Passes != 2 || cfg.Agents.ProductManager.MaxUserStories != 15 {
-		t.Errorf("expected ProductManager {1, 2, 2, 15}, got %+v", cfg.Agents.ProductManager)
+	if cfg.Agents.ProductManager.Number != 1 || cfg.Agents.ProductManager.Iterations != 2 || cfg.Agents.ProductManager.Passes != 2 || cfg.Agents.ProductManager.GetMaxUserStories() != 5 {
+		t.Errorf("expected ProductManager {1, 2, 2, 5}, got %+v", cfg.Agents.ProductManager)
 	}
 	if cfg.Agents.Planner.Number != 1 || cfg.Agents.Planner.Iterations != 5 {
 		t.Errorf("expected Planner {1, 5}, got %+v", cfg.Agents.Planner)

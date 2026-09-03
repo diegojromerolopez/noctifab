@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.64.0] - 2026-09-03
+
+### Added
+- **Structured `user_stories` Configuration Schema (`agents.product_manager.user_stories`)**:
+  - Implemented `UserStoriesConfig` and `UserStoryComplexityConfig` under `agents.product_manager.user_stories` with `max_count` and `complexity: {min, max}`.
+  - Added helper accessor methods `GetMaxUserStories()`, `GetMinComplexity()`, and `GetMaxComplexity()`.
+  - Updated all 17 validation project configurations to use the new schema.
+- **Dynamic Complexity & Story Sizing Prompt Binding**:
+  - Bound `MinComplexity` and `MaxComplexity` into `ProductManagerPromptData`, `generate.tmpl`, and `audit.tmpl`.
+  - Product Manager dynamically balances story generation to target configured functional complexity bounds.
+- **Observable Primary Entry Point First Mandate**:
+  - Updated PM prompts to require that Task 1 of `US-001` implements a working, compiling primary entry point (CLI dispatcher, socket daemon, or library export) rather than empty placeholder stubs.
+- **Automatic Executable Permissions Detection**:
+  - Implemented `determineFilePerm` in `WriteFileTool` and `WriteFilesTool`, automatically setting `0755` permissions for files in `bin/`, `exe/`, `scripts/`, or matching `*.sh`.
+- **Validation Matrix Optimizations**:
+  - Pre-cached npm toolchain packages in `notebook/Dockerfile`.
+  - Fixed root user and OPAM switch environment in `ocalogue/Dockerfile`.
+  - Rewrote `ninline/SPEC.md` in high-density Engineering English.
+  - Tuned `jpacioli` with `single_pass` architecture and `wc` with non-blocking concurrency settings.
+
 ## [0.63.0] - 2026-09-02
 
 ### Added

@@ -229,9 +229,13 @@ elif [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || [ -d "tests" ] || [
 # 4. Ruby projects (calculator)
 elif [ -d "spec" ] || [ -f "Rakefile" ] || [ -f ".rspec" ]; then
   echo "Running Ruby RSpec test suites..."
+  [ -d "bin" ] && chmod -R +x bin/ 2>/dev/null || true
   if command -v rspec >/dev/null 2>&1; then
     if rspec -Ilib -Ispec spec; then
       echo "✅ rspec passed successfully."
+      TEST_PASSED=1
+    elif bundle exec rspec spec 2>/dev/null; then
+      echo "✅ bundle exec rspec passed successfully."
       TEST_PASSED=1
     else
       echo "❌ rspec failed."

@@ -108,8 +108,12 @@ func (t *WriteFilesTool) Execute(ctx context.Context, state *domain.State, args 
 			return "", fmt.Errorf("failed creating parent directory for %s: %w", entry.path, err)
 		}
 		content := normalizeMakefileTabs(entry.path, entry.content)
-		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+		perm := determineFilePerm(entry.path)
+		if err := os.WriteFile(fullPath, []byte(content), perm); err != nil {
 			return "", fmt.Errorf("failed writing file %s: %w", entry.path, err)
+		}
+		if perm == 0755 {
+			_ = os.Chmod(fullPath, 0755)
 		}
 		if err := checkPythonSyntax(ctx, fullPath); err != nil {
 			return "", fmt.Errorf("python syntax check failed on %s: %w", entry.path, err)
