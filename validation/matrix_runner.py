@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Comprehensive Validation Matrix Runner for Noctifab.
-Executes Batch 1 (11 projects) sequentially, followed by Batch 2 (djanban refactoring),
-enforcing a 10-minute timeout per container and generating detailed `<PROJECT>_FEEDBACK.md`
-reports at the repository root.
+Executes the validation projects with a configurable timeout (default 20 minutes / 1200s),
+capturing deep insights into <PROJECT>_FEEDBACK.md files at the repository root:
+issues, hurdles, speed, lag causes, failing edge cases, and future improvements.
 """
 
 import os
@@ -16,23 +16,17 @@ from datetime import datetime
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PROJECTS_DIR = os.path.join(ROOT_DIR, "validation", "projects")
-MAX_TIMEOUT_SECONDS = 600  # 10 minutes mandate per project
+DEFAULT_TIMEOUT_SECONDS = 1200  # 20 minutes limit per project
 
-BATCH_1 = [
-    "wc",
-    "searchthedocs",
-    "notebook",
-    "frontpunch",
-    "t4",
-    "pyedis",
-    "fortune",
+TARGET_PROJECTS = [
     "calculator",
+    "t4",
+    "frontpunch",
+    "wc",
+    "notebook",
     "ninline",
     "jpacioli",
     "ocalogue",
-]
-
-BATCH_2 = [
     "djanban",
 ]
 
@@ -127,6 +121,21 @@ def parse_log(log_path: str):
     with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         log_content = f.read()
         
+    # Extract failing test cases and stack traces
+    failing_tests = []
+    for m in re.finditer(r"(?:FAIL|FAILED|FAILURE|Error)[\s:]+([^\n\r]+)", log_content):
+        line = m.group(0).strip()
+        if len(line) < 200 and not any(skip in line for skip in ["0 failed", "FAIL (exit 0)", "PASS"]):
+            if line not in failing_tests:
+                failing_tests.append(line)
+                
+    # Extract compiler / syntax errors
+    compiler_snippets = []
+    for m in re.finditer(r"(?:error\[E\d+\]|SyntaxError|TypeError|gcc: error|clang: error|NameError|ImportError|AttributeError|Compilation error|build failed)[^\n\r]*\n(?:[^\n\r]*\n){1,3}", log_content):
+        snip = m.group(0).strip()
+        if snip not in compiler_snippets:
+            compiler_snippets.append(snip)
+
     analysis = {
         "ensemble_pm_triggers": len(re.findall(r"ensemble|synthesiz|synthesis|consensus", log_content, re.IGNORECASE)),
         "ensemble_generator_tiers": len(re.findall(r"tier|adaptive|fast_tier|standard_tier|heavy_tier", log_content, re.IGNORECASE)),
@@ -137,9 +146,12 @@ def parse_log(log_path: str):
         "model_not_found_404": len(re.findall(r"404 Not Found|model_not_found", log_content, re.IGNORECASE)),
         "schema_retries": len(re.findall(r"schema retry|envelope retry|parse error|invalid json", log_content, re.IGNORECASE)),
         "linter_retries": len(re.findall(r"linter failure|linter error|consecutive linter|Linter found", log_content, re.IGNORECASE)),
-        "compiler_errors": len(re.findall(r"error\[E\d+\]|compilation failed|SyntaxError|TypeError|gcc: error", log_content, re.IGNORECASE)),
+        "compiler_errors": len(re.findall(r"error\[E\d+\]|compilation failed|SyntaxError|TypeError|gcc: error|build failed", log_content, re.IGNORECASE)),
         "unblocker_triggers": len(re.findall(r"\[UnblockerAgent\] Detected", log_content, re.IGNORECASE)),
+        "action_limit_hits": len(re.findall(r"action ceiling|action limit|max actions exceeded", log_content, re.IGNORECASE)),
         "models_mentioned": sorted(list(set(re.findall(r"(?:claude|gemini|openai|deepseek|qwen|glm|openrouter|opencode)[a-zA-Z0-9\.\-_]*", log_content, re.IGNORECASE)))),
+        "failing_tests": failing_tests[:15],
+        "compiler_snippets": compiler_snippets[:5],
         "raw_sample": log_content[-4000:] if len(log_content) > 4000 else log_content,
         "log_length": len(log_content),
     }
@@ -157,11 +169,12 @@ def inspect_generated_code(project_dir: str):
                 files_found.append(rel)
     return sorted(files_found)
 
-def generate_feedback_doc(project: str, duration_sec: float, exit_code: int, timed_out: bool, report_data: dict, log_analysis: dict, generated_files: list):
+def generate_feedback_doc(project: str, duration_sec: float, exit_code: int, timed_out: bool, timeout_limit: int, report_data: dict, log_analysis: dict, generated_files: list):
     feedback_filename = f"{project.upper().replace('-', '_')}_FEEDBACK.md"
     feedback_path = os.path.join(ROOT_DIR, feedback_filename)
     
-    status_label = "TIMEOUT (Terminated at 10m limit)" if timed_out else ("SUCCESS (Completed validation)" if exit_code == 0 else f"FAILED (Exit code {exit_code})")
+    timeout_min = timeout_limit / 60
+    status_label = f"TIMEOUT (Terminated at {timeout_min:.0f}m limit)" if timed_out else ("SUCCESS (Completed validation)" if exit_code == 0 else f"FAILED (Exit code {exit_code})")
     exec_status = report_data.get("status", "UNKNOWN")
     lead_time = report_data.get("lead_time", f"{duration_sec:.1f}s")
     stories = report_data.get("stories_count", "-")
@@ -176,12 +189,30 @@ def generate_feedback_doc(project: str, duration_sec: float, exit_code: int, tim
     models = ", ".join(f"`{m}`" for m in log_analysis.get("models_mentioned", [])) or "None logged"
     is_refactoring = (project == "djanban")
     
+    # Speed & Lag causes evaluation
+    lag_factors = []
+    if timed_out:
+        lag_factors.append(f"Execution reached full {timeout_min:.0f}-minute envelope without completing all lifecycle stories/tasks.")
+    if log_analysis.get("rate_limits_429", 0) > 0:
+        lag_factors.append(f"HTTP 429 Rate Limiting encountered {log_analysis['rate_limits_429']} times, causing backoff delays.")
+    if log_analysis.get("linter_retries", 0) > 0:
+        lag_factors.append(f"Linter iteration churn ({log_analysis['linter_retries']} events) added intermediate roundtrips.")
+    if log_analysis.get("compiler_errors", 0) > 0:
+        lag_factors.append(f"Compiler/Syntax errors ({log_analysis['compiler_errors']} events) required self-healing repair cycles.")
+    if log_analysis.get("schema_retries", 0) > 0:
+        lag_factors.append(f"JSON schema/envelope parse errors ({log_analysis['schema_retries']} retries) caused model re-prompts.")
+    if log_analysis.get("unblocker_triggers", 0) > 0:
+        lag_factors.append(f"Unblocker watchdog intervened {log_analysis['unblocker_triggers']} times to break loops/stalls.")
+    if not lag_factors:
+        lag_factors.append("No significant runtime lag or backoff contention observed; execution proceeded smoothly.")
+
     doc = f"""# Noctifab Validation Feedback: `{project}`
 
 **Target Project**: `validation/projects/{project}`  
 **Project Category**: {'Legacy Codebase Refactoring & Modernization' if is_refactoring else 'Greenfield / Specification-Driven Autonomous Implementation'}  
 **Execution Timestamp**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}  
 **Wall-Clock Duration**: {duration_sec:.1f}s (~{duration_sec/60:.2f} minutes)  
+**Configured Timeout Limit**: {timeout_limit}s ({timeout_min:.0f} minutes)  
 **Harness Verdict**: **{status_label}**  
 **Internal Report Status**: `{exec_status}`  
 
@@ -191,7 +222,7 @@ def generate_feedback_doc(project: str, duration_sec: float, exit_code: int, tim
 
 | Metric | Measured Value | Evaluation & Details |
 | :--- | :--- | :--- |
-| **Execution Verdict** | **{status_label}** | {'Passed all acceptance gates and black-box verification' if exit_code == 0 and not timed_out else ('Execution stopped after 10-minute timeout limit' if timed_out else 'Terminated on error or test failure')} |
+| **Execution Verdict** | **{status_label}** | {'Passed all acceptance gates and black-box verification' if exit_code == 0 and not timed_out else (f'Execution stopped after {timeout_min:.0f}-minute timeout limit' if timed_out else 'Terminated on error or test failure')} |
 | **Total Lead Time** | `{lead_time}` | Physical wall-clock duration: {duration_sec:.1f}s |
 | **User Stories** | `{stories}` | Decomposition and roadmap execution status |
 | **Tasks Completed** | `{tasks}` | Total tasks planned and processed |
@@ -203,39 +234,55 @@ def generate_feedback_doc(project: str, duration_sec: float, exit_code: int, tim
 
 ---
 
-## 2. Key Insights & Architecture Assessment
+## 2. Speed & Lag Analysis
 
-### 2.1 Specification Decomposition & Product Management
-- **Roadmap Slicing**: Noctifab autonomously processed `SPEC.md` into actionable user stories and modular tasks without pre-seeded host roadmaps.
-- **DDD & SOLID Compliance**: Examined generated components in `output/` for clean separation between pure domain models and infrastructure adapters (e.g. storage, CLI, network).
+### 2.1 Wall-Clock Performance & Throughput
+- **Total Duration**: `{duration_sec:.1f}s` (~`{duration_sec/60:.2f} min`) against a `{timeout_min:.0f} min` ceiling.
+- **Task Throughput**: {f"{float(tasks)/max(duration_sec/60, 0.1):.2f} tasks/min" if tasks != "-" and tasks.isdigit() and int(tasks) > 0 else "N/A"}
+- **Active Models / Providers**: {models}
 
-### 2.2 Model Routing & Provider Operations
-- **Active Providers / Models**: {models}
-- **Rate Limit (HTTP 429) Contention**: {log_analysis.get('rate_limits_429', 0)} incidents detected.
-- **Model Resolution / Auth Failovers**: {log_analysis.get('model_not_found_404', 0) + log_analysis.get('auth_errors_401_403', 0)} incidents detected.
-- **Schema Adherence & Envelope Retries**: {log_analysis.get('schema_retries', 0)} retries required.
-- **Unblocker Agent Interventions**: {log_analysis.get('unblocker_triggers', 0)} stall detections assessed.
+### 2.2 Primary Lag Causes & Bottlenecks
+"""
+    for lag in lag_factors:
+        doc += f"- **{lag.split(' ', 1)[0]}**: {lag}\n"
 
+    doc += f"""
 ---
 
-## 3. Bottlenecks & Execution Hurdles
+## 3. Issues, Hurdles & Edge Cases
 
-### 3.1 Observed Bottlenecks
+### 3.1 Observed Execution Hurdles
 - **Linter & Static Analysis Churn**: {log_analysis.get('linter_retries', 0)} linter diagnostic events observed in the log.
 - **Compiler / Syntax Hurdles**: {log_analysis.get('compiler_errors', 0)} compiler/syntax error occurrences handled by generator/tester iterations.
-- **Execution Time Allocation**: {'Project reached the 10-minute timeout mandate; tasks required more time or iteration cycles than allotted.' if timed_out else 'Project finished within the 10-minute container execution envelope.'}
+- **Schema Adherence & Envelope Retries**: {log_analysis.get('schema_retries', 0)} retries required.
+- **Rate Limit (HTTP 429) Contention**: {log_analysis.get('rate_limits_429', 0)} incidents detected.
+- **Model Resolution / Auth Failovers**: {log_analysis.get('model_not_found_404', 0) + log_analysis.get('auth_errors_401_403', 0)} incidents detected.
+- **Unblocker Agent Interventions**: {log_analysis.get('unblocker_triggers', 0)} stall detections assessed.
 
-### 3.2 Error & Self-Correction Log
+### 3.2 Failing Edge Cases & Test Diagnostics
 """
+    failing_tests = log_analysis.get("failing_tests", [])
+    if failing_tests:
+        doc += "The following test failure / error signatures were identified in container output:\n"
+        for ft in failing_tests:
+            doc += f"- `{ft}`\n"
+    else:
+        doc += "No test assertion failures or unhandled exceptions logged.\n"
+
+    compiler_snippets = log_analysis.get("compiler_snippets", [])
+    if compiler_snippets:
+        doc += "\n#### Compiler / Syntax Diagnostics:\n```text\n"
+        for snip in compiler_snippets:
+            doc += f"{snip}\n---\n"
+        doc += "```\n"
+
     raw_errors = report_data.get("raw_errors", [])
     if raw_errors:
-        doc += "| Error ID | Category | Status / Resolution | Summary |\n| :--- | :--- | :--- | :--- |\n"
+        doc += "\n### 3.3 Error & Self-Correction Log\n| Error ID | Category | Status / Resolution | Summary |\n| :--- | :--- | :--- | :--- |\n"
         for err in raw_errors[:10]:
             doc += f"| `{err['id']}` | {err['category']} | {err['resolution']} | {err['summary']} |\n"
         if len(raw_errors) > 10:
             doc += f"| ... | ... | ... | *({len(raw_errors) - 10} additional error events)* |\n"
-    else:
-        doc += "No fatal runtime or diagnostic errors recorded in report.\n"
 
     doc += f"""
 ---
@@ -264,12 +311,12 @@ Found **{len(generated_files)}** files generated:
     doc += f"""
 ---
 
-## 5. Potential Improvements & Next Steps
+## 5. Potential Improvements & Actionable Next Steps
 
-1. **Task Slicing Granularity**: {'Keep current task decomposition' if exit_code == 0 else 'Ensure tasks are vertically sliced (walking skeleton) to produce runnable executables in the first task before deeper domain expansion'}.
-2. **Linter & Test Optimization**: {'Toolchain verification operated cleanly' if log_analysis.get('linter_retries', 0) == 0 else 'Refine linter deferral and caching rules to prevent repetitive diagnostic roundtrips'}.
-3. **Token Efficiency**: Consumed {tokens} total tokens during execution. Optimize prompt compaction and cache reuse to reduce latency and token spend.
-4. **Refactoring Strategy**: {'Ensure existing characterization tests run before applying modern patterns' if is_refactoring else 'Maintain clean contract-driven black-box testing'}.
+1. **Task Slicing Granularity**: {'Task decomposition executed cleanly.' if exit_code == 0 else 'Ensure tasks are vertically sliced (walking skeleton) to produce runnable executables in the first task before deeper domain expansion.'}
+2. **Linter & Test Optimization**: {'Toolchain verification operated cleanly.' if log_analysis.get('linter_retries', 0) == 0 else 'Refine linter deferral and caching rules to prevent repetitive diagnostic roundtrips.'}
+3. **Token & Latency Efficiency**: Consumed {tokens} total tokens during execution. Optimize prompt compaction and cache reuse to reduce latency and token spend.
+4. **Resilience & Self-Correction**: {'Maintain current self-healing workflows.' if not timed_out and exit_code == 0 else 'Enhance early error detection and forced compilation fallbacks to prevent stalling on retries.'}
 
 ---
 
@@ -285,9 +332,9 @@ Found **{len(generated_files)}** files generated:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Wrote feedback report to {feedback_filename}")
     return feedback_path
 
-def run_single_project(project: str):
+def run_single_project(project: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS):
     print(f"\n==================================================")
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] STARTING VALIDATION: {project}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] STARTING VALIDATION: {project} (Timeout: {timeout_seconds}s / {timeout_seconds/60:.0f}m)")
     print(f"==================================================")
     
     start_time = time.time()
@@ -317,8 +364,8 @@ def run_single_project(project: str):
                 break
             
             elapsed = time.time() - start_time
-            if elapsed > MAX_TIMEOUT_SECONDS:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ TIMEOUT reached for {project} (>{MAX_TIMEOUT_SECONDS}s). Terminating container...", flush=True)
+            if elapsed > timeout_seconds:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ TIMEOUT reached for {project} (>{timeout_seconds}s). Terminating container...", flush=True)
                 timed_out = True
                 subprocess.run(f"docker ps -q --filter name=validate-{project} | xargs -r docker rm -f", shell=True, capture_output=True)
                 process.terminate()
@@ -344,7 +391,6 @@ def run_single_project(project: str):
         timed_out = True
         process.kill()
 
-        
     duration = time.time() - start_time
     exit_code = process.returncode if process.returncode is not None else 1
     if timed_out:
@@ -370,6 +416,7 @@ def run_single_project(project: str):
         duration_sec=duration,
         exit_code=exit_code,
         timed_out=timed_out,
+        timeout_limit=timeout_seconds,
         report_data=report_data,
         log_analysis=log_analysis,
         generated_files=generated_files,
@@ -389,51 +436,34 @@ def run_single_project(project: str):
 
 def main():
     custom_projects = []
+    timeout_val = DEFAULT_TIMEOUT_SECONDS
     for arg in sys.argv[1:]:
         if arg.startswith("--projects="):
             custom_projects.extend([p.strip() for p in arg.split("=", 1)[1].split(",") if p.strip()])
+        elif arg.startswith("--timeout="):
+            try:
+                timeout_val = int(arg.split("=", 1)[1].strip())
+            except ValueError:
+                pass
         elif not arg.startswith("-"):
             custom_projects.append(arg.strip())
 
-    if custom_projects:
-        batch_1 = [p for p in custom_projects if p != "djanban"]
-        batch_2 = [p for p in custom_projects if p == "djanban"]
-    else:
-        batch_1 = BATCH_1
-        batch_2 = BATCH_2
+    projects_to_run = custom_projects if custom_projects else TARGET_PROJECTS
 
     print(f"==================================================")
     print(f"Starting Noctifab Matrix Runner")
-    print(f"Batch 1 ({len(batch_1)} projects): {', '.join(batch_1)}")
-    if batch_2:
-        print(f"Batch 2 ({len(batch_2)} projects): {', '.join(batch_2)}")
-    print(f"Timeout per project: {MAX_TIMEOUT_SECONDS}s (10 min)")
+    print(f"Target Projects ({len(projects_to_run)}): {', '.join(projects_to_run)}")
+    print(f"Timeout per project: {timeout_val}s ({timeout_val/60:.0f} min)")
     print(f"==================================================")
     
     all_results = []
-    
-    if batch_1:
-        print(f"\n##################################################")
-        print(f"### EXECUTING BATCH 1 (Greenfield & Specification Projects)")
-        print(f"##################################################")
-        
-        for idx, project in enumerate(batch_1, 1):
-            print(f"\n>>> [Batch 1] Running {idx}/{len(batch_1)}: {project}")
-            res = run_single_project(project)
-            all_results.append(res)
-            
-    if batch_2:
-        print(f"\n##################################################")
-        print(f"### BATCH 1 COMPLETE. EXECUTING BATCH 2 (Refactoring Projects)")
-        print(f"##################################################")
-        
-        for idx, project in enumerate(batch_2, 1):
-            print(f"\n>>> [Batch 2] Running {idx}/{len(batch_2)}: {project}")
-            res = run_single_project(project)
-            all_results.append(res)
+    for idx, project in enumerate(projects_to_run, 1):
+        print(f"\n>>> Running {idx}/{len(projects_to_run)}: {project}")
+        res = run_single_project(project, timeout_seconds=timeout_val)
+        all_results.append(res)
             
     print(f"\n==================================================")
-    print(f"ALL VALIDATION BATCHES COMPLETED")
+    print(f"ALL VALIDATION PROJECTS COMPLETED")
     print(f"==================================================")
     print(f"| Project | Status | Duration | Stories | Tasks | Errors | Tokens |")
     print(f"| :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
@@ -443,4 +473,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

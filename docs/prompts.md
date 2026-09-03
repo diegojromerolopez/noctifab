@@ -6,7 +6,7 @@ and one action; the effective template is resolved per `(agent, action)` key.
 
 ## The (agent, action) catalog
 
-There are **23 customizable templates across 7 agents**:
+There are **24 customizable templates across 8 agents**:
 
 | Agent | Actions |
 | --- | --- |
@@ -15,8 +15,10 @@ There are **23 customizable templates across 7 agents**:
 | `tester` | `write`, `fix`, `refactor`, `write_breadth_first` |
 | `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `implement_breadth_first`, `implement_breadth_first_fix`, `surgical_repair` |
 | `qa` | `acceptance` |
+| `auditor` | `audit` |
 | `last_resort` | `repair` |
 | `spec` | `pm_draft`, `architect_enrich`, `tester_enrich`, `qa_enrich`, `consensus_audit`, `refine` |
+
 
 Run `noctifab prompts list` to see the catalog with each action's effective
 source.

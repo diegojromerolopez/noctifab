@@ -1134,6 +1134,8 @@ To ensure correct software implementation, `noctifab` utilizes a sequential Test
     - **Happy paths** must be verified using end-to-end (e2e) tests.
     - **Input validations and simple edge cases** must be verified using unit tests.
     - **Complex internal validation flows and multi-component interactions** must be verified using integration tests.
+    - **Test Scope & Task Scope Alignment:** For internal component/library tasks (where `target_files` does not target the primary application entrypoint), tests must be in-process unit/integration tests running directly against library interfaces in memory without spawning external OS process binaries. Black-box E2E binary tests (e.g. `cargo_bin`, child processes) are authored during entrypoint wiring tasks.
+    - **Thin Shell Entrypoint Pattern:** Application entrypoints (`main.go`, `main.rs`, `main.py`, `server.ts`) must be thin wrappers (< 15 lines) delegating immediately to pure, callable application core functions (`run()`, `create_app()`, `WorkerEngine`) to allow in-process testing of the complete application lifecycle.
 2.  **Generator Agent:** Sandbox-restricted worker executing in a task-specific Git branch. It reads the written tests and implements the functionality to make them pass.
 3.  **Deterministic Test Runs & Majority Voting:** The Test Validator runs the project's test suite up to 3 times as independent processes in the workspace root:
     *   **Majority Vote:** If at least 2 out of 3 runs succeed (exit code `0`), the scenario is approved and marked as `TaskSuccess`.
@@ -1147,6 +1149,21 @@ In addition to dynamic validation, the Validator blocks actions violating:
 1.  **VCS Branch Protection:** Direct push to protected branches (e.g. `main`) is blocked.
 2.  **Path Traversal Protection:** Reading/writing files outside the workspace root is blocked.
 3.  **Command Execution Whitelist:** Only running commands matching a strict whitelist is allowed.
+
+#### 3.4.2. Pre-Tester & Post-Tester Quality Gates (AntiStubValidator)
+To prevent non-functional dummy implementations, placeholder stubs, vacuous assertions, and test masking from slipping into the codebase, Noctifab executes automated static analysis quality gates (`pkg/services/anti_stub_validator.go`) between TDD agent turns:
+
+1.  **Pre-Tester Functional Quality Gate:** Runs immediately after Turn 1 of the Generator Agent before the Tester Agent is invoked. It audits generated source code against language-agnostic anti-stub rules:
+    *   **Universal:** Blocks `# TODO: implement`, `// FIXME: not implemented` markers.
+    *   **Python:** Blocks `raise NotImplementedError`, empty `def` bodies with `pass` / `...` (outside Protocol/ABC definitions), and dummy `if __name__ == '__main__': pass`.
+    *   **Rust:** Blocks `todo!()`, `unimplemented!()`, and single-line / multi-line empty `fn main() {}` functions.
+    *   **Go:** Blocks `panic("not implemented")` and empty `func main() {}` entrypoint blocks.
+    *   **C / C++:** Blocks empty `int main(void) { return 0; }` or empty entrypoint blocks without dispatch logic.
+    *   **Java / Kotlin:** Blocks empty `public static void main(String[] args) {}` and `fun main() {}`.
+    *   **JavaScript / TypeScript:** Blocks `throw new Error("not implemented")` and empty `main` functions.
+    *   *Remediation Trigger:* If any violation is found, the orchestrator triggers an immediate remediation turn (`fix` role) before handing off to the Tester.
+2.  **Post-Tester Quality Gate:** Runs immediately after the Tester Agent authors tests. It scans test files for tautological/vacuous assertions (`assert True`, `assert 1 == 1`, empty test functions) and shell error suppression masks (`|| true`, `|| exit 0`, `set +e`), triggering an automatic test fix turn if detected.
+
 
 #### 3.4.3. Harness Sandbox Boundaries (Configurable Isolation Modes)
 To guarantee safe operation and prevent irreversible actions (such as unauthorized commands or data deletion), the execution engine executes all tools and commands inside a restricted, configurable agent harness sandbox. The isolation model is configured via the `--sandbox-mode` CLI flag or `NOCTIFAB_SANDBOX_MODE` environment variable.

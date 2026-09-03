@@ -19,11 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated PM prompts to require that Task 1 of `US-001` implements a working, compiling primary entry point (CLI dispatcher, socket daemon, or library export) rather than empty placeholder stubs.
 - **Automatic Executable Permissions Detection**:
   - Implemented `determineFilePerm` in `WriteFileTool` and `WriteFilesTool`, automatically setting `0755` permissions for files in `bin/`, `exe/`, `scripts/`, or matching `*.sh`.
+- **Language-Agnostic Thin Shell Entrypoint Pattern & Test Scope Alignment**:
+  - Mandated that primary executable entrypoints (`main.rs`, `main.go`, `main.py`, `server.ts`, `Main.java`) are thin wrappers (< 15 lines) delegating immediately to testable core entrypoint functions (`run()`, `create_app()`, `WorkerEngine`).
+  - Enforced that Tester agents author fast in-process unit/integration tests against library APIs directly in memory during component tasks, reserving external compiled binary OS invocations for entrypoint and black-box E2E tasks.
+- **Multi-Language Empty Entrypoint Anti-Stub Detection (`AntiStubValidator`)**:
+  - Extended pre-tester static quality gate to detect single-line and multi-line empty `main` functions and dummy stubs across Go, C/C++, Java, Kotlin, Scala, Python (`if __name__ == '__main__': pass`), and TypeScript/JavaScript.
+- **In-Memory Test Double & Broker Deadlock Prevention**:
+  - Mandated in-memory repository fakes (`InMemoryRepository`, `FakeQueue`, `InMemoryStore`, SQLite `:memory:`) for domain and component tasks across all Generator and Tester prompts, eliminating test stalls on live PostgreSQL, Redis, and Valkey network sockets.
+- **Actionable Test & Linter Timeout Diagnostics (`RunTestsTool`, `RunLinterTool`)**:
+  - Added descriptive timeout diagnostics on `context.DeadlineExceeded` in `RunTestsTool` and `RunLinterTool` to immediately alert agents of infinite loops, deadlocks, or blocking I/O.
 - **Validation Matrix Optimizations**:
   - Pre-cached npm toolchain packages in `notebook/Dockerfile`.
   - Fixed root user and OPAM switch environment in `ocalogue/Dockerfile`.
   - Rewrote `ninline/SPEC.md` in high-density Engineering English.
   - Tuned `jpacioli` with `single_pass` architecture and `wc` with non-blocking concurrency settings.
+
 
 ## [0.63.0] - 2026-09-02
 

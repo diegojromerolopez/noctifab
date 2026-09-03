@@ -339,7 +339,12 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	}
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
-	return t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
+	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
+	if runCtx.Err() != nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+		timeoutMsg := fmt.Sprintf("TIMEOUT: Test command timed out after %v (possible infinite loop, deadlock, or blocking I/O waiting for input/socket).\nLast output:\n%s", timeout, out)
+		return timeoutMsg, fmt.Errorf("test command timed out after %v", timeout)
+	}
+	return out, err
 }
 
 // countLinterIssues counts the number of distinct linter issue lines in the
@@ -401,6 +406,9 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 	}
 
 	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")
+	if runCtx.Err() != nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+		return fmt.Sprintf("TIMEOUT: Linter command timed out after %v.\nLast output:\n%s", timeout, out), fmt.Errorf("linter command timed out after %v", timeout)
+	}
 	if err == nil {
 		return out, nil
 	}

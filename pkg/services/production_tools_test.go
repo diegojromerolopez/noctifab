@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 func requirePython(t *testing.T) {
@@ -68,4 +70,44 @@ func TestCheckPythonSyntax(t *testing.T) {
 			t.Error("cancelled syntax check did not fail fast")
 		}
 	})
+}
+
+type timeoutMockSandbox struct {
+	Sandbox
+}
+
+func (s *timeoutMockSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
+	<-ctx.Done()
+	return "partial log output", ctx.Err()
+}
+
+func TestRunTestsTool_Timeout(t *testing.T) {
+	tool := &RunTestsTool{
+		Runner:  &timeoutMockSandbox{},
+		Timeout: 50 * time.Millisecond,
+	}
+
+	out, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/tmp"}, map[string]any{})
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(out, "TIMEOUT: Test command timed out after 50ms") {
+		t.Errorf("expected diagnostic timeout message, got %q", out)
+	}
+}
+
+func TestRunLinterTool_Timeout(t *testing.T) {
+	tool := &RunLinterTool{
+		Runner:        &timeoutMockSandbox{},
+		LinterCommand: "ruff check .",
+		Timeout:       50 * time.Millisecond,
+	}
+
+	out, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/tmp"}, map[string]any{})
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(out, "TIMEOUT: Linter command timed out after 50ms") {
+		t.Errorf("expected diagnostic timeout message, got %q", out)
+	}
 }
