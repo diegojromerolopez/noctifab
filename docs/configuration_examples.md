@@ -433,7 +433,11 @@ agents:
   architecture: "code_first"
   product_manager:
     number: 1
-    max_user_stories: 5
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
     providers:
       - name: "claude"
   planner:

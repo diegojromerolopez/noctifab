@@ -80,6 +80,12 @@ agents:
   product_manager:
     number: 1
     iterations: 2
+    passes: 2
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
 
   planner:
     number: 1
@@ -126,7 +132,7 @@ clarification_timeout_action: abort
 - **`task_execution_order`** (String): Task verification sequence mode. Options: `generator_first` (default: Generator implements code first, followed by Tester verification), or `tester_first` (TDD mode: Tester Agent generates unit/integration tests first, followed by Generator implementation). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
 - **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls allowed per agent response turn.
 - **`orchestrator`**: Configures Orchestrator agents managing task lifecycle, story DAG scheduling, and state synchronization (`number: 1` = sequential story dispatch, `number: > 1` = concurrent multi-story execution via `StoryDAGScheduler`, `iterations: 2`).
-- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `max_user_stories: 5`, `passes: 2`). Supports an optional `max_user_stories` setting (e.g. `5`) to hard-cap story generation, and a `passes` setting (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit).
+- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `passes: 2`). Supports `user_stories.max_count` (e.g. `5`) to hard-cap story generation, `user_stories.complexity: {min: 15, max: 35}` to enforce target functional Complexity Units per story, and `passes` (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit). (Legacy `max_user_stories` is also backward-compatible).
 - **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs, automatically serializing task models into `roadmap/tasks/` (`number: 1`, `iterations: 5`).
 - **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 20`).
 - **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 15`).

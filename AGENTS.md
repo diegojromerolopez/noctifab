@@ -66,6 +66,9 @@ To maintain modularity and high context compatibility, the following guidelines 
 9.  **Comprehensive Error Handling & Crash Prevention Mandate:**
     *   Error handling **MUST BE comprehensive**. Every error across all packages, layers, and goroutines must be explicitly checked, handled, or wrapped with contextual detail (`fmt.Errorf("...: %w", err)`).
     *   All potential error scenarios and edge cases must be dealt with defensively in the best way possible (including graceful degradation, exponential backoff with jitter on transient database/network contentions, fallback strategies, proper unblocking of waiting callers, and thorough channel/mutex cleanup on shutdown) so that the program never unexpectedly crashes, deadlocks, panics, or silently loses state.
+10. **Documentation Synchronization Mandate:**
+    *   Every time the configuration schema, CLI flags, architectural components, prompt templates, or functionality changes, before committing, AI agents **MUST** inspect and update the corresponding documentation files under `docs/` and (if applicable) `README.md` and `SPEC.md`.
+    *   Never leave documentation out of sync with code modifications. Ensure all configuration options, examples, and architecture references accurately reflect the latest codebase state.
 
 ---
 

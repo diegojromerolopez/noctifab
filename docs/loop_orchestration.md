@@ -37,7 +37,11 @@ The total number of user stories created for the project is configured independe
 ```yaml
 agents:
   product_manager:
-    max_user_stories: 5     # Maximum user stories in roadmap (default: 5)
+    user_stories:
+      max_count: 5          # Maximum user stories in roadmap (default: 5)
+      complexity:
+        min: 15             # Minimum target complexity units per story
+        max: 35             # Maximum target complexity units per story
     passes: 2               # PM refinement passes
 ```
 
