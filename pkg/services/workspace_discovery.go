@@ -10,6 +10,40 @@ import (
 	"strings"
 )
 
+var defaultExcludedDirs = map[string]bool{
+	".git":          true,
+	".noctifab":     true,
+	"target":        true,
+	"node_modules":  true,
+	"__pycache__":   true,
+	".venv":         true,
+	"venv":          true,
+	"dist":          true,
+	"bin":           true,
+	"build":         true,
+	".bundle":       true,
+	".gradle":       true,
+	".cargo":        true,
+	".pytest_cache": true,
+	".coverage":     true,
+	".idea":         true,
+	".vscode":       true,
+}
+
+var defaultExcludedExts = map[string]bool{
+	".pyc":   true,
+	".pyo":   true,
+	".pyd":   true,
+	".class": true,
+	".o":     true,
+	".a":     true,
+	".so":    true,
+	".dylib": true,
+	".dll":   true,
+	".exe":   true,
+	".log":   true,
+}
+
 // IsPathExcluded evaluates whether a relative path is excluded by system rules or configured patterns.
 func IsPathExcluded(relPath string, excludePaths []string) bool {
 	cleanRel := filepath.Clean(relPath)
@@ -19,9 +53,14 @@ func IsPathExcluded(relPath string, excludePaths []string) bool {
 	slashRel := filepath.ToSlash(cleanRel)
 	parts := strings.Split(slashRel, "/")
 	for _, p := range parts {
-		if p == ".git" || p == ".noctifab" {
+		if defaultExcludedDirs[p] {
 			return true
 		}
+	}
+
+	ext := strings.ToLower(filepath.Ext(slashRel))
+	if defaultExcludedExts[ext] {
+		return true
 	}
 
 	for _, exp := range excludePaths {

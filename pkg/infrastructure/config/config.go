@@ -405,7 +405,7 @@ func NormalizeArchitecture(arch string) string {
 	switch strings.ToLower(strings.TrimSpace(arch)) {
 	case "code_first", "code_first_verification_loop", "cfv", "dfv":
 		return "code_first"
-	case "single_pass", "single_pass_execution", "spe":
+	case "single_pass", "single_pass_execution", "spe", "single_pass_co_synthesis", "co_synthesis", "single_pass_synthesis", "spcs":
 		return "single_pass"
 	case "breadth_first", "breadth_first_generation", "bfg", "big":
 		return "breadth_first"

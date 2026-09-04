@@ -152,7 +152,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		passed, logMsg = o.RunFallbackAgent(ctx, task, &taskState, taskGit, task.RecoveryDirective, "fallback_stall_escalation")
 	} else {
 		switch arch {
-		case "single_pass", "single_pass_execution", "spe":
+		case "single_pass", "single_pass_execution", "spe", "single_pass_co_synthesis", "co_synthesis", "single_pass_synthesis", "spcs":
 			o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
 		case "breadth_first", "breadth_first_generation", "bfg", "big":
 			o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.69.0] - 2026-09-04
+
+### Added
+- **Unified Pipelined Task Synthesis / Co-Synthesis Mode (`single_pass_co_synthesis`, `co_synthesis`)**:
+  - Expanded `NormalizeArchitecture` to support `single_pass_co_synthesis`, `co_synthesis`, `single_pass_synthesis`, and `spcs` aliases mapping directly to canonical `single_pass`.
+  - Upgraded `executeTaskSinglePass` in `pkg/services/orchestrator_execute_single_pass.go` to enforce zero-token code auto-formatting via `stageAndCommit` and pre-stage stub rejection via `auditGeneratorFunctionalOutput`, ensuring generated implementations and tests meet high functional quality without hollow stubs before verification.
+  - Added unit test coverage in `pkg/services/orchestrator_execute_single_pass_test.go` and `pkg/infrastructure/config/config_validation_test.go`.
+- **Pre-Flight `.gitignore` Synthesis & Build Artifact Guardrails (`EnsureProjectGitignore`, `IsPathExcluded`)**:
+  - Implemented `EnsureProjectGitignore` in `pkg/services/gitignore_guardrail.go` to non-destructively ensure project repositories contain critical build artifact, test cache, and dependency ignore rules (`target/`, `node_modules/`, `dist/`, `bin/`, `build/`, `__pycache__/`, `*.py[cod]`, `.venv/`, `venv/`, `.bundle/`, `*.class`, `*.o`, `*.so`, `*.dylib`, `*.log`, `.noctifab/`).
+  - Integrated `.gitignore` verification into CLI pre-flight checks (`cmd/noctifab/cli/preflight.go`).
+  - Strengthened `IsPathExcluded` in `pkg/services/workspace_discovery.go` with default build directory and binary artifact extension guardrails, preventing runaway database and Git worktree tracking when testing unignored target workspaces.
+  - Added BDD test specifications in `pkg/services/gitignore_guardrail_test.go` and `pkg/services/workspace_discovery_test.go`.
+
 ## [0.68.0] - 2026-09-04
 
 ### Added

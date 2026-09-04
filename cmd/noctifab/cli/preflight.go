@@ -10,6 +10,7 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 )
 
 const maxAllowedPingLatency = 10 * time.Second
@@ -59,6 +60,12 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 	pDir := "."
 	if len(projectDir) > 0 && projectDir[0] != "" {
 		pDir = projectDir[0]
+	}
+
+	if err := services.EnsureProjectGitignore(pDir); err != nil {
+		fmt.Printf("⚠️  Warning: unable to ensure .gitignore guardrails: %v\n", err)
+	} else {
+		fmt.Println("- Project .gitignore guardrails: OK")
 	}
 
 	tools := []string{"go", "docker", "python3", "rustc", "make", "gcc"}

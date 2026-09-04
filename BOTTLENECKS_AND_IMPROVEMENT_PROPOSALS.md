@@ -176,13 +176,14 @@ Recent validation runs across multiple project tiers demonstrate several critica
 
 ## 4. Concrete Improvement Proposals & Architectural Solutions
 
-### Proposal 1: Unified Pipelined Task Synthesis (P0 — Latency Reduction)
+### Proposal 1: Unified Pipelined Task Synthesis / Co-Synthesis Mode (P0 — Latency Reduction) — ✅ **Implemented in v0.69.0**
 **Goal**: Reduce LLM turns per task from 5+ turns to 1–2 turns.
 
 1. **Combined Implement & Test Generation Turn**:
-   Instead of dispatching the Generator for minimal code, then Tester for tests, then Generator for refactoring, introduce a **Single-Pass Co-Synthesis Mode** (`agents.architecture: single_pass_co_synthesis`):
-   - Provide the task specification and black-box contract to a unified or paired prompt.
-   - The agent writes both the implementation file(s) and test file(s) in a single turn using `write_files`.
+   Introduced **Single-Pass Co-Synthesis Mode** (`agents.architecture: single_pass_co_synthesis`, aliased to `co_synthesis`):
+   - Provide the task specification and black-box contract to a unified generator prompt.
+   - The agent writes both the implementation file(s) and test file(s) in a single turn.
+   - Enforce zero-token auto-formatting via `stageAndCommit` and pre-stage stub rejection via `auditGeneratorFunctionalOutput`.
    - Run the test validator immediately.
 2. **Fast-Path Quality Evaluation**:
    If the tests compile and pass on the first attempt (consensus 3x), commit and merge immediately! Skip intermediate refactor turns. Reserve secondary turns exclusively for when tests fail.
@@ -191,7 +192,7 @@ Recent validation runs across multiple project tiers demonstrate several critica
 
 ---
 
-### Proposal 2: Smart Greenfield Scaffolding & Manifest Awareness (P0 — Fixes Validation Timeout)
+### Proposal 2: Smart Greenfield Scaffolding & Manifest Awareness (P0 — Fixes Validation Timeout) — ✅ **Implemented in v0.67.0**
 **Goal**: Prevent false "Legacy Stabilization" stories on new projects.
 
 1. **Manifest & Boilerplate Exclusion in `scanLegacyFiles`**:
@@ -205,24 +206,30 @@ Recent validation runs across multiple project tiers demonstrate several critica
 
 ---
 
-### Proposal 3: Automatic `.gitignore` Synthesis & Artifact Guardrails (P0 — Fixes Workspace Pollution)
+### Proposal 3: Automatic `.gitignore` Synthesis & Artifact Guardrails (P0 — Fixes Workspace Pollution) — ✅ **Implemented in v0.69.0**
 **Goal**: Prevent compilation artifacts (e.g. Rust `target/`, Node `node_modules/`, Python `__pycache__/`) from polluting Git and state storage.
 
 1. **Pre-Flight Default `.gitignore` Enforcement**:
-   During project startup (`noctifab init` or pre-flight in `serve.go`), detect the project type and ensure critical ignore rules exist in `.gitignore`:
+   During project startup (pre-flight checks in `cmd/noctifab/cli/preflight.go`), `EnsureProjectGitignore` verifies and non-destructively synthesizes critical ignore rules:
    ```gitignore
    # Noctifab Artifact Protection
    target/
    node_modules/
    __pycache__/
-   *.pyc
+   *.py[cod]
    .venv/
    dist/
    bin/
+   build/
+   *.o
+   *.so
+   *.dylib
+   *.class
    *.log
+   .noctifab/
    ```
 2. **Sandbox Path Filtering**:
-   Ensure `ListWorkspaceSourceFiles` and `syncWorkspaceFiles` automatically exclude directories matching standard build artifact patterns, regardless of whether `.gitignore` is checked in.
+   `IsPathExcluded` in `pkg/services/workspace_discovery.go` automatically excludes directories matching standard build artifact patterns and binary extensions by default, regardless of whether `.gitignore` is checked in.
 
 ---
 
@@ -275,16 +282,16 @@ Recent validation runs across multiple project tiers demonstrate several critica
 
 ## 5. Implementation Roadmap & Priority Matrix
 
-| Priority | Proposal | Complexity | Impact | Target Benefit |
-| :--- | :--- | :--- | :--- | :--- |
-| **P0** | **Smart Greenfield vs Legacy Detection** (Proposal 2) | Low | High | Stops empty projects from burning 15m on fake characterization stories. |
-| **P0** | **Pre-Flight `.gitignore` & Artifact Filtering** (Proposal 3) | Low | High | Fixes 900+ file pollution in Rust/Cargo projects (`wc` failure). |
-| **P0** | **Single-Pass Co-Synthesis & Early Gate Exit** (Proposal 1) | Medium | Very High | Reduces LLM turn latency by 60%+, eliminating timeouts. |
-| **P1** | **Process-Aware Git Lock Cleaning** (Proposal 4) | Low | Medium | Eliminates Git index lock corruption during concurrent runs. |
-| **P1** | **String-Literal Aware Code Fence Parser** (Proposal 5) | Medium | Medium | Prevents JSON envelope parsing retries when files contain code blocks. |
-| **P1** | **Shared Dependency Worktree Caches** (Proposal 4) | Medium | High | Cuts compilation time in Rust/C++/Node worktrees from minutes to seconds. |
-| **P2** | **Incremental SQL Upserts** (Proposal 6) | Medium | Medium | Reduces SQLite transaction overhead and lock contention. |
-| **P2** | **Agnostic Sandbox Syntax Hooks** (Proposal 7) | Low | Low | Fully aligns codebase with `AGENTS.md` language agnosticism rule. |
+| Priority | Proposal | Complexity | Impact | Target Benefit | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **P0** | **Smart Greenfield vs Legacy Detection** (Proposal 2) | Low | High | Stops empty projects from burning 15m on fake characterization stories. | ✅ **Implemented (v0.67.0)** |
+| **P0** | **Pre-Flight `.gitignore` & Artifact Filtering** (Proposal 3) | Low | High | Fixes 900+ file pollution in Rust/Cargo projects (`wc` failure). | ✅ **Implemented (v0.69.0)** |
+| **P0** | **Single-Pass Co-Synthesis & Early Gate Exit** (Proposal 1) | Medium | Very High | Reduces LLM turn latency by 60%+, eliminating timeouts. | ✅ **Implemented (v0.69.0)** |
+| **P1** | **Process-Aware Git Lock Cleaning** (Proposal 4) | Low | Medium | Eliminates Git index lock corruption during concurrent runs. | Pending |
+| **P1** | **String-Literal Aware Code Fence Parser** (Proposal 5) | Medium | Medium | Prevents JSON envelope parsing retries when files contain code blocks. | Pending |
+| **P1** | **Shared Dependency Worktree Caches** (Proposal 4) | Medium | High | Cuts compilation time in Rust/C++/Node worktrees from minutes to seconds. | ✅ **Implemented (v0.68.0)** |
+| **P2** | **Incremental SQL Upserts** (Proposal 6) | Medium | Medium | Reduces SQLite transaction overhead and lock contention. | ✅ **Implemented (v0.66.0)** |
+| **P2** | **Agnostic Sandbox Syntax Hooks** (Proposal 7) | Low | Low | Fully aligns codebase with `AGENTS.md` language agnosticism rule. | Pending |
 
 ---
 

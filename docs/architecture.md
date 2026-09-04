@@ -437,10 +437,12 @@ The **Code-First Verification Loop** separates implementation from test verifica
 2. **Test Characterization Pass (Tester Agent)**: Inspects the created code signatures and writes comprehensive unit and integration tests against them.
 3. **Refactor & Fulfill Pass (Generator Agent)**: Refactors and expands the implementation to satisfy all tests.
 
-### 2. `single_pass` (Legacy alias `single_pass_execution`)
-The **Single-Pass Execution** mode optimizes for maximum generation speed and minimum token latency:
-* A single Generator agent pass creates both the source code implementation and corresponding tests together in one turn.
-* Eliminates multi-pass turn delays for straightforward user stories and micro-specifications.
+### 2. `single_pass` (Aliases: `single_pass_co_synthesis`, `co_synthesis`, `single_pass_execution`, `spe`, `spcs`)
+The **Single-Pass Co-Synthesis** mode optimizes for maximum generation speed and minimum token latency:
+* **Unified Generation Pass**: A single Generator agent pass co-synthesizes both the source code implementation and corresponding tests together in one turn (`generator/single_pass` prompt template).
+* **Zero-Token Auto-Formatting**: Executes the configured project formatter (e.g., `cargo fmt`, `go fmt`, `black`) via `stageAndCommit` before staging and committing changes.
+* **Pre-Test Anti-Stub Quality Gate**: Audits generator output with `auditGeneratorFunctionalOutput` before committing, automatically rejecting hollow stub code (e.g., `todo!()`, `pass`, `NotImplementedError`) and triggering an immediate remediation turn (`single_pass_fix`) if stubs are detected.
+* **Fast-Path Verification & QA Merging**: When test validation succeeds on Turn 1, the orchestrator immediately proceeds to QA gating and worker branch merge-back, eliminating multi-turn delays for straightforward user stories and micro-specifications.
 
 ### 3. `breadth_first` (Legacy alias `breadth_first_generation`, `bfg`)
 The **Breadth-First Generation** mode optimizes for rapid end-to-end prototype delivery across all user stories:
@@ -480,6 +482,11 @@ Noctifab implements an asynchronous `CommandMailbox` channel allowing operators 
 - **Self-Contained Single Binary**: Embedded web assets (`//go:embed static/*`) compile directly into the single binary with zero external CDN or npm dependencies.
 - **Ring-Buffered Event Replay (`SSEBroadcaster`)**: Keeps a 100-event circular memory buffer to replay missed events upon browser reconnects, accompanied by 15-second keepalive frames.
 - **Mission Control Observability**: Exposes state snapshots (`GET /api/v1/state`), event streams (`GET /api/v1/events`), steering injection (`POST /api/v1/steer`), order creation (`POST /api/v1/orders`), and flow controls (`POST /api/v1/pause`, `POST /api/v1/resume`).
+
+### 10. Pre-Flight .gitignore Guardrails & Build Artifact Isolation (`pkg/services/gitignore_guardrail.go`)
+Noctifab automatically safeguards workspaces against build artifact explosion, dependency indexing bloat, and Git repository pollution:
+- **Pre-Flight Synthesis (`EnsureProjectGitignore`)**: Before starting the execution loop, Noctifab inspects the project root for `.gitignore`. If missing, it writes a comprehensive, language-agnostic `.gitignore`. If already present, it non-destructively appends missing critical rules (`target/`, `node_modules/`, `dist/`, `bin/`, `build/`, `__pycache__/`, `*.py[cod]`, `.venv/`, `venv/`, `.bundle/`, `*.class`, `*.o`, `*.so`, `*.dylib`, `*.log`, `.noctifab/`).
+- **Defensive Workspace Discovery (`IsPathExcluded`)**: System-level path evaluation defensively excludes standard build output directories and compiled binary extensions even in edge cases where a `.gitignore` has not yet been processed, preventing build artifacts (such as hundreds of `target/debug/` files in Rust or `node_modules/` in Node.js) from being indexed into SQLite file snapshots or staged in Git.
 
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.
 
