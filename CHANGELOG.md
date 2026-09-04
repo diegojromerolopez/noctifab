@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.72.0] - 2026-09-04
+
+### Added
+- **Append-Only Action Logs & Telemetry Separation (Proposal 6 Part 2 — Storage Optimization)**:
+  - Added migration `0009_append_only_actions.sql` adding `action_id TEXT DEFAULT ''` column and unique index `idx_actions_action_id` on SQLite `actions` table.
+  - Added `ID string \`json:"id,omitempty"\`` field to `domain.Action` and auto-populated with UUID in `domain.AppendAction`.
+  - Refactored `saveActions` in `pkg/infrastructure/storage/sqlite_repository_save.go` to eliminate `DELETE FROM actions WHERE state_id = ?`, replacing it with `INSERT INTO actions (...) VALUES (...) ON CONFLICT(action_id) DO NOTHING`.
+  - Guarantees stable action IDs and rowids across saves without table rewrite churn or SQLite write lock contention on frequent progress updates.
+  - Bounded `Load` query in `pkg/infrastructure/storage/sqlite_repository_load.go` to the most recent `domain.MaxLastActions` (200) actions in chronological order via subquery, while retaining the entire append-only execution history in the database.
+  - Added tests in `pkg/infrastructure/storage/sqlite_dirty_save_test.go` verifying stable action rowids across cache invalidation and bounded 200-item loading when actions exceed `MaxLastActions`.
+
 ## [0.71.0] - 2026-09-04
 
 ### Added

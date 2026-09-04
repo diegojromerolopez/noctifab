@@ -261,15 +261,20 @@ Recent validation runs across multiple project tiers demonstrate several critica
 
 ---
 
-### Proposal 6: Incremental Upsert State Persistence (P2 — Performance & Concurrency)
+### Proposal 6: Incremental Upsert State Persistence & Append-Only Telemetry (P2 — Performance & Concurrency) — ✅ **Implemented (Part 1 in v0.66.0, Part 2 in v0.72.0)**
 **Goal**: Optimize SQLite database operations and eliminate lock contention.
 
-1. **Replace DELETE+INSERT with Targeted Upserts**:
+1. **Replace DELETE+INSERT with Targeted Upserts (Part 1 — v0.66.0)**:
    In [`pkg/infrastructure/storage/sqlite_repository_save.go`](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/storage/sqlite_repository_save.go):
    - Use `INSERT INTO tasks (...) VALUES (...) ON CONFLICT(id) DO UPDATE SET ...`.
-   - Only delete tasks that were explicitly removed from the state model.
-2. **Separate Action Logs from Operational State**:
-   Move high-frequency telemetry events (`actions`, `last_actions`) into an append-only table or separate event stream, preventing the core `state` transaction from serializing large data blobs on every progress tick.
+   - Use `INSERT INTO stories (...) VALUES (...) ON CONFLICT(id) DO UPDATE SET ...`.
+   - Use `INSERT INTO workspace_files (...) VALUES (...) ON CONFLICT(path, state_id) DO UPDATE SET ...`.
+   - Only delete rows that were explicitly removed from the state model.
+2. **Separate Action Logs into Append-Only Telemetry Storage (Part 2 — v0.72.0)**:
+   - Added unique `action_id` column and index to `actions` table (`migrations/sqlite/0009_append_only_actions.sql`).
+   - Replaced full table `DELETE FROM actions WHERE state_id = ?` with `INSERT INTO actions (...) VALUES (...) ON CONFLICT(action_id) DO NOTHING` in [`pkg/infrastructure/storage/sqlite_repository_save.go`](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/storage/sqlite_repository_save.go).
+   - Preserves stable, monotonic action IDs without table churn or write locks on each progress tick.
+   - Bounded `Load` query in [`pkg/infrastructure/storage/sqlite_repository_load.go`](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/storage/sqlite_repository_load.go) to the most recent `MaxLastActions` (200) window in chronological order, while the database retains the full historical audit trail.
 
 ---
 
@@ -293,7 +298,7 @@ Recent validation runs across multiple project tiers demonstrate several critica
 | **P1** | **Process-Aware Git Lock Cleaning** (Proposal 4) | Low | Medium | Eliminates Git index lock corruption during concurrent runs. | ✅ **Implemented (v0.70.0)** |
 | **P1** | **String-Literal Aware Code Fence Parser** (Proposal 5) | Medium | Medium | Prevents JSON envelope parsing retries when files contain code blocks. | ✅ **Implemented (v0.70.0)** |
 | **P1** | **Shared Dependency Worktree Caches** (Proposal 4) | Medium | High | Cuts compilation time in Rust/C++/Node worktrees from minutes to seconds. | ✅ **Implemented (v0.68.0)** |
-| **P2** | **Incremental SQL Upserts** (Proposal 6) | Medium | Medium | Reduces SQLite transaction overhead and lock contention. | ✅ **Implemented (v0.66.0)** |
+| **P2** | **Incremental SQL Upserts & Append-Only Telemetry** (Proposal 6) | Medium | Medium | Eliminates SQLite table rewrite churn and lock contention. | ✅ **Implemented (v0.66.0, v0.72.0)** |
 | **P2** | **Agnostic Sandbox Syntax Hooks** (Proposal 7) | Low | Low | Fully aligns codebase with `AGENTS.md` language agnosticism rule. | ✅ **Implemented (v0.71.0)** |
 
 ---

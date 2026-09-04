@@ -563,6 +563,7 @@ CREATE TABLE IF NOT EXISTS clarifications (
 
 CREATE TABLE IF NOT EXISTS actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_id TEXT DEFAULT '',
     state_id TEXT NOT NULL,
     task_id TEXT,
     timestamp DATETIME NOT NULL,
@@ -573,6 +574,8 @@ CREATE TABLE IF NOT EXISTS actions (
     success INTEGER NOT NULL,
     FOREIGN KEY(state_id) REFERENCES state(id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_actions_action_id ON actions(action_id);
+CREATE INDEX IF NOT EXISTS idx_actions_state_id_id ON actions(state_id, id);
 
 CREATE TABLE IF NOT EXISTS workspace_files (
     path TEXT PRIMARY KEY,

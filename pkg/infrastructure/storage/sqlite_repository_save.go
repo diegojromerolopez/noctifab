@@ -173,18 +173,20 @@ func (r *SQLiteRepository) saveClarifications(ctx context.Context, tx *sql.Tx, s
 }
 
 func (r *SQLiteRepository) saveActions(ctx context.Context, tx *sql.Tx, state *domain.State) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM actions WHERE state_id = ?", state.ID); err != nil {
-		return err
-	}
 	for _, act := range state.LastActions {
+		actID := act.ID
+		if actID == "" {
+			actID = fmt.Sprintf("%s-%d-%s", state.ID, act.Timestamp.UnixNano(), act.Tool)
+		}
 		argsJSON, err := json.Marshal(act.Args)
 		if err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO actions (state_id, timestamp, tool, args, reasoning, result, success)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			state.ID, act.Timestamp, act.Tool, string(argsJSON), act.Reasoning, act.Result, boolToInt(act.Success),
+			`INSERT INTO actions (state_id, action_id, timestamp, tool, args, reasoning, result, success)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(action_id) DO NOTHING`,
+			state.ID, actID, act.Timestamp, act.Tool, string(argsJSON), act.Reasoning, act.Result, boolToInt(act.Success),
 		)
 		if err != nil {
 			return err
