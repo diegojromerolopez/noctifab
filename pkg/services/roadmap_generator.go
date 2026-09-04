@@ -278,6 +278,12 @@ func scanLegacyFiles(projectPath string) ([]string, error) {
 		"spec.md": true, "readme.md": true, "changelog.md": true,
 		"license": true, "version": true, ".gitignore": true,
 		"noctifab_evaluation_report.md": true,
+		"dockerfile":                    true, "dockerfile.validation": true,
+		"docker-compose.yml": true, "docker-compose.yaml": true,
+		"docker-compose.e2e.yml": true, "docker-compose.e2e.yaml": true,
+		".dockerignore": true, ".rubocop.yml": true,
+		".editorconfig": true, ".gitattributes": true,
+		".golangci.yml": true, ".golangci.yaml": true,
 	}
 
 	exclude := []string{"roadmap", "user-stories", "tasks", "output", "dist"}

@@ -151,21 +151,24 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			deps.gitClient, deps.rebaseQueue, deps.evaluator, deps.vcsClient, deps.orchConfig, orchRuntime,
 		)
 
-		if deps.cfg.Unblocker.Enabled {
-			unblocker := services.NewUnblockerAgent(
+		fallbackCfg := deps.cfg.GetFallback()
+		if fallbackCfg.Enabled {
+			fallbackAgent := services.NewFallbackAgent(
 				deps.repo,
 				deps.llmClient,
 				deps.mailbox,
-				time.Duration(deps.cfg.Unblocker.PollInterval),
-				deps.cfg.Unblocker.MaxRetries,
-				time.Duration(deps.cfg.Unblocker.StallThreshold),
-				time.Duration(deps.cfg.Unblocker.ConflictThreshold),
-				deps.cfg.Unblocker.LLMAssessment,
+				time.Duration(fallbackCfg.PollInterval),
+				fallbackCfg.MaxRetries,
+				time.Duration(fallbackCfg.StallThreshold),
+				time.Duration(fallbackCfg.ConflictThreshold),
+				fallbackCfg.LLMAssessment,
 			)
-			orchestrator.SetUnblocker(unblocker)
-			unblockerCtx, cancelUnblocker := context.WithCancel(ctx)
-			defer cancelUnblocker()
-			unblocker.Start(unblockerCtx)
+			fallbackAgent.SetBudgetCliff(fallbackCfg.BudgetCliffRatio, 0)
+			fallbackAgent.SetStallCountThreshold(fallbackCfg.Triggers.StallCountThreshold)
+			orchestrator.SetFallbackAgent(fallbackAgent)
+			fallbackCtx, cancelFallback := context.WithCancel(ctx)
+			defer cancelFallback()
+			fallbackAgent.Start(fallbackCtx)
 		}
 
 		if err := orchestrator.PlanStory(ctx, state, string(specBytes)); err != nil {

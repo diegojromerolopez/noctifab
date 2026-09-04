@@ -41,8 +41,7 @@ prompts
 architecture
 api
 developer_guide
-unblocker_agent
-last_resort_agent
+fallback_agent
 loop_orchestration
 secrets
 noctifab_evaluation_report
@@ -65,7 +64,7 @@ noctifab_evaluation_report
 - **Sandboxed Action Execution**: Safely edits code files and runs test suites inside host sandboxes or Docker containers.
 - **Test Validator Verification**: Prevents regression and guarantees code quality by running the project test suite multiple times with majority voting (2/3 consensus).
 - **Automated VCS Merging**: Manages Git checkouts, worker branch creation, serialized rebase queues, pull request creation, and merges on GitHub and GitLab.
-- **Unblocker Agent**: An autonomous background goroutine that periodically scans the pipeline for stalled tasks and blocked agents, diagnoses root causes via LLM, and injects corrective interventions to restore forward progress — with configurable waking frequency (`unblocker.poll_interval`).
+- **Fallback Agent (Omni-Agent)**: Unified autonomous recovery and sovereign repair agent that merges passive watchdog health monitoring (detecting stalls, frozen progress, budget cliffs, and applying 0-token fast-paths and scope triage) with active sovereign omni-builder execution (cross-domain workspace repairs, forced compilation, and test synchronization).
 - **Acceptance Auditor Agent**: Whole-project specification auditor that evaluates the completed codebase, CLI entrypoints, and wire protocol surface against the root `SPEC.md` prior to release, halting PR creation if critical command, CLI, or interface omissions are detected.
-- **Last-Resort Agent (Chief Surgeon & Sovereign Solver)**: Sovereign emergency unblocker summoned when tasks hit blocker thresholds (exhausted retries, cyclic error loops, missing toolchains, or stall counts $\ge 4$). Operates with cross-domain authority to refactor code, tests, and specifications under the 4-Tier Compromise Hierarchy to guarantee clean-compiling, test-passing builds.
 - **Interactive Spec Studio & Multi-Model Consensus**: Collaborative specification engineering (`noctifab spec`) coordinating Product Manager, Systems Architect, Test Architect, and QA Specialist roles with cross-model consensus audits, revision snapshotting, and instant time-travel rollbacks.
+

@@ -137,7 +137,7 @@ func TestUnblocker_FastPathAndEscalation(t *testing.T) {
 		assert.Contains(t, failCmd.Reason, "max stall escalations")
 	})
 
-	t.Run("pre-hard-stop escalates to Last-Resort Agent when StallCount >= 4", func(t *testing.T) {
+	t.Run("pre-hard-stop escalates to Last-Resort Agent when StallCount >= 2", func(t *testing.T) {
 		state := &domain.State{
 			StoryStatus: domain.StoryRunning,
 			Tasks: []domain.Task{
@@ -145,7 +145,7 @@ func TestUnblocker_FastPathAndEscalation(t *testing.T) {
 					ID:         "task-lra-stall",
 					Title:      "Stalling Task",
 					Status:     domain.TaskInProgress,
-					StallCount: 4,
+					StallCount: 2,
 					UpdatedAt:  time.Now().Add(-15 * time.Minute),
 				},
 			},
@@ -160,10 +160,10 @@ func TestUnblocker_FastPathAndEscalation(t *testing.T) {
 
 		cmds := mailbox.PopAll()
 		require.Len(t, cmds, 1)
-		resetCmd, ok := cmds[0].(*ResetTaskCmd)
+		bypassCmd, ok := cmds[0].(*BypassToLastResortCmd)
 		require.True(t, ok)
-		assert.Equal(t, "task-lra-stall", resetCmd.TaskID)
-		assert.Contains(t, resetCmd.Reason, "escalating to Last-Resort Agent")
-		assert.Contains(t, resetCmd.Directive, "SOVEREIGN REPAIR DIRECTIVE")
+		assert.Equal(t, "task-lra-stall", bypassCmd.TaskID)
+		assert.Contains(t, bypassCmd.Reason, "bypassing to Last-Resort Agent")
+		assert.Contains(t, bypassCmd.Directive, "SOVEREIGN REPAIR DIRECTIVE")
 	})
 }

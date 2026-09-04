@@ -38,11 +38,8 @@ agents:
   qa:
     enabled: false # Experimental capability; no Phase 0 runtime
     iterations: 1
-  unblocker:
-    number: 1      # Stall detection & task re-dispatch (default: 1)
-    iterations: 2
-  last_resort:
-    enabled: true  # Sovereign solver for deadlocked tasks (default: true)
+  fallback:
+    enabled: true  # Unified fallback agent: stall detection & sovereign repair
     temperature: 0.1
     max_turns: 2
     timeout: 180s
@@ -256,7 +253,7 @@ Assigning different models to generate code, write tests, and review code preven
 - **Generators (`roles.generator`):** `deepseek-coder` for fast, syntax-accurate code implementation.
 - **Testers (`roles.tester`):** `openai-primary` (`gpt-4o`) for thorough unit test creation and boundary condition assertions.
 - **QA (`roles.qa`):** `anthropic-backup` (`claude-3-5-sonnet-latest`) is reserved for the disabled experimental QA capability.
-- **Orchestrator & Unblocker (`roles.orchestrator`, `roles.unblocker`):** `openai-primary` (`gpt-4o-mini`) for ultra-fast, lightweight state loop checks and diagnostics.
+- **Orchestrator & Fallback (`roles.orchestrator`, `roles.fallback`):** `openai-primary` (`gpt-4o-mini`) for ultra-fast, lightweight state loop checks and diagnostics.
 
 ```yaml
 config_version: "2.0"
@@ -269,53 +266,50 @@ llm:
   priority:
     - "openai-primary"
     - "anthropic-backup"
-    - "deepseek-coder"
+    - "deepseek-local"
 
   providers:
     - name: "openai-primary"
       provider: "openai"
-      api_keys: "OPENAI_API_KEY"
-      max_retries: 5
-      retry_backoff: "100ms"
-      max_timeout: "60s"
+      model: "gpt-4o"
+      url: "https://api.openai.com/v1"
+      api_key_env: "OPENAI_API_KEY"
 
     - name: "anthropic-backup"
       provider: "anthropic"
-      api_keys: "ANTHROPIC_API_KEY"
       model: "claude-3-5-sonnet-latest"
-      max_retries: 3
+      url: "https://api.anthropic.com/v1"
+      api_key_env: "ANTHROPIC_API_KEY"
 
-    - name: "deepseek-coder"
+    - name: "deepseek-local"
       provider: "deepseek"
-      api_keys: "DEEPSEEK_API_KEY"
       model: "deepseek-coder"
-      url: "https://api.deepseek.com"
+      url: "http://localhost:11434/v1"
+      api_key_env: "DEEPSEEK_API_KEY"
 
-# 2. Per-Agent Role Overrides directly inside agents:
+# 2. Per-Agent Model Routing & Fallback Chains
 agents:
-  orchestrator:
+  product_manager:
     providers:
+      - name: "anthropic-backup" # Claude 3.5 Sonnet for rich, detailed specification decomposition
       - name: "openai-primary"
-        model: "gpt-4o-mini" # Fast state loop checks
 
   planner:
     providers:
-      - name: "anthropic-backup" # Claude Sonnet for architectural planning
-      - name: "openai-primary"   # Fallback to OpenAI if Anthropic is degraded
+      - name: "anthropic-backup"
+      - name: "openai-primary"
 
   generators:
-    number: 4
-    iterations: 20
+    number: 3
     providers:
-      - name: "deepseek-coder"   # DeepSeek Coder for code generation
-      - name: "openai-primary"
+      - name: "deepseek-local"  # Cheap, fast local coding
+      - name: "openai-primary"  # Fallback to GPT-4o on syntax errors
       - name: "anthropic-backup"
 
   testers:
     number: 2
-    iterations: 15
     providers:
-      - name: "openai-primary"
+      - name: "openai-primary"   # Independent validation by GPT-4o
       - name: "anthropic-backup"
 
   qa:
@@ -325,14 +319,7 @@ agents:
       - name: "anthropic-backup" # Audit code quality with Sonnet
       - name: "openai-primary"
 
-  unblocker:
-    temperature: 0.0
-    providers:
-      - name: "openai-primary"
-        model: "gpt-4o-mini" # Quick diagnostic checks
-      - name: "anthropic-backup" # Escalate if diagnostic stalls
-
-  last_resort:
+  fallback:
     temperature: 0.1
     providers:
       - name: "anthropic-backup" # Claude Sonnet for deep sovereign code & test surgery

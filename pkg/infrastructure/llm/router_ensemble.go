@@ -308,6 +308,11 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 					Ensemble:    pm.Ensemble,
 				}
 			}
+		case "fallback":
+			fb := r.cfg.Agents.GetFallback()
+			if len(fb.Providers) > 0 {
+				return config.RoleSetting{Model: fb.Model, Temperature: fb.Temperature, Profile: fb.Profile, Providers: fb.Providers}
+			}
 		case "unblocker":
 			agentRole = r.cfg.Agents.Unblocker
 		case "last_resort", "lastresort":
@@ -346,6 +351,14 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 			return r.roles.QA
 		}
 		return r.roles.Orchestrator
+	case "fallback":
+		if r.roles.Fallback.Model != "" || len(r.roles.Fallback.Providers) > 0 || r.roles.Fallback.Ensemble.IsEnabled() {
+			return r.roles.Fallback
+		}
+		if r.roles.LastResort.Model != "" || len(r.roles.LastResort.Providers) > 0 || r.roles.LastResort.Ensemble.IsEnabled() {
+			return r.roles.LastResort
+		}
+		return r.roles.Unblocker
 	case "unblocker":
 		return r.roles.Unblocker
 	case "last_resort", "lastresort":

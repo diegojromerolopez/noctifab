@@ -151,7 +151,11 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 	// Self-Correction and Turn Efficiency
 	sb.WriteString("## Self-Correction and Turn Efficiency\n\n")
 	fmt.Fprintf(&sb, "- **Retries Recorded:** %d\n", snapshot.SelfCorrection.RetryCount)
-	fmt.Fprintf(&sb, "- **Unblocker Interventions:** %d\n", snapshot.SelfCorrection.UnblockerInvocations)
+	fallbackInvocations := snapshot.SelfCorrection.FallbackInvocations
+	if fallbackInvocations == 0 && snapshot.SelfCorrection.UnblockerInvocations > 0 {
+		fallbackInvocations = snapshot.SelfCorrection.UnblockerInvocations
+	}
+	fmt.Fprintf(&sb, "- **Fallback Agent Interventions:** %d\n", fallbackInvocations)
 	fmt.Fprintf(&sb, "- **Watchdog Interventions:** %d\n", snapshot.SelfCorrection.WatchdogInvocations)
 	taskEfficiency := "N/A"
 	if snapshot.SelfCorrection.TaskAttempts > 0 {

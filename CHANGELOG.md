@@ -5,7 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.65.0] - 2026-09-04
+
+### Added
+- **Unified Fallback Agent (Omni-Agent)**:
+  - Merged `UnblockerAgent` (continuous passive pipeline health monitoring, log scrubbing, 0-token regex fast-paths, progressive log scaling) and `LastResortAgent` (active sovereign cross-domain workspace repairs, forced compilation, test synchronization) into a single, unified `FallbackAgent`.
+  - Added `AgentRoleFallback` (`AgentRole = "FALLBACK"`) with seamless backwards-compatible aliases for `UNBLOCKER` and `LAST_RESORT`.
+  - Implemented `FallbackAgentConfig`, `FallbackTriggersConfig`, and `FallbackConfig` with automatic schema fallback.
+  - Implemented dynamic budget cliff and timeout detection (`budget_cliff_ratio`, default: 50%).
+  - Added `ScopeTriageCmd` to prioritize walking skeletons (`US-001`/`US-002`) and defer downstream scope (`US-003+`) upon reaching budget cliffs.
+  - Added `BypassToFallbackCmd` (aliased to `BypassToLastResortCmd`) for instant sovereign omni-builder escalation upon reaching stall count thresholds (`StallCount >= 2`).
+  - Added dedicated prompt contract `fallback.txt` and default template `fallback/repair.tmpl`.
+  - Authored comprehensive documentation in `docs/fallback_agent.md` and updated `SPEC.md`, `README.md`, and `docs/index.md`.
+
 ## [0.64.0] - 2026-09-03
+
 
 ### Added
 - **Structured `user_stories` Configuration Schema (`agents.product_manager.user_stories`)**:

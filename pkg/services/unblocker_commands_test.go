@@ -174,3 +174,87 @@ func TestClearInconsistentAgentCmd(t *testing.T) {
 		assert.Equal(t, domain.AgentCompleted, state.ActiveAgents[0].Status)
 	})
 }
+
+func TestBypassToLastResortCmd(t *testing.T) {
+	t.Parallel()
+
+	t.Run("when task exists and in-progress, it sets stall count to 2, flags LastResortUsed, and resets to PENDING", func(t *testing.T) {
+		t.Parallel()
+		task := domain.Task{ID: "task-1", Status: domain.TaskInProgress, Progress: 50, UpdatedAt: time.Now()}
+		st := newTestState([]domain.Task{task})
+		st.ActiveAgents = []domain.Agent{
+			{ID: "agent-1", TaskID: "task-1", Status: domain.AgentWorking},
+		}
+		repo := &inMemoryRepo{state: st}
+		cmd := &BypassToLastResortCmd{TaskID: "task-1", Reason: "persistent compilation stall"}
+
+		err := cmd.Execute(context.Background(), repo)
+
+		require.NoError(t, err)
+		state, _ := repo.Load(context.Background())
+		assert.Equal(t, domain.TaskPending, state.Tasks[0].Status)
+		assert.Equal(t, 2, state.Tasks[0].StallCount)
+		assert.True(t, state.Tasks[0].LastResortUsed)
+		assert.Contains(t, state.Tasks[0].RecoveryDirective, "SOVEREIGN REPAIR DIRECTIVE")
+		assert.Equal(t, domain.AgentCompleted, state.ActiveAgents[0].Status)
+	})
+
+	t.Run("when task already in terminal state, it skips bypass", func(t *testing.T) {
+		t.Parallel()
+		task := domain.Task{ID: "task-1", Status: domain.TaskSuccess, UpdatedAt: time.Now()}
+		repo := &inMemoryRepo{state: newTestState([]domain.Task{task})}
+		cmd := &BypassToLastResortCmd{TaskID: "task-1", Reason: "late bypass"}
+
+		err := cmd.Execute(context.Background(), repo)
+
+		require.NoError(t, err)
+		state, _ := repo.Load(context.Background())
+		assert.Equal(t, domain.TaskSuccess, state.Tasks[0].Status)
+	})
+}
+
+func TestScopeTriageCmd(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defers downstream stories beyond keep limit and their associated tasks", func(t *testing.T) {
+		t.Parallel()
+		stories := []domain.Story{
+			{ID: "US-001", Status: domain.StorySuccess},
+			{ID: "US-002", Status: domain.StoryRunning},
+			{ID: "US-003", Status: domain.StoryPending},
+			{ID: "US-004", Status: domain.StoryPending},
+		}
+		tasks := []domain.Task{
+			{ID: "t-1", StoryID: "US-001", Status: domain.TaskSuccess},
+			{ID: "t-2", StoryID: "US-002", Status: domain.TaskInProgress},
+			{ID: "t-3", StoryID: "US-003", Status: domain.TaskPending},
+			{ID: "t-4", StoryID: "US-004", Status: domain.TaskPending},
+		}
+		st := newTestState(tasks)
+		st.Stories = stories
+		repo := &inMemoryRepo{state: st}
+
+		cmd := &ScopeTriageCmd{Reason: "approaching 50% budget cliff", KeepStories: 2}
+		err := cmd.Execute(context.Background(), repo)
+
+		require.NoError(t, err)
+		state, _ := repo.Load(context.Background())
+
+		// US-001 and US-002 should not be deferred
+		assert.Equal(t, domain.StorySuccess, state.Stories[0].Status)
+		assert.Equal(t, domain.StoryRunning, state.Stories[1].Status)
+		// US-003 and US-004 should be DEFERRED
+		assert.Equal(t, domain.StoryDeferred, state.Stories[2].Status)
+		assert.Equal(t, domain.StoryDeferred, state.Stories[3].Status)
+
+		// Tasks for US-003 and US-004 should be DEFERRED
+		assert.Equal(t, domain.TaskSuccess, state.Tasks[0].Status)
+		assert.Equal(t, domain.TaskInProgress, state.Tasks[1].Status)
+		assert.Equal(t, domain.TaskDeferred, state.Tasks[2].Status)
+		assert.Equal(t, domain.TaskDeferred, state.Tasks[3].Status)
+
+		// Check action logged
+		require.NotEmpty(t, state.LastActions)
+		assert.Equal(t, "scope_triage", state.LastActions[len(state.LastActions)-1].Tool)
+	})
+}

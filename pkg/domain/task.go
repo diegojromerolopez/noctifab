@@ -20,6 +20,8 @@ const (
 	TaskConflictFailed TaskStatus = "CONFLICT_FAILED"
 	// TaskInterrupted represents a task suspended during graceful daemon shutdown.
 	TaskInterrupted TaskStatus = "INTERRUPTED"
+	// TaskDeferred represents a task deprioritized by scope triage to focus on core deliverables.
+	TaskDeferred TaskStatus = "DEFERRED"
 )
 
 // ChangeType classifies the scope of a task's adjustments for semver release bumping.
@@ -76,6 +78,7 @@ type Task struct {
 	UserDirectives    []string             `json:"user_directives,omitempty"`
 	StallCount        int                  `json:"stall_count,omitempty"`
 	LastResortUsed    bool                 `json:"last_resort_used,omitempty"`
+	FallbackUsed      bool                 `json:"fallback_used,omitempty"`
 	Retries           int                  `json:"retries"`
 	MaxRetries        int                  `json:"max_retries"`
 	StoryID           string               `json:"story_id,omitempty"`

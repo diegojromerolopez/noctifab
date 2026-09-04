@@ -133,16 +133,15 @@ Noctifab exposes the following implemented roles and retained experimental capab
 | **`resolver`** | Resolver Agent | Resolves complex 3-way Git merge and rebase conflicts across parallel worker branches using a 5-tier merge engine (including whole-file dual reimplementation). |
 | **`qa`** | Experimental QA capability | Retained but disabled in Phase 0; no QA runtime executes. |
 | **`auditor`** | Acceptance Auditor Agent | Evaluates whole-project compliance against root `SPEC.md` and story contracts prior to PR creation, halting release if critical command or interface omissions are found. |
-| **`unblocker`** | Unblocker Daemon Agent | Continuously monitors execution pipelines for stalls, deadlocks, and task re-queueing (0-token fast-path regex and progressive log escalation). |
-| **`last_resort`** | Last-Resort Agent | Sovereign Chief Surgeon & Omni-Solver summoned upon critical stall thresholds or retry exhaustion. Operates with sovereign compromise authority across code, tests, and specs under the 4-Tier Compromise Hierarchy. |
+| **`fallback`** | Fallback Agent (Omni-Agent) | Unified pipeline watchdog & sovereign chief surgeon (merging previous `unblocker` and `last_resort` roles). Operates in two modes: Passive Watchdog (0-token fast-paths, log escalation, scope triage) and Active Sovereign Omni-Builder (cross-domain repair under 4-Tier Compromise Hierarchy). |
 
 Architecture, security, performance, documentation, and infrastructure work is represented by explicit planner tasks and deterministic validators, not specialist agents.
 
-### Two-Tier Deadlock Defense (Unblocker $\rightarrow$ Last-Resort)
+### Unified Fallback Architecture (Passive Watchdog & Active Sovereign Omni-Builder)
 
-To prevent execution livelocks and breaking loops, `noctifab` separates stall detection from deep holistic surgery into two cooperative layers:
-1. **Unblocker Agent (Sentry / Monitor)**: Non-invasive background daemon that polls state every 30s. Fixes routine CLI hangs via 0-token regex fast-paths and resets stalled tasks with injected recovery directives without altering code.
-2. **Last-Resort Agent (Chief Surgeon / Solver)**: Ephemerally summoned when a task accumulates 4 stalls, exhausts retry budgets, or encounters missing toolchains. Operates with sovereign authority across implementation files, test assertions, and roadmap contracts to force a compiling, test-passing build.
+To prevent execution livelocks, deadlock stalls, and broken builds, `noctifab` provides a unified **Fallback Agent** (`fallback`, [docs/fallback_agent.md](fallback_agent.md)) combining continuous health monitoring with sovereign repair authority:
+1. **Passive Watchdog Mode**: Non-invasive background daemon that polls pipeline state every 30s. Fixes routine CLI hangs via 0-token regex fast-paths, manages stall cooldowns, evaluates budget/timeout cliffs, and resets stalled tasks with injected recovery directives without altering code.
+2. **Active Sovereign Omni-Builder Mode**: Directly summoned when a task accumulates repeated stalls, exhausts retry budgets, or encounters toolchain deadlocks. Operates with sovereign cross-domain authority across code, tests, and specification contracts under the 4-Tier Compromise Hierarchy to force a clean compiling, test-passing release.
 
 ---
 
@@ -376,14 +375,14 @@ The QA subsystem provides `HostQABuildSandbox` and `HostQASandboxRunner` to exec
 
 Noctifab employs a dynamic, context-aware prompt adaptation and self-correcting engine across all agent roles:
 
-#### A. Unblocker Dynamic Prompt Injection & Fast-Path Engine (`pkg/services/unblocker.go`)
-The **Unblocker Agent** runs as an autonomous background goroutine on an independent timer (default `30s` poll interval). When a pipeline stall is detected (`frozen_progress`, `orphaned_task`, `agent_inconsistency`, `conflict_blocked`):
+#### A. Fallback Agent Dynamic Prompt Injection & Fast-Path Engine (`pkg/services/fallback_agent.go`)
+The **Fallback Agent** runs as an autonomous background watchdog on an independent timer (default `30s` poll interval). When a pipeline stall is detected (`frozen_progress`, `orphaned_task`, `agent_inconsistency`, `conflict_blocked`):
 1. **Live Log Tailing & Secret Scrubbing (`log_tailer.go`)**: Tails standard output logs of stalled tasks and passes snippets through `SanitizeLog` to scrub sensitive API keys and tokens before prompt injection.
 2. **0-Token Fast-Path Regex Classifier (`unblocker_fastpath.go`)**: Matches log snippets against static regex patterns for routine CLI hangs (stdin interactive `y/n` prompts, port binding collisions, test watch mode spinners), unblocking tasks in **< 5ms** with **0 LLM token overhead**.
 3. **10x Progressive Log Window Escalation**: Scales diagnostic log depth based on `task.StallCount` (Level 1: 50 lines $\rightarrow$ Level 2: 500 lines $\rightarrow$ Level 3: 5,000 lines).
 4. **Task Stall Recovery Directives (`[STALL RECOVERY DIRECTIVE]`)**: Attaches `RecoveryDirective` to task state upon reset, injecting instructions into Generator and Tester worker prompts on re-queued attempts to prevent repeating stalling actions.
 
-See [docs/unblocker_agent.md](unblocker_agent.md) for full developer reference.
+See [docs/fallback_agent.md](fallback_agent.md) for full developer reference.
 
 #### B. Git-Aware & Language-Agnostic Workspace Discovery (`pkg/services/workspace_discovery.go`)
 1. **Unified Workspace Scanning (`ListWorkspaceSourceFiles`, `CollectWorkspaceSourceSnapshot`)**: Replaces language-specific directory lists with Git-aware discovery (`git ls-files -c -o --exclude-standard` / `git check-ignore`), automatically ignoring project `.gitignore` patterns, container targets (e.g. `target_container/`), and compiler caches across any language toolchain.

@@ -221,14 +221,14 @@ To prevent "evaluation gaming" (where code generators approve their own buggy co
 3. **Tester Agent**: Dedicated test-writing agent that writes and refactors unit, integration, and behavioral tests based on story specifications before and during code generation.
 4. **Generator Agent**: Sandbox-restricted worker executing in task-specific Git worktrees. Writes and refactors production code to satisfy the test suites.
 5. **Resolver Agent**: Dedicated agent for resolving complex three-way Git rebase and merge conflicts across parallel worker branches.
-6. **Unblocker Agent (Sentry / Monitor)**: Independent background daemon that continuously scans pipeline state, captures live logs, applies 0-token regex fast-path fixes for interactive CLI hangs, and injects diagnostic recovery directives.
+6. **Fallback Agent (Omni-Agent / Autonomous Recovery & Sovereign Repair)**: Unified escalation and self-healing agent that combines continuous watchdog pipeline health monitoring (capturing live logs, 0-token regex fast-paths, and scope triage) with active sovereign omni-builder execution (cross-domain workspace modification across code, tests, and specs under the 4-Tier Compromise Hierarchy).
 7. **Acceptance Auditor Agent**: Whole-project specification auditor that evaluates the completed codebase, CLI entrypoints, and wire protocol surface against the root `SPEC.md` prior to release. Halts PR creation if critical command, CLI, or interface omissions are detected.
-8. **Last-Resort Agent (Chief Surgeon / Solver)**: Sovereign unblocker summoned when tasks encounter intractable blockers (exhausted retry budgets, contradictory or shallow specifications, missing sandbox toolchains, or post-merge integration collapses). Operates with sovereign authority across code, tests, and specs to deliver clean-compiling, test-passing builds under the 4-Tier Compromise Hierarchy.
 
 **Inter-Agent Relationship & Dynamic Escalation**:
 - **Generator $\leftrightarrow$ Tester (Separation of Concerns)**: Keeps production code and test assertions isolated so tests remain an objective quality gate. If the Generator detects a bug in the test definitions, it uses `request_test_fix` to coordinate changes.
 - **Auditor Release Gate (Whole-Project Verification)**: Operates after task completion and before PR creation, cross-referencing all implemented commands and story contracts against `SPEC.md` to prevent partial feature releases.
-- **Unblocker $\rightarrow$ Last-Resort (Two-Tier Deadlock Defense)**: The Unblocker acts as an observant, zero-risk sentry that resets tasks and injects guidance without modifying code. When a task reaches 4 stall cycles or exhausts its retry budget, the orchestrator escalates the issue to the Last-Resort Agent to perform deep, multi-file sovereign surgery.
+- **Fallback Agent (Unified Self-Healing & Scope Triage)**: Operates in two synchronized tiers: Mode 1 continuously monitors pipeline health, executes 0-token regex fast-paths, and defers non-critical stories (`US-003+`) via `ScopeTriageCmd` on budget cliffs; Mode 2 takes sovereign cross-domain tool authority on persistent stalls (`StallCount >= 2`) or exhausted retries to guarantee clean-compiling, test-passing builds.
+
 
 ---
 

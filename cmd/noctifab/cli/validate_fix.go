@@ -131,7 +131,7 @@ CANONICAL NOCTIFAB CONFIGURATION REFERENCE & SCHEMA:
 
 2. agents / roles:
    - architecture: 'code_first' | 'test_first' | 'classic'
-   - Roles: orchestrator, product_manager, planner, generators, testers, qa, auditor, unblocker, last_resort
+   - Roles: orchestrator, product_manager, planner, generators, testers, qa, auditor, fallback (legacy: unblocker, last_resort)
    - Common fields per role: number (int), iterations (int), max_tokens (int64, use -1 for unlimited), providers (list of AgentProviderRef), profile (string)
    - Multi-Model Ensemble topologies (under agents.<role>.ensemble or roles.<role>.ensemble):
      * strategy: 'parallel' | 'serial' | 'consensus' | 'race' | 'cascade' | 'decomposed' | 'best_of_n_scored'

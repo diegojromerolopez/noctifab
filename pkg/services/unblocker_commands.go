@@ -142,21 +142,24 @@ func (c *FailTaskCmd) Execute(ctx context.Context, repo domain.StateRepository) 
 	return repo.Save(ctx, state)
 }
 
-// LogUnblockerActionCmd appends a diagnostic audit entry to State.LastActions
-// without modifying any task status. Used by the unblocker to record observations
+// LogFallbackActionCmd appends a diagnostic audit entry to State.LastActions
+// without modifying any task status. Used by the fallback agent to record observations
 // and assessments for full traceability.
-type LogUnblockerActionCmd struct {
+type LogFallbackActionCmd struct {
 	// Message is the diagnostic message to append.
 	Message string
 	// TokensUsed is the optional count of tokens consumed during LLM assessment.
 	TokensUsed int64
 }
 
-// Execute implements Command for LogUnblockerActionCmd.
-func (c *LogUnblockerActionCmd) Execute(ctx context.Context, repo domain.StateRepository) error {
+// LogUnblockerActionCmd is a backwards-compatible alias for LogFallbackActionCmd.
+type LogUnblockerActionCmd = LogFallbackActionCmd
+
+// Execute implements Command for LogFallbackActionCmd.
+func (c *LogFallbackActionCmd) Execute(ctx context.Context, repo domain.StateRepository) error {
 	state, err := repo.Load(ctx)
 	if err != nil {
-		return fmt.Errorf("LogUnblockerActionCmd: failed to load state: %w", err)
+		return fmt.Errorf("LogFallbackActionCmd: failed to load state: %w", err)
 	}
 
 	if c.TokensUsed > 0 {
@@ -165,7 +168,7 @@ func (c *LogUnblockerActionCmd) Execute(ctx context.Context, repo domain.StateRe
 
 	domain.AppendAction(state, domain.Action{
 		Timestamp: time.Now(),
-		Tool:      "unblocker_log",
+		Tool:      "fallback_log",
 		Success:   true,
 		Result:    c.Message,
 	})
@@ -200,6 +203,130 @@ func (c *ClearInconsistentAgentCmd) Execute(ctx context.Context, repo domain.Sta
 		Tool:      "unblocker_clear_agent",
 		Success:   true,
 		Result:    fmt.Sprintf("agent %s cleared by unblocker: %s", c.AgentID, c.Reason),
+	})
+
+	return repo.Save(ctx, state)
+}
+
+// BypassToFallbackCmd forces a stalled or looping task directly to the FallbackAgent
+// with full sovereign repair authority, resetting the task to PENDING with high stall count
+// and sovereign recovery directive.
+type BypassToFallbackCmd struct {
+	TaskID    string
+	Reason    string
+	Directive string
+}
+
+// BypassToLastResortCmd is a backwards-compatible alias for BypassToFallbackCmd.
+type BypassToLastResortCmd = BypassToFallbackCmd
+
+// Execute implements Command for BypassToFallbackCmd.
+func (c *BypassToFallbackCmd) Execute(ctx context.Context, repo domain.StateRepository) error {
+	state, err := repo.Load(ctx)
+	if err != nil {
+		return fmt.Errorf("BypassToFallbackCmd: failed to load state: %w", err)
+	}
+
+	found := false
+	for i := range state.Tasks {
+		if state.Tasks[i].ID == c.TaskID {
+			found = true
+			if state.Tasks[i].Status == domain.TaskSuccess || state.Tasks[i].Status == domain.TaskFailed {
+				fmt.Printf("FallbackAgent: BypassToFallbackCmd skipped for task %s (already in terminal state %s)\n", c.TaskID, state.Tasks[i].Status)
+				return nil
+			}
+
+			state.Tasks[i].StallCount = 2
+			state.Tasks[i].LastResortUsed = true
+			state.Tasks[i].FallbackUsed = true
+			state.Tasks[i].Status = domain.TaskPending
+			state.Tasks[i].Progress = 0
+			directive := c.Directive
+			if directive == "" {
+				directive = fmt.Sprintf("SOVEREIGN REPAIR DIRECTIVE: bypass to FallbackAgent: %s", c.Reason)
+			}
+			state.Tasks[i].RecoveryDirective = directive
+			state.Tasks[i].UpdatedAt = time.Now()
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("BypassToFallbackCmd: task %s not found in state", c.TaskID)
+	}
+
+	for i := range state.ActiveAgents {
+		if state.ActiveAgents[i].TaskID == c.TaskID && state.ActiveAgents[i].Status == domain.AgentWorking {
+			state.ActiveAgents[i].Status = domain.AgentCompleted
+			state.ActiveAgents[i].CompletedAt = time.Now()
+			state.ActiveAgents[i].LastError = fmt.Sprintf("bypassed to fallback: %s", c.Reason)
+		}
+	}
+
+	domain.AppendAction(state, domain.Action{
+		Timestamp: time.Now(),
+		Tool:      "fallback_bypass",
+		Success:   true,
+		Result:    fmt.Sprintf("task %s bypassed to FallbackAgent: %s", c.TaskID, c.Reason),
+	})
+
+	return repo.Save(ctx, state)
+}
+
+// ScopeTriageCmd evaluates remaining backlog scope when approaching budget/timeout cliffs
+// or suffering repeated stalls, deferring non-essential downstream stories (US-003+)
+// and unblocking the delivery of a tested, working Walking Skeleton (US-001 / US-002).
+type ScopeTriageCmd struct {
+	Reason      string
+	KeepStories int // Default is 2 (keep US-001 and US-002)
+}
+
+// Execute implements Command for ScopeTriageCmd.
+func (c *ScopeTriageCmd) Execute(ctx context.Context, repo domain.StateRepository) error {
+	state, err := repo.Load(ctx)
+	if err != nil {
+		return fmt.Errorf("ScopeTriageCmd: failed to load state: %w", err)
+	}
+
+	keep := c.KeepStories
+	if keep <= 0 {
+		keep = 2
+	}
+
+	var triagedStories []string
+	for i := range state.Stories {
+		if i >= keep && state.Stories[i].Status != domain.StorySuccess && state.Stories[i].Status != domain.StoryDeferred {
+			triagedStories = append(triagedStories, state.Stories[i].ID)
+			state.Stories[i].Status = domain.StoryDeferred
+			state.Stories[i].UpdatedAt = time.Now()
+		}
+	}
+
+	triagedTasks := 0
+	if len(triagedStories) > 0 {
+		triagedMap := make(map[string]bool, len(triagedStories))
+		for _, sID := range triagedStories {
+			triagedMap[sID] = true
+		}
+
+		for i := range state.Tasks {
+			if triagedMap[state.Tasks[i].StoryID] && state.Tasks[i].Status != domain.TaskSuccess && state.Tasks[i].Status != domain.TaskDeferred {
+				state.Tasks[i].Status = domain.TaskDeferred
+				state.Tasks[i].FailureLog = fmt.Sprintf("[ScopeTriage] deferred to prioritize core deliverable: %s", c.Reason)
+				state.Tasks[i].UpdatedAt = time.Now()
+				triagedTasks++
+			}
+		}
+	}
+
+	resultMsg := fmt.Sprintf("scope triage executed: kept first %d stories, deferred %d downstream stories (%v) and %d tasks: %s",
+		keep, len(triagedStories), triagedStories, triagedTasks, c.Reason)
+	fmt.Printf("✂ [Scope Triage] %s\n", resultMsg)
+
+	domain.AppendAction(state, domain.Action{
+		Timestamp: time.Now(),
+		Tool:      "scope_triage",
+		Success:   true,
+		Result:    resultMsg,
 	})
 
 	return repo.Save(ctx, state)

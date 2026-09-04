@@ -100,12 +100,12 @@ func TestWebServer_Endpoints(t *testing.T) {
 		}
 	})
 
-	t.Run("GET /api/v1/state includes last_resort_used and last_resort active agent", func(t *testing.T) {
+	t.Run("GET /api/v1/state includes fallback_used, last_resort_used, and active agents", func(t *testing.T) {
 		repo.state.Tasks = []domain.Task{
-			{ID: "task-99", Title: "Deadlocked Task", Status: domain.TaskSuccess, LastResortUsed: true},
+			{ID: "task-99", Title: "Deadlocked Task", Status: domain.TaskSuccess, FallbackUsed: true, LastResortUsed: true},
 		}
 		repo.state.ActiveAgents = []domain.Agent{
-			{ID: "agent-last_resort-task-99", Role: domain.AgentRoleLastResort, Status: domain.AgentWorking, TaskID: "task-99"},
+			{ID: "agent-fallback-task-99", Role: domain.AgentRoleFallback, Status: domain.AgentWorking, TaskID: "task-99"},
 		}
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/state", nil)
 		rec := httptest.NewRecorder()
@@ -115,11 +115,14 @@ func TestWebServer_Endpoints(t *testing.T) {
 			t.Errorf("expected 200 OK, got %d", rec.Code)
 		}
 		body := rec.Body.String()
+		if !strings.Contains(body, `"fallback_used":true`) {
+			t.Errorf("expected state to contain fallback_used: true, got: %s", body)
+		}
 		if !strings.Contains(body, `"last_resort_used":true`) {
 			t.Errorf("expected state to contain last_resort_used: true, got: %s", body)
 		}
-		if !strings.Contains(body, `"role":"LAST_RESORT"`) {
-			t.Errorf("expected state to contain role: LAST_RESORT, got: %s", body)
+		if !strings.Contains(body, `"role":"FALLBACK"`) {
+			t.Errorf("expected state to contain role: FALLBACK, got: %s", body)
 		}
 	})
 

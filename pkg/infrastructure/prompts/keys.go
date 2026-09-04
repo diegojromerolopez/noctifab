@@ -26,7 +26,7 @@ const (
 	AgentGenerator      = "generator"
 	AgentQA             = "qa"
 	AgentSpec           = "spec"
-	AgentLastResort     = "last_resort"
+	AgentFallback       = "fallback"
 	AgentAuditor        = "auditor"
 )
 
@@ -37,7 +37,7 @@ var catalog = map[string][]string{
 	AgentPlanner:        {"decompose"},
 	AgentQA:             {"acceptance"},
 	AgentAuditor:        {"acceptance_audit"},
-	AgentLastResort:     {"repair"},
+	AgentFallback:       {"repair"},
 	AgentSpec: {
 		"pm_draft", "architect_enrich", "tester_enrich",
 		"qa_enrich", "consensus_audit", "refine",

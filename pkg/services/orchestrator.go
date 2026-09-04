@@ -54,6 +54,7 @@ type OrchestratorConfig struct {
 	Context                config.ContextConfig
 	WorkspaceCache         config.WorkspaceCacheConfig
 	QA                     config.QAConfig
+	Fallback               config.FallbackAgentConfig
 	LastResort             config.LastResortAgentConfig
 }
 
@@ -68,6 +69,16 @@ type QADependencies struct {
 
 func (c OrchestratorConfig) GetWorkspaceCache() config.WorkspaceCacheConfig {
 	return c.WorkspaceCache
+}
+
+func (c OrchestratorConfig) GetFallback() config.FallbackAgentConfig {
+	if c.Fallback.Enabled || c.Fallback.Model != "" || c.Fallback.Profile != "" || len(c.Fallback.Providers) > 0 {
+		return c.Fallback
+	}
+	if c.LastResort.Enabled || c.LastResort.Model != "" || c.LastResort.Profile != "" || len(c.LastResort.Providers) > 0 {
+		return c.LastResort
+	}
+	return c.Fallback
 }
 
 type Orchestrator struct {
@@ -86,7 +97,7 @@ type Orchestrator struct {
 	promptRenderer    PromptRenderer
 	metricsMu         sync.RWMutex
 	metricsCollector  *MetricsCollector
-	unblocker         *UnblockerAgent
+	fallbackAgent     *FallbackAgent
 	qa                *QARuntimeCoordinator
 	timesMu           sync.Mutex
 	storyStartedAt    time.Time
@@ -278,12 +289,17 @@ func (o *Orchestrator) setLastWorkspaceSync(t time.Time) {
 	o.timesMu.Unlock()
 }
 
-// SetUnblocker attaches an UnblockerAgent to the Orchestrator. It must be called
-// before Start so the goroutine is launched alongside the main polling loop.
-func (o *Orchestrator) SetUnblocker(u *UnblockerAgent) {
+// SetFallbackAgent attaches a FallbackAgent to the Orchestrator. It must be called
+// before Start so the watchdog goroutine is launched alongside the main polling loop.
+func (o *Orchestrator) SetFallbackAgent(f *FallbackAgent) {
 	if o != nil {
-		o.unblocker = u
+		o.fallbackAgent = f
 	}
+}
+
+// SetUnblocker attaches an UnblockerAgent to the Orchestrator (alias for SetFallbackAgent).
+func (o *Orchestrator) SetUnblocker(u *FallbackAgent) {
+	o.SetFallbackAgent(u)
 }
 
 // Start runs the polling loop
@@ -291,9 +307,9 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	if o.rebaseQueue != nil {
 		go o.rebaseQueue.Start(ctx)
 	}
-	// Start unblocker goroutine alongside the main polling loop (nil-safe).
-	if o.unblocker != nil {
-		o.unblocker.Start(ctx)
+	// Start fallback agent goroutine alongside the main polling loop (nil-safe).
+	if o.fallbackAgent != nil {
+		o.fallbackAgent.Start(ctx)
 	}
 	for {
 		hasWork, err := o.RunOnce(ctx)

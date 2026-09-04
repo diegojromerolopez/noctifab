@@ -1762,31 +1762,35 @@ To guarantee the primary invariant—**Noctifab Never Gets Stuck**—the system 
    - Upon completion of all story tasks, executes a consolidated global test suite on `integrationBranch`.
    - If tests fail, spawns the Integration Repair Agent with the consolidated diff and failure traces (budget: max 2 turns) to repair cross-task discrepancies.
 
-### 3.6.14. Last-Resort Agent (Omni-Unblocker & Sovereign Repair Agent)
+### 3.6.14. Fallback Agent (Omni-Agent / Sovereign Repair & Recovery Agent)
 
-The **Last-Resort Agent** (`pkg/services/orchestrator_last_resort.go`, `AgentRole: "LAST_RESORT"`) is an autonomous sovereign repair agent invoked by the orchestrator when normal execution encounters intractable roadblocks:
-1. **Trigger Conditions:**
+The **Fallback Agent** (`pkg/services/fallback_agent.go`, `pkg/services/orchestrator_last_resort.go`, `AgentRole: "FALLBACK"`) is Noctifab's unified escalation, health monitoring, and sovereign recovery system that merges the continuous watchdog monitoring of the unblocker with the sovereign compromise authority of the last-resort omni-builder:
+1. **Operating Modes:**
+   - **Mode 1 (Passive Watchdog & Scope Triage):** Periodically inspects pipeline state, scrubs logs, evaluates 0-token fast-path regex rules, and executes `ScopeTriageCmd` to prioritize walking skeletons (`US-001`/`US-002`) and defer downstream scope (`US-003+`) upon reaching budget cliffs (> 50% timeout).
+   - **Mode 2 (Active Sovereign Omni-Builder):** When retries exhaust or tasks reach stall count thresholds (`StallCount >= 2`), takes direct control of the workspace across all files and tools.
+2. **Trigger Conditions:**
    - Exhausted retry budgets (`task.Retries >= task.MaxRetries`).
-   - Cyclic test failure or unblocker loops (`unblocker.stall_count >= 4`).
+   - Cyclic test failure or stall count escalation (`task.StallCount >= 2`).
    - Missing toolchains or sandbox failures (`FailureSandbox`).
-   - Post-merge integration failures where the standard 2-turn repair phase is insufficient.
-2. **Sovereign Permissions & Scope:**
-   - Multi-file code and test edits in a single turn.
+   - Approaching story budget or timeout cliffs.
+3. **Sovereign Permissions & Scope:**
+   - Multi-file code and test edits in a single turn (`write_files`, `edit_file`, `run_tests`, `install_package`, `apply_patch`).
    - Specification alignment and contract mutation when tests and code are deadlocked over conflicting requirements.
    - Fallback and dependency pruning when uninstalled external libraries stall compilation.
-3. **4-Tier Compromise Hierarchy:**
+4. **4-Tier Compromise Hierarchy:**
    - **Tier 1 (Interface Harmonization):** Harmonize signature mismatches, types, and parameter counts between tests and implementation.
    - **Tier 2 (Standard Library Fallback):** Replace missing external third-party packages with built-in standard library constructs.
    - **Tier 3 (Scope Pruning):** Simplify, disable, or adjust failing test cases that test non-essential external toolchains or unreachable requirements.
    - **Tier 4 (Safe Compiling Stub):** Implement a minimal, type-safe compiling stub returning default/fallback values to ensure the pipeline never breaks build compilation.
-4. **Strict Specification Quality Invariants:**
+5. **Strict Specification Quality Invariants:**
    - Modularity: files must not exceed 500 lines.
    - Architecture: Dependency Injection, SOLID, Domain-Driven Design (DDD).
    - Security: Zero security compromises (no hardcoded credentials or sandbox breakouts).
-5. **Observability & Auditing:**
-   - Emits prominent critical log alerts (`🚨 [CRITICAL ALERT] LAST-RESORT AGENT SUMMONED`).
+6. **Observability & Auditing:**
+   - Emits prominent critical log alerts (`🚨 [CRITICAL ALERT] Fallback Agent triggered`).
    - Registers in `State.ActiveAgents` and logs structured actions to `State.LastActions`.
    - Displays real-time status, badges, and filters in the Web Dashboard.
+
 
 ### 3.6.15. Whole-Project Acceptance Auditor Agent
 

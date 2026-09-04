@@ -177,6 +177,7 @@ var serveCmd = &cobra.Command{
 			ExcludePaths:         cfg.Sandbox.ExcludePaths,
 			WorkspaceCache:       cfg.GetWorkspaceCache(),
 			QA:                   cfg.Agents.QA,
+			Fallback:             cfg.Agents.GetFallback(),
 			LastResort:           cfg.Agents.LastResort,
 		}
 
@@ -192,19 +193,22 @@ var serveCmd = &cobra.Command{
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		if cfg.Unblocker.Enabled {
-			unblocker := services.NewUnblockerAgent(
+		fallbackCfg := cfg.GetFallback()
+		if fallbackCfg.Enabled {
+			fallbackAgent := services.NewFallbackAgent(
 				repo,
 				llmClient,
 				mailbox,
-				time.Duration(cfg.Unblocker.PollInterval),
-				cfg.Unblocker.MaxRetries,
-				time.Duration(cfg.Unblocker.StallThreshold),
-				time.Duration(cfg.Unblocker.ConflictThreshold),
-				cfg.Unblocker.LLMAssessment,
+				time.Duration(fallbackCfg.PollInterval),
+				fallbackCfg.MaxRetries,
+				time.Duration(fallbackCfg.StallThreshold),
+				time.Duration(fallbackCfg.ConflictThreshold),
+				fallbackCfg.LLMAssessment,
 			)
-			orchestrator.SetUnblocker(unblocker)
-			unblocker.Start(ctx)
+			fallbackAgent.SetBudgetCliff(fallbackCfg.BudgetCliffRatio, 0)
+			fallbackAgent.SetStallCountThreshold(fallbackCfg.Triggers.StallCountThreshold)
+			orchestrator.SetFallbackAgent(fallbackAgent)
+			fallbackAgent.Start(ctx)
 		}
 
 		// Graceful shutdown on SIGTERM / SIGINT.

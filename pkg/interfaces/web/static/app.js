@@ -640,11 +640,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function isLastResortUsedForTask(task) {
     if (!task) return false;
-    if (task.last_resort_used) return true;
-    if (task.assigned_to && task.assigned_to.toUpperCase() === 'LAST_RESORT') return true;
+    if (task.fallback_used || task.last_resort_used) return true;
+    if (task.assigned_to && (task.assigned_to.toUpperCase() === 'FALLBACK' || task.assigned_to.toUpperCase() === 'LAST_RESORT')) return true;
     if (currentState && currentState.last_actions) {
       return currentState.last_actions.some(a =>
-        (a.tool || '').includes('last_resort') &&
+        ((a.tool || '').includes('fallback') || (a.tool || '').includes('last_resort')) &&
         ((a.reasoning || '').includes(task.id) || (a.result || '').includes(task.id))
       );
     }
@@ -668,12 +668,14 @@ document.addEventListener('DOMContentLoaded', () => {
         'generator': '⚡ GENERATOR',
         'tester': '🧪 TESTER',
         'qa': '🛡️ QA CONSENSUS',
+        'auditor': '📋 AUDITOR',
+        'fallback': '🛡️ FALLBACK (OMNI)',
         'unblocker': '🚑 UNBLOCKER',
         'last_resort': '🚨 LAST RESORT',
         'lastresort': '🚨 LAST RESORT'
       };
       const roleLower = ag.role ? ag.role.toLowerCase() : '';
-      const isLastResort = roleLower === 'last_resort' || roleLower === 'lastresort';
+      const isLastResort = roleLower === 'fallback' || roleLower === 'last_resort' || roleLower === 'lastresort';
       const roleLabel = roleIcons[roleLower] || (ag.role || 'AGENT');
       return `
         <div class="agent-card ${ag.status === 'WORKING' ? 'working' : ''} ${isLastResort ? 'last-resort' : ''}">
@@ -1149,7 +1151,7 @@ document.addEventListener('DOMContentLoaded', () => {
     actions.forEach(act => {
       const ts = act.timestamp ? new Date(act.timestamp).toLocaleTimeString() : 'now';
       let cssClass = act.success ? 'tool-success' : 'tool-fail';
-      if ((act.tool || '').includes('last_resort')) {
+      if ((act.tool || '').includes('fallback') || (act.tool || '').includes('last_resort')) {
         cssClass = 'last-resort-alert';
       }
       appendLogEntry(act.tool || 'ACTION', `Result: ${act.result || act.reasoning || 'Executed'}`, cssClass, ts);

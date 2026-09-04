@@ -14,14 +14,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// RunLastResortAgent executes the sovereign Last-Resort Agent to resolve persistent
+// RunFallbackAgent executes the sovereign Fallback Agent (Omni-Agent) to resolve persistent
 // blockers, contradictory specifications, or missing sandbox toolchains.
 // Returns true if the repair succeeded and tests pass cleanly.
-//
-// Triggering the Last-Resort Agent is a critical, worrying event: it is explicitly
-// logged to standard output, standard error, the execution event stream, and persisted
-// to the state database.
-func (o *Orchestrator) RunLastResortAgent(
+func (o *Orchestrator) RunFallbackAgent(
 	ctx context.Context,
 	task *domain.Task,
 	taskState *domain.State,
@@ -29,7 +25,8 @@ func (o *Orchestrator) RunLastResortAgent(
 	failureLog string,
 	triggerReason string,
 ) (bool, string) {
-	if !o.cfg.LastResort.Enabled || o.llmClient == nil {
+	fbCfg := o.cfg.GetFallback()
+	if !fbCfg.Enabled || o.llmClient == nil {
 		return false, failureLog
 	}
 
@@ -42,36 +39,36 @@ func (o *Orchestrator) RunLastResortAgent(
 		effectiveTask = *task
 	}
 
-	ctx, span := telemetry.Tracer().Start(ctx, "RunLastResortAgent",
+	ctx, span := telemetry.Tracer().Start(ctx, "RunFallbackAgent",
 		trace.WithAttributes(
 			attribute.String("task.id", effectiveTask.ID),
 			attribute.String("trigger.reason", triggerReason),
 		))
 	defer span.End()
 
-	maxTurns := o.cfg.LastResort.MaxTurns
+	maxTurns := fbCfg.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = 2
 	}
 
-	turnTimeout := time.Duration(o.cfg.LastResort.Timeout)
+	turnTimeout := time.Duration(fbCfg.Timeout)
 	if turnTimeout <= 0 {
 		turnTimeout = 180 * time.Second
 	}
 
 	// 1. Prominent Console & Stderr Alert
-	alertMsg := fmt.Sprintf("🚨 [CRITICAL ALERT] Last-Resort Agent triggered for task %s (Reason: %s)!", effectiveTask.ID, triggerReason)
+	alertMsg := fmt.Sprintf("🚨 [CRITICAL ALERT] Fallback Agent triggered for task %s (Reason: %s)!", effectiveTask.ID, triggerReason)
 	fmt.Fprintf(os.Stderr, "%s\n", alertMsg)
 	fmt.Printf("%s Starting sovereign repair (Max turns: %d)...\n", alertMsg, maxTurns)
 
 	// 2. Telemetry & Execution Observer Recording
-	o.registerAgentStart(ctx, string(domain.AgentRoleLastResort), effectiveTask.ID)
+	o.registerAgentStart(ctx, string(domain.AgentRoleFallback), effectiveTask.ID)
 	if o.observer != nil {
 		o.observer.Observe(ctx, domain.ExecutionEvent{
 			Kind:          domain.EventFindingRecorded,
 			TaskID:        effectiveTask.ID,
-			AgentRole:     string(domain.AgentRoleLastResort),
-			ErrorCategory: "CRITICAL_LAST_RESORT_TRIGGERED",
+			AgentRole:     string(domain.AgentRoleFallback),
+			ErrorCategory: "CRITICAL_FALLBACK_TRIGGERED",
 			Evidence:      fmt.Sprintf("Trigger: %s; Summary: %s", triggerReason, summarizeFailureLog(failureLog)),
 			At:            time.Now().UTC(),
 		})
@@ -80,19 +77,21 @@ func (o *Orchestrator) RunLastResortAgent(
 	// 3. Database Persistence: Record Trigger in State.LastActions & Task Metadata
 	if task != nil {
 		task.LastResortUsed = true
+		task.FallbackUsed = true
 	}
 	if taskState != nil {
 		// Update local copy so unit tests and subsequent steps see it
 		for i := range taskState.Tasks {
 			if taskState.Tasks[i].ID == effectiveTask.ID {
 				taskState.Tasks[i].LastResortUsed = true
+				taskState.Tasks[i].FallbackUsed = true
 				break
 			}
 		}
 		triggerAction := domain.Action{
 			Timestamp: time.Now().UTC(),
-			Tool:      "last_resort_agent_trigger",
-			Reasoning: fmt.Sprintf("CRITICAL: Summoned Last-Resort Agent for task %s due to %s", effectiveTask.ID, triggerReason),
+			Tool:      "fallback_agent_trigger",
+			Reasoning: fmt.Sprintf("CRITICAL: Summoned Fallback Agent for task %s due to %s", effectiveTask.ID, triggerReason),
 			Result:    summarizeFailureLog(failureLog),
 			Success:   false,
 		}
@@ -102,6 +101,7 @@ func (o *Orchestrator) RunLastResortAgent(
 			for i := range st.Tasks {
 				if st.Tasks[i].ID == effectiveTask.ID {
 					st.Tasks[i].LastResortUsed = true
+					st.Tasks[i].FallbackUsed = true
 					break
 				}
 			}
@@ -109,14 +109,14 @@ func (o *Orchestrator) RunLastResortAgent(
 			return nil
 		})
 		if saveErr != nil {
-			fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on trigger failed: %v\n", saveErr)
+			fmt.Fprintf(os.Stderr, "⚠ [Fallback Agent] State save on trigger failed: %v\n", saveErr)
 		}
 	}
 
 	currentLog := failureLog
 
 	for turn := 1; turn <= maxTurns; turn++ {
-		fmt.Printf("🔧 [Last-Resort Agent] Starting sovereign turn %d/%d for task %s...\n", turn, maxTurns, effectiveTask.ID)
+		fmt.Printf("🔧 [Fallback Agent] Starting sovereign turn %d/%d for task %s...\n", turn, maxTurns, effectiveTask.ID)
 
 		// Collect recent diff context from git
 		diffContext := ""
@@ -129,7 +129,7 @@ func (o *Orchestrator) RunLastResortAgent(
 		}
 
 		// Assemble multi-file context block with secret sanitization
-		contextBlock := buildLastResortContext(currentLog, diffContext, triggerReason, turn, maxTurns)
+		contextBlock := buildFallbackContext(currentLog, diffContext, triggerReason, turn, maxTurns)
 
 		data := prompts.TaskPromptData{
 			Title:       effectiveTask.Title,
@@ -140,27 +140,27 @@ func (o *Orchestrator) RunLastResortAgent(
 
 		var promptBody string
 		if o.promptRenderer != nil {
-			rendered, err := o.promptRenderer.Render(prompts.AgentLastResort, "repair", data)
+			rendered, err := o.promptRenderer.Render(prompts.AgentFallback, "repair", data)
 			if err == nil {
 				promptBody = rendered.Full()
 			}
 		}
 
 		if promptBody == "" {
-			promptBody = fmt.Sprintf("Last-Resort Agent Repair:\nTask: %s - %s\n%s\n%s",
-				effectiveTask.Title, effectiveTask.Description, contextBlock, prompts.Contract(prompts.AgentLastResort))
+			promptBody = fmt.Sprintf("Fallback Agent Repair:\nTask: %s - %s\n%s\n%s",
+				effectiveTask.Title, effectiveTask.Description, contextBlock, prompts.Contract(prompts.AgentFallback))
 		}
 
 		llmCtx, cancel := context.WithTimeout(ctx, turnTimeout)
-		llmCtx = context.WithValue(llmCtx, AgentRoleKey, "last_resort")
-		llmCtx = domain.WithUncompactableTail(llmCtx, len(prompts.Contract(prompts.AgentLastResort)))
+		llmCtx = context.WithValue(llmCtx, AgentRoleKey, "fallback")
+		llmCtx = domain.WithUncompactableTail(llmCtx, len(prompts.Contract(prompts.AgentFallback)))
 
 		resp, err := o.llmClient.Complete(llmCtx, promptBody)
 		cancel()
 		o.recordTokenUsage(ctx, promptBody, resp)
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] Turn %d LLM call failed: %v\n", turn, err)
+			fmt.Fprintf(os.Stderr, "⚠ [Fallback Agent] Turn %d LLM call failed: %v\n", turn, err)
 			continue
 		}
 
@@ -174,7 +174,7 @@ func (o *Orchestrator) RunLastResortAgent(
 					if ok {
 						_, execErr := tool.Execute(ctx, taskState, action.Args)
 						if execErr != nil {
-							fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Tool Failed] %s: %v\n", action.Tool, execErr)
+							fmt.Fprintf(os.Stderr, "⚠ [Fallback Tool Failed] %s: %v\n", action.Tool, execErr)
 						}
 					}
 				}
@@ -183,8 +183,8 @@ func (o *Orchestrator) RunLastResortAgent(
 			// Stage and commit changes with standardized tag
 			if taskGit != nil {
 				if commitErr := o.stageAndCommit(ctx, taskGit, effectiveTask.ID,
-					"fix(lra): sovereign unblock for task %s - %s [turn %d/%d]", effectiveTask.Title, turn, maxTurns); commitErr != nil {
-					fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] Git commit failed on turn %d: %v\n", turn, commitErr)
+					"fix(fallback): sovereign unblock for task %s - %s [turn %d/%d]", effectiveTask.Title, turn, maxTurns); commitErr != nil {
+					fmt.Fprintf(os.Stderr, "⚠ [Fallback Agent] Git commit failed on turn %d: %v\n", turn, commitErr)
 				}
 			}
 		}
@@ -193,15 +193,15 @@ func (o *Orchestrator) RunLastResortAgent(
 		if o.evaluator != nil {
 			passed, newLogMsg, _ := o.evaluator.ValidateTask(ctx, taskState, effectiveTask)
 			if passed {
-				successMsg := fmt.Sprintf("✨ [Last-Resort Agent] Sovereign unblock successful on turn %d/%d for task %s!", turn, maxTurns, effectiveTask.ID)
+				successMsg := fmt.Sprintf("✨ [Fallback Agent] Sovereign unblock successful on turn %d/%d for task %s!", turn, maxTurns, effectiveTask.ID)
 				fmt.Println(successMsg)
 				fmt.Fprintf(os.Stderr, "%s\n", successMsg)
 
-				o.registerAgentComplete(ctx, string(domain.AgentRoleLastResort), effectiveTask.ID, nil)
+				o.registerAgentComplete(ctx, string(domain.AgentRoleFallback), effectiveTask.ID, nil)
 				if taskState != nil {
 					successAction := domain.Action{
 						Timestamp: time.Now().UTC(),
-						Tool:      "last_resort_agent_success",
+						Tool:      "fallback_agent_success",
 						Reasoning: fmt.Sprintf("Sovereign repair succeeded on turn %d/%d for task %s", turn, maxTurns, effectiveTask.ID),
 						Result:    "All tests passed after sovereign repair",
 						Success:   true,
@@ -213,7 +213,7 @@ func (o *Orchestrator) RunLastResortAgent(
 						return nil
 					})
 					if saveErr != nil {
-						fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on success failed: %v\n", saveErr)
+						fmt.Fprintf(os.Stderr, "⚠ [Fallback Agent] State save on success failed: %v\n", saveErr)
 					}
 				}
 				return true, newLogMsg
@@ -222,15 +222,15 @@ func (o *Orchestrator) RunLastResortAgent(
 		}
 	}
 
-	failAlert := fmt.Sprintf("🚨 [CRITICAL ALERT] Last-Resort Agent completed %d turns without resolving task %s.", maxTurns, effectiveTask.ID)
+	failAlert := fmt.Sprintf("🚨 [CRITICAL ALERT] Fallback Agent completed %d turns without resolving task %s.", maxTurns, effectiveTask.ID)
 	fmt.Fprintf(os.Stderr, "%s Remaining failure trace:\n%s\n", failAlert, currentLog)
 
-	o.registerAgentComplete(ctx, string(domain.AgentRoleLastResort), effectiveTask.ID, fmt.Errorf("last resort repair unexhausted after %d turns", maxTurns))
+	o.registerAgentComplete(ctx, string(domain.AgentRoleFallback), effectiveTask.ID, fmt.Errorf("fallback repair unexhausted after %d turns", maxTurns))
 	if taskState != nil {
 		failAction := domain.Action{
 			Timestamp: time.Now().UTC(),
-			Tool:      "last_resort_agent_failed",
-			Reasoning: fmt.Sprintf("Last-Resort Agent failed to unblock task %s after %d turns", effectiveTask.ID, maxTurns),
+			Tool:      "fallback_agent_failed",
+			Reasoning: fmt.Sprintf("Fallback Agent failed to unblock task %s after %d turns", effectiveTask.ID, maxTurns),
 			Result:    summarizeFailureLog(currentLog),
 			Success:   false,
 		}
@@ -241,16 +241,28 @@ func (o *Orchestrator) RunLastResortAgent(
 			return nil
 		})
 		if saveErr != nil {
-			fmt.Fprintf(os.Stderr, "⚠ [Last-Resort Agent] State save on failure failed: %v\n", saveErr)
+			fmt.Fprintf(os.Stderr, "⚠ [Fallback Agent] State save on failure failed: %v\n", saveErr)
 		}
 	}
 
 	return false, currentLog
 }
 
-func buildLastResortContext(failureLog, diffContext, triggerReason string, turn, maxTurns int) string {
+// RunLastResortAgent is a backwards-compatible delegator to RunFallbackAgent.
+func (o *Orchestrator) RunLastResortAgent(
+	ctx context.Context,
+	task *domain.Task,
+	taskState *domain.State,
+	taskGit *GitClient,
+	failureLog string,
+	triggerReason string,
+) (bool, string) {
+	return o.RunFallbackAgent(ctx, task, taskState, taskGit, failureLog, triggerReason)
+}
+
+func buildFallbackContext(failureLog, diffContext, triggerReason string, turn, maxTurns int) string {
 	var sb strings.Builder
-	sb.WriteString("\n### 🎯 LAST-RESORT SOVEREIGN DIAGNOSTIC CONTEXT:\n")
+	sb.WriteString("\n### 🎯 FALLBACK SOVEREIGN DIAGNOSTIC CONTEXT:\n")
 	fmt.Fprintf(&sb, "* **Trigger Reason:** %s\n", triggerReason)
 	fmt.Fprintf(&sb, "* **Active Turn:** %d of %d\n\n", turn, maxTurns)
 

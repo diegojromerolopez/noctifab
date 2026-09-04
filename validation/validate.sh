@@ -94,6 +94,19 @@ else
     fi
   done
 fi
+
+mkdir -p .git/info
+cat <<EOF >> .git/info/exclude
+.noctifab/data/
+.noctifab/logs/
+.noctifab/worktrees/
+.noctifab/secrets.yaml
+.noctifab/noctifab.pid
+*.db
+*.db-shm
+*.db-wal
+EOF
+
 git add .
 git commit -m "initial project structures and gitignore"
 

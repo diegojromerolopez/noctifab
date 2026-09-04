@@ -312,3 +312,54 @@ func TestGenerateRoadmap_RefineSpec(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, refinedSpec, string(updatedBytes))
 }
+
+func TestGenerateRoadmap_IgnoresInfrastructureInLegacyScan(t *testing.T) {
+	tempDir := t.TempDir()
+	specPath := filepath.Join(tempDir, "SPEC.md")
+	err := os.WriteFile(specPath, []byte("# Greenfield Project"), 0644)
+	require.NoError(t, err)
+
+	// Create infrastructure files that should NOT trigger legacy mode
+	err = os.WriteFile(filepath.Join(tempDir, "Dockerfile"), []byte("FROM alpine"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(tempDir, ".rubocop.yml"), []byte("AllCops: TargetRubyVersion: 3.2"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(tempDir, "docker-compose.yml"), []byte("version: '3'"), 0644)
+	require.NoError(t, err)
+
+	var capturedPrompt string
+	mockLLM := &mockCapturingRoadmapLLMClient{
+		onComplete: func(prompt string) {
+			capturedPrompt = prompt
+		},
+		Response: &domain.LLMResponse{
+			Reasoning: "Generating greenfield stories",
+			Actions: []domain.LLMAction{
+				{
+					Tool: "create_story",
+					Args: map[string]any{
+						"filename": "roadmap/user-stories/US-001-walking-skeleton.md",
+						"content":  "# US-001 Walking Skeleton",
+					},
+				},
+			},
+		},
+	}
+
+	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLM, nil)
+	assert.NoError(t, err)
+	assert.NotContains(t, capturedPrompt, "LEGACY FILES DETECTED IN WORKSPACE")
+}
+
+type mockCapturingRoadmapLLMClient struct {
+	onComplete func(prompt string)
+	Response   *domain.LLMResponse
+	Err        error
+}
+
+func (m *mockCapturingRoadmapLLMClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	if m.onComplete != nil {
+		m.onComplete(prompt)
+	}
+	return m.Response, m.Err
+}

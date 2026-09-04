@@ -16,7 +16,7 @@ There are **24 customizable templates across 8 agents**:
 | `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `implement_breadth_first`, `implement_breadth_first_fix`, `surgical_repair` |
 | `qa` | `acceptance` |
 | `auditor` | `audit` |
-| `last_resort` | `repair` |
+| `fallback` | `repair` |
 | `spec` | `pm_draft`, `architect_enrich`, `tester_enrich`, `qa_enrich`, `consensus_audit`, `refine` |
 
 
@@ -94,7 +94,7 @@ prompts:
 Templates use Go [`text/template`](https://pkg.go.dev/text/template) syntax
 with named placeholders. The available placeholders per agent:
 
-### `tester/*`, `generator/*`, and `last_resort/*` — TaskPromptData
+### `tester/*`, `generator/*`, and `fallback/*` — TaskPromptData
 
 | Placeholder | Content |
 | --- | --- |

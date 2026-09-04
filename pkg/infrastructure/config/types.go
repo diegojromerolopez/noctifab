@@ -20,7 +20,8 @@ type Config struct {
 	Telemetry      TelemetryConfig          `yaml:"telemetry"`
 	Logging        LoggingConfig            `yaml:"logging"`
 	SAST           SASTConfig               `yaml:"sast"`
-	Unblocker      UnblockerConfig          `yaml:"unblocker"`
+	Fallback       FallbackConfig           `yaml:"fallback,omitempty"`
+	Unblocker      UnblockerConfig          `yaml:"unblocker,omitempty"`
 	Context        ContextConfig            `yaml:"context"`
 	Notifications  NotificationsConfig      `yaml:"notifications"`
 	WorkspaceCache WorkspaceCacheConfig     `yaml:"workspace_cache"`
@@ -60,8 +61,9 @@ type AgentsConfig struct {
 	Testers            AgentRoleConfig       `yaml:"testers"`
 	QA                 QAConfig              `yaml:"qa"`
 	Auditor            AgentRoleConfig       `yaml:"auditor"`
-	Unblocker          AgentRoleConfig       `yaml:"unblocker"`
-	LastResort         LastResortAgentConfig `yaml:"last_resort"`
+	Fallback           FallbackAgentConfig   `yaml:"fallback,omitempty"`
+	Unblocker          AgentRoleConfig       `yaml:"unblocker,omitempty"`
+	LastResort         LastResortAgentConfig `yaml:"last_resort,omitempty"`
 	WorkspaceCache     WorkspaceCacheConfig  `yaml:"workspace_cache"`
 }
 
@@ -325,8 +327,9 @@ type RolesConfig struct {
 	Generator    RoleSetting `yaml:"generator"`
 	Tester       RoleSetting `yaml:"tester"`
 	QA           RoleSetting `yaml:"qa"`
-	Unblocker    RoleSetting `yaml:"unblocker"`
-	LastResort   RoleSetting `yaml:"last_resort"`
+	Fallback     RoleSetting `yaml:"fallback"`
+	Unblocker    RoleSetting `yaml:"unblocker,omitempty"`
+	LastResort   RoleSetting `yaml:"last_resort,omitempty"`
 }
 
 type ProfileConfig struct {
@@ -359,28 +362,8 @@ type SASTConfig struct {
 	FailOnSeverity string   `yaml:"fail_on_severity"`
 }
 
-// UnblockerConfig controls the autonomous unblocker agent that periodically
-// scans for stalled or blocked tasks/agents and injects corrective interventions.
-type UnblockerConfig struct {
-	// Enabled activates the unblocker goroutine (default: true).
-	Enabled bool `yaml:"enabled"`
-	// PollInterval defines how often the unblocker wakes up to scan for stalls (default: 30s).
-	PollInterval Duration `yaml:"poll_interval"`
-	// MaxRetries defines the maximum number of unblock/reset attempts before permanently failing a task (default: 3).
-	MaxRetries int `yaml:"max_retries"`
-	// StallThreshold is how long a task must be frozen IN_PROGRESS before being
-	// considered stalled (default: 5m).
-	StallThreshold Duration `yaml:"stall_threshold"`
-	// ConflictThreshold is how long a CONFLICT_BLOCKED task waits before the
-	// unblocker intervenes (default: 15m).
-	ConflictThreshold Duration `yaml:"conflict_threshold"`
-	// LLMAssessment enables LLM-based root-cause diagnosis of stalls. When false,
-	// the unblocker applies heuristic-only corrections without calling the LLM
-	// (cheaper, but less precise) (default: true).
-	LLMAssessment bool `yaml:"llm_assessment"`
-	// LastResortTriggers controls the threshold and signals for summoning the Last-Resort Agent.
-	LastResortTriggers LastResortTriggersConfig `yaml:"last_resort_triggers"`
-}
+// UnblockerConfig is a backwards-compatible alias for FallbackConfig.
+type UnblockerConfig = FallbackConfig
 
 type ContextMode string
 
