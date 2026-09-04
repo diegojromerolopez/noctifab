@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -168,9 +170,64 @@ func (q *RebaseQueue) Push(ctx context.Context, branch, base string) error {
 	}
 }
 
+const defaultStaleLockThreshold = 60 * time.Second
+
+// isProcessAlive checks whether a process with the given PID is actively running.
+func isProcessAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = proc.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, syscall.ESRCH) {
+		return false
+	}
+	if errors.Is(err, syscall.EPERM) {
+		return true
+	}
+	return false
+}
+
+// isLockFileStale determines if a git lock file is stale. If the lock contains a PID,
+// it checks whether the process is alive; if dead, the lock is stale.
+// If the lock contains no PID or cannot be parsed, it falls back to the threshold (default 60s).
+func isLockFileStale(path string, info os.FileInfo, fallbackThreshold time.Duration) bool {
+	if info == nil {
+		return false
+	}
+	// Check if the lock file contains a valid process PID
+	if data, err := os.ReadFile(path); err == nil {
+		trimmed := strings.TrimSpace(string(data))
+		if pid, parseErr := strconv.Atoi(trimmed); parseErr == nil && pid > 0 {
+			if !isProcessAlive(pid) {
+				return true
+			}
+			// Process is actively running; the lock is definitely active.
+			return false
+		}
+	}
+
+	if fallbackThreshold <= 0 {
+		fallbackThreshold = defaultStaleLockThreshold
+	}
+	return time.Since(info.ModTime()) > fallbackThreshold
+}
+
 // CleanStaleLocks purges stale Git lock files (.git/index.lock, .git/worktrees/*/*.lock)
-// older than 5 seconds to prevent permanent lock contention and deadlocks.
+// using process liveness detection and a 60-second fallback threshold to prevent
+// race conditions during active git commands while clearing orphaned locks.
 func (g *GitClient) CleanStaleLocks(ctx context.Context) {
+	g.CleanStaleLocksWithThreshold(ctx, defaultStaleLockThreshold)
+}
+
+// CleanStaleLocksWithThreshold purges stale Git lock files with a custom fallback age threshold.
+func (g *GitClient) CleanStaleLocksWithThreshold(ctx context.Context, fallbackThreshold time.Duration) {
 	if g == nil || g.dir == "" {
 		return
 	}
@@ -178,14 +235,14 @@ func (g *GitClient) CleanStaleLocks(ctx context.Context) {
 	if info, err := os.Stat(gitDir); err == nil && info.IsDir() {
 		idxLock := filepath.Join(gitDir, "index.lock")
 		if lockInfo, err := os.Stat(idxLock); err == nil {
-			if time.Since(lockInfo.ModTime()) > 5*time.Second {
+			if isLockFileStale(idxLock, lockInfo, fallbackThreshold) {
 				_ = os.Remove(idxLock)
 			}
 		}
 		wtDir := filepath.Join(gitDir, "worktrees")
 		_ = filepath.Walk(wtDir, func(path string, info os.FileInfo, err error) error {
 			if err == nil && !info.IsDir() && strings.HasSuffix(path, ".lock") {
-				if time.Since(info.ModTime()) > 5*time.Second {
+				if isLockFileStale(path, info, fallbackThreshold) {
 					_ = os.Remove(path)
 				}
 			}

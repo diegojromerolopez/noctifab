@@ -488,6 +488,15 @@ Noctifab automatically safeguards workspaces against build artifact explosion, d
 - **Pre-Flight Synthesis (`EnsureProjectGitignore`)**: Before starting the execution loop, Noctifab inspects the project root for `.gitignore`. If missing, it writes a comprehensive, language-agnostic `.gitignore`. If already present, it non-destructively appends missing critical rules (`target/`, `node_modules/`, `dist/`, `bin/`, `build/`, `__pycache__/`, `*.py[cod]`, `.venv/`, `venv/`, `.bundle/`, `*.class`, `*.o`, `*.so`, `*.dylib`, `*.log`, `.noctifab/`).
 - **Defensive Workspace Discovery (`IsPathExcluded`)**: System-level path evaluation defensively excludes standard build output directories and compiled binary extensions even in edge cases where a `.gitignore` has not yet been processed, preventing build artifacts (such as hundreds of `target/debug/` files in Rust or `node_modules/` in Node.js) from being indexed into SQLite file snapshots or staged in Git.
 
+### 11. String-Literal Aware Code Fence Parser (`pkg/infrastructure/llm/parser.go`)
+- **Lexical State Machine**: The parser tracks string literal boundaries (`inString`), backslash escape sequences, and JSON nesting depth (`jsonDepth`) during markdown code fence stripping.
+- **Embedded Fence Preservation**: Markdown code blocks (` ```bash `, ` ```rust `, ` ``` `) appearing inside quoted JSON string payloads (such as file write `content` args) are preserved intact rather than being mistakenly stripped as outer markdown fences.
+- **Elimination of Parse Retries**: Prevents premature JSON envelope truncation and `"no valid JSON object detected"` parsing retries when agents author markdown guides, documentation, or code snippets containing embedded fences.
+
+### 12. Process-Aware Git Lock Management & Rebase Resilience (`pkg/services/rebase_queue.go`)
+- **Process Liveness Verification (`isProcessAlive`)**: Reads PID recorded in Git lock files (`.git/index.lock`, `.git/worktrees/*/*.lock`) and queries process status via signal 0. If the PID is dead, the stale lock is removed immediately regardless of age.
+- **Race Condition Elimination**: If no PID is recorded in the lock file, `CleanStaleLocks` enforces a safe 60-second fallback age threshold (`defaultStaleLockThreshold`), eliminating the race condition where concurrent checkouts and long compilations had active index locks deleted prematurely.
+
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.
 
 

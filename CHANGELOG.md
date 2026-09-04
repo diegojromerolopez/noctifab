@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.70.0] - 2026-09-04
+
+### Added
+- **String-Literal Aware Code Fence Parser (Proposal 5)**:
+  - Re-architected `stripFencedCodeBlocks` in `pkg/infrastructure/llm/parser.go` with a lexical state machine tracking string literals (`inString`), escape characters, and JSON nesting depth (`jsonDepth`).
+  - Code fences (` ```bash `, ` ```rust `, ` ``` `) appearing inside quoted JSON string payloads (such as file write `content` args) are preserved intact rather than being mistakenly stripped as outer markdown fences.
+  - Eliminates premature JSON envelope truncation, resolving `"no valid JSON object detected"` parsing retries when agents author markdown guides, documentation, or code snippets containing embedded fences.
+  - Added unit test coverage in `pkg/infrastructure/llm/parser_test.go`.
+- **Process-Aware Git Lock Cleaning (Proposal 4 Part 1)**:
+  - Upgraded `CleanStaleLocks` and introduced `CleanStaleLocksWithThreshold` in `pkg/services/rebase_queue.go`.
+  - Added process liveness checking (`isProcessAlive` via signal 0) for Git locks storing PIDs: immediately removes dead-process locks while preserving active locks.
+  - Increased fallback age threshold for PID-less locks from 5 seconds to 60 seconds (`defaultStaleLockThreshold`), eliminating the race condition where concurrent checkouts and long compilations had active index locks deleted prematurely.
+  - Added unit test coverage in `pkg/services/rebase_queue_test.go`.
+
 ## [0.69.0] - 2026-09-04
 
 ### Added

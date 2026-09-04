@@ -233,29 +233,31 @@ Recent validation runs across multiple project tiers demonstrate several critica
 
 ---
 
-### Proposal 4: Hardened Git Lock Management & Worktree Cache Sharing (P1 — Resilience & Speed)
+### Proposal 4: Hardened Git Lock Management & Worktree Cache Sharing (P1 — Resilience & Speed) — ✅ **Implemented (Caches in v0.68.0, Lock Cleaning in v0.70.0)**
 **Goal**: Prevent Git index lock corruption and eliminate redundant dependency compilation.
 
 1. **Process-Aware Stale Lock Cleaning**:
-   Replace the arbitrary 5-second `ModTime()` check in `CleanStaleLocks()` with a verification check:
-   - On Unix, check if the process holding the lock file is still alive (`kill -0 <pid>`).
-   - If PID is not recorded in the lock, increase the grace threshold to **60 seconds** to avoid deleting active locks during long compilations or checkouts.
+   Replaced the arbitrary 5-second `ModTime()` check in `CleanStaleLocks()` with process liveness verification:
+   - On Unix, check if the process holding the lock file is still alive (`kill -0 <pid>`) via `isProcessAlive`.
+   - If PID is dead, remove the lock immediately.
+   - If PID is not recorded in the lock, enforce a safe **60-second** fallback grace threshold (`defaultStaleLockThreshold`) to avoid deleting active locks during long compilations or checkouts.
 2. **Shared Dependency Cache for Worktrees**:
-   In `setupTaskWorkspace`, configure shared build caches:
-   - For Rust: Set `CARGO_TARGET_DIR` to a shared `.noctifab/cache/cargo-target/`.
+   In `setupTaskWorkspace` and `pkg/services/worktree_cache.go`, configured shared build caches:
+   - For Rust: Set `CARGO_TARGET_DIR` to shared `.noctifab/cache/cargo-target/`.
    - For Go: Share `GOCACHE` and `GOPATH/pkg`.
-   - For Node: Symlink `node_modules/` from the root project if already installed.
+   - For Node: Symlink `node_modules/` from root project (< 1ms).
+   - Universal cache redirection for Python, Gradle, Maven, C/C++, Bundler, etc.
 
 ---
 
-### Proposal 5: Robust String-Literal Aware Code Fence Parser (P1 — LLM Robustness)
+### Proposal 5: Robust String-Literal Aware Code Fence Parser (P1 — LLM Robustness) — ✅ **Implemented in v0.70.0**
 **Goal**: Eliminate JSON parsing failures caused by markdown code blocks within JSON string values.
 
 1. **State-Machine Parser**:
-   Refactor `stripFencedCodeBlocks` in [`pkg/infrastructure/llm/parser.go`](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/parser.go):
-   - Rather than stripping code fences blindly before parsing, parse the JSON stream with an escape-aware scanner.
-   - When inside a quoted JSON string literal (`"..."`), ignore all backtick fences (` ``` `).
-   - Only recognize markdown fences that exist in raw prose outside of valid JSON string boundaries.
+   Refactored `stripFencedCodeBlocks` in [`pkg/infrastructure/llm/parser.go`](file:///Users/diegoj/repos/noctifab/pkg/infrastructure/llm/parser.go):
+   - Uses an escape-aware lexical state machine tracking string literals (`inString`), backslash escaping, and JSON object depth (`jsonDepth`).
+   - When inside a quoted JSON string literal (`"..."`), ignores all backtick fences (` ``` `), preserving file contents intact.
+   - Only recognizes markdown fences that exist in raw prose outside of valid JSON string boundaries.
 
 ---
 
@@ -287,8 +289,8 @@ Recent validation runs across multiple project tiers demonstrate several critica
 | **P0** | **Smart Greenfield vs Legacy Detection** (Proposal 2) | Low | High | Stops empty projects from burning 15m on fake characterization stories. | ✅ **Implemented (v0.67.0)** |
 | **P0** | **Pre-Flight `.gitignore` & Artifact Filtering** (Proposal 3) | Low | High | Fixes 900+ file pollution in Rust/Cargo projects (`wc` failure). | ✅ **Implemented (v0.69.0)** |
 | **P0** | **Single-Pass Co-Synthesis & Early Gate Exit** (Proposal 1) | Medium | Very High | Reduces LLM turn latency by 60%+, eliminating timeouts. | ✅ **Implemented (v0.69.0)** |
-| **P1** | **Process-Aware Git Lock Cleaning** (Proposal 4) | Low | Medium | Eliminates Git index lock corruption during concurrent runs. | Pending |
-| **P1** | **String-Literal Aware Code Fence Parser** (Proposal 5) | Medium | Medium | Prevents JSON envelope parsing retries when files contain code blocks. | Pending |
+| **P1** | **Process-Aware Git Lock Cleaning** (Proposal 4) | Low | Medium | Eliminates Git index lock corruption during concurrent runs. | ✅ **Implemented (v0.70.0)** |
+| **P1** | **String-Literal Aware Code Fence Parser** (Proposal 5) | Medium | Medium | Prevents JSON envelope parsing retries when files contain code blocks. | ✅ **Implemented (v0.70.0)** |
 | **P1** | **Shared Dependency Worktree Caches** (Proposal 4) | Medium | High | Cuts compilation time in Rust/C++/Node worktrees from minutes to seconds. | ✅ **Implemented (v0.68.0)** |
 | **P2** | **Incremental SQL Upserts** (Proposal 6) | Medium | Medium | Reduces SQLite transaction overhead and lock contention. | ✅ **Implemented (v0.66.0)** |
 | **P2** | **Agnostic Sandbox Syntax Hooks** (Proposal 7) | Low | Low | Fully aligns codebase with `AGENTS.md` language agnosticism rule. | Pending |
