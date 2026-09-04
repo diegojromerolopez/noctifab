@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.68.0] - 2026-09-04
+
+### Added
+- **Shared Dependency Worktree Caches (`SeedTaskWorktreeWorkspace`, `BuildSharedCacheEnv`)**:
+  - Implemented multi-ecosystem shared dependency and build cache management in `pkg/services/worktree_cache.go` for parallel task worktrees.
+  - **Symlink Dependency Projection**: Projects existing root dependency directories (`node_modules`, `.venv`, `venv`, `vendor`, `.bundle`, `gradle/` wrapper, `.mvn/` wrapper, `deps`, `_opam`) and wrapper scripts (`gradlew`, `mvnw`) into worktrees in `< 1ms`, eliminating redundant package installations.
+  - **Universal Build Cache Redirection**: Automatically configures centralized build cache storage under `.noctifab/cache/` via environment variables (`CARGO_TARGET_DIR`, `GOCACHE`, `GRADLE_USER_HOME`, `MAVEN_OPTS`, `PIP_CACHE_DIR`, `npm_config_cache`, `CCACHE_DIR`, `BUNDLE_PATH`, `NUGET_PACKAGES`, `COMPOSER_CACHE_DIR`, `DUNE_CACHE`, `HEX_HOME`, `MIX_HOME`) and worktree configs (`.cargo/config.toml`, `gradle.properties` task build caching).
+  - **Safe Worktree Cleanup**: Ensures worktree pruning unlinks projected symlinks without recursing into or modifying the shared root dependencies.
+  - Added BDD unit tests in `worktree_cache_test.go` and synchronized documentation in `docs/architecture.md` and `docs/index.md`.
+
 ## [0.67.0] - 2026-09-04
+
 
 ### Added
 - **Smart Greenfield vs. Legacy Codebase Discovery (`ScanLegacyFiles`, `IsGreenfieldWorkspace`)**:

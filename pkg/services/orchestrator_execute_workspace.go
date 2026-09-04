@@ -82,7 +82,7 @@ func (o *Orchestrator) setupTaskWorkspace(
 			}
 		}
 		taskGit = NewGitClient(worktreeDir)
-		syncRootManifests(state.ProjectPath, worktreeDir)
+		SeedTaskWorktreeWorkspace(state.ProjectPath, worktreeDir)
 
 		var cleanupOnce sync.Once
 		cleanup = func() {

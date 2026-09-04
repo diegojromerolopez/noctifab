@@ -392,7 +392,14 @@ See [docs/fallback_agent.md](fallback_agent.md) for full developer reference.
 
 5. **Dynamic Role Prompt Adaptation**: Planner, Generator, and Tester prompts dynamically adapt with characterization testing requirements and surgical refactoring directives (`edit_file`, `apply_patch`).
 
-#### C. Pre-Flight LLM Provider Capability Caching (`openai_adapt.go` & `openai.go`)
+#### C. Shared Dependency Worktree Caches (`pkg/services/worktree_cache.go`)
+1. **Symlink Dependency Projection (`SymlinkSharedDependencies`)**: Automatically projects existing dependency directories (`node_modules`, `.venv`, `venv`, `vendor`, `.bundle`, `deps`, `_opam`, `gradle/` wrapper, `.mvn/` wrapper) and executable wrapper scripts (`gradlew`, `mvnw`) into new worktrees in **< 1ms**, eliminating redundant package downloads.
+2. **Compiler & Package Cache Redirection (`BuildSharedCacheEnv`)**: Directs compiler and package manager caches across 11 ecosystems to `.noctifab/cache/` via environment variables (`CARGO_TARGET_DIR`, `GOCACHE`, `GRADLE_USER_HOME`, `MAVEN_OPTS`, `PIP_CACHE_DIR`, `npm_config_cache`, `CCACHE_DIR`, `BUNDLE_PATH`, `NUGET_PACKAGES`, `COMPOSER_CACHE_DIR`, `DUNE_CACHE`, `HEX_HOME`, `MIX_HOME`).
+3. **Build Cache Acceleration (`ConfigureToolchainWorktreeCaches`)**: Generates `.cargo/config.toml` targeting the shared cache and enables Gradle task build caching (`org.gradle.caching=true`).
+4. **Safe Worktree Cleanup**: Prunes worktree symlinks on task completion without modifying or recursing into shared root dependency structures.
+
+#### D. Pre-Flight LLM Provider Capability Caching (`openai_adapt.go` & `openai.go`)
+
 1. **Parameter Rejection Detection**: Tracks provider parameter rejections (e.g. `temperature`, `max_tokens`, `response_format` for reasoning models) upon receiving an initial HTTP 400 error.
 2. **Thread-Safe Capability Cache (`providerCapabilityCache`)**: Records model parameter limitations in RAM across worker goroutines.
 3. **Self-Correcting API Payloads**: Automatically omits unsupported parameters on subsequent API requests without requiring failing roundtrips.
