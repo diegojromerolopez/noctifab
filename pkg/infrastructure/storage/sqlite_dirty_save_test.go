@@ -129,7 +129,9 @@ func TestSQLiteRepositoryDirtyGroupSaves(t *testing.T) {
 		state := newDirtyTestState("state-conflict")
 		require.NoError(t, repo.Save(ctx, state))
 		saveShieldState(t, repo)
-		before := taskRowID(t, repo, "state-conflict-t1")
+		taskRowBefore := taskRowID(t, repo, "state-conflict-t1")
+		var actionIDBefore int64
+		require.NoError(t, repo.DB().QueryRow("SELECT id FROM actions WHERE state_id = 'state-conflict'").Scan(&actionIDBefore))
 
 		// Simulate a concurrent writer bumping the version behind our back.
 		_, err := repo.DB().Exec("UPDATE state SET version = version + 1 WHERE id = 'state-conflict'")
@@ -141,14 +143,65 @@ func TestSQLiteRepositoryDirtyGroupSaves(t *testing.T) {
 		require.ErrorIs(t, err, domain.ErrVersionConflict)
 
 		// Reload the authoritative state and save again with NO group changes:
-		// because the cache was invalidated, every group must be rewritten.
+		// because the cache was invalidated, every group is re-saved.
 		fresh, err := repo.LoadByID(ctx, "state-conflict")
 		require.NoError(t, err)
 		require.NoError(t, repo.Save(ctx, fresh))
 
-		after := taskRowID(t, repo, "state-conflict-t1")
-		assert.NotEqual(t, before, after,
-			"expected tasks to be rewritten after cache invalidation (rowid should change)")
+		taskRowAfter := taskRowID(t, repo, "state-conflict-t1")
+		assert.Equal(t, taskRowBefore, taskRowAfter,
+			"in-place upsert preserves stable task rowid even when re-persisted")
+
+		var actionIDAfter int64
+		require.NoError(t, repo.DB().QueryRow("SELECT id FROM actions WHERE state_id = 'state-conflict'").Scan(&actionIDAfter))
+		assert.NotEqual(t, actionIDBefore, actionIDAfter,
+			"actions group must be rewritten after cache invalidation (id should change)")
+	})
+
+	t.Run("when tasks are mutated, upsert updates fields in-place and preserves stable rowid", func(t *testing.T) {
+		repo := newDirtyTestRepo(t)
+		state := newDirtyTestState("state-upsert")
+		require.NoError(t, repo.Save(ctx, state))
+		saveShieldState(t, repo)
+
+		rowBefore := taskRowID(t, repo, "state-upsert-t1")
+
+		// Update progress and title on task 1
+		state.Tasks[0].Progress = 75
+		state.Tasks[0].Title = "Task 1 Updated"
+		require.NoError(t, repo.Save(ctx, state))
+
+		rowAfter := taskRowID(t, repo, "state-upsert-t1")
+		assert.Equal(t, rowBefore, rowAfter, "in-place upsert must keep stable rowid")
+
+		loaded, err := repo.LoadByID(ctx, "state-upsert")
+		require.NoError(t, err)
+		assert.Equal(t, 75, loaded.Tasks[0].Progress)
+		assert.Equal(t, "Task 1 Updated", loaded.Tasks[0].Title)
+	})
+
+	t.Run("when a task is added or removed, upsert inserts and selective delete prunes", func(t *testing.T) {
+		repo := newDirtyTestRepo(t)
+		state := newDirtyTestState("state-add-del")
+		require.NoError(t, repo.Save(ctx, state))
+
+		// Add task 3, remove task 2
+		state.Tasks = []domain.Task{
+			state.Tasks[0],
+			{ID: "state-add-del-t3", Title: "Task 3", Description: "d3", Status: domain.TaskPending, ChangeType: domain.ChangeTypeFeature, CreatedAt: time.Now(), UpdatedAt: time.Now()},
+		}
+		require.NoError(t, repo.Save(ctx, state))
+
+		loaded, err := repo.LoadByID(ctx, "state-add-del")
+		require.NoError(t, err)
+		require.Len(t, loaded.Tasks, 2)
+		assert.Equal(t, "state-add-del-t1", loaded.Tasks[0].ID)
+		assert.Equal(t, "state-add-del-t3", loaded.Tasks[1].ID)
+
+		// Verify task 2 was deleted from database
+		var count int
+		require.NoError(t, repo.DB().QueryRow("SELECT COUNT(*) FROM tasks WHERE id = 'state-add-del-t2'").Scan(&count))
+		assert.Equal(t, 0, count, "pruned task must be deleted from DB")
 	})
 
 	t.Run("when the state has unserializable actions, save fails before touching the database", func(t *testing.T) {

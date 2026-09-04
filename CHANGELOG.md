@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.66.0] - 2026-09-04
+
+### Added
+- **Incremental SQL Upserts for State Persistence**:
+  - Replaced full-table `DELETE FROM <table> WHERE state_id = ?` + full re-insert sweeps in SQLite state storage with atomic, in-place `UPSERT` (`INSERT ... ON CONFLICT DO UPDATE`) across `tasks`, `stories`, `workspace_files`, `validation_criteria`, and `active_agents`.
+  - Added selective orphan deletion (`WHERE state_id = ? AND id NOT IN (...)`) to prune only removed records while preserving stable SQLite rowids and B-tree page allocations for existing records across progress updates.
+  - Added unit test coverage in `sqlite_dirty_save_test.go` verifying rowid stability, new task insertion, and pruned task deletion.
+
 ## [0.65.0] - 2026-09-04
 
 ### Added
