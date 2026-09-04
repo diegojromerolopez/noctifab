@@ -54,6 +54,12 @@ flowchart TD
 ### 1. The World Model (`pkg/domain/state.go`)
 The `State` struct represents the entire system state, including tasks, files, clarification mailboxes, and action logs. It serves as the single source of truth and is stored in a relational database (SQLite for local setups, PostgreSQL for concurrent Level 4 production loops).
 
+#### Incremental State Persistence & Append-Only Telemetry
+To minimize database transaction duration, prevent SQLite write lock contention, and preserve full execution audit trails:
+- **Targeted Incremental Upserts**: State saves avoid destructive `DELETE + INSERT` table rewrites. Tables such as `tasks`, `stories`, and `workspace_files` use targeted `ON CONFLICT DO UPDATE` upserts, selectively pruning only items removed from the domain model.
+- **Append-Only Action Telemetry**: The `actions` table operates as an append-only log with unique `action_id` indexes. Saves execute `INSERT ... ON CONFLICT(action_id) DO NOTHING`, ensuring already persisted actions are skipped with zero overhead, row IDs remain monotonic and stable, and telemetry data does not incur repetitive transaction rewrites on each progress tick.
+- **Bounded Window Loading**: While the database retains the complete append-only historical audit trail, `Load` queries bound in-memory action loading to the most recent window (`domain.MaxLastActions = 200`) in chronological order, keeping memory consumption and load latency strictly bounded ($O(1)$) across long-running project executions.
+
 ### 2. Topological Task Scheduler (`pkg/services/scheduler.go`) & Story DAG Scheduler (`pkg/services/story_dag_scheduler.go`)
 - **Task DAG Scheduling (`scheduler.go`)**: Within a single user story, tasks can define dependencies on other tasks (e.g., Task B depends on Task A). The Scheduler performs a topological sort using Directed Acyclic Graphs (DAG) to find ready tasks and schedule them concurrently in a worker pool.
 - **Story DAG Scheduler (`story_dag_scheduler.go`)**: Across user stories, `StoryDAGScheduler` parses `depends_on` dependencies declared in User Story YAML frontmatter. It concurrently dispatches all unblocked user stories across worker slots, dynamically unblocking dependent child stories as parent stories reach completion.
