@@ -28,9 +28,13 @@ To maintain modularity and high context compatibility, the following guidelines 
     *   **Verification vs. Validation Engineering Strategy:** Task execution is divided into two distinct stages: *Verification* (building minimal working functionality that compiles and satisfies baseline checks) and *Validation* (black-box behavioral testing against public contracts, CLI outputs, and API signatures). Tests must never assert internal module implementation details.
     *   **Product Manager Definition of Done (DoD) Mandate:** Generated user stories (`roadmap/US-xxx.md`) must specify explicit public API signatures, binary executable paths, I/O formatting invariants, error prefixes, exit codes, number precision representations, and zero-failure test pass criteria before downstream task planning starts.
     *   **Project & Language Agnosticism:** Noctifab MUST NOT HAVE validation project-specific or language-specific code in its codebase. Noctifab is a dark factory agent; do not add specific instructions, context helpers, or code rules for particular validation projects or programming languages.
+    *   **Resilient Code Fence & Output Parsing:** LLM responses often wrap structured output (JSON, YAML, diffs, code) in markdown code fences (````go ... ````, ````json ... ````) containing inner backticks or commentary within string literals and comments. Parsing utilities (`pkg/services/`, `pkg/infrastructure/llm/parser/`) must never use naive substring matching (`strings.Index("```")`) that breaks on inner code blocks. Parsing must be string-literal aware and safely strip outer markdown envelopes without corrupting payload data or panicking.
+    *   **Pre-Flight Path Exclusion & Context Hygiene:** Agents must preserve LLM context economics and prevent repository pollution. All workspace scanning, context packing, and VCS staging routines must strictly enforce exclusion policies via `IsPathExcluded` (ignoring `.git`, `.noctifab`, build outputs, binaries, toolchain caches, and third-party dependencies). Ephemeral worktrees, build artifacts, or secret files must never be loaded into LLM prompts or committed to git.
     *   **Incremental State Persistence & Append-Only Telemetry:** When implementing or modifying database storage layers (`pkg/infrastructure/storage/`), destructive `DELETE FROM <table> WHERE state_id = ?` table-wiping loops inside state persistence transactions are strictly forbidden. Operational entities (`tasks`, `stories`, `workspace_files`) must use `INSERT ... ON CONFLICT DO UPDATE` upserts, selectively pruning only items removed from the domain model. High-frequency event streams and telemetry logs (`actions`) must be stored in append-only tables with unique identifiers (`ON CONFLICT(action_id) DO NOTHING`), guaranteeing stable row IDs and eliminating SQLite write lock thrashing on progress updates. High-frequency telemetry loaders must bound queries to the configured window (`domain.MaxLastActions = 200`) ordered chronologically, ensuring $O(1)$ memory consumption and load latency regardless of total execution history.
+    *   **Database Migration Pair Discipline:** When modifying database schemas (`pkg/infrastructure/storage/migrations/`), every change requires both creating a new numbered migration file under `sqlite/` (e.g. `0009_*.sql`) and updating the baseline schema file `sqlite.sql`. All migration DDL must be idempotent and fully SQLite-compatible (e.g. avoiding unsupported Postgres constructs, and adhering to SQLite UPSERT index requirements).
     *   **Process-Aware Lock Governance:** Never use arbitrary short timers (e.g., 5 seconds) to clean filesystem or Git locks (`.git/index.lock`, worktree locks). Agents must verify lock holder process liveness via OS signal checks (`kill -0 <pid>`) before unlinking locks, and enforce a safe fallback grace threshold (at least 60 seconds) if PID is unrecorded to prevent Git index corruption during long compilations.
     *   **Shared Toolchain Dependency Caches in Worktrees:** When spawning isolated Git worktrees for parallel tasks, agents must redirect heavy toolchain build caches (e.g. `CARGO_TARGET_DIR`, `GOCACHE`, `node_modules`, Python virtual environments) to shared repository cache directories (`.noctifab/cache/`) rather than letting each worktree re-download and re-compile dependencies from scratch.
+    *   **Hermetic In-Memory Doubles & Goroutine Leak Prevention:** Intermediate unit and integration tests must execute hermetically in memory. When testing asynchronous messaging, event brokers (`pkg/infrastructure/broker/`), or worker loops, always use buffered channels or mock subscribers with explicit timeout contexts (`context.WithTimeout`). Never allow unbuffered channel sends or missing subscribers to block goroutines indefinitely and deadlock the test suite. External filesystem and database tests should leverage `t.TempDir()` or `:memory:` SQLite rather than touching host files.
 3.  **Testing Strategy:**
     *   All code must be **100% unit tested**. Every Go package must be accompanied by unit tests.
     *   After making any change to the codebase, you **must** run the test suite to verify correctness.
@@ -40,6 +44,8 @@ To maintain modularity and high context compatibility, the following guidelines 
         *   Run all unit and in-process CLI integration tests locally:
             ```bash
             go test -v ./pkg/... ./tests
+            # Or with race detection:
+            go test -race ./pkg/...
             ```
         *   Alternatively, use the Makefile target:
             ```bash
@@ -53,14 +59,19 @@ To maintain modularity and high context compatibility, the following guidelines 
     *   **BDD Specifications:** Acceptance tests must always run under a test runner using BDD format with the context pattern: `when <scenario>`, `it <action happens>`. Generated tests must be e2e as much as possible for the happy paths, input validations/edge cases must be unit tests, and complex internal validation flows must be integration tests.
 4.  **Formatting & Linting:**
     *   **Formatting:** All Go source code must strictly follow the standard `go fmt` format. Ensure `go fmt ./...` runs clean.
-    *   **Linting:** Code must pass static analysis checks. You must run `docker run -t --rm -v $(pwd):/app -w /app golangci/golangci-lint:v2.12.2 golangci-lint run` after every change to ensure the code passes all linter rules.
+    *   **Linting:** Code must pass static analysis checks. Run the linter via:
+        ```bash
+        make lint
+        # or directly via Docker:
+        docker run -t --rm -v $(pwd):/app -w /app golangci/golangci-lint:v2.12.2 golangci-lint run
+        ```
     *   **Efficient String Writing (`writestring`):** Inefficient string concatenations inside calls to `WriteString` (e.g., `sb.WriteString("a" + b + "\n")` or `io.WriteString(w, a + b)`) are strictly forbidden. Always call `WriteString` sequentially for individual string components to prevent unnecessary memory allocations and comply with the `writestring` static analyzer (`golang.org/x/tools/go/analysis/passes/writestring`).
 5.  **Continuous Integration (CI):**
     *   A GitHub Actions workflow configured in `.github/workflows/ci.yml` executes on every push and pull request.
     *   All unit tests and static analysis linting checks must pass successfully in the CI pipeline before merging.
 6.  **Branching & Commit Guidelines:**
     *   **No Commits on Main**: Never create commits directly on the `main` branch. Always create a new branch with the changes.
-    *   **CHANGELOG Updates**: Every commit must contain the corresponding changes documented in `CHANGELOG.md`, incrementing the version accordingly: minor version bump for features, and patch version bump for bug fixes.
+    *   **CHANGELOG & Version Updates**: Every commit must contain the corresponding changes documented in `CHANGELOG.md`, incrementing the version accordingly (`VERSION`, `pkg/version/version.go`, and `CHANGELOG.md`): minor version bump for features, and patch version bump for bug fixes.
 7.  **Resilience & Forced Compilation Mandate:**
     *   A bad scaffold, failing test, or compiler error must never permanently stop development or leave broken code.
     *   In case of any persistent or complex error, agents MUST force a compiling and runnable solution (even if simplified, fallback, or imperfect). The codebase MUST compile cleanly and pass tests; leaving a partially broken build or stalling on retries is completely unacceptable.
@@ -127,6 +138,10 @@ To run a fully containerized, isolated, end-to-end (E2E) integration check of `n
 
 5. **Monitoring & Execution Report Inspection**:
    When executing validation projects, agents MUST NOT run periodic 60-second polling loops or schedule timers to avoid unnecessary LLM token consumption. Instead, agents must launch validation tasks asynchronously in the background and rely on the execution report automatically generated by Noctifab (`validation/projects/<project>/output/report/*.md`) and completion notifications.
+   To aggregate execution metrics, duration, and token usage across all completed validation runs, run:
+   ```bash
+   make validate-summary
+   ```
 
 6. **Configuration Immutability Mandate**:
    After being asked to run a validation container, IT IS FORBIDDEN for AI agents to change the project configuration (`.noctifab/config.yaml`). The configuration must remain strictly untouched as defined in the target validation project.
