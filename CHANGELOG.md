@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.71.0] - 2026-09-04
+
+### Added
+- **Extensible Sandbox Toolchain Hooks (Proposal 7 — Language Agnosticism)**:
+  - Introduced `SyntaxChecker` interface in `pkg/services/syntax_check_hook.go` with two implementations: `NoopSyntaxChecker` (default, always passes, zero external binary dependency) and `CommandSyntaxChecker` (executes a configurable shell command template with `{file}` substitution).
+  - `NewCommandSyntaxChecker(command string) SyntaxChecker` factory: returns `NoopSyntaxChecker` when command is empty (preserving language-agnostic behavior) and `CommandSyntaxChecker` otherwise.
+  - Removed hardcoded `checkPythonSyntax` function and `pythonSyntaxCheckTimeout` constant from `pkg/services/production_tools.go`, eliminating the Python-specific dependency violation of the AGENTS.md language agnosticism mandate.
+  - Injected `SyntaxChecker SyntaxChecker` field (via Dependency Injection) into `WriteFileTool`, `EditFileTool`, `WriteFilesTool`, and `ApplyPatchTool`. A `syntaxCheckerOrNoop` nil guard ensures backward compatibility for test construction without explicit injection.
+  - `CommandSyntaxChecker.Check` reuses the existing `needsShell` helper for correct dispatch of compound commands through `sh -c`, and respects a 10-second bounded timeout derived from the parent context.
+- **`sandbox.syntax_check_command` Configuration Field**:
+  - Added `SyntaxCheckCommand string` field (YAML key: `syntax_check_command`) to `SandboxConfig` in `pkg/infrastructure/config/sandbox_types.go`.
+  - Tool registries in `cmd/noctifab/cli/start_helpers.go` and `cmd/noctifab/cli/serve.go` now construct `CommandSyntaxChecker` from `cfg.Sandbox.SyntaxCheckCommand` and inject it into all four file-writing tools.
+- **Validation Project Configurations**:
+  - Added `syntax_check_command` to all 17 validation project `config.yaml` files:
+    - Ruby (`calculator`): `ruby -c {file}`
+    - Python (`djanban`, `frontpunch`, `pyedis`, `notebook`): `python3 -m py_compile {file}`
+    - Go (`auth-vault`, `buffonstream`, `echo`, `fortune`, `jpacioli`, `ninline`, `searchthedocs`, `t4`, `todo-cli`): `gofmt -e {file}`
+    - Rust (`wc`, `stricc`) and OCaml (`ocalogue`): empty (single-file syntax checks not feasible without full build context — no-op by design)
+- **Tests**:
+  - Added `pkg/services/syntax_check_hook_test.go` with 13 unit tests covering `NoopSyntaxChecker`, `NewCommandSyntaxChecker` factory, and `CommandSyntaxChecker.Check` (pass, fail, `{file}` substitution, cancelled context, empty command).
+  - Replaced `TestCheckPythonSyntax` (Python-specific, testing deleted function) in `pkg/services/production_tools_test.go` with `TestWriteFileTool_SyntaxChecker` and `TestEditFileTool_SyntaxChecker` using injected mock checkers.
+- **Documentation**:
+  - Updated `docs/configuration.md` sandbox section with `syntax_check_command` YAML example and field documentation including language-specific examples.
+  - Updated `SPEC.md` sandbox configuration reference with the new field and its no-op default rationale.
+
 ## [0.70.0] - 2026-09-04
 
 ### Added

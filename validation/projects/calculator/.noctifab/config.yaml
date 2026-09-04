@@ -248,6 +248,7 @@ sandbox:
   timeout_seconds: 300
   test_command: rspec spec/
   formatter_command: rubocop -A
+  syntax_check_command: ruby -c {file}
   linter:
     command: rubocop
     max_issues: 100

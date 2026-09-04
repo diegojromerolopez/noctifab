@@ -249,6 +249,7 @@ sandbox:
   timeout_seconds: 600
   test_command: cargo test --workspace
   formatter_command: cargo fmt
+  syntax_check_command: 
   linter:
     command: cargo fmt --check && cargo clippy -- -D warnings
     max_issues: 100

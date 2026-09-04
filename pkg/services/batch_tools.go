@@ -13,7 +13,11 @@ import (
 )
 
 // WriteFilesTool implements write_files to atomically write or replace multiple files in a single turn.
-type WriteFilesTool struct{}
+type WriteFilesTool struct {
+	// SyntaxChecker is the optional post-write syntax validation hook.
+	// When nil a NoopSyntaxChecker is used (no external binary dependency).
+	SyntaxChecker SyntaxChecker
+}
 
 // Name returns the unique tool identifier "write_files".
 func (t *WriteFilesTool) Name() string { return "write_files" }
@@ -115,8 +119,8 @@ func (t *WriteFilesTool) Execute(ctx context.Context, state *domain.State, args 
 		if perm == 0755 {
 			_ = os.Chmod(fullPath, 0755)
 		}
-		if err := checkPythonSyntax(ctx, fullPath); err != nil {
-			return "", fmt.Errorf("python syntax check failed on %s: %w", entry.path, err)
+		if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
+			return "", fmt.Errorf("syntax check failed on %s: %w", entry.path, err)
 		}
 		writtenPaths = append(writtenPaths, entry.path)
 	}

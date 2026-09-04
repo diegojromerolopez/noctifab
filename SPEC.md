@@ -1960,6 +1960,11 @@ sandbox:
   # - JavaScript/TypeScript: Linter="eslint .", Formatter="prettier --write ."
   linter_command: "golangci-lint run" # Default deterministic linter tool command
   formatter_command: "go fmt ./..." # Default deterministic code formatter tool command (executed as pre-step before linter checks)
+  # syntax_check_command: lightweight per-file syntax validation hook executed after every write_file/edit_file/write_files/apply_patch.
+  # Use {file} as placeholder for the absolute path of the written file. When empty (default), no syntax check is performed —
+  # file write tools remain pure I/O operations with zero external binary dependencies (language-agnostic by design).
+  # Examples: "python3 -m py_compile {file}" | "ruby -c {file}" | "gofmt -e {file}" | "node --check {file}" | "bash -n {file}"
+  syntax_check_command: ""          # Default: empty (no-op — language-agnostic)
   max_linter_retries: 3         # Max linter retry turns per task (default: 3)
   exclude_paths:                # Scanned path exclusions
     - "node_modules/"

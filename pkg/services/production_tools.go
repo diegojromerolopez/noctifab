@@ -5,39 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
-
-// pythonSyntaxCheckTimeout bounds each py_compile invocation so a hung
-// interpreter cannot block file write/edit tools indefinitely.
-const pythonSyntaxCheckTimeout = 10 * time.Second
-
-func checkPythonSyntax(ctx context.Context, path string) error {
-	if !strings.HasSuffix(path, ".py") {
-		return nil
-	}
-	checkCtx, cancel := context.WithTimeout(ctx, pythonSyntaxCheckTimeout)
-	defer cancel()
-	// Try running python3 -m py_compile
-	cmd := exec.CommandContext(checkCtx, "python3", "-m", "py_compile", path)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		// Fallback to python
-		cmdFallback := exec.CommandContext(checkCtx, "python", "-m", "py_compile", path)
-		if outFallback, errFallback := cmdFallback.CombinedOutput(); errFallback != nil {
-			errMsg := string(outFallback)
-			if len(errMsg) == 0 {
-				errMsg = string(out)
-			}
-			return fmt.Errorf("python syntax compilation failed:\n%s", errMsg)
-		}
-	}
-	return nil
-}
 
 // resolveSandboxPath checks prefix path jail and blacklists .noctifab
 func resolveSandboxPath(projectPath, targetPath string) (string, error) {
@@ -103,7 +76,11 @@ func determineFilePerm(path string) os.FileMode {
 }
 
 // WriteFileTool implements write_file.
-type WriteFileTool struct{}
+type WriteFileTool struct {
+	// SyntaxChecker is the optional post-write syntax validation hook.
+	// When nil a NoopSyntaxChecker is used (no external binary dependency).
+	SyntaxChecker SyntaxChecker
+}
 
 func (t *WriteFileTool) Name() string { return "write_file" }
 func (t *WriteFileTool) Description() string {
@@ -133,7 +110,7 @@ func (t *WriteFileTool) Execute(ctx context.Context, state *domain.State, args m
 	if perm == 0755 {
 		_ = os.Chmod(fullPath, 0755)
 	}
-	if err := checkPythonSyntax(ctx, fullPath); err != nil {
+	if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
 		return "", err
 	}
 	return "File written successfully", nil
@@ -147,8 +124,22 @@ type ReplacementChunk struct {
 	ReplacementContent string
 }
 
+// syntaxCheckerOrNoop returns the given checker if non-nil, otherwise a
+// NoopSyntaxChecker. This provides a safe nil guard so tools constructed
+// without explicit injection (e.g. in unit tests) work correctly.
+func syntaxCheckerOrNoop(sc SyntaxChecker) SyntaxChecker {
+	if sc == nil {
+		return &NoopSyntaxChecker{}
+	}
+	return sc
+}
+
 // EditFileTool implements edit_file.
-type EditFileTool struct{}
+type EditFileTool struct {
+	// SyntaxChecker is the optional post-edit syntax validation hook.
+	// When nil a NoopSyntaxChecker is used (no external binary dependency).
+	SyntaxChecker SyntaxChecker
+}
 
 func (t *EditFileTool) Name() string { return "edit_file" }
 func (t *EditFileTool) Description() string {
@@ -250,7 +241,7 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	if err := os.WriteFile(fullPath, []byte(newContent), 0644); err != nil {
 		return "", err
 	}
-	if err := checkPythonSyntax(ctx, fullPath); err != nil {
+	if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
 		return "", err
 	}
 	return "Edits applied successfully", nil

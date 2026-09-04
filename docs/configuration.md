@@ -347,8 +347,9 @@ sandbox:
   timeout_seconds: 300
   idle_timeout_seconds: 30
   test_command: "go test -v ./..."
-  linter_command: "golangci-lint run"
   formatter_command: "go fmt ./..."
+  syntax_check_command: "gofmt -e {file}"
+  linter_command: "golangci-lint run"
   exclude_paths:
     - "node_modules/"
     - "vendor/"
@@ -362,8 +363,14 @@ sandbox:
 - **`timeout_seconds`** (Integer): Absolute execution wall-clock time limit in seconds for test and script execution processes.
 - **`idle_timeout_seconds`** (Integer): Active watchdog timeout. Kills processes immediately if they output no bytes on stdout/stderr for this duration.
 - **`test_command`** (String): Command executed by the Test Validator to run the unit/integration test suites (e.g. `npm test`, `pytest`).
-- **`linter_command`** (String): Command executed to run project static analysis linter tasks.
 - **`formatter_command`** (String): Command executed to run code format checks (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_linter` runs this pre-step auto-fixer first before linter diagnostics.
+- **`syntax_check_command`** (String): Optional command template executed after every `write_file`, `edit_file`, `write_files`, and `apply_patch` tool call to perform a lightweight syntax validation of the written file. Use `{file}` as a placeholder for the absolute path of the written file. **When empty (default), no syntax check is performed** and file tools remain pure I/O operations with zero external binary dependencies, which is the correct behavior for languages where single-file syntax checks are not feasible (e.g. Rust, OCaml). Examples by language:
+  - Ruby: `ruby -c {file}`
+  - Python: `python3 -m py_compile {file}`
+  - Go: `gofmt -e {file}`
+  - JavaScript/TypeScript: `node --check {file}`
+  - Shell: `bash -n {file}`
+- **`linter_command`** (String): Command executed to run project static analysis linter tasks.
 - **`max_linter_retries`** (Integer): Maximum linter fix retry turns per task (default: `3`). Prevents infinite agent loops on unfixable linter offenses.
 - **`exclude_paths`** (List of Strings): Directory trees, prefixes, or wildcard patterns ignored by the workspace discovery engine, Story QA auditor, anti-stub validator, and churn calculator (e.g. `node_modules/`, `vendor/`, `target/`, `target_container/`, `build/`, `_build/`, `*.tmp`). Works seamlessly with Git's `.gitignore` rules and automated binary detection (`IsTextFile`).
 - **`allowed_commands`** (List of Strings): Whitelist of executable binaries permitted inside the sandbox process runner.

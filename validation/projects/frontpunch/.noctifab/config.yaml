@@ -251,6 +251,7 @@ sandbox:
   timeout_seconds: 300
   test_command: 'coverage run --source=frontpunch -m unittest discover -s tests && coverage report --fail-under=100'
   formatter_command: black --line-length 120 .
+  syntax_check_command: python3 -m py_compile {file}
   linter:
     command: 'ruff check . && mypy .'
     max_issues: 100

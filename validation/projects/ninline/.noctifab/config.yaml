@@ -211,6 +211,7 @@ sandbox:
   timeout_seconds: 300
   test_command: make test
   formatter_command: make format
+  syntax_check_command: gofmt -e {file}
   linter:
     command: make lint
     max_issues: 100

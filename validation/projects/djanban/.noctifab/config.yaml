@@ -250,6 +250,7 @@ sandbox:
   timeout_seconds: 300
   test_command: pytest
   formatter_command: ruff format .
+  syntax_check_command: python3 -m py_compile {file}
   linter:
     command: ruff check . && mypy --strict .
     max_issues: 100

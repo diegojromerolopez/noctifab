@@ -248,6 +248,7 @@ sandbox:
   timeout_seconds: 600
   test_command: dune runtest
   formatter_command: dune fmt
+  syntax_check_command: 
   linter:
     command: dune build
     max_issues: 100

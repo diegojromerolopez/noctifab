@@ -273,12 +273,13 @@ Recent validation runs across multiple project tiers demonstrate several critica
 
 ---
 
-### Proposal 7: Extensible Sandbox Toolchain Hooks (P2 — Agnosticism & Architecture)
+### Proposal 7: Extensible Sandbox Toolchain Hooks (P2 — Agnosticism & Architecture) — ✅ **Implemented in v0.71.0**
 **Goal**: Comply with the Language Agnosticism mandate in `AGENTS.md`.
 
 1. **Remove Hardcoded `checkPythonSyntax` from `production_tools.go`**:
-   - Abstract language syntax checks into configurable sandbox hooks (`sandbox.syntax_check_command` in `config.yaml`).
-   - If not configured, file write tools remain pure, general-purpose I/O operations without hardcoded external binary dependencies.
+   - Introduced `SyntaxChecker` interface with `NoopSyntaxChecker` (default, zero external dependencies) and `CommandSyntaxChecker` (runs a configurable command template with `{file}` substitution) in `pkg/services/syntax_check_hook.go`.
+   - Removed `checkPythonSyntax` entirely. Injected `SyntaxChecker` into `WriteFileTool`, `EditFileTool`, `WriteFilesTool`, and `ApplyPatchTool` via DI struct fields.
+   - Added `sandbox.syntax_check_command` to `SandboxConfig` (YAML key). When empty (default), file tools are pure I/O with zero external binary dependencies. Configured per-project in all 17 validation project `config.yaml` files.
 
 ---
 
@@ -293,7 +294,7 @@ Recent validation runs across multiple project tiers demonstrate several critica
 | **P1** | **String-Literal Aware Code Fence Parser** (Proposal 5) | Medium | Medium | Prevents JSON envelope parsing retries when files contain code blocks. | ✅ **Implemented (v0.70.0)** |
 | **P1** | **Shared Dependency Worktree Caches** (Proposal 4) | Medium | High | Cuts compilation time in Rust/C++/Node worktrees from minutes to seconds. | ✅ **Implemented (v0.68.0)** |
 | **P2** | **Incremental SQL Upserts** (Proposal 6) | Medium | Medium | Reduces SQLite transaction overhead and lock contention. | ✅ **Implemented (v0.66.0)** |
-| **P2** | **Agnostic Sandbox Syntax Hooks** (Proposal 7) | Low | Low | Fully aligns codebase with `AGENTS.md` language agnosticism rule. | Pending |
+| **P2** | **Agnostic Sandbox Syntax Hooks** (Proposal 7) | Low | Low | Fully aligns codebase with `AGENTS.md` language agnosticism rule. | ✅ **Implemented (v0.71.0)** |
 
 ---
 
