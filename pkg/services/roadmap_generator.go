@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -74,6 +73,7 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 	legacyFiles, _ := scanLegacyFiles(projectPath)
 	legacyBlock := ""
 	if len(legacyFiles) > 0 {
+		fmt.Printf("ℹ [Product Manager] Legacy codebase detected (%d files). Applying Legacy Stabilization Mandate.\n", len(legacyFiles))
 		legacyBlock = fmt.Sprintf("\n\nExisting Legacy Code Files Detected in Workspace:\n- %s\n\nLEGACY STABILIZATION MANDATE: Code already exists in the project workspace. Assume it is legacy code with existing functionality. The primary initial goal is to stabilize it by creating unit and integration characterization tests for existing parts in US-001, and leveraging those tests as safety rails when refactoring the code to match future user story requirements.", strings.Join(legacyFiles, "\n- "))
 	}
 
@@ -272,35 +272,7 @@ func ToSlug(text string) string {
 }
 
 // scanLegacyFiles walks projectPath and returns relative paths of existing legacy source files,
-// ignoring metadata directories, documentation, binary artifacts, and generated roadmap files.
+// delegating to the centralized ScanLegacyFiles scanner.
 func scanLegacyFiles(projectPath string) ([]string, error) {
-	ignoredFiles := map[string]bool{
-		"spec.md": true, "readme.md": true, "changelog.md": true,
-		"license": true, "version": true, ".gitignore": true,
-		"noctifab_evaluation_report.md": true,
-		"dockerfile":                    true, "dockerfile.validation": true,
-		"docker-compose.yml": true, "docker-compose.yaml": true,
-		"docker-compose.e2e.yml": true, "docker-compose.e2e.yaml": true,
-		".dockerignore": true, ".rubocop.yml": true,
-		".editorconfig": true, ".gitattributes": true,
-		".golangci.yml": true, ".golangci.yaml": true,
-	}
-
-	exclude := []string{"roadmap", "user-stories", "tasks", "output", "dist"}
-	files, err := ListWorkspaceSourceFiles(context.Background(), projectPath, exclude)
-	if err != nil {
-		return nil, err
-	}
-
-	var legacyFiles []string
-	for _, rel := range files {
-		baseLower := strings.ToLower(filepath.Base(rel))
-		if ignoredFiles[baseLower] {
-			continue
-		}
-		legacyFiles = append(legacyFiles, rel)
-	}
-
-	sort.Strings(legacyFiles)
-	return legacyFiles, nil
+	return ScanLegacyFiles(projectPath)
 }

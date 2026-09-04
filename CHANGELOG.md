@@ -5,7 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.67.0] - 2026-09-04
+
+### Added
+- **Smart Greenfield vs. Legacy Codebase Discovery (`ScanLegacyFiles`, `IsGreenfieldWorkspace`)**:
+  - Implemented smart legacy code scanning in `pkg/services/legacy_scanner.go` to distinguish true legacy codebases from greenfield starter repositories.
+  - Automatically filters package manifests, lockfiles, project metadata, toolchains, build targets, and linter configs across all mainstream languages (Go, Rust, Node, Python, Ruby, Java/JVM, C/C++, PHP, Elixir).
+  - Inspects file content to filter empty or near-empty stub files (< 5 significant lines of code).
+  - Enforces explicit greenfield detection: suppresses `LEGACY STABILIZATION MANDATE` unless the workspace contains $\ge 50$ total non-manifest, non-comment lines of code across candidate files, preventing false `US-001` characterization loops on greenfield projects.
+  - Added comprehensive unit tests in `legacy_scanner_test.go` and updated `roadmap_generator_test.go`.
+  - Synchronized architectural reference in `docs/architecture.md` and feature summary in `docs/index.md`.
+
 ## [0.66.0] - 2026-09-04
+
 
 ### Added
 - **Incremental SQL Upserts for State Persistence**:
