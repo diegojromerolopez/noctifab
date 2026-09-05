@@ -32,6 +32,7 @@ if [ -d "/app/src_mount" ]; then
   echo "Validating project: ${PROJECT} (real-time mounted workspace at ${TMP_DIR})..." >&2
   # Clean previous run workspace files while preserving report, log, dist, and .noctifab mounts
   find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -not -name "report" -not -name "log" -not -name "dist" -not -name ".noctifab" -exec rm -rf {} + 2>/dev/null || true
+  rm -rf "${TMP_DIR}/.noctifab/data" "${TMP_DIR}/.noctifab/logs" || true
 else
   TMP_DIR="$(pwd)/${PROJECT}"
   echo "Validating project: ${PROJECT}..." >&2

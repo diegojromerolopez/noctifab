@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.2] - 2026-09-05
+
+### Fixed
+- **Validation Workspace State Isolation**:
+  - Cleaned stale `.noctifab/data` (SQLite database) and `.noctifab/logs` directories when initializing or cleaning validation test runners in `validation/run_one.sh` and `validation/validate.sh`, preventing prior runs' tasks and failure states from bleeding into fresh validation runs.
+- **LLM Router Context Key Type Alignment**:
+  - Aligned `AgentRoleKey` in `pkg/services/validator.go` to standard string key `"agent_role"`, enabling `GetRoleFromContext` in `pkg/infrastructure/llm/router_eviction.go` to accurately resolve agent roles from context and avoid fallback to empty role `""`.
+
 ## [0.75.1] - 2026-09-05
 
 ### Fixed

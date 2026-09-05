@@ -11,11 +11,8 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-type agentRoleKeyType string
-type taskIDKeyType string
-
-const AgentRoleKey agentRoleKeyType = "agent_role"
-const TaskIDKey taskIDKeyType = "task_id"
+const AgentRoleKey = "agent_role"
+const TaskIDKey = "task_id"
 
 // ValidationResult records the outcome of a security check or target validation check.
 type ValidationResult struct {

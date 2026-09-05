@@ -39,6 +39,7 @@ ROOT="${NOCTIFAB_BUILD_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 if [ -d "${ROOT}/validation/projects/${PROJECT}/output" ]; then
   find "${ROOT}/validation/projects/${PROJECT}/output" -mindepth 1 -maxdepth 1 -not -name "log" -not -name "report" -not -name ".noctifab" -exec rm -rf {} + || true
   rm -rf "${ROOT}/validation/projects/${PROJECT}/output/log"/* || true
+  rm -rf "${ROOT}/validation/projects/${PROJECT}/output/.noctifab/data" "${ROOT}/validation/projects/${PROJECT}/output/.noctifab/logs" || true
 else
   mkdir -p "${ROOT}/validation/projects/${PROJECT}/output"
 fi
