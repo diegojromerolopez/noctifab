@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -35,6 +37,10 @@ func (t *InstallPackageTool) Execute(ctx context.Context, state *domain.State, a
 	}
 
 	if t.Runner != nil {
+		if manager == "" {
+			manager = detectPackageManager(state.ProjectPath, pkg)
+		}
+
 		cmdStr := pkg
 		if manager != "" {
 			switch strings.ToLower(manager) {
@@ -42,6 +48,8 @@ func (t *InstallPackageTool) Execute(ctx context.Context, state *domain.State, a
 				cmdStr = "pip install " + pkg
 			case "npm":
 				cmdStr = "npm install -g " + pkg
+			case "gem":
+				cmdStr = "gem install " + pkg
 			case "opam":
 				cmdStr = "opam install -y " + pkg
 			case "cargo":
@@ -62,4 +70,35 @@ func (t *InstallPackageTool) Execute(ctx context.Context, state *domain.State, a
 	}
 
 	return "", errors.New("no package manager or sandbox runner configured")
+}
+
+func detectPackageManager(projectPath, pkg string) string {
+	if entry, ok := toolPackageMap[strings.ToLower(pkg)]; ok && entry.Manager != "" {
+		return entry.Manager
+	}
+	if projectPath == "" {
+		return ""
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
+		return "npm"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "pyproject.toml")); err == nil {
+		return "pip"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "requirements.txt")); err == nil {
+		return "pip"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "Gemfile")); err == nil {
+		return "gem"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
+		return "cargo"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+		return "go"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "dune-project")); err == nil {
+		return "opam"
+	}
+	return ""
 }

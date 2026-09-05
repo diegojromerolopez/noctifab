@@ -74,13 +74,38 @@ func SymlinkSharedDependencies(srcDir, dstDir string) {
 	}
 }
 
+// sharedToolchainCacheDirs defines all cache directories to pre-warm under .noctifab/cache.
+var sharedToolchainCacheDirs = []string{
+	"cargo-target",
+	"go-cache",
+	"gradle",
+	"m2-repo",
+	"pip",
+	"npm",
+	"ccache",
+	"bundle",
+	"nuget",
+	"composer",
+	"dune",
+	"hex",
+	"mix",
+}
+
+// PrecreateSharedCacheDirs ensures all supported toolchain cache directories exist.
+func PrecreateSharedCacheDirs(cacheBase string) {
+	_ = os.MkdirAll(cacheBase, 0755)
+	for _, sub := range sharedToolchainCacheDirs {
+		_ = os.MkdirAll(filepath.Join(cacheBase, sub), 0755)
+	}
+}
+
 // ConfigureToolchainWorktreeCaches configures build caches for Rust, Gradle, and other toolchains.
 func ConfigureToolchainWorktreeCaches(srcDir, dstDir string) {
 	cleanSrc := filepath.Clean(srcDir)
 	cleanDst := filepath.Clean(dstDir)
 
 	sharedCacheBase := filepath.Join(cleanSrc, ".noctifab", "cache")
-	_ = os.MkdirAll(sharedCacheBase, 0755)
+	PrecreateSharedCacheDirs(sharedCacheBase)
 
 	// 1. Rust Cargo: redirect target-dir to shared cache via .cargo/config.toml
 	if _, err := os.Stat(filepath.Join(cleanSrc, "Cargo.toml")); err == nil {
@@ -130,6 +155,11 @@ func createRelativeOrAbsoluteSymlink(srcPath, dstPath string) error {
 	dstDir := filepath.Dir(dstPath)
 	_ = os.MkdirAll(dstDir, 0755)
 
+	// If a dead symlink or stale target exists at dstPath, remove it before linking
+	if _, err := os.Lstat(dstPath); err == nil {
+		_ = os.Remove(dstPath)
+	}
+
 	rel, err := filepath.Rel(dstDir, srcPath)
 	if err == nil {
 		return os.Symlink(rel, dstPath)
@@ -163,6 +193,7 @@ func ResolveRootProjectDir(projectPath string) string {
 func BuildSharedCacheEnv(rootProjectDir string) []string {
 	cleanRoot := filepath.Clean(rootProjectDir)
 	cacheBase := filepath.Join(cleanRoot, ".noctifab", "cache")
+	PrecreateSharedCacheDirs(cacheBase)
 
 	env := []string{
 		fmt.Sprintf("CARGO_TARGET_DIR=%s", filepath.Join(cacheBase, "cargo-target")),

@@ -24,11 +24,11 @@ COPY --from=noctifab-artifacts /app/projects /app/projects
 COPY --from=noctifab-artifacts /app/validate.sh /app/validate.sh
 RUN chmod +x /app/validate.sh
 
-# Pre-cache common node dev dependencies to accelerate test execution
-RUN npm install -g typescript tsx vitest fastify vite @types/node
+# Pre-cache common node dev dependencies, test runners, and framework utilities
+RUN npm install -g typescript tsx ts-node jest ts-jest @types/jest vitest fastify vite supertest @types/supertest @types/node
 
 # Sanity check the toolchain is callable.
-RUN node --version && npm --version && tsc --version && postgres --version && initdb --version && pg_ctl --version
+RUN node --version && npm --version && tsc --version && jest --version && vitest --version && postgres --version && initdb --version && pg_ctl --version
 
 WORKDIR /app
 CMD ["/app/validate.sh"]

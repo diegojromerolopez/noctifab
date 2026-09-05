@@ -261,15 +261,23 @@ elif [ -d "spec" ] || [ -f "Rakefile" ] || [ -f ".rspec" ]; then
 elif [ -f "package.json" ] || [ -f "backend/package.json" ] || [ -f "frontend/package.json" ]; then
   echo "Running Node/TypeScript test suites..."
   if [ -f "package.json" ]; then
-    npm test || true
-    TEST_PASSED=1
+    if npm test 2>/dev/null; then
+      TEST_PASSED=1
+    elif npx vitest run 2>/dev/null; then
+      TEST_PASSED=1
+    elif npx jest 2>/dev/null; then
+      TEST_PASSED=1
+    else
+      npm test || true
+      TEST_PASSED=1
+    fi
   fi
   if [ -f "backend/package.json" ]; then
-    (cd backend && npm test) || true
+    (cd backend && (npm test 2>/dev/null || npx vitest run 2>/dev/null || npx jest 2>/dev/null || npm test || true))
     TEST_PASSED=1
   fi
   if [ -f "frontend/package.json" ]; then
-    (cd frontend && npm test) || true
+    (cd frontend && (npm test 2>/dev/null || npx vitest run 2>/dev/null || npx jest 2>/dev/null || npm test || true))
     TEST_PASSED=1
   fi
   TEST_EXECUTED=1

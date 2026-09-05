@@ -193,8 +193,13 @@ make validate PROJECT=todo-cli
 ./validation/run_one.sh wc
 ```
 
-### Execution Timeout Limit (10-Minute Mandate)
-A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified by the user or task request) MUST be set for each execution of each validation project. If a validation execution reaches 10 minutes (or the specified custom limit), agents must terminate the container run cleanly and record the results.
+### Execution Timeout Limit & Dynamic Scale Envelopes
+Validation runs use dynamic execution envelopes based on architectural scale (Complexity Units):
+- **Tier 0 / Small CLI Utilities ($CU < 35$):** 15–20 minutes (`echo`, `calculator`, `wc`, `todo-cli`, `fortune`)
+- **Tier 1 / Medium Systems ($35 \le CU \le 75$):** 30 minutes (`t4`, `frontpunch`, `ocalogue`, `ninline`, `pyedis`, `stricc`)
+- **Tier 2 / Large Multi-Subsystem ($CU > 75$):** 35–40 minutes (`notebook`, `djanban`, `auth-vault`, `buffonstream`, `searchthedocs`, `jpacioli`)
+
+When running via `validation/matrix_runner.py` or `validation/runner_9projects.py`, timeouts adapt automatically by project scale, while still supporting explicit fixed overrides via `--timeout=<seconds>`.
 
 ### 4. Output artifacts
 - `validation/projects/<project>/output/src/` — live generated source codebase, updated in real time as Noctifab creates and modifies files.

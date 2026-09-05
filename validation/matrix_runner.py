@@ -16,7 +16,41 @@ from datetime import datetime
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PROJECTS_DIR = os.path.join(ROOT_DIR, "validation", "projects")
-DEFAULT_TIMEOUT_SECONDS = 1200  # 20 minutes limit per project
+DEFAULT_TIMEOUT_SECONDS = 1200  # 20 minutes default fallback
+
+# Scale-based timeouts per project based on architectural complexity units (CU):
+# - Tier 0 / Small CLI Utilities (CU < 35): 15 - 20 minutes
+# - Tier 1 / Medium Systems (CU 35 - 75): 30 minutes
+# - Tier 2 / Large Enterprise / Multi-Tier Stacks (CU > 75): 35 - 40 minutes
+PROJECT_SCALE_TIMEOUTS = {
+    # Small / Single-binary CLI Utilities
+    "wc": 1200,          # 20m
+    "calculator": 1200,  # 20m
+    "echo": 900,         # 15m
+    "todo-cli": 1200,    # 20m
+    "fortune": 1200,     # 20m
+
+    # Medium Systems
+    "t4": 1800,          # 30m (C HTTP daemon, networking)
+    "frontpunch": 1800,  # 30m (Async task queue + Valkey)
+    "ocalogue": 1800,    # 30m (Datalog deductive engine + Dune)
+    "ninline": 1800,     # 30m (Connect-4 game + minimax AI)
+    "pyedis": 1800,      # 30m (Redis protocol + async concurrency + AOF)
+    "stricc": 1800,      # 30m (C compiler frontend + LLVM)
+
+    # Large Enterprise & Multi-Tier Stacks
+    "notebook": 2100,      # 35m (React SPA + Fastify REST + WebSockets + PostgreSQL)
+    "djanban": 2100,       # 35m (Django 5.x legacy refactoring + ORM + WIP analytics)
+    "jpacioli": 2400,      # 40m (Java 21 + Spring Boot + Gradle + PostgreSQL + Event Sourcing)
+    "auth-vault": 2100,    # 35m (OAuth2/OIDC Zero-Trust server + PKI Vault)
+    "buffonstream": 2100,  # 35m (Protobuf-native storage & CDC streaming)
+    "searchthedocs": 2100, # 35m (FastAPI + Redis scraper + Vector search)
+}
+
+def get_project_timeout(project: str, override_timeout: int = None) -> int:
+    if override_timeout and override_timeout > 0:
+        return override_timeout
+    return PROJECT_SCALE_TIMEOUTS.get(project, DEFAULT_TIMEOUT_SECONDS)
 
 TARGET_PROJECTS = [
     "calculator",
@@ -436,13 +470,19 @@ def run_single_project(project: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECO
 
 def main():
     custom_projects = []
-    timeout_val = DEFAULT_TIMEOUT_SECONDS
+    timeout_override = None
     for arg in sys.argv[1:]:
-        if arg.startswith("--projects="):
+        if arg in ("--help", "-h"):
+            print("Usage: python3 validation/matrix_runner.py [--projects=proj1,proj2] [--timeout=seconds] [proj1 proj2 ...]")
+            print("\nDynamic scale timeouts by default:")
+            for p, t in PROJECT_SCALE_TIMEOUTS.items():
+                print(f"  - {p:15s}: {t}s ({t//60}m)")
+            sys.exit(0)
+        elif arg.startswith("--projects="):
             custom_projects.extend([p.strip() for p in arg.split("=", 1)[1].split(",") if p.strip()])
         elif arg.startswith("--timeout="):
             try:
-                timeout_val = int(arg.split("=", 1)[1].strip())
+                timeout_override = int(arg.split("=", 1)[1].strip())
             except ValueError:
                 pass
         elif not arg.startswith("-"):
@@ -453,13 +493,17 @@ def main():
     print(f"==================================================")
     print(f"Starting Noctifab Matrix Runner")
     print(f"Target Projects ({len(projects_to_run)}): {', '.join(projects_to_run)}")
-    print(f"Timeout per project: {timeout_val}s ({timeout_val/60:.0f} min)")
+    if timeout_override:
+        print(f"Timeout mode: Fixed override ({timeout_override}s / {timeout_override/60:.0f} min)")
+    else:
+        print(f"Timeout mode: Dynamic by Scale (Small: 20m, Medium: 30m, Large: 35-40m)")
     print(f"==================================================")
     
     all_results = []
     for idx, project in enumerate(projects_to_run, 1):
-        print(f"\n>>> Running {idx}/{len(projects_to_run)}: {project}")
-        res = run_single_project(project, timeout_seconds=timeout_val)
+        t_limit = get_project_timeout(project, timeout_override)
+        print(f"\n>>> Running {idx}/{len(projects_to_run)}: {project} (Timeout: {t_limit}s / {t_limit/60:.0f}m)")
+        res = run_single_project(project, timeout_seconds=t_limit)
         all_results.append(res)
             
     print(f"\n==================================================")

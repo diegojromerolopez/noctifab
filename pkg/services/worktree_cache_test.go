@@ -189,3 +189,16 @@ func TestSeedTaskWorktreeWorkspace(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, info.Mode()&os.ModeSymlink != 0)
 }
+
+func TestPrecreateSharedCacheDirs(t *testing.T) {
+	tempDir := t.TempDir()
+	cacheBase := filepath.Join(tempDir, "test-cache")
+
+	services.PrecreateSharedCacheDirs(cacheBase)
+
+	for _, sub := range []string{"cargo-target", "go-cache", "gradle", "m2-repo", "pip", "npm", "ccache", "dune"} {
+		info, err := os.Stat(filepath.Join(cacheBase, sub))
+		require.NoError(t, err, "expected %s to be created", sub)
+		assert.True(t, info.IsDir())
+	}
+}

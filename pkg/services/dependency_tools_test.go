@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -54,6 +56,46 @@ func TestInstallPackageTool(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, "npm install -g vitest", runner.lastCmd)
+		assert.Contains(t, res, "installed successfully")
+	})
+
+	t.Run("when manager is omitted it auto-detects from toolPackageMap", func(t *testing.T) {
+		runner := &mockSandboxRunner{out: "added jest"}
+		tool := &InstallPackageTool{Runner: runner}
+
+		res, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/test"}, map[string]any{
+			"package": "jest",
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, "npm install -g jest", runner.lastCmd)
+		assert.Contains(t, res, "installed successfully")
+	})
+
+	t.Run("when manager is omitted it auto-detects from project manifest", func(t *testing.T) {
+		tempDir := t.TempDir()
+		assert.NoError(t, os.WriteFile(filepath.Join(tempDir, "package.json"), []byte("{}"), 0644))
+
+		runner := &mockSandboxRunner{out: "added custom-pkg"}
+		tool := &InstallPackageTool{Runner: runner}
+
+		res, err := tool.Execute(context.Background(), &domain.State{ProjectPath: tempDir}, map[string]any{
+			"package": "custom-pkg",
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, "npm install -g custom-pkg", runner.lastCmd)
+		assert.Contains(t, res, "installed successfully")
+	})
+
+	t.Run("when gem manager is specified it constructs gem install command", func(t *testing.T) {
+		runner := &mockSandboxRunner{out: "installed rspec"}
+		tool := &InstallPackageTool{Runner: runner}
+
+		res, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/test"}, map[string]any{
+			"package": "rspec",
+			"manager": "gem",
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, "gem install rspec", runner.lastCmd)
 		assert.Contains(t, res, "installed successfully")
 	})
 }

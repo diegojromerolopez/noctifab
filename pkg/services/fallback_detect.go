@@ -157,6 +157,11 @@ func (u *FallbackAgent) detectStalledTasks(state *domain.State) []StalledTask {
 	}
 
 	// 4. Agent inconsistency: WORKING agent whose task is not IN_PROGRESS.
+	gracePeriod := u.inconsistencyGracePeriod
+	if gracePeriod <= 0 {
+		gracePeriod = 30 * time.Second
+	}
+
 	for i := range state.ActiveAgents {
 		ag := &state.ActiveAgents[i]
 		if ag.Status != domain.AgentWorking || ag.TaskID == "" {
@@ -171,6 +176,17 @@ func (u *FallbackAgent) detectStalledTasks(state *domain.State) []StalledTask {
 					break
 				}
 			}
+
+			// Grace period check: allow a grace period for in-flight transitions
+			// (e.g. Generator -> Tester handoff, SQLite commit window, worktree locking).
+			now := time.Now()
+			if !ag.StartedAt.IsZero() && now.Sub(ag.StartedAt) < gracePeriod {
+				continue
+			}
+			if !affectedTask.UpdatedAt.IsZero() && now.Sub(affectedTask.UpdatedAt) < gracePeriod {
+				continue
+			}
+
 			stalledFor := time.Since(ag.StartedAt)
 			if ag.StartedAt.IsZero() {
 				stalledFor = time.Minute

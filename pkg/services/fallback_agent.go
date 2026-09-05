@@ -23,17 +23,18 @@ const defaultLLMAssessmentCooldown = 5 * time.Minute
 //  2. Active Sovereign Omni-Builder: When stalls or retries exhaust, directly takes over the task
 //     and synthesizes working production code and accompanying tests with full compromise authority.
 type FallbackAgent struct {
-	repo                domain.StateRepository
-	llmClient           domain.LLMClient
-	mailbox             *CommandMailbox
-	pollInterval        time.Duration
-	maxRetries          int
-	stallThreshold      time.Duration
-	conflictThreshold   time.Duration
-	llmAssessment       bool
-	budgetCliffRatio    float64
-	stallCountThreshold int
-	maxDuration         time.Duration
+	repo                     domain.StateRepository
+	llmClient                domain.LLMClient
+	mailbox                  *CommandMailbox
+	pollInterval             time.Duration
+	maxRetries               int
+	stallThreshold           time.Duration
+	conflictThreshold        time.Duration
+	inconsistencyGracePeriod time.Duration
+	llmAssessment            bool
+	budgetCliffRatio         float64
+	stallCountThreshold      int
+	maxDuration              time.Duration
 
 	// started makes Start idempotent so double-starting (e.g. serve.go plus
 	// Orchestrator.Start) never spawns two competing polling loops.
@@ -74,18 +75,19 @@ func NewFallbackAgent(
 		conflictThreshold = 5 * time.Minute
 	}
 	return &FallbackAgent{
-		repo:                repo,
-		llmClient:           llmClient,
-		mailbox:             mailbox,
-		pollInterval:        pollInterval,
-		maxRetries:          maxRetries,
-		stallThreshold:      stallThreshold,
-		conflictThreshold:   conflictThreshold,
-		llmAssessment:       llmAssessment,
-		budgetCliffRatio:    0.50,
-		stallCountThreshold: 2,
-		llmCooldown:         defaultLLMAssessmentCooldown,
-		llmAssessedAt:       make(map[string]time.Time),
+		repo:                     repo,
+		llmClient:                llmClient,
+		mailbox:                  mailbox,
+		pollInterval:             pollInterval,
+		maxRetries:               maxRetries,
+		stallThreshold:           stallThreshold,
+		conflictThreshold:        conflictThreshold,
+		inconsistencyGracePeriod: 30 * time.Second,
+		llmAssessment:            llmAssessment,
+		budgetCliffRatio:         0.50,
+		stallCountThreshold:      2,
+		llmCooldown:              defaultLLMAssessmentCooldown,
+		llmAssessedAt:            make(map[string]time.Time),
 	}
 }
 

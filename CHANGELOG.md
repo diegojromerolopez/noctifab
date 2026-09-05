@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.72.1] - 2026-09-05
+
+### Fixed
+- **Node/TypeScript Validation Toolchain Provisioning & Test Runner Resilience (`notebook`)**:
+  - Expanded `validation/projects/notebook/Dockerfile` global npm dependencies to include `jest`, `ts-jest`, `@types/jest`, `ts-node`, `supertest`, and `@types/supertest` alongside `vitest` and `typescript`.
+  - Updated `validation/validate.sh` to gracefully fallback between `npm test`, `npx vitest run`, and `npx jest` if local binary paths or scripts differ.
+  - Enhanced Fallback Agent prompt template in `pkg/infrastructure/prompts/defaults/fallback/repair.tmpl` with Tier 2 Toolchain & Test Runner Adaptation guidance to align `package.json` scripts to available test runners.
+- **PM & Planner Agent Prompting (Walking Skeleton Mandate & Story Ceiling)**:
+  - Enforced strict Walking Skeleton Mandate in `generate.tmpl` and `decompose.tmpl`: Task 1 of Story 1 must be a minimal, thin, runnable end-to-end stub (<30s compile & smoke test), deferring heavy domain models and complex ORM schemas to subsequent tasks.
+  - Capped feature stories at $\le 2$ for medium specs ($CU \le 75$) plus 1 hardening story to prevent multi-story timeout exhaustion.
+- **State Transition OCC & Unblocker Inconsistency Grace Period**:
+  - Added `inconsistencyGracePeriod` (default 30s) in `FallbackAgent` and `detectStalledTasks` (`pkg/services/fallback_detect.go`), suppressing false `StallReasonAgentInconsistency` resets during active Generator $\to$ Tester handoffs and SQLite commit windows.
+- **Fallback Sovereign Repair & Package Auto-Detection**:
+  - Expanded `toolPackageMap` in `pkg/services/dependency_manager.go` with `jest`, `ts-node`, `typescript`, `rspec`, `rubocop`, `gradle`, `pytest-django`, sorting candidates longest-first to prevent substring shadowing (`ts-node` vs `node`).
+  - Added package manager auto-detection in `InstallPackageTool` (`pkg/services/dependency_tools.go`) based on workspace manifests (`package.json`, `pyproject.toml`, `Gemfile`, `dune-project`, `Cargo.toml`, `go.mod`).
+- **Worktree Build Caching Pre-Warming & Safe Symlinking**:
+  - Added `PrecreateSharedCacheDirs` in `pkg/services/worktree_cache.go` to pre-warm all toolchain cache subdirectories (`cargo-target`, `gradle`, `m2-repo`, `pip`, `npm`, `ccache`, `dune`, etc.) under `.noctifab/cache/`.
+  - Added safe cleanup of stale/broken symlinks in `createRelativeOrAbsoluteSymlink`.
+- **Scale-Based Dynamic Validation Timeouts**:
+  - Replaced static flat 20-minute timeout in `validation/runner_9projects.py` and `validation/matrix_runner.py` with tiered dynamic envelopes based on architectural complexity: Small CLI Utilities (15–20m), Medium Systems (30m), and Large Multi-Subsystem/Enterprise stacks (35–40m), while maintaining optional `--timeout=<val>` fixed override.
+- **In-Memory Concurrency & Test Suite Race Hardening**:
+  - Protected `MockNotifier` in `pkg/infrastructure/notifier/notifier.go` with `sync.RWMutex`.
+  - Protected `mockStandbyStateRepo` in `pkg/services/standby_loop_test.go` and `planMockLLM` in `pkg/services/orchestrator_server_test.go` with mutex synchronization.
+  - Synchronized `TestFSWatcher_DetectsNewUserStory` in `pkg/services/fs_watcher_test.go` with mutex and `assert.Eventually`.
+
 ## [0.72.0] - 2026-09-04
 
 ### Added

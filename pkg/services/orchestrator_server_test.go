@@ -17,14 +17,19 @@ import (
 )
 
 type planMockLLM struct {
+	mu         sync.Mutex
 	completeFn func(ctx context.Context, prompt string) (*domain.LLMResponse, error)
 	calls      int
 }
 
 func (m *planMockLLM) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	m.mu.Lock()
 	m.calls++
-	if m.completeFn != nil {
-		return m.completeFn(ctx, prompt)
+	fn := m.completeFn
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx, prompt)
 	}
 	return &domain.LLMResponse{
 		Actions: []domain.LLMAction{

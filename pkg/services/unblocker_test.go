@@ -96,6 +96,18 @@ func TestDetectStalledTasks(t *testing.T) {
 			agents:      []domain.Agent{workingAgent("agent-1", "t1")},
 			wantReasons: []StallReason{StallReasonAgentInconsistency},
 		},
+		{
+			name:  "when agent is WORKING on non-IN_PROGRESS task within grace period, it suppresses the inconsistency",
+			tasks: []domain.Task{taskWithStatus("t1", domain.TaskSuccess, 5*time.Second)},
+			agents: []domain.Agent{{
+				ID:        "agent-1",
+				Role:      domain.AgentRoleGenerator,
+				Status:    domain.AgentWorking,
+				TaskID:    "t1",
+				StartedAt: time.Now().Add(-5 * time.Second),
+			}},
+			wantReasons: nil,
+		},
 	}
 
 	for _, tt := range tests {
