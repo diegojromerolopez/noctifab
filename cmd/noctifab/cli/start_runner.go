@@ -197,8 +197,8 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 	}
 
-	reg := initToolRegistry(cfg, sandboxRunner)
 	llmClient := llm.BuildFailoverClient(cfg, budgetStore)
+	reg := initToolRegistry(cfg, sandboxRunner, llmClient)
 
 	mailbox := services.NewCommandMailbox(repo)
 	go mailbox.Start(cmdCtx)
@@ -250,6 +250,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 	scheduler := services.NewScheduler(services.NewFileLockRegistry())
 	evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+	evaluator.Formatter = services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
 	evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
 	if cfg.Sandbox.TimeoutSeconds > 0 {
 		evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second

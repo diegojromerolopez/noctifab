@@ -38,14 +38,14 @@ func initStorageRepo(cfg *config.Config) (domain.StateRepository, domain.BudgetS
 	return repo, budgetStore, nil
 }
 
-func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *services.ToolRegistry {
+func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox, llmClient domain.LLMClient) *services.ToolRegistry {
 	reg := services.NewToolRegistry()
 	reg.Register(&services.AddTaskTool{})
 	reg.Register(&services.CompleteTaskTool{})
 	reg.Register(&services.LogMessageTool{})
 	reg.Register(&services.NoopTool{})
 	reg.Register(&services.ReadFileTool{})
-	syntaxChecker := services.NewCommandSyntaxChecker(cfg.Sandbox.SyntaxCheckCommand)
+	syntaxChecker := services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)
 	reg.Register(&services.WriteFileTool{SyntaxChecker: syntaxChecker})
 	reg.Register(&services.WriteFilesTool{SyntaxChecker: syntaxChecker})
 	reg.Register(&services.DeleteFileTool{})
@@ -59,14 +59,17 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *servi
 	if cfg.Sandbox.TimeoutSeconds > 0 {
 		runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 	}
+	formatter := services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
 	reg.Register(&services.RunTestsTool{
 		Runner:           sandboxRunner,
+		Formatter:        formatter,
 		FormatterCommand: cfg.Sandbox.FormatterCommand,
 		Timeout:          runTimeout,
 	})
 	reg.Register(&services.RunLinterTool{
 		Runner:           sandboxRunner,
 		LinterCommand:    cfg.Sandbox.GetLinterCommand(),
+		Formatter:        formatter,
 		FormatterCommand: cfg.Sandbox.FormatterCommand,
 		MaxLinterIssues:  cfg.Sandbox.GetMaxLinterIssues(),
 		Timeout:          runTimeout,

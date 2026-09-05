@@ -259,8 +259,12 @@ func (o *Orchestrator) stageAndCommit(ctx context.Context, taskGit *GitClient, t
 	}
 
 	// Issue 6: Zero-token auto-formatting before git commit
-	if o.evaluator != nil && o.evaluator.FormatterCommand != "" && o.evaluator.Runner != nil && taskGit != nil && taskGit.Dir() != "" {
-		_, _ = o.evaluator.Runner.RunCommand(ctx, taskGit.Dir(), o.evaluator.FormatterCommand, "")
+	if o.evaluator != nil && taskGit != nil && taskGit.Dir() != "" {
+		if o.evaluator.Formatter != nil {
+			_, _ = o.evaluator.Formatter.Format(ctx, taskGit.Dir())
+		} else if o.evaluator.FormatterCommand != "" && o.evaluator.Runner != nil {
+			_, _ = o.evaluator.Runner.RunCommand(ctx, taskGit.Dir(), o.evaluator.FormatterCommand, "")
+		}
 	}
 
 	_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")

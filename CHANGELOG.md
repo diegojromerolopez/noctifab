@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.0] - 2026-09-05
+
+### Added
+- **Self-Healing LLM Syntax Check Hook & Dynamic Command Override**:
+  - **LLM Command Diagnosis**: Enhanced `CommandSyntaxChecker` in `pkg/services/syntax_check_hook.go` with `diagnoseCommand`. When syntax check fails, the LLM analyzes whether the command is wrong or inappropriate for the given file type (e.g. non-code files like `.gitignore`, `Makefile`, or language mismatch).
+  - **Dynamic In-Memory Command Override**: If the command is diagnosed as wrong or inapplicable, the LLM provides an updated command (or disables checking), and Noctifab overrides the command in-memory, permanently ignoring the static configuration for subsequent file writes.
+  - **LLM Code Syntax Repair**: If the command is valid but code syntax is broken, `repairSyntax` prompts the LLM to repair the file, writes the fixed content to disk, and re-validates.
+  - **CLI & Daemon LLM Injection**: Injected the active `LLMClient` into `CommandSyntaxChecker` across `cmd/noctifab/cli/start_helpers.go`, `cmd/noctifab/cli/start_runner.go`, and `cmd/noctifab/cli/serve.go`.
+  - **Validation Project Config Harmonization**: Fixed invalid/mismatched `syntax_check_command` across all validation project configurations (`t4`, `fortune`, `notebook`, `jpacioli`, `ninline`, `searchthedocs`).
+- **Self-Healing LLM Format Checker & Auto-Formatter (`formatter_command`)**:
+  - **Self-Healing Command Diagnosis & Override**: Implemented `CommandFormatter` in `pkg/services/auto_formatter.go` implementing `Formatter`. If a formatter command fails (e.g. `make format` with no target, wrong flags, or unconfigured RuboCop cops), the LLM diagnoses the issue, suggests an updated command or disables it, and Noctifab overrides the command in-memory.
+  - **LLM Configuration & Code Auto-Repair**: If the formatter command is valid but fails due to malformed configuration (e.g. missing RuboCop config) or syntax errors, the LLM repairs the broken files and re-runs formatting.
+  - **End-to-End Wiring**: Injected `Formatter` into `RunTestsTool`, `RunLinterTool`, `TestValidator`, and `WatchdogRepair`, unblocking test/linter pre-passes cleanly across all worktrees.
+
 ## [0.74.0] - 2026-09-05
 
 ### Added

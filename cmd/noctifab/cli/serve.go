@@ -86,6 +86,15 @@ var serveCmd = &cobra.Command{
 			sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 		}
 
+		// Initialize LLM client with database budget store.
+		var budgetStore domain.BudgetStore
+		if sqliteRepo, ok := repo.(*storage.SQLiteRepository); ok {
+			budgetStore = storage.NewSQLiteBudgetStore(sqliteRepo.DB())
+		} else if pgRepo, ok := repo.(*storage.PostgresRepository); ok {
+			budgetStore = storage.NewPostgresBudgetStore(pgRepo.DB())
+		}
+		llmClient := llm.BuildFailoverClient(cfg, budgetStore)
+
 		// Initialize tool registry.
 		reg := services.NewToolRegistry()
 		reg.Register(&services.AddTaskTool{})
@@ -93,7 +102,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.LogMessageTool{})
 		reg.Register(&services.NoopTool{})
 		reg.Register(&services.ReadFileTool{})
-		syntaxChecker := services.NewCommandSyntaxChecker(cfg.Sandbox.SyntaxCheckCommand)
+		syntaxChecker := services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)
 		reg.Register(&services.WriteFileTool{SyntaxChecker: syntaxChecker})
 		reg.Register(&services.WriteFilesTool{SyntaxChecker: syntaxChecker})
 		reg.Register(&services.DeleteFileTool{})
@@ -106,19 +115,11 @@ var serveCmd = &cobra.Command{
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
-		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
-		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
+		formatter := services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
+		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Formatter: formatter, FormatterCommand: cfg.Sandbox.FormatterCommand, Timeout: runTimeout})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), Formatter: formatter, FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
 		reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})
-
-		// Initialize LLM client with database budget store.
-		var budgetStore domain.BudgetStore
-		if sqliteRepo, ok := repo.(*storage.SQLiteRepository); ok {
-			budgetStore = storage.NewSQLiteBudgetStore(sqliteRepo.DB())
-		} else if pgRepo, ok := repo.(*storage.PostgresRepository); ok {
-			budgetStore = storage.NewPostgresBudgetStore(pgRepo.DB())
-		}
-		llmClient := llm.BuildFailoverClient(cfg, budgetStore)
 
 		// Initialize orchestrator components.
 		gitClient := services.NewGitClient(".")
@@ -143,6 +144,7 @@ var serveCmd = &cobra.Command{
 		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+		evaluator.Formatter = formatter
 		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second

@@ -363,13 +363,20 @@ sandbox:
 - **`timeout_seconds`** (Integer): Absolute execution wall-clock time limit in seconds for test and script execution processes.
 - **`idle_timeout_seconds`** (Integer): Active watchdog timeout. Kills processes immediately if they output no bytes on stdout/stderr for this duration.
 - **`test_command`** (String): Command executed by the Test Validator to run the unit/integration test suites (e.g. `npm test`, `pytest`).
-- **`formatter_command`** (String): Command executed to run code format checks (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_linter` runs this pre-step auto-fixer first before linter diagnostics.
-- **`syntax_check_command`** (String): Optional command template executed after every `write_file`, `edit_file`, `write_files`, and `apply_patch` tool call to perform a lightweight syntax validation of the written file. Use `{file}` as a placeholder for the absolute path of the written file. **When empty (default), no syntax check is performed** and file tools remain pure I/O operations with zero external binary dependencies, which is the correct behavior for languages where single-file syntax checks are not feasible (e.g. Rust, OCaml). Examples by language:
-  - Ruby: `ruby -c {file}`
-  - Python: `python3 -m py_compile {file}`
-  - Go: `gofmt -e {file}`
-  - JavaScript/TypeScript: `node --check {file}`
-  - Shell: `bash -n {file}`
+- **`formatter_command`** (String): Command executed to run code format checks and auto-formatting (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_tests` and `run_linter` run this pre-step auto-fixer first.
+  - **Self-Healing LLM Integration**: When configured with an LLM client, if the formatter command fails:
+    1. Noctifab consults the LLM to diagnose whether the command itself is wrong or inapplicable for this project (e.g. `make format` when Makefile has no `format` target, wrong tool/flags, unconfigured RuboCop cops, or missing toolchain). If wrong or inapplicable, the LLM provides an updated command (or disables it), and Noctifab overrides the command in-memory, permanently ignoring the static configuration.
+    2. If the command is valid but fails due to code or configuration syntax errors, the LLM auto-repairs the broken files, writes them back to disk, and re-runs formatting.
+- **`syntax_check_command`** (String): Optional command template executed after every `write_file`, `edit_file`, `write_files`, and `apply_patch` tool call to perform a lightweight syntax validation of the written file. Use `{file}` as a placeholder for the absolute path of the written file. **When empty (default), no syntax check is performed** and file tools remain pure I/O operations with zero external binary dependencies, which is the correct behavior for languages where single-file syntax checks are not feasible (e.g. Rust, OCaml).
+  - **Self-Healing LLM Integration**: When configured with an LLM client, if the syntax check command fails:
+    1. Noctifab consults the LLM to diagnose whether the command is inappropriate/wrong for this file type (e.g. `.gitignore`, `Makefile`, or language mismatch). If wrong or inapplicable, the LLM provides an updated command (or disables it), and Noctifab overrides the command in-memory, permanently ignoring the static configuration.
+    2. If the command is valid but code syntax is broken, the LLM auto-repairs the syntax errors, rewrites the file, and re-validates.
+  - Examples by language:
+    - Ruby: `ruby -c {file}`
+    - Python: `python3 -m py_compile {file}`
+    - Go: `gofmt -e {file}`
+    - JavaScript/TypeScript: `node --check {file}`
+    - Shell: `bash -n {file}`
 - **`linter_command`** (String): Command executed to run project static analysis linter tasks.
 - **`max_linter_retries`** (Integer): Maximum linter fix retry turns per task (default: `3`). Prevents infinite agent loops on unfixable linter offenses.
 - **`exclude_paths`** (List of Strings): Directory trees, prefixes, or wildcard patterns ignored by the workspace discovery engine, Story QA auditor, anti-stub validator, and churn calculator (e.g. `node_modules/`, `vendor/`, `target/`, `target_container/`, `build/`, `_build/`, `*.tmp`). Works seamlessly with Git's `.gitignore` rules and automated binary detection (`IsTextFile`).

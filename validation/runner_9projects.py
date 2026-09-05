@@ -333,6 +333,191 @@ def run_project(project: str, timeout_seconds: int = None):
         "generated_files": generated_files,
     }
 
+def write_single_project_feedback_md(res):
+    project = res["project"]
+    duration_sec = res["duration"]
+    exit_code = res["exit_code"]
+    timed_out = res["timed_out"]
+    timeout_limit = res.get("timeout_limit", 1200)
+    report_data = res.get("report_data", {})
+    log_analysis = res.get("log_analysis", {})
+    generated_files = res.get("generated_files", [])
+
+    timeout_min = timeout_limit / 60
+    status_label = f"TIMEOUT (Terminated at {timeout_min:.0f}m limit)" if timed_out else ("SUCCESS (Completed validation)" if exit_code == 0 else f"FAILED (Exit code {exit_code})")
+    exec_status = report_data.get("status", "UNKNOWN")
+    lead_time = report_data.get("lead_time", f"{duration_sec:.1f}s")
+    stories = report_data.get("stories_count", "-")
+    tasks = report_data.get("tasks_count", "-")
+    errors = report_data.get("errors_count", "-")
+    retries = report_data.get("retries_count", "-")
+    tokens = report_data.get("tokens_count", "-")
+    files_changed = report_data.get("files_changed", len(generated_files))
+    lines_added = report_data.get("lines_added", "-")
+    task_eff = report_data.get("task_efficiency", "-")
+
+    is_refactoring = (project == "djanban")
+    fb_used = log_analysis.get("fallback_used", False)
+    fb_events = log_analysis.get("fallback_events", [])
+
+    lag_factors = []
+    if timed_out:
+        lag_factors.append(f"Execution reached full {timeout_min:.0f}-minute envelope without completing all lifecycle stories/tasks.")
+    if log_analysis.get("rate_limits_429", 0) > 0:
+        lag_factors.append(f"HTTP 429 Rate Limiting encountered {log_analysis['rate_limits_429']} times, causing backoff delays.")
+    if log_analysis.get("linter_retries", 0) > 0:
+        lag_factors.append(f"Linter iteration churn ({log_analysis['linter_retries']} events) added intermediate roundtrips.")
+    if log_analysis.get("compiler_errors", 0) > 0:
+        lag_factors.append(f"Compiler/Syntax errors ({log_analysis['compiler_errors']} events) required self-healing repair cycles.")
+    if log_analysis.get("schema_retries", 0) > 0:
+        lag_factors.append(f"JSON schema/envelope parse errors ({log_analysis['schema_retries']} retries) caused model re-prompts.")
+    if log_analysis.get("unblocker_triggers", 0) > 0:
+        lag_factors.append(f"Unblocker watchdog intervened {log_analysis['unblocker_triggers']} times to break loops/stalls.")
+    if not lag_factors:
+        lag_factors.append("No significant runtime lag or backoff contention observed; execution proceeded smoothly.")
+
+    doc = f"""# Noctifab Validation Feedback: `{project}`
+
+**Target Project**: `validation/projects/{project}`  
+**Project Category**: {'Legacy Codebase Refactoring & Modernization' if is_refactoring else 'Greenfield / Specification-Driven Autonomous Implementation'}  
+**Execution Timestamp**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}  
+**Wall-Clock Duration**: {duration_sec:.1f}s (~{duration_sec/60:.2f} minutes)  
+**Configured Timeout Limit**: {timeout_limit}s ({timeout_min:.0f} minutes)  
+**Harness Verdict**: **{status_label}**  
+**Internal Report Status**: `{exec_status}`  
+
+---
+
+## 1. Executive Summary & Verification Metrics
+
+| Metric | Measured Value | Evaluation & Details |
+| :--- | :--- | :--- |
+| **Execution Verdict** | **{status_label}** | {'Passed all acceptance gates and black-box verification' if exit_code == 0 and not timed_out else (f'Execution stopped after {timeout_min:.0f}-minute timeout limit' if timed_out else 'Terminated on error or test failure')} |
+| **Total Lead Time** | `{lead_time}` | Physical wall-clock duration: {duration_sec:.1f}s |
+| **User Stories** | `{stories}` | Decomposition and roadmap execution status |
+| **Tasks Completed** | `{tasks}` | Total tasks planned and processed |
+| **Task Verification Efficiency** | `{task_eff}` | Ratio of passing attempts across worktrees |
+| **Files Created / Modified** | `{files_changed}` | Net files in workspace |
+| **Lines Added** | `{lines_added}` | Net code delta |
+| **Total Tokens Consumed** | `{tokens}` | Token accountability telemetry |
+| **Runtime Errors Recorded** | `{errors}` | Diagnostics and self-healing triggers |
+| **Fallback Agent Used** | {'🛡️ **YES**' if fb_used else 'No'} | Sovereign repair escalation status |
+
+---
+
+## 2. Fallback Agent Utilization
+"""
+    if fb_used:
+        doc += "- **Fallback Agent Triggered**: YES\n- **How & When it was used**:\n"
+        for ev in fb_events:
+            doc += f"  - `{ev}`\n"
+        doc += "- **Fallback Outcome**: Sovereign repair engaged to resolve persistent blocker or build repair.\n"
+    else:
+        doc += "- **Fallback Agent Triggered**: No (Standard autonomous workflow handled all tasks without escalating to sovereign repair).\n"
+
+    doc += f"""
+---
+
+## 3. Speed & Lag Analysis
+
+### 3.1 Wall-Clock Performance & Throughput
+- **Total Duration**: `{duration_sec:.1f}s` (~`{duration_sec/60:.2f} min`) against a `{timeout_min:.0f} min` ceiling.
+- **Task Throughput**: {f"{float(tasks)/max(duration_sec/60, 0.1):.2f} tasks/min" if tasks != "-" and tasks.isdigit() and int(tasks) > 0 else "N/A"}
+
+### 3.2 Primary Lag Causes & Bottlenecks
+"""
+    for lag in lag_factors:
+        doc += f"- {lag}\n"
+
+    doc += f"""
+---
+
+## 4. Issues, Hurdles & Edge Cases
+
+### 4.1 Observed Execution Hurdles
+- **Linter & Static Analysis Churn**: {log_analysis.get('linter_retries', 0)} linter diagnostic events observed in the log.
+- **Compiler / Syntax Hurdles**: {log_analysis.get('compiler_errors', 0)} compiler/syntax error occurrences handled by generator/tester iterations.
+- **Schema Adherence & Envelope Retries**: {log_analysis.get('schema_retries', 0)} retries required.
+- **Rate Limit (HTTP 429) Contention**: {log_analysis.get('rate_limits_429', 0)} incidents detected.
+- **Model Resolution / Auth Failovers**: {log_analysis.get('model_not_found_404', 0) + log_analysis.get('auth_errors_401_403', 0)} incidents detected.
+- **Unblocker Agent Interventions**: {log_analysis.get('unblocker_triggers', 0)} stall detections assessed.
+
+### 4.2 Failing Edge Cases & Test Diagnostics
+"""
+    failing_tests = log_analysis.get("failing_tests", [])
+    if failing_tests:
+        doc += "The following test failure / error signatures were identified in container output:\n"
+        for ft in failing_tests:
+            doc += f"- `{ft}`\n"
+    else:
+        doc += "No test assertion failures or unhandled exceptions logged.\n"
+
+    compiler_snippets = log_analysis.get("compiler_snippets", [])
+    if compiler_snippets:
+        doc += "\n#### Compiler / Syntax Diagnostics:\n```text\n"
+        for snip in compiler_snippets:
+            doc += f"{snip}\n---\n"
+        doc += "```\n"
+
+    raw_errors = report_data.get("raw_errors", [])
+    if raw_errors:
+        doc += "\n### 4.3 Error & Self-Correction Log\n| Error ID | Category | Status / Resolution | Summary |\n| :--- | :--- | :--- | :--- |\n"
+        for err in raw_errors[:10]:
+            doc += f"| `{err['id']}` | {err['category']} | {err['resolution']} | {err['summary']} |\n"
+        if len(raw_errors) > 10:
+            doc += f"| ... | ... | ... | *({len(raw_errors) - 10} additional error events)* |\n"
+
+    doc += f"""
+---
+
+## 5. Code Generation & Artifacts
+
+### 5.1 Generated Source Files (`output/`)
+Found **{len(generated_files)}** files generated:
+"""
+    if generated_files:
+        for f in generated_files[:35]:
+            doc += f"- `{f}`\n"
+        if len(generated_files) > 35:
+            doc += f"- *(and {len(generated_files) - 35} more files...)*\n"
+    else:
+        doc += "- *(No files were generated in output/)*\n"
+
+    tasks_list = report_data.get("tasks_list", [])
+    if tasks_list:
+        doc += "\n### 5.2 Executed Tasks Breakdown\n| Task Title | Story | Attempts | Status | Elapsed |\n| :--- | :--- | :---: | :---: | ---: |\n"
+        for t in tasks_list[:15]:
+            doc += f"| {t['title']} | {t['story']} | {t['attempts']} | `{t['status']}` | {t['elapsed']} |\n"
+        if len(tasks_list) > 15:
+            doc += f"| ... | ... | ... | ... | *({len(tasks_list) - 15} additional tasks)* |\n"
+
+    doc += f"""
+---
+
+## 6. Project-Specific Insights & Actionable Next Steps
+
+1. **Task Slicing Granularity**: {'Task decomposition executed cleanly.' if exit_code == 0 else 'Ensure tasks are vertically sliced (walking skeleton) to produce runnable executables in the first task before deeper domain expansion.'}
+2. **Linter & Test Optimization**: {'Toolchain verification operated cleanly.' if log_analysis.get('linter_retries', 0) == 0 else 'Refine linter deferral and caching rules to prevent repetitive diagnostic roundtrips.'}
+3. **Token & Latency Efficiency**: Consumed {tokens} total tokens during execution. Optimize prompt compaction and cache reuse to reduce latency and token spend.
+4. **Resilience & Self-Correction**: {'Maintain current self-healing workflows.' if not timed_out and exit_code == 0 else 'Enhance early error detection and forced compilation fallbacks to prevent stalling on retries.'}
+
+---
+
+## 7. Container Console Log Excerpt (Tail)
+
+```text
+{log_analysis.get('raw_sample', '').strip()}
+```
+"""
+
+    root_feedback = os.path.join(ROOT_DIR, f"{project.upper().replace('-', '_')}_FEEDBACK.md")
+    proj_feedback = os.path.join(PROJECTS_DIR, project, "FEEDBACK.md")
+    with open(root_feedback, "w", encoding="utf-8") as f:
+        f.write(doc)
+    with open(proj_feedback, "w", encoding="utf-8") as f:
+        f.write(doc)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Wrote {root_feedback} and {proj_feedback}", flush=True)
+
 def write_project_feedback_md(results):
     path = os.path.join(ROOT_DIR, "PROJECT_FEEDBACK.md")
     
@@ -431,6 +616,7 @@ def write_project_feedback_md(results):
 
 def write_val_project_feedback_md(results):
     path = os.path.join(ROOT_DIR, "VAL_PROJECT_FEEDBACK.md")
+    global_path = os.path.join(ROOT_DIR, "GLOBAL_FEEDBACK.md")
     
     total_time = sum(r["duration"] for r in results)
     pass_count = sum(1 for r in results if r["exit_code"] == 0 and not r["timed_out"])
@@ -531,7 +717,9 @@ The Fallback Agent (Omni-Agent) serves as the sovereign last-resort recovery lay
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(doc)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Wrote {path}", flush=True)
+    with open(global_path, "w", encoding="utf-8") as f:
+        f.write(doc)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Wrote {path} and {global_path}", flush=True)
 
 def main():
     override_timeout = None
@@ -563,6 +751,7 @@ def main():
         print(f"\n[PROJECT {idx}/{len(PROJECTS)}] Starting {project} (Timeout: {t_limit}s / {t_limit/60:.0f}m)...", flush=True)
         res = run_project(project, timeout_seconds=t_limit)
         results.append(res)
+        write_single_project_feedback_md(res)
         
     print(f"\n==================================================", flush=True)
     print(f"ALL 9 VALIDATION RUNS COMPLETED. GENERATING FEEDBACK REPORTS...", flush=True)

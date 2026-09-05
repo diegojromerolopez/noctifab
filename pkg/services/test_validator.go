@@ -28,6 +28,7 @@ type TestRunResult struct {
 type TestValidator struct {
 	Runner           Sandbox
 	Strict           bool
+	Formatter        Formatter
 	FormatterCommand string
 	LLMClient        domain.LLMClient
 	Tools            map[string]Tool
@@ -80,7 +81,9 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		return false, sb.String(), nil
 	}
 
-	if v.FormatterCommand != "" {
+	if v.Formatter != nil {
+		_, _ = v.Formatter.Format(ctx, state.ProjectPath)
+	} else if v.FormatterCommand != "" {
 		// Deterministic Auto-Formatter Pre-Pass:
 		// Automatically run auto-fix formatter before test execution.
 		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")

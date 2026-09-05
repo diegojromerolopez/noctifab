@@ -309,6 +309,7 @@ func (t *ListDirectoryTool) Execute(ctx context.Context, state *domain.State, ar
 // RunTestsTool implements run_tests by delegating execution to the active Sandbox engine.
 type RunTestsTool struct {
 	Runner           Sandbox
+	Formatter        Formatter
 	FormatterCommand string
 	Timeout          time.Duration
 }
@@ -335,7 +336,11 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	// Deterministic Auto-Formatter Pre-Pass:
 	// If a project has configured a formatter_command (e.g. ruff format, cargo fmt, rubocop -A),
 	// run it before executing the test command so formatting is clean.
-	if t.FormatterCommand != "" {
+	if t.Formatter != nil {
+		if _, err := t.Formatter.Format(runCtx, state.ProjectPath); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Formatter pre-test auto-fix (%s) skipped on error: %v\n", t.Formatter.GetCommand(), err)
+		}
+	} else if t.FormatterCommand != "" {
 		if _, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, ""); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Formatter pre-test auto-fix (%s) skipped on error: %v\n", t.FormatterCommand, err)
 		}
@@ -374,6 +379,7 @@ func countLinterIssues(output string) int {
 type RunLinterTool struct {
 	Runner           Sandbox
 	LinterCommand    string
+	Formatter        Formatter
 	FormatterCommand string
 	Timeout          time.Duration
 	// MaxLinterIssues is the maximum number of linter issues tolerated before
@@ -401,7 +407,11 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 	defer runCancel()
 
 	// Auto-fix pre-step: automatically run formatter / auto-fixer command before running linter diagnostics
-	if t.FormatterCommand != "" {
+	if t.Formatter != nil {
+		if _, err := t.Formatter.Format(runCtx, state.ProjectPath); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Formatter auto-fix (%s) failed and was skipped: %v\n", t.Formatter.GetCommand(), err)
+		}
+	} else if t.FormatterCommand != "" {
 		if _, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, ""); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Formatter auto-fix (%s) failed and was skipped: %v\n", t.FormatterCommand, err)
 		}
