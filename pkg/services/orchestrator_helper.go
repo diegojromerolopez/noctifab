@@ -311,7 +311,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				key := buildArgsKey(action.Tool, action.Args)
 				if seenFileDependentCalls[key] {
 					fmt.Printf("Orchestrator: Task %s [Tester] action %s rejected: duplicate call without file mutations\n", task.ID, action.Tool)
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[TOOL CALL REJECTED: NO WORKSPACE CHANGES] You have already executed '%s' with identical arguments and no files have been modified since. Re-running inspection or diagnostic tools without modifying code produces identical results. You MUST now call write_file, edit_file, or apply_patch to implement your changes.", action.Tool))
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[TOOL CALL REJECTED: NO WORKSPACE CHANGES] You have already executed '%s' with identical arguments and no files have been modified since. Re-running inspection or diagnostic tools without modifying code produces identical results. You MUST now call write_file, edit_file, or apply_patch to implement your changes, or call 'noop' if verification is complete and tests are passing.", action.Tool))
 					continue
 				}
 				seenFileDependentCalls[key] = true
@@ -379,8 +379,12 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 			}
 		}
 
-		if tripped, reason := circuitBreaker.ShouldTrip(task.Progress); tripped {
-			fmt.Printf("⚡ [Circuit Breaker] Task %s: %s\n", task.ID, reason)
+		currentProgress := task.Progress
+		if circuitBreaker.ConsecutiveTestPasses > 0 && currentProgress < 70 {
+			currentProgress = 100
+		}
+		if tripped, reason := circuitBreaker.ShouldTrip(currentProgress); tripped {
+			fmt.Printf("⚡ [Circuit Breaker] Task %s [Tester]: %s\n", task.ID, reason)
 			hasNoop = true
 		}
 

@@ -115,4 +115,22 @@ func TestTaskCircuitBreaker(t *testing.T) {
 			t.Errorf("expected reset on production file in batch write, got %d", cb.ConsecutiveTestOnlyTurns)
 		}
 	})
+
+	t.Run("treats dotfiles and gitignore as non-production", func(t *testing.T) {
+		cb := NewTaskCircuitBreaker()
+
+		cb.RecordTestResult(true)
+		cb.RecordAction("write_file", map[string]any{"path": ".gitignore"})
+		cb.RecordAction("edit_file", map[string]any{"path": ".dockerignore"})
+		cb.RecordTestResult(true)
+
+		if cb.ConsecutiveTestOnlyTurns != 2 {
+			t.Errorf("expected 2 test/non-production turns for dotfiles, got %d", cb.ConsecutiveTestOnlyTurns)
+		}
+
+		tripped, _ := cb.ShouldTrip(70)
+		if !tripped {
+			t.Errorf("expected breaker to trip when dotfiles are edited with passing tests")
+		}
+	})
 }

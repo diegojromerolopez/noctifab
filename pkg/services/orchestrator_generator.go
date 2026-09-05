@@ -130,6 +130,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	consecutiveLinterFailures := 0
 	linterDeferred := false
 	seenFileDependentCalls := make(map[string]bool)
+	circuitBreaker := NewTaskCircuitBreaker()
 
 	for turn := 0; turn < maxTurns; turn++ {
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
@@ -174,7 +175,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				key := buildArgsKey(action.Tool, action.Args)
 				if seenFileDependentCalls[key] {
 					fmt.Printf("Orchestrator: Task %s [Generator] action %s rejected: duplicate call without file mutations\n", task.ID, action.Tool)
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[TOOL CALL REJECTED: NO WORKSPACE CHANGES] You have already executed '%s' with identical arguments and no files have been modified since. Re-running inspection or diagnostic tools without modifying code produces identical results. You MUST now call write_file, edit_file, or apply_patch to implement your changes.", action.Tool))
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[TOOL CALL REJECTED: NO WORKSPACE CHANGES] You have already executed '%s' with identical arguments and no files have been modified since. Re-running inspection or diagnostic tools without modifying code produces identical results. You MUST now call write_file, edit_file, or apply_patch to implement your changes, or call 'noop' if verification is complete and tests are passing.", action.Tool))
 					continue
 				}
 				seenFileDependentCalls[key] = true
@@ -213,6 +214,9 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				out, execErr := tool.Execute(genCtx, state, action.Args)
 				diagCache.OnToolExecuted(action.Tool, action.Args, out, execErr)
 				fmt.Printf("🛠️  [Tool Executed] task=%s role=GENERATOR tool=%s success=%t\n", task.ID, action.Tool, execErr == nil)
+				if action.Tool == "run_tests" {
+					circuitBreaker.RecordTestResult(execErr == nil)
+				}
 				if execErr != nil {
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 					// Track linter consecutive failures.
@@ -231,6 +235,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
 					// Reset linter failure counter and duplicate tool tracker on any successful file mutation.
 					if IsMutatingTool(action.Tool) {
+						circuitBreaker.RecordAction(action.Tool, action.Args)
 						consecutiveLinterFailures = 0
 						seenFileDependentCalls = make(map[string]bool)
 					}
@@ -264,6 +269,15 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					}
 				}
 			}
+		}
+
+		currentProgress := task.Progress
+		if circuitBreaker.ConsecutiveTestPasses > 0 && currentProgress < 70 {
+			currentProgress = 100
+		}
+		if tripped, reason := circuitBreaker.ShouldTrip(currentProgress); tripped {
+			fmt.Printf("⚡ [Circuit Breaker] Task %s [Generator]: %s\n", task.ID, reason)
+			hasNoop = true
 		}
 
 		if hasNoop || len(resp.Actions) == 0 {

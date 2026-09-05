@@ -25,13 +25,18 @@ func NewTaskCircuitBreaker() *TaskCircuitBreaker {
 func isProductionFile(path string) bool {
 	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
 	lower := strings.ToLower(clean)
+	base := filepath.Base(lower)
 
-	// Exclude tests, specs, roadmaps, and documentation
+	// Exclude tests, specs, roadmaps, documentation, dotfiles/configuration, and logs
 	if strings.Contains(lower, "test") ||
 		strings.Contains(lower, "spec") ||
 		strings.HasPrefix(lower, "roadmap/") ||
 		strings.HasSuffix(lower, ".md") ||
-		strings.HasSuffix(lower, ".txt") {
+		strings.HasSuffix(lower, ".txt") ||
+		strings.HasPrefix(base, ".") ||
+		strings.HasSuffix(lower, ".log") ||
+		strings.HasSuffix(lower, ".lock") ||
+		base == "readme" || base == "license" {
 		return false
 	}
 

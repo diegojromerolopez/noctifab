@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.1] - 2026-09-05
+
+### Fixed
+- **Generator & Tester Oscillation Circuit Breaker Alignment**:
+  - **Generator Circuit Breaker Injection**: Added `TaskCircuitBreaker` to `RunGeneratorAgent` in `pkg/services/orchestrator_generator.go`, recording file mutations and test results to trip and conclude tasks when core logic passes tests repeatedly without productive changes.
+  - **Non-Production File Path Classification**: Updated `isProductionFile` in `pkg/services/circuit_breaker.go` to classify dotfiles (e.g. `.gitignore`, `.dockerignore`), lockfiles, and logs as non-production, preventing churn on non-code files from erroneously resetting the circuit breaker.
+  - **In-Progress Task Progress Evaluation**: Fixed circuit breaker trip evaluation across generator and tester turn loops to evaluate progress at 100% once tests have passed consecutive runs, resolving an issue where `task.Progress == 0` during active execution permanently prevented breaker activation.
+  - **Duplicate Tool Call Guidance**: Clarified the duplicate tool call rejection message in both generator and tester agents to explicitly state that `noop` is allowed when verification is complete and tests are passing, preventing agents from cycling through non-code edits to satisfy tool constraints.
+
 ## [0.75.0] - 2026-09-05
 
 ### Added
