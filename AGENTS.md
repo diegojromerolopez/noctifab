@@ -113,19 +113,33 @@ To run a fully containerized, isolated, end-to-end (E2E) integration check of `n
    *Note: This file is excluded from the build context by `.dockerignore` and `.gitignore` to prevent secret leakage, and is safely mounted at runtime.*
 
 2. **Executing the Validation Harness**:
-   - Run a single validation project:
+   - **Full 9-Project Sequential Suite** (generates `PROJECT_FEEDBACK.md` & `VAL_PROJECT_FEEDBACK.md`):
+     ```bash
+     python3 validation/runner_9projects.py
+     # Or with a fixed timeout override:
+     python3 validation/runner_9projects.py --timeout=1200
+     ```
+   - **Flexible Matrix Runner** (runs any subset with dynamic scale timeouts):
+     ```bash
+     python3 validation/matrix_runner.py calculator t4 frontpunch
+     # Or via flags:
+     python3 validation/matrix_runner.py --projects=wc,notebook,djanban
+     ```
+   - **Single Validation Project via Make**:
      ```bash
      make validate PROJECT=<project>
+     # Reuse existing docker images (skipping the rebuild phase):
+     make validate PROJECT=<project> SKIP_BUILD=1
      ```
-   - Run all validation projects in parallel:
+   - **Parallel Run Across All Projects**:
      ```bash
      make validate-all
      ```
-   - Reuse existing docker images (skipping the rebuild phase):
-     ```bash
-     make validate PROJECT=<project> SKIP_BUILD=1
-     ```
-   - **Execution Timeout Limit (10-Minute Mandate)**: A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified by the user or task request) MUST be set for each execution of each validation project. If a validation run reaches 10 minutes (or the specified custom limit), agents must terminate the container execution cleanly and record the result.
+   - **Scale-Based Dynamic Timeouts**: Validation runs use dynamic execution envelopes based on architectural scale (Complexity Units):
+     - **Tier 0 / Small CLI Utilities ($CU < 35$):** 15–20 minutes (`echo`, `calculator`, `wc`, `todo-cli`, `fortune`)
+     - **Tier 1 / Medium Systems ($35 \le CU \le 75$):** 30 minutes (`t4`, `frontpunch`, `ocalogue`, `ninline`, `pyedis`, `stricc`)
+     - **Tier 2 / Large Multi-Subsystem ($CU > 75$):** 35–40 minutes (`notebook`, `djanban`, `auth-vault`, `buffonstream`, `searchthedocs`, `jpacioli`)
+     - If a validation run reaches its scale limit (or an explicitly requested custom limit), agents must terminate the container execution cleanly and record the result.
 
 3. **Output Artifacts**:
    All outputs from the validation run are written directly to the target validation project's output path:
