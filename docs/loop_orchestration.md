@@ -15,6 +15,7 @@
 5. **Loop Stagnation Circuit Breaker**: If Loop $k+1$ generates 0 codebase mutations and repeats identical failure signatures as Loop $k$, the orchestrator detects stagnation and terminates early to prevent token waste.
 6. **Early Convergence Exit**: If all user stories in the backlog achieve verified `StorySuccess` on Loop $k$, Noctifab completes immediately without burning tokens on remaining loops.
 7. **Generator-Tester Oscillation Circuit Breaker**: During intra-task multi-turn execution, if a task records $\ge 2$ consecutive passing test suites with 0 errors, $\ge 2$ consecutive turns have only modified test files with unchanged `src/` production code, and task progress is $\ge 70\%$, the orchestrator halts redundant test cosmetic churn and forces the task forward to review and completion.
+8. **Global Task DAG & Cross-Story Pipelining**: Within and across iteration loops, task scheduling is evaluated across the entire project graph. Downstream user stories (e.g. `US-002`) unblock their tasks concurrently as soon as prerequisite foundation/interface tasks (e.g. `US-001-TASK-001`) merge into `main`, eliminating idle serialization and allowing multi-story implementations to progress in parallel.
 
 ---
 

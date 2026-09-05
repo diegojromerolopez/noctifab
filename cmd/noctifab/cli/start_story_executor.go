@@ -44,6 +44,10 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			return err
 		}
 		featName := filepath.Base(currentStoryFile)
+		storyID := services.ExtractStoryID(currentStoryFile)
+		if storyID == "" {
+			storyID = featName
+		}
 		configuredBranch := deps.cfg.VCS.GetIntegrationBranch()
 		if strings.ToLower(deps.cfg.VCS.BranchStrategy) == "per_story_isolated" {
 			configuredBranch = ""
@@ -82,7 +86,6 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 		state.Metadata.FeatureName = featName
 		state.Metadata.BaseBranch = baseBranch
 		state.Metadata.IntegrationBranch = integrationBranch
-		state.Tasks = nil
 		state.StoryStatus = domain.StoryRunning
 
 		now := time.Now().UTC()
@@ -190,20 +193,53 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 				if err != nil {
 					return err
 				}
-				if allTasksFinished(st) {
-					for _, t := range st.Tasks {
+				storyTasks := getStoryTasks(st, featName, storyID)
+				if len(storyTasks) > 0 && allStoryTasksFinished(storyTasks) {
+					for _, t := range storyTasks {
 						if t.Status == domain.TaskFailed {
 							return fmt.Errorf("story execution failed: task %s (%s) failed", t.ID, t.Title)
 						}
 					}
-					if st.StoryStatus == domain.StoryFailed {
-						return fmt.Errorf("story execution failed: story finalization status marked as failed")
+					for _, s := range st.Stories {
+						if (s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile) && s.Status == domain.StoryFailed {
+							return fmt.Errorf("story execution failed: story finalization status marked as failed")
+						}
 					}
-					if st.StoryStatus == domain.StorySuccess {
-						return nil
-					}
+					return nil
 				}
 			}
 		}
 	}
+}
+
+func getStoryTasks(state *domain.State, featName, storyID string) []domain.Task {
+	if state == nil {
+		return nil
+	}
+	if len(state.Stories) <= 1 && len(state.Tasks) > 0 {
+		return state.Tasks
+	}
+	var tasks []domain.Task
+	for _, t := range state.Tasks {
+		if (storyID != "" && t.StoryID == storyID) || (featName != "" && t.StoryID == featName) ||
+			(storyID != "" && strings.HasPrefix(t.ID, storyID+"-")) || (featName != "" && strings.HasPrefix(t.ID, featName+"-")) {
+			tasks = append(tasks, t)
+		}
+	}
+	if len(tasks) == 0 {
+		return state.Tasks
+	}
+	return tasks
+}
+
+func allStoryTasksFinished(tasks []domain.Task) bool {
+	if len(tasks) == 0 {
+		return false
+	}
+	for _, t := range tasks {
+		if t.Status != domain.TaskSuccess && t.Status != domain.TaskFailed {
+			return false
+		}
+	}
+	return true
 }

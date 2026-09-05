@@ -30,8 +30,17 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 			attribute.Int("existing_tasks", len(state.Tasks)),
 		))
 	defer span.End()
-	if len(state.Tasks) > 0 {
-		// Tasks already planned (e.g., resuming from saved state).
+	storyID := ExtractStoryID(state.Metadata.InputPath)
+	if storyID == "" {
+		storyID = state.Metadata.FeatureName
+	}
+	for _, t := range state.Tasks {
+		if (storyID != "" && t.StoryID == storyID) || (state.Metadata.FeatureName != "" && t.StoryID == state.Metadata.FeatureName) {
+			// Tasks already planned for this story.
+			return nil
+		}
+	}
+	if storyID == "" && len(state.Tasks) > 0 {
 		return nil
 	}
 
@@ -44,6 +53,7 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 	// Compaction must never rewrite the output contract at the end of the prompt.
 	plannerCtx = domain.WithUncompactableTail(plannerCtx, len(rendered.Contract))
 
+	initialTaskCount := len(state.Tasks)
 	maxAttempts := 3
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -62,9 +72,10 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 			}
 		}
 
+		newTasks := state.Tasks[initialTaskCount:]
 		// Validate the planned tasks
-		if err := ValidatePlannedTasks(state.Tasks, state.ProjectPath); err != nil {
-			state.Tasks = nil
+		if err := ValidatePlannedTasks(newTasks, state.ProjectPath); err != nil {
+			state.Tasks = state.Tasks[:initialTaskCount]
 			lastErr = err
 			if attempt < maxAttempts {
 				fmt.Printf("⚠️ Planning attempt %d/%d produced no valid tasks (%v). Retrying...\n", attempt, maxAttempts, err)
@@ -72,23 +83,30 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 			continue
 		}
 
-		plannedTasks := make([]domain.Task, len(state.Tasks))
-		copy(plannedTasks, state.Tasks)
+		plannedTasks := make([]domain.Task, len(newTasks))
+		copy(plannedTasks, newTasks)
 		if err := o.updateStateWithRetry(ctx, func(currentState *domain.State) error {
-			if len(currentState.Tasks) > 0 {
+			alreadyPlanned := false
+			for _, t := range currentState.Tasks {
+				if (storyID != "" && t.StoryID == storyID) || (state.Metadata.FeatureName != "" && t.StoryID == state.Metadata.FeatureName) || (t.StoryID == "" && len(currentState.Tasks) > 0 && len(currentState.Stories) <= 1) {
+					alreadyPlanned = true
+					break
+				}
+			}
+			if alreadyPlanned {
 				// Another worker already planned tasks concurrently.
 				plannedTasks = make([]domain.Task, len(currentState.Tasks))
 				copy(plannedTasks, currentState.Tasks)
 				return nil
 			}
-			currentState.Tasks = plannedTasks
+			currentState.Tasks = append(currentState.Tasks, plannedTasks...)
 			return nil
 		}); err != nil {
 			return fmt.Errorf("failed to persist planned tasks: %w", err)
 		}
 		state.Tasks = plannedTasks
 
-		fmt.Printf("📋 Plan created: %d tasks for story %s\n", len(state.Tasks), state.Metadata.FeatureName)
+		fmt.Printf("📋 Plan created: %d tasks for story %s\n", len(plannedTasks), state.Metadata.FeatureName)
 		return nil
 	}
 

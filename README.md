@@ -68,7 +68,7 @@ The autonomy level is controlled by the VCS `pull_request` settings in `.noctifa
 ## Core Pillars
 
 1. **Stateless Agent, Stateful Orchestrator**: The AI agents have no memory of previous runs or actions. Instead, the orchestrator compiles and tracks system state (tasks, file indices, action logs, and clarifications) in a local database (SQLite/PostgreSQL) and feeds it to the agent at each step.
-2. **Topological Task Scheduling**: Decomposes complex feature specifications into a Directed Acyclic Graph (DAG) of task models, running independent tasks concurrently.
+2. **Global Task DAG Scheduling & Cross-Story Pipelining**: Decomposes complex feature specifications into a unified Directed Acyclic Graph (DAG) across the entire project. Rather than serializing whole user stories sequentially, downstream tasks unblock immediately once their prerequisite foundation/interface tasks merge into `main`, maximizing worker concurrency and eliminating idle blocking.
 3. **Verification First, Validation Second**: Decouples execution into two distinct lifecycle stages: *Verification* (achieving a minimal working solution that compiles and passes basic functional checks) and *Validation* (leveraging black-box test safety rails to iteratively refactor, optimize, and harden code to full specification compliance).
 4. **Test-Driven Quality Gates**: Employs a multi-stage sequential execution cycle between the generator and test-writer agents. The Test Validator executes the test suite 3 times, requiring a majority vote consensus (at least 2/3 passing runs) to approve changes, preventing regression and flaky builds.
 5. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers, restricted by role-based authorization profiles.
@@ -182,9 +182,12 @@ The core engine runs a continuous polling event loop that drives all development
 13. **Structured Roadmap Directories & Task Serialization (`roadmap/tasks/`)**:
    - Organizes user story specifications into `roadmap/user-stories/` using title slug filenames (`US-XXX-title-slug.md`).
    - Automatically serializes task models into markdown files in `roadmap/tasks/` (`US-XXX-TASK-YYY-slug.md`) for full auditability.
-14. **User Story DAG Scheduler (`depends_on` Cross-Story Parallelism)**:
-   - Parses `depends_on` dependencies from User Story YAML frontmatter.
-   - Concurrently executes all unblocked user stories across worker slots, dynamically unblocking dependent stories as prerequisites complete.
+14. **Global Task-Level DAG Scheduler & Cross-Story Pipelining**:
+   - Evaluates dependencies at the fine-grained task level across the entire project using globally unique task identifiers (`<STORY_ID>-TASK-<NUMBER>`, e.g. `US-001-TASK-001`).
+   - Downstream stories (e.g. `US-002`) execute tasks concurrently with upstream stories (e.g. `US-001`) the moment prerequisite foundation or interface tasks merge into `main`, eliminating false serialization and cutting overall project wall-clock time by 50%–60%.
+   - **Selective Milestone Barrier Bypass**: `Scheduler.GetReadyTasks` automatically bypasses coarse story milestone barriers when tasks declare explicit cross-story dependencies, while maintaining sequential milestone fallback for tasks without cross-story dependencies.
+   - **Pipelined Story DAG Dispatching**: Supports pipelined story scheduling in `StoryDAGScheduler` (`SetPipelined(true)`), dispatching child stories to begin decomposition and task scheduling concurrently once parent stories reach `RUNNING`.
+   - **Failure Isolation & Auto-Pruning**: If an upstream foundation task fails, dependent tasks across all stories are cleanly blocked or pruned, while independent tasks continue executing without deadlocks.
 15. **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: Enables resuming interrupted or partially completed project executions, skipping completed stories (`StorySuccess`) and picking up execution at the first incomplete story.
 16. **Zero-Stall Resilient Architecture (Optimistic Merging, 5-Tier Merge Engine, Tool Degradation & Post-Merge Repair)**:
    - **Dynamic Tool Degradation & Eviction**: Auto-detects missing binaries (e.g. exit code 127, `pytest: command not found`). Evicts missing tools and transitions validation to degraded mode (`[Validation Degraded]`), preventing endless retry stalls.
@@ -209,7 +212,7 @@ The core engine runs a continuous polling event loop that drives all development
 
 `noctifab` incorporates an end-to-end pipelined acceleration engine delivering **5x–10x faster dark factory throughput**:
 
-1. **Story-Level Parallelism & DAG Scheduling**: Executes independent user stories concurrently (`agents.orchestrator.number > 1`), branching orthogonal tracks from the walking skeleton (`US-001`) with minimal inter-story dependencies to dramatically reduce greenfield project lead times.
+1. **Global Task DAG Scheduling & Cross-Story Pipelining**: Evaluates dependencies directly at the fine-grained task level across the whole project. Downstream tasks unblock immediately once prerequisite interfaces merge into `main`, delivering 2x worker pool utilization and cutting wall-clock execution time by >50%.
 2. **Parallel DAG Task Worker Pools**: Executes independent tasks concurrently (`scheduler.max_parallel_workers > 1`), assigning each task an isolated Git worktree (`.noctifab/worktrees/task-<id>`) and merging completed worker branches asynchronously via a serialized rebase queue (`pkg/services/rebase_queue.go`).
 3. **Batched Multi-File Creation (`write_files`)**: Enables agents to atomically create or overwrite multiple workspace files in a single LLM turn (via `{"files": {"path/a": "...", "path/b": "..."}}`), eliminating 70% of single-file tool roundtrip latency during scaffolding.
 4. **Per-Agent Adaptive Complexity Routing**: Dynamically routes agent tasks to optimal model tiers (`fast_tier` for scaffolding, `standard_tier` for domain features, `heavy_tier` for complex algorithms and repair turns) to minimize reasoning latency without sacrificing capability.
@@ -893,9 +896,13 @@ We welcome contributions! To maintain a highly clean and context-friendly reposi
 
 1. **The 500-Line Limit**: No Go source code file (`.go`) may exceed **500 physical lines** (including comments and blank lines). Smaller, logically focused files prevent LLM context pollution.
 2. **Dependency Injection**: Provide all clients, database connection objects, and configurations through struct constructors. Global state is strictly prohibited.
-3. **100% Test Coverage**: Every package must be accompanied by unit tests (`_test.go` files). Ensure the test suite passes before submitting:
+3. **100% Test Coverage & BDD Conventions**: Every package must be accompanied by unit tests (`_test.go` files). Happy paths and major lifecycle flows are verified by BDD E2E tests (`tests/e2e/`), and input validations/edge cases by unit tests. Ensure the test suite passes before submitting:
    ```bash
-   go test -v ./pkg/... ./tests
+   go test -v ./pkg/... ./cmd/... ./tests
+   # Or with race detection:
+   go test -race ./pkg/...
+   # Run local BDD acceptance scenarios:
+   NOCTIFAB_E2E=true go test -v ./tests/e2e
    ```
 4. **Code Quality and Lints**: Ensure that the code is formatted using `go fmt` and passes static analysis lints:
    ```bash

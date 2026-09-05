@@ -43,6 +43,7 @@ type StoryDAGScheduler struct {
 	storyIDs      []string // preserves order of discovery
 	mu            sync.Mutex
 	maxConcurrent int
+	pipelined     bool
 	gitMergeMutex sync.Mutex // serializes git branch merging during state finalization
 }
 
@@ -55,6 +56,21 @@ func NewStoryDAGScheduler(maxConcurrent int) *StoryDAGScheduler {
 		nodes:         make(map[string]*StoryDAGNode),
 		maxConcurrent: maxConcurrent,
 	}
+}
+
+// SetPipelined configures whether child stories can begin planning and task dispatch
+// concurrently once parent stories are running, unblocking fine-grained task pipelining.
+func (s *StoryDAGScheduler) SetPipelined(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pipelined = enabled
+}
+
+// IsPipelined returns whether pipelined scheduling is enabled.
+func (s *StoryDAGScheduler) IsPipelined() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pipelined
 }
 
 // AddStory parses a StoryWorkItem and adds it to the scheduling graph.
@@ -151,9 +167,22 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 			depsSatisfied := true
 			for _, depID := range node.DependsOn {
 				depNode, exists := s.nodes[depID]
-				if !exists || depNode.Status != StoryNodeSuccess {
+				if !exists {
 					depsSatisfied = false
 					break
+				}
+				if s.pipelined {
+					// In pipelined mode, child stories can be dispatched to start planning
+					// and task execution as soon as parent stories are RUNNING or SUCCESS.
+					if depNode.Status != StoryNodeRunning && depNode.Status != StoryNodeSuccess {
+						depsSatisfied = false
+						break
+					}
+				} else {
+					if depNode.Status != StoryNodeSuccess {
+						depsSatisfied = false
+						break
+					}
 				}
 			}
 

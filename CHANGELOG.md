@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.74.0] - 2026-09-05
+
+### Added
+- **Global Task-Level DAG Scheduling & Cross-Story Parallelism (PROP-TASK-DAG-01)**:
+  - **Fine-Grained Task Dependency Resolution**: Refactored `Scheduler.GetReadyTasks` in `pkg/services/scheduler.go` to bypass the coarse story milestone barrier for tasks declaring explicit cross-story dependencies. Tasks in downstream stories (e.g. `US-002-TASK-001`) unblock immediately as soon as prerequisite foundation/interface tasks (e.g. `US-001-TASK-001`) reach `TaskSuccess`, eliminating up to 15–20 minutes of idle serialization delay per story.
+  - **Pipelined Story Execution**: Added `pipelined` scheduling mode to `StoryDAGScheduler` in `pkg/services/story_dag_scheduler.go` with `SetPipelined(bool)`, allowing downstream stories to be dispatched for planning and task execution concurrently once parent stories are running. Enabled pipelining by default in `cmd/noctifab/cli/start_dag_loop.go` for multi-story runs.
+  - **Global Task Merging & OCC State Persistence**: Updated `Orchestrator.PlanStory` in `pkg/services/orchestrator_server.go` to check story-specific planning state and append newly planned tasks to `currentState.Tasks`, preserving tasks across stories. Removed destructive `state.Tasks = nil` resets in `cmd/noctifab/cli/start_story_executor.go` and aligned completion checks per-story.
+  - **Cross-Story Task Dependency Validation**: Updated `ResolveTaskDependencies` and `isStoryReference` in `pkg/services/task_dependencies.go` and `pkg/services/dag.go` to recognize and preserve cross-story task references (e.g. `US-001-TASK-001`) rather than pruning them as missing user stories.
+  - **Planner Agent Cross-Story Pipelining Mandate**: Updated `pkg/infrastructure/prompts/defaults/planner/decompose.tmpl` with global task naming conventions (`<STORY_ID>-TASK-<NUMBER>`) and explicit directives for downstream stories to link directly to prerequisite walking skeleton tasks.
+  - **End-to-End BDD Acceptance Test Suite**: Added `tests/e2e/scenario_global_task_dag_test.go` implementing BDD scenarios (`TestScenario_GlobalTaskDAGCrossStoryParallelism` and `TestScenario_CrossStoryFailurePruning`) verifying concurrent task unblocking across stories and safe failure cascade isolation.
+  - **DAG & Scheduler Input Validation Unit Tests**: Added `pkg/services/dag_test.go` verifying valid topologies, cycle detection (self-referencing, 2-node, 3-node), duplicate title rejection, and cross-story edge tolerance. Expanded `pkg/services/scheduler_test.go`, `pkg/services/task_dependencies_test.go`, and `pkg/services/story_dag_scheduler_test.go` covering file lock contention, description limits, whitespace pruning, shared root build file serialization, and scheduler cancellation.
+
 ## [0.73.0] - 2026-09-05
 
 ### Added

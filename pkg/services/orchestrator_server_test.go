@@ -223,6 +223,54 @@ func TestOrchestrator_PlanStory(t *testing.T) {
 		require.Len(t, loaded.Tasks, 1)
 		assert.Equal(t, "routed-task", loaded.Tasks[0].ID)
 	})
+
+	t.Run("when multiple stories are planned, their tasks are merged into global state.Tasks without overwriting", func(t *testing.T) {
+		llm := &planMockLLM{}
+		repo := &mockRepo{
+			state: &domain.State{
+				ID: "multi-story-state",
+				Tasks: []domain.Task{
+					{ID: "US-001-TASK-001", Title: "Story 1 Task", StoryID: "US-001"},
+				},
+				Stories: []domain.Story{
+					{ID: "US-001", Title: "Story 1"},
+					{ID: "US-002", Title: "Story 2"},
+				},
+			},
+		}
+
+		o := &Orchestrator{
+			repo:           repo,
+			llmClient:      llm,
+			promptRenderer: prompts.NewDefaultRenderer(),
+		}
+
+		state := &domain.State{
+			ID: "multi-story-state",
+			Metadata: domain.StateMetadata{
+				InputPath:   "roadmap/user-stories/US-002.md",
+				FeatureName: "US-002",
+			},
+			Tasks: []domain.Task{
+				{ID: "US-001-TASK-001", Title: "Story 1 Task", StoryID: "US-001"},
+			},
+			Stories: []domain.Story{
+				{ID: "US-001", Title: "Story 1"},
+				{ID: "US-002", Title: "Story 2"},
+			},
+		}
+
+		err := o.PlanStory(context.Background(), state, "Story 2 Spec")
+		require.NoError(t, err)
+		assert.Equal(t, 1, llm.calls)
+
+		// State must now contain both Story 1 Task and the newly planned Story 2 Task
+		loaded, err := repo.Load(context.Background())
+		require.NoError(t, err)
+		assert.Len(t, loaded.Tasks, 2)
+		assert.Equal(t, "US-001-TASK-001", loaded.Tasks[0].ID)
+		assert.Equal(t, "task-1", loaded.Tasks[1].ID)
+	})
 }
 
 func TestPlanStory_SQLite_ConcurrentPlanningAndMutationsNoOCCError(t *testing.T) {

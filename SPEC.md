@@ -1383,6 +1383,7 @@ Prerequisites create a circular reference cycle:
 3.  **Topological Scheduling, File Locks & Parallel Worker Assignment:**
     *   During the execution loop (`noctifab start`), the scheduler continuously polls the task DAG.
     *   It identifies **ready tasks** — tasks that are currently `TaskPending` and whose prerequisite tasks listed in `DependsOn` all have a status of `TaskSuccess`.
+    *   **Global Task DAG & Cross-Story Pipelining:** Tasks declare fine-grained dependencies using globally unique identifiers (e.g. `US-001-TASK-001`). When a downstream user story (e.g. `US-002`) depends on an upstream story (e.g. `US-001`), downstream tasks unblock immediately once their specific prerequisite foundation/interface tasks merge into `main`, eliminating false serialization and enabling concurrent cross-story execution.
     *   **File-Level Lock Registry:** To prevent parallel workers from editing the same codebase files in isolation, the scheduler implements an in-memory lock registry. Before dispatching a task, the scheduler locks all paths declared in `TargetFiles`. If a ready task's target files overlap with a currently active task's files, the scheduler defers dispatching that task until the active task completes and releases its file locks.
     *   For each ready task that is not blocked by file locks, if the number of currently active worker threads is less than `--agents`, the orchestrator:
         1. Transitions the task status to `TaskInProgress`.

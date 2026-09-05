@@ -62,9 +62,24 @@ To minimize database transaction duration, prevent SQLite write lock contention,
 - **Graceful Shutdown & SQLite WAL Checkpoint Truncation**: When terminating on completion, error, or OS signals (`SIGTERM`, `SIGINT`), the engine invokes `SQLiteRepository.Close()`, which explicitly executes `PRAGMA wal_checkpoint(TRUNCATE);` before closing the database handle. This guarantees all WAL journal frames are fully written to the base database file and the journal is truncated to zero bytes, eliminating corrupted disk image risks across host-container volume mounts.
 
 ### 2. Topological Task Scheduler (`pkg/services/scheduler.go`) & Story DAG Scheduler (`pkg/services/story_dag_scheduler.go`)
-- **Task DAG Scheduling (`scheduler.go`)**: Within a single user story, tasks can define dependencies on other tasks (e.g., Task B depends on Task A). The Scheduler performs a topological sort using Directed Acyclic Graphs (DAG) to find ready tasks and schedule them concurrently in a worker pool.
-- **Story DAG Scheduler (`story_dag_scheduler.go`)**: Across user stories, `StoryDAGScheduler` parses `depends_on` dependencies declared in User Story YAML frontmatter. It concurrently dispatches all unblocked user stories across worker slots, dynamically unblocking dependent child stories as parent stories reach completion.
-- **Structured Roadmap Layout & Task Serialization**: User stories are discovered strictly in `roadmap/user-stories/`, formatted as `US-XXX-title-slug.md`. Task domain models are automatically serialized into markdown files in `roadmap/tasks/` (`US-XXX-TASK-YYY-slug.md`) during planning and tool additions.
+
+Noctifab evaluates dependencies and schedules work concurrently at two synchronized layers: macro-level user stories (`StoryDAGScheduler`) and micro-level task execution (`Scheduler`).
+
+#### Global Task DAG Scheduling (`scheduler.go`)
+- **Fine-Grained Global Addressing**: Tasks across all stories are assigned globally unique identifiers formatted as `<STORY_ID>-TASK-<NUMBER>` (e.g., `US-001-TASK-001`, `US-002-TASK-001`).
+- **Eliminating False Serialization**: In traditional story-level scheduling, entire stories block sequentially behind upstream stories until the upstream story completes all tasks, passes Definition of Done (DoD) reviews, and finishes acceptance testing. In Noctifab's Global Task DAG model, tasks declare fine-grained dependencies directly on prerequisite tasks across story boundaries.
+- **Selective Milestone Barrier Bypass**: When evaluating candidate tasks in `Scheduler.GetReadyTasks`, the scheduler checks if candidate tasks declare explicit cross-story dependencies (`US-XXX-TASK-YYY`). If explicit dependencies exist, the scheduler bypasses the coarse story-level milestone barrier, immediately scheduling downstream tasks (e.g. `US-002-TASK-001`) the moment their upstream prerequisites (e.g. `US-001-TASK-001`) reach `TaskSuccess`. If a task declares no cross-story dependencies, the scheduler cleanly falls back to milestone ordering to prevent out-of-order execution.
+- **Dynamic File Lock Arbitration**: Even when tasks across multiple stories are unblocked simultaneously, `FileLockRegistry` prevents race conditions by arbitrating task target files (`TargetFiles`). If two tasks touch overlapping files, only one is scheduled per tick, safely serializing file access without human intervention.
+- **Failure Cascade & Pruning**: If an upstream foundation task fails (`TaskFailed`), dependent tasks across all stories are automatically blocked or pruned, while independent tasks in downstream stories continue execution without deadlocking.
+
+#### Story DAG Scheduler & Cross-Story Pipelining (`story_dag_scheduler.go`)
+- **Pipelined Execution Mode (`SetPipelined(true)`)**: In multi-story parallel runs (`agents.orchestrator.number > 1`), `StoryDAGScheduler` enables pipelined scheduling. Rather than waiting for parent stories to reach `SUCCESS`, child stories are dispatched to begin decomposition and task scheduling concurrently once parent stories reach `RUNNING`.
+- **Global State Merging (`Orchestrator.PlanStory`)**: When multiple stories decompose their tasks concurrently, `PlanStory` merges newly generated tasks into `currentState.Tasks` without overwriting existing tasks from other stories.
+- **Independent Story Task Isolation**: Story executors in `start_story_executor.go` track tasks per story via `getStoryTasks` and determine story completion independently via `allStoryTasksFinished`, allowing stories to complete their DoD sign-off asynchronously.
+
+#### Structured Roadmap Layout & Task Serialization
+- User stories are discovered strictly in `roadmap/user-stories/`, formatted as `US-XXX-title-slug.md`.
+- Task domain models are automatically serialized into markdown files in `roadmap/tasks/` (`US-XXX-TASK-YYY-slug.md`) during planning and tool additions for full git auditability.
 
 ### 3. Policy Validator (`pkg/services/validator.go`)
 Acts as a security checkpoint before any LLM-proposed tool is executed. It matches tools and command patterns against role profiles defined in `.noctifab/profiles/` to prevent directory traversal attacks, illegal network requests, or host command escapes.

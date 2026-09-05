@@ -60,8 +60,9 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 		}
 
 		if storyConcurrency > 1 && len(opts.StoryFiles) > 1 {
-			// Story-Level Parallel Execution via StoryDAGScheduler
+			// Story-Level Parallel Execution via StoryDAGScheduler with Cross-Story Task Pipelining
 			dagScheduler := services.NewStoryDAGScheduler(storyConcurrency)
+			dagScheduler.SetPipelined(true)
 			for _, sf := range opts.StoryFiles {
 				specBytes, _ := os.ReadFile(sf)
 				dagScheduler.AddStory(services.StoryWorkItem{

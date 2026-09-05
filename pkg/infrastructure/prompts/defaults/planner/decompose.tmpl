@@ -11,10 +11,11 @@ Specification:
 
 You may only use the 'add_task' tool to define the tasks.
 'add_task' tool arguments:
+- id: Globally unique identifier for the task adhering to '<STORY_ID>-TASK-<NUMBER>' (e.g. "US-001-TASK-001", "US-002-TASK-001") (string)
 - title: Short, unique title for the task (string)
 - description: Detailed instructions of what needs to be implemented (string)
 - change_type: Type of modification (string: "FEATURE", "FIX", or "BREAKING")
-- depends_on: Array of parent task titles or IDs that must complete first (array of strings)
+- depends_on: Array of parent task titles or IDs that must complete first (array of strings). For cross-story dependencies, explicitly reference the specific upstream task ID (e.g. ["US-001-TASK-001"]) to allow downstream tasks to unblock immediately once prerequisite interfaces merge.
 - target_files: Array of relative file paths in the workspace that this task targets or creates (array of strings)
 
 CRITICAL:
@@ -25,3 +26,4 @@ CRITICAL:
 5. PROGRESSIVE VERTICAL SLICES & THIN SHELL WALKING SKELETON MANDATE: Plan tasks as progressive vertical slices that preserve system runnability. Design the primary application entrypoint as a thin shell (< 15 lines) that delegates immediately to a testable core entrypoint function (e.g. 'run(args, io) -> Result', 'create_app()', 'WorkerEngine'). Task 1 of any foundational story MUST be the Walking Skeleton: a minimal compiling primary entrypoint and basic smoke test runnable in <30 seconds. Do NOT pack deep domain models, complex database schemas, or full type hierarchies into Task 1; defer domain depth to subsequent tasks once the walking skeleton is operational and verified. Explicitly set 'target_files' to delineate whether a task targets internal component modules (for in-process testing) or the primary entrypoint (for black-box E2E testing).
 6. The planned tasks must include enough detail so generator agents have all the instructions they need.
 7. ZERO HOST INSTALLATIONS & CONTAINER MANDATE: When planning tasks that require external tools, test harnesses, database CLIs, or compilers (e.g. redis-cli, sqlite3, valgrind), instruct downstream agents to use minimal containerized runners (e.g. 'docker run --rm -v $(pwd):/app -w /app alpine:3.21 ...' or dual-service docker-compose) rather than requiring host system package installations.
+8. CROSS-STORY TASK PIPELINING MANDATE: When planning tasks for a downstream story that depends on an upstream story (e.g. US-002 depends on US-001), do NOT block downstream tasks on the entire upstream story. Instead, identify the specific upstream interface or walking skeleton task (e.g. 'US-001-TASK-001') that produces the required types, models, or function signatures, and declare that specific task ID in 'depends_on'. This enables the orchestrator to dispatch downstream tasks concurrently in parallel worker worktrees as soon as the interface merges.
