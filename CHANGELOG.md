@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `validation/validate.sh` to preserve `report/`, `log/`, and `dist/` directory mounts during workspace cleanup.
   - Added automatic real-time report mirroring from `/app/report_mount` to workspace output paths upon signal reception and execution completion.
 
+### Fixed
+- **Hermetic In-Memory Doubles & Test Suite Race Hardening**:
+  - Protected `mockRepo` in `pkg/interfaces/web/server_test.go` with `sync.RWMutex`, deep state cloning via `state.Clone()`, and `MutateState` helper to eliminate data races between test assertions and background `CommandMailbox` goroutines.
+  - Synchronized `countingProviderClient` in `pkg/infrastructure/llm/client_catalog_test.go` with `sync.Mutex` and replaced fixed sleeps with `require.Eventually` to resolve data races during background catalog refresh.
+
 ## [0.72.1] - 2026-09-05
 
 ### Fixed
