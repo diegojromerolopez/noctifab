@@ -308,8 +308,9 @@ func (t *ListDirectoryTool) Execute(ctx context.Context, state *domain.State, ar
 
 // RunTestsTool implements run_tests by delegating execution to the active Sandbox engine.
 type RunTestsTool struct {
-	Runner  Sandbox
-	Timeout time.Duration
+	Runner           Sandbox
+	FormatterCommand string
+	Timeout          time.Duration
 }
 
 func (t *RunTestsTool) Name() string { return "run_tests" }
@@ -330,6 +331,16 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	}
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
+
+	// Deterministic Auto-Formatter Pre-Pass:
+	// If a project has configured a formatter_command (e.g. ruff format, cargo fmt, rubocop -A),
+	// run it before executing the test command so formatting is clean.
+	if t.FormatterCommand != "" {
+		if _, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Formatter pre-test auto-fix (%s) skipped on error: %v\n", t.FormatterCommand, err)
+		}
+	}
+
 	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
 	if runCtx.Err() != nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		timeoutMsg := fmt.Sprintf("TIMEOUT: Test command timed out after %v (possible infinite loop, deadlock, or blocking I/O waiting for input/socket).\nLast output:\n%s", timeout, out)

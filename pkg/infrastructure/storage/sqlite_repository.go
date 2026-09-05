@@ -66,9 +66,14 @@ func NewSQLiteRepository(ctx context.Context, dsn string) (*SQLiteRepository, er
 	return &SQLiteRepository{db: db}, nil
 }
 
-// Close closes the database connection.
+// Close executes a WAL checkpoint truncate to flush write-ahead logs to disk,
+// then closes the underlying database connection.
 func (r *SQLiteRepository) Close() error {
-	return r.db.Close()
+	if r.db != nil {
+		_, _ = r.db.Exec("PRAGMA wal_checkpoint(TRUNCATE);")
+		return r.db.Close()
+	}
+	return nil
 }
 
 // DB returns the underlying sql.DB instance.

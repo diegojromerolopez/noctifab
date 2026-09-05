@@ -1682,6 +1682,7 @@ To resolve syntax, lint, and test execution errors immediately without triggerin
 - **`max_actions`**: Specifies a global limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
 - **`max_duration`**: Specifies a story-level wall-clock timeout.
 - **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature timeouts on large project test suites.
+- **`OscillationCircuitBreaker`**: Intra-task circuit breaker that terminates non-productive test mutation churn when: (1) $\ge 2$ consecutive test runs pass with 0 errors, (2) $\ge 2$ consecutive turns have only modified test files with unchanged `src/` production code, and (3) task progress is $\ge 70\%$. Trips immediately to transition the task forward to review and completion.
 
 #### Wiring
 The `WatchdogRepair` is injected into the `Orchestrator` via constructor (DI). If no repair handler is provided (nil), the orchestrator skips the repair step and marks the task as failed immediately — preserving backward compatibility.

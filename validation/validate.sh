@@ -30,8 +30,8 @@ fi
 if [ -d "/app/src_mount" ]; then
   TMP_DIR="/app/src_mount"
   echo "Validating project: ${PROJECT} (real-time mounted workspace at ${TMP_DIR})..." >&2
-  # Clean previous run workspace files to avoid BusyBox cp collisions
-  rm -rf "${TMP_DIR:?}"/* "${TMP_DIR:?}"/.[!.]* "${TMP_DIR:?}"/..?* 2>/dev/null || true
+  # Clean previous run workspace files while preserving report, log, dist, and .noctifab mounts
+  find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -not -name "report" -not -name "log" -not -name "dist" -not -name ".noctifab" -exec rm -rf {} + 2>/dev/null || true
 else
   TMP_DIR="$(pwd)/${PROJECT}"
   echo "Validating project: ${PROJECT}..." >&2
@@ -148,8 +148,33 @@ if [ "${NOCTIFAB_INTERACTIVE:-}" = "1" ]; then
   INTERACTIVE_FLAG="-i"
 fi
 
+# Forward SIGTERM/SIGINT to child process for graceful SQLite WAL checkpointing and report flush
+NOCTIFAB_PID=""
+cleanup_trap() {
+  if [ -n "${NOCTIFAB_PID}" ] && kill -0 "${NOCTIFAB_PID}" 2>/dev/null; then
+    echo "Caught termination signal; forwarding SIGTERM to noctifab (PID ${NOCTIFAB_PID})..." >&2
+    kill -TERM "${NOCTIFAB_PID}" 2>/dev/null || true
+    wait "${NOCTIFAB_PID}" 2>/dev/null || true
+  fi
+  if [ -d "/app/report_mount" ] && [ -d "${TMP_DIR}" ]; then
+    mkdir -p "${TMP_DIR}/report"
+    cp -f /app/report_mount/*.md "${TMP_DIR}/report/" 2>/dev/null || true
+  fi
+  exit 143
+}
+trap cleanup_trap SIGTERM SIGINT
+
 echo "Running noctifab start..." >&2
-"${NOCTIFAB_BIN}" start . ${INTERACTIVE_FLAG}
+"${NOCTIFAB_BIN}" start . ${INTERACTIVE_FLAG} &
+NOCTIFAB_PID=$!
+wait "${NOCTIFAB_PID}"
+NOCTIFAB_PID=""
+
+# Mirror execution reports from report_mount to workspace report directory
+if [ -d "/app/report_mount" ] && [ -d "${TMP_DIR}" ]; then
+  mkdir -p "${TMP_DIR}/report"
+  cp -f /app/report_mount/*.md "${TMP_DIR}/report/" 2>/dev/null || true
+fi
 
 
 # 8. Verify results by executing tests and validating behavior

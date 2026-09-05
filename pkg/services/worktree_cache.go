@@ -59,6 +59,14 @@ func SymlinkSharedDependencies(srcDir, dstDir string) {
 			if _, errDst := os.Lstat(dstPath); os.IsNotExist(errDst) {
 				_ = createRelativeOrAbsoluteSymlink(srcPath, dstPath)
 			}
+		} else if dir == "node_modules" {
+			// Global node_modules fallback if available in environment (e.g. containers)
+			globalNode := "/usr/local/lib/node_modules"
+			if gInfo, gErr := os.Stat(globalNode); gErr == nil && gInfo.IsDir() {
+				if _, errDst := os.Lstat(dstPath); os.IsNotExist(errDst) {
+					_ = os.Symlink(globalNode, dstPath)
+				}
+			}
 		}
 	}
 

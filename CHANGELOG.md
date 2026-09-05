@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.73.0] - 2026-09-05
+
+### Added
+- **Generator-Tester Oscillation Circuit Breaker (PROP-1)**:
+  - Implemented `OscillationCircuitBreaker` in `pkg/services/circuit_breaker.go` with full unit test coverage in `circuit_breaker_test.go`.
+  - Integrated into the tester feedback loop in `pkg/services/orchestrator_helper.go` to halt test refinement loops when $\ge 2$ consecutive test runs pass with 0 errors, $\ge 2$ turns have only modified test files with unchanged `src/` production code, and task progress is $\ge 70\%$.
+- **Progressive PM Decomposition & Fast-Path Mandate (PROP-2)**:
+  - Updated Product Manager Agent prompt template in `pkg/infrastructure/prompts/defaults/product_manager/generate.tmpl` with Pass 1 Progressive Decomposition directives, ensuring `US-001-walking-skeleton.md` is emitted immediately to allow code implementation to start in $<3$ minutes.
+- **Global Toolchain Binaries & Worktree Dependency Symlinks (PROP-3)**:
+  - Updated `pkg/services/worktree_cache.go` to automatically symlink root or global `node_modules` into newly spawned Git worktrees when `package.json` is present.
+  - Configured `ENV NODE_PATH="/usr/local/lib/node_modules"` in `validation/projects/notebook/Dockerfile` to ensure global test runners (`jest`, `vitest`, `ts-node`) resolve modules in all worktrees.
+- **Declarative Pre-Flight Formatter Auto-Fix (PROP-4)**:
+  - Enhanced `RunTestsTool` in `pkg/services/production_tools.go` and `cmd/noctifab/cli/start_helpers.go` to deterministically execute the project's configured `formatter_command` (e.g. `ruff format`, `cargo fmt`, `rubocop -A`) before test runs, preserving strict language agnosticism while eliminating trivial whitespace/linter roundtrips.
+- **Activity-Based Dynamic Timeout Extension (PROP-5)**:
+  - Added stdout activity tracking and dynamic grace extensions to `validation/runner_9projects.py` and `validation/matrix_runner.py`: if active progress was logged within the last 3 minutes when hitting the base timeout, the runner grants a +5 minute extension (up to 2 extensions).
+- **C/C++ Compilation Caching with `ccache` (PROP-6)**:
+  - Installed `ccache` and configured wrapper paths in `validation/projects/t4/Dockerfile` and `validation/projects/fortune/Dockerfile`.
+  - Added `.noctifab/cache/ccache` bind-mount in `validation/run_one.sh` to provide shared, cross-worktree persistent compilation caching.
+- **Graceful SQLite WAL Flush on Container Shutdown (PROP-7)**:
+  - Updated `SQLiteRepository.Close()` in `pkg/infrastructure/storage/sqlite_repository.go` to execute `PRAGMA wal_checkpoint(TRUNCATE);` before closing database connections.
+  - Trapped `SIGTERM` and `SIGINT` signals in `cmd/noctifab/cli/start_runner.go` and `validation/validate.sh` to flush execution reports and cleanly close repositories.
+  - Updated `validation/runner_9projects.py` and `validation/matrix_runner.py` to send `docker kill --signal=SIGTERM` and wait up to 5s before fallback forced removal.
+- **Real-Time Execution Report Mirroring (PROP-8)**:
+  - Updated `validation/validate.sh` to preserve `report/`, `log/`, and `dist/` directory mounts during workspace cleanup.
+  - Added automatic real-time report mirroring from `/app/report_mount` to workspace output paths upon signal reception and execution completion.
+
 ## [0.72.1] - 2026-09-05
 
 ### Fixed

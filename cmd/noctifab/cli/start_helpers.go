@@ -59,7 +59,11 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *servi
 	if cfg.Sandbox.TimeoutSeconds > 0 {
 		runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 	}
-	reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
+	reg.Register(&services.RunTestsTool{
+		Runner:           sandboxRunner,
+		FormatterCommand: cfg.Sandbox.FormatterCommand,
+		Timeout:          runTimeout,
+	})
 	reg.Register(&services.RunLinterTool{
 		Runner:           sandboxRunner,
 		LinterCommand:    cfg.Sandbox.GetLinterCommand(),

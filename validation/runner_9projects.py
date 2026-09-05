@@ -211,6 +211,20 @@ def inspect_generated_code(project_dir: str):
                 files_found.append(rel)
     return sorted(files_found)
 
+def graceful_stop_container(project: str):
+    """Sends SIGTERM to validate-<project> container, waits up to 5s for WAL checkpoint / flush, then removes if still running."""
+    res = subprocess.run(f"docker ps -q --filter name=validate-{project}", shell=True, capture_output=True, text=True)
+    cids = res.stdout.strip().split()
+    for cid in cids:
+        if not cid:
+            continue
+        try:
+            subprocess.run(["docker", "kill", "--signal=SIGTERM", cid], capture_output=True, timeout=5)
+            subprocess.run(["docker", "wait", cid], capture_output=True, timeout=5)
+        except Exception:
+            pass
+        subprocess.run(["docker", "rm", "-f", cid], capture_output=True)
+
 def run_project(project: str, timeout_seconds: int = None):
     if timeout_seconds is None:
         timeout_seconds = get_project_timeout(project)
@@ -219,6 +233,10 @@ def run_project(project: str, timeout_seconds: int = None):
     print(f"==================================================", flush=True)
     
     start_time = time.time()
+    last_activity_time = time.time()
+    extensions_granted = 0
+    max_extensions = 2
+    extension_window = 300  # +5 minutes
     cmd = [os.path.join(ROOT_DIR, "validation", "run_one.sh"), project]
     
     env = os.environ.copy()
@@ -244,11 +262,32 @@ def run_project(project: str, timeout_seconds: int = None):
             if ret is not None:
                 break
             
+            if process.stdout:
+                r, _, _ = select.select([process.stdout], [], [], 1.0)
+                if r:
+                    line = process.stdout.readline()
+                    if line:
+                        stdout_lines.append(line)
+                        if any(k in line for k in ["Tool Executed", "Task", "PASS", "SUCCESS", "Orchestrator", "building", "Validating"]):
+                            last_activity_time = time.time()
+                        if any(k in line for k in ["launching", "Validating", "building", "PASS", "FAIL", "Success", "Error", "exited", "Orchestrator", "Tool Executed", "Task", "Fallback", "CRITICAL"]):
+                            print(f"  [{project}] {line.strip()[:120]}", flush=True)
+            else:
+                time.sleep(1.0)
+
             elapsed = time.time() - start_time
             if elapsed > timeout_seconds:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ TIMEOUT reached for {project} (>{timeout_seconds}s). Terminating container...", flush=True)
+                # Activity-based dynamic timeout extension (PROP-5)
+                recent_progress = (time.time() - last_activity_time) < 180
+                if extensions_granted < max_extensions and recent_progress:
+                    extensions_granted += 1
+                    timeout_seconds += extension_window
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] ⏳ Active progress detected within last 3m. Extending timeout for {project} by +{extension_window}s (Extension {extensions_granted}/{max_extensions}, new limit: {timeout_seconds}s / {timeout_seconds/60:.0f}m)...", flush=True)
+                    continue
+
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ TIMEOUT reached for {project} (>{timeout_seconds}s). Terminating container gracefully...", flush=True)
                 timed_out = True
-                subprocess.run(f"docker ps -q --filter name=validate-{project} | xargs -r docker rm -f", shell=True, capture_output=True)
+                graceful_stop_container(project)
                 process.terminate()
                 try:
                     process.wait(timeout=5)
@@ -256,20 +295,10 @@ def run_project(project: str, timeout_seconds: int = None):
                     process.kill()
                 break
                 
-            if process.stdout:
-                r, _, _ = select.select([process.stdout], [], [], 1.0)
-                if r:
-                    line = process.stdout.readline()
-                    if line:
-                        stdout_lines.append(line)
-                        if any(k in line for k in ["launching", "Validating", "building", "PASS", "FAIL", "Success", "Error", "exited", "Orchestrator", "Tool Executed", "Task", "Fallback", "CRITICAL"]):
-                            print(f"  [{project}] {line.strip()[:120]}", flush=True)
-            else:
-                time.sleep(1.0)
-                
     except Exception as e:
         print(f"Exception while running {project}: {e}", flush=True)
         timed_out = True
+        graceful_stop_container(project)
         process.kill()
 
     duration = time.time() - start_time

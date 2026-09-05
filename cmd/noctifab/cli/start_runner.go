@@ -3,10 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -150,8 +153,36 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if closer, ok := repo.(io.Closer); ok {
+		defer func() { _ = closer.Close() }()
+	}
 
-	if _, err := services.NewQARecoveryService(repo, services.SystemQAClock{}).Recover(cmd.Context()); err != nil {
+	cmdCtx := cmd.Context()
+	if cmdCtx == nil {
+		cmdCtx = context.Background()
+	}
+	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+	go func() {
+		select {
+		case sig := <-sigChan:
+			fmt.Fprintf(os.Stderr, "\nReceived signal %v, flushing state and shutting down gracefully...\n", sig)
+			if executionReporter != nil {
+				executionReporter.Finish(context.Background(), domain.ExecutionCancelled)
+			}
+			if closer, ok := repo.(io.Closer); ok {
+				_ = closer.Close()
+			}
+			os.Exit(130)
+		case <-cmdCtx.Done():
+			return
+		}
+	}()
+
+	if _, err := services.NewQARecoveryService(repo, services.SystemQAClock{}).Recover(cmdCtx); err != nil {
 		return fmt.Errorf("recover interrupted QA phases: %w", err)
 	}
 
@@ -168,12 +199,6 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	reg := initToolRegistry(cfg, sandboxRunner)
 	llmClient := llm.BuildFailoverClient(cfg, budgetStore)
-
-	cmdCtx := cmd.Context()
-	if cmdCtx == nil {
-		cmdCtx = context.Background()
-	}
-	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
 
 	mailbox := services.NewCommandMailbox(repo)
 	go mailbox.Start(cmdCtx)

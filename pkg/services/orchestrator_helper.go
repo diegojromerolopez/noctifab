@@ -266,6 +266,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	consecutiveLinterFailures := 0
 	linterDeferred := false
 	seenFileDependentCalls := make(map[string]bool)
+	circuitBreaker := NewTaskCircuitBreaker()
 
 	for turn := 0; turn < maxTurns; turn++ {
 		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
@@ -349,6 +350,9 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 				out, execErr := tool.Execute(testerCtx, state, action.Args)
 				diagCache.OnToolExecuted(action.Tool, action.Args, out, execErr)
 				fmt.Printf("🛠️  [Tool Executed] task=%s role=TESTER tool=%s success=%t\n", task.ID, action.Tool, execErr == nil)
+				if action.Tool == "run_tests" {
+					circuitBreaker.RecordTestResult(execErr == nil)
+				}
 				if execErr != nil {
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
 					// Track linter consecutive failures.
@@ -369,9 +373,15 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 					if IsMutatingTool(action.Tool) {
 						consecutiveLinterFailures = 0
 						seenFileDependentCalls = make(map[string]bool)
+						circuitBreaker.RecordAction(action.Tool, action.Args)
 					}
 				}
 			}
+		}
+
+		if tripped, reason := circuitBreaker.ShouldTrip(task.Progress); tripped {
+			fmt.Printf("⚡ [Circuit Breaker] Task %s: %s\n", task.ID, reason)
+			hasNoop = true
 		}
 
 		if hasNoop || len(testResp.Actions) == 0 {

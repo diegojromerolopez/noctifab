@@ -151,3 +151,38 @@ func TestRunLinterTool_Timeout(t *testing.T) {
 		t.Errorf("expected diagnostic timeout message, got %q", out)
 	}
 }
+
+type trackingMockSandbox struct {
+	Sandbox
+	commands []string
+}
+
+func (s *trackingMockSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
+	s.commands = append(s.commands, command)
+	return "ok", nil
+}
+
+func TestRunTestsTool_FormatterCommand(t *testing.T) {
+	mockSandbox := &trackingMockSandbox{}
+	tool := &RunTestsTool{
+		Runner:           mockSandbox,
+		FormatterCommand: "ruff format .",
+		Timeout:          5 * time.Second,
+	}
+
+	_, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/tmp"}, map[string]any{
+		"command": "pytest",
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(mockSandbox.commands) != 2 {
+		t.Fatalf("expected 2 commands executed (formatter then tests), got %d: %v", len(mockSandbox.commands), mockSandbox.commands)
+	}
+	if mockSandbox.commands[0] != "ruff format ." {
+		t.Errorf("expected first command to be formatter, got %q", mockSandbox.commands[0])
+	}
+	if mockSandbox.commands[1] != "pytest" {
+		t.Errorf("expected second command to be test runner, got %q", mockSandbox.commands[1])
+	}
+}

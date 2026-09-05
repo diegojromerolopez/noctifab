@@ -59,6 +59,7 @@ To minimize database transaction duration, prevent SQLite write lock contention,
 - **Targeted Incremental Upserts**: State saves avoid destructive `DELETE + INSERT` table rewrites. Tables such as `tasks`, `stories`, and `workspace_files` use targeted `ON CONFLICT DO UPDATE` upserts, selectively pruning only items removed from the domain model.
 - **Append-Only Action Telemetry**: The `actions` table operates as an append-only log with unique `action_id` indexes. Saves execute `INSERT ... ON CONFLICT(action_id) DO NOTHING`, ensuring already persisted actions are skipped with zero overhead, row IDs remain monotonic and stable, and telemetry data does not incur repetitive transaction rewrites on each progress tick.
 - **Bounded Window Loading**: While the database retains the complete append-only historical audit trail, `Load` queries bound in-memory action loading to the most recent window (`domain.MaxLastActions = 200`) in chronological order, keeping memory consumption and load latency strictly bounded ($O(1)$) across long-running project executions.
+- **Graceful Shutdown & SQLite WAL Checkpoint Truncation**: When terminating on completion, error, or OS signals (`SIGTERM`, `SIGINT`), the engine invokes `SQLiteRepository.Close()`, which explicitly executes `PRAGMA wal_checkpoint(TRUNCATE);` before closing the database handle. This guarantees all WAL journal frames are fully written to the base database file and the journal is truncated to zero bytes, eliminating corrupted disk image risks across host-container volume mounts.
 
 ### 2. Topological Task Scheduler (`pkg/services/scheduler.go`) & Story DAG Scheduler (`pkg/services/story_dag_scheduler.go`)
 - **Task DAG Scheduling (`scheduler.go`)**: Within a single user story, tasks can define dependencies on other tasks (e.g., Task B depends on Task A). The Scheduler performs a topological sort using Directed Acyclic Graphs (DAG) to find ready tasks and schedule them concurrently in a worker pool.
@@ -85,6 +86,12 @@ The **Watchdog Liveness Monitor** (`pkg/services/watchdog.go`) wraps command exe
 - **`killProcessGroup`**: Both timeouts use `syscall.SysProcAttr{Setpgid: true}` to kill the entire process group, ensuring child processes and background threads are terminated.
 
 Configured via `sandbox.idle_timeout_seconds` in `config.yaml` (default: 30s).
+
+#### Declarative Pre-Flight Formatter Auto-Fix
+To eliminate high-latency agent turns spent fixing trivial whitespace, indent, or import formatting errors, `RunTestsTool` executes the project's declarative `formatter_command` (e.g. `ruff format .`, `cargo fmt`, `rubocop -A`, `go fmt ./...`) before running test commands. This keeps the engine strictly **language-agnostic** while ensuring deterministic code cleanliness prior to verification.
+
+#### Worktree Cache & Dependency Symlinking (`pkg/services/worktree_cache.go`)
+Isolated Git worktrees created under `.noctifab/worktrees/` redirect heavy compiler caches (Cargo, Go, pip, ccache) to `.noctifab/cache/`. When `package.json` is present, root `node_modules` are automatically symlinked into the worktree directory, enabling Node/TypeScript test runners (`jest`, `vitest`, `ts-node`) to execute seamlessly without redundant per-worktree installations.
 
 ### 5. Rebase Queue (`pkg/services/rebase_queue.go`)
 A thread-safe channel queue that manages Git rebases and branch merges. When multiple tasks complete in parallel, the rebase queue serializes merges into the target branch to avoid merge conflicts and race conditions.
@@ -132,7 +139,7 @@ Noctifab exposes the following implemented roles and retained experimental capab
 | Role Key | Agent Name | Domain Scope & Responsibility |
 | :--- | :--- | :--- |
 | **`orchestrator`** | Orchestrator Agent | Coordinates state persistence, VCS branch rebasing, task assignment, and PR creation. |
-| **`product_manager`** | Product Manager Agent | Analyzes `SPEC.md` and existing user stories in `roadmap/user-stories/`. Generates new User Stories or audits and enriches existing ones with explicit Definitions of Done (DoD), language-agnostic interface contracts, I/O formatting invariants, error prefixes, exit codes, and comprehensive edge-case scenario matrices before task planning starts. |
+| **`product_manager`** | Product Manager Agent | Analyzes `SPEC.md` and existing user stories in `roadmap/user-stories/`. Employs **Progressive Roadmapping**: on Pass 1, immediately emits `US-001-walking-skeleton.md` with runnable contracts to allow code implementation to start in $<3$ minutes, deferring deeper decomposition to subsequent passes. Enriches stories with explicit Definitions of Done (DoD), language-agnostic interface contracts, I/O formatting invariants, error prefixes, exit codes, and comprehensive edge-case scenario matrices before task planning starts. |
 | **`planner`** | Task Planner Agent | Decomposes User Stories into a Directed Acyclic Graph (DAG) of executable technical tasks, automatically serializing task entities into `roadmap/tasks/`. |
 | **`generators`** | Generator Agent | Writes production source code and initial feature logic in task branches. |
 | **`testers`** | Tester Agent | Independently writes black-box test suites (unit, integration, e2e) against public contracts. |
@@ -142,6 +149,12 @@ Noctifab exposes the following implemented roles and retained experimental capab
 | **`fallback`** | Fallback Agent (Omni-Agent) | Unified pipeline watchdog & sovereign chief surgeon (merging previous `unblocker` and `last_resort` roles). Operates in two modes: Passive Watchdog (0-token fast-paths, log escalation, scope triage) and Active Sovereign Omni-Builder (cross-domain repair under 4-Tier Compromise Hierarchy). |
 
 Architecture, security, performance, documentation, and infrastructure work is represented by explicit planner tasks and deterministic validators, not specialist agents.
+
+### Generator-Tester Oscillation Circuit Breaker (`pkg/services/circuit_breaker.go`)
+
+During multi-turn task execution, Generator and Tester agents can enter an oscillation loop where the Tester makes non-essential micro-tweaks to docstrings or assertions after the implementation is already fully verified. The `OscillationCircuitBreaker` monitors turn progression and breaks test churn:
+- **Trip Conditions**: Activates when (1) $\ge 2$ consecutive test runs pass with 0 failures, (2) $\ge 2$ consecutive turns have only modified test files with unchanged `src/` production code, and (3) task progress is $\ge 70\%$.
+- **Action**: When tripped, the orchestrator halts further test refinement mutations and transitions the task forward to review and completion, saving 40%–60% of task token expenditure.
 
 ### Unified Fallback Architecture (Passive Watchdog & Active Sovereign Omni-Builder)
 

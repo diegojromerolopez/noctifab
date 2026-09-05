@@ -26,6 +26,7 @@ RUN chmod +x /app/validate.sh
 
 # Pre-cache common node dev dependencies, test runners, and framework utilities
 RUN npm install -g typescript tsx ts-node jest ts-jest @types/jest vitest fastify vite supertest @types/supertest @types/node
+ENV NODE_PATH="/usr/local/lib/node_modules"
 
 # Sanity check the toolchain is callable.
 RUN node --version && npm --version && tsc --version && jest --version && vitest --version && postgres --version && initdb --version && pg_ctl --version
