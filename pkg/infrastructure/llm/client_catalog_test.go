@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,12 +14,21 @@ import (
 type countingProviderClient struct {
 	ProviderClient
 	models []string
+	mu     sync.Mutex
 	calls  int
 }
 
 func (c *countingProviderClient) GetAvailableModels(_ context.Context, _ string) ([]string, error) {
+	c.mu.Lock()
 	c.calls++
+	c.mu.Unlock()
 	return c.models, nil
+}
+
+func (c *countingProviderClient) getCalls() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls
 }
 
 func TestCatalogCache(t *testing.T) {
@@ -32,7 +42,7 @@ func TestCatalogCache(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, first, second)
-		assert.Equal(t, 1, pc.calls, "second lookup within TTL must be served from cache")
+		assert.Equal(t, 1, pc.getCalls(), "second lookup within TTL must be served from cache")
 	})
 
 	t.Run("when the TTL has expired it re-queries the provider", func(t *testing.T) {
@@ -44,9 +54,9 @@ func TestCatalogCache(t *testing.T) {
 		time.Sleep(2 * time.Millisecond)
 		_, err = client.availableModelsCached(context.Background(), pc, "key")
 		require.NoError(t, err)
-		time.Sleep(50 * time.Millisecond) // Allow background async refresh to complete
-
-		assert.Equal(t, 2, pc.calls)
+		require.Eventually(t, func() bool {
+			return pc.getCalls() == 2
+		}, time.Second, 5*time.Millisecond, "expected background async refresh to complete")
 	})
 
 	t.Run("when the cache is cleared it re-queries the provider", func(t *testing.T) {
@@ -59,7 +69,7 @@ func TestCatalogCache(t *testing.T) {
 		_, err = client.availableModelsCached(context.Background(), pc, "key")
 		require.NoError(t, err)
 
-		assert.Equal(t, 2, pc.calls)
+		assert.Equal(t, 2, pc.getCalls())
 	})
 
 	t.Run("when the provider returns an empty catalog it is not cached", func(t *testing.T) {
@@ -71,6 +81,6 @@ func TestCatalogCache(t *testing.T) {
 		_, err = client.availableModelsCached(context.Background(), pc, "key")
 		require.NoError(t, err)
 
-		assert.Equal(t, 2, pc.calls, "empty catalogs must not be cached so failures self-heal")
+		assert.Equal(t, 2, pc.getCalls(), "empty catalogs must not be cached so failures self-heal")
 	})
 }

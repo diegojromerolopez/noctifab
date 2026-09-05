@@ -68,7 +68,7 @@ The autonomy level is controlled by the VCS `pull_request` settings in `.noctifa
 ## Core Pillars
 
 1. **Stateless Agent, Stateful Orchestrator**: The AI agents have no memory of previous runs or actions. Instead, the orchestrator compiles and tracks system state (tasks, file indices, action logs, and clarifications) in a local database (SQLite/PostgreSQL) and feeds it to the agent at each step.
-2. **Topological Task Scheduling**: Decomposes complex feature specifications into a Directed Acyclic Graph (DAG) of task models, running independent tasks concurrently.
+2. **Global Task DAG Scheduling & Cross-Story Pipelining**: Decomposes complex feature specifications into a unified Directed Acyclic Graph (DAG) across the entire project. Rather than serializing whole user stories sequentially, downstream tasks unblock immediately once their prerequisite foundation/interface tasks merge into `main`, maximizing worker concurrency and eliminating idle blocking.
 3. **Verification First, Validation Second**: Decouples execution into two distinct lifecycle stages: *Verification* (achieving a minimal working solution that compiles and passes basic functional checks) and *Validation* (leveraging black-box test safety rails to iteratively refactor, optimize, and harden code to full specification compliance).
 4. **Test-Driven Quality Gates**: Employs a multi-stage sequential execution cycle between the generator and test-writer agents. The Test Validator executes the test suite 3 times, requiring a majority vote consensus (at least 2/3 passing runs) to approve changes, preventing regression and flaky builds.
 5. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers, restricted by role-based authorization profiles.
@@ -175,26 +175,36 @@ The core engine runs a continuous polling event loop that drives all development
    - **`max_user_stories`**: Ceiling on Product Manager roadmap story generation (default: `5`).
    - **`runtime.max_duration`**: Story-level wall-clock timeout.
    - **`timeout_seconds`**: Configurable execution time limit for test runs (default: 5m), preventing premature timeouts on large project test suites.
+   - **Oscillation Circuit Breaker**: Intra-task circuit breaker that terminates test mutation loops when $\ge 2$ consecutive test runs pass with 0 errors, $\ge 2$ consecutive turns have only modified test files with unchanged `src/` code, and task progress is $\ge 70\%$, cutting Task 2 execution times by 50%–70%.
 10. **First-Class Generator Surgical Repair (`surgical_repair`)**: When task verification fails due to a compilation error or test assertion failure, the orchestrator immediately triggers a single-turn surgical repair pass (`surgical_repair` prompt template) without context-gathering overhead to apply minimal, localized fixes without rewriting working code.
-11. **Zero-Token Pre-Commit Auto-Formatting**: Executes configured language formatters (`sandbox.formatter_command`, e.g. `go fmt ./...`, `npx prettier --write .`, `ruff format .`) automatically before staging Git commits, ensuring clean formatting without burning LLM turns.
+11. **Declarative Pre-Flight Formatter Auto-Fix**: Executes configured language formatters (`sandbox.formatter_command`, e.g. `go fmt ./...`, `npx prettier --write .`, `ruff format .`, `cargo fmt`, `rubocop -A`) automatically before running test suites in `run_tests` as well as staging Git commits, maintaining deterministic formatting without burning LLM turns.
 12. **Anthropic Adaptive Parameter Retry**: Dynamically detects Anthropic HTTP 400 Bad Request parameter deprecations and constraints (`temperature` deprecations on newer models, excessive `max_tokens` clamped to 4096, and unsupported `cache_control` headers), self-correcting and retrying automatically. Fully supports Claude 5 series (`claude-sonnet-5`, `claude-opus-5`, `claude-haiku-5`).
 13. **Structured Roadmap Directories & Task Serialization (`roadmap/tasks/`)**:
    - Organizes user story specifications into `roadmap/user-stories/` using title slug filenames (`US-XXX-title-slug.md`).
    - Automatically serializes task models into markdown files in `roadmap/tasks/` (`US-XXX-TASK-YYY-slug.md`) for full auditability.
-14. **User Story DAG Scheduler (`depends_on` Cross-Story Parallelism)**:
-   - Parses `depends_on` dependencies from User Story YAML frontmatter.
-   - Concurrently executes all unblocked user stories across worker slots, dynamically unblocking dependent stories as prerequisites complete.
+14. **Global Task-Level DAG Scheduler & Cross-Story Pipelining**:
+   - Evaluates dependencies at the fine-grained task level across the entire project using globally unique task identifiers (`<STORY_ID>-TASK-<NUMBER>`, e.g. `US-001-TASK-001`).
+   - Downstream stories (e.g. `US-002`) execute tasks concurrently with upstream stories (e.g. `US-001`) the moment prerequisite foundation or interface tasks merge into `main`, eliminating false serialization and cutting overall project wall-clock time by 50%–60%.
+   - **Selective Milestone Barrier Bypass**: `Scheduler.GetReadyTasks` automatically bypasses coarse story milestone barriers when tasks declare explicit cross-story dependencies, while maintaining sequential milestone fallback for tasks without cross-story dependencies.
+   - **Pipelined Story DAG Dispatching**: Supports pipelined story scheduling in `StoryDAGScheduler` (`SetPipelined(true)`), dispatching child stories to begin decomposition and task scheduling concurrently once parent stories reach `RUNNING`.
+   - **Failure Isolation & Auto-Pruning**: If an upstream foundation task fails, dependent tasks across all stories are cleanly blocked or pruned, while independent tasks continue executing without deadlocks.
 15. **Incremental Story Resume (`noctifab resume` & `noctifab start --resume`)**: Enables resuming interrupted or partially completed project executions, skipping completed stories (`StorySuccess`) and picking up execution at the first incomplete story.
 16. **Zero-Stall Resilient Architecture (Optimistic Merging, 5-Tier Merge Engine, Tool Degradation & Post-Merge Repair)**:
    - **Dynamic Tool Degradation & Eviction**: Auto-detects missing binaries (e.g. exit code 127, `pytest: command not found`). Evicts missing tools and transitions validation to degraded mode (`[Validation Degraded]`), preventing endless retry stalls.
    - **Optimistic Task Merging**: Optimistically merges completed task code into `integrationBranch` with warnings (`MERGED_WITH_WARNINGS`) even when tests fail, unblocking dependent tasks.
    - **5-Tier Merge Engine**: Features non-interactive merge, deterministic conflict marker stripping, **Whole-File Dual Reimplementation by the Generator Agent** (prompting the LLM to rewrite the entire file combining all features from both branches), optimistic line union merge, and direct diff overlay.
-   - **Stale Git Lock Sanitizer**: Automatically cleans stale `.git/index.lock` and worktree lock files older than 5 seconds.
+   - **Process-Aware Stale Git Lock Sanitizer**: Verifies lock holder process liveness via OS signal checks (`kill -0 <pid>`), immediately removing dead process locks while enforcing a safe 60-second fallback threshold during long compilations to eliminate Git index corruption.
    - **Post-Merge Integration Repair Agent**: Runs an automated repair phase on the consolidated `integrationBranch` after all tasks finish to fix cross-task discrepancies and broken tests with a strict 2-turn budget.
-17. **Configurable Task Execution Order (`agents.task_execution_order`)**: Configurable verification sequence mode (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
-18. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
-19. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
-20. **Pre-Flight Diagnostics & LLM Provider Ping**: Validates Git CLI availability, state database connectivity, LLM provider `/models` endpoint reachability, and sandbox mode before launching the orchestrator.
+17. **Single-Pass Co-Synthesis Mode (`agents.architecture: co_synthesis`)**: Unifies implementation and black-box test generation into a single prompt turn with immediate consensus validation and fast-path merge, cutting task execution latency by 60%+.
+18. **Shared Dependency Worktree Caches**: Configures universal toolchain cache redirection (`CARGO_TARGET_DIR`, `GOCACHE`, `node_modules`, Python virtual environments) across parallel Git worktrees, eliminating redundant dependency downloads and compilations.
+19. **String-Literal Aware Code Fence Parser**: Employs an escape-aware lexical state machine in `stripFencedCodeBlocks` that tracks string boundaries and JSON depth, preserving embedded code fences within JSON payloads and eliminating JSON extraction retries.
+20. **Incremental State Persistence & Append-Only Telemetry**: Performs targeted `ON CONFLICT DO UPDATE` upserts for tasks and stories, and persists action telemetry in an append-only table (`ON CONFLICT(action_id) DO NOTHING`), eliminating table wipe churn, transaction lock thrashing, and bounding load queries to a 200-item window.
+21. **Extensible Sandbox Toolchain Hooks (`sandbox.syntax_check_command`)**: Language-agnostic pre-flight syntax checks (e.g. `gofmt -e {file}`, `python3 -m py_compile {file}`, `ruby -c {file}`) injected into all file mutation tools without hardcoded runtime dependencies.
+22. **Pre-Flight Default `.gitignore` Guardrails**: Synthesizes and enforces critical ignore patterns (`target/`, `node_modules/`, `__pycache__/`, `.noctifab/`) before execution to prevent build directory pollution.
+23. **Configurable Task Execution Order (`agents.task_execution_order`)**: Configurable verification sequence mode (`"generator_first"` default vs `"tester_first"` TDD mode). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
+24. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
+25. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
+26. **Pre-Flight Diagnostics & LLM Provider Ping**: Validates Git CLI availability, state database connectivity, LLM provider `/models` endpoint reachability, and sandbox mode before launching the orchestrator.
 
 ---
 
@@ -202,13 +212,18 @@ The core engine runs a continuous polling event loop that drives all development
 
 `noctifab` incorporates an end-to-end pipelined acceleration engine delivering **5x–10x faster dark factory throughput**:
 
-1. **Parallel DAG Task Worker Pools**: Executes independent tasks concurrently (`scheduler.max_parallel_workers > 1`), assigning each task an isolated Git worktree (`.noctifab/worktrees/task-<id>`) and merging completed worker branches asynchronously via a serialized rebase queue (`pkg/usecase/rebase_queue.go`).
-2. **Tiered LLM Provider Routing**: Directs deep reasoning models to spec decomposition and planning (`product_manager`, `planner`), while routing implementation and test workers (`generators`, `testers`) to high-throughput, low-latency coding models.
-3. **Parallel 3x Majority-Vote Test Validation**: Dispatches 3 test validation runs concurrently using Go goroutines, reducing verification latency from ~15s to ~3s.
-4. **Unified Diff Multi-File Patching (`apply_patch`)**: Enables agents to apply multi-file unified diff patches (`diff -u` / Git format) in a single turn with fuzzy matching and sandbox security validation.
-5. **Spec-Level Deterministic Mock Clocks**: Enforces mock clock invariants (`Store(clock=FakeClock())`) at the Product Manager specification layer (`US-xxx.md`), ensuring time-dependent tests pass deterministically on the first attempt.
-6. **Aggressive Suffix-Only Prompt Pruning**: Truncates prompt history on retries to preserve LLM KV cache prefixes while providing exact failure tracebacks.
-7. **Speculative Next-Task Prefetching**: Prefetches file contexts for candidate downstream tasks while current task verification executes in parallel.
+1. **Global Task DAG Scheduling & Cross-Story Pipelining**: Evaluates dependencies directly at the fine-grained task level across the whole project. Downstream tasks unblock immediately once prerequisite interfaces merge into `main`, delivering 2x worker pool utilization and cutting wall-clock execution time by >50%.
+2. **Parallel DAG Task Worker Pools**: Executes independent tasks concurrently (`scheduler.max_parallel_workers > 1`), assigning each task an isolated Git worktree (`.noctifab/worktrees/task-<id>`) and merging completed worker branches asynchronously via a serialized rebase queue (`pkg/services/rebase_queue.go`).
+3. **Batched Multi-File Creation (`write_files`)**: Enables agents to atomically create or overwrite multiple workspace files in a single LLM turn (via `{"files": {"path/a": "...", "path/b": "..."}}`), eliminating 70% of single-file tool roundtrip latency during scaffolding.
+4. **Per-Agent Adaptive Complexity Routing**: Dynamically routes agent tasks to optimal model tiers (`fast_tier` for scaffolding, `standard_tier` for domain features, `heavy_tier` for complex algorithms and repair turns) to minimize reasoning latency without sacrificing capability.
+5. **Walking Skeleton Slicing Priority (`US-001`)**: Enforces that the initial user story delivers a minimal compiling and test-passing vertical slice, guaranteeing a working runnable baseline within the first 2 minutes.
+6. **Parallel 3x Majority-Vote Test Validation**: Dispatches 3 test validation runs concurrently using Go goroutines, reducing verification latency from ~15s to ~3s.
+7. **Unified Diff Multi-File Patching (`apply_patch`)**: Enables agents to apply multi-file unified diff patches (`diff -u` / Git format) in a single turn with fuzzy matching and sandbox security validation.
+8. **Spec-Level Deterministic Mock Clocks**: Enforces mock clock invariants (`Store(clock=FakeClock())`) at the Product Manager specification layer (`US-xxx.md`), ensuring time-dependent tests pass deterministically on the first attempt.
+9. **Aggressive Suffix-Only Prompt Pruning**: Truncates prompt history on retries to preserve LLM KV cache prefixes while providing exact failure tracebacks.
+10. **Speculative Next-Task Prefetching**: Prefetches file contexts for candidate downstream tasks while current task verification executes in parallel.
+11. **Unified Single-Pass Co-Synthesis Mode (`co_synthesis`)**: Combines code generation and black-box test authoring into a single turn with fast-path quality gates, skipping multi-turn roundtrips when tests pass immediately.
+12. **Shared Worktree Dependency Redirection**: Universally redirects compilation caches (`target/`, `node_modules/`, `GOCACHE`) across parallel task worktrees to eliminate repetitive dependency compilation.
 
 ### Autonomous Agent Roles & Relationship
 To prevent "evaluation gaming" (where code generators approve their own buggy code) and break deadlock traps, `noctifab` partitions cognitive execution into specialized, cooperative agent roles:
@@ -218,14 +233,14 @@ To prevent "evaluation gaming" (where code generators approve their own buggy co
 3. **Tester Agent**: Dedicated test-writing agent that writes and refactors unit, integration, and behavioral tests based on story specifications before and during code generation.
 4. **Generator Agent**: Sandbox-restricted worker executing in task-specific Git worktrees. Writes and refactors production code to satisfy the test suites.
 5. **Resolver Agent**: Dedicated agent for resolving complex three-way Git rebase and merge conflicts across parallel worker branches.
-6. **Unblocker Agent (Sentry / Monitor)**: Independent background daemon that continuously scans pipeline state, captures live logs, applies 0-token regex fast-path fixes for interactive CLI hangs, and injects diagnostic recovery directives.
+6. **Fallback Agent (Omni-Agent / Autonomous Recovery & Sovereign Repair)**: Unified escalation and self-healing agent that combines continuous watchdog pipeline health monitoring (capturing live logs, 0-token regex fast-paths, and scope triage) with active sovereign omni-builder execution (cross-domain workspace modification across code, tests, and specs under the 4-Tier Compromise Hierarchy).
 7. **Acceptance Auditor Agent**: Whole-project specification auditor that evaluates the completed codebase, CLI entrypoints, and wire protocol surface against the root `SPEC.md` prior to release. Halts PR creation if critical command, CLI, or interface omissions are detected.
-8. **Last-Resort Agent (Chief Surgeon / Solver)**: Sovereign unblocker summoned when tasks encounter intractable blockers (exhausted retry budgets, contradictory or shallow specifications, missing sandbox toolchains, or post-merge integration collapses). Operates with sovereign authority across code, tests, and specs to deliver clean-compiling, test-passing builds under the 4-Tier Compromise Hierarchy.
 
 **Inter-Agent Relationship & Dynamic Escalation**:
 - **Generator $\leftrightarrow$ Tester (Separation of Concerns)**: Keeps production code and test assertions isolated so tests remain an objective quality gate. If the Generator detects a bug in the test definitions, it uses `request_test_fix` to coordinate changes.
 - **Auditor Release Gate (Whole-Project Verification)**: Operates after task completion and before PR creation, cross-referencing all implemented commands and story contracts against `SPEC.md` to prevent partial feature releases.
-- **Unblocker $\rightarrow$ Last-Resort (Two-Tier Deadlock Defense)**: The Unblocker acts as an observant, zero-risk sentry that resets tasks and injects guidance without modifying code. When a task reaches 4 stall cycles or exhausts its retry budget, the orchestrator escalates the issue to the Last-Resort Agent to perform deep, multi-file sovereign surgery.
+- **Fallback Agent (Unified Self-Healing & Scope Triage)**: Operates in two synchronized tiers: Mode 1 continuously monitors pipeline health, executes 0-token regex fast-paths, and defers non-critical stories (`US-003+`) via `ScopeTriageCmd` on budget cliffs; Mode 2 takes sovereign cross-domain tool authority on persistent stalls (`StallCount >= 2`) or exhausted retries to guarantee clean-compiling, test-passing builds.
+
 
 ---
 
@@ -366,7 +381,12 @@ runtime:
 
 agents:
   product_manager:
-    max_user_stories: 5     # Maximum user stories in roadmap backlog (default: 5)
+    user_stories:
+      max_count: 5          # Maximum user stories in roadmap backlog (default: 5)
+      complexity:
+        min: 15             # Minimum target complexity units per story
+        max: 35             # Maximum target complexity units per story
+    passes: 2               # PM multi-pass refinement passes
 ```
 
 Override the loop count dynamically from the CLI:
@@ -876,9 +896,13 @@ We welcome contributions! To maintain a highly clean and context-friendly reposi
 
 1. **The 500-Line Limit**: No Go source code file (`.go`) may exceed **500 physical lines** (including comments and blank lines). Smaller, logically focused files prevent LLM context pollution.
 2. **Dependency Injection**: Provide all clients, database connection objects, and configurations through struct constructors. Global state is strictly prohibited.
-3. **100% Test Coverage**: Every package must be accompanied by unit tests (`_test.go` files). Ensure the test suite passes before submitting:
+3. **100% Test Coverage & BDD Conventions**: Every package must be accompanied by unit tests (`_test.go` files). Happy paths and major lifecycle flows are verified by BDD E2E tests (`tests/e2e/`), and input validations/edge cases by unit tests. Ensure the test suite passes before submitting:
    ```bash
-   go test -v ./pkg/... ./tests
+   go test -v ./pkg/... ./cmd/... ./tests
+   # Or with race detection:
+   go test -race ./pkg/...
+   # Run local BDD acceptance scenarios:
+   NOCTIFAB_E2E=true go test -v ./tests/e2e
    ```
 4. **Code Quality and Lints**: Ensure that the code is formatted using `go fmt` and passes static analysis lints:
    ```bash

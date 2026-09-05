@@ -5,6 +5,326 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.74.0] - 2026-09-05
+
+### Added
+- **Global Task-Level DAG Scheduling & Cross-Story Parallelism (PROP-TASK-DAG-01)**:
+  - **Fine-Grained Task Dependency Resolution**: Refactored `Scheduler.GetReadyTasks` in `pkg/services/scheduler.go` to bypass the coarse story milestone barrier for tasks declaring explicit cross-story dependencies. Tasks in downstream stories (e.g. `US-002-TASK-001`) unblock immediately as soon as prerequisite foundation/interface tasks (e.g. `US-001-TASK-001`) reach `TaskSuccess`, eliminating up to 15–20 minutes of idle serialization delay per story.
+  - **Pipelined Story Execution**: Added `pipelined` scheduling mode to `StoryDAGScheduler` in `pkg/services/story_dag_scheduler.go` with `SetPipelined(bool)`, allowing downstream stories to be dispatched for planning and task execution concurrently once parent stories are running. Enabled pipelining by default in `cmd/noctifab/cli/start_dag_loop.go` for multi-story runs.
+  - **Global Task Merging & OCC State Persistence**: Updated `Orchestrator.PlanStory` in `pkg/services/orchestrator_server.go` to check story-specific planning state and append newly planned tasks to `currentState.Tasks`, preserving tasks across stories. Removed destructive `state.Tasks = nil` resets in `cmd/noctifab/cli/start_story_executor.go` and aligned completion checks per-story.
+  - **Cross-Story Task Dependency Validation**: Updated `ResolveTaskDependencies` and `isStoryReference` in `pkg/services/task_dependencies.go` and `pkg/services/dag.go` to recognize and preserve cross-story task references (e.g. `US-001-TASK-001`) rather than pruning them as missing user stories.
+  - **Planner Agent Cross-Story Pipelining Mandate**: Updated `pkg/infrastructure/prompts/defaults/planner/decompose.tmpl` with global task naming conventions (`<STORY_ID>-TASK-<NUMBER>`) and explicit directives for downstream stories to link directly to prerequisite walking skeleton tasks.
+  - **End-to-End BDD Acceptance Test Suite**: Added `tests/e2e/scenario_global_task_dag_test.go` implementing BDD scenarios (`TestScenario_GlobalTaskDAGCrossStoryParallelism` and `TestScenario_CrossStoryFailurePruning`) verifying concurrent task unblocking across stories and safe failure cascade isolation.
+  - **DAG & Scheduler Input Validation Unit Tests**: Added `pkg/services/dag_test.go` verifying valid topologies, cycle detection (self-referencing, 2-node, 3-node), duplicate title rejection, and cross-story edge tolerance. Expanded `pkg/services/scheduler_test.go`, `pkg/services/task_dependencies_test.go`, and `pkg/services/story_dag_scheduler_test.go` covering file lock contention, description limits, whitespace pruning, shared root build file serialization, and scheduler cancellation.
+
+## [0.73.0] - 2026-09-05
+
+### Added
+- **Generator-Tester Oscillation Circuit Breaker (PROP-1)**:
+  - Implemented `OscillationCircuitBreaker` in `pkg/services/circuit_breaker.go` with full unit test coverage in `circuit_breaker_test.go`.
+  - Integrated into the tester feedback loop in `pkg/services/orchestrator_helper.go` to halt test refinement loops when $\ge 2$ consecutive test runs pass with 0 errors, $\ge 2$ turns have only modified test files with unchanged `src/` production code, and task progress is $\ge 70\%$.
+- **Progressive PM Decomposition & Fast-Path Mandate (PROP-2)**:
+  - Updated Product Manager Agent prompt template in `pkg/infrastructure/prompts/defaults/product_manager/generate.tmpl` with Pass 1 Progressive Decomposition directives, ensuring `US-001-walking-skeleton.md` is emitted immediately to allow code implementation to start in $<3$ minutes.
+- **Global Toolchain Binaries & Worktree Dependency Symlinks (PROP-3)**:
+  - Updated `pkg/services/worktree_cache.go` to automatically symlink root or global `node_modules` into newly spawned Git worktrees when `package.json` is present.
+  - Configured `ENV NODE_PATH="/usr/local/lib/node_modules"` in `validation/projects/notebook/Dockerfile` to ensure global test runners (`jest`, `vitest`, `ts-node`) resolve modules in all worktrees.
+- **Declarative Pre-Flight Formatter Auto-Fix (PROP-4)**:
+  - Enhanced `RunTestsTool` in `pkg/services/production_tools.go` and `cmd/noctifab/cli/start_helpers.go` to deterministically execute the project's configured `formatter_command` (e.g. `ruff format`, `cargo fmt`, `rubocop -A`) before test runs, preserving strict language agnosticism while eliminating trivial whitespace/linter roundtrips.
+- **Activity-Based Dynamic Timeout Extension (PROP-5)**:
+  - Added stdout activity tracking and dynamic grace extensions to `validation/runner_9projects.py` and `validation/matrix_runner.py`: if active progress was logged within the last 3 minutes when hitting the base timeout, the runner grants a +5 minute extension (up to 2 extensions).
+- **C/C++ Compilation Caching with `ccache` (PROP-6)**:
+  - Installed `ccache` and configured wrapper paths in `validation/projects/t4/Dockerfile` and `validation/projects/fortune/Dockerfile`.
+  - Added `.noctifab/cache/ccache` bind-mount in `validation/run_one.sh` to provide shared, cross-worktree persistent compilation caching.
+- **Graceful SQLite WAL Flush on Container Shutdown (PROP-7)**:
+  - Updated `SQLiteRepository.Close()` in `pkg/infrastructure/storage/sqlite_repository.go` to execute `PRAGMA wal_checkpoint(TRUNCATE);` before closing database connections.
+  - Trapped `SIGTERM` and `SIGINT` signals in `cmd/noctifab/cli/start_runner.go` and `validation/validate.sh` to flush execution reports and cleanly close repositories.
+  - Updated `validation/runner_9projects.py` and `validation/matrix_runner.py` to send `docker kill --signal=SIGTERM` and wait up to 5s before fallback forced removal.
+- **Real-Time Execution Report Mirroring (PROP-8)**:
+  - Updated `validation/validate.sh` to preserve `report/`, `log/`, and `dist/` directory mounts during workspace cleanup.
+  - Added automatic real-time report mirroring from `/app/report_mount` to workspace output paths upon signal reception and execution completion.
+
+### Fixed
+- **Hermetic In-Memory Doubles & Test Suite Race Hardening**:
+  - Protected `mockRepo` in `pkg/interfaces/web/server_test.go` with `sync.RWMutex`, deep state cloning via `state.Clone()`, and `MutateState` helper to eliminate data races between test assertions and background `CommandMailbox` goroutines.
+  - Synchronized `countingProviderClient` in `pkg/infrastructure/llm/client_catalog_test.go` with `sync.Mutex` and replaced fixed sleeps with `require.Eventually` to resolve data races during background catalog refresh.
+
+## [0.72.1] - 2026-09-05
+
+### Fixed
+- **Node/TypeScript Validation Toolchain Provisioning & Test Runner Resilience (`notebook`)**:
+  - Expanded `validation/projects/notebook/Dockerfile` global npm dependencies to include `jest`, `ts-jest`, `@types/jest`, `ts-node`, `supertest`, and `@types/supertest` alongside `vitest` and `typescript`.
+  - Updated `validation/validate.sh` to gracefully fallback between `npm test`, `npx vitest run`, and `npx jest` if local binary paths or scripts differ.
+  - Enhanced Fallback Agent prompt template in `pkg/infrastructure/prompts/defaults/fallback/repair.tmpl` with Tier 2 Toolchain & Test Runner Adaptation guidance to align `package.json` scripts to available test runners.
+- **PM & Planner Agent Prompting (Walking Skeleton Mandate & Story Ceiling)**:
+  - Enforced strict Walking Skeleton Mandate in `generate.tmpl` and `decompose.tmpl`: Task 1 of Story 1 must be a minimal, thin, runnable end-to-end stub (<30s compile & smoke test), deferring heavy domain models and complex ORM schemas to subsequent tasks.
+  - Capped feature stories at $\le 2$ for medium specs ($CU \le 75$) plus 1 hardening story to prevent multi-story timeout exhaustion.
+- **State Transition OCC & Unblocker Inconsistency Grace Period**:
+  - Added `inconsistencyGracePeriod` (default 30s) in `FallbackAgent` and `detectStalledTasks` (`pkg/services/fallback_detect.go`), suppressing false `StallReasonAgentInconsistency` resets during active Generator $\to$ Tester handoffs and SQLite commit windows.
+- **Fallback Sovereign Repair & Package Auto-Detection**:
+  - Expanded `toolPackageMap` in `pkg/services/dependency_manager.go` with `jest`, `ts-node`, `typescript`, `rspec`, `rubocop`, `gradle`, `pytest-django`, sorting candidates longest-first to prevent substring shadowing (`ts-node` vs `node`).
+  - Added package manager auto-detection in `InstallPackageTool` (`pkg/services/dependency_tools.go`) based on workspace manifests (`package.json`, `pyproject.toml`, `Gemfile`, `dune-project`, `Cargo.toml`, `go.mod`).
+- **Worktree Build Caching Pre-Warming & Safe Symlinking**:
+  - Added `PrecreateSharedCacheDirs` in `pkg/services/worktree_cache.go` to pre-warm all toolchain cache subdirectories (`cargo-target`, `gradle`, `m2-repo`, `pip`, `npm`, `ccache`, `dune`, etc.) under `.noctifab/cache/`.
+  - Added safe cleanup of stale/broken symlinks in `createRelativeOrAbsoluteSymlink`.
+- **Scale-Based Dynamic Validation Timeouts**:
+  - Replaced static flat 20-minute timeout in `validation/runner_9projects.py` and `validation/matrix_runner.py` with tiered dynamic envelopes based on architectural complexity: Small CLI Utilities (15–20m), Medium Systems (30m), and Large Multi-Subsystem/Enterprise stacks (35–40m), while maintaining optional `--timeout=<val>` fixed override.
+- **In-Memory Concurrency & Test Suite Race Hardening**:
+  - Protected `MockNotifier` in `pkg/infrastructure/notifier/notifier.go` with `sync.RWMutex`.
+  - Protected `mockStandbyStateRepo` in `pkg/services/standby_loop_test.go` and `planMockLLM` in `pkg/services/orchestrator_server_test.go` with mutex synchronization.
+  - Synchronized `TestFSWatcher_DetectsNewUserStory` in `pkg/services/fs_watcher_test.go` with mutex and `assert.Eventually`.
+
+## [0.72.0] - 2026-09-04
+
+### Added
+- **Append-Only Action Logs & Telemetry Separation (Proposal 6 Part 2 — Storage Optimization)**:
+  - Added migration `0009_append_only_actions.sql` adding `action_id TEXT DEFAULT ''` column and unique index `idx_actions_action_id` on SQLite `actions` table.
+  - Added `ID string \`json:"id,omitempty"\`` field to `domain.Action` and auto-populated with UUID in `domain.AppendAction`.
+  - Refactored `saveActions` in `pkg/infrastructure/storage/sqlite_repository_save.go` to eliminate `DELETE FROM actions WHERE state_id = ?`, replacing it with `INSERT INTO actions (...) VALUES (...) ON CONFLICT(action_id) DO NOTHING`.
+  - Guarantees stable action IDs and rowids across saves without table rewrite churn or SQLite write lock contention on frequent progress updates.
+  - Bounded `Load` query in `pkg/infrastructure/storage/sqlite_repository_load.go` to the most recent `domain.MaxLastActions` (200) actions in chronological order via subquery, while retaining the entire append-only execution history in the database.
+  - Added tests in `pkg/infrastructure/storage/sqlite_dirty_save_test.go` verifying stable action rowids across cache invalidation and bounded 200-item loading when actions exceed `MaxLastActions`.
+
+## [0.71.0] - 2026-09-04
+
+### Added
+- **Extensible Sandbox Toolchain Hooks (Proposal 7 — Language Agnosticism)**:
+  - Introduced `SyntaxChecker` interface in `pkg/services/syntax_check_hook.go` with two implementations: `NoopSyntaxChecker` (default, always passes, zero external binary dependency) and `CommandSyntaxChecker` (executes a configurable shell command template with `{file}` substitution).
+  - `NewCommandSyntaxChecker(command string) SyntaxChecker` factory: returns `NoopSyntaxChecker` when command is empty (preserving language-agnostic behavior) and `CommandSyntaxChecker` otherwise.
+  - Removed hardcoded `checkPythonSyntax` function and `pythonSyntaxCheckTimeout` constant from `pkg/services/production_tools.go`, eliminating the Python-specific dependency violation of the AGENTS.md language agnosticism mandate.
+  - Injected `SyntaxChecker SyntaxChecker` field (via Dependency Injection) into `WriteFileTool`, `EditFileTool`, `WriteFilesTool`, and `ApplyPatchTool`. A `syntaxCheckerOrNoop` nil guard ensures backward compatibility for test construction without explicit injection.
+  - `CommandSyntaxChecker.Check` reuses the existing `needsShell` helper for correct dispatch of compound commands through `sh -c`, and respects a 10-second bounded timeout derived from the parent context.
+- **`sandbox.syntax_check_command` Configuration Field**:
+  - Added `SyntaxCheckCommand string` field (YAML key: `syntax_check_command`) to `SandboxConfig` in `pkg/infrastructure/config/sandbox_types.go`.
+  - Tool registries in `cmd/noctifab/cli/start_helpers.go` and `cmd/noctifab/cli/serve.go` now construct `CommandSyntaxChecker` from `cfg.Sandbox.SyntaxCheckCommand` and inject it into all four file-writing tools.
+- **Validation Project Configurations**:
+  - Added `syntax_check_command` to all 17 validation project `config.yaml` files:
+    - Ruby (`calculator`): `ruby -c {file}`
+    - Python (`djanban`, `frontpunch`, `pyedis`, `notebook`): `python3 -m py_compile {file}`
+    - Go (`auth-vault`, `buffonstream`, `echo`, `fortune`, `jpacioli`, `ninline`, `searchthedocs`, `t4`, `todo-cli`): `gofmt -e {file}`
+    - Rust (`wc`, `stricc`) and OCaml (`ocalogue`): empty (single-file syntax checks not feasible without full build context — no-op by design)
+- **Tests**:
+  - Added `pkg/services/syntax_check_hook_test.go` with 13 unit tests covering `NoopSyntaxChecker`, `NewCommandSyntaxChecker` factory, and `CommandSyntaxChecker.Check` (pass, fail, `{file}` substitution, cancelled context, empty command).
+  - Replaced `TestCheckPythonSyntax` (Python-specific, testing deleted function) in `pkg/services/production_tools_test.go` with `TestWriteFileTool_SyntaxChecker` and `TestEditFileTool_SyntaxChecker` using injected mock checkers.
+- **Documentation**:
+  - Updated `docs/configuration.md` sandbox section with `syntax_check_command` YAML example and field documentation including language-specific examples.
+  - Updated `SPEC.md` sandbox configuration reference with the new field and its no-op default rationale.
+
+## [0.70.0] - 2026-09-04
+
+### Added
+- **String-Literal Aware Code Fence Parser (Proposal 5)**:
+  - Re-architected `stripFencedCodeBlocks` in `pkg/infrastructure/llm/parser.go` with a lexical state machine tracking string literals (`inString`), escape characters, and JSON nesting depth (`jsonDepth`).
+  - Code fences (` ```bash `, ` ```rust `, ` ``` `) appearing inside quoted JSON string payloads (such as file write `content` args) are preserved intact rather than being mistakenly stripped as outer markdown fences.
+  - Eliminates premature JSON envelope truncation, resolving `"no valid JSON object detected"` parsing retries when agents author markdown guides, documentation, or code snippets containing embedded fences.
+  - Added unit test coverage in `pkg/infrastructure/llm/parser_test.go`.
+- **Process-Aware Git Lock Cleaning (Proposal 4 Part 1)**:
+  - Upgraded `CleanStaleLocks` and introduced `CleanStaleLocksWithThreshold` in `pkg/services/rebase_queue.go`.
+  - Added process liveness checking (`isProcessAlive` via signal 0) for Git locks storing PIDs: immediately removes dead-process locks while preserving active locks.
+  - Increased fallback age threshold for PID-less locks from 5 seconds to 60 seconds (`defaultStaleLockThreshold`), eliminating the race condition where concurrent checkouts and long compilations had active index locks deleted prematurely.
+  - Added unit test coverage in `pkg/services/rebase_queue_test.go`.
+
+## [0.69.0] - 2026-09-04
+
+### Added
+- **Unified Pipelined Task Synthesis / Co-Synthesis Mode (`single_pass_co_synthesis`, `co_synthesis`)**:
+  - Expanded `NormalizeArchitecture` to support `single_pass_co_synthesis`, `co_synthesis`, `single_pass_synthesis`, and `spcs` aliases mapping directly to canonical `single_pass`.
+  - Upgraded `executeTaskSinglePass` in `pkg/services/orchestrator_execute_single_pass.go` to enforce zero-token code auto-formatting via `stageAndCommit` and pre-stage stub rejection via `auditGeneratorFunctionalOutput`, ensuring generated implementations and tests meet high functional quality without hollow stubs before verification.
+  - Added unit test coverage in `pkg/services/orchestrator_execute_single_pass_test.go` and `pkg/infrastructure/config/config_validation_test.go`.
+- **Pre-Flight `.gitignore` Synthesis & Build Artifact Guardrails (`EnsureProjectGitignore`, `IsPathExcluded`)**:
+  - Implemented `EnsureProjectGitignore` in `pkg/services/gitignore_guardrail.go` to non-destructively ensure project repositories contain critical build artifact, test cache, and dependency ignore rules (`target/`, `node_modules/`, `dist/`, `bin/`, `build/`, `__pycache__/`, `*.py[cod]`, `.venv/`, `venv/`, `.bundle/`, `*.class`, `*.o`, `*.so`, `*.dylib`, `*.log`, `.noctifab/`).
+  - Integrated `.gitignore` verification into CLI pre-flight checks (`cmd/noctifab/cli/preflight.go`).
+  - Strengthened `IsPathExcluded` in `pkg/services/workspace_discovery.go` with default build directory and binary artifact extension guardrails, preventing runaway database and Git worktree tracking when testing unignored target workspaces.
+  - Added BDD test specifications in `pkg/services/gitignore_guardrail_test.go` and `pkg/services/workspace_discovery_test.go`.
+
+## [0.68.0] - 2026-09-04
+
+### Added
+- **Shared Dependency Worktree Caches (`SeedTaskWorktreeWorkspace`, `BuildSharedCacheEnv`)**:
+  - Implemented multi-ecosystem shared dependency and build cache management in `pkg/services/worktree_cache.go` for parallel task worktrees.
+  - **Symlink Dependency Projection**: Projects existing root dependency directories (`node_modules`, `.venv`, `venv`, `vendor`, `.bundle`, `gradle/` wrapper, `.mvn/` wrapper, `deps`, `_opam`) and wrapper scripts (`gradlew`, `mvnw`) into worktrees in `< 1ms`, eliminating redundant package installations.
+  - **Universal Build Cache Redirection**: Automatically configures centralized build cache storage under `.noctifab/cache/` via environment variables (`CARGO_TARGET_DIR`, `GOCACHE`, `GRADLE_USER_HOME`, `MAVEN_OPTS`, `PIP_CACHE_DIR`, `npm_config_cache`, `CCACHE_DIR`, `BUNDLE_PATH`, `NUGET_PACKAGES`, `COMPOSER_CACHE_DIR`, `DUNE_CACHE`, `HEX_HOME`, `MIX_HOME`) and worktree configs (`.cargo/config.toml`, `gradle.properties` task build caching).
+  - **Safe Worktree Cleanup**: Ensures worktree pruning unlinks projected symlinks without recursing into or modifying the shared root dependencies.
+  - Added BDD unit tests in `worktree_cache_test.go` and synchronized documentation in `docs/architecture.md` and `docs/index.md`.
+
+## [0.67.0] - 2026-09-04
+
+
+### Added
+- **Smart Greenfield vs. Legacy Codebase Discovery (`ScanLegacyFiles`, `IsGreenfieldWorkspace`)**:
+  - Implemented smart legacy code scanning in `pkg/services/legacy_scanner.go` to distinguish true legacy codebases from greenfield starter repositories.
+  - Automatically filters package manifests, lockfiles, project metadata, toolchains, build targets, and linter configs across all mainstream languages (Go, Rust, Node, Python, Ruby, Java/JVM, C/C++, PHP, Elixir).
+  - Inspects file content to filter empty or near-empty stub files (< 5 significant lines of code).
+  - Enforces explicit greenfield detection: suppresses `LEGACY STABILIZATION MANDATE` unless the workspace contains $\ge 50$ total non-manifest, non-comment lines of code across candidate files, preventing false `US-001` characterization loops on greenfield projects.
+  - Added comprehensive unit tests in `legacy_scanner_test.go` and updated `roadmap_generator_test.go`.
+  - Synchronized architectural reference in `docs/architecture.md` and feature summary in `docs/index.md`.
+
+## [0.66.0] - 2026-09-04
+
+
+### Added
+- **Incremental SQL Upserts for State Persistence**:
+  - Replaced full-table `DELETE FROM <table> WHERE state_id = ?` + full re-insert sweeps in SQLite state storage with atomic, in-place `UPSERT` (`INSERT ... ON CONFLICT DO UPDATE`) across `tasks`, `stories`, `workspace_files`, `validation_criteria`, and `active_agents`.
+  - Added selective orphan deletion (`WHERE state_id = ? AND id NOT IN (...)`) to prune only removed records while preserving stable SQLite rowids and B-tree page allocations for existing records across progress updates.
+  - Added unit test coverage in `sqlite_dirty_save_test.go` verifying rowid stability, new task insertion, and pruned task deletion.
+
+## [0.65.0] - 2026-09-04
+
+### Added
+- **Unified Fallback Agent (Omni-Agent)**:
+  - Merged `UnblockerAgent` (continuous passive pipeline health monitoring, log scrubbing, 0-token regex fast-paths, progressive log scaling) and `LastResortAgent` (active sovereign cross-domain workspace repairs, forced compilation, test synchronization) into a single, unified `FallbackAgent`.
+  - Added `AgentRoleFallback` (`AgentRole = "FALLBACK"`) with seamless backwards-compatible aliases for `UNBLOCKER` and `LAST_RESORT`.
+  - Implemented `FallbackAgentConfig`, `FallbackTriggersConfig`, and `FallbackConfig` with automatic schema fallback.
+  - Implemented dynamic budget cliff and timeout detection (`budget_cliff_ratio`, default: 50%).
+  - Added `ScopeTriageCmd` to prioritize walking skeletons (`US-001`/`US-002`) and defer downstream scope (`US-003+`) upon reaching budget cliffs.
+  - Added `BypassToFallbackCmd` (aliased to `BypassToLastResortCmd`) for instant sovereign omni-builder escalation upon reaching stall count thresholds (`StallCount >= 2`).
+  - Added dedicated prompt contract `fallback.txt` and default template `fallback/repair.tmpl`.
+  - Authored comprehensive documentation in `docs/fallback_agent.md` and updated `SPEC.md`, `README.md`, and `docs/index.md`.
+
+## [0.64.0] - 2026-09-03
+
+
+### Added
+- **Structured `user_stories` Configuration Schema (`agents.product_manager.user_stories`)**:
+  - Implemented `UserStoriesConfig` and `UserStoryComplexityConfig` under `agents.product_manager.user_stories` with `max_count` and `complexity: {min, max}`.
+  - Added helper accessor methods `GetMaxUserStories()`, `GetMinComplexity()`, and `GetMaxComplexity()`.
+  - Updated all 17 validation project configurations to use the new schema.
+- **Dynamic Complexity & Story Sizing Prompt Binding**:
+  - Bound `MinComplexity` and `MaxComplexity` into `ProductManagerPromptData`, `generate.tmpl`, and `audit.tmpl`.
+  - Product Manager dynamically balances story generation to target configured functional complexity bounds.
+- **Observable Primary Entry Point First Mandate**:
+  - Updated PM prompts to require that Task 1 of `US-001` implements a working, compiling primary entry point (CLI dispatcher, socket daemon, or library export) rather than empty placeholder stubs.
+- **Automatic Executable Permissions Detection**:
+  - Implemented `determineFilePerm` in `WriteFileTool` and `WriteFilesTool`, automatically setting `0755` permissions for files in `bin/`, `exe/`, `scripts/`, or matching `*.sh`.
+- **Language-Agnostic Thin Shell Entrypoint Pattern & Test Scope Alignment**:
+  - Mandated that primary executable entrypoints (`main.rs`, `main.go`, `main.py`, `server.ts`, `Main.java`) are thin wrappers (< 15 lines) delegating immediately to testable core entrypoint functions (`run()`, `create_app()`, `WorkerEngine`).
+  - Enforced that Tester agents author fast in-process unit/integration tests against library APIs directly in memory during component tasks, reserving external compiled binary OS invocations for entrypoint and black-box E2E tasks.
+- **Multi-Language Empty Entrypoint Anti-Stub Detection (`AntiStubValidator`)**:
+  - Extended pre-tester static quality gate to detect single-line and multi-line empty `main` functions and dummy stubs across Go, C/C++, Java, Kotlin, Scala, Python (`if __name__ == '__main__': pass`), and TypeScript/JavaScript.
+- **In-Memory Test Double & Broker Deadlock Prevention**:
+  - Mandated in-memory repository fakes (`InMemoryRepository`, `FakeQueue`, `InMemoryStore`, SQLite `:memory:`) for domain and component tasks across all Generator and Tester prompts, eliminating test stalls on live PostgreSQL, Redis, and Valkey network sockets.
+- **Actionable Test & Linter Timeout Diagnostics (`RunTestsTool`, `RunLinterTool`)**:
+  - Added descriptive timeout diagnostics on `context.DeadlineExceeded` in `RunTestsTool` and `RunLinterTool` to immediately alert agents of infinite loops, deadlocks, or blocking I/O.
+- **Validation Matrix Optimizations**:
+  - Pre-cached npm toolchain packages in `notebook/Dockerfile`.
+  - Fixed root user and OPAM switch environment in `ocalogue/Dockerfile`.
+  - Rewrote `ninline/SPEC.md` in high-density Engineering English.
+  - Tuned `jpacioli` with `single_pass` architecture and `wc` with non-blocking concurrency settings.
+
+
+## [0.63.0] - 2026-09-02
+
+### Added
+- **Story-Level Parallelism & DAG Scheduling (`noctifab start`)**:
+  - Integrated `StoryDAGScheduler` and `start_dag_loop.go` into `cmd/noctifab/cli/start_runner.go`.
+  - Dispatches independent user stories concurrently across isolated worker branches when `agents.orchestrator.number > 1` or `vcs.use_worktrees: true`.
+  - Automatically caches succeeded stories across iteration loops with `MarkStoryCompleted` to immediately unblock dependent downstream stories.
+- **Product Manager Minimal Dependency & Parallelism Slicing Mandate**:
+  - Updated `generate.tmpl` and `audit.tmpl` with the explicit directive: *"The goal is to exploit user-story level parallelism."*
+  - Enforced that `US-001` provides foundational scaffolding (`depends_on: []`), while subsequent feature stories declare dependencies strictly on `["US-001"]` to enable maximum parallel concurrency.
+- **Batched Multi-File Creation Tool (`write_files`)**:
+  - Implemented `WriteFilesTool` in `pkg/services/batch_tools.go` supporting structured multi-file creation in a single LLM response turn.
+  - Updated tool registries, diagnostic cache invalidation, and prompt contracts.
+- **Per-Agent Adaptive Complexity Routing**:
+  - Configured fast, standard, and heavy complexity routing tiers per agent in ensemble configurations.
+
+## [0.62.0] - 2026-09-01
+
+### Added
+- **Preflight Model Verification & Auto-Resolution (`/models`)**:
+  - Implemented `PingAndResolveModel` in `pkg/infrastructure/llm/ping.go` and integrated it into `cmd/noctifab/cli/preflight.go`.
+  - Automatically queries the provider's `/models` endpoint during preflight, validates configured model identifiers, and auto-upgrades deprecated/missing models or aliases (`auto`, `latest`, empty) to the highest-ranked active model upfront, eliminating startup failover delays.
+- **SHA-256 Context Deduplication & Integrity Verification**:
+  - Implemented cryptographic SHA-256 content checksum verification in `TaskDiagnosticCache` (`pkg/services/diagnostic_cache.go`).
+  - When agents call `read_file` on unmodified files already present in the prompt context (such as `SPEC.md` or user stories), the cache returns a concise reference instead of re-injecting duplicate multi-kilobyte payloads, preventing token bloat.
+  - Automatically verifies disk checksums on each read and invalidates the cache if any tool or process modifies the file on disk.
+- **Persistent Model Parameter Capability Cache (`globalCapabilityCache`)**:
+  - Implemented in-memory parameter capability caching with normalized model keys in `pkg/infrastructure/llm/openai_adapt.go`.
+  - Memorizes rejected parameters (`temperature`, `max_tokens`, `response_format`, `extra_body`) on first error, guaranteeing subsequent calls to that model never re-send the invalid parameter.
+  - Added proactive reasoning model adaptation for `o1`, `o3`, `o4`, `gpt-5`, `luna`, and `claude` (omitting temperature and using `max_completion_tokens`).
+- **2-Turn Surgical Repair Budget & Pre-Reading**:
+  - Enhanced `executeSurgicalRepairTurn` in `pkg/services/orchestrator_execute_turns.go` to pre-read failing diagnostic files and inject them directly into the surgical repair generator's context.
+  - Expanded surgical repair turn budget from 1 to 2 turns in `pkg/services/orchestrator_generator.go` and prompt template `surgical_repair.tmpl`.
+- **`ninline` Model-Per-Agent Validation Project**:
+  - Added `validation/projects/ninline/` testing generalized $(M,N,K)$-game CLI & engine development in Python 3.
+  - Configured pure Model-Per-Agent routing (Product Manager: Claude 3.5 Sonnet, Planner: GPT-4o, Generators: DeepSeek Coder, Testers: Gemini Flash, Auditor: Claude Sonnet) with zero ensemble overhead.
+  - Registered `ninline` in `validation/projects/TESTING_GUIDE.md` under Tier 1.
+
+### Fixed
+- **Alpine BusyBox `validate.sh` Workspace Collision**:
+  - Fixed `validation/validate.sh` by cleaning `/app/src_mount` before setup and replacing colliding `cp -a` commands with recursive directory copy (`cp -Rf`) to eliminate BusyBox file-exists collisions.
+- **Reportfs Atomic Writer & Terminal Status Resilience**:
+  - Made POSIX `Chmod(0600)` non-fatal in `pkg/infrastructure/reportfs/atomic_writer.go` for virtual Docker bind mounts.
+  - Added direct fallback in `pkg/services/reporting/agent.go` ensuring reports are always marked with final status (`SUCCESS` / `FAILED`).
+- **Inspection Tool-Call Churn Elimination**:
+  - Added prompt Rule 10 forbidding redundant re-reading of prompt context files across all generator prompt templates.
+  - Seeded initial file contexts into `TaskDiagnosticCache` on task start.
+
+## [0.61.0] - 2026-09-01
+
+### Added
+- **Multi-Instance Sampling for Ensemble Models (`count: N`)**:
+  - Added `count` field (default: `1`) to `AgentProviderRef` in `pkg/infrastructure/config/types.go` and `GetCount()` helper.
+  - Updated `ResilientLLMRouter.resolveNamedClients` in `pkg/infrastructure/llm/router_ensemble.go` to instantiate $N$ independent candidate handles per model reference with indexed candidate naming (`<name>-1`, `<name>-2`, ...).
+  - Enables homogeneous self-consistency majority voting in `consensus`, multi-sample candidate generation in `best_of_n_scored`, and parallel quorum expansion in `parallel` without duplicating YAML boilerplate.
+  - Added `count: 2` to validation project configurations for `auth-vault` (Testers and Auditor), `frontpunch` (Testers), and `stricc` (Product Manager).
+  - Documented `count` field usage in `docs/ensembles.md`, `docs/configuration.md`, and `docs/configuration_guidelines.md`.
+
+## [0.60.1] - 2026-08-31
+
+### Fixed
+- **Validation Projects Toolchain & Docker Images**:
+  - Pre-installed `rustfmt`, `clippy`, and `build-base` in `validation/projects/stricc/Dockerfile` to ensure linters and formatters run cleanly without runtime network dependencies.
+  - Pre-installed `django`, `pytest`, `pytest-django`, `ruff`, `mypy`, and `django-stubs` in `validation/projects/djanban/Dockerfile`.
+  - Pre-installed `fastapi`, `uvicorn`, `redis`, `pytest`, `pytest-asyncio`, `ruff`, `mypy`, `httpx`, `beautifulsoup4`, `lxml`, and `asyncpg` in `validation/projects/searchthedocs/Dockerfile`.
+- **Validation Projects Configuration & Sandbox Whitelists**:
+  - Added `make` to `sandbox.allowed_commands` in `pyedis` and `echo` validation projects.
+  - Added `coverage`, `pytest`, and `python3` to `sandbox.allowed_commands` in `frontpunch` validation project.
+  - Added `clang`, `clang-format`, `clang-tidy`, `sh`, and `bash` to `sandbox.allowed_commands` in `fortune` validation project.
+  - Corrected `vcs.repository` in `searchthedocs` from `diegojromerolopez/searchreadthedocs` to `diegojromerolopez/searchthedocs`.
+  - Configured `context.mode: full` for `calculator` project.
+  - Reordered `llm.priority` in `jpacioli` to prioritize active providers before missing API keys.
+- **OCC Concurrency & Failure Resilience**:
+  - Increased SQLite OCC concurrency retries across all 16 validation projects to `max_retries: 20`, `backoff_base: 100ms`, `backoff_factor: 2` to eliminate OCC write collisions under 6 concurrent generators.
+  - Set `clarification_timeout_action: continue` across all validation projects to prevent premature halts on unprompted questions.
+  - Enforced 10-minute maximum runtime (`max_duration: 10m`, `max_silent_stall_duration: 10m`) across all validation project configurations per AGENTS.md mandate.
+  - Optimized Qwen provider reasoning latency by capping `thinking_budget: 2048` across all projects.
+  - Configured LLM provider retries to `max_retries: 3`, `retry_backoff: 500ms` for resilient exponential backoff on transient HTTP 429 rate-limits.
+- **Router Ensemble Auditor Resolution**:
+  - Fixed auditor consensus ensemble configuration resolution in `pkg/infrastructure/llm/router_ensemble.go` to properly resolve `r.cfg.Agents.Auditor`.
+
+### Added
+- **Configuration Guidelines Documentation**:
+  - Added comprehensive Noctifab configuration guidelines and best practices in `docs/configuration_guidelines.md` covering OCC tuning, clarification flows, runtime watchdogs, LLM provider hierarchies, MoM topology selection, and language-specific sandbox templates.
+
+## [0.60.0] - 2026-08-31
+
+### Added
+- **Multi-Model Ensembling (Mixture of Models / MoM)**:
+  - Implemented 8 multi-model topologies in `pkg/infrastructure/llm/ensemble`:
+    - **`parallel`** (`ParallelClient`): Speculative Quorum ($K \ge \text{min\_models}$) fan-out with structured action synthesis and straggler elimination.
+    - **`serial`** (`SerialClient`): Multi-stage sequential refinement with deterministic AST/anti-stub Early Exit (`early_exit_on_pass: true`).
+    - **`consensus`** (`ConsensusClient`): Dual-perspective parallel voting with fast 1-hop unanimous approval and tie-breaker escalation.
+    - **`race`** (`RaceClient`): Speculative first-valid race returning in 1–3s with instant cancellation of slower models.
+    - **`cascade`** (`CascadeClient`): Tiered fast-path execution with automatic escalation to frontier models on stubs/errors.
+    - **`decomposed`** (`DecomposedClient`): Parallel specialist generation across domains/services with deterministic action merging.
+    - **`best_of_n_scored`** (`ScoredClient`): Local CPU scoring (AST parse, anti-stub scanner, line bounds, assertions) promoting highest quality candidates with zero synthesis cost.
+    - **`adaptive`** (`AdaptiveClient`): Self-tuning dynamic task classification routing to Fast Tier (1–3s for docs/typos), Heavy Tier (speculative quorum for concurrency/syscalls/remediations), or Standard Tier.
+  - Added `EnsembleConfig`, `EnsembleStrategy`, `EnsembleStageSpec`, and `DecomposedTargetSpec` in `pkg/infrastructure/config/ensemble_types.go`.
+  - Added support for unlimited token budgets across runtime, story, and agent tiers using `max_tokens: -1` (or `0`).
+  - Added per-model parameter overrides (`model`, `temperature`, `max_tokens`, `enable_thinking`, `thinking_budget`, `extra_params`) in `AgentProviderRef`.
+  - Integrated ensemble candidate construction into `ResilientLLMRouter` (`pkg/infrastructure/llm/router_ensemble.go`).
+  - Added user-facing documentation in `docs/ensembles.md` and updated `docs/index.md`.
+- **AI-Driven Configuration Repair (`noctifab validate --fix`)**:
+  - Implemented automatic diagnosis, LLM-based repair, semantic explanation output, and interactive visual diff application for malformed or invalid `.noctifab/config.yaml` files via `cmd/noctifab/cli/validate_fix.go`.
+  - Added `--fix` (`-f`) and `--yes` (`-y`) flags to `noctifab validate`.
+  - Added automated backup generation (`.noctifab/config.yaml.bak`) prior to applying AI-repaired configuration files.
+  - Implemented `ValidateBytes` in `pkg/infrastructure/config/config.go` for pre-write verification.
+- **Ensemble Observability & Performance Telemetry**:
+  - Added real-time thread-safe telemetry tracker (`pkg/infrastructure/llm/ensemble/telemetry.go`) recording speculative quorum completions, early exits, consensus agreement rates, and token savings.
+  - Enhanced markdown execution reports (`pkg/services/reporting/renderer.go`) with a dedicated **Ensemble Performance & Observability** matrix.
+- **Validation Projects Upgrade**:
+  - Upgraded all 16 target validation project configurations under `validation/projects/*/` with high-performance ensemble topologies (`parallel` quorum for Product Manager, `adaptive` routing for Generators, `best_of_n_scored` for Testers, `consensus` for Auditor, and unlimited token budgets `-1`).
+
 ## [0.59.5] - 2026-08-31
 
 ### Changed

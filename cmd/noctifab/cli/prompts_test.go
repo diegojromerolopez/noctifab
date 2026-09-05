@@ -76,7 +76,7 @@ func TestPromptsListCommand(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		for _, needle := range []string{"product_manager", "planner", "tester", "generator", "qa", "spec", "last_resort", "auditor", "acceptance", "implement", "write_breadth_first", "repair"} {
+		for _, needle := range []string{"product_manager", "planner", "tester", "generator", "qa", "spec", "fallback", "auditor", "acceptance", "implement", "write_breadth_first", "repair"} {
 			if !strings.Contains(out, needle) {
 				t.Errorf("expected %q in list output, got:\n%s", needle, out)
 			}

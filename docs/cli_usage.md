@@ -92,6 +92,12 @@ noctifab start [target_dir] --standby -d
 | `--spec` | `-s` | `SPEC.md` | Path to feature specification file |
 | `--resume` | | `false` | Resume execution from the first incomplete user story, skipping completed stories |
 
+#### Automated Preflight Diagnostics
+Before dispatching agents, `noctifab start` runs comprehensive preflight verification:
+- **Toolchain & Binary Integrity**: Inspects `$PATH` for sandbox test, lint, and formatting toolchains.
+- **Provider Live Model Discovery**: Calls each provider's `/models` endpoint to test authentication and validate model availability. Deprecated or 404 models are automatically upgraded to the provider's highest-ranked active flagship model upfront, eliminating startup failover delays.
+- **Quality Gate Validation**: Verifies release gate constraints and language consistency before state initialization.
+
 ### 4. `demo`
 Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Ideal for testing Noctifab's dark factory loop with zero LLM API keys.
 

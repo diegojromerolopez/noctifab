@@ -5,39 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
-
-// pythonSyntaxCheckTimeout bounds each py_compile invocation so a hung
-// interpreter cannot block file write/edit tools indefinitely.
-const pythonSyntaxCheckTimeout = 10 * time.Second
-
-func checkPythonSyntax(ctx context.Context, path string) error {
-	if !strings.HasSuffix(path, ".py") {
-		return nil
-	}
-	checkCtx, cancel := context.WithTimeout(ctx, pythonSyntaxCheckTimeout)
-	defer cancel()
-	// Try running python3 -m py_compile
-	cmd := exec.CommandContext(checkCtx, "python3", "-m", "py_compile", path)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		// Fallback to python
-		cmdFallback := exec.CommandContext(checkCtx, "python", "-m", "py_compile", path)
-		if outFallback, errFallback := cmdFallback.CombinedOutput(); errFallback != nil {
-			errMsg := string(outFallback)
-			if len(errMsg) == 0 {
-				errMsg = string(out)
-			}
-			return fmt.Errorf("python syntax compilation failed:\n%s", errMsg)
-		}
-	}
-	return nil
-}
 
 // resolveSandboxPath checks prefix path jail and blacklists .noctifab
 func resolveSandboxPath(projectPath, targetPath string) (string, error) {
@@ -94,8 +67,20 @@ func (t *ReadFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	return string(content), nil
 }
 
+func determineFilePerm(path string) os.FileMode {
+	cleanRel := filepath.ToSlash(filepath.Clean(path))
+	if strings.HasPrefix(cleanRel, "bin/") || strings.HasPrefix(cleanRel, "exe/") || strings.HasPrefix(cleanRel, "scripts/") || strings.HasSuffix(cleanRel, ".sh") {
+		return 0755
+	}
+	return 0644
+}
+
 // WriteFileTool implements write_file.
-type WriteFileTool struct{}
+type WriteFileTool struct {
+	// SyntaxChecker is the optional post-write syntax validation hook.
+	// When nil a NoopSyntaxChecker is used (no external binary dependency).
+	SyntaxChecker SyntaxChecker
+}
 
 func (t *WriteFileTool) Name() string { return "write_file" }
 func (t *WriteFileTool) Description() string {
@@ -118,10 +103,14 @@ func (t *WriteFileTool) Execute(ctx context.Context, state *domain.State, args m
 		return "", err
 	}
 	content = normalizeMakefileTabs(path, content)
-	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+	perm := determineFilePerm(path)
+	if err := os.WriteFile(fullPath, []byte(content), perm); err != nil {
 		return "", err
 	}
-	if err := checkPythonSyntax(ctx, fullPath); err != nil {
+	if perm == 0755 {
+		_ = os.Chmod(fullPath, 0755)
+	}
+	if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
 		return "", err
 	}
 	return "File written successfully", nil
@@ -135,8 +124,22 @@ type ReplacementChunk struct {
 	ReplacementContent string
 }
 
+// syntaxCheckerOrNoop returns the given checker if non-nil, otherwise a
+// NoopSyntaxChecker. This provides a safe nil guard so tools constructed
+// without explicit injection (e.g. in unit tests) work correctly.
+func syntaxCheckerOrNoop(sc SyntaxChecker) SyntaxChecker {
+	if sc == nil {
+		return &NoopSyntaxChecker{}
+	}
+	return sc
+}
+
 // EditFileTool implements edit_file.
-type EditFileTool struct{}
+type EditFileTool struct {
+	// SyntaxChecker is the optional post-edit syntax validation hook.
+	// When nil a NoopSyntaxChecker is used (no external binary dependency).
+	SyntaxChecker SyntaxChecker
+}
 
 func (t *EditFileTool) Name() string { return "edit_file" }
 func (t *EditFileTool) Description() string {
@@ -238,7 +241,7 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	if err := os.WriteFile(fullPath, []byte(newContent), 0644); err != nil {
 		return "", err
 	}
-	if err := checkPythonSyntax(ctx, fullPath); err != nil {
+	if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
 		return "", err
 	}
 	return "Edits applied successfully", nil
@@ -305,8 +308,9 @@ func (t *ListDirectoryTool) Execute(ctx context.Context, state *domain.State, ar
 
 // RunTestsTool implements run_tests by delegating execution to the active Sandbox engine.
 type RunTestsTool struct {
-	Runner  Sandbox
-	Timeout time.Duration
+	Runner           Sandbox
+	FormatterCommand string
+	Timeout          time.Duration
 }
 
 func (t *RunTestsTool) Name() string { return "run_tests" }
@@ -327,7 +331,22 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	}
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
-	return t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
+
+	// Deterministic Auto-Formatter Pre-Pass:
+	// If a project has configured a formatter_command (e.g. ruff format, cargo fmt, rubocop -A),
+	// run it before executing the test command so formatting is clean.
+	if t.FormatterCommand != "" {
+		if _, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Formatter pre-test auto-fix (%s) skipped on error: %v\n", t.FormatterCommand, err)
+		}
+	}
+
+	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
+	if runCtx.Err() != nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+		timeoutMsg := fmt.Sprintf("TIMEOUT: Test command timed out after %v (possible infinite loop, deadlock, or blocking I/O waiting for input/socket).\nLast output:\n%s", timeout, out)
+		return timeoutMsg, fmt.Errorf("test command timed out after %v", timeout)
+	}
+	return out, err
 }
 
 // countLinterIssues counts the number of distinct linter issue lines in the
@@ -389,6 +408,9 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 	}
 
 	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")
+	if runCtx.Err() != nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+		return fmt.Sprintf("TIMEOUT: Linter command timed out after %v.\nLast output:\n%s", timeout, out), fmt.Errorf("linter command timed out after %v", timeout)
+	}
 	if err == nil {
 		return out, nil
 	}

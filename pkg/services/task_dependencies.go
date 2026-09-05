@@ -82,7 +82,16 @@ func ResolveTaskDependencies(tasks []domain.Task, projectPath string) ([]domain.
 				continue
 			}
 
-			// 2. Check if dependency is a user story reference (e.g., "US-001", "US-001.md", "roadmap/US-001.md")
+			// 2. Check if dependency is a valid cross-story task reference (e.g., "US-001-TASK-001")
+			if isTaskReference(depClean) {
+				storyID := ExtractStoryID(depClean)
+				if storyID != "" && storyExists(projectPath, storyID) {
+					cleanDeps = append(cleanDeps, depClean)
+					continue
+				}
+			}
+
+			// 3. Check if dependency is a user story reference (e.g., "US-001", "US-001.md", "roadmap/US-001.md")
 			if isStoryReference(depClean) {
 				if storyExists(projectPath, depClean) {
 					// Referenced user story exists; prerequisite is satisfied. Omit from active task DAG dependencies.
@@ -92,7 +101,7 @@ func ResolveTaskDependencies(tasks []domain.Task, projectPath string) ([]domain.
 				continue
 			}
 
-			// 3. Dependency is neither a current task nor a valid story file (LLM hallucination)
+			// 4. Dependency is neither a current task nor a valid story file (LLM hallucination)
 			fmt.Fprintf(os.Stderr, "⚠ Warning: pruning unknown/hallucinated task dependency %q from task %q (%s)\n", depClean, task.ID, task.Title)
 		}
 
@@ -160,8 +169,19 @@ func IsSharedRootBuildFile(path string) bool {
 	return sharedRootBuildFiles[clean]
 }
 
+// isTaskReference checks if a dependency string looks like a task identifier (e.g. "US-001-TASK-001", "TASK-001", "task-1").
+func isTaskReference(dep string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(dep))
+	return strings.Contains(upper, "-TASK-") ||
+		strings.Contains(upper, "TASK-") ||
+		strings.HasPrefix(upper, "TASK-")
+}
+
 // isStoryReference checks if a dependency string looks like a user story identifier.
 func isStoryReference(dep string) bool {
+	if isTaskReference(dep) {
+		return false
+	}
 	upper := strings.ToUpper(dep)
 	return strings.HasPrefix(upper, "US-") ||
 		strings.Contains(upper, "US-") ||

@@ -112,7 +112,8 @@ if [ -n "${HOME:-}" ] && [ -d "${HOME}" ]; then
   PARENT_CACHE="${HOME}/.noctifab/cache"
   mkdir -p "${PARENT_CACHE}/cargo/registry" "${PARENT_CACHE}/cargo/git" \
            "${PARENT_CACHE}/go-build" "${PARENT_CACHE}/go-mod" \
-           "${PARENT_CACHE}/pip" "${PARENT_CACHE}/npm" "${PARENT_CACHE}/m2"
+           "${PARENT_CACHE}/pip" "${PARENT_CACHE}/npm" "${PARENT_CACHE}/m2" \
+           "${PARENT_CACHE}/ccache"
   CACHE_ARGS+=(
     -v "${PARENT_CACHE}:/root/.cache"
     -v "${PARENT_CACHE}/cargo/registry:/usr/local/cargo/registry"

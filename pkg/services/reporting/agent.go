@@ -131,7 +131,9 @@ func (a *ReporterAgent) Finish(ctx context.Context, outcome domain.ExecutionOutc
 	// Render & write final atomic report
 	content := a.renderer.RenderMarkdown(&snapshot)
 	if err := a.writer.WriteAtomic(ctx, a.path, content); err != nil {
-		_, _ = fmt.Fprintf(a.warnings, "noctifab report write failed: %v\n", err)
+		if writeErr := os.WriteFile(a.path, content, 0644); writeErr != nil {
+			_, _ = fmt.Fprintf(a.warnings, "noctifab report write failed: %v (fallback failed: %v)\n", err, writeErr)
+		}
 	}
 }
 

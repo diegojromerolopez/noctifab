@@ -3,6 +3,14 @@
 ## 1. Overview
 `frontpunch` is an asynchronous background job processing library for Python, heavily inspired by Ruby's Sidekiq. It uses Valkey (preferred for licensing reasons) or Redis as a message broker for high-throughput, low-latency job distribution, supports concurrent multi-threaded execution workers, schedules tasks for future runtimes, and implements robust error retries with exponential backoff.
 
+### 1.1 Minimal Project Skeleton (Walking Skeleton Priority for US-001)
+To ensure rapid verification, the first user story (`roadmap/US-001.md`) MUST establish a runnable walking skeleton delivering the minimal end-to-end flow:
+1. `frontpunch/__init__.py`: Package entrypoint exposing `@task`, `.delay()`, and `enqueue()`.
+2. `frontpunch/client.py`: Basic Redis/Valkey client pushing JSON job payloads (`LPUSH`).
+3. `frontpunch/worker.py` & CLI `frontpunch worker`: Minimal worker loop pulling from queues (`BRPOP`) and executing functions.
+4. Baseline smoke test in `tests/test_basic.py` verifying that enqueuing and worker execution works.
+Subsequent stories then incrementally add exponential backoff retries, cron scheduling, and dashboard features.
+
 ---
 
 ## 2. Requirements

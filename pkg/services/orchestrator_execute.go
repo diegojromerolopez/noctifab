@@ -146,12 +146,13 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	var passed bool
 	var logMsg string
 
-	if o.cfg.LastResort.Enabled && (task.StallCount >= 4 || strings.Contains(task.RecoveryDirective, "SOVEREIGN REPAIR DIRECTIVE")) {
-		fmt.Printf("⚡ [Orchestrator] Task %s reached stall count %d with sovereign repair directive; directly invoking Last-Resort Agent...\n", taskID, task.StallCount)
-		passed, logMsg = o.RunLastResortAgent(ctx, task, &taskState, taskGit, task.RecoveryDirective, "unblocker_stall_escalation")
+	fbCfg := o.cfg.GetFallback()
+	if fbCfg.Enabled && (task.StallCount >= 2 || task.FallbackUsed || task.LastResortUsed || strings.Contains(task.RecoveryDirective, "SOVEREIGN REPAIR DIRECTIVE")) {
+		fmt.Printf("⚡ [Orchestrator] Task %s flagged for direct Fallback Agent sovereign execution (StallCount: %d, FallbackUsed: %v)...\n", taskID, task.StallCount, task.FallbackUsed)
+		passed, logMsg = o.RunFallbackAgent(ctx, task, &taskState, taskGit, task.RecoveryDirective, "fallback_stall_escalation")
 	} else {
 		switch arch {
-		case "single_pass", "single_pass_execution", "spe":
+		case "single_pass", "single_pass_execution", "spe", "single_pass_co_synthesis", "co_synthesis", "single_pass_synthesis", "spcs":
 			o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
 		case "breadth_first", "breadth_first_generation", "bfg", "big":
 			o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
@@ -186,24 +187,24 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			effectiveMaxRetries = 3
 		}
 
-		// Last-Resort Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, QA deadlock, or stall count >= 4)
+		// Fallback Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, QA deadlock, stall count >= 2, or FallbackUsed)
 		category := CategorizeFailureLog(logMsg)
 		isSandbox := !passed && category == FailureSandbox
 		canRetry := !passed && !isSandbox && task.Retries < effectiveMaxRetries
 
-		if !passed && o.cfg.LastResort.Enabled && (!canRetry || isSandbox || qaBlocked != "" || task.StallCount >= 4) {
+		if !passed && fbCfg.Enabled && (!canRetry || isSandbox || qaBlocked != "" || task.StallCount >= 2 || task.FallbackUsed || task.LastResortUsed) {
 			triggerReason := "retries_exhausted"
 			if isSandbox {
 				triggerReason = "missing_toolchain_or_sandbox_error"
 			} else if qaBlocked != "" {
 				triggerReason = "qa_gate_deadlock"
-			} else if task.StallCount >= 4 {
-				triggerReason = "unblocker_stall_escalation"
+			} else if task.StallCount >= 2 || task.FallbackUsed || task.LastResortUsed {
+				triggerReason = "fallback_stall_escalation"
 			}
-			lraPassed, lraLog := o.RunLastResortAgent(ctx, task, &taskState, taskGit, logMsg, triggerReason)
-			if lraPassed {
+			fbPassed, fbLog := o.RunFallbackAgent(ctx, task, &taskState, taskGit, logMsg, triggerReason)
+			if fbPassed {
 				passed = true
-				logMsg = lraLog
+				logMsg = fbLog
 			}
 		}
 	}
@@ -267,6 +268,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			targetTask.Progress = 100
 			targetTask.FailureLog = ""
 			fmt.Printf("✅ [Validation Passed] Task %s (%s) passed test validation and merged into %s\n", taskID, task.Title, integrationBranch)
+			_ = WriteTaskMarkdown(st.ProjectPath, st.Metadata.InputPath, *targetTask)
 		} else if isSandboxFailure {
 			fmt.Printf("❌ [Unrecoverable Environment Failure] Task %s fast aborting: %s\n", taskID, logMsg)
 			targetTask.Status = domain.TaskFailed

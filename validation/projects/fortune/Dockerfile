@@ -6,8 +6,11 @@ FROM noctifab-validation:base AS noctifab-artifacts
 
 FROM alpine:latest
 
-# Install C build dependencies, gcc, sqlite-dev, make, git, bash, docker-cli, curl
-RUN apk add --no-cache gcc musl-dev make sqlite-dev sqlite git bash docker-cli curl
+# Install C build dependencies, gcc, sqlite-dev, make, git, bash, docker-cli, curl, ccache
+RUN apk add --no-cache gcc musl-dev make sqlite-dev sqlite git bash docker-cli curl ccache
+
+ENV PATH="/usr/lib/ccache/bin:${PATH}"
+ENV CCACHE_DIR="/root/.cache/ccache"
 
 # Copy noctifab binary, validation projects, and the validate.sh harness
 COPY --from=noctifab-artifacts /usr/local/bin/noctifab /usr/local/bin/noctifab
@@ -16,7 +19,7 @@ COPY --from=noctifab-artifacts /app/validate.sh /app/validate.sh
 RUN chmod +x /app/validate.sh
 
 # Sanity check toolchain
-RUN gcc --version && make --version && sqlite3 --version
+RUN gcc --version && make --version && sqlite3 --version && ccache --version
 
 WORKDIR /app
 CMD ["/app/validate.sh"]

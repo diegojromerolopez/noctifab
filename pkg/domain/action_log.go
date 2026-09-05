@@ -1,5 +1,7 @@
 package domain
 
+import "github.com/google/uuid"
+
 const (
 	// MaxLastActions caps how many entries State.LastActions retains.
 	// Older entries are dropped so the persisted state stays bounded.
@@ -30,6 +32,9 @@ func TruncateActionResult(result string) string {
 func AppendAction(state *State, action Action) {
 	if state == nil {
 		return
+	}
+	if action.ID == "" {
+		action.ID = uuid.New().String()
 	}
 	action.Result = TruncateActionResult(action.Result)
 	state.LastActions = append(state.LastActions, action)

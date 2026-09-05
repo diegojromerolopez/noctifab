@@ -24,9 +24,17 @@ To maintain modularity and high context compatibility, the following guidelines 
     *   **SOLID:** Keep classes/structs focused on a single responsibility.
     *   **Domain-Driven Design (DDD):** Align packaging boundaries to domain logic (e.g., domain entities, value objects, and service interfaces), not technical categories.
     *   **Provider Struct Composition (LLM Infrastructure):** All LLM provider clients must reside in dedicated per-provider source files (`pkg/infrastructure/llm/<provider>.go`). OpenAI-compatible providers must embed `*baseOpenAIClient` and use the declarative `NewModelParser` engine. Core dispatching in `client.go` must be data-driven via `ProviderSpec.NewClientFunc` with zero protocol `switch` statements.
+    *   **Thin Shell Entrypoint & Test Scope Alignment Pattern:** Primary executable/daemon entrypoints (`main.go`, `main.rs`, `main.py`, `server.ts`, etc.) must be thin wrappers (< 15 lines) delegating immediately to pure, callable application core functions/factories (e.g. `run(args, io) -> Result`, `create_app()`, `WorkerEngine`). Intermediate component tasks must author fast, in-process unit and integration tests against library APIs directly in memory, reserving external compiled binary OS invocations (`cargo_bin`, child process spawns) for entrypoint and black-box E2E tasks.
     *   **Verification vs. Validation Engineering Strategy:** Task execution is divided into two distinct stages: *Verification* (building minimal working functionality that compiles and satisfies baseline checks) and *Validation* (black-box behavioral testing against public contracts, CLI outputs, and API signatures). Tests must never assert internal module implementation details.
     *   **Product Manager Definition of Done (DoD) Mandate:** Generated user stories (`roadmap/US-xxx.md`) must specify explicit public API signatures, binary executable paths, I/O formatting invariants, error prefixes, exit codes, number precision representations, and zero-failure test pass criteria before downstream task planning starts.
     *   **Project & Language Agnosticism:** Noctifab MUST NOT HAVE validation project-specific or language-specific code in its codebase. Noctifab is a dark factory agent; do not add specific instructions, context helpers, or code rules for particular validation projects or programming languages.
+    *   **Resilient Code Fence & Output Parsing:** LLM responses often wrap structured output (JSON, YAML, diffs, code) in markdown code fences (````go ... ````, ````json ... ````) containing inner backticks or commentary within string literals and comments. Parsing utilities (`pkg/services/`, `pkg/infrastructure/llm/parser/`) must never use naive substring matching (`strings.Index("```")`) that breaks on inner code blocks. Parsing must be string-literal aware and safely strip outer markdown envelopes without corrupting payload data or panicking.
+    *   **Pre-Flight Path Exclusion & Context Hygiene:** Agents must preserve LLM context economics and prevent repository pollution. All workspace scanning, context packing, and VCS staging routines must strictly enforce exclusion policies via `IsPathExcluded` (ignoring `.git`, `.noctifab`, build outputs, binaries, toolchain caches, and third-party dependencies). Ephemeral worktrees, build artifacts, or secret files must never be loaded into LLM prompts or committed to git.
+    *   **Incremental State Persistence & Append-Only Telemetry:** When implementing or modifying database storage layers (`pkg/infrastructure/storage/`), destructive `DELETE FROM <table> WHERE state_id = ?` table-wiping loops inside state persistence transactions are strictly forbidden. Operational entities (`tasks`, `stories`, `workspace_files`) must use `INSERT ... ON CONFLICT DO UPDATE` upserts, selectively pruning only items removed from the domain model. High-frequency event streams and telemetry logs (`actions`) must be stored in append-only tables with unique identifiers (`ON CONFLICT(action_id) DO NOTHING`), guaranteeing stable row IDs and eliminating SQLite write lock thrashing on progress updates. High-frequency telemetry loaders must bound queries to the configured window (`domain.MaxLastActions = 200`) ordered chronologically, ensuring $O(1)$ memory consumption and load latency regardless of total execution history.
+    *   **Database Migration Pair Discipline:** When modifying database schemas (`pkg/infrastructure/storage/migrations/`), every change requires both creating a new numbered migration file under `sqlite/` (e.g. `0009_*.sql`) and updating the baseline schema file `sqlite.sql`. All migration DDL must be idempotent and fully SQLite-compatible (e.g. avoiding unsupported Postgres constructs, and adhering to SQLite UPSERT index requirements).
+    *   **Process-Aware Lock Governance:** Never use arbitrary short timers (e.g., 5 seconds) to clean filesystem or Git locks (`.git/index.lock`, worktree locks). Agents must verify lock holder process liveness via OS signal checks (`kill -0 <pid>`) before unlinking locks, and enforce a safe fallback grace threshold (at least 60 seconds) if PID is unrecorded to prevent Git index corruption during long compilations.
+    *   **Shared Toolchain Dependency Caches in Worktrees:** When spawning isolated Git worktrees for parallel tasks, agents must redirect heavy toolchain build caches (e.g. `CARGO_TARGET_DIR`, `GOCACHE`, `node_modules`, Python virtual environments) to shared repository cache directories (`.noctifab/cache/`) rather than letting each worktree re-download and re-compile dependencies from scratch.
+    *   **Hermetic In-Memory Doubles & Goroutine Leak Prevention:** Intermediate unit and integration tests must execute hermetically in memory. When testing asynchronous messaging, event brokers (`pkg/infrastructure/broker/`), or worker loops, always use buffered channels or mock subscribers with explicit timeout contexts (`context.WithTimeout`). Never allow unbuffered channel sends or missing subscribers to block goroutines indefinitely and deadlock the test suite. External filesystem and database tests should leverage `t.TempDir()` or `:memory:` SQLite rather than touching host files.
 3.  **Testing Strategy:**
     *   All code must be **100% unit tested**. Every Go package must be accompanied by unit tests.
     *   After making any change to the codebase, you **must** run the test suite to verify correctness.
@@ -36,6 +44,8 @@ To maintain modularity and high context compatibility, the following guidelines 
         *   Run all unit and in-process CLI integration tests locally:
             ```bash
             go test -v ./pkg/... ./tests
+            # Or with race detection:
+            go test -race ./pkg/...
             ```
         *   Alternatively, use the Makefile target:
             ```bash
@@ -49,14 +59,19 @@ To maintain modularity and high context compatibility, the following guidelines 
     *   **BDD Specifications:** Acceptance tests must always run under a test runner using BDD format with the context pattern: `when <scenario>`, `it <action happens>`. Generated tests must be e2e as much as possible for the happy paths, input validations/edge cases must be unit tests, and complex internal validation flows must be integration tests.
 4.  **Formatting & Linting:**
     *   **Formatting:** All Go source code must strictly follow the standard `go fmt` format. Ensure `go fmt ./...` runs clean.
-    *   **Linting:** Code must pass static analysis checks. You must run `docker run -t --rm -v $(pwd):/app -w /app golangci/golangci-lint:v2.12.2 golangci-lint run` after every change to ensure the code passes all linter rules.
+    *   **Linting:** Code must pass static analysis checks. Run the linter via:
+        ```bash
+        make lint
+        # or directly via Docker:
+        docker run -t --rm -v $(pwd):/app -w /app golangci/golangci-lint:v2.12.2 golangci-lint run
+        ```
     *   **Efficient String Writing (`writestring`):** Inefficient string concatenations inside calls to `WriteString` (e.g., `sb.WriteString("a" + b + "\n")` or `io.WriteString(w, a + b)`) are strictly forbidden. Always call `WriteString` sequentially for individual string components to prevent unnecessary memory allocations and comply with the `writestring` static analyzer (`golang.org/x/tools/go/analysis/passes/writestring`).
 5.  **Continuous Integration (CI):**
     *   A GitHub Actions workflow configured in `.github/workflows/ci.yml` executes on every push and pull request.
     *   All unit tests and static analysis linting checks must pass successfully in the CI pipeline before merging.
 6.  **Branching & Commit Guidelines:**
     *   **No Commits on Main**: Never create commits directly on the `main` branch. Always create a new branch with the changes.
-    *   **CHANGELOG Updates**: Every commit must contain the corresponding changes documented in `CHANGELOG.md`, incrementing the version accordingly: minor version bump for features, and patch version bump for bug fixes.
+    *   **CHANGELOG & Version Updates**: Every commit must contain the corresponding changes documented in `CHANGELOG.md`, incrementing the version accordingly (`VERSION`, `pkg/version/version.go`, and `CHANGELOG.md`): minor version bump for features, and patch version bump for bug fixes.
 7.  **Resilience & Forced Compilation Mandate:**
     *   A bad scaffold, failing test, or compiler error must never permanently stop development or leave broken code.
     *   In case of any persistent or complex error, agents MUST force a compiling and runnable solution (even if simplified, fallback, or imperfect). The codebase MUST compile cleanly and pass tests; leaving a partially broken build or stalling on retries is completely unacceptable.
@@ -66,6 +81,9 @@ To maintain modularity and high context compatibility, the following guidelines 
 9.  **Comprehensive Error Handling & Crash Prevention Mandate:**
     *   Error handling **MUST BE comprehensive**. Every error across all packages, layers, and goroutines must be explicitly checked, handled, or wrapped with contextual detail (`fmt.Errorf("...: %w", err)`).
     *   All potential error scenarios and edge cases must be dealt with defensively in the best way possible (including graceful degradation, exponential backoff with jitter on transient database/network contentions, fallback strategies, proper unblocking of waiting callers, and thorough channel/mutex cleanup on shutdown) so that the program never unexpectedly crashes, deadlocks, panics, or silently loses state.
+10. **Documentation Synchronization Mandate:**
+    *   Every time the configuration schema, CLI flags, architectural components, prompt templates, or functionality changes, before committing, AI agents **MUST** inspect and update the corresponding documentation files under `docs/` and (if applicable) `README.md` and `SPEC.md`.
+    *   Never leave documentation out of sync with code modifications. Ensure all configuration options, examples, and architecture references accurately reflect the latest codebase state.
 
 ---
 
@@ -95,19 +113,33 @@ To run a fully containerized, isolated, end-to-end (E2E) integration check of `n
    *Note: This file is excluded from the build context by `.dockerignore` and `.gitignore` to prevent secret leakage, and is safely mounted at runtime.*
 
 2. **Executing the Validation Harness**:
-   - Run a single validation project:
+   - **Full 9-Project Sequential Suite** (generates `PROJECT_FEEDBACK.md` & `VAL_PROJECT_FEEDBACK.md`):
+     ```bash
+     python3 validation/runner_9projects.py
+     # Or with a fixed timeout override:
+     python3 validation/runner_9projects.py --timeout=1200
+     ```
+   - **Flexible Matrix Runner** (runs any subset with dynamic scale timeouts):
+     ```bash
+     python3 validation/matrix_runner.py calculator t4 frontpunch
+     # Or via flags:
+     python3 validation/matrix_runner.py --projects=wc,notebook,djanban
+     ```
+   - **Single Validation Project via Make**:
      ```bash
      make validate PROJECT=<project>
+     # Reuse existing docker images (skipping the rebuild phase):
+     make validate PROJECT=<project> SKIP_BUILD=1
      ```
-   - Run all validation projects in parallel:
+   - **Parallel Run Across All Projects**:
      ```bash
      make validate-all
      ```
-   - Reuse existing docker images (skipping the rebuild phase):
-     ```bash
-     make validate PROJECT=<project> SKIP_BUILD=1
-     ```
-   - **Execution Timeout Limit (10-Minute Mandate)**: A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified by the user or task request) MUST be set for each execution of each validation project. If a validation run reaches 10 minutes (or the specified custom limit), agents must terminate the container execution cleanly and record the result.
+   - **Scale-Based Dynamic Timeouts**: Validation runs use dynamic execution envelopes based on architectural scale (Complexity Units):
+     - **Tier 0 / Small CLI Utilities ($CU < 35$):** 15–20 minutes (`echo`, `calculator`, `wc`, `todo-cli`, `fortune`)
+     - **Tier 1 / Medium Systems ($35 \le CU \le 75$):** 30 minutes (`t4`, `frontpunch`, `ocalogue`, `ninline`, `pyedis`, `stricc`)
+     - **Tier 2 / Large Multi-Subsystem ($CU > 75$):** 35–40 minutes (`notebook`, `djanban`, `auth-vault`, `buffonstream`, `searchthedocs`, `jpacioli`)
+     - If a validation run reaches its scale limit (or an explicitly requested custom limit), agents must terminate the container execution cleanly and record the result.
 
 3. **Output Artifacts**:
    All outputs from the validation run are written directly to the target validation project's output path:
@@ -120,6 +152,10 @@ To run a fully containerized, isolated, end-to-end (E2E) integration check of `n
 
 5. **Monitoring & Execution Report Inspection**:
    When executing validation projects, agents MUST NOT run periodic 60-second polling loops or schedule timers to avoid unnecessary LLM token consumption. Instead, agents must launch validation tasks asynchronously in the background and rely on the execution report automatically generated by Noctifab (`validation/projects/<project>/output/report/*.md`) and completion notifications.
+   To aggregate execution metrics, duration, and token usage across all completed validation runs, run:
+   ```bash
+   make validate-summary
+   ```
 
 6. **Configuration Immutability Mandate**:
    After being asked to run a validation container, IT IS FORBIDDEN for AI agents to change the project configuration (`.noctifab/config.yaml`). The configuration must remain strictly untouched as defined in the target validation project.

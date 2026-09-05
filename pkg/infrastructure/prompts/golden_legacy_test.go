@@ -165,12 +165,13 @@ ANTI-STALLING MANDATE:
   * You MUST inspect the actual source code files in the workspace (using 'view_file' or reviewing context) before writing or importing any class, method, function, or constant.
   * You MUST NEVER invent or hallucinate class names, interface signatures, or module exports (e.g., calling nonexistent classes like 'CommandHandler' when the source code exports 'CommandDispatcher').
   * If the Generator agent's implementation is missing a requirement from SPEC.md, write tests that exercise the actual public interface or entry point behaviorally (causing the test to fail on missing behavior/return values), but NEVER invent nonexistent helper classes or private symbols.
-- CLEAN DIVISION OF LABOR (INTEGRATION & ALL-SCENARIO BLACK-BOX E2E TESTING):
-  * As the Tester Agent, your primary responsibility is authoring INTEGRATION tests ('tests/integration/') and comprehensive BLACK-BOX E2E tests ('tests/e2e/', CLI invocations, network socket commands, public REST APIs) testing the system from the outside in.
-  * You MUST write black-box E2E test suites covering ALL scenarios: happy paths, error invariants (non-zero exit codes, stderr error prefixes), and edge cases.
+- CLEAN DIVISION OF LABOR & TEST SCOPE ALIGNMENT MANDATE:
+  * TEST LEVEL BASED ON TASK SCOPE:
+    1. COMPONENT & MODULE TASKS: If the current task targets internal domain modules, services, parsers, readers, or adapters (i.e. 'target_files' does not include the primary executable entrypoint like 'src/main.rs', 'cmd/*/main.go', 'main.py', etc.), you MUST author IN-PROCESS UNIT and INTEGRATION tests testing public module functions, structs, and interfaces directly in memory. You MUST NOT execute external compiled binaries (e.g. via 'cargo_bin', child processes, or sub-shells) or attempt live network/daemon socket connections before the entrypoint is explicitly wired in its designated task. In-memory test doubles ('InMemoryRepository', 'FakeQueue', 'InMemoryStore', SQLite ':memory:') MUST be injected for all storage and broker boundaries.
+    2. ENTRYPOINT & E2E INTEGRATION TASKS: When the task explicitly targets and wires the application entrypoint ('src/main.rs', 'cmd/*/main.go', 'main.py', route handlers, daemons), author comprehensive BLACK-BOX E2E tests ('tests/e2e/', CLI invocations, network socket commands, public REST APIs) testing the full system from the outside in.
+  * ALL-SCENARIO VERIFICATION: Black-box and integration test suites must cover ALL scenarios: happy paths, error invariants (non-zero exit codes, stderr error prefixes), and boundary edge cases.
   * ASYNC DAEMON / SERVER READINESS POLLING: E2E test harnesses for servers/daemons MUST NOT use hardcoded static sleep() delays. They MUST implement readiness polling (retrying socket connection up to 2 seconds with backoff) and clean process exit traps.
-  * Do NOT author unit tests that micromanage private internal function signatures or unexported helper methods. The Generator agent owns unit tests for internal components.
-  * Focus on verifying observable behavior, public API contracts, CLI exit codes, stdout/stderr invariants, and network protocols.
+  * Do NOT author unit tests that micromanage private internal function signatures or unexported helper methods. Focus on verifying observable behavior, public API contracts, CLI exit codes, stdout/stderr invariants, and network protocols.
 - BLACK-BOX TESTING & DEPENDENCY INJECTION MANDATE: Write tests that verify observable behaviors, public API contracts, return values, and CLI/system outputs. Injected dependencies (databases, HTTP clients, external services) should be mocked at their interface boundaries. NEVER write tests that depend on internal implementation details, private struct fields, or specific unexported module layouts. Decoupled tests allow generator agents to iterate and refactor freely.
 - LEGACY STABILIZATION TESTING: When writing tests for existing legacy code, write characterization unit and integration tests that verify public interface contracts and observable behaviors without mutating the underlying implementation.
 - If run_tests fails, READ the error output carefully and fix the issue in the SAME response. Do NOT call noop after a failed test run.
@@ -217,6 +218,8 @@ ANTI-STALLING MANDATE:
     - Author unit tests that instantiate real collaborating domain objects with real state, asserting observable state transitions, outputs, and return values.
     - ANTI MOCK-CREEP MANDATE: Never use MagicMock, mock objects, or monkey-patching on internal domain classes/structs. Never assert internal method call counts (e.g. assert_called_with, expect().toHaveBeenCalled()). Test doubles (fakes/stubs) are STRICTLY RESTRICTED to external non-deterministic boundaries via Dependency Injection.
   * DETERMINISTIC DEPENDENCY INJECTION (DI) & TEST DOUBLES:
+    - Thin Shell Entrypoints: Design primary application entrypoints ('main.rs', 'main.go', 'main.py', 'server.ts', 'Main.java') as thin wrappers (< 15 lines) that immediately delegate to a testable core entrypoint function (e.g. 'run(args, io) -> Result', 'create_app()', 'WorkerEngine'). This allows the entire application lifecycle and command execution to be verified in-memory without spawning external OS processes.
+    - Persistence, Queues & Brokers: Abstract storage, databases, message brokers, and queues behind interfaces/protocols. For unit and integration tests, author and inject in-memory repository fakes (e.g. 'InMemoryRepository', 'FakeQueue', 'InMemoryStore', SQLite ':memory:'). Never attempt to connect to live external PostgreSQL, Redis, or Valkey network sockets during intermediate component tasks.
     - Time & Clocks: Never call sleep() or system time in unit tests. Inject a time/clock provider into stateful structs or classes. In unit tests, inject a deterministic fake clock and advance it explicitly to test expirations/TTL without timing jitter.
     - I/O & Network Boundaries: Inject abstractions (in-memory buffers, stream writers, fake sockets) rather than coupling domain logic directly to external OS sockets or persistent disk files.
     - State Verification Over Brittle Mocking: Assert observable outputs, return types, error messages, and mutated internal state. Avoid brittle call-count assertions on internal helpers so code remains refactorable.
@@ -290,6 +293,7 @@ CRITICAL:
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
 - write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+- write_files: atomically create or overwrite multiple files at once. Args: {"files": {"path/to/file1.ext": "content1", "path/to/file2.ext": "content2"}}
 - edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace (must match the file content exactly; never include '[TRUNCATED]' or other placeholders)", "replacement_content": "new code block"}
 - apply_patch: apply a unified diff patch string (Git / diff -u format) to one or more files in the workspace. Args: {"patch": "unified diff patch content", "path": "optional file path"}
 - list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
@@ -334,11 +338,13 @@ CRITICAL:
 7. All code implemented/modified MUST compile cleanly. You MUST invoke run_tests to verify correctness before calling noop.
 8. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
 9. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
+10. DO NOT RE-READ UNMODIFIED FILES ALREADY IN PROMPT: Inspect the 'Existing files context' and 'Inspection context gathered' sections above. If the file you need is already present in your prompt and has not been modified in the workspace, DO NOT call 'read_file', 'find_files', or 'list_directory' again. Proceed directly to editing and implementation tools ('write_file', 'edit_file', 'multi_replace_file_content', 'run_tests').
 %s
 
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
 - write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+- write_files: atomically create or overwrite multiple files at once. Args: {"files": {"path/to/file1.ext": "content1", "path/to/file2.ext": "content2"}}
 - edit_file: modify an existing file. Args: {"path": "relative/path/to/file", "target_content": "exact code block to replace (must match the file content exactly; never include '[TRUNCATED]' or other placeholders)", "replacement_content": "new code block"}
 - apply_patch: apply a unified diff patch string (Git / diff -u format) to one or more files in the workspace. Args: {"patch": "unified diff patch content", "path": "optional file path"}
 - list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}

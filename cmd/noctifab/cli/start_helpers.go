@@ -45,9 +45,12 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *servi
 	reg.Register(&services.LogMessageTool{})
 	reg.Register(&services.NoopTool{})
 	reg.Register(&services.ReadFileTool{})
-	reg.Register(&services.WriteFileTool{})
+	syntaxChecker := services.NewCommandSyntaxChecker(cfg.Sandbox.SyntaxCheckCommand)
+	reg.Register(&services.WriteFileTool{SyntaxChecker: syntaxChecker})
+	reg.Register(&services.WriteFilesTool{SyntaxChecker: syntaxChecker})
 	reg.Register(&services.DeleteFileTool{})
-	reg.Register(&services.EditFileTool{})
+	reg.Register(&services.EditFileTool{SyntaxChecker: syntaxChecker})
+	reg.Register(&services.ApplyPatchTool{SyntaxChecker: syntaxChecker})
 	reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
 	reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
 	reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
@@ -56,7 +59,11 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *servi
 	if cfg.Sandbox.TimeoutSeconds > 0 {
 		runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 	}
-	reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
+	reg.Register(&services.RunTestsTool{
+		Runner:           sandboxRunner,
+		FormatterCommand: cfg.Sandbox.FormatterCommand,
+		Timeout:          runTimeout,
+	})
 	reg.Register(&services.RunLinterTool{
 		Runner:           sandboxRunner,
 		LinterCommand:    cfg.Sandbox.GetLinterCommand(),
@@ -65,6 +72,8 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *servi
 		Timeout:          runTimeout,
 	})
 	reg.Register(&services.RequestTestFixTool{})
+	depMgr := services.NewDependencyManager(cfg.Sandbox.PackageManagers)
+	reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})
 	return reg
 }
 
@@ -94,6 +103,7 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		ExcludePaths:           cfg.Sandbox.ExcludePaths,
 		WorkspaceCache:         cfg.GetWorkspaceCache(),
 		QA:                     cfg.Agents.QA,
+		Fallback:               cfg.Agents.GetFallback(),
 		LastResort:             cfg.Agents.LastResort,
 	}
 }

@@ -8,7 +8,7 @@ import (
 func TestCatalog(t *testing.T) {
 	t.Run("when listing agents it returns the 8 catalog agents sorted", func(t *testing.T) {
 		agents := Agents()
-		want := []string{"auditor", "generator", "last_resort", "planner", "product_manager", "qa", "spec", "tester"}
+		want := []string{"auditor", "fallback", "generator", "planner", "product_manager", "qa", "spec", "tester"}
 		if len(agents) != len(want) {
 			t.Fatalf("expected %d agents, got %v", len(want), agents)
 		}
@@ -33,14 +33,14 @@ func TestCatalog(t *testing.T) {
 		if err := ValidateKey("tester", "write"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if err := ValidateKey("last_resort", "repair"); err != nil {
+		if err := ValidateKey("fallback", "repair"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if err := ValidateKey("auditor", "acceptance_audit"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !IsValidKey("last_resort", "repair") {
-			t.Error("expected last_resort/repair to be valid")
+		if !IsValidKey("fallback", "repair") {
+			t.Error("expected fallback/repair to be valid")
 		}
 		if !IsValidKey("auditor", "acceptance_audit") {
 			t.Error("expected auditor/acceptance_audit to be valid")

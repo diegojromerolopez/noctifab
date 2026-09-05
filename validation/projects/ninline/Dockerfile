@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1.6
+# Per-project image for the `ninline` validation project.
+# Uses `python:3.14-alpine` as the runtime base (ships python 3.14 + pip) and
+# layers noctifab + the validation projects + validate.sh from the shared base
+# image on top, plus the pinned test/lint toolchain.
+#
+# Build:
+#   docker build -f validation/projects/ninline/Dockerfile \
+#       -t noctifab-validation:ninline .
+
+FROM noctifab-validation:base AS noctifab-artifacts
+
+FROM python:3.14-alpine
+
+RUN apk add --no-cache git bash docker-cli curl build-base
+
+# Pre-install the project's dev toolchain (pytest, ruff, mypy, coverage) so
+# package resolution does not depend on runtime network access.
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
+        "pytest>=8.0" \
+        "ruff>=0.8" \
+        "mypy>=1.13" \
+        "coverage>=7.6" \
+    && rm -rf /root/.cache/pip
+
+# Copy noctifab binary, validation projects, and the validate.sh harness
+# from the shared base image.
+COPY --from=noctifab-artifacts /usr/local/bin/noctifab /usr/local/bin/noctifab
+COPY --from=noctifab-artifacts /app/projects /app/projects
+COPY --from=noctifab-artifacts /app/validate.sh /app/validate.sh
+RUN chmod +x /app/validate.sh
+
+# Sanity check the toolchain is callable.
+RUN python3 --version && pytest --version && ruff --version && mypy --version
+
+WORKDIR /app
+CMD ["/app/validate.sh"]

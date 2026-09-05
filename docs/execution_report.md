@@ -54,7 +54,7 @@ The generated `<TIMESTAMP>_<PROJECT>.md` contains the following structured secti
 | **Agent Performance** | Breakdown of agent invocations per role, story, task, active execution span (omitting zero units, e.g. `17s 116ms`), and outcome. |
 | **Phase Performance** | **Phase Cycle Time** (de-duplicated phase clock time) and **Execution Spans** across pipeline phases (Roadmap Generation, Story Execution). |
 | **Codebase Changes & Workspace Impact** | Source-code-only files modified, lines added/deleted, and net line delta. Automatically excludes third-party package manager and build artifact directories (`node_modules/`, `vendor/`, `dist/`, `.next/`, `venv/`, `__pycache__`, `target/`). |
-| **Self-Correction & Turn Efficiency** | Retries recorded, unblocker interventions, watchdog interventions, and task pass efficiency rate. |
+| **Self-Correction & Turn Efficiency** | Retries recorded, Fallback Agent interventions, watchdog interventions, and task pass efficiency rate. |
 | **Bottlenecks** | Human-readable bottleneck diagnoses detailing scope, measurement, and resolution impact. |
 | **Developer Recommendations & Next Actions** | Actionable recommendations mapping target scopes to concrete verification steps. |
 | **User Story & Task Results** | Summary of user stories (including spent time per story) and tasks (displaying Task ID, human-readable Task Title, parent Story ID, attempts, and elapsed time). |

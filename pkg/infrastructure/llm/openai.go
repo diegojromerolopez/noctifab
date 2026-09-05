@@ -189,14 +189,21 @@ func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
 // Unrecognised errors are returned immediately so the caller's retry/fallback
 // ladder can classify them.
 func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) (*ProviderCallResult, error) {
+	filteredExtra := make(map[string]interface{})
+	for k, v := range o.extraBody {
+		if !globalCapabilityCache.isExtraParamUnsupported(model, k) {
+			filteredExtra[k] = v
+		}
+	}
+
 	opts := completionOptions{
 		enforceJSON:     !globalCapabilityCache.isJSONModeUnsupported(model),
 		disableJSONMode: o.disableJSONMode || globalCapabilityCache.isJSONModeUnsupported(model),
 		maxTokens:       maxTokens,
 		temperature:     &temperature,
-		extraBody:       o.extraBody,
+		extraBody:       filteredExtra,
 	}
-	if globalCapabilityCache.isTemperatureUnsupported(model) {
+	if isNoTemperatureModel(model) || globalCapabilityCache.isTemperatureUnsupported(model) {
 		opts.temperature = nil
 	}
 	if globalCapabilityCache.isMaxTokensUnsupported(model) {

@@ -2,6 +2,9 @@
 
 `noctifab` is configured via a YAML file located at `.noctifab/config.yaml` in your project workspace. This document provides a complete reference for all available configuration sections and settings.
 
+> [!TIP]
+> For best practices, concurrency tuning (OCC), rate-limit resilience, and language-specific templates, see the [Configuration Guidelines & Best Practices](configuration_guidelines.md).
+
 ---
 
 ## Root Configurations
@@ -77,6 +80,12 @@ agents:
   product_manager:
     number: 1
     iterations: 2
+    passes: 2
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
 
   planner:
     number: 1
@@ -98,11 +107,7 @@ agents:
     number: 1
     iterations: 2
 
-  unblocker:
-    number: 1
-    iterations: 2
-
-  last_resort:
+  fallback:
     enabled: true
     temperature: 0.1
     max_turns: 2
@@ -122,15 +127,14 @@ clarification_timeout_action: abort
 - **`architecture`** (String): Execution loop architecture mode. Options: `code_first` (default: Generator implements code first, followed by independent Tester verification turns), `single_pass` (Fast-path single pass co-generating code and tests in 1 turn), or `breadth_first` (Iterative ~80% happy-path generation across all stories first, followed by benevolent judges refining edge cases). Legacy aliases (`code_first_verification_loop`, `single_pass_execution`, `breadth_first_generation`, `cfv`, `spe`, `bfg`) are fully supported.
 - **`task_execution_order`** (String): Task verification sequence mode. Options: `generator_first` (default: Generator implements code first, followed by Tester verification), or `tester_first` (TDD mode: Tester Agent generates unit/integration tests first, followed by Generator implementation). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
 - **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls allowed per agent response turn.
-- **`orchestrator`**: Configures Orchestrator agents managing task lifecycle and state synchronization (`number: 1`, `iterations: 2`).
-- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `max_user_stories: 5`, `passes: 2`). Supports an optional `max_user_stories` setting (e.g. `5`) to hard-cap story generation, and a `passes` setting (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit).
+- **`orchestrator`**: Configures Orchestrator agents managing task lifecycle, global task DAG scheduling, cross-story pipelining, and state synchronization (`number: 1` = sequential story dispatch, `number: > 1` = concurrent multi-story execution via `StoryDAGScheduler` with pipelined task scheduling, `iterations: 2`).
+- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `passes: 2`). Supports `user_stories.max_count` (e.g. `5`) to hard-cap story generation, `user_stories.complexity: {min: 15, max: 35}` to enforce target functional Complexity Units per story, and `passes` (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit). (Legacy `max_user_stories` is also backward-compatible).
 - **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs, automatically serializing task models into `roadmap/tasks/` (`number: 1`, `iterations: 5`).
 - **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 20`).
 - **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 15`).
 - **`qa`**: Reserves the experimental QA capability. It defaults to `enabled: false`; Phase 0 reports its capability but does not run QA.
 - **`auditor`**: Configures the Acceptance Auditor Agent (`number: 1`, `iterations: 2`) verifying whole-project compliance against `SPEC.md` prior to Pull Request creation.
-- **`unblocker`**: Configures Unblocker agents monitoring pipelines for stalls and re-dispatching tasks (`number: 1`, `iterations: 2`).
-- **`last_resort`**: Configures the sovereign Last-Resort Agent (*Omni-Unblocker* / *Chief Surgeon*) invoked when tasks reach critical stall thresholds, retry budget exhaustion, or toolchain deadlocks (`enabled: true`, `model: ""`, `temperature: 0.1`, `max_turns: 2`, `timeout: 180s`, `allow_spec_mutation: true`, `allow_scope_reduction: true`, `enforce_spec_quality: true`). Operates with cross-domain authority to refactor code, tests, and specifications under the 4-Tier Compromise Hierarchy while strictly preserving SOLID, DI, and security quality gates.
+- **`fallback`**: Configures the unified Fallback Agent (Omni-Agent / Chief Surgeon) operating in dual modes: Passive Watchdog (monitoring pipelines for stalls, 0-token fast-paths, scope triage) and Active Sovereign Omni-Builder (cross-domain repair under 4-Tier Compromise Hierarchy) (`enabled: true`, `model: ""`, `temperature: 0.1`, `max_turns: 2`, `timeout: 180s`, `allow_spec_mutation: true`, `allow_scope_reduction: true`, `enforce_spec_quality: true`). Legacy configuration blocks (`unblocker:`, `agents.last_resort:`, `roles.last_resort`) remain fully backwards-compatible.
 - **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.
 - **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve a task clarification.
 - **`clarification_timeout_action`** (String): Action to take if a clarification times out (`abort` or `continue`).
@@ -241,8 +245,17 @@ agents:
   - **`thinking_budget`** (Integer): Token budget cap for reasoning output when `enable_thinking` is enabled (e.g. `8192`).
   - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when `enable_thinking: true`, but can be explicitly set for third-party gateways that reject forced JSON schemas.
   - **`extra_params`** (Map of Strings): Custom key-value pairs merged verbatim into the provider request body for provider-specific extensions.
-- **`roles.<agent>.providers`** (List of Agent Provider Refs): Role-specific provider priority list. Allows configuring different model priorities per agent role (`architect`, `planner`, `generator`, `tester`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`).
+- **`roles.<agent>.providers`** / **`agents.<role>.ensemble.models`** (List of Agent Provider Refs): Role-specific provider or ensemble model references:
+  - **`name`** (String): References a provider declared in `llm.providers`.
+  - **`count`** (Integer): Number of independent model instances/samples to spawn for this provider spec (default: `1`). Useful for Self-Consistency voting in `consensus`, multi-sample generation in `best_of_n_scored`, and parallel quorum scaling in `parallel`.
+  - **`model`** (String): Optional model override.
+  - **`temperature`** (Float): Optional temperature override.
+  - **`max_tokens`** (Integer): Optional max token override (`-1` for unlimited).
+  - **`enable_thinking`** (Boolean): Optional reasoning mode toggle.
+  - **`thinking_budget`** (Integer): Optional reasoning token budget cap.
+  - **`extra_params`** (Map of Strings): Optional request body overrides.
 - **`max_timeout`** (Duration): Maximum overall completion timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines.
+
 - **`idle_timeout`** (Duration): Maximum stream/socket inactivity timeout allowed for LLM API calls (e.g. `15s`). Defaults to `15s` to cancel and fail over stalled stream connections without truncating active long responses.
 - **`streaming`** (Boolean): Enable or disable HTTP Server-Sent Events (SSE) token streaming (e.g. `true`). Defaults to `true` to stream completion tokens in real time and enforce sliding socket idle timeouts.
 - **`skip_on_credit_exhausted`** (Boolean): When `true` (default), an HTTP 402 (or a credit/quota-limited 429) is treated as a hard "skip this provider chain" signal: `noctifab` stops retrying and skips lower-model fallback immediately, so the router moves straight to the next provider in `llm.priority`. When `false`, the client rotates to the next `api_keys` pool entry and keeps retrying as usual. Set this to `false` only if you use key pools where a spend-limited key is expected to be superseded by a funded sibling key.
@@ -334,8 +347,9 @@ sandbox:
   timeout_seconds: 300
   idle_timeout_seconds: 30
   test_command: "go test -v ./..."
-  linter_command: "golangci-lint run"
   formatter_command: "go fmt ./..."
+  syntax_check_command: "gofmt -e {file}"
+  linter_command: "golangci-lint run"
   exclude_paths:
     - "node_modules/"
     - "vendor/"
@@ -349,8 +363,14 @@ sandbox:
 - **`timeout_seconds`** (Integer): Absolute execution wall-clock time limit in seconds for test and script execution processes.
 - **`idle_timeout_seconds`** (Integer): Active watchdog timeout. Kills processes immediately if they output no bytes on stdout/stderr for this duration.
 - **`test_command`** (String): Command executed by the Test Validator to run the unit/integration test suites (e.g. `npm test`, `pytest`).
-- **`linter_command`** (String): Command executed to run project static analysis linter tasks.
 - **`formatter_command`** (String): Command executed to run code format checks (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_linter` runs this pre-step auto-fixer first before linter diagnostics.
+- **`syntax_check_command`** (String): Optional command template executed after every `write_file`, `edit_file`, `write_files`, and `apply_patch` tool call to perform a lightweight syntax validation of the written file. Use `{file}` as a placeholder for the absolute path of the written file. **When empty (default), no syntax check is performed** and file tools remain pure I/O operations with zero external binary dependencies, which is the correct behavior for languages where single-file syntax checks are not feasible (e.g. Rust, OCaml). Examples by language:
+  - Ruby: `ruby -c {file}`
+  - Python: `python3 -m py_compile {file}`
+  - Go: `gofmt -e {file}`
+  - JavaScript/TypeScript: `node --check {file}`
+  - Shell: `bash -n {file}`
+- **`linter_command`** (String): Command executed to run project static analysis linter tasks.
 - **`max_linter_retries`** (Integer): Maximum linter fix retry turns per task (default: `3`). Prevents infinite agent loops on unfixable linter offenses.
 - **`exclude_paths`** (List of Strings): Directory trees, prefixes, or wildcard patterns ignored by the workspace discovery engine, Story QA auditor, anti-stub validator, and churn calculator (e.g. `node_modules/`, `vendor/`, `target/`, `target_container/`, `build/`, `_build/`, `*.tmp`). Works seamlessly with Git's `.gitignore` rules and automated binary detection (`IsTextFile`).
 - **`allowed_commands`** (List of Strings): Whitelist of executable binaries permitted inside the sandbox process runner.
@@ -379,8 +399,8 @@ roles:
   tester:
     profile: tester
     temperature: 0.0
-  last_resort:
-    profile: last_resort
+  fallback:
+    profile: fallback
     temperature: 0.1
 
 profiles:
@@ -393,7 +413,7 @@ profiles:
     allowed_commands:
       - "go"
       - "git"
-  last_resort:
+  fallback:
     allowed_tools:
       - "read_file"
       - "write_file"
@@ -421,7 +441,7 @@ Assigns model override configurations, temperature boundaries, and security prof
 - **`planner`**: Parses feature specs into the DAG roadmap.
 - **`generator`**: Writes feature implementation files in the sandbox.
 - **`tester`**: Writes and aligns validation tests.
-- **`last_resort`**: Sovereign emergency solver for resolving deadlocked tasks across code, tests, and specs.
+- **`fallback`**: Sovereign emergency solver for resolving deadlocked tasks across code, tests, and specs (legacy: `roles.last_resort`, `roles.unblocker`).
 
 ### Profiles Config (`profiles`)
 Creates permission groups matching agent roles to whitelisted resources:
@@ -471,19 +491,19 @@ sast:
 
 ---
 
-## Unblocker Agent Settings (`unblocker`)
+## Fallback Agent Settings (`fallback`)
 
-Controls the autonomous **Unblocker Agent** — a background goroutine that periodically scans the pipeline for stalled or blocked tasks and injects corrective interventions.
+Controls the autonomous **Fallback Agent** — a background goroutine that periodically scans the pipeline for stalled or blocked tasks, manages budget cliffs, and escalates to sovereign repair. (Legacy `unblocker:` configuration blocks remain fully supported).
 
 ```yaml
-unblocker:
+fallback:
   enabled: true
   poll_interval: "30s"
   max_retries: 3
   stall_threshold: "5m"
   conflict_threshold: "15m"
   llm_assessment: true
-  last_resort_triggers:
+  triggers:
     retries_exhaustion: true
     cyclic_loop_detection: true
     missing_toolchain_fast_abort: true
@@ -492,21 +512,21 @@ unblocker:
     stall_count_threshold: 4
 ```
 
-- **`enabled`** (Boolean): Activate the unblocker goroutine (default: `true`). When `false`, no stall scanning is performed.
-- **`poll_interval`** (Duration): How often the unblocker wakes up to scan the pipeline for stalls (default: `30s`). Configurable via `--unblocker-poll-interval` or `NOCTIFAB_UNBLOCKER_POLL_INTERVAL`.
-- **`max_retries`** (Integer): Maximum number of unblock/reset attempts allowed for a single task before the unblocker permanently marks it as `FAILED` (default: `3`). Configurable via `--unblocker-max-retries` or `NOCTIFAB_UNBLOCKER_MAX_RETRIES`.
+- **`enabled`** (Boolean): Activate the fallback watchdog goroutine (default: `true`). When `false`, no stall scanning is performed.
+- **`poll_interval`** (Duration): How often the fallback agent wakes up to scan the pipeline for stalls (default: `30s`). Configurable via `--fallback-poll-interval` or `NOCTIFAB_FALLBACK_POLL_INTERVAL`.
+- **`max_retries`** (Integer): Maximum number of unblock/reset attempts allowed for a single task before the fallback agent permanently marks it as `FAILED` (default: `3`). Configurable via `--fallback-max-retries` or `NOCTIFAB_FALLBACK_MAX_RETRIES`.
 - **`stall_threshold`** (Duration): How long a task must be frozen `IN_PROGRESS` with no progress update before it is classified as stalled (default: `5m`).
-- **`conflict_threshold`** (Duration): How long a `CONFLICT_BLOCKED` task waits before the unblocker intervenes (default: `15m`).
-- **`llm_assessment`** (Boolean): When `true` (default), the unblocker calls the LLM to diagnose each stall and choose the corrective action. When `false`, deterministic heuristics are applied instead (no LLM call, lower token consumption).
-- **`last_resort_triggers`**: Configures automatic escalation conditions that summon the sovereign Last-Resort Agent:
-  - **`retries_exhaustion`** (Boolean): Trigger Last-Resort Agent when task retries are exhausted (default: `true`).
+- **`conflict_threshold`** (Duration): How long a `CONFLICT_BLOCKED` task waits before the fallback agent intervenes (default: `15m`).
+- **`llm_assessment`** (Boolean): When `true` (default), the fallback agent calls the LLM to diagnose each stall and choose the corrective action. When `false`, deterministic heuristics are applied instead (no LLM call, lower token consumption).
+- **`triggers`** (or legacy `last_resort_triggers`): Configures automatic escalation conditions that summon sovereign repair:
+  - **`retries_exhaustion`** (Boolean): Trigger sovereign repair when task retries are exhausted (default: `true`).
   - **`cyclic_loop_detection`** (Boolean): Trigger on detected repetitive compiler or test error cycles (default: `true`).
-  - **`missing_toolchain_fast_abort`** (Boolean): Fast-abort retry loops and summon Last-Resort Agent when build tools or packages are missing from the sandbox (default: `true`).
+  - **`missing_toolchain_fast_abort`** (Boolean): Fast-abort retry loops and summon sovereign repair when build tools or packages are missing from the sandbox (default: `true`).
   - **`qa_deadlock_turns`** (Integer): Number of consecutive QA deadlock turns before escalating (default: `2`).
   - **`watchdog_timeout_turns`** (Integer): Number of watchdog timeout failures before escalating (default: `2`).
-  - **`stall_count_threshold`** (Integer): Number of cumulative Unblocker stall cycles before summoning Last-Resort Agent (default: `4`).
+  - **`stall_count_threshold`** (Integer): Number of cumulative stall cycles before summoning sovereign repair (default: `4`).
 
-See [unblocker_agent.md](unblocker_agent.md) and [last_resort_agent.md](last_resort_agent.md) for full references on the two-tier deadlock defense and compromise hierarchy.
+See [fallback_agent.md](fallback_agent.md) for full references on the unified self-healing architecture, triggers, and compromise hierarchy.
 
 ---
 
@@ -530,7 +550,7 @@ context:
 
 ## Workspace Inspection Caching Settings (`agents.workspace_cache`)
 
-Controls in-memory deduplication of read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent task execution loop. The cache is automatically invalidated when any file mutation (`write_file`, `edit_file`, `delete_file`) occurs.
+Controls in-memory deduplication of read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent task execution loop. The cache is automatically invalidated when any file mutation (`write_file`, `write_files`, `edit_file`, `delete_file`, `apply_patch`) occurs.
 
 ```yaml
 agents:
@@ -594,8 +614,7 @@ agents:
     iterations: 1
   unblocker:
     number: 1
-    iterations: 2
-  last_resort:
+  fallback:
     enabled: true
     temperature: 0.1
     max_turns: 2
@@ -604,14 +623,14 @@ agents:
     allow_scope_reduction: true
     enforce_spec_quality: true
 
-unblocker:
+fallback:
   enabled: true
   poll_interval: "30s"
   max_retries: 3
   stall_threshold: "5m"
   conflict_threshold: "15m"
   llm_assessment: true
-  last_resort_triggers:
+  triggers:
     retries_exhaustion: true
     cyclic_loop_detection: true
     missing_toolchain_fast_abort: true
@@ -690,8 +709,8 @@ roles:
   tester:
     profile: "tester"
     temperature: 0.0
-  last_resort:
-    profile: "last_resort"
+  fallback:
+    profile: "fallback"
     temperature: 0.1
 
 profiles:
@@ -718,7 +737,7 @@ profiles:
       - "run_tests"
       - "run_linter"
       - "noop"
-  last_resort:
+  fallback:
     allowed_tools:
       - "read_file"
       - "write_file"

@@ -1,18 +1,39 @@
 config_version: '2.0'
 execution_report: "/app/report_mount/execution_report.md"
 agents:
-  architecture: breadth_first
+  architecture: code_first
   orchestrator:
     number: 1
     iterations: 2
   product_manager:
     number: 1
     iterations: 2
-    max_user_stories: 5
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
+    max_tokens: -1
+    ensemble:
+      strategy: parallel
+      timeout_seconds: 45
+      soft_timeout_seconds: 15
+      min_models: 2
+      fallback_to_single: true
+      models:
+      - name: claude
+        count: 2
+        temperature: 0.2
+      - name: openai
+        temperature: 0.2
+      - name: gemini
+        temperature: 0.1
+      synthesizer:
+        name: gemini
     providers:
     - name: claude
-    - name: openai
     - name: gemini
+    - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
@@ -23,11 +44,23 @@ agents:
   generators:
     number: 6
     iterations: 20
+    max_tokens: -1
+    ensemble:
+      strategy: adaptive
+      timeout_seconds: 45
+      fast_tier:
+      - name: gemini-flash
+      standard_tier:
+      - name: claude
+      heavy_tier:
+      - name: claude
+      - name: openai
+      - name: deepseek-pro
     providers:
     - name: gemini-flash
     - name: claude
-    - name: openai
     - name: gemini
+    - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
@@ -35,11 +68,19 @@ agents:
   testers:
     number: 2
     iterations: 15
+    max_tokens: -1
+    ensemble:
+      strategy: best_of_n_scored
+      timeout_seconds: 30
+      models:
+      - name: claude
+      - name: openai
+      - name: deepseek-pro
     providers:
     - name: gemini-flash
     - name: claude
-    - name: openai
     - name: gemini
+    - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
@@ -50,8 +91,8 @@ agents:
     providers:
     - name: gemini-flash
     - name: claude
-    - name: openai
     - name: gemini
+    - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
@@ -59,6 +100,15 @@ agents:
   auditor:
     number: 1
     iterations: 2
+    max_tokens: -1
+    ensemble:
+      strategy: consensus
+      timeout_seconds: 30
+      voters:
+      - name: claude
+      - name: gemini
+      tie_breaker:
+        name: openai
     providers:
     - name: claude
     - name: gemini
@@ -70,6 +120,7 @@ agents:
   unblocker:
     number: 1
     iterations: 2
+    max_tokens: -1
 workspace_cache:
   enabled: true
 poll_interval: 10s
@@ -80,8 +131,8 @@ storage:
   conn_string: .noctifab/data/noctifab.db
   json_file_path: .noctifab/data/state.json
   occ:
-    max_retries: 5
-    backoff_base: 50ms
+    max_retries: 20
+    backoff_base: 100ms
     backoff_factor: 2
 llm:
   token_usage_limit: 0
@@ -99,90 +150,90 @@ llm:
     provider: anthropic
     model: claude-sonnet-5
     api_keys: CLAUDE_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: openai
     provider: openai
     model: gpt-5.6-luna
     api_keys: OPENAI_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: gemini-flash
     provider: gemini
     model: gemini-3.6-flash
     api_keys: GEMINI_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: gemini
     provider: gemini
     model: gemini-3.6-pro
     api_keys: GEMINI_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: deepseek-pro
     provider: qwencloud
     model: deepseek-v4-pro
     api_keys: QWENCLOUD_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: qwen
     provider: qwencloud
     model: qwen3.8-max
     api_keys: QWENCLOUD_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
     enable_thinking: true
-    thinking_budget: 8192
+    thinking_budget: 2048
   - name: opencode
     provider: opencode
     model: glm-5.2
     api_keys: OPENCODE_ZEN_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
   - name: openrouter
     provider: openrouter
     model: deepseek/deepseek-v4-flash-0731
     api_keys: OPENROUTER_API_KEY
-    max_retries: 2
-    retry_backoff: 50ms
+    max_retries: 3
+    retry_backoff: 500ms
     max_timeout: 60s
     idle_timeout: 60s
-    max_tokens: 32768
+    max_tokens: -1
     temperature: 0.3
     streaming: true
 vcs:
@@ -198,6 +249,7 @@ sandbox:
   timeout_seconds: 600
   test_command: cargo test --workspace
   formatter_command: cargo fmt
+  syntax_check_command: 
   linter:
     command: cargo fmt --check && cargo clippy -- -D warnings
     max_issues: 100
@@ -221,11 +273,11 @@ sandbox:
 runtime:
   spec_source: ''
   max_actions: 100
-  max_duration: 30m
-  max_silent_stall_duration: 30m
-  max_tokens_per_story: 2000000
-  max_tokens_per_task: 500000
-  max_tokens: 100000000
+  max_duration: 10m
+  max_silent_stall_duration: 10m
+  max_tokens_per_story: -1
+  max_tokens_per_task: -1
+  max_tokens: -1
   loop:
     count: 1
 logging:

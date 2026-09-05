@@ -38,6 +38,10 @@ type ProductManagerPromptData struct {
 	LegacyFiles string
 	// MaxUserStories is the ceiling on the number of user stories to generate (0 = unlimited).
 	MaxUserStories int
+	// MinComplexity is the target minimum complexity units per story (0 = default 15).
+	MinComplexity int
+	// MaxComplexity is the target maximum complexity units per story (0 = default 35).
+	MaxComplexity int
 }
 
 // PlannerPromptData backs the planner/* action templates.

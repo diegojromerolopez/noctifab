@@ -379,7 +379,7 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 	})
 
 	t.Run("Scenario 12: Context role resolution across all role key types and agent roles", func(t *testing.T) {
-		rolesToTest := []string{"architect", "planner", "generators", "testers", "unblocker", "last_resort"}
+		rolesToTest := []string{"architect", "planner", "generators", "testers", "fallback", "unblocker", "last_resort"}
 		for _, roleName := range rolesToTest {
 			ctx1 := context.WithValue(context.Background(), RoleContextKey{}, roleName)
 			assert.Equal(t, roleName, GetRoleFromContext(ctx1))
@@ -392,7 +392,7 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 		}
 	})
 
-	t.Run("Scenario 13: Last-Resort Agent with multi-provider prioritized models", func(t *testing.T) {
+	t.Run("Scenario 13: Fallback Agent with multi-provider prioritized models", func(t *testing.T) {
 		cfg := &config.Config{
 			LLM: config.LLMConfig{
 				Providers: []config.ProviderSpec{
@@ -402,7 +402,7 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 				},
 			},
 			Agents: config.AgentsConfig{
-				LastResort: config.LastResortAgentConfig{
+				Fallback: config.FallbackAgentConfig{
 					Enabled: true,
 					Providers: []config.AgentProviderRef{
 						{Name: "anthropic-deep"},
@@ -414,7 +414,7 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 		}
 
 		router := NewResilientLLMRouter(cfg, nil)
-		candidates := router.ResolveCandidatesForRole("last_resort")
+		candidates := router.ResolveCandidatesForRole("fallback")
 		require.Len(t, candidates, 3)
 
 		assert.Equal(t, "anthropic-deep", candidates[0].Name)

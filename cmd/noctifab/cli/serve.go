@@ -76,13 +76,13 @@ var serveCmd = &cobra.Command{
 
 		// Initialize sandbox runner.
 		var sandboxRunner services.Sandbox
+		var depMgr *services.DependencyManager
+		if cfg.Sandbox.AutoInstallDeps || cfg.Sandbox.Mode != "docker" {
+			depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
+		}
 		if cfg.Sandbox.Mode == "docker" {
 			sandboxRunner = services.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			var depMgr *services.DependencyManager
-			if cfg.Sandbox.AutoInstallDeps {
-				depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
-			}
 			sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 		}
 
@@ -93,9 +93,12 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.LogMessageTool{})
 		reg.Register(&services.NoopTool{})
 		reg.Register(&services.ReadFileTool{})
-		reg.Register(&services.WriteFileTool{})
+		syntaxChecker := services.NewCommandSyntaxChecker(cfg.Sandbox.SyntaxCheckCommand)
+		reg.Register(&services.WriteFileTool{SyntaxChecker: syntaxChecker})
+		reg.Register(&services.WriteFilesTool{SyntaxChecker: syntaxChecker})
 		reg.Register(&services.DeleteFileTool{})
-		reg.Register(&services.EditFileTool{})
+		reg.Register(&services.EditFileTool{SyntaxChecker: syntaxChecker})
+		reg.Register(&services.ApplyPatchTool{SyntaxChecker: syntaxChecker})
 		reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
 		reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
 		reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
@@ -106,6 +109,7 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
 		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
+		reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})
 
 		// Initialize LLM client with database budget store.
 		var budgetStore domain.BudgetStore
@@ -175,6 +179,7 @@ var serveCmd = &cobra.Command{
 			ExcludePaths:         cfg.Sandbox.ExcludePaths,
 			WorkspaceCache:       cfg.GetWorkspaceCache(),
 			QA:                   cfg.Agents.QA,
+			Fallback:             cfg.Agents.GetFallback(),
 			LastResort:           cfg.Agents.LastResort,
 		}
 
@@ -190,19 +195,22 @@ var serveCmd = &cobra.Command{
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		if cfg.Unblocker.Enabled {
-			unblocker := services.NewUnblockerAgent(
+		fallbackCfg := cfg.GetFallback()
+		if fallbackCfg.Enabled {
+			fallbackAgent := services.NewFallbackAgent(
 				repo,
 				llmClient,
 				mailbox,
-				time.Duration(cfg.Unblocker.PollInterval),
-				cfg.Unblocker.MaxRetries,
-				time.Duration(cfg.Unblocker.StallThreshold),
-				time.Duration(cfg.Unblocker.ConflictThreshold),
-				cfg.Unblocker.LLMAssessment,
+				time.Duration(fallbackCfg.PollInterval),
+				fallbackCfg.MaxRetries,
+				time.Duration(fallbackCfg.StallThreshold),
+				time.Duration(fallbackCfg.ConflictThreshold),
+				fallbackCfg.LLMAssessment,
 			)
-			orchestrator.SetUnblocker(unblocker)
-			unblocker.Start(ctx)
+			fallbackAgent.SetBudgetCliff(fallbackCfg.BudgetCliffRatio, 0)
+			fallbackAgent.SetStallCountThreshold(fallbackCfg.Triggers.StallCountThreshold)
+			orchestrator.SetFallbackAgent(fallbackAgent)
+			fallbackAgent.Start(ctx)
 		}
 
 		// Graceful shutdown on SIGTERM / SIGINT.

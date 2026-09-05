@@ -3,7 +3,15 @@ FROM noctifab-validation:base AS noctifab-artifacts
 
 FROM python:3.12-alpine
 
-RUN apk add --no-cache git bash docker-cli curl build-base linux-headers
+RUN apk add --no-cache git bash docker-cli curl build-base linux-headers libffi-dev \
+    && python3 -m pip install --no-cache-dir --break-system-packages \
+        "django>=5.0,<6.0" \
+        "pytest>=8.0" \
+        "pytest-django" \
+        "ruff>=0.8" \
+        "mypy>=1.13" \
+        "django-stubs" \
+    && rm -rf /root/.cache/pip
 
 COPY --from=noctifab-artifacts /usr/local/bin/noctifab /usr/local/bin/noctifab
 COPY --from=noctifab-artifacts /app/projects /app/projects

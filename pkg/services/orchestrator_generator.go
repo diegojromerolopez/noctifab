@@ -117,17 +117,19 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	currentPrompt := genPrompt
 	maxTurns := iterationsOrDefault(o.cfg.GeneratorsIterations)
 	if action == "surgical_repair" {
-		maxTurns = 1
+		maxTurns = 2
 	}
 	var lastErr error
 	runTestsCalled := false
 	testFixRequestCount := 0
 	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
+	diagCache.SeedContexts(fileContexts, readerContexts)
 	// consecutiveLinterFailures tracks back-to-back run_linter failures without
 	// any file mutation in between. When it reaches 2, run_linter is skipped
 	// for the remainder of this task to prevent the stale-cache lock-in spiral.
 	consecutiveLinterFailures := 0
 	linterDeferred := false
+	seenFileDependentCalls := make(map[string]bool)
 
 	for turn := 0; turn < maxTurns; turn++ {
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
@@ -165,6 +167,17 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] action %s blocked: %s\n", task.ID, action.Tool, reason)
 				turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s blocked by policy: %s", action.Tool, reason))
 				continue
+			}
+
+			// Precondition: A tool that depends on files cannot be called twice with identical arguments if no file mutations have occurred in between
+			if IsFileDependentTool(action.Tool) {
+				key := buildArgsKey(action.Tool, action.Args)
+				if seenFileDependentCalls[key] {
+					fmt.Printf("Orchestrator: Task %s [Generator] action %s rejected: duplicate call without file mutations\n", task.ID, action.Tool)
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[TOOL CALL REJECTED: NO WORKSPACE CHANGES] You have already executed '%s' with identical arguments and no files have been modified since. Re-running inspection or diagnostic tools without modifying code produces identical results. You MUST now call write_file, edit_file, or apply_patch to implement your changes.", action.Tool))
+					continue
+				}
+				seenFileDependentCalls[key] = true
 			}
 
 			if cachedOut, cachedErr, hasCache := diagCache.TryGetCachedInspection(action.Tool, action.Args); hasCache {
@@ -216,10 +229,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				} else {
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
-					// Reset linter failure counter on any successful file mutation.
-					switch action.Tool {
-					case "write_file", "edit_file", "multi_replace_file_content", "delete_file":
+					// Reset linter failure counter and duplicate tool tracker on any successful file mutation.
+					if IsMutatingTool(action.Tool) {
 						consecutiveLinterFailures = 0
+						seenFileDependentCalls = make(map[string]bool)
 					}
 				}
 			}

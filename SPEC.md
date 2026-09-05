@@ -563,6 +563,7 @@ CREATE TABLE IF NOT EXISTS clarifications (
 
 CREATE TABLE IF NOT EXISTS actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_id TEXT DEFAULT '',
     state_id TEXT NOT NULL,
     task_id TEXT,
     timestamp DATETIME NOT NULL,
@@ -573,6 +574,8 @@ CREATE TABLE IF NOT EXISTS actions (
     success INTEGER NOT NULL,
     FOREIGN KEY(state_id) REFERENCES state(id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_actions_action_id ON actions(action_id);
+CREATE INDEX IF NOT EXISTS idx_actions_state_id_id ON actions(state_id, id);
 
 CREATE TABLE IF NOT EXISTS workspace_files (
     path TEXT PRIMARY KEY,
@@ -842,6 +845,9 @@ Implementations of this interface reside under `pkg/infrastructure/llm/` and imp
 *   **Configurable HTTP Retries:** The client wraps all outbound HTTP API requests using a backoff retry logic. It retries up to `--http-max-retries` (default: 10) times using exponential backoff starting at `--http-retry-backoff` (default: 100ms) with a 2.0 multiplication factor and full jitter. This handles transient HTTP 429 (Rate Limit Exceeded) and HTTP 503 (Service Unavailable) errors.
 *   **Dynamic Provider Failover:** To handle total outages or persistent rate limits on the primary LLM provider, alternative backup provider API keys, urls, and model identifiers are configured in `.noctifab/config.yaml`.
 *   **Failover Cooldown Window:** If the primary provider client returns persistent HTTP 429 or 5xx failures after retries, the orchestrator marks the primary client as degraded and temporarily routes subsequent completions to the backup provider model for a configurable cooldown duration (e.g. 5 minutes) before attempting to resume primary client usage.
+*   **Preflight Model Verification & Auto-Resolution (`pkg/infrastructure/llm/ping.go`):** During preflight checks, Noctifab queries the live `/models` endpoint of configured providers. If a configured model is missing, deprecated, or returning 404, Noctifab auto-resolves to the highest-ranked available flagship model from that provider upfront, eliminating startup failover delays.
+*   **Persistent Parameter Capability Cache (`pkg/infrastructure/llm/openai_adapt.go`):** In-memory cache memorizes rejected chat completion parameters (such as `temperature`, `max_tokens`, `response_format`, or extra body parameters) upon first error per normalized model key. Subsequent requests to that model across all agent roles automatically filter out the invalid parameters with zero retry churn.
+*   **Task Diagnostic Cache & SHA-256 Deduplication (`pkg/services/diagnostic_cache.go`):** Files injected into the initial prompt context are tracked with cryptographic SHA-256 checksums. When `read_file` is requested for an unmodified prompt file, a concise reference notice is returned instead of re-injecting duplicate file payloads. Any file mutation automatically invalidates cached diagnostic test/lint results.
 
 ##### Lenient JSON Parsing & Struct Normalizer (`pkg/infrastructure/llm/parser.go`)
 Lower-tier reasoning models (e.g. Gemini 3.5 Flash or GPT-3.5) often return JSON schemas with inconsistent field types that violate strict Go serialization. The parser under `pkg/infrastructure/llm/parser.go` implements a lenient unmarshalling and type normalization flow:
@@ -1131,6 +1137,8 @@ To ensure correct software implementation, `noctifab` utilizes a sequential Test
     - **Happy paths** must be verified using end-to-end (e2e) tests.
     - **Input validations and simple edge cases** must be verified using unit tests.
     - **Complex internal validation flows and multi-component interactions** must be verified using integration tests.
+    - **Test Scope & Task Scope Alignment:** For internal component/library tasks (where `target_files` does not target the primary application entrypoint), tests must be in-process unit/integration tests running directly against library interfaces in memory without spawning external OS process binaries. Black-box E2E binary tests (e.g. `cargo_bin`, child processes) are authored during entrypoint wiring tasks.
+    - **Thin Shell Entrypoint Pattern:** Application entrypoints (`main.go`, `main.rs`, `main.py`, `server.ts`) must be thin wrappers (< 15 lines) delegating immediately to pure, callable application core functions (`run()`, `create_app()`, `WorkerEngine`) to allow in-process testing of the complete application lifecycle.
 2.  **Generator Agent:** Sandbox-restricted worker executing in a task-specific Git branch. It reads the written tests and implements the functionality to make them pass.
 3.  **Deterministic Test Runs & Majority Voting:** The Test Validator runs the project's test suite up to 3 times as independent processes in the workspace root:
     *   **Majority Vote:** If at least 2 out of 3 runs succeed (exit code `0`), the scenario is approved and marked as `TaskSuccess`.
@@ -1144,6 +1152,21 @@ In addition to dynamic validation, the Validator blocks actions violating:
 1.  **VCS Branch Protection:** Direct push to protected branches (e.g. `main`) is blocked.
 2.  **Path Traversal Protection:** Reading/writing files outside the workspace root is blocked.
 3.  **Command Execution Whitelist:** Only running commands matching a strict whitelist is allowed.
+
+#### 3.4.2. Pre-Tester & Post-Tester Quality Gates (AntiStubValidator)
+To prevent non-functional dummy implementations, placeholder stubs, vacuous assertions, and test masking from slipping into the codebase, Noctifab executes automated static analysis quality gates (`pkg/services/anti_stub_validator.go`) between TDD agent turns:
+
+1.  **Pre-Tester Functional Quality Gate:** Runs immediately after Turn 1 of the Generator Agent before the Tester Agent is invoked. It audits generated source code against language-agnostic anti-stub rules:
+    *   **Universal:** Blocks `# TODO: implement`, `// FIXME: not implemented` markers.
+    *   **Python:** Blocks `raise NotImplementedError`, empty `def` bodies with `pass` / `...` (outside Protocol/ABC definitions), and dummy `if __name__ == '__main__': pass`.
+    *   **Rust:** Blocks `todo!()`, `unimplemented!()`, and single-line / multi-line empty `fn main() {}` functions.
+    *   **Go:** Blocks `panic("not implemented")` and empty `func main() {}` entrypoint blocks.
+    *   **C / C++:** Blocks empty `int main(void) { return 0; }` or empty entrypoint blocks without dispatch logic.
+    *   **Java / Kotlin:** Blocks empty `public static void main(String[] args) {}` and `fun main() {}`.
+    *   **JavaScript / TypeScript:** Blocks `throw new Error("not implemented")` and empty `main` functions.
+    *   *Remediation Trigger:* If any violation is found, the orchestrator triggers an immediate remediation turn (`fix` role) before handing off to the Tester.
+2.  **Post-Tester Quality Gate:** Runs immediately after the Tester Agent authors tests. It scans test files for tautological/vacuous assertions (`assert True`, `assert 1 == 1`, empty test functions) and shell error suppression masks (`|| true`, `|| exit 0`, `set +e`), triggering an automatic test fix turn if detected.
+
 
 #### 3.4.3. Harness Sandbox Boundaries (Configurable Isolation Modes)
 To guarantee safe operation and prevent irreversible actions (such as unauthorized commands or data deletion), the execution engine executes all tools and commands inside a restricted, configurable agent harness sandbox. The isolation model is configured via the `--sandbox-mode` CLI flag or `NOCTIFAB_SANDBOX_MODE` environment variable.
@@ -1360,6 +1383,7 @@ Prerequisites create a circular reference cycle:
 3.  **Topological Scheduling, File Locks & Parallel Worker Assignment:**
     *   During the execution loop (`noctifab start`), the scheduler continuously polls the task DAG.
     *   It identifies **ready tasks** — tasks that are currently `TaskPending` and whose prerequisite tasks listed in `DependsOn` all have a status of `TaskSuccess`.
+    *   **Global Task DAG & Cross-Story Pipelining:** Tasks declare fine-grained dependencies using globally unique identifiers (e.g. `US-001-TASK-001`). When a downstream user story (e.g. `US-002`) depends on an upstream story (e.g. `US-001`), downstream tasks unblock immediately once their specific prerequisite foundation/interface tasks merge into `main`, eliminating false serialization and enabling concurrent cross-story execution.
     *   **File-Level Lock Registry:** To prevent parallel workers from editing the same codebase files in isolation, the scheduler implements an in-memory lock registry. Before dispatching a task, the scheduler locks all paths declared in `TargetFiles`. If a ready task's target files overlap with a currently active task's files, the scheduler defers dispatching that task until the active task completes and releases its file locks.
     *   For each ready task that is not blocked by file locks, if the number of currently active worker threads is less than `--agents`, the orchestrator:
         1. Transitions the task status to `TaskInProgress`.
@@ -1659,6 +1683,7 @@ To resolve syntax, lint, and test execution errors immediately without triggerin
 - **`max_actions`**: Specifies a global limit on the number of task execution cycles. If the total number of actions across all tasks reaches this ceiling, the story is aborted to prevent infinite repair loops and LLM budget exhaustion.
 - **`max_duration`**: Specifies a story-level wall-clock timeout.
 - **`timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature timeouts on large project test suites.
+- **`OscillationCircuitBreaker`**: Intra-task circuit breaker that terminates non-productive test mutation churn when: (1) $\ge 2$ consecutive test runs pass with 0 errors, (2) $\ge 2$ consecutive turns have only modified test files with unchanged `src/` production code, and (3) task progress is $\ge 70\%$. Trips immediately to transition the task forward to review and completion.
 
 #### Wiring
 The `WatchdogRepair` is injected into the `Orchestrator` via constructor (DI). If no repair handler is provided (nil), the orchestrator skips the repair step and marks the task as failed immediately — preserving backward compatibility.
@@ -1742,31 +1767,35 @@ To guarantee the primary invariant—**Noctifab Never Gets Stuck**—the system 
    - Upon completion of all story tasks, executes a consolidated global test suite on `integrationBranch`.
    - If tests fail, spawns the Integration Repair Agent with the consolidated diff and failure traces (budget: max 2 turns) to repair cross-task discrepancies.
 
-### 3.6.14. Last-Resort Agent (Omni-Unblocker & Sovereign Repair Agent)
+### 3.6.14. Fallback Agent (Omni-Agent / Sovereign Repair & Recovery Agent)
 
-The **Last-Resort Agent** (`pkg/services/orchestrator_last_resort.go`, `AgentRole: "LAST_RESORT"`) is an autonomous sovereign repair agent invoked by the orchestrator when normal execution encounters intractable roadblocks:
-1. **Trigger Conditions:**
+The **Fallback Agent** (`pkg/services/fallback_agent.go`, `pkg/services/orchestrator_last_resort.go`, `AgentRole: "FALLBACK"`) is Noctifab's unified escalation, health monitoring, and sovereign recovery system that merges the continuous watchdog monitoring of the unblocker with the sovereign compromise authority of the last-resort omni-builder:
+1. **Operating Modes:**
+   - **Mode 1 (Passive Watchdog & Scope Triage):** Periodically inspects pipeline state, scrubs logs, evaluates 0-token fast-path regex rules, and executes `ScopeTriageCmd` to prioritize walking skeletons (`US-001`/`US-002`) and defer downstream scope (`US-003+`) upon reaching budget cliffs (> 50% timeout).
+   - **Mode 2 (Active Sovereign Omni-Builder):** When retries exhaust or tasks reach stall count thresholds (`StallCount >= 2`), takes direct control of the workspace across all files and tools.
+2. **Trigger Conditions:**
    - Exhausted retry budgets (`task.Retries >= task.MaxRetries`).
-   - Cyclic test failure or unblocker loops (`unblocker.stall_count >= 4`).
+   - Cyclic test failure or stall count escalation (`task.StallCount >= 2`).
    - Missing toolchains or sandbox failures (`FailureSandbox`).
-   - Post-merge integration failures where the standard 2-turn repair phase is insufficient.
-2. **Sovereign Permissions & Scope:**
-   - Multi-file code and test edits in a single turn.
+   - Approaching story budget or timeout cliffs.
+3. **Sovereign Permissions & Scope:**
+   - Multi-file code and test edits in a single turn (`write_files`, `edit_file`, `run_tests`, `install_package`, `apply_patch`).
    - Specification alignment and contract mutation when tests and code are deadlocked over conflicting requirements.
    - Fallback and dependency pruning when uninstalled external libraries stall compilation.
-3. **4-Tier Compromise Hierarchy:**
+4. **4-Tier Compromise Hierarchy:**
    - **Tier 1 (Interface Harmonization):** Harmonize signature mismatches, types, and parameter counts between tests and implementation.
    - **Tier 2 (Standard Library Fallback):** Replace missing external third-party packages with built-in standard library constructs.
    - **Tier 3 (Scope Pruning):** Simplify, disable, or adjust failing test cases that test non-essential external toolchains or unreachable requirements.
    - **Tier 4 (Safe Compiling Stub):** Implement a minimal, type-safe compiling stub returning default/fallback values to ensure the pipeline never breaks build compilation.
-4. **Strict Specification Quality Invariants:**
+5. **Strict Specification Quality Invariants:**
    - Modularity: files must not exceed 500 lines.
    - Architecture: Dependency Injection, SOLID, Domain-Driven Design (DDD).
    - Security: Zero security compromises (no hardcoded credentials or sandbox breakouts).
-5. **Observability & Auditing:**
-   - Emits prominent critical log alerts (`🚨 [CRITICAL ALERT] LAST-RESORT AGENT SUMMONED`).
+6. **Observability & Auditing:**
+   - Emits prominent critical log alerts (`🚨 [CRITICAL ALERT] Fallback Agent triggered`).
    - Registers in `State.ActiveAgents` and logs structured actions to `State.LastActions`.
    - Displays real-time status, badges, and filters in the Web Dashboard.
+
 
 ### 3.6.15. Whole-Project Acceptance Auditor Agent
 
@@ -1936,6 +1965,11 @@ sandbox:
   # - JavaScript/TypeScript: Linter="eslint .", Formatter="prettier --write ."
   linter_command: "golangci-lint run" # Default deterministic linter tool command
   formatter_command: "go fmt ./..." # Default deterministic code formatter tool command (executed as pre-step before linter checks)
+  # syntax_check_command: lightweight per-file syntax validation hook executed after every write_file/edit_file/write_files/apply_patch.
+  # Use {file} as placeholder for the absolute path of the written file. When empty (default), no syntax check is performed —
+  # file write tools remain pure I/O operations with zero external binary dependencies (language-agnostic by design).
+  # Examples: "python3 -m py_compile {file}" | "ruby -c {file}" | "gofmt -e {file}" | "node --check {file}" | "bash -n {file}"
+  syntax_check_command: ""          # Default: empty (no-op — language-agnostic)
   max_linter_retries: 3         # Max linter retry turns per task (default: 3)
   exclude_paths:                # Scanned path exclusions
     - "node_modules/"
