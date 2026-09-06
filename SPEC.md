@@ -1811,6 +1811,13 @@ The **Acceptance Auditor Agent** (`pkg/services/acceptance_auditor.go`, `AgentRo
    - If `passed == false` or any specification gaps are listed, the orchestrator logs the detected omissions, skips version bumping/PR creation, and halts the release pipeline.
    - When passed, the audit summary is automatically incorporated into the generated Pull Request body.
 
+### 3.6.16. Greenfield Spike Prototyping Phase
+
+The **Greenfield Spike Prototyping Phase** (`pkg/services/spike_runner.go`, `AgentRole: "spike"`) accelerates project boot times on new, uninitialized repositories:
+1. **Execution Invariant:** Prior to Product Manager roadmap generation, the orchestrator evaluates workspace state. If zero roadmap user stories exist and the repository is greenfield (no legacy codebase detected by `ScanLegacyFiles`), the spike prototyping phase executes.
+2. **Single-Shot Walking Skeleton:** A prioritized lone model consumes `SPEC.md` and generates a minimal compiling walking skeleton in one batch turn using the `write_files` tool action.
+3. **Commit & Handoff to Legacy Stabilization:** Files are written to disk and immediately committed to Git (`feat: initial spike solution walking skeleton`). Control then hands off to the Product Manager, which activates its **Legacy Stabilization Mandate** to systematically characterize the walking skeleton with black-box tests and guide subsequent feature expansion.
+
 ---
 
 ### 3.7. Specification Ingestion & External Clients

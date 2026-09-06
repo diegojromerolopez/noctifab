@@ -162,6 +162,7 @@ Noctifab exposes the following implemented roles and retained experimental capab
 | **`qa`** | Experimental QA capability | Retained but disabled in Phase 0; no QA runtime executes. |
 | **`auditor`** | Acceptance Auditor Agent | Evaluates whole-project compliance against root `SPEC.md` and story contracts prior to PR creation, halting release if critical command or interface omissions are found. |
 | **`fallback`** | Fallback Agent (Omni-Agent) | Unified pipeline watchdog & sovereign chief surgeon (merging previous `unblocker` and `last_resort` roles). Operates in two modes: Passive Watchdog (0-token fast-paths, log escalation, scope triage) and Active Sovereign Omni-Builder (cross-domain repair under 4-Tier Compromise Hierarchy). |
+| **`spike`** | Greenfield Prototyping Architect | Executes an initial single-shot walking skeleton prototyping phase on greenfield workspaces prior to roadmap generation, producing a compiling codebase committed to Git that triggers the Product Manager's Legacy Stabilization Mandate. |
 
 Architecture, security, performance, documentation, and infrastructure work is represented by explicit planner tasks and deterministic validators, not specialist agents.
 
