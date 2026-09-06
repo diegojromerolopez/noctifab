@@ -116,11 +116,13 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	}
 
 	var fileContexts []string
+	slicer := NewContextSlicer(o.cfg.Context)
 	for _, file := range task.TargetFiles {
 		fullPath, err := resolveSandboxPath(taskState.ProjectPath, file)
 		if err == nil {
 			if content, err := os.ReadFile(fullPath); err == nil {
-				fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", file, capText(string(content), fileContextCapChars)))
+				sliced := slicer.SliceFileContext(file, string(content), "")
+				fileContexts = append(fileContexts, capText(sliced, fileContextCapChars))
 			}
 		}
 	}

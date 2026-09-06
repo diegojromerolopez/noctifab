@@ -145,6 +145,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		blocked := 0
 		var turnToolOutputs []string
 		hasNoop := false
+		fileMutated := false
 
 		for _, action := range resp.Actions {
 			if action.Tool == "noop" {
@@ -185,10 +186,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			if cachedOut, cachedErr, hasCache := diagCache.TryGetCachedInspection(action.Tool, action.Args); hasCache {
 				fmt.Printf("Orchestrator: Task %s [Generator] inspection action %s served from cache\n", task.ID, action.Tool)
 				if cachedErr != nil {
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, cachedErr, cachedOut))
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, cachedErr, capText(cachedOut, 2000)))
 				} else {
 					executed++
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, cachedOut))
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, capText(cachedOut, 2000)))
 				}
 				continue
 			}
@@ -196,10 +197,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			if cachedOut, cachedErr, hasCache := diagCache.TryGetCachedResult(action.Tool); hasCache {
 				fmt.Printf("Orchestrator: Task %s [Generator] diagnostic action %s served from cache\n", task.ID, action.Tool)
 				if cachedErr != nil {
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, cachedErr, cachedOut))
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, cachedErr, capText(summarizeFailureLog(cachedOut), 3000)))
 				} else {
 					executed++
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, cachedOut))
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, capText(cachedOut, 2000)))
 				}
 				continue
 			}
@@ -219,7 +220,11 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					circuitBreaker.RecordTestResult(execErr == nil)
 				}
 				if execErr != nil {
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, out))
+					failedOut := out
+					if action.Tool == "run_tests" || action.Tool == "run_linter" {
+						failedOut = summarizeFailureLog(out)
+					}
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, capText(failedOut, 3000)))
 					// Track linter consecutive failures.
 					if action.Tool == "run_linter" {
 						consecutiveLinterFailures++
@@ -233,9 +238,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					}
 				} else {
 					executed++
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, out))
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, capText(out, 2000)))
 					// Reset linter failure counter and duplicate tool tracker on any successful file mutation.
 					if IsMutatingTool(action.Tool) {
+						fileMutated = true
 						circuitBreaker.RecordAction(action.Tool, action.Args)
 						consecutiveLinterFailures = 0
 						seenFileDependentCalls = make(map[string]bool)
@@ -268,6 +274,27 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 							fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s test fixes: %v\n", task.ID, commitErr)
 						}
 					}
+				}
+			}
+		}
+
+		// Optimization B: Speculative Fast Tool Execution (Local Pre-Validation)
+		// If file mutations occurred and the agent didn't run tests in this turn,
+		// run tests locally immediately so the agent gets instant feedback and avoids a wasted turn.
+		if fileMutated && !runTestsCalled {
+			runTestsTool, ok := o.registry.Get("run_tests")
+			if ok {
+				out, execErr := runTestsTool.Execute(genCtx, state, map[string]any{})
+				diagCache.OnToolExecuted("run_tests", map[string]any{}, out, execErr)
+				if execErr == nil {
+					fmt.Printf("🚀 [Speculative Fast Validation] Task %s: mutations compile & pass all tests cleanly!\n", task.ID)
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[Speculative Fast Validation] All tests PASSED cleanly:\n%s", capText(out, 2000)))
+					circuitBreaker.RecordTestResult(true)
+					runTestsCalled = true
+				} else {
+					fmt.Printf("ℹ [Speculative Fast Validation] Task %s: tests failing after mutation: %v\n", task.ID, execErr)
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[Speculative Fast Validation] Tests failed after file mutation:\n%s", capText(summarizeFailureLog(out), 3000)))
+					circuitBreaker.RecordTestResult(false)
 				}
 			}
 		}

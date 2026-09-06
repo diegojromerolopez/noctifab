@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
@@ -44,7 +45,11 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		return nil
 	}
 
-	rendered, err := o.promptRenderer.Render(prompts.AgentPlanner, "decompose", prompts.PlannerPromptData{Spec: spec})
+	specToPlan := spec
+	if o.cfg.Context.GetCompactionMode() != "none" {
+		specToPlan = llm.CompactMarkdownSpec(specToPlan)
+	}
+	rendered, err := o.promptRenderer.Render(prompts.AgentPlanner, "decompose", prompts.PlannerPromptData{Spec: specToPlan})
 	if err != nil {
 		return fmt.Errorf("planner prompt rendering failed: %w", err)
 	}

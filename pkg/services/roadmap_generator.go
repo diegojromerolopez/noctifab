@@ -9,8 +9,24 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 )
+
+type compactionModeKey struct{}
+
+// WithCompactionMode sets the prompt compaction mode into the context.
+func WithCompactionMode(ctx context.Context, mode string) context.Context {
+	return context.WithValue(ctx, compactionModeKey{}, mode)
+}
+
+// CompactionModeFromContext retrieves the prompt compaction mode from context, or empty string.
+func CompactionModeFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(compactionModeKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
 
 // GenerateRoadmap reads SPEC.md from projectPath and any existing user stories under roadmap/,
 // invokes the Product Manager Agent to generate or audit/refine user stories with explicit Definitions of Done,
@@ -69,6 +85,10 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 	if err != nil {
 		return fmt.Errorf("SPEC.md not found in project path %q: %w", projectPath, err)
 	}
+	specContent := string(specBytes)
+	if mode := CompactionModeFromContext(ctx); mode != "" && mode != "none" {
+		specContent = llm.CompactMarkdownSpec(specContent)
+	}
 
 	legacyFiles, _ := scanLegacyFiles(projectPath)
 	legacyBlock := ""
@@ -93,7 +113,7 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 			action = "audit"
 		}
 		rendered, err := renderer.Render(prompts.AgentProductManager, action, prompts.ProductManagerPromptData{
-			Spec:            string(specBytes),
+			Spec:            specContent,
 			ExistingStories: strings.Join(existingStories, "\n"),
 			LegacyFiles:     legacyBlock,
 			MaxUserStories:  maxUserStories,

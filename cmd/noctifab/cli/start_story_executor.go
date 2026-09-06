@@ -178,6 +178,51 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			return err
 		}
 
+		if stLoaded, loadErr := deps.repo.Load(ctx); loadErr == nil && stLoaded != nil {
+			state = stLoaded
+		}
+		storyTasks := getStoryTasks(state, featName, storyID)
+		isFirstScaffoldStory := strings.HasPrefix(storyID, "US-001") || strings.HasPrefix(featName, "US-001")
+		if isFirstScaffoldStory && len(storyTasks) > 0 && deps.evaluator != nil {
+			allTasksGreen := true
+			for _, t := range storyTasks {
+				passed, _, valErr := deps.evaluator.ValidateTask(ctx, state, t)
+				if !passed || valErr != nil {
+					allTasksGreen = false
+					break
+				}
+			}
+			if allTasksGreen {
+				fmt.Printf("🚀 [Spike Fast Exit] Walking skeleton already compiles cleanly and passes all test assertions (%d tasks). Marking %s as SUCCESS.\n", len(storyTasks), featName)
+				now := time.Now().UTC()
+				for i := range state.Tasks {
+					for _, st := range storyTasks {
+						if state.Tasks[i].ID == st.ID {
+							state.Tasks[i].Status = domain.TaskSuccess
+							state.Tasks[i].Progress = 100
+							state.Tasks[i].UpdatedAt = now
+						}
+					}
+				}
+				for i, s := range state.Stories {
+					if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
+						state.Stories[i].Status = domain.StorySuccess
+						state.Stories[i].UpdatedAt = now
+					}
+				}
+				_ = deps.repo.Save(ctx, state)
+				if deps.executionReporter != nil {
+					deps.executionReporter.Observe(ctx, domain.ExecutionEvent{
+						Kind:    domain.EventStoryFinished,
+						StoryID: featName,
+						Outcome: domain.OutcomeSuccess,
+						At:      now,
+					})
+				}
+				return nil
+			}
+		}
+
 		// Immediate dispatch of initial ready tasks without waiting for the first ticker tick.
 		_, _ = orchestrator.RunOnce(ctx)
 

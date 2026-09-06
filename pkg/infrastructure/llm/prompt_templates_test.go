@@ -68,4 +68,42 @@ func TestPromptCompaction(t *testing.T) {
 			t.Errorf("expected code block preserved in parallel CompactCaveman")
 		}
 	})
+
+	t.Run("CompactMarkdownSpec", func(t *testing.T) {
+		spec := `# SPEC Title
+<!-- Internal comment that should be stripped -->
+![Architecture diagram](http://example.com/arch.png)
+
+You are a software factory automation agent operating in a restricted workspace sandbox.
+
+## Requirements
+- The system must process transactions.
+
+` + "```go\ntype Tx struct {\n    ID string\n}\n```\n"
+		compacted := CompactMarkdownSpec(spec)
+
+		if strings.Contains(compacted, "Internal comment") {
+			t.Errorf("expected HTML comment to be stripped")
+		}
+		if strings.Contains(compacted, "Architecture diagram") {
+			t.Errorf("expected markdown image to be stripped")
+		}
+		if strings.Contains(compacted, "You are a software factory automation agent") {
+			t.Errorf("expected conversational preamble to be stripped")
+		}
+		if !strings.Contains(compacted, "The system must process transactions.") {
+			t.Errorf("expected requirements to be preserved")
+		}
+		if !strings.Contains(compacted, "type Tx struct") {
+			t.Errorf("expected code block to be preserved")
+		}
+	})
+
+	t.Run("CollapsesConsecutiveBlankLines", func(t *testing.T) {
+		input := "Line 1\n\n\n\nLine 2\n\n\nLine 3"
+		compacted := CompactCaveman(input)
+		if strings.Contains(compacted, "\n\n\n") {
+			t.Errorf("expected 3+ consecutive blank lines to be collapsed, got: %q", compacted)
+		}
+	})
 }

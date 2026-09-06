@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.0] - 2026-09-06
+
+### Added
+- **Spike Fast Exit on Green (Compiler-Gated Early Acceptance)**:
+  - In `cmd/noctifab/cli/start_story_executor.go`, if the walking skeleton produced by the spike already compiles cleanly, passes sandbox tests, and satisfies anti-stub invariants for `US-001`, immediately marks tasks as `SUCCESS` and advances straight to `US-002`, eliminating 2–4 redundant LLM iterations.
+- **Speculative Fast Tool Execution (Local Pre-Validation)**:
+  - In `pkg/services/orchestrator_generator.go`, when file mutations occur (`write_file`, `edit_file`, `multi_replace_file_content`, `apply_patch`) without an explicit test execution call in that turn, automatically runs the test suite speculatively. If tests pass, appends the green validation result to turn output and records test passes, avoiding wasted round trips.
+- **Aggressive Context Trimming for Instant TTFT**:
+  - In `pkg/services/orchestrator_generator.go` and `pkg/services/prompt_utils.go`, capped tool outputs to 3,000 characters and file context to 8,000 characters.
+  - Automatically summarizes build and test failure logs with `summarizeFailureLog`, stripping hundreds of lines of irrelevant stack noise while preserving compile errors and failing assertions.
+- **Telegraphic & Boilerplate Stripping Compaction Engine**:
+  - In `pkg/infrastructure/llm/prompt_templates.go`, replaced ineffective naive filters with real boilerplate stripping, conversational preamble removal, polite filler reduction, and consecutive blank line collapsing for both `caveman` and `simple_english` compaction strategies.
+  - Enhanced `CompactMarkdownSpec` to strip HTML comments (`<!-- ... -->`), markdown image tags, and apply caveman compaction while strictly preserving code blocks (` ``` `).
+- **Spec & Context Slicing Pipeline Integration**:
+  - Wired `CompactMarkdownSpec` into `ExecuteSpike`, `GenerateRoadmapWithFullConfig`, and `PlanStory` when compaction mode is enabled.
+  - Wired `ContextSlicer` into `pkg/services/orchestrator_execute.go` for task target file contexts according to configured context modes (`diff_window`, `tree_sitter`, `full`).
+
 ## [0.78.0] - 2026-09-06
 
 ### Added

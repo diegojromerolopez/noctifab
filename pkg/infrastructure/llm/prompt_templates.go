@@ -104,22 +104,79 @@ var simpleEnglishReplacer = strings.NewReplacer(
 	"terminate", "end",
 	"Terminate", "End",
 	"is required to be", "must be",
+	"are required to be", "must be",
 	"has the capability to", "can",
+	"have the capability to", "can",
+	"in order to", "to",
+	"In order to", "To",
+	"with the exception of", "except",
+	"at this point in time", "now",
+	"due to the fact that", "because",
+	"for the purpose of", "for",
+	"in the event that", "if",
+	"prioritize a clean, functional implementation that makes all tests pass", "make all tests pass",
 )
+
+var fullLinePreambles = []string{
+	"you are a software factory automation agent operating in a restricted workspace sandbox",
+	"you are acting as the generator agent",
+	"you are acting as the tester agent",
+	"your task is to implement the specified task",
+	"focus on creating the minimal implementation/functionality to fulfill the task requirements",
+}
+
+func isConversationalPreamble(line string) bool {
+	lower := strings.ToLower(strings.TrimSpace(line))
+	lower = strings.TrimSuffix(lower, ".")
+	lower = strings.TrimSuffix(lower, ":")
+	for _, p := range fullLinePreambles {
+		if lower == p {
+			return true
+		}
+	}
+	return false
+}
+
+var stripPrefixes = []string{
+	"please note that ",
+	"in order to ensure that ",
+	"in order to ",
+	"the purpose of this document is to ",
+	"it is recommended that you ",
+	"as a user, i would like to ",
+}
+
+func stripPreamblePrefix(line string) string {
+	lower := strings.ToLower(line)
+	for _, p := range stripPrefixes {
+		if strings.HasPrefix(lower, p) {
+			return line[len(p):]
+		}
+	}
+	return line
+}
 
 func processSimpleEnglishLines(lines []string) []string {
 	var cleaned []string
+	lastBlank := false
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		lower := strings.ToLower(trimmed)
-		if lower == "please note that" || lower == "in order to ensure that" || lower == "the purpose of this document is to" {
+		if trimmed == "" {
+			if lastBlank {
+				continue
+			}
+			lastBlank = true
+			cleaned = append(cleaned, "")
 			continue
 		}
-		if strings.HasPrefix(lower, "please note that ") {
-			line = line[len("Please note that "):]
-		} else if strings.HasPrefix(lower, "in order to ") {
-			line = line[len("In order to "):]
+		lastBlank = false
+
+		if isConversationalPreamble(trimmed) {
+			continue
 		}
+
+		line = stripPreamblePrefix(line)
 		simplifiedLine := simpleEnglishReplacer.Replace(line)
 		cleaned = append(cleaned, simplifiedLine)
 	}
@@ -128,19 +185,41 @@ func processSimpleEnglishLines(lines []string) []string {
 
 func processCavemanLines(lines []string) []string {
 	var cleaned []string
+	lastBlank := false
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			if lastBlank {
+				continue
+			}
+			lastBlank = true
+			cleaned = append(cleaned, "")
+			continue
+		}
+		lastBlank = false
+
 		if trimmed == "---" || trimmed == "***" || trimmed == "===" || trimmed == "___" {
 			continue
 		}
-		lower := strings.ToLower(trimmed)
-		if strings.HasPrefix(lower, "please note that") ||
-			strings.HasPrefix(lower, "as a user, i would like to") ||
-			strings.HasPrefix(lower, "in order to ensure that") ||
-			strings.HasPrefix(lower, "the purpose of this document is to") ||
-			strings.HasPrefix(lower, "it is recommended that you") {
+
+		if isConversationalPreamble(trimmed) {
 			continue
 		}
+
+		line = stripPreamblePrefix(line)
+
+		// Telegraphic compaction: remove polite filler prefixes
+		lower := strings.ToLower(line)
+		switch {
+		case strings.HasPrefix(lower, "please "):
+			line = line[len("Please "):]
+		case strings.HasPrefix(lower, "simply "):
+			line = line[len("Simply "):]
+		case strings.HasPrefix(lower, "strictly "):
+			line = line[len("Strictly "):]
+		}
+
 		cleaned = append(cleaned, line)
 	}
 	return cleaned
@@ -159,7 +238,33 @@ func CompactCaveman(prompt string) string {
 	return parallelCompact(prompt, processCavemanLines)
 }
 
-// CompactMarkdownSpec performs caveman-style compaction on Markdown specifications and prompts.
+// CompactMarkdownSpec performs caveman-style compaction on Markdown specifications and prompts,
+// stripping decorative headers, HTML comments, and conversational prose while preserving technical requirements.
 func CompactMarkdownSpec(prompt string) string {
-	return CompactCaveman(prompt)
+	// Strip HTML comments (e.g. <!-- ... -->)
+	lines := strings.Split(prompt, "\n")
+	var stripped []string
+	inComment := false
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "<!--") && strings.HasSuffix(trimmed, "-->") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "<!--") {
+			inComment = true
+			continue
+		}
+		if inComment {
+			if strings.Contains(trimmed, "-->") {
+				inComment = false
+			}
+			continue
+		}
+		// Strip Markdown image links
+		if strings.HasPrefix(trimmed, "![") && strings.Contains(trimmed, "](") {
+			continue
+		}
+		stripped = append(stripped, l)
+	}
+	return CompactCaveman(strings.Join(stripped, "\n"))
 }

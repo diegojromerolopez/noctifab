@@ -61,8 +61,13 @@ func ExecuteSpike(
 		renderer = prompts.NewDefaultRenderer()
 	}
 
+	specText := string(specBytes)
+	if cfg != nil && cfg.Context.GetCompactionMode() != "none" {
+		specText = llm.CompactMarkdownSpec(specText)
+	}
+
 	rendered, err := renderer.Render(prompts.AgentSpike, "generate", prompts.SpikePromptData{
-		Spec: string(specBytes),
+		Spec: specText,
 	})
 	if err != nil {
 		return false, fmt.Errorf("failed to render spike prompt: %w", err)
