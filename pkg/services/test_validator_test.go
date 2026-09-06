@@ -204,4 +204,34 @@ func TestTestValidatorValidateTask(t *testing.T) {
 			t.Fatalf("expected pass with formatter executed, got ok=%v msg=%q err=%v", ok, msg, err)
 		}
 	})
+
+	t.Run("when syntax check fails it aborts immediately before running test suite", func(t *testing.T) {
+		sb := &scriptedSandbox{
+			results: []error{nil},
+			outputs: []string{"PASS: 1 test passed"},
+		}
+		v := NewTestValidator(sb, false, nil, nil)
+		v.SyntaxChecker = &mockValidatorSyntaxChecker{err: errors.New("syntax error: unexpected token on line 4")}
+		ok, msg, err := v.ValidateTask(context.Background(), state, validatorTask())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Errorf("expected failure when syntax check fails, got pass")
+		}
+		if !strings.Contains(msg, "Fast-path syntax check failed") {
+			t.Errorf("expected fast-path syntax error in message, got %q", msg)
+		}
+		if sb.calls != 0 {
+			t.Errorf("expected sandbox not to be called on syntax failure, got %d calls", sb.calls)
+		}
+	})
+}
+
+type mockValidatorSyntaxChecker struct {
+	err error
+}
+
+func (m *mockValidatorSyntaxChecker) Check(ctx context.Context, path string) error {
+	return m.err
 }

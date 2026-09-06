@@ -259,6 +259,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
 	evaluator.Formatter = services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
 	evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
+	evaluator.SyntaxChecker = services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)
 	if cfg.Sandbox.TimeoutSeconds > 0 {
 		evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 	}
@@ -267,7 +268,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	orchConfig := buildOrchestratorConfig(cfg)
 
-	executeStory := buildStoryExecutor(storyExecutorDeps{
+	storyDeps := storyExecutorDeps{
 		cfg:               cfg,
 		targetDir:         targetDir,
 		storyFiles:        storyFiles,
@@ -285,7 +286,10 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		repairHandler:     repairHandler,
 		promptRenderer:    promptRenderer,
 		executionReporter: executionReporter,
-	})
+	}
+	executeStory := buildStoryExecutor(storyDeps)
+	planStory := buildStoryPlanner(storyDeps)
+	speculativePlanner := NewSpeculativePlanner(repo, planStory)
 
 	if executionReporter != nil {
 		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "story_execution", At: time.Now().UTC()})
@@ -310,18 +314,19 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	storyOutcomes, _ := runStoryIterationLoops(cmdCtx, StoryLoopOptions{
-		Cfg:               cfg,
-		TargetDir:         targetDir,
-		StoryFiles:        storyFiles,
-		Repo:              repo,
-		ExecutionReporter: executionReporter,
-		ExecuteStory:      executeStory,
-		GitClient:         gitClient,
-		TotalLoops:        totalLoops,
-		ResumeRequested:   resumeRequested,
-		WebEnabled:        webEnabled,
-		WebHost:           webHost,
-		WebPort:           webPort,
+		Cfg:                cfg,
+		TargetDir:          targetDir,
+		StoryFiles:         storyFiles,
+		Repo:               repo,
+		ExecutionReporter:  executionReporter,
+		ExecuteStory:       executeStory,
+		GitClient:          gitClient,
+		TotalLoops:         totalLoops,
+		ResumeRequested:    resumeRequested,
+		WebEnabled:         webEnabled,
+		WebHost:            webHost,
+		WebPort:            webPort,
+		SpeculativePlanner: speculativePlanner,
 	})
 
 	if executionReporter != nil {

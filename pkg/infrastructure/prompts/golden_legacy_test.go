@@ -325,9 +325,6 @@ You are a software factory automation agent operating in a restricted workspace 
 You are acting as the Generator Agent.
 Your task is to implement the specified task. If test files already exist in the workspace, make the tests pass successfully. If no test files have been written yet, implement the baseline functionality first so tests can be written against it later.
 
-Task Details:
-%s
-
 CRITICAL:
 1. You may receive multiple turns. If run_tests or run_linter fails, you will get the error output and another turn to fix it. Write/edit files and run tests immediately.
 2. FUNCTIONAL CORRECTNESS FIRST: Prioritize a clean, functional implementation that makes all tests pass. Do not over-engineer or aim for perfection on the initial pass. Refactoring can happen once tests are passing.
@@ -339,6 +336,9 @@ CRITICAL:
 8. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
 9. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
 10. DO NOT RE-READ UNMODIFIED FILES ALREADY IN PROMPT: Inspect the 'Existing files context' and 'Inspection context gathered' sections above. If the file you need is already present in your prompt and has not been modified in the workspace, DO NOT call 'read_file', 'find_files', or 'list_directory' again. Proceed directly to editing and implementation tools ('write_file', 'edit_file', 'multi_replace_file_content', 'run_tests').
+%s
+
+Task Details:
 %s
 
 You may use the following tools:
@@ -367,7 +367,7 @@ Return format (your response MUST begin with '{' and end with '}' — no text be
     }
   ]
 }
-`, taskDetails, legacyAntiStallingGenerator)
+`, legacyAntiStallingGenerator, taskDetails)
 }
 
 func legacyBuildRepairPrompt(details string) string {

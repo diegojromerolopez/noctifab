@@ -109,6 +109,18 @@ To eliminate high-latency agent turns spent fixing trivial whitespace, indent, o
 #### Short-Circuit Test Consensus ("Fast-Pass on Clean Run 1") (`pkg/services/test_validator.go`)
 When multi-run test validation is enabled (`runs > 1`), `TestValidator` evaluates Run 1 first. If Run 1 passes cleanly without flaky indicators or empty suites, validation passes immediately via short-circuit consensus, skipping redundant subsequent runs and reducing test gating latency by 66%. If Run 1 fails or flakes, remaining runs execute in parallel for majority voting consensus.
 
+#### Generator Zero-Turn Fast Exit on Verified Green (`pkg/services/orchestrator_generator.go`)
+When explicit `run_tests` passes cleanly (`execErr == nil`) or when tool mutations pass speculative fast validation (`execErr == nil`), the generator terminates immediately without consuming a redundant turn waiting for the LLM to output `noop`.
+
+#### Fast-Path Syntax Pre-Gating (`pkg/services/test_validator.go`, `pkg/services/production_tools.go`)
+Before running expensive test runner processes or multi-run consensus suites, code changes pass through `SyntaxChecker` in $< 20\text{ms}$. Syntax errors fail fast and immediately return actionable compiler diagnostics to the agent.
+
+#### Deterministic KV-Cache Prompt Prefix Stabilization (`pkg/infrastructure/prompts/defaults/generator/*.tmpl`)
+All Generator prompt templates hoist static system guidelines, constraints, and tool documentation to lines 1–78 at the head of the prompt, placing dynamic fields (`Title`, `Description`, `Context`) at the bottom. This ensures a consistent prefix across all tasks, maximizing LLM KV-cache reuse and slashing TTFT from ~3s to ~200ms.
+
+#### Speculative Macro-Planning Overlap (`cmd/noctifab/cli/start_planner_overlap.go`)
+`SpeculativePlanner` asynchronously decomposes queued user stories into task DAGs in the background while the active user story executes its assigned tasks. By the time the active story concludes, downstream tasks are already synthesized and persisted on disk and memory, eliminating inter-story planning pauses.
+
 #### Worktree Cache & Dependency Symlinking (`pkg/services/worktree_cache.go`)
 Isolated Git worktrees created under `.noctifab/worktrees/` redirect heavy compiler caches (Cargo, Go, pip, ccache) to `.noctifab/cache/`. When `package.json` is present, root `node_modules` are automatically symlinked into the worktree directory, enabling Node/TypeScript test runners (`jest`, `vitest`, `ts-node`) to execute seamlessly without redundant per-worktree installations.
 

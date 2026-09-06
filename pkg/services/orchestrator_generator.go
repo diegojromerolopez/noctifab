@@ -218,6 +218,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				fmt.Printf("🛠️  [Tool Executed] task=%s role=GENERATOR tool=%s success=%t\n", task.ID, action.Tool, execErr == nil)
 				if action.Tool == "run_tests" {
 					circuitBreaker.RecordTestResult(execErr == nil)
+					if execErr == nil {
+						fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: explicit run_tests passed cleanly! Fast-exiting turn loop.\n", task.ID)
+						hasNoop = true
+					}
 				}
 				if execErr != nil {
 					failedOut := out
@@ -287,10 +291,11 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				out, execErr := runTestsTool.Execute(genCtx, state, map[string]any{})
 				diagCache.OnToolExecuted("run_tests", map[string]any{}, out, execErr)
 				if execErr == nil {
-					fmt.Printf("🚀 [Speculative Fast Validation] Task %s: mutations compile & pass all tests cleanly!\n", task.ID)
+					fmt.Printf("🚀 [Speculative Fast Validation] Task %s: mutations compile & pass all tests cleanly! Fast-exiting turn loop.\n", task.ID)
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[Speculative Fast Validation] All tests PASSED cleanly:\n%s", capText(out, 2000)))
 					circuitBreaker.RecordTestResult(true)
 					runTestsCalled = true
+					hasNoop = true
 				} else {
 					fmt.Printf("ℹ [Speculative Fast Validation] Task %s: tests failing after mutation: %v\n", task.ID, execErr)
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[Speculative Fast Validation] Tests failed after file mutation:\n%s", capText(summarizeFailureLog(out), 3000)))

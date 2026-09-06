@@ -82,33 +82,33 @@ func (c OrchestratorConfig) GetFallback() config.FallbackAgentConfig {
 }
 
 type Orchestrator struct {
-	repo              domain.StateRepository
-	registry          Registry
-	llmClient         domain.LLMClient
-	validator         Validator
-	scheduler         *Scheduler
-	git               *GitClient
-	rebaseQueue       *RebaseQueue
-	evaluator         *TestValidator
-	vcsClient         domain.VCSClient
-	cfg               OrchestratorConfig
-	mailbox           *CommandMailbox
-	watchdogRepair    RepairHandler
-	promptRenderer    PromptRenderer
-	metricsMu         sync.RWMutex
-	metricsCollector  *MetricsCollector
-	fallbackAgent     *FallbackAgent
-	qa                *QARuntimeCoordinator
-	timesMu           sync.Mutex
-	storyStartedAt    time.Time
+	repo               domain.StateRepository
+	registry           Registry
+	llmClient          domain.LLMClient
+	validator          Validator
+	scheduler          *Scheduler
+	git                *GitClient
+	rebaseQueue        *RebaseQueue
+	evaluator          *TestValidator
+	vcsClient          domain.VCSClient
+	cfg                OrchestratorConfig
+	mailbox            *CommandMailbox
+	watchdogRepair     RepairHandler
+	promptRenderer     PromptRenderer
+	metricsMu          sync.RWMutex
+	metricsCollector   *MetricsCollector
+	fallbackAgent      *FallbackAgent
+	qa                 *QARuntimeCoordinator
+	timesMu            sync.Mutex
+	storyStartedAt     time.Time
 	totalActions       int64
 	taskCompletedChan  chan struct{}
 	storyCompletedChan chan struct{}
 	lastWorkspaceSync  time.Time
-	observer          domain.ExecutionObserver
-	acceptanceAuditor *AcceptanceAuditor
-	storyQAAuditor    *StoryQAAuditor
-	tokenAccounting   TokenAccountingService
+	observer           domain.ExecutionObserver
+	acceptanceAuditor  *AcceptanceAuditor
+	storyQAAuditor     *StoryQAAuditor
+	tokenAccounting    TokenAccountingService
 	// executeTaskFn is the task execution entry point used by the dispatch
 	// loop. It defaults to (*Orchestrator).executeTask and exists as an
 	// injection seam for unit tests.
@@ -172,27 +172,27 @@ func NewOrchestratorWithRuntime(
 		storyAuditor = NewStoryQAAuditor(client, runner)
 	}
 	o := &Orchestrator{
-		repo:              repo,
-		registry:          reg,
-		llmClient:         client,
-		validator:         val,
-		scheduler:         sched,
-		git:               git,
-		rebaseQueue:       queue,
-		evaluator:         eval,
-		vcsClient:         vcsClient,
-		cfg:               cfg,
-		mailbox:           runtime.Mailbox,
-		watchdogRepair:    runtime.WatchdogRepair,
-		promptRenderer:    runtime.PromptRenderer,
-		qa:                runtime.QA,
+		repo:               repo,
+		registry:           reg,
+		llmClient:          client,
+		validator:          val,
+		scheduler:          sched,
+		git:                git,
+		rebaseQueue:        queue,
+		evaluator:          eval,
+		vcsClient:          vcsClient,
+		cfg:                cfg,
+		mailbox:            runtime.Mailbox,
+		watchdogRepair:     runtime.WatchdogRepair,
+		promptRenderer:     runtime.PromptRenderer,
+		qa:                 runtime.QA,
 		metricsCollector:   NewMetricsCollector(cfg.MetricsEnabled),
 		taskCompletedChan:  make(chan struct{}, 100),
 		storyCompletedChan: make(chan struct{}, 50),
 		observer:           runtime.Observer,
-		acceptanceAuditor: auditor,
-		storyQAAuditor:    storyAuditor,
-		tokenAccounting:   NewTokenAccountingService(),
+		acceptanceAuditor:  auditor,
+		storyQAAuditor:     storyAuditor,
+		tokenAccounting:    NewTokenAccountingService(),
 	}
 	o.executeTaskFn = o.executeTask
 	if queue != nil {

@@ -116,7 +116,7 @@ var serveCmd = &cobra.Command{
 			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
 		formatter := services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
-		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Formatter: formatter, FormatterCommand: cfg.Sandbox.FormatterCommand, Timeout: runTimeout})
+		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Formatter: formatter, FormatterCommand: cfg.Sandbox.FormatterCommand, Timeout: runTimeout, SyntaxChecker: syntaxChecker})
 		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), Formatter: formatter, FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
 		reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})
@@ -146,6 +146,7 @@ var serveCmd = &cobra.Command{
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
 		evaluator.Formatter = formatter
 		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
+		evaluator.SyntaxChecker = syntaxChecker
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
@@ -378,73 +379,73 @@ func processStory(
 		case <-ticker.C:
 		}
 		current, loadErr := repo.Load(ctx)
-			if loadErr != nil {
-				logf("⚠ Load error: %v\n", loadErr)
-				continue
-			}
-
-			if current.StoryStatus == domain.StoryPaused {
-				continue
-			}
-
-			if current.StoryStatus == domain.StoryCancelled {
-				logf("❌ Story %s: execution cancelled by user.\n", item.Path)
-				// Revert running tasks to interrupted status
-				for i := range current.Tasks {
-					if current.Tasks[i].Status == domain.TaskInProgress || current.Tasks[i].Status == domain.TaskPending {
-						current.Tasks[i].Status = domain.TaskInterrupted
-						current.Tasks[i].UpdatedAt = time.Now()
-					}
-				}
-				current.StoryError = "cancelled by user"
-				_ = repo.Save(ctx, current)
-
-				// Checkout back to base integration branch
-				gitClient := services.NewGitClient(current.ProjectPath)
-				_, _ = gitClient.Run(ctx, true, "checkout", baseBranch)
-
-				if logFile != nil {
-					_, _ = fmt.Fprintf(logFile, "=== Story CANCELLED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
-				}
-				return fmt.Errorf("story %s: cancelled by user", item.Path)
-			}
-
-			if _, err := orchestrator.RunOnce(ctx); err != nil {
-				logf("⚠ Orchestrator error: %v\n", err)
-			}
-
-			// Reload state to check completion status
-			current, loadErr = repo.Load(ctx)
-			if loadErr != nil {
-				return loadErr
-			}
-
-			if allTasksDone(current) {
-				logf("✅ All tasks finished for story: %s\n", item.Path)
-				finalErr := orchestrator.FinalizeUserStory(ctx, current)
-				current.StoryStatus = domain.StorySuccess
-				if finalErr != nil {
-					current.StoryStatus = domain.StoryFailed
-					current.StoryError = finalErr.Error()
-				}
-				_ = repo.Save(ctx, current)
-				if logFile != nil {
-					_, _ = fmt.Fprintf(logFile, "=== Story finished: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
-				}
-				return finalErr
-			}
-
-			if anyTaskPermanentlyFailed(current) {
-				current.StoryStatus = domain.StoryFailed
-				current.StoryError = fmt.Sprintf("story %s: one or more tasks failed permanently", item.Path)
-				_ = repo.Save(ctx, current)
-				logf("❌ Story %s has permanently failed tasks.\n", item.Path)
-				if logFile != nil {
-					_, _ = fmt.Fprintf(logFile, "=== Story FAILED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
-				}
-				return fmt.Errorf("story %s: one or more tasks failed permanently", item.Path)
-			}
+		if loadErr != nil {
+			logf("⚠ Load error: %v\n", loadErr)
+			continue
 		}
+
+		if current.StoryStatus == domain.StoryPaused {
+			continue
+		}
+
+		if current.StoryStatus == domain.StoryCancelled {
+			logf("❌ Story %s: execution cancelled by user.\n", item.Path)
+			// Revert running tasks to interrupted status
+			for i := range current.Tasks {
+				if current.Tasks[i].Status == domain.TaskInProgress || current.Tasks[i].Status == domain.TaskPending {
+					current.Tasks[i].Status = domain.TaskInterrupted
+					current.Tasks[i].UpdatedAt = time.Now()
+				}
+			}
+			current.StoryError = "cancelled by user"
+			_ = repo.Save(ctx, current)
+
+			// Checkout back to base integration branch
+			gitClient := services.NewGitClient(current.ProjectPath)
+			_, _ = gitClient.Run(ctx, true, "checkout", baseBranch)
+
+			if logFile != nil {
+				_, _ = fmt.Fprintf(logFile, "=== Story CANCELLED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
+			}
+			return fmt.Errorf("story %s: cancelled by user", item.Path)
+		}
+
+		if _, err := orchestrator.RunOnce(ctx); err != nil {
+			logf("⚠ Orchestrator error: %v\n", err)
+		}
+
+		// Reload state to check completion status
+		current, loadErr = repo.Load(ctx)
+		if loadErr != nil {
+			return loadErr
+		}
+
+		if allTasksDone(current) {
+			logf("✅ All tasks finished for story: %s\n", item.Path)
+			finalErr := orchestrator.FinalizeUserStory(ctx, current)
+			current.StoryStatus = domain.StorySuccess
+			if finalErr != nil {
+				current.StoryStatus = domain.StoryFailed
+				current.StoryError = finalErr.Error()
+			}
+			_ = repo.Save(ctx, current)
+			if logFile != nil {
+				_, _ = fmt.Fprintf(logFile, "=== Story finished: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
+			}
+			return finalErr
+		}
+
+		if anyTaskPermanentlyFailed(current) {
+			current.StoryStatus = domain.StoryFailed
+			current.StoryError = fmt.Sprintf("story %s: one or more tasks failed permanently", item.Path)
+			_ = repo.Save(ctx, current)
+			logf("❌ Story %s has permanently failed tasks.\n", item.Path)
+			if logFile != nil {
+				_, _ = fmt.Fprintf(logFile, "=== Story FAILED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
+			}
+			return fmt.Errorf("story %s: one or more tasks failed permanently", item.Path)
+		}
+	}
 }
 
 func allTasksDone(state *domain.State) bool {

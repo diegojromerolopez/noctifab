@@ -287,3 +287,45 @@ func allStoryTasksFinished(tasks []domain.Task) bool {
 	}
 	return true
 }
+
+func buildStoryPlanner(deps storyExecutorDeps) func(ctx context.Context, currentStoryFile string) error {
+	return func(ctx context.Context, currentStoryFile string) error {
+		specBytes, err := os.ReadFile(currentStoryFile)
+		if err != nil {
+			return err
+		}
+		featName := filepath.Base(currentStoryFile)
+		storyID := services.ExtractStoryID(currentStoryFile)
+		if storyID == "" {
+			storyID = featName
+		}
+		state, err := deps.repo.Load(ctx)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return errors.New("nil state loaded")
+		}
+		for _, t := range state.Tasks {
+			if (storyID != "" && t.StoryID == storyID) || (featName != "" && t.StoryID == featName) {
+				return nil
+			}
+		}
+
+		planState := *state
+		planState.Metadata.InputPath = currentStoryFile
+		planState.Metadata.FeatureName = featName
+
+		orchRuntime := services.OrchestratorRuntimeDependencies{
+			Mailbox:        deps.mailbox,
+			WatchdogRepair: deps.repairHandler,
+			PromptRenderer: deps.promptRenderer,
+			Observer:       deps.executionReporter,
+		}
+		orchestrator := services.NewOrchestratorWithRuntime(
+			deps.repo, deps.reg, deps.llmClient, deps.validator, deps.scheduler,
+			deps.gitClient, deps.rebaseQueue, deps.evaluator, deps.vcsClient, deps.orchConfig, orchRuntime,
+		)
+		return orchestrator.PlanStory(ctx, &planState, string(specBytes))
+	}
+}

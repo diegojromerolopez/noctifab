@@ -17,18 +17,19 @@ import (
 
 // StoryLoopOptions holds all parameters required to execute user story iteration loops.
 type StoryLoopOptions struct {
-	Cfg               *config.Config
-	TargetDir         string
-	StoryFiles        []string
-	Repo              domain.StateRepository
-	ExecutionReporter domain.ExecutionReporter
-	ExecuteStory      func(ctx context.Context, currentStoryFile string) error
-	GitClient         *services.GitClient
-	TotalLoops        int
-	ResumeRequested   bool
-	WebEnabled        bool
-	WebHost           string
-	WebPort           int
+	Cfg                *config.Config
+	TargetDir          string
+	StoryFiles         []string
+	Repo               domain.StateRepository
+	ExecutionReporter  domain.ExecutionReporter
+	ExecuteStory       func(ctx context.Context, currentStoryFile string) error
+	GitClient          *services.GitClient
+	TotalLoops         int
+	ResumeRequested    bool
+	WebEnabled         bool
+	WebHost            string
+	WebPort            int
+	SpeculativePlanner *SpeculativePlanner
 }
 
 // runStoryIterationLoops executes the user stories across iteration loops either concurrently (via StoryDAGScheduler) or sequentially.
@@ -120,6 +121,10 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 					fmt.Printf("\n🚀 Executing %s (%s)\n\n", storyID, storyTitle)
 				}
 
+				if opts.SpeculativePlanner != nil {
+					opts.SpeculativePlanner.PrePlanQueuedStories(storyCtx, opts.StoryFiles, currentStoryFile)
+				}
+
 				storyErr := opts.ExecuteStory(storyCtx, currentStoryFile)
 
 				outcomesMu.Lock()
@@ -199,6 +204,10 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 					fmt.Printf("\n🚀 Executing %s (%s)\n➜  Web Dashboard: http://%s:%d\n\n", storyID, storyTitle, opts.WebHost, opts.WebPort)
 				} else {
 					fmt.Printf("\n🚀 Executing %s (%s)\n\n", storyID, storyTitle)
+				}
+
+				if opts.SpeculativePlanner != nil {
+					opts.SpeculativePlanner.PrePlanQueuedStories(ctx, opts.StoryFiles, currentStoryFile)
 				}
 
 				storyErr := opts.ExecuteStory(ctx, currentStoryFile)

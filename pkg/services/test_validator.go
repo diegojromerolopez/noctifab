@@ -41,6 +41,7 @@ type TestValidator struct {
 	// passes immediately without running redundant consensus passes (Runs 2+).
 	// If Run 1 fails or flakes, remaining runs are executed for majority voting.
 	ShortCircuitConsensus bool
+	SyntaxChecker         SyntaxChecker
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
@@ -85,6 +86,15 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 			fmt.Fprintf(&sb, "- %s:%d: [%s] %s\n", v.Path, v.Line, v.Rule, v.Snippet)
 		}
 		return false, sb.String(), nil
+	}
+
+	// Fast-Path Syntax Pre-Gating:
+	// Verify workspace syntax before spinning up the heavy test runner or consensus voting.
+	if v.SyntaxChecker != nil {
+		if syntaxErr := v.SyntaxChecker.Check(ctx, state.ProjectPath); syntaxErr != nil {
+			fmt.Printf("⚠️ Orchestrator: Task %s fast-path syntax check failed: %v\n", task.ID, syntaxErr)
+			return false, fmt.Sprintf("Fast-path syntax check failed:\n%v", syntaxErr), nil
+		}
 	}
 
 	if v.Formatter != nil {

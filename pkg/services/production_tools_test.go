@@ -186,3 +186,25 @@ func TestRunTestsTool_FormatterCommand(t *testing.T) {
 		t.Errorf("expected second command to be test runner, got %q", mockSandbox.commands[1])
 	}
 }
+
+func TestRunTestsTool_SyntaxChecker(t *testing.T) {
+	mockSandbox := &trackingMockSandbox{}
+	tool := &RunTestsTool{
+		Runner:        mockSandbox,
+		SyntaxChecker: &mockValidatorSyntaxChecker{err: errors.New("syntax error at file.py:10")},
+		Timeout:       5 * time.Second,
+	}
+
+	out, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/tmp"}, map[string]any{
+		"command": "pytest",
+	})
+	if err == nil {
+		t.Fatalf("expected error from syntax checker, got nil")
+	}
+	if !strings.Contains(out, "syntax error") {
+		t.Errorf("expected output to contain syntax error, got %q", out)
+	}
+	if len(mockSandbox.commands) != 0 {
+		t.Errorf("expected 0 sandbox commands when syntax fails fast, got %d", len(mockSandbox.commands))
+	}
+}

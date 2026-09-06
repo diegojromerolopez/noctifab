@@ -65,6 +65,7 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox, llmCli
 		Formatter:        formatter,
 		FormatterCommand: cfg.Sandbox.FormatterCommand,
 		Timeout:          runTimeout,
+		SyntaxChecker:    syntaxChecker,
 	})
 	reg.Register(&services.RunLinterTool{
 		Runner:           sandboxRunner,

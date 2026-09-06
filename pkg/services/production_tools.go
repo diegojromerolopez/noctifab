@@ -312,6 +312,7 @@ type RunTestsTool struct {
 	Formatter        Formatter
 	FormatterCommand string
 	Timeout          time.Duration
+	SyntaxChecker    SyntaxChecker
 }
 
 func (t *RunTestsTool) Name() string { return "run_tests" }
@@ -332,6 +333,16 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	}
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
+
+	// Fast-Path Syntax Pre-Gating:
+	// If a syntax_check_command is configured, pre-check syntax before spinning up the heavy test runner.
+	// If syntax validation fails (which executes in < 30ms), return immediately without executing the test runner.
+	if t.SyntaxChecker != nil {
+		if syntaxErr := t.SyntaxChecker.Check(runCtx, state.ProjectPath); syntaxErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ [Fast-Path Syntax Pre-Gating] Syntax check failed before test runner: %v\n", syntaxErr)
+			return syntaxErr.Error(), syntaxErr
+		}
+	}
 
 	// Deterministic Auto-Formatter Pre-Pass:
 	// If a project has configured a formatter_command (e.g. ruff format, cargo fmt, rubocop -A),
