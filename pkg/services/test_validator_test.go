@@ -104,8 +104,8 @@ func TestTestValidatorValidateTask(t *testing.T) {
 
 	t.Run("when configured with 3 runs and 2 pass it validates by majority vote", func(t *testing.T) {
 		sb := &scriptedSandbox{
-			results: []error{nil, errors.New("flaky"), nil},
-			outputs: []string{"ok", "FAIL", "ok"},
+			results: []error{errors.New("flaky"), nil, nil},
+			outputs: []string{"FAIL", "ok", "ok"},
 		}
 		v := NewTestValidator(sb, false, nil, nil)
 		v.Runs = 3
@@ -146,16 +146,37 @@ func TestTestValidatorValidateTask(t *testing.T) {
 		}
 	})
 
-	t.Run("when all configured runs pass it reports full success", func(t *testing.T) {
+	t.Run("when short-circuit consensus is enabled and run 1 passes it short-circuits after single run", func(t *testing.T) {
+		sb := &scriptedSandbox{results: []error{nil, nil, nil}, outputs: []string{"ok 1", "ok 2", "ok 3"}}
+		v := NewTestValidator(sb, false, nil, nil)
+		v.Runs = 3
+		v.ShortCircuitConsensus = true
+		ok, msg, err := v.ValidateTask(context.Background(), state, validatorTask())
+		if err != nil || !ok {
+			t.Fatalf("expected pass, got ok=%v err=%v", ok, err)
+		}
+		if !strings.Contains(msg, "short-circuit consensus") {
+			t.Errorf("expected short-circuit message, got %q", msg)
+		}
+		if sb.calls != 1 {
+			t.Errorf("expected exactly 1 call due to short-circuit, got %d", sb.calls)
+		}
+	})
+
+	t.Run("when all configured runs pass with short-circuit disabled it reports full success", func(t *testing.T) {
 		sb := &scriptedSandbox{results: []error{nil, nil, nil}, outputs: []string{"ok", "ok", "ok"}}
 		v := NewTestValidator(sb, false, nil, nil)
 		v.Runs = 3
+		v.ShortCircuitConsensus = false
 		ok, msg, err := v.ValidateTask(context.Background(), state, validatorTask())
 		if err != nil || !ok {
 			t.Fatalf("expected pass, got ok=%v err=%v", ok, err)
 		}
 		if msg != "All validation runs passed successfully" {
 			t.Errorf("unexpected message: %q", msg)
+		}
+		if sb.calls != 3 {
+			t.Errorf("expected 3 calls with short-circuit disabled, got %d", sb.calls)
 		}
 	})
 

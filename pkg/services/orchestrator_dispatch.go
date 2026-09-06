@@ -244,6 +244,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 			}); err != nil {
 				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist story finalization status: %v\n", err)
 			}
+			o.NotifyStoryCompleted()
 			return false, nil
 		}
 

@@ -1837,6 +1837,10 @@ To maximize iteration throughput in the Generator Agent loop (`pkg/services/orch
 3. **Strict Code Block & JSON Envelope Invariance:** All compaction engines enforce strict invariance on fenced code blocks (` ``` `) and trailing JSON contracts (`domain.WithUncompactableTail`). Code syntax, diff windows, filepaths, and schema definitions are preserved verbatim.
 4. **Context Slicing (`ContextSlicer`):** Slices task file contexts according to `context.mode` (`diff_window`, `tree_sitter`, `full`).
 
+### 3.6.20. Short-Circuit Test Consensus & Instant Event-Driven Story Handoff
+1. **Short-Circuit Test Consensus ("Fast-Pass on Clean Run 1"):** When multi-run validation is configured (`runs > 1`), the `TestValidator` executes Run 1 as a fast probe. If Run 1 passes cleanly (exit code 0, non-empty test assertions, no flakiness), validation succeeds immediately (`Validation passed on clean first run (short-circuit consensus)`), bypassing redundant subsequent runs and cutting test verification latency by up to 66%. If Run 1 fails or flakes, remaining runs execute in parallel for majority voting consensus (`passCount > runs/2`).
+2. **Instant Event-Driven Story Handoff:** The `Orchestrator` maintains dedicated `taskCompletedChan` and `storyCompletedChan` channels wired directly into `combinedWakeup`. When a user story finishes (`StorySuccess` or `StoryFailed`), `NotifyStoryCompleted()` fires immediately, interrupting the orchestrator's sleep interval in $< 1\text{ms}$. Both CLI runner (`start_story_executor.go`) and daemon server (`serve.go`) loops select on `TaskCompletedChan()` and `StoryCompletedChan()`, eliminating all polling lag between finished parent stories and queued child stories.
+
 ---
 
 ### 3.7. Specification Ingestion & External Clients

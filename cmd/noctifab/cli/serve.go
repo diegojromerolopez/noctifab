@@ -373,8 +373,11 @@ func processStory(
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-orchestrator.TaskCompletedChan():
+		case <-orchestrator.StoryCompletedChan():
 		case <-ticker.C:
-			current, loadErr := repo.Load(ctx)
+		}
+		current, loadErr := repo.Load(ctx)
 			if loadErr != nil {
 				logf("⚠ Load error: %v\n", loadErr)
 				continue
@@ -442,7 +445,6 @@ func processStory(
 				return fmt.Errorf("story %s: one or more tasks failed permanently", item.Path)
 			}
 		}
-	}
 }
 
 func allTasksDone(state *domain.State) bool {

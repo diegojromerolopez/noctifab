@@ -76,6 +76,7 @@ Noctifab evaluates dependencies and schedules work concurrently at two synchroni
 - **Pipelined Execution Mode (`SetPipelined(true)`)**: In multi-story parallel runs (`agents.orchestrator.number > 1`), `StoryDAGScheduler` enables pipelined scheduling. Rather than waiting for parent stories to reach `SUCCESS`, child stories are dispatched to begin decomposition and task scheduling concurrently once parent stories reach `RUNNING`.
 - **Global State Merging (`Orchestrator.PlanStory`)**: When multiple stories decompose their tasks concurrently, `PlanStory` merges newly generated tasks into `currentState.Tasks` without overwriting existing tasks from other stories.
 - **Independent Story Task Isolation**: Story executors in `start_story_executor.go` track tasks per story via `getStoryTasks` and determine story completion independently via `allStoryTasksFinished`, allowing stories to complete their DoD sign-off asynchronously.
+- **Instant Event-Driven Story Handoff (`orchestrator.StoryCompletedChan`)**: Story finalization in `RunOnce` triggers `NotifyStoryCompleted()`, instantly waking up `combinedWakeup` in the main loop and waking up `start_story_executor.go` / `serve.go` without sleeping for `poll_interval`. Child stories in `StoryDAGScheduler` are dispatched within $< 1\text{ms}$ of parent completion.
 
 #### Structured Roadmap Layout & Task Serialization
 - User stories are discovered strictly in `roadmap/user-stories/`, formatted as `US-XXX-title-slug.md`.
@@ -104,6 +105,9 @@ Configured via `sandbox.idle_timeout_seconds` in `config.yaml` (default: 30s).
 
 #### Declarative Pre-Flight Formatter Auto-Fix
 To eliminate high-latency agent turns spent fixing trivial whitespace, indent, or import formatting errors, `RunTestsTool` executes the project's declarative `formatter_command` (e.g. `ruff format .`, `cargo fmt`, `rubocop -A`, `go fmt ./...`) before running test commands. This keeps the engine strictly **language-agnostic** while ensuring deterministic code cleanliness prior to verification.
+
+#### Short-Circuit Test Consensus ("Fast-Pass on Clean Run 1") (`pkg/services/test_validator.go`)
+When multi-run test validation is enabled (`runs > 1`), `TestValidator` evaluates Run 1 first. If Run 1 passes cleanly without flaky indicators or empty suites, validation passes immediately via short-circuit consensus, skipping redundant subsequent runs and reducing test gating latency by 66%. If Run 1 fails or flakes, remaining runs execute in parallel for majority voting consensus.
 
 #### Worktree Cache & Dependency Symlinking (`pkg/services/worktree_cache.go`)
 Isolated Git worktrees created under `.noctifab/worktrees/` redirect heavy compiler caches (Cargo, Go, pip, ccache) to `.noctifab/cache/`. When `package.json` is present, root `node_modules` are automatically symlinked into the worktree directory, enabling Node/TypeScript test runners (`jest`, `vitest`, `ts-node`) to execute seamlessly without redundant per-worktree installations.

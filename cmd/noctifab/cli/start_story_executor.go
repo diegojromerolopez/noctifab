@@ -232,26 +232,28 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
+			case <-orchestrator.TaskCompletedChan():
+			case <-orchestrator.StoryCompletedChan():
 			case <-ticker.C:
-				_, _ = orchestrator.RunOnce(ctx)
-				st, err := deps.repo.Load(ctx)
-				if err != nil {
-					return err
-				}
-				storyTasks := getStoryTasks(st, featName, storyID)
-				if len(storyTasks) > 0 && allStoryTasksFinished(storyTasks) {
-					for _, t := range storyTasks {
-						if t.Status == domain.TaskFailed {
-							return fmt.Errorf("story execution failed: task %s (%s) failed", t.ID, t.Title)
-						}
+			}
+			_, _ = orchestrator.RunOnce(ctx)
+			st, err := deps.repo.Load(ctx)
+			if err != nil {
+				return err
+			}
+			storyTasks := getStoryTasks(st, featName, storyID)
+			if len(storyTasks) > 0 && allStoryTasksFinished(storyTasks) {
+				for _, t := range storyTasks {
+					if t.Status == domain.TaskFailed {
+						return fmt.Errorf("story execution failed: task %s (%s) failed", t.ID, t.Title)
 					}
-					for _, s := range st.Stories {
-						if (s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile) && s.Status == domain.StoryFailed {
-							return fmt.Errorf("story execution failed: story finalization status marked as failed")
-						}
-					}
-					return nil
 				}
+				for _, s := range st.Stories {
+					if (s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile) && s.Status == domain.StoryFailed {
+						return fmt.Errorf("story execution failed: story finalization status marked as failed")
+					}
+				}
+				return nil
 			}
 		}
 	}

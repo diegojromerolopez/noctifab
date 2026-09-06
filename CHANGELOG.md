@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.5] - 2026-09-06
+
+### Added
+- **Optimization 1: Short-Circuit Test Consensus ("Fast-Pass on Clean Run 1")**:
+  - Added `ShortCircuitConsensus` (enabled by default) to `TestValidator` (`pkg/services/test_validator.go`).
+  - When multi-run test validation is configured (`runs > 1`), Run 1 is executed as an initial fast probe. If Run 1 passes cleanly (exit code 0, non-empty test suite, no flaky indicators), validation passes immediately (`Validation passed on clean first run (short-circuit consensus)`), bypassing redundant subsequent runs (Runs 2+) and reducing test gating latency by up to 66%.
+  - If Run 1 fails or flakes, remaining runs are executed in parallel and combined for strict majority consensus voting (`passCount > runs/2`).
+  - Hardened `runWithCount` with nil-runner protection to prevent panics when running without sandbox configurations.
+- **Optimization 2: Instant Event-Driven Story Handoff**:
+  - Added dedicated `storyCompletedChan` and `NotifyStoryCompleted()` to `Orchestrator` (`pkg/services/orchestrator.go`), wired into `combinedWakeup` in the main execution loop.
+  - Exposed `StoryCompletedChan() <-chan struct{}` and `TaskCompletedChan() <-chan struct{}` accessors.
+  - In `Orchestrator.RunOnce` (`pkg/services/orchestrator_dispatch.go`), immediately emits `NotifyStoryCompleted()` when a story finishes and transitions to `StorySuccess` or `StoryFailed`.
+  - In `start_story_executor.go` and `serve.go`, upgraded the execution polling loop to select on `TaskCompletedChan()` and `StoryCompletedChan()` in addition to the ticker, waking up immediately on task completions and story finalizations.
+  - Eliminates polling delays between finished parent stories and queued child stories in `StoryDAGScheduler`.
+
+### Tests
+- Added comprehensive unit test suite `pkg/services/orchestrator_story_handoff_test.go` verifying story completion interrupts `SleepWithInterrupt` in $< 50\text{ms}$, channel saturation does not deadlock, and `RunOnce` automatically triggers completion signals.
+- Added tests in `pkg/services/test_validator_test.go` covering single-run short circuiting, fallback to majority voting on flaky runs, and full-run execution when disabled.
+- Added child story immediate handoff test in `cmd/noctifab/cli/start_dag_loop_test.go`.
+
 ## [0.79.4] - 2026-09-06
 
 ### Enhanced

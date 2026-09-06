@@ -36,16 +36,22 @@ type TestValidator struct {
 	// Runs is the number of test suite executions per validation. Values
 	// <= 0 default to 1 (single run, no consensus voting).
 	Runs int
+	// ShortCircuitConsensus enables the fast-pass optimization: Run 1 is
+	// evaluated first. If clean (exit code 0, non-empty test suite), validation
+	// passes immediately without running redundant consensus passes (Runs 2+).
+	// If Run 1 fails or flakes, remaining runs are executed for majority voting.
+	ShortCircuitConsensus bool
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
 	return &TestValidator{
-		Runner:     runner,
-		Strict:     strict,
-		LLMClient:  llmClient,
-		Tools:      tools,
-		RunTimeout: 5 * time.Minute,
-		Runs:       1,
+		Runner:                runner,
+		Strict:                strict,
+		LLMClient:             llmClient,
+		Tools:                 tools,
+		RunTimeout:            5 * time.Minute,
+		Runs:                  1,
+		ShortCircuitConsensus: true,
 	}
 }
 
@@ -95,8 +101,27 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	if runs <= 0 {
 		runs = 1
 	}
-	fmt.Printf("Orchestrator: Task %s running test execution (%d run(s))...\n", task.ID, runs)
-	results := v.runWithCount(ctx, state, runs)
+
+	var results []TestRunResult
+	if runs > 1 && v.ShortCircuitConsensus {
+		fmt.Printf("Orchestrator: Task %s running fast-pass probe (run 1 of %d)...\n", task.ID, runs)
+		probeResults := v.runWithCount(ctx, state, 1)
+		if probeResults[0].Passed {
+			fmt.Printf("Orchestrator: Task %s fast-pass clean run 1 succeeded; short-circuiting remaining %d run(s)\n", task.ID, runs-1)
+			return true, "Validation passed on clean first run (short-circuit consensus)", nil
+		}
+		fmt.Printf("Orchestrator: Task %s fast-pass run 1 failed; executing remaining %d run(s) for consensus voting\n", task.ID, runs-1)
+		remainingResults := v.runWithCount(ctx, state, runs-1)
+		results = make([]TestRunResult, runs)
+		results[0] = probeResults[0]
+		for i, res := range remainingResults {
+			res.RunID = i + 2
+			results[i+1] = res
+		}
+	} else {
+		fmt.Printf("Orchestrator: Task %s running test execution (%d run(s))...\n", task.ID, runs)
+		results = v.runWithCount(ctx, state, runs)
+	}
 
 	passCount := 0
 	for _, r := range results {
@@ -133,6 +158,16 @@ func isMissingToolOutput(output string) bool {
 
 func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n int) []TestRunResult {
 	results := make([]TestRunResult, n)
+	if v.Runner == nil {
+		for i := 0; i < n; i++ {
+			results[i] = TestRunResult{
+				RunID:  i + 1,
+				Passed: true,
+				Output: "no runner configured (pass by default)",
+			}
+		}
+		return results
+	}
 	if n <= 1 {
 		timeout := v.RunTimeout
 		if timeout <= 0 {

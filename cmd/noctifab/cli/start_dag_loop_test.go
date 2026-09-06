@@ -112,4 +112,62 @@ func TestRunStoryIterationLoops_ConcurrentExecution(t *testing.T) {
 		assert.NoError(t, outcomes[us1])
 		assert.Equal(t, int32(2), atomic.LoadInt32(&attempts))
 	})
+
+	t.Run("when parent story completes, child story starts execution immediately without waiting for poll interval", func(t *testing.T) {
+		tempDir := t.TempDir()
+		us1 := filepath.Join(tempDir, "US-001.md")
+		us2 := filepath.Join(tempDir, "US-002.md")
+
+		require.NoError(t, os.WriteFile(us1, []byte("# US-001\ndepends_on: []\n"), 0644))
+		require.NoError(t, os.WriteFile(us2, []byte("# US-002\ndepends_on: [\"US-001\"]\n"), 0644))
+
+		cfg := config.DefaultConfig()
+		cfg.Agents.Orchestrator.Number = 2
+		cfg.Runtime.Loops = 1
+
+		var us1FinishedAt time.Time
+		var us2StartedAt time.Time
+		var mu sync.Mutex
+
+		executor := func(ctx context.Context, storyFile string) error {
+			mu.Lock()
+			if storyFile == us2 {
+				us2StartedAt = time.Now()
+			}
+			mu.Unlock()
+
+			if storyFile == us1 {
+				time.Sleep(20 * time.Millisecond)
+				mu.Lock()
+				us1FinishedAt = time.Now()
+				mu.Unlock()
+			}
+			return nil
+		}
+
+		opts := StoryLoopOptions{
+			Cfg:          cfg,
+			TargetDir:    tempDir,
+			StoryFiles:   []string{us1, us2},
+			ExecuteStory: executor,
+			GitClient:    services.NewGitClient(tempDir),
+			TotalLoops:   1,
+		}
+
+		outcomes, err := runStoryIterationLoops(context.Background(), opts)
+		require.NoError(t, err)
+		assert.NoError(t, outcomes[us1])
+		assert.NoError(t, outcomes[us2])
+
+		mu.Lock()
+		defer mu.Unlock()
+		assert.False(t, us1FinishedAt.IsZero())
+		assert.False(t, us2StartedAt.IsZero())
+		// With instant event-driven handoff, child story starts rapidly without polling lag
+		delta := us2StartedAt.Sub(us1FinishedAt)
+		if delta < 0 {
+			delta = -delta
+		}
+		assert.Less(t, delta, 500*time.Millisecond, "Child story handoff should be nearly instantaneous")
+	})
 }

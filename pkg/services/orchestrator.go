@@ -101,9 +101,10 @@ type Orchestrator struct {
 	qa                *QARuntimeCoordinator
 	timesMu           sync.Mutex
 	storyStartedAt    time.Time
-	totalActions      int64
-	taskCompletedChan chan struct{}
-	lastWorkspaceSync time.Time
+	totalActions       int64
+	taskCompletedChan  chan struct{}
+	storyCompletedChan chan struct{}
+	lastWorkspaceSync  time.Time
 	observer          domain.ExecutionObserver
 	acceptanceAuditor *AcceptanceAuditor
 	storyQAAuditor    *StoryQAAuditor
@@ -185,9 +186,10 @@ func NewOrchestratorWithRuntime(
 		watchdogRepair:    runtime.WatchdogRepair,
 		promptRenderer:    runtime.PromptRenderer,
 		qa:                runtime.QA,
-		metricsCollector:  NewMetricsCollector(cfg.MetricsEnabled),
-		taskCompletedChan: make(chan struct{}, 100),
-		observer:          runtime.Observer,
+		metricsCollector:   NewMetricsCollector(cfg.MetricsEnabled),
+		taskCompletedChan:  make(chan struct{}, 100),
+		storyCompletedChan: make(chan struct{}, 50),
+		observer:           runtime.Observer,
 		acceptanceAuditor: auditor,
 		storyQAAuditor:    storyAuditor,
 		tokenAccounting:   NewTokenAccountingService(),
@@ -339,6 +341,11 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 				case combinedWakeup <- struct{}{}:
 				default:
 				}
+			case <-o.storyCompletedChan:
+				select {
+				case combinedWakeup <- struct{}{}:
+				default:
+				}
 			case <-sleepCtx.Done():
 			}
 		}()
@@ -440,4 +447,32 @@ func (o *Orchestrator) markTaskFailed(ctx context.Context, taskID, reason string
 		fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist FAILED status for task %s: %v\n", taskID, err)
 	}
 	return err
+}
+
+// TaskCompletedChan returns the read-only channel signaled whenever a task completes.
+func (o *Orchestrator) TaskCompletedChan() <-chan struct{} {
+	if o == nil {
+		return nil
+	}
+	return o.taskCompletedChan
+}
+
+// StoryCompletedChan returns the read-only channel signaled whenever a user story finishes.
+func (o *Orchestrator) StoryCompletedChan() <-chan struct{} {
+	if o == nil {
+		return nil
+	}
+	return o.storyCompletedChan
+}
+
+// NotifyStoryCompleted signals that a user story has reached terminal state (success or failure),
+// instantly waking up any waiting orchestrator or runner event loops.
+func (o *Orchestrator) NotifyStoryCompleted() {
+	if o == nil || o.storyCompletedChan == nil {
+		return
+	}
+	select {
+	case o.storyCompletedChan <- struct{}{}:
+	default:
+	}
 }
