@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 printf "\n# Noctifab Validation Matrix Performance Summary\n\n"
 printf "| Project | Status | Stories | Tasks | Errors | Retries | Measured Tokens | Lead Time | Report File |\n"

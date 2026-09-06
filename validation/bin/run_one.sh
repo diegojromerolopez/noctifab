@@ -32,7 +32,7 @@ PROJECT="${1:?run_one.sh: missing project name}"
 IMAGE_TAG_OVERRIDE="${2:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="${NOCTIFAB_BUILD_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+ROOT="${NOCTIFAB_BUILD_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 
 # Clean up output directory contents from previous runs, preserving base directories
 # to avoid Docker Desktop mount synchronization race conditions on macOS hosts.

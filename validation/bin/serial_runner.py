@@ -16,7 +16,7 @@ import glob
 import re
 from datetime import datetime
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 PROJECTS_DIR = os.path.join(ROOT_DIR, "validation", "projects")
 MAX_TIMEOUT_SECONDS = 600  # 10 minutes mandate
 MAX_CONSECUTIVE_FAILURES = 3
@@ -232,7 +232,7 @@ def run_project(project: str):
     print(f"==================================================")
     
     start_time = time.time()
-    cmd = [os.path.join(ROOT_DIR, "validation", "run_one.sh"), project]
+    cmd = [os.path.join(ROOT_DIR, "validation", "bin", "run_one.sh"), project]
     
     # We run run_one.sh with SKIP_BUILD=1 (base is pre-built)
     env = os.environ.copy()

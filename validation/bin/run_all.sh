@@ -25,7 +25,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 LOG_DIR="${NOCTIFAB_LOG_DIR:-${ROOT}/.validation-logs}"
 mkdir -p "${LOG_DIR}"
 

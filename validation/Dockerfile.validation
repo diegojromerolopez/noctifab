@@ -31,7 +31,7 @@ COPY --from=go-builder /app/bin/noctifab /usr/local/bin/noctifab
 COPY validation/projects /app/projects
 
 # Copy the scripts and set them up
-COPY validation/validate.sh /app/validate.sh
+COPY validation/bin/validate.sh /app/validate.sh
 RUN chmod +x /app/validate.sh
 
 # Run the verification script directly in the container

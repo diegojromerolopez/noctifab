@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.81.0] - 2026-09-06
+
+### Added
+- **Validation Script Relocation & Comprehensive Suite Runner**:
+  - Relocated all validation harness scripts into `validation/bin/`: `matrix_runner.py`, `runner_9projects.py`, `runner_all17.py`, `serial_runner.py`, `run_one.sh`, `run_all.sh`, `validate.sh`, and `summarize_reports.sh`.
+  - Added `runner_all17.py` to execute the complete 17-project validation matrix sequentially.
+  - Added `make` build toolchain to `validation/projects/echo/Dockerfile` and `validation/projects/todo-cli/Dockerfile`.
+- **LLM Router Self-Healing & Eviction Guard**:
+  - Implemented an emergency self-healing recovery loop in `pkg/infrastructure/llm/router.go` that safely un-quarantines the least recently evicted candidate model when all candidates for a role are in cooldown.
+  - Hardened eviction pattern detection in `pkg/infrastructure/llm/router_eviction.go` to require `"model"` when checking for `"is not found"` / `"does not exist"`, preventing false 30-minute provider evictions triggered by compilation logs.
+- **Product Manager Working Entrypoint Mandate**:
+  - Updated PM prompt template in `pkg/infrastructure/prompts/defaults/product_manager/generate.tmpl` requiring network servers and key-value stores to scaffold a minimal working entrypoint and healthcheck in Story 1 before deep domain decomposition.
+
+### Changed
+- **Consolidated Validation Documentation**:
+  - Merged `validation/projects/TESTING_GUIDE.md` and `AGENTS.md` Section 4 into `validation/README.md`, creating a single unified guide covering the 17-project matrix, tier classifications, diagnostic waves, dynamic scale timeouts, and harness execution.
+  - Compressed Section 4 in `AGENTS.md` to a concise reference, significantly reducing prompt context window consumption.
+  - Updated `validation/projects/TESTING_GUIDE.md` and `docs/developer_guide.md` to point directly to `validation/README.md`.
+  - Hardened `validation/bin/validate.sh` to check for `make` before invoking build/e2e targets and preserved `output/` mount directories (`log/`, `report/`, `dist/`) during temporary cleanup.
+
 ## [0.80.1] - 2026-09-06
 
 ### Changed

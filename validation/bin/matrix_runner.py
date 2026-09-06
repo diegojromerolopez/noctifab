@@ -14,7 +14,7 @@ import glob
 import re
 from datetime import datetime
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 PROJECTS_DIR = os.path.join(ROOT_DIR, "validation", "projects")
 DEFAULT_TIMEOUT_SECONDS = 1200  # 20 minutes default fallback
 
@@ -390,7 +390,7 @@ def run_single_project(project: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECO
     extensions_granted = 0
     max_extensions = 2
     extension_window = 300  # +5 minutes
-    cmd = [os.path.join(ROOT_DIR, "validation", "run_one.sh"), project]
+    cmd = [os.path.join(ROOT_DIR, "validation", "bin", "run_one.sh"), project]
     
     env = os.environ.copy()
     env["NOCTIFAB_SKIP_BUILD"] = "1"
@@ -502,7 +502,7 @@ def main():
     timeout_override = None
     for arg in sys.argv[1:]:
         if arg in ("--help", "-h"):
-            print("Usage: python3 validation/matrix_runner.py [--projects=proj1,proj2] [--timeout=seconds] [proj1 proj2 ...]")
+            print("Usage: python3 validation/bin/matrix_runner.py [--projects=proj1,proj2] [--timeout=seconds] [proj1 proj2 ...]")
             print("\nDynamic scale timeouts by default:")
             for p, t in PROJECT_SCALE_TIMEOUTS.items():
                 print(f"  - {p:15s}: {t}s ({t//60}m)")

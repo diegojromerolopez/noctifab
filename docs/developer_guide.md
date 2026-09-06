@@ -122,7 +122,7 @@ To run all validation projects in parallel:
 ```bash
 make validate-all
 ```
-For the recommended execution order, capability ladder, and tier classification, consult [`validation/projects/TESTING_GUIDE.md`](../validation/projects/TESTING_GUIDE.md).
+For the recommended execution order, capability ladder, and tier classification, consult [`validation/README.md`](../validation/README.md).
 *Note: These E2E validation runs utilize host compiler and package manager mount caching (Go and Cargo) to speed up iterations and support near-instantaneous incremental testing.*
 
 ---

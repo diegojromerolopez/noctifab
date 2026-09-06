@@ -186,8 +186,8 @@ echo "=================================================="
 TEST_PASSED=0
 TEST_EXECUTED=0
 
-# A. Makefile-driven verification (runs unit & e2e test targets if present)
-if [ -f "Makefile" ] || [ -f "makefile" ]; then
+# A. Makefile-driven verification (runs unit & e2e test targets if present and make is available)
+if { [ -f "Makefile" ] || [ -f "makefile" ]; } && command -v make >/dev/null 2>&1; then
   if grep -qE "^test:" Makefile 2>/dev/null; then
     echo "Running 'make test'..."
     if make test; then
@@ -360,8 +360,8 @@ echo "✅ Success: Noctifab executed autonomously, verified behavior, and passed
 # Copy the generated code to the src mount if present and not already working directly inside it
 if [ -d "/app/src_mount" ] && [ "${TMP_DIR}" != "/app/src_mount" ]; then
   echo "Copying generated code to src mount..."
-  rm -rf /app/src_mount/*
-  cp -a . /app/src_mount/
+  find /app/src_mount -mindepth 1 -maxdepth 1 -not -name "log" -not -name "report" -not -name "dist" -exec rm -rf {} +
+  find . -mindepth 1 -maxdepth 1 -not -name "log" -not -name "report" -not -name "dist" -exec cp -a {} /app/src_mount/ \;
 fi
 
 # Locate and copy binary to dist mount if present

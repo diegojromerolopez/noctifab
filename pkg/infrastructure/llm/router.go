@@ -419,5 +419,38 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 		return nil, fmt.Errorf("all LLM provider candidates for role '%s' failed: %w", roleName, lastErr)
 	}
 
+	// Emergency recovery: If all candidates were skipped due to active cooldown or eviction,
+	// do not deadlock the orchestrator. Attempt the candidate with the earliest cooldown expiry.
+	if len(candidates) > 0 {
+		var fallbackCandidate *RouterCandidate
+		var earliestTime time.Time
+		r.mu.RLock()
+		for _, c := range candidates {
+			until := r.cooldowns[c.Name]
+			if evictedUntil := r.evictedUntil[c.Name]; evictedUntil.After(until) {
+				until = evictedUntil
+			}
+			if fallbackCandidate == nil || until.Before(earliestTime) {
+				candidateCopy := c
+				fallbackCandidate = &candidateCopy
+				earliestTime = until
+			}
+		}
+		r.mu.RUnlock()
+
+		if fallbackCandidate != nil {
+			fmt.Fprintf(os.Stderr, "⚠️ [LLM Router Recovery] All candidates for role '%s' in cooldown/eviction. Attempting emergency recovery with '%s' (%s)...\n", roleName, fallbackCandidate.Name, fallbackCandidate.Provider)
+			resp, err := fallbackCandidate.Client.Complete(ctx, prompt)
+			if err == nil {
+				r.mu.Lock()
+				delete(r.cooldowns, fallbackCandidate.Name)
+				delete(r.evictedUntil, fallbackCandidate.Name)
+				r.mu.Unlock()
+				return resp, nil
+			}
+			return nil, fmt.Errorf("all LLM provider candidates for role '%s' in cooldown/eviction (emergency recovery on '%s' failed: %w)", roleName, fallbackCandidate.Name, err)
+		}
+	}
+
 	return nil, fmt.Errorf("all LLM provider candidates for role '%s' are currently in cooldown or evicted", roleName)
 }
