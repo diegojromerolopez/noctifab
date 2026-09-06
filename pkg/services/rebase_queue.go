@@ -291,7 +291,12 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 	// Checkout base
 	_, err = q.git.Run(ctx, true, "checkout", base)
 	if err != nil {
-		return fmt.Errorf("failed to checkout base %s: %w", base, err)
+		// Self-healing fallback: create base branch from HEAD if it does not yet exist
+		_, _ = q.git.Run(ctx, true, "checkout", "-b", base)
+		_, err = q.git.Run(ctx, true, "checkout", base)
+		if err != nil {
+			return fmt.Errorf("failed to checkout base %s: %w", base, err)
+		}
 	}
 
 	// Tier 1: Non-interactive merge

@@ -122,7 +122,9 @@ func (f *CommandFormatter) Format(ctx context.Context, projectPath string) (stri
 		if newErr == nil {
 			return newOut, nil
 		}
-		out = newOut
+		fmt.Fprintf(os.Stderr, "⚠ [Formatter] Corrected format command %q failed for %s: %v. Disabling formatter command.\n", f.GetCommand(), projectPath, newErr)
+		f.SetCommand("")
+		return newOut, nil
 	}
 
 	// Step 2: The command is applicable, but failed due to syntax/config errors.

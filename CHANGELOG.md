@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.4] - 2026-09-06
+
+### Fixed
+- **Review Phase Upsert & SQLite Unique Constraint Fix**:
+  - Fixed `UpsertReviewPhase` in `pkg/services/orchestrator_qa_helpers.go` to match phases by `(TaskID, Role, ArtifactID, Attempt)` even when `StoryID` is empty, preventing duplicate phase entries from accumulating in domain state.
+  - Added in-memory deduplication and `ON CONFLICT(story_id, task_id, role, artifact_id, attempt) DO UPDATE` in `pkg/infrastructure/storage/sqlite_qa_reviews.go`, eliminating SQLite `UNIQUE constraint failed` errors that previously caused `persistence_failed` failures on task evaluation.
+- **Git Rebase Queue & Formatter Command Resilience**:
+  - Added self-healing fallback in `pkg/services/rebase_queue.go` to create the integration base branch from `HEAD` if checking out `base` fails during merge-back.
+  - Enhanced `CommandFormatter.Format` in `pkg/services/auto_formatter.go` to immediately disable the format command if an LLM-suggested replacement also fails to execute (e.g. missing `clang-format` binary), preventing infinite repair loops.
+
 ## [0.75.3] - 2026-09-05
 
 ### Fixed
