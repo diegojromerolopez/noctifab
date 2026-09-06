@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.6] - 2026-09-06
+
+### Fixed
+- **Cross-Story Task Dependency Resolution & Deadlock Elimination**:
+  - Enhanced `GetReadyTasks` in `pkg/services/scheduler.go` to recognize cross-story dependencies referencing non-existent task IDs (e.g. hallucinated task numbers like `US-002-TASK-004` when the story only contained 3 tasks), automatically treating them as satisfied once all existing tasks of that upstream story have succeeded.
+  - Enhanced `ResolveTaskDependencies` in `pkg/services/task_dependencies.go` to verify against existing roadmap task markdown files on disk (`roadmap/tasks/`), omitting hallucinated task references within valid stories so the story milestone barrier cleanly governs execution.
+
 ## [0.75.5] - 2026-09-06
 
 ### Fixed

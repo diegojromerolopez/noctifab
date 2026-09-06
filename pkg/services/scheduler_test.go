@@ -234,3 +234,31 @@ func TestScheduler_ParseStoryIndex(t *testing.T) {
 		}
 	}
 }
+
+func TestScheduler_PhantomDependencyOnCompletedEarlierStory(t *testing.T) {
+	t.Run("when a task declares dependency on a non-existent task of a completed earlier story, it is ready", func(t *testing.T) {
+		state := &domain.State{
+			Tasks: []domain.Task{
+				{ID: "US-001-TASK-001", StoryID: "US-001", Status: domain.TaskSuccess},
+				{ID: "US-002-TASK-001", StoryID: "US-002", Status: domain.TaskSuccess},
+				{ID: "US-002-TASK-002", StoryID: "US-002", Status: domain.TaskSuccess},
+				{ID: "US-002-TASK-003", StoryID: "US-002", Status: domain.TaskSuccess},
+				// US-003-TASK-001 has hallucinated dep US-002-TASK-004 (which does not exist, but US-002 is complete)
+				{ID: "US-003-TASK-001", StoryID: "US-003", Status: domain.TaskPending, DependsOn: []string{"US-002-TASK-004"}},
+			},
+		}
+
+		scheduler := NewScheduler(NewFileLockRegistry())
+		ready := scheduler.GetReadyTasks(state, 5)
+
+		var hasTask bool
+		for _, task := range ready {
+			if task.ID == "US-003-TASK-001" {
+				hasTask = true
+			}
+		}
+		if !hasTask {
+			t.Fatalf("expected US-003-TASK-001 to be ready when earlier story US-002 is complete, despite hallucinated dep")
+		}
+	})
+}

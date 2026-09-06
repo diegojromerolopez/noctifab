@@ -346,3 +346,24 @@ func TestIsReferenceClassifiers(t *testing.T) {
 		assert.False(t, isStoryReference(""))
 	})
 }
+
+func TestResolveTaskDependencies_NonExistentTaskInExistingStoryOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	roadmapDir := filepath.Join(tmpDir, "roadmap", "user-stories")
+	tasksDir := filepath.Join(tmpDir, "roadmap", "tasks")
+	_ = os.MkdirAll(roadmapDir, 0755)
+	_ = os.MkdirAll(tasksDir, 0755)
+
+	_ = os.WriteFile(filepath.Join(roadmapDir, "US-002.md"), []byte("# US-002"), 0644)
+	_ = os.WriteFile(filepath.Join(tasksDir, "US-002-TASK-001.md"), []byte("# Task 1"), 0644)
+	_ = os.WriteFile(filepath.Join(tasksDir, "US-002-TASK-002.md"), []byte("# Task 2"), 0644)
+	_ = os.WriteFile(filepath.Join(tasksDir, "US-002-TASK-003.md"), []byte("# Task 3"), 0644)
+
+	tasks := []domain.Task{
+		{ID: "US-003-TASK-001", Title: "Formatting", DependsOn: []string{"US-002-TASK-004"}},
+	}
+
+	resolved, err := ResolveTaskDependencies(tasks, tmpDir)
+	assert.NoError(t, err)
+	assert.Empty(t, resolved[0].DependsOn, "expected non-existent task US-002-TASK-004 to be omitted so story milestone barrier governs")
+}

@@ -86,6 +86,24 @@ func ResolveTaskDependencies(tasks []domain.Task, projectPath string) ([]domain.
 			if isTaskReference(depClean) {
 				storyID := ExtractStoryID(depClean)
 				if storyID != "" && storyExists(projectPath, storyID) {
+					// If task files for this story exist on disk, verify if depClean actually exists among them
+					storyTaskFiles, _ := filepath.Glob(filepath.Join(projectPath, "roadmap", "tasks", "*"+storyID+"*.md"))
+					if len(storyTaskFiles) > 0 {
+						found := false
+						cleanUpper := strings.ToUpper(depClean)
+						for _, f := range storyTaskFiles {
+							if strings.Contains(strings.ToUpper(filepath.Base(f)), cleanUpper) {
+								found = true
+								break
+							}
+						}
+						if !found {
+							// Parent story exists, but this specific task ID does not exist in roadmap/tasks/.
+							// Omit so story-level milestone barrier governs and prevents pipeline deadlock.
+							fmt.Fprintf(os.Stderr, "⚠ Warning: task %q referenced non-existent task %q in existing story %q; omitting so story barrier governs\n", task.ID, depClean, storyID)
+							continue
+						}
+					}
 					cleanDeps = append(cleanDeps, depClean)
 					continue
 				}
