@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.76.1] - 2026-09-06
+
+### Fixed
+- **Multi-Story Task Scoping & Premature Story Finalization**:
+  - Fixed `getStoryTasks` in `cmd/noctifab/cli/start_story_executor.go` to avoid falling back to returning all `state.Tasks` when a newly spawned story in a multi-story project has not yet planned its tasks.
+  - Prevents sequential user stories (`US-002`, `US-003`) from mistakenly evaluating `allStoryTasksFinished` as true against the previous story's finished tasks and skipping execution without planning or generating code.
+
 ## [0.76.0] - 2026-09-06
 
 ### Added

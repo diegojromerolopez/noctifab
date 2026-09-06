@@ -226,9 +226,6 @@ func getStoryTasks(state *domain.State, featName, storyID string) []domain.Task 
 			tasks = append(tasks, t)
 		}
 	}
-	if len(tasks) == 0 {
-		return state.Tasks
-	}
 	return tasks
 }
 
