@@ -1,5 +1,5 @@
 config_version: '2.0'
-execution_report: "/app/report_mount/execution_report.md"
+execution_report: /app/report_mount/execution_report.md
 agents:
   architecture: single_pass
   spike:
@@ -105,7 +105,7 @@ agents:
     max_tokens: -1
 workspace_cache:
   enabled: true
-poll_interval: 10s
+poll_interval: 1s
 max_clarification_wait: 30m0s
 clarification_timeout_action: continue
 storage:

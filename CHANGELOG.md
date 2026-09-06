@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.4] - 2026-09-06
+
+### Enhanced
+- **High-Speed Dark Factory Optimization Across All 17 Validation Projects**:
+  - Upgraded all validation project configurations with `spike.enabled: true` (prioritized fallback from `gemini-flash`), `orchestrator.number: 3` (multi-story concurrency), `poll_interval: 1s` (reduced from `10s`), and `context.compaction: caveman`.
+  - Promoted Tier 0 projects (`echo`, `todo-cli`, `wc`) to `single_pass` co-synthesis mode with `qa.enabled: false`.
+  - Fixed `ninline` compaction configuration defect (`compaction: 0` $\rightarrow$ `compaction: caveman`).
+  - Added language-tailored `syntax_check_command` hooks across Go (`gofmt`), Python (`python3 -m py_compile`), Ruby (`ruby -c`), and C (`gcc -fsyntax-only`).
+  - Tuned `storage.occ`: `max_retries: 20`, `backoff_base: 100ms`, `backoff_factor: 2`.
+
 ## [0.79.3] - 2026-09-06
 
 ### Enhanced

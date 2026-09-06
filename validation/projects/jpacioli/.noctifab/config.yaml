@@ -1,12 +1,9 @@
 config_version: '2.0'
-execution_report: "/app/report_mount/execution_report.md"
+execution_report: /app/report_mount/execution_report.md
 agents:
-  # Using single_pass architecture for JVM/Spring Boot projects to avoid repetitive Gradle/JVM
-  # bootstrap latency (15-25s per test run across multiple turns). In single_pass, implementation
-  # and tests are co-generated in a single cohesive turn, reducing Gradle invocations by >60%.
   architecture: single_pass
   orchestrator:
-    number: 1
+    number: 3
     iterations: 2
   product_manager:
     number: 1
@@ -123,9 +120,21 @@ agents:
     number: 1
     iterations: 2
     max_tokens: -1
+  spike:
+    enabled: true
+    timeout_seconds: 45
+    providers:
+    - name: gemini-flash
+    - name: claude
+    - name: gemini
+    - name: openai
+    - name: deepseek-pro
+    - name: qwen
+    - name: opencode
+    - name: openrouter
 workspace_cache:
   enabled: true
-poll_interval: 10s
+poll_interval: 1s
 max_clarification_wait: 30m0s
 clarification_timeout_action: continue
 storage:
@@ -265,7 +274,7 @@ sandbox:
   timeout_seconds: 300
   test_command: make test
   formatter_command: make format
-  syntax_check_command: ""
+  syntax_check_command: ''
   linter:
     command: make lint
     max_issues: 100
