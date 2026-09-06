@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.2] - 2026-09-06
+
+### Documentation
+- **Updated README.md with Full Dark Factory Acceleration Architecture & High-Speed Greenfield Configuration**:
+  - Added Items 27–32 to *Self-Healing, Dynamic Prompts & Self-Correcting Resiliency*: Greenfield Spike Prototyping & Compiler-Gated Fast Exit on Green, Speculative Fast Tool Execution, Aggressive Context Trimming & Failure Log Summarization, Dynamic Capability Discovery via `/models` & Routine Task Extended Thinking Suppression, True Telegraphic (`caveman`) / Plain English (`simple_english`) Prompt Compaction, and Multi-Story Parallel Concurrency (`orchestrator.number: 2-3`).
+  - Added Items 13–18 to *Dark Factory Acceleration Engine (5x–10x Speedup)* detailing the end-to-end performance mechanisms.
+  - Added High-Speed Dark Factory & Greenfield Configuration section in README with ready-to-use YAML configuration for `spike`, `fast_exit_on_green`, `fast_tool_execution`, and `compaction`.
+  - Clarified `orchestrator.number: 1` setting for multi-story concurrency.
+
 ## [0.79.1] - 2026-09-06
 
 ### Documentation

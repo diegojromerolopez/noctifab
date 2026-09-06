@@ -206,6 +206,12 @@ The core engine runs a continuous polling event loop that drives all development
 24. **Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)**: Multi-pass specification decomposition (`passes: 1` Fast mode, `passes: 2` Standard mode, `passes: 3` Deep contract & dependency audit mode).
 25. **Black-Box Contract Scenario Prompt Injection**: Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
 26. **Pre-Flight Diagnostics & LLM Provider Ping**: Validates Git CLI availability, state database connectivity, LLM provider `/models` endpoint reachability, and sandbox mode before launching the orchestrator.
+27. **Greenfield Spike Prototyping & Compiler-Gated Fast Exit on Green**: Bootstraps an instant walking skeleton for uninitialized repositories (`spike: true`). For initial story execution (`US-001`), the executor checks whether verification commands pass cleanly after any file modification (`fast_exit_on_green: true`). If exit code is 0, it exits the turn loop immediately and transitions to validation/merge without burning remaining turns.
+28. **Speculative Fast Tool Execution (Local Pre-Validation)**: When `fast_tool_execution: true`, the Generator speculatively runs pre-flight verification checks (`run_tests` or `syntax_check_command`) locally on mutating tools (`write_file`, `edit_file`, `write_files`, `apply_patch`). If the mutation passes tests or introduces broken syntax, feedback is immediately returned to prevent redundant LLM turns.
+29. **Aggressive Context Trimming & Lean Contradiction Prompts**: Caps prompt context bloat by truncating voluminous tool outputs (capped at 3,000 chars) and file dumps (capped at 8,000 chars) while dynamically summarizing failure logs (`summarizeFailureLog`). Preserves critical compiler errors, assertion mismatches, and stack traces while eliminating noisy build progress to optimize Time To First Token (TTFT).
+30. **Dynamic Capability Discovery via `/models` & Routine Task Extended Thinking Suppression**: Dynamically queries the provider `/models` endpoint to discover reasoning capabilities and token ceilings with zero hardcoded model names. For routine scaffolding, syntax repairs, and single-line edits, Noctifab automatically suppresses heavy reasoning/extended thinking budgets (`budget_tokens: 0` / minimal reasoning) to accelerate turn turnaround times.
+31. **True Telegraphic (`caveman`) & Plain English (`simple_english`) Prompt Compaction**: Advanced prompt compression engine that strips prose boilerplate, conversational filler, markdown formatting bloat, and empty lines, rendering telegraphic bullet directives while strictly preserving technical invariants, code blocks, file paths, and contract schemas. Operates in conjunction with Spec & Context slicing to deliver minimal token payloads.
+32. **Multi-Story Parallel Concurrency (`orchestrator.number: 2-3`)**: Enables concurrent story orchestration where up to $N$ stories execute simultaneously across isolated worker pipelines, maximizing hardware and LLM provider concurrency.
 
 ---
 
@@ -225,6 +231,12 @@ The core engine runs a continuous polling event loop that drives all development
 10. **Speculative Next-Task Prefetching**: Prefetches file contexts for candidate downstream tasks while current task verification executes in parallel.
 11. **Unified Single-Pass Co-Synthesis Mode (`co_synthesis`)**: Combines code generation and black-box test authoring into a single turn with fast-path quality gates, skipping multi-turn roundtrips when tests pass immediately.
 12. **Shared Worktree Dependency Redirection**: Universally redirects compilation caches (`target/`, `node_modules/`, `GOCACHE`) across parallel task worktrees to eliminate repetitive dependency compilation.
+13. **Greenfield Spike Phase & Compiler-Gated Fast Exit on Green**: Bootstraps runnable scaffolding in seconds and exits `US-001` turns immediately upon verification success.
+14. **Speculative Fast Tool Execution**: Runs local verification immediately following mutation tools to short-circuit redundant LLM reasoning cycles.
+15. **Aggressive Context Trimming & Failure Log Summarization**: Eliminates 60%+ of prompt payload bulk, ensuring instant TTFT and avoiding context degradation.
+16. **Dynamic Provider Model Capability Discovery & Thinking Suppression**: Queries `/models` dynamically to suppress extended thinking for routine tasks.
+17. **Telegraphic & Plain English Prompt Compaction (`caveman` & `simple_english`)**: Compresses system prompts and task instructions into ultra-lean directives.
+18. **Multi-Story Concurrent Orchestration (`orchestrator.number: 2-3`)**: Executes multiple story pipelines simultaneously in isolated worktrees.
 
 ### Autonomous Agent Roles & Relationship
 To prevent "evaluation gaming" (where code generators approve their own buggy code) and break deadlock traps, `noctifab` partitions cognitive execution into specialized, cooperative agent roles:
@@ -292,7 +304,7 @@ agents:
   architecture: "code_first" # Options: code_first (cfv), single_pass (spe), breadth_first (bfg)
 
   orchestrator:
-    number: 1      # Task orchestration & state sync (default: 1)
+    number: 1      # Task orchestration & state sync (default: 1; set to 2 or 3 for multi-story concurrency)
     iterations: 2
 
   product_manager:
@@ -398,6 +410,24 @@ noctifab start . --loops 3
 
 # Resume from first incomplete story with 2 loops
 noctifab resume . -L 2
+```
+
+### High-Speed Dark Factory & Greenfield Configuration
+
+To maximize autonomous throughput on greenfield projects and rapid iterations, enable the lean execution pipeline in `.noctifab/config.yaml`:
+
+```yaml
+context:
+  compaction: "caveman"         # Telegraphic prompt compaction: "caveman" or "simple_english"
+
+agents:
+  architecture: "single_pass"   # Fast-path single-turn co-synthesis
+  orchestrator:
+    number: 3                   # Multi-story parallel concurrency (default: 1)
+  spike:
+    enabled: true               # Autonomous walking skeleton scaffolding
+  fast_exit_on_green: true      # Exit story turns early as soon as tests pass
+  fast_tool_execution: true     # Local speculative pre-validation for mutating tools
 ```
 
 ---
