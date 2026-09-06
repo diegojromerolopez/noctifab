@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.1] - 2026-09-06
+
+### Documentation
+- **Synchronized Comprehensive Documentation Across All Architectural Components**:
+  - Updated `SPEC.md` with Sections 3.6.17 (Spike Fast Exit on Green), 3.6.18 (Speculative Fast Tool Execution & Aggressive Context Trimming), and 3.6.19 (Telegraphic Prompt Compaction & Context Slicing Engine).
+  - Updated `docs/architecture.md` with dedicated subsections for Greenfield Spike Prototyping & Fast Exit on Green, Speculative Fast Tool Execution, Aggressive Context Trimming & Instant TTFT, Telegraphic Compaction & Context Slicing, and Dynamic Model Capability Discovery & Routine Task Thinking Suppression.
+  - Updated `docs/configuration.md` with comprehensive documentation for `context.compaction` (`none`, `caveman`, `simple_english`), `context.mode` (`full`, `diff_window`, `tree_sitter`), `agents.spike`, and `agents.orchestrator.number`.
+  - Updated `docs/configuration_examples.md` with Section 7 demonstrating the High-Speed Greenfield Spike & Multi-Story Concurrency pattern (`fortune`, `calculator`, `pyedis`).
+  - Updated `docs/prompts.md` with detailed Prompt Compaction, Telegraphic Stripping, and Code Block Preservation sections.
+  - Updated `docs/llm_providers.md` documenting Dynamic Model Capability Discovery via `/models` and Routine Task Extended Thinking Suppression.
+  - Updated `README.md` core pillars highlighting the Greenfield Spike Prototyping, Fast Exit on Green, and Lean Context Prompt Engine.
+
 ## [0.79.0] - 2026-09-06
 
 ### Added

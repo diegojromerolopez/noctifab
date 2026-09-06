@@ -532,6 +532,35 @@ Noctifab automatically safeguards workspaces against build artifact explosion, d
 - **Process Liveness Verification (`isProcessAlive`)**: Reads PID recorded in Git lock files (`.git/index.lock`, `.git/worktrees/*/*.lock`) and queries process status via signal 0. If the PID is dead, the stale lock is removed immediately regardless of age.
 - **Race Condition Elimination**: If no PID is recorded in the lock file, `CleanStaleLocks` enforces a safe 60-second fallback age threshold (`defaultStaleLockThreshold`), eliminating the race condition where concurrent checkouts and long compilations had active index locks deleted prematurely.
 
+### 13. Greenfield Spike Prototyping & Fast Exit on Green (`pkg/services/spike_runner.go`, `cmd/noctifab/cli/start_story_executor.go`)
+To eliminate the cold-start latency of greenfield repository scaffolding:
+- **Greenfield Spike Prototyping**: When starting on an empty workspace with zero pre-existing user stories or source files, the Spike Agent (`AgentRole: "spike"`) consumes `SPEC.md` and generates an initial walking skeleton in a single turn using `write_files`. It immediately commits the codebase (`feat: initial spike solution walking skeleton`) and hands off to the Product Manager Agent, which activates the **Legacy Stabilization Mandate** to systematically characterize, test, and refactor.
+- **Compiler-Gated Fast Exit on Green**: When the story executor starts `US-001` (the walking skeleton story), it immediately evaluates the tasks against the sandbox test validator (`deps.evaluator.ValidateTask`). If the spike solution already compiles cleanly, satisfies anti-stub invariants, and passes all sandbox tests, Noctifab marks all `US-001` tasks as `SUCCESS` and completes the story instantly. This bypasses 2–4 redundant LLM iterations that would otherwise attempt to re-implement code that is already green.
+
+### 14. Speculative Fast Tool Execution (Local Pre-Validation) (`pkg/services/orchestrator_generator.go`)
+During Generator multi-turn loops, agents frequently emit file mutations (`write_file`, `edit_file`, `multi_replace_file_content`, `apply_patch`) without calling `run_tests` in the same turn, which normally forces an extra turn where the LLM does nothing but ask to run tests:
+- **Local Pre-Validation**: When any mutating tool action succeeds and `run_tests` was not called in that turn, the orchestrator speculatively executes `run_tests` locally in the sandbox immediately.
+- **Instant Clean Pass Recognition**: If the test suite passes cleanly, the green test output is recorded in `turnToolOutputs` and logged as `[Speculative Fast Validation] All tests PASSED cleanly`. The consecutive test pass counter in the circuit breaker is updated, allowing instant noop completion or green handoff on the very next turn without wasted inspection round trips.
+- **Immediate Failure Summarization**: If tests fail after a mutation, failure diagnostics are summarized immediately and fed into the next turn, providing the agent with instant compiler feedback.
+
+### 15. Aggressive Context Trimming & Instant TTFT (`pkg/services/prompt_utils.go`, `orchestrator_generator.go`)
+To preserve LLM context economics and minimize Time-To-First-Token (TTFT):
+- **Capped Output Limits**: Individual tool outputs embedded into continuation prompts are tightly capped to 3,000 characters (down from 8,000), and task file contexts are capped to 8,000 characters (down from 16,000).
+- **Intelligent Error Log Summarization (`summarizeFailureLog`)**: Raw compiler build logs and test stack traces can easily exceed hundreds of lines. Noctifab parses failure logs with `summarizeFailureLog`, stripping noise and extracting only active syntax errors, compilation errors, assertion failures, and anti-stub violations.
+
+### 16. True Telegraphic Compaction & Context Slicing Pipeline (`pkg/infrastructure/llm/prompt_templates.go`, `pkg/services/context_slicer.go`)
+- **Telegraphic Compaction Engine**: The `caveman` and `simple_english` compaction engines apply real boilerplate stripping (`isConversationalPreamble`, `stripPreamblePrefix`), polite filler removal, and consecutive blank line collapsing to prompt bodies and specifications.
+- **Markdown Specification Compaction (`CompactMarkdownSpec`)**: Strips HTML comments (`<!-- ... -->`), decorative dividers, and markdown images from `SPEC.md` when rendered for Spike, Product Manager, and Planner prompts.
+- **Strict Syntax & Code Block Preservation**: Both compaction engines strictly preserve markdown code blocks (` ``` `), JSON contracts, file paths, CLI flags, and technical invariants.
+- **Context Slicing Modes (`ContextSlicer`)**: Slices file contexts according to `context.mode`: `diff_window` (extracts modified lines +/- context lines), `tree_sitter` (AST class/function signature extraction), or `full` (complete content).
+
+### 17. Dynamic Model Capability Discovery & Routine Task Extended Thinking Suppression (`pkg/infrastructure/llm/router_eviction.go`, `client.go`)
+- **Dynamic Parameter & Capability Discovery**: Rather than hardcoding model names, Noctifab queries the provider's `/models` endpoint dynamically to inspect supported parameters (`supported_parameters`, `capabilities`, `thinkingConfig`, `architecture`).
+- **Routine Task Thinking Suppression**: Extended chain-of-thought thinking generates large reasoning token payloads that introduce 20–60 second latencies per turn. For routine, high-frequency execution roles (`generator`, `tester`, `spike`), Noctifab automatically suppresses extended reasoning (`enable_thinking: false`, `thinking_budget: 0`, `reasoning_effort: "low"`, `thinkingConfig.thinkingBudget: 0`).
+- **Preserved Strategic Reasoning**: Full extended thinking and deep reasoning capabilities are preserved for strategic planning and diagnostic roles (`planner`, `product_manager`, `auditor`, `fallback`).
+
+---
+
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.
 
 

@@ -208,6 +208,28 @@ All embedded default templates for `generator/*` and `tester/*` include a built-
 
 ---
 
+## Prompt Compaction & Telegraphic Stripping (`context.compaction`)
+
+Noctifab provides built-in token compaction engines to compress prompt overhead by 30%–50% while preserving strict prompt contracts and technical requirements:
+
+### Compaction Modes
+Configured via `context.compaction` in `.noctifab/config.yaml`:
+- **`none` (Default)**: Sends original prompt text verbatim.
+- **`caveman`**: Applies aggressive telegraphic compaction:
+  - Strips polite conversational preambles (e.g., `"you are a software factory automation agent..."`, `"focus on creating the minimal implementation..."`).
+  - Removes conversational prefixes (e.g., `"please note that"`, `"in order to ensure that"`).
+  - Eliminates decorative dividers (`---`, `***`, `===`).
+  - Collapses consecutive blank lines into single line breaks.
+  - Strips HTML comments (`<!-- ... -->`) and Markdown image links from specification files via `CompactMarkdownSpec`.
+- **`simple_english`**: Replaces complex bureaucratic phrases and passive voice with direct active verbs (e.g., `"prioritize a clean, functional implementation that makes all tests pass"` → `"make all tests pass"`, `"utilize"` → `"use"`, `"in order to"` → `"to"`).
+
+### Strict Code Block & JSON Envelope Preservation
+All compaction routines use a state-aware scanner that detects fenced markdown code blocks (` ``` `):
+- Any lines enclosed in markdown fences (code samples, diff windows, JSON contracts) are **never modified, compacted, or altered**.
+- JSON schema output contracts appended at the end of agent prompts (`rendered.Contract`) are designated as uncompactable tails via `domain.WithUncompactableTail` and preserved byte-for-byte.
+
+---
+
 ## CLI
 
 | Command | Behavior |

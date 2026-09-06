@@ -72,6 +72,7 @@ The autonomy level is controlled by the VCS `pull_request` settings in `.noctifa
 3. **Verification First, Validation Second**: Decouples execution into two distinct lifecycle stages: *Verification* (achieving a minimal working solution that compiles and passes basic functional checks) and *Validation* (leveraging black-box test safety rails to iteratively refactor, optimize, and harden code to full specification compliance).
 4. **Test-Driven Quality Gates**: Employs a multi-stage sequential execution cycle between the generator and test-writer agents. The Test Validator executes the test suite 3 times, requiring a majority vote consensus (at least 2/3 passing runs) to approve changes, preventing regression and flaky builds.
 5. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers, restricted by role-based authorization profiles.
+6. **Greenfield Spike & Lean Compaction**: Instant walking skeleton generation for uninitialized repositories (`spike`) with compiler-gated early acceptance (**Fast Exit on Green**), speculative local pre-validation, and telegraphic prompt compaction (`caveman`) for minimal Time-To-First-Token.
 
 ---
 

@@ -754,6 +754,21 @@ Different LLM providers and reasoning models enforce distinct constraints on cha
 
 ---
 
+## Dynamic Model Capability Discovery & Routine Task Extended Thinking Suppression
+
+To avoid hardcoding model names while maintaining zero latency overhead during rapid coding cycles, Noctifab dynamically discovers model parameter capabilities and suppresses reasoning token delays on routine tasks:
+
+### 1. Dynamic Parameter Discovery via `/models`
+- During preflight and model initialization, Noctifab queries the provider's `/models` endpoint and parses metadata schemas (`supported_parameters`, `capabilities`, `thinkingConfig`, `architecture`).
+- Discovered model attributes (such as thinking support, max completion tokens, and parameter restrictions) are cached dynamically in memory with zero reliance on hardcoded model string lists.
+
+### 2. Routine Task Extended Thinking Suppression
+- Extended chain-of-thought thinking (e.g. Claude Extended Thinking, Gemini Thinking, OpenAI Reasoning Effort, Qwen Thinking) produces hundreds of reasoning tokens per turn, introducing 20–60 second latency pauses.
+- For high-frequency routine execution roles (**`generator`**, **`tester`**, **`spike`**), Noctifab automatically suppresses extended reasoning tokens (`enable_thinking: false`, `thinking_budget: 0`, `reasoning_effort: "low"`).
+- For strategic planning and high-level analysis roles (**`planner`**, **`product_manager`**, **`auditor`**, **`fallback`**), full extended reasoning and thinking budgets are preserved.
+
+---
+
 ## 1-Click Local LLM Profiles & DeepSeek-R1 Reasoning Support
 
 Noctifab provides built-in, pre-tuned configuration profiles for local model deployments (Ollama, vLLM, LMDeploy, and OpenAI-compatible local engines) via `noctifab init --profile <preset>`:

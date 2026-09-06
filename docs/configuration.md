@@ -135,7 +135,7 @@ clarification_timeout_action: abort
 - **`qa`**: Reserves the experimental QA capability. It defaults to `enabled: false`; Phase 0 reports its capability but does not run QA.
 - **`auditor`**: Configures the Acceptance Auditor Agent (`number: 1`, `iterations: 2`) verifying whole-project compliance against `SPEC.md` prior to Pull Request creation.
 - **`fallback`**: Configures the unified Fallback Agent (Omni-Agent / Chief Surgeon) operating in dual modes: Passive Watchdog (monitoring pipelines for stalls, 0-token fast-paths, scope triage) and Active Sovereign Omni-Builder (cross-domain repair under 4-Tier Compromise Hierarchy) (`enabled: true`, `model: ""`, `temperature: 0.1`, `max_turns: 2`, `timeout: 180s`, `allow_spec_mutation: true`, `allow_scope_reduction: true`, `enforce_spec_quality: true`). Legacy configuration blocks (`unblocker:`, `agents.last_resort:`, `roles.last_resort`) remain fully backwards-compatible.
-- **`spike`**: Configures the Greenfield Spike Prototyping phase (`enabled: true`, `max_turns: 1`, `timeout_seconds: 60`, `providers: []`). When enabled on greenfield repositories (zero pre-existing user stories or substantial source code), a single prioritized model consumes `SPEC.md` and generates an initial minimal compiling walking skeleton in one batch turn, commits it to git, and hands off to the Product Manager which activates the Legacy Stabilization Mandate to characterize, test, and refactor.
+- **`spike`**: Configures the Greenfield Spike Prototyping phase (`enabled: true`, `max_turns: 1`, `timeout_seconds: 60`, `providers: []`). When enabled on greenfield repositories (zero pre-existing user stories or substantial source code), a single prioritized model consumes `SPEC.md` and generates an initial minimal compiling walking skeleton in one batch turn, commits it to git (`feat: initial spike solution walking skeleton`), and hands off to the Product Manager which activates the Legacy Stabilization Mandate to characterize, test, and refactor. If the walking skeleton already compiles cleanly, satisfies anti-stub invariants, and passes all sandbox tests for the initial scaffold story (`US-001`), the **Fast Exit on Green** optimization immediately marks `US-001` tasks as `SUCCESS` and advances straight to `US-002`, eliminating 2–4 redundant LLM iterations.
 - **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.
 - **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve a task clarification.
 - **`clarification_timeout_action`** (String): Action to take if a clarification times out (`abort` or `continue`).
@@ -547,21 +547,28 @@ See [fallback_agent.md](fallback_agent.md) for full references on the unified se
 
 ---
 
-## Context Slicing Settings (`context`)
+## Context Slicing & Compaction Settings (`context`)
 
-Controls how target workspace source files are formatted and sliced for agent prompts.
+Controls how target workspace source files are formatted, sliced, and compacted for agent prompts.
 
 ```yaml
 context:
   mode: full
   diff_window_lines: 15
+  compaction: "none" # "none" (default), "caveman", "simple_english"
+  caveman_compaction: false # legacy boolean alias for compaction: "caveman"
 ```
 
-- **`mode`** (String): Context formatting strategy. Options:
+- **`mode`** (String): Context formatting strategy for task target files. Options:
   - `full`: Sends complete source file contents (default).
   - `diff_window`: Extracts modified git diff lines and error stack traces (+/- context lines).
   - `tree_sitter`: Universal AST parsing extracting class/struct definitions and function signatures.
 - **`diff_window_lines`** (Integer): Number of context lines surrounding diff modifications in `diff_window` mode (default: `15`).
+- **`compaction`** (String): Prompt compaction strategy applied to prompt bodies, specification payloads (`SPEC.md`), and historical turn contexts. Options:
+  - `none`: Sends full uncompacted prompt text (default).
+  - `caveman`: Telegraphic compaction that strips polite filler, redundant conversational preambles, decorative dividers, HTML comments (`<!-- ... -->`), and markdown images while strictly preserving code blocks (` ``` `), JSON contracts, file paths, and CLI flags.
+  - `simple_english`: Simplifies complex vocabulary and passive voice into active, direct directives without modifying technical symbols or code syntax.
+- **`caveman_compaction`** (Boolean): Backward-compatible boolean toggle; equivalent to setting `compaction: "caveman"` when true.
 
 ---
 

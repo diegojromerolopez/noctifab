@@ -480,3 +480,113 @@ sandbox:
   linter_command: "make lint"
   formatter_command: "make format"
 ```
+
+---
+
+## 7. High-Speed Greenfield Spike & Multi-Story Concurrency (Validation Suite Pattern)
+
+A high-throughput configuration designed for fast dark-factory execution (used in `fortune`, `calculator`, and `pyedis`). Features:
+- **Greenfield Spike Prototyping**: Instantly generates a walking skeleton from `SPEC.md` and triggers **Fast Exit on Green** for `US-001`.
+- **Multi-Story Parallel Execution**: `agents.orchestrator.number: 3` dispatches user stories concurrently across isolated worktrees.
+- **Telegraphic Context Slicing**: Compresses prompt payloads with `context.compaction: "caveman"` and `context.mode: "diff_window"`.
+- **Comprehensive Provider Failover**: 8-tier fallback chain starting with fast flash models and gracefully falling back to frontier providers.
+
+```yaml
+config_version: "2.0"
+
+agents:
+  architecture: "code_first"
+  orchestrator:
+    number: 3      # Concurrent multi-story execution across isolated worktrees
+    iterations: 2
+  spike:
+    enabled: true  # Greenfield single-shot walking skeleton generation
+    max_turns: 1
+    timeout_seconds: 60
+    providers:
+      - name: "gemini-flash"
+      - name: "claude"
+  product_manager:
+    number: 1
+    passes: 2
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
+    providers:
+      - name: "claude"
+      - name: "gemini-flash"
+  planner:
+    number: 1
+    iterations: 5
+    providers:
+      - name: "openai"
+      - name: "claude"
+  generators:
+    number: 3
+    iterations: 20
+    providers:
+      - name: "gemini-flash"
+      - name: "deepseek-pro"
+  testers:
+    number: 2
+    iterations: 15
+    providers:
+      - name: "gemini-flash"
+      - name: "deepseek-pro"
+  fallback:
+    enabled: true
+    providers:
+      - name: "claude"
+      - name: "openai"
+
+context:
+  mode: "diff_window"
+  diff_window_lines: 15
+  compaction: "caveman" # Strips fluff and decorative formatting for lean prompts
+
+llm:
+  priority:
+    - "gemini-flash"
+    - "claude"
+    - "gemini"
+    - "openai"
+    - "deepseek-pro"
+    - "qwen"
+    - "opencode"
+    - "openrouter"
+  providers:
+    - name: "gemini-flash"
+      provider: "gemini"
+      model: "gemini-3.6-flash"
+      api_keys: "GEMINI_API_KEY"
+    - name: "claude"
+      provider: "anthropic"
+      model: "claude-sonnet-5"
+      api_keys: "CLAUDE_API_KEY"
+    - name: "gemini"
+      provider: "gemini"
+      model: "gemini-2.5-pro"
+      api_keys: "GEMINI_API_KEY"
+    - name: "openai"
+      provider: "openai"
+      model: "gpt-5.6-luna"
+      api_keys: "OPENAI_API_KEY"
+    - name: "deepseek-pro"
+      provider: "qwencloud"
+      model: "deepseek-v4-pro"
+      api_keys: "QWENCLOUD_API_KEY"
+    - name: "qwen"
+      provider: "qwencloud"
+      model: "qwen3.8-max"
+      api_keys: "QWENCLOUD_API_KEY"
+    - name: "opencode"
+      provider: "opencode"
+      model: "glm-5.2"
+      api_keys: "OPENCODE_API_KEY"
+    - name: "openrouter"
+      provider: "openrouter"
+      model: "auto"
+      api_keys: "OPENROUTER_API_KEY"
+```

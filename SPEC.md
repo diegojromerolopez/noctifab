@@ -1818,6 +1818,25 @@ The **Greenfield Spike Prototyping Phase** (`pkg/services/spike_runner.go`, `Age
 2. **Single-Shot Walking Skeleton:** A prioritized lone model consumes `SPEC.md` and generates a minimal compiling walking skeleton in one batch turn using the `write_files` tool action.
 3. **Commit & Handoff to Legacy Stabilization:** Files are written to disk and immediately committed to Git (`feat: initial spike solution walking skeleton`). Control then hands off to the Product Manager, which activates its **Legacy Stabilization Mandate** to systematically characterize the walking skeleton with black-box tests and guide subsequent feature expansion.
 
+### 3.6.17. Compiler-Gated Fast Exit on Green for Spike Solution
+To eliminate redundant LLM scaffolding iterations during story execution (`cmd/noctifab/cli/start_story_executor.go`):
+1. **Scaffold Story Detection:** When planning user stories, the orchestrator identifies the walking skeleton story (`US-001` or matching story ID prefix).
+2. **Immediate Sandbox Pre-Validation:** Before starting worker dispatch iterations, the orchestrator invokes the sandbox test validator (`deps.evaluator.ValidateTask`) against `US-001` tasks.
+3. **Early Acceptance Criteria:** If the walking skeleton produced by the spike phase already passes anti-stub analysis, satisfies compilation invariants, and passes all sandbox test commands (`exit_code == 0`), the orchestrator marks all tasks for `US-001` as `SUCCESS` and completes the story immediately. Execution advances straight to `US-002`, eliminating 2–4 wasted LLM round trips.
+
+### 3.6.18. Speculative Fast Tool Execution & Aggressive Context Trimming
+To maximize iteration throughput in the Generator Agent loop (`pkg/services/orchestrator_generator.go`):
+1. **Local Pre-Validation on Mutation:** When file-mutating actions (`write_file`, `edit_file`, `multi_replace_file_content`, `apply_patch`) succeed and the model did not invoke `run_tests` in that turn, the orchestrator speculatively executes `run_tests` locally in the sandbox.
+2. **Zero-Turn Pass Verification:** If tests pass cleanly, the green output is recorded into `turnToolOutputs` and logged as `[Speculative Fast Validation] All tests PASSED cleanly`. Consecutive test passes are recorded in the task circuit breaker, enabling instant task completion or green verification handoff without requiring a separate turn to request test runs.
+3. **Failure Log Summarization (`summarizeFailureLog`):** When compiler, linter, or test commands fail, noisy output logs are summarized to extract active syntax errors, compilation traces, and failing assertions, discarding build boilerplate.
+4. **Context Output Limits:** Tool outputs embedded in continuation prompts are capped to 3,000 characters (from 8,000) and file contexts to 8,000 characters (from 16,000), keeping prompts lean and Time-To-First-Token (TTFT) instant.
+
+### 3.6.19. Telegraphic Prompt Compaction & Context Slicing Engine
+1. **Telegraphic Compaction (`context.compaction`):** When configured (`caveman` or `simple_english`), prompt bodies and markdown specifications are processed via `CompactCaveman` or `CompactSimpleEnglish` (`pkg/infrastructure/llm/prompt_templates.go`), stripping conversational preambles, decorative horizontal dividers, polite fillers, and consecutive blank lines.
+2. **Markdown Specification Compaction (`CompactMarkdownSpec`):** Strips HTML comments (`<!-- ... -->`) and markdown images from `SPEC.md` for Spike, Product Manager, and Planner agent prompts.
+3. **Strict Code Block & JSON Envelope Invariance:** All compaction engines enforce strict invariance on fenced code blocks (` ``` `) and trailing JSON contracts (`domain.WithUncompactableTail`). Code syntax, diff windows, filepaths, and schema definitions are preserved verbatim.
+4. **Context Slicing (`ContextSlicer`):** Slices task file contexts according to `context.mode` (`diff_window`, `tree_sitter`, `full`).
+
 ---
 
 ### 3.7. Specification Ingestion & External Clients
