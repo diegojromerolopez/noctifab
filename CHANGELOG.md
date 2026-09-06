@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.5] - 2026-09-06
+
+### Fixed
+- **Rebase Queue Unmerged Index Recovery & Clean Working Tree State**:
+  - Enhanced `executeRebase` in `pkg/services/rebase_queue.go` to abort in-progress merges and hard reset stuck unmerged index entries (`.gitignore: needs merge; error: you need to resolve your current index first`) prior to checking out `base`.
+  - Added clean working tree recovery on fallback tier completion or failure, preventing orphaned merge states from leaking across sequential worker task integrations.
+  - Aligned Tier 5 direct overlay fallback to recognize when the checked-out branch is already identical to `base` (`nothing to commit`), preventing false negative failures when changes are already committed.
+
 ## [0.75.4] - 2026-09-06
 
 ### Fixed
