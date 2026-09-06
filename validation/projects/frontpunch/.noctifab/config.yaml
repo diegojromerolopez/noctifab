@@ -314,6 +314,7 @@ telemetry:
   metrics:
     enabled: true
 context:
-  mode: full
-  diff_window_lines: 15
+  mode: diff_window
+  diff_window_lines: 40
+  window_size: 40
   compaction: caveman

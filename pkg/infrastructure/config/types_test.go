@@ -163,6 +163,29 @@ func TestContextConfig_GetMode(t *testing.T) {
 	})
 }
 
+func TestContextConfig_GetWindowLines(t *testing.T) {
+	t.Run("when default empty, it returns 15", func(t *testing.T) {
+		cc := ContextConfig{}
+		if cc.GetWindowLines() != 15 {
+			t.Errorf("expected 15, got %d", cc.GetWindowLines())
+		}
+	})
+
+	t.Run("when diff_window_lines is set, it returns diff_window_lines", func(t *testing.T) {
+		cc := ContextConfig{DiffWindowLines: 30}
+		if cc.GetWindowLines() != 30 {
+			t.Errorf("expected 30, got %d", cc.GetWindowLines())
+		}
+	})
+
+	t.Run("when window_size is set, it prioritizes window_size", func(t *testing.T) {
+		cc := ContextConfig{DiffWindowLines: 30, WindowSize: 40}
+		if cc.GetWindowLines() != 40 {
+			t.Errorf("expected 40, got %d", cc.GetWindowLines())
+		}
+	})
+}
+
 func TestWorkspaceCacheConfig_IsEnabled(t *testing.T) {
 	t.Run("default nil is enabled", func(t *testing.T) {
 		wc := WorkspaceCacheConfig{Enabled: nil}

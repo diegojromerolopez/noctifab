@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.80.1] - 2026-09-06
+
+### Changed
+- **⚡ Universal AST Context Slicing across Validation Projects**:
+  - Activated `context.mode: diff_window` with `diff_window_lines: 40` and `window_size: 40` across all 17 validation projects (`auth-vault`, `buffonstream`, `calculator`, `djanban`, `echo`, `fortune`, `frontpunch`, `jpacioli`, `ninline`, `notebook`, `ocalogue`, `pyedis`, `searchthedocs`, `stricc`, `t4`, `todo-cli`, `wc`).
+  - Added `window_size` configuration alias and `GetWindowLines()` helper to `ContextConfig` (`pkg/infrastructure/config/types.go`), providing seamless fallback and prioritization between `window_size` and `diff_window_lines`.
+  - Updated `NewContextSlicer` (`pkg/services/context_slicer.go`) to utilize `cfg.GetWindowLines()`.
+
 ## [0.80.0] - 2026-09-06
 
 ### Added

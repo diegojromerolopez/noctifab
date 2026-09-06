@@ -393,6 +393,7 @@ const (
 type ContextConfig struct {
 	Mode              string `yaml:"mode"`
 	DiffWindowLines   int    `yaml:"diff_window_lines"`
+	WindowSize        int    `yaml:"window_size"`
 	CavemanCompaction bool   `yaml:"caveman_compaction"`
 	Compaction        string `yaml:"compaction"` // Options: "none" (default), "simple_english", "caveman"
 }
@@ -406,6 +407,16 @@ func (c ContextConfig) GetCompactionMode() string {
 		return "caveman"
 	}
 	return "none"
+}
+
+func (c ContextConfig) GetWindowLines() int {
+	if c.WindowSize > 0 {
+		return c.WindowSize
+	}
+	if c.DiffWindowLines > 0 {
+		return c.DiffWindowLines
+	}
+	return 15
 }
 
 func (c ContextConfig) GetMode() ContextMode {
