@@ -174,6 +174,17 @@ Return a JSON envelope with action tool "diagnose_format_command" and args:
 
 	resp, err := f.LLMClient.Complete(llmCtx, prompt)
 	if err != nil {
+		lower := strings.ToLower(errOut)
+		if strings.Contains(lower, "no rule to make target") ||
+			strings.Contains(lower, "command not found") ||
+			strings.Contains(lower, "executable file not found") {
+			return &formatCommandDiagnosis{
+				CommandIsWrong:   true,
+				Explanation:      "Missing Makefile target or executable tool",
+				SuggestedCommand: "",
+				AppliesToProject: false,
+			}, nil
+		}
 		return nil, err
 	}
 

@@ -136,6 +136,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
 		o.recordTokenUsage(ctx, currentPrompt, resp)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] turn %d LLM call failed: %v\n", task.ID, turn, err)
 			lastErr = err
 			break
 		}

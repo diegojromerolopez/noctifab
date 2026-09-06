@@ -272,6 +272,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
 		o.recordTokenUsage(ctx, currentPrompt, testResp)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] turn %d LLM call failed: %v\n", task.ID, turn, err)
 			lastErr = err
 			break
 		}

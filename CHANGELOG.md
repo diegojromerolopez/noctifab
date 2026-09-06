@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.3] - 2026-09-05
+
+### Fixed
+- **Formatter Resilient Diagnostic Fallback**:
+  - Enhanced `diagnoseCommand` in `pkg/services/auto_formatter.go` to safely detect missing Makefile targets or missing executable binaries even when the LLM diagnostic request fails or times out, immediately disabling the inapplicable formatter command and preventing blocked test validation.
+- **Test Validator & Agent Turn Loop Observability**:
+  - Added explicit progress and outcome logging across test validation steps in `pkg/services/test_validator.go`, including formatter execution and individual test run completion status.
+  - Added explicit error reporting to `os.Stderr` when LLM completion fails in generator (`pkg/services/orchestrator_generator.go`) and tester (`pkg/services/orchestrator_helper.go`) turn loops.
+
 ## [0.75.2] - 2026-09-05
 
 ### Fixed

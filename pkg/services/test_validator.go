@@ -82,10 +82,12 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	}
 
 	if v.Formatter != nil {
+		fmt.Printf("Orchestrator: Task %s running formatter pre-pass...\n", task.ID)
 		_, _ = v.Formatter.Format(ctx, state.ProjectPath)
 	} else if v.FormatterCommand != "" {
 		// Deterministic Auto-Formatter Pre-Pass:
 		// Automatically run auto-fix formatter before test execution.
+		fmt.Printf("Orchestrator: Task %s running formatter command %q...\n", task.ID, v.FormatterCommand)
 		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
 	}
 
@@ -93,6 +95,7 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	if runs <= 0 {
 		runs = 1
 	}
+	fmt.Printf("Orchestrator: Task %s running test execution (%d run(s))...\n", task.ID, runs)
 	results := v.runWithCount(ctx, state, runs)
 
 	passCount := 0
@@ -138,6 +141,8 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 		runCtx, runCancel := context.WithTimeout(ctx, timeout)
 		out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
 		runCancel()
+
+		fmt.Printf("Orchestrator: Task test execution finished (passed=%t, out_len=%d)\n", err == nil, len(out))
 
 		outLower := strings.ToLower(out)
 		noTestsRan := strings.Contains(outLower, "no tests ran") ||
