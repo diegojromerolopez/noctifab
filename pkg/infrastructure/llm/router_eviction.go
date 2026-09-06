@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 // RoleContextKey is the context key for passing the active agent role.
-type RoleContextKey struct{}
+type RoleContextKey = domain.RoleContextKey
 
 // WithRoleContext attaches an agent role name to the context.
 func WithRoleContext(ctx context.Context, role string) context.Context {
-	return context.WithValue(ctx, RoleContextKey{}, role)
+	return domain.WithRoleContext(ctx, role)
 }
 
 type stringKey string

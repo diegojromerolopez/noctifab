@@ -252,6 +252,17 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 	if r.cfg != nil {
 		var agentRole config.AgentRoleConfig
 		switch strings.ToLower(roleName) {
+		case "spike":
+			spike := r.cfg.Agents.Spike
+			if len(spike.Providers) > 0 {
+				return config.RoleSetting{
+					Model:       spike.Model,
+					Temperature: spike.Temperature,
+					Profile:     spike.Profile,
+					Providers:   spike.Providers,
+					MaxTokens:   spike.MaxTokens,
+				}
+			}
 		case "orchestrator":
 			agentRole = r.cfg.Agents.Orchestrator
 		case "product_manager", "productmanager":

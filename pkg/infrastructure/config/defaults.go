@@ -74,6 +74,11 @@ func DefaultConfig() *Config {
 				AllowScopeReduction: true,
 				EnforceSpecQuality:  true,
 			},
+			Spike: SpikeConfig{
+				Enabled:        true,
+				MaxTurns:       2,
+				TimeoutSeconds: 60,
+			},
 		},
 		WorkspaceCache: WorkspaceCacheConfig{
 			Enabled: boolPtr(true),

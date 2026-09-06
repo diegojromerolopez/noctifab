@@ -76,13 +76,13 @@ func TestPromptsListCommand(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		for _, needle := range []string{"product_manager", "planner", "tester", "generator", "qa", "spec", "fallback", "auditor", "acceptance", "implement", "write_breadth_first", "repair"} {
+		for _, needle := range []string{"product_manager", "planner", "tester", "generator", "qa", "spec", "fallback", "auditor", "spike", "acceptance", "implement", "write_breadth_first", "repair"} {
 			if !strings.Contains(out, needle) {
 				t.Errorf("expected %q in list output, got:\n%s", needle, out)
 			}
 		}
-		if strings.Count(out, "embedded") != 24 {
-			t.Errorf("expected 24 embedded entries, got %d:\n%s", strings.Count(out, "embedded"), out)
+		if strings.Count(out, "embedded") != 25 {
+			t.Errorf("expected 25 embedded entries, got %d:\n%s", strings.Count(out, "embedded"), out)
 		}
 	})
 
@@ -170,14 +170,14 @@ func TestPromptsInitCommand(t *testing.T) {
 		}
 	})
 
-	t.Run("when initializing everything it writes all 24 templates", func(t *testing.T) {
+	t.Run("when initializing everything it writes all 25 templates", func(t *testing.T) {
 		ws := t.TempDir()
 		out, err := runPromptsCmd(t, ws, "init")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if strings.Count(out, "created ") != 24 {
-			t.Errorf("expected 24 created files, got:\n%s", out)
+		if strings.Count(out, "created ") != 25 {
+			t.Errorf("expected 25 created files, got:\n%s", out)
 		}
 	})
 

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.77.0] - 2026-09-06
+
+### Added
+- **Greenfield Spike Prototyping Phase with Prioritized Model Fallback**:
+  - Implemented the lone-model greenfield prototyping phase (`pkg/services/spike_runner.go`) executed before Product Manager roadmap generation when a workspace has no existing stories or codebase.
+  - Generates a minimal compiling walking skeleton in a single shot directly from `SPEC.md`, commits the codebase to Git (`feat: initial spike solution walking skeleton`), and hands off to the Product Manager.
+  - Seamlessly triggers the Product Manager's **Legacy Stabilization Mandate** on the generated spike codebase, automatically structuring subsequent stories to characterize with unit/integration tests, refactor, and harden.
+  - Added `SpikeConfig` (`pkg/infrastructure/config/types.go`) supporting `enabled`, `max_turns`, `timeout_seconds`, and prioritized provider fallback chains (`providers`).
+  - Added `spike/generate` prompt template (`pkg/infrastructure/prompts/defaults/spike/generate.tmpl`) and non-overridable contract (`pkg/infrastructure/prompts/contracts/spike.txt`).
+  - Wired `ExecuteSpike` in CLI start runner (`cmd/noctifab/cli/start_runner.go`) and configured role dispatch in `ResilientLLMRouter` (`pkg/infrastructure/llm/router_ensemble.go`).
+  - Configured high-speed single-pass spike configuration across `fortune`, `calculator`, and `pyedis` validation projects with prioritized model fallback starting on `gemini-flash`.
+
 ## [0.76.1] - 2026-09-06
 
 ### Fixed

@@ -212,6 +212,12 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Warning: prompt template rendering initialization failed: %v\n", rendErr)
 	}
 
+	if !hasExistingStories {
+		if _, spikeErr := services.ExecuteSpike(cmdCtx, targetDir, cfg, llmClient, promptRenderer, executionReporter); spikeErr != nil {
+			fmt.Printf("Warning: Spike prototyping phase failed: %v\n", spikeErr)
+		}
+	}
+
 	if hasExistingStories {
 		fmt.Printf("ℹ [Roadmap] Existing roadmap user stories found; skipping Product Manager Agent refinement to preserve existing roadmap files.\n")
 	} else {

@@ -17,6 +17,7 @@ There are **24 customizable templates across 8 agents**:
 | `qa` | `acceptance` |
 | `auditor` | `audit` |
 | `fallback` | `repair` |
+| `spike` | `generate` |
 | `spec` | `pm_draft`, `architect_enrich`, `tester_enrich`, `qa_enrich`, `consensus_audit`, `refine` |
 
 
@@ -130,6 +131,14 @@ with named placeholders. The available placeholders per agent:
 | `{{.MaxScenarios}}` | Maximum scenarios accepted for the review |
 
 The QA contract permits exactly one declarative `propose_scenarios` action. It does not grant an executable tool or workspace mutation access.
+
+### `spike/generate` — SpikePromptData
+
+| Placeholder | Content |
+| --- | --- |
+| `{{.Spec}}` | Raw SPEC.md content used to implement the initial walking skeleton |
+
+The spike contract permits `write_files` and `write_file` actions to implement the greenfield codebase skeleton in a single shot.
 
 ### `spec/*` — SpecPromptData
 

@@ -426,6 +426,36 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 		assert.Equal(t, "deepseek-local", candidates[2].Name)
 		assert.Equal(t, "deepseek-reasoner", candidates[2].Model)
 	})
+
+	t.Run("Scenario 15: Spike role candidate resolution with prioritized fallback providers", func(t *testing.T) {
+		cfg := &config.Config{
+			LLM: config.LLMConfig{
+				Providers: []config.ProviderSpec{
+					{Name: "gemini-flash", Provider: "gemini", Model: "gemini-2.5-flash"},
+					{Name: "claude", Provider: "anthropic", Model: "claude-3-7-sonnet"},
+					{Name: "openai", Provider: "openai", Model: "gpt-4o"},
+				},
+			},
+			Agents: config.AgentsConfig{
+				Spike: config.SpikeConfig{
+					Enabled: true,
+					Providers: []config.AgentProviderRef{
+						{Name: "gemini-flash"},
+						{Name: "claude"},
+						{Name: "openai"},
+					},
+				},
+			},
+		}
+
+		router := NewResilientLLMRouter(cfg, nil)
+		candidates := router.ResolveCandidatesForRole("spike")
+		require.Len(t, candidates, 3)
+
+		assert.Equal(t, "gemini-flash", candidates[0].Name)
+		assert.Equal(t, "claude", candidates[1].Name)
+		assert.Equal(t, "openai", candidates[2].Name)
+	})
 }
 
 func pointerToBool(b bool) *bool { return &b }

@@ -65,6 +65,23 @@ type AgentsConfig struct {
 	Unblocker          AgentRoleConfig       `yaml:"unblocker,omitempty"`
 	LastResort         LastResortAgentConfig `yaml:"last_resort,omitempty"`
 	WorkspaceCache     WorkspaceCacheConfig  `yaml:"workspace_cache"`
+	Spike              SpikeConfig           `yaml:"spike,omitempty"`
+}
+
+// SpikeConfig configures the greenfield prototyping spike phase.
+type SpikeConfig struct {
+	Enabled        bool               `yaml:"enabled"`
+	MaxTurns       int                `yaml:"max_turns,omitempty"`
+	TimeoutSeconds int                `yaml:"timeout_seconds,omitempty"`
+	Model          string             `yaml:"model,omitempty"`
+	Temperature    float64            `yaml:"temperature,omitempty"`
+	Profile        string             `yaml:"profile,omitempty"`
+	MaxTokens      int64              `yaml:"max_tokens,omitempty"`
+	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
+}
+
+func (s SpikeConfig) IsEnabled() bool {
+	return s.Enabled
 }
 
 // QAConfig reserves the bounded configuration contract for the experimental QA role.

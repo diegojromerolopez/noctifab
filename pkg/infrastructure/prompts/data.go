@@ -50,6 +50,12 @@ type PlannerPromptData struct {
 	Spec string
 }
 
+// SpikePromptData backs the spike/generate action template.
+type SpikePromptData struct {
+	// Spec is the raw specification content.
+	Spec string
+}
+
 // QAPromptData backs the qa/acceptance action template.
 type QAPromptData struct {
 	State              string
@@ -89,6 +95,8 @@ func FixtureData(agent string) any {
 		}
 	case AgentPlanner:
 		return PlannerPromptData{Spec: "fixture specification"}
+	case AgentSpike:
+		return SpikePromptData{Spec: "fixture specification"}
 	case AgentQA:
 		return QAPromptData{
 			State:              "fixture state snapshot",
