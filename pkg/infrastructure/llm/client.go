@@ -298,29 +298,23 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 				fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s; skipping retries.\n", c.Provider, activeModel)
 				break
 			}
-			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") || creditExhausted {
-				fmt.Fprintln(os.Stderr, "⚠ Warning: You have exceeded your LLM API quota (HTTP 429). Please check your plan and billing details.")
-				if len(c.APIKeys) > 1 {
+			if isRateLimitOrQuota(err) || (creditExhausted && c.SkipOnCreditExhausted) {
+				fmt.Fprintf(os.Stderr, "⚠ Warning: Hit rate limit or quota exceeded (HTTP 429) for %s/%s. Skipping retry ladder for immediate failover.\n", c.Provider, activeModel)
+				if len(c.APIKeys) > 1 && attempt < len(c.APIKeys)-1 {
 					activeKey = c.getNextAPIKey()
 					fmt.Fprintf(os.Stderr, "ℹ Switching to next API key in pool for provider %s...\n", c.Provider)
-				} else if c.SkipOnCreditExhausted {
-					if delay, ok := parseRetryDelay(err); !ok || delay > 60*time.Second {
-						fmt.Fprintf(os.Stderr, "⚠ Circuit-breaker: HTTP 429 quota exhausted for %s/%s; skipping retries to trigger model/provider fallback immediately.\n", c.Provider, activeModel)
-						break
-					}
+					continue
 				}
+				// Fast-fail: break immediately without waiting on exponential backoff ladder
+				break
 			}
 
 			if attempt == maxRetries {
 				break
 			}
 
-			// Exponential backoff with jitter
+			// Exponential backoff with jitter for other transient errors
 			jitter := time.Duration(float64(backoff) * (1.0 + rand.Float64()))
-			if delay, ok := parseRetryDelay(err); ok {
-				jitter = delay + time.Duration(100+rand.Intn(400))*time.Millisecond
-				fmt.Fprintf(os.Stderr, "⚠ Rate limited. Backing off for %v (including random jitter) as requested by the API.\n", jitter)
-			}
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -414,7 +408,12 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			return nil, errResult
 		}
 
-		errResult := fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
+		var errResult error
+		if isRateLimitOrQuota(err) {
+			errResult = fmt.Errorf("LLM rate limit / quota exceeded (HTTP 429): %w", err)
+		} else {
+			errResult = fmt.Errorf("LLM completion failed: %w", err)
+		}
 		emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, domain.TokenUsage{}, errResult)
 		return nil, errResult
 	}

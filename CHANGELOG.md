@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.76.0] - 2026-09-06
+
+### Added
+- **Immediate Fast Failover on HTTP 429 Rate Limits**:
+  - Dropped the 5-retry exponential backoff and retry-after waiting ladder on HTTP 429 Too Many Requests and quota exhaustion errors across LLM provider clients (`pkg/infrastructure/llm/client.go`).
+  - Added `isRateLimitOrQuota` error classifier (`pkg/infrastructure/llm/http_error.go`) that immediately aborts intra-model retries when a provider is rate limited, while still rotating through any alternate API keys in multi-key pools.
+  - Enhanced `shouldSkipModelFallback` to skip lower-model stepping on throttled providers, preventing wasted round trips on depleted or rate-limited provider accounts and immediately returning control to the router or failover client.
+  - Enables sub-second failover between provider candidates in `ResilientLLMRouter` and `FailoverClient` when hitting rate limits, completely eliminating 15–45s backoff freezes and stall cascades.
+
 ## [0.75.6] - 2026-09-06
 
 ### Fixed
