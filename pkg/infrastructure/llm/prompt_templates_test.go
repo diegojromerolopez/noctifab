@@ -106,4 +106,27 @@ You are a software factory automation agent operating in a restricted workspace 
 			t.Errorf("expected 3+ consecutive blank lines to be collapsed, got: %q", compacted)
 		}
 	})
+
+	t.Run("CompactMarkdownSpecWithMode", func(t *testing.T) {
+		spec := `# SPEC Title
+<!-- comment -->
+In order to utilize the API, make sure to execute commands prior to shutdown.
+` + "```go\nfunc Run() {}\n```\n"
+
+		compactedSimple := CompactMarkdownSpecWithMode(spec, "simple_english")
+		if strings.Contains(compactedSimple, "utilize") || !strings.Contains(compactedSimple, "use") {
+			t.Errorf("expected utilize -> use in simple_english spec compaction: %s", compactedSimple)
+		}
+		if !strings.Contains(compactedSimple, "before shutdown") {
+			t.Errorf("expected prior to -> before in simple_english spec compaction: %s", compactedSimple)
+		}
+
+		compactedCaveman := CompactMarkdownSpecWithMode(spec, "caveman")
+		if strings.Contains(compactedCaveman, "make sure to") {
+			t.Errorf("expected 'make sure to' stripped in caveman spec compaction: %s", compactedCaveman)
+		}
+		if strings.Contains(compactedCaveman, "In order to") {
+			t.Errorf("expected 'In order to' stripped/replaced in caveman spec compaction: %s", compactedCaveman)
+		}
+	})
 }

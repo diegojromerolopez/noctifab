@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.3] - 2026-09-06
+
+### Enhanced
+- **Upgraded Caveman & Simple English Compaction Engines**:
+  - Expanded `processSimpleEnglishLines` with extensive plain-language vocabulary simplifications (`utilizes`, `facilitates`, `demonstrates`, `commences`, `terminates`, `prior to`, `subsequent to`, `subsequently`, `in accordance with`, `as well as`, `it is necessary that`, `make an attempt to`, `take into consideration`, etc.).
+  - Upgraded `processCavemanLines` with telegraphic filler phrase elimination across both line prefixes and inline sentence bodies (`make sure to`, `be sure to`, `remember to`, `ensure that you`, `in order to`, `due to the fact that`, `without any exception`, `take into account`, `at all times`), and automatic header bold unnesting (`### **Heading**` $\rightarrow$ `### Heading`).
+  - Added `CompactMarkdownSpecWithMode(prompt, mode)` supporting both `caveman` and `simple_english` mode in markdown spec compaction, and connected it across `spike_runner.go`, `roadmap_generator.go`, and `orchestrator_server.go`.
+
 ## [0.79.2] - 2026-09-06
 
 ### Documentation

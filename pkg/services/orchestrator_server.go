@@ -47,7 +47,7 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 
 	specToPlan := spec
 	if o.cfg.Context.GetCompactionMode() != "none" {
-		specToPlan = llm.CompactMarkdownSpec(specToPlan)
+		specToPlan = llm.CompactMarkdownSpecWithMode(specToPlan, o.cfg.Context.GetCompactionMode())
 	}
 	rendered, err := o.promptRenderer.Render(prompts.AgentPlanner, "decompose", prompts.PlannerPromptData{Spec: specToPlan})
 	if err != nil {

@@ -63,7 +63,7 @@ func ExecuteSpike(
 
 	specText := string(specBytes)
 	if cfg != nil && cfg.Context.GetCompactionMode() != "none" {
-		specText = llm.CompactMarkdownSpec(specText)
+		specText = llm.CompactMarkdownSpecWithMode(specText, cfg.Context.GetCompactionMode())
 	}
 
 	rendered, err := renderer.Render(prompts.AgentSpike, "generate", prompts.SpikePromptData{

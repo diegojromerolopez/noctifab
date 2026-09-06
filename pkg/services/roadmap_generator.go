@@ -87,7 +87,7 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 	}
 	specContent := string(specBytes)
 	if mode := CompactionModeFromContext(ctx); mode != "" && mode != "none" {
-		specContent = llm.CompactMarkdownSpec(specContent)
+		specContent = llm.CompactMarkdownSpecWithMode(specContent, mode)
 	}
 
 	legacyFiles, _ := scanLegacyFiles(projectPath)
