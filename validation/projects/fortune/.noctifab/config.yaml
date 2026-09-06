@@ -15,7 +15,7 @@ agents:
     - name: opencode
     - name: openrouter
   orchestrator:
-    number: 2
+    number: 3
     iterations: 2
   product_manager:
     number: 1

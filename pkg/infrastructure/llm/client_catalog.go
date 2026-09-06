@@ -14,8 +14,9 @@ const defaultCatalogTTL = 5 * time.Minute
 
 // catalogEntry is a cached model catalog with its expiry deadline.
 type catalogEntry struct {
-	models  []string
-	expires time.Time
+	models       []string
+	capabilities map[string]ModelCapability
+	expires      time.Time
 }
 
 // extraBodySetter is an optional interface that provider clients can implement
@@ -192,4 +193,65 @@ func (c *Client) resolveLatestModel(ctx context.Context, apiKey string) string {
 
 	sortProviderModels(parsedModels)
 	return parsedModels[0].Name
+}
+
+// availableCapabilitiesCached returns dynamic model capability metadata discovered from the /models endpoint.
+func (c *Client) availableCapabilitiesCached(ctx context.Context, pClient ProviderClient, apiKey string) map[string]ModelCapability {
+	key := c.catalogCacheKey()
+	ttl := c.catalogTTL
+	if ttl <= 0 {
+		ttl = defaultCatalogTTL
+	}
+
+	c.catalogMu.Lock()
+	entry, ok := c.catalogCache[key]
+	if ok && entry.capabilities != nil {
+		c.catalogMu.Unlock()
+		return entry.capabilities
+	}
+	c.catalogMu.Unlock()
+
+	disc, ok := pClient.(ModelCapabilityDiscoverer)
+	if !ok {
+		return nil
+	}
+
+	caps, err := disc.GetModelCapabilities(ctx, apiKey)
+
+	c.catalogMu.Lock()
+	if c.catalogCache == nil {
+		c.catalogCache = make(map[string]catalogEntry)
+	}
+	e := c.catalogCache[key]
+	if err != nil || len(caps) == 0 {
+		e.capabilities = make(map[string]ModelCapability)
+	} else {
+		e.capabilities = caps
+	}
+	if e.expires.IsZero() {
+		e.expires = time.Now().Add(ttl)
+	}
+	c.catalogCache[key] = e
+	c.catalogMu.Unlock()
+
+	if err != nil || len(caps) == 0 {
+		return nil
+	}
+	return caps
+}
+
+// providerClientForContext builds the ProviderClient and applies routine task overrides
+// (such as dynamically disabling extended thinking when discovered via /models).
+func (c *Client) providerClientForContext(ctx context.Context, activeModel string) ProviderClient {
+	pc := c.providerClient()
+	role := GetRoleFromContext(ctx)
+	if isRoutineTask(role) {
+		extra, modified := c.adjustForRoutineTask(ctx, role, activeModel, nil)
+		if modified {
+			if setter, ok := pc.(extraBodySetter); ok {
+				setter.SetExtraBody(extra)
+			}
+		}
+	}
+	return pc
 }

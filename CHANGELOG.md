@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.78.0] - 2026-09-06
+
+### Added
+- **Dynamic Model Capability Discovery via `/models` & Routine Task Extended Thinking Suppression**:
+  - Implemented dynamic model capability discovery (`ModelCapabilityDiscoverer`, `parseDynamicModelCapabilities`) querying the provider's `/models` endpoint live for parameter schemas and capability metadata (`supported_parameters`, `capabilities`, `thinkingConfig`, `architecture`).
+  - Guaranteed zero hardcoded model names across the capability analysis engine, preserving full language and model agnosticism.
+  - Automatically suppresses extended thinking and reasoning token delays (`enable_thinking: false`, `thinking_budget: 0`, `reasoning_effort: "low"`, `thinkingConfig.thinkingBudget: 0`) for high-frequency routine task roles (`generator`, `tester`, `spike`), eliminating 20–60s reasoning pauses per iteration.
+  - Retains full extended reasoning and thinking capabilities for non-routine strategic planning roles (`planner`, `auditor`, `product_manager`, `fallback`).
+  - Added dynamic thinking suppression support across OpenAI-compatible, Anthropic, and Gemini provider clients via `extraBodySetter` integration.
+
+- **Multi-Story Concurrency Configuration (`agents.orchestrator.number`)**:
+  - Configured `agents.orchestrator.number: 3` across validation projects (`fortune`, `calculator`, `pyedis`) to enable parallel story orchestration across isolated worktrees.
+
 ## [0.77.0] - 2026-09-06
 
 ### Added

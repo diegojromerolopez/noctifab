@@ -63,6 +63,12 @@ func TestClient_ImmediateFailoverOnRateLimit429(t *testing.T) {
 func TestRouter_ImmediateFailoverOnRateLimit429(t *testing.T) {
 	var cand1Calls int64
 	srvThrottled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o","object":"model"}]}`))
+			return
+		}
 		atomic.AddInt64(&cand1Calls, 1)
 		w.Header().Set("Retry-After", "30")
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -72,6 +78,12 @@ func TestRouter_ImmediateFailoverOnRateLimit429(t *testing.T) {
 
 	var cand2Calls int64
 	srvHealthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o","object":"model"}]}`))
+			return
+		}
 		atomic.AddInt64(&cand2Calls, 1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

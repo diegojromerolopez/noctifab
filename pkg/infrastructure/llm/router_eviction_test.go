@@ -57,6 +57,7 @@ func TestResilientLLMRouter_ProviderEviction30Minutes(t *testing.T) {
 }
 
 func TestGetRoleFromContext(t *testing.T) {
+	//nolint:staticcheck // SA1029: tests backward compatibility for string context keys
 	ctx := context.WithValue(context.Background(), "agent_role", "Generator")
 	role := GetRoleFromContext(ctx)
 	if role != "generator" {

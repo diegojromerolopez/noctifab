@@ -296,6 +296,15 @@ One of `noctifab`'s core resilience features is its **Dynamic Model Fallback Eng
 
 ---
 
+### Dynamic Model Capability Discovery & Routine Task Extended Thinking Suppression
+
+To avoid hardcoding model names while maximizing turn speed across the development lifecycle:
+1. **Dynamic Capability Discovery**: Noctifab queries the provider `/models` endpoint live and parses dynamic feature descriptors (such as `supported_parameters`, `capabilities`, `thinkingConfig`, and `architecture`). Zero model identifiers are hardcoded in the codebase.
+2. **Routine Task Thinking Suppression**: For routine, high-frequency task roles (`generator`, `tester`, `spike`), extended reasoning and thinking token generation (which can introduce 20–60s latencies per turn) are automatically suppressed (`enable_thinking: false`, `thinking_budget: 0`, `reasoning_effort: "low"`).
+3. **Non-Routine Reasoning Preservation**: Non-routine strategic roles (`planner`, `auditor`, `product_manager`, `fallback`) retain full reasoning and thinking capabilities for high-depth architectural decision-making.
+
+---
+
 ## VCS & Integration Settings (`vcs`)
 
 Configures code tracking, branch prefixes, and pull requests.
@@ -567,6 +576,22 @@ agents:
 ```
 
 - **`enabled`** (Boolean): Enable in-memory workspace inspection and diagnostic tool caching (default: `true`).
+
+---
+
+## Multi-Story Concurrency Settings (`agents.orchestrator.number`)
+
+Controls how many concurrent orchestrator worker loops run in parallel to process user stories:
+
+```yaml
+agents:
+  orchestrator:
+    number: 3
+    iterations: 2
+```
+
+- **`number`** (Integer): Number of parallel story orchestrator workers (default: `1`). When set to `2` or `3`, Noctifab orchestrates multiple ready user stories concurrently using isolated Git worktrees and optimistic concurrency control (OCC), drastically accelerating multi-story execution across large roadmaps.
+- **`iterations`** (Integer): Maximum orchestrator pass iterations.
 
 ---
 

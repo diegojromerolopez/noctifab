@@ -258,7 +258,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			backoff = 100 * time.Millisecond
 		}
 
-		pClient := c.providerClient()
+		pClient := c.providerClientForContext(ctx, activeModel)
 
 		activeKey := apiKey
 		creditExhausted := false

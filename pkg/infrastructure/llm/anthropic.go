@@ -42,6 +42,12 @@ type anthropicProviderClient struct {
 	timeout     time.Duration
 	idleTimeout time.Duration
 	streaming   bool
+	extraBody   map[string]interface{}
+}
+
+// SetExtraBody attaches provider-specific extra body parameters (such as disabling thinking).
+func (a *anthropicProviderClient) SetExtraBody(params map[string]interface{}) {
+	a.extraBody = params
 }
 
 // NewAnthropicProviderClient creates a ProviderClient for Anthropic (Claude) API.
@@ -104,6 +110,11 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		}
 		if currentTemp > 0 {
 			payload["temperature"] = currentTemp
+		}
+		if a.extraBody != nil {
+			if th, ok := a.extraBody["thinking"].(map[string]interface{}); ok {
+				payload["thinking"] = th
+			}
 		}
 
 		reqBody, err := json.Marshal(payload)
@@ -275,4 +286,52 @@ func (a *anthropicProviderClient) GetAvailableModels(ctx context.Context, apiKey
 		models = append(models, m.ID)
 	}
 	return models, nil
+}
+
+func (a *anthropicProviderClient) GetModelCapabilities(ctx context.Context, apiKey string) (map[string]ModelCapability, error) {
+	var url string
+	if a.url != "" {
+		if strings.HasSuffix(a.url, "/messages") {
+			url = strings.TrimSuffix(a.url, "/messages") + "/models"
+		} else {
+			url = a.url + "/models"
+		}
+	} else {
+		url = "https://api.anthropic.com/v1/models"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch Anthropic models (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Data []map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	return parseDynamicModelCapabilities(result.Data), nil
 }
