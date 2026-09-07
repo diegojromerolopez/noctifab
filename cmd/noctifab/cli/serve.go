@@ -184,6 +184,8 @@ var serveCmd = &cobra.Command{
 			QA:                   cfg.Agents.QA,
 			Fallback:             cfg.Agents.GetFallback(),
 			LastResort:           cfg.Agents.LastResort,
+			DefaultTestCommand:   cfg.Sandbox.TestCommand,
+			AllowedCommands:      cfg.Sandbox.AllowedCommands,
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.

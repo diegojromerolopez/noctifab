@@ -182,7 +182,7 @@ func TestScanLegacyFiles_And_IsGreenfieldWorkspace(t *testing.T) {
 		tempDir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte("# Spec"), 0644))
 
-		// 15 lines of starter code
+		// 15 lines of starter code (< 50 lines)
 		var lines []string
 		for i := 1; i <= 15; i++ {
 			lines = append(lines, "x = "+string(rune('0'+i)))
@@ -198,26 +198,56 @@ func TestScanLegacyFiles_And_IsGreenfieldWorkspace(t *testing.T) {
 		assert.True(t, isGreenfield)
 	})
 
-	t.Run("when workspace has substantial legacy code (>= 50 lines), it detects legacy files", func(t *testing.T) {
+	t.Run("when workspace has large non-source or documentation files like FEEDBACK.md, it classifies as greenfield", func(t *testing.T) {
 		tempDir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte("# Spec"), 0644))
 
-		// Create 55 lines of legacy code
-		var codeLines []string
-		codeLines = append(codeLines, "class LegacyService:")
-		for i := 1; i <= 27; i++ {
-			codeLines = append(codeLines, "    def method_"+string(rune('a'+i))+strings.Repeat("x", 2)+"(self):")
-			codeLines = append(codeLines, "        return "+string(rune('0'+(i%10))))
+		// 150 lines of FEEDBACK.md (non-source doc)
+		var feedbackLines []string
+		for i := 1; i <= 150; i++ {
+			feedbackLines = append(feedbackLines, "Feedback issue line "+string(rune('0'+(i%10))))
 		}
-		require.NoError(t, os.WriteFile(filepath.Join(tempDir, "legacy_service.py"), []byte(strings.Join(codeLines, "\n")), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(tempDir, "FEEDBACK.md"), []byte(strings.Join(feedbackLines, "\n")), 0644))
+
+		files, err := services.ScanLegacyFiles(tempDir)
+		require.NoError(t, err)
+		assert.Empty(t, files)
+
+		isGreenfield, _, err := services.IsGreenfieldWorkspace(tempDir)
+		require.NoError(t, err)
+		assert.True(t, isGreenfield)
+	})
+
+	t.Run("when workspace has substantial legacy code (>= 2 files and >= 100 lines), it detects legacy files", func(t *testing.T) {
+		tempDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte("# Spec"), 0644))
+
+		// Create file 1: 55 lines
+		var codeLines1 []string
+		codeLines1 = append(codeLines1, "class LegacyService:")
+		for i := 1; i <= 30; i++ {
+			codeLines1 = append(codeLines1, "    def method_"+string(rune('a'+i))+"(self):")
+			codeLines1 = append(codeLines1, "        return "+string(rune('0'+(i%10))))
+		}
+		require.NoError(t, os.WriteFile(filepath.Join(tempDir, "legacy_service.py"), []byte(strings.Join(codeLines1, "\n")), 0644))
+
+		// Create file 2: 55 lines
+		var codeLines2 []string
+		codeLines2 = append(codeLines2, "class LegacyRepo:")
+		for i := 1; i <= 30; i++ {
+			codeLines2 = append(codeLines2, "    def query_"+string(rune('a'+i))+"(self):")
+			codeLines2 = append(codeLines2, "        return "+string(rune('0'+(i%10))))
+		}
+		require.NoError(t, os.WriteFile(filepath.Join(tempDir, "legacy_repo.py"), []byte(strings.Join(codeLines2, "\n")), 0644))
 
 		files, err := services.ScanLegacyFiles(tempDir)
 		require.NoError(t, err)
 		assert.Contains(t, files, "legacy_service.py")
+		assert.Contains(t, files, "legacy_repo.py")
 
 		isGreenfield, legacyFiles, err := services.IsGreenfieldWorkspace(tempDir)
 		require.NoError(t, err)
 		assert.False(t, isGreenfield)
-		assert.Equal(t, []string{"legacy_service.py"}, legacyFiles)
+		assert.ElementsMatch(t, []string{"legacy_service.py", "legacy_repo.py"}, legacyFiles)
 	})
 }

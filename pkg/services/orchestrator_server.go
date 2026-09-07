@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -78,6 +80,23 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		}
 
 		newTasks := state.Tasks[initialTaskCount:]
+		specBytes, _ := os.ReadFile(filepath.Join(state.ProjectPath, "SPEC.md"))
+		storyTitle := ""
+		storyPath := ""
+		for _, s := range state.Stories {
+			if s.ID == storyID {
+				storyTitle = s.Title
+				storyPath = s.FilePath
+				break
+			}
+		}
+		if IsHardeningStory(storyID, storyTitle, storyPath) || IsHardeningStory(state.Metadata.FeatureName, storyTitle, storyPath) {
+			newTasks = CapPlannedTasks(newTasks, 2)
+			state.Tasks = append(state.Tasks[:initialTaskCount], newTasks...)
+		} else if IsSmallCLIProject(string(specBytes), 0) {
+			newTasks = CapPlannedTasks(newTasks, 3)
+			state.Tasks = append(state.Tasks[:initialTaskCount], newTasks...)
+		}
 		// Validate the planned tasks
 		if err := ValidatePlannedTasks(newTasks, state.ProjectPath); err != nil {
 			state.Tasks = state.Tasks[:initialTaskCount]

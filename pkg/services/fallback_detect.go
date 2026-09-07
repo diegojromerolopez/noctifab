@@ -159,7 +159,7 @@ func (u *FallbackAgent) detectStalledTasks(state *domain.State) []StalledTask {
 	// 4. Agent inconsistency: WORKING agent whose task is not IN_PROGRESS.
 	gracePeriod := u.inconsistencyGracePeriod
 	if gracePeriod <= 0 {
-		gracePeriod = 30 * time.Second
+		gracePeriod = 60 * time.Second
 	}
 
 	for i := range state.ActiveAgents {

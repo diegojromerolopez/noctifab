@@ -176,8 +176,20 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			if IsFileDependentTool(action.Tool) {
 				key := buildArgsKey(action.Tool, action.Args)
 				if seenFileDependentCalls[key] {
+					circuitBreaker.RecordDuplicateInspection()
+					warn, forceTurn, reason := circuitBreaker.ShouldBreakReadLoop()
+					if forceTurn {
+						fmt.Printf("⚡ [Circuit Breaker] Task %s [Generator]: %s\n", task.ID, reason)
+						hasNoop = true
+						turnToolOutputs = append(turnToolOutputs, reason)
+						break
+					}
 					fmt.Printf("Orchestrator: Task %s [Generator] action %s rejected: duplicate call without file mutations\n", task.ID, action.Tool)
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[TOOL CALL REJECTED: NO WORKSPACE CHANGES] You have already executed '%s' with identical arguments and no files have been modified since. Re-running inspection or diagnostic tools without modifying code produces identical results. You MUST now call write_file, edit_file, or apply_patch to implement your changes, or call 'noop' if verification is complete and tests are passing.", action.Tool))
+					if warn {
+						turnToolOutputs = append(turnToolOutputs, reason)
+					} else {
+						turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[TOOL CALL REJECTED: NO WORKSPACE CHANGES] You have already executed '%s' with identical arguments and no files have been modified since. Re-running inspection or diagnostic tools without modifying code produces identical results. You MUST now call write_file, edit_file, or apply_patch to implement your changes, or call 'noop' if verification is complete and tests are passing.", action.Tool))
+					}
 					continue
 				}
 				seenFileDependentCalls[key] = true

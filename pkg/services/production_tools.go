@@ -198,46 +198,12 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	}
 
 	content := string(contentBytes)
-	lines := strings.Split(content, "\n")
-
-	for _, edit := range edits {
-		start := edit.StartLine
-		end := edit.EndLine
-		if start < 1 {
-			start = 1
-		}
-		if end > len(lines) {
-			end = len(lines)
-		}
-		if start > end {
-			return "", fmt.Errorf("invalid line range %d-%d", start, end)
-		}
-
-		// slice lines is 0-indexed, start/end are 1-indexed
-		targetSlice := lines[start-1 : end]
-		targetJoined := strings.Join(targetSlice, "\n")
-
-		if !strings.Contains(targetJoined, edit.TargetContent) {
-			return "", fmt.Errorf(
-				"edit_file failed: target_content not found in file (range %d-%d). "+
-					"The file content may have changed since you last read it. "+
-					"Call read_file first to get the current content, then retry edit_file with the exact matching target_content, "+
-					"or use write_file to overwrite the entire file with the corrected content",
-				edit.StartLine, edit.EndLine,
-			)
-		}
-
-		replacedJoined := strings.Replace(targetJoined, edit.TargetContent, edit.ReplacementContent, 1)
-		replacedLines := strings.Split(replacedJoined, "\n")
-
-		// Reassemble lines
-		newLines := append([]string{}, lines[:start-1]...)
-		newLines = append(newLines, replacedLines...)
-		newLines = append(newLines, lines[end:]...)
-		lines = newLines
+	newContent, err := ApplyFileEdits(content, edits, path)
+	if err != nil {
+		return "", err
 	}
 
-	newContent := normalizeMakefileTabs(path, strings.Join(lines, "\n"))
+	newContent = normalizeMakefileTabs(path, newContent)
 	if err := os.WriteFile(fullPath, []byte(newContent), 0644); err != nil {
 		return "", err
 	}
@@ -345,8 +311,8 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	}
 
 	// Deterministic Auto-Formatter Pre-Pass:
-	// If a project has configured a formatter_command (e.g. ruff format, cargo fmt, rubocop -A),
-	// run it before executing the test command so formatting is clean.
+	// Automatically run deterministic local formatters, then any configured formatter_command
+	RunDeterministicAutoFormat(runCtx, t.Runner, state.ProjectPath)
 	if t.Formatter != nil {
 		if _, err := t.Formatter.Format(runCtx, state.ProjectPath); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Formatter pre-test auto-fix (%s) skipped on error: %v\n", t.Formatter.GetCommand(), err)
@@ -417,7 +383,8 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
 
-	// Auto-fix pre-step: automatically run formatter / auto-fixer command before running linter diagnostics
+	// Auto-fix pre-step: automatically run deterministic local formatters then configured formatter
+	RunDeterministicAutoFormat(runCtx, t.Runner, state.ProjectPath)
 	if t.Formatter != nil {
 		if _, err := t.Formatter.Format(runCtx, state.ProjectPath); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Formatter auto-fix (%s) failed and was skipped: %v\n", t.Formatter.GetCommand(), err)

@@ -10,9 +10,10 @@ import (
 // is already stable and passing tests, it stops redundant cosmetic test edits
 // and triggers automated task completion.
 type TaskCircuitBreaker struct {
-	ConsecutiveTestPasses    int  `json:"consecutive_test_passes"`
-	ConsecutiveTestOnlyTurns int  `json:"consecutive_test_only_turns"`
-	IsTripped                bool `json:"is_tripped"`
+	ConsecutiveTestPasses           int  `json:"consecutive_test_passes"`
+	ConsecutiveTestOnlyTurns        int  `json:"consecutive_test_only_turns"`
+	ConsecutiveDuplicateInspections int  `json:"consecutive_duplicate_inspections"`
+	IsTripped                       bool `json:"is_tripped"`
 }
 
 // NewTaskCircuitBreaker creates an initialized circuit breaker in the closed state.
@@ -53,6 +54,7 @@ func (cb *TaskCircuitBreaker) RecordAction(tool string, args map[string]any) {
 	if !IsMutatingTool(tool) {
 		return
 	}
+	cb.ConsecutiveDuplicateInspections = 0
 
 	path, _ := args["path"].(string)
 	if path == "" {
@@ -107,7 +109,31 @@ func (cb *TaskCircuitBreaker) Reset() {
 	}
 	cb.ConsecutiveTestPasses = 0
 	cb.ConsecutiveTestOnlyTurns = 0
+	cb.ConsecutiveDuplicateInspections = 0
 	cb.IsTripped = false
+}
+
+// RecordDuplicateInspection increments the count of repeated inspection calls without mutations.
+func (cb *TaskCircuitBreaker) RecordDuplicateInspection() {
+	if cb == nil {
+		return
+	}
+	cb.ConsecutiveDuplicateInspections++
+}
+
+// ShouldBreakReadLoop evaluates whether an agent is stuck in repetitive read/find inspection loops.
+// Returns (warn, forceTurn, reason).
+func (cb *TaskCircuitBreaker) ShouldBreakReadLoop() (bool, bool, string) {
+	if cb == nil {
+		return false, false, ""
+	}
+	if cb.ConsecutiveDuplicateInspections >= 3 {
+		return true, true, "CIRCUIT_BREAKER_READ_LOOP: Consecutive duplicate read/search inspections exceeded threshold without mutations. Concluding turn and running verification."
+	}
+	if cb.ConsecutiveDuplicateInspections == 2 {
+		return true, false, "[CIRCUIT BREAKER: READ LOOP WARNING] You have called inspection tools repeatedly without making file modifications. Repeated read_file or find_files is blocked. You MUST now call 'run_tests' to verify tests, call 'write_file'/'edit_file' to implement changes, or call 'noop' if verification is complete."
+	}
+	return false, false, ""
 }
 
 // ShouldTrip evaluates whether the oscillation loop has been detected.

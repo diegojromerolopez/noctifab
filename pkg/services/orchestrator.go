@@ -56,6 +56,8 @@ type OrchestratorConfig struct {
 	QA                     config.QAConfig
 	Fallback               config.FallbackAgentConfig
 	LastResort             config.LastResortAgentConfig
+	DefaultTestCommand     string
+	AllowedCommands        []string
 }
 
 // QADependencies contains the optional infrastructure used only when QA is enabled.
@@ -170,6 +172,8 @@ func NewOrchestratorWithRuntime(
 			runner = eval.Runner
 		}
 		storyAuditor = NewStoryQAAuditor(client, runner)
+		storyAuditor.SetDefaultTestCommand(cfg.DefaultTestCommand)
+		storyAuditor.SetAllowedCommands(cfg.AllowedCommands)
 	}
 	o := &Orchestrator{
 		repo:               repo,

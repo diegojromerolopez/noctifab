@@ -210,4 +210,125 @@ func TestStoryQAAuditor_AuditStoryCompleteness(t *testing.T) {
 			t.Errorf("expected regression summary, got: %s", res.Summary)
 		}
 	})
+
+	t.Run("when default test command is configured, detectWorkspaceTestCommand prefers it over Makefile", func(t *testing.T) {
+		pDir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(pDir, "Makefile"), []byte("test:\n\t@echo ok\n"), 0644)
+		_ = os.WriteFile(filepath.Join(pDir, "go.mod"), []byte("module testmod\n"), 0644)
+
+		auditor := NewStoryQAAuditor(&mockStoryQALLM{})
+		auditor.SetDefaultTestCommand("go mod tidy && go test ./...")
+		auditor.SetAllowedCommands([]string{"go", "git"})
+
+		cmd := auditor.detectWorkspaceTestCommand(pDir)
+		if cmd != "go mod tidy && go test ./..." {
+			t.Errorf("expected default test command 'go mod tidy && go test ./...', got: %s", cmd)
+		}
+	})
+
+	t.Run("when Makefile exists but make is not in allowedCommands, it falls back to authorized tooling", func(t *testing.T) {
+		pDir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(pDir, "Makefile"), []byte("test:\n\t@echo ok\n"), 0644)
+		_ = os.WriteFile(filepath.Join(pDir, "go.mod"), []byte("module testmod\n"), 0644)
+
+		auditor := NewStoryQAAuditor(&mockStoryQALLM{})
+		auditor.SetAllowedCommands([]string{"go", "git"})
+
+		cmd := auditor.detectWorkspaceTestCommand(pDir)
+		if cmd != "go test ./..." {
+			t.Errorf("expected 'go test ./...' when make is unauthorized, got: %s", cmd)
+		}
+	})
+
+	t.Run("when sandbox violation occurs during workspace test, audit treats it as advisory and does not fail", func(t *testing.T) {
+		pDir := t.TempDir()
+		mockLLM := &mockStoryQALLM{
+			response: &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "submit_story_qa_audit",
+						Args: map[string]any{
+							"passed":  true,
+							"summary": "All features implemented",
+						},
+					},
+				},
+			},
+		}
+		mockRunner := &mockStoryQASandbox{
+			runCmdFunc: func(ctx context.Context, projectPath, command, pkg string) (string, error) {
+				return "Sandbox violation: command 'make' is not in the whitelist of allowed commands", os.ErrPermission
+			},
+		}
+
+		_ = os.WriteFile(filepath.Join(pDir, "Makefile"), []byte("test:\n\t@echo ok\n"), 0644)
+		sStoryPath := filepath.Join(pDir, "US-001.md")
+		_ = os.WriteFile(sStoryPath, []byte(storyContent), 0644)
+
+		sState := &domain.State{
+			ProjectPath: pDir,
+			Metadata: domain.StateMetadata{
+				FeatureName: "US-001",
+				InputPath:   sStoryPath,
+			},
+		}
+
+		auditor := NewStoryQAAuditor(mockLLM, mockRunner)
+		res, err := auditor.AuditStoryCompleteness(context.Background(), sState, sStoryPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Passed {
+			t.Errorf("expected audit to pass despite sandbox violation, got: %s", res.Summary)
+		}
+	})
+
+	t.Run("when candidate command is unauthorized, E2E runner is not executed", func(t *testing.T) {
+		pDir := t.TempDir()
+		mockLLM := &mockStoryQALLM{
+			response: &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "submit_story_qa_audit",
+						Args: map[string]any{
+							"passed":  true,
+							"summary": "All features implemented",
+						},
+					},
+				},
+			},
+		}
+		runnerCalled := false
+		mockRunner := &mockStoryQASandbox{
+			runCmdFunc: func(ctx context.Context, projectPath, command, pkg string) (string, error) {
+				runnerCalled = true
+				return "", nil
+			},
+		}
+
+		sStoryPath := filepath.Join(pDir, "US-001.md")
+		_ = os.WriteFile(sStoryPath, []byte(storyContent), 0644)
+		sState := &domain.State{
+			ProjectPath: pDir,
+			Metadata: domain.StateMetadata{
+				FeatureName: "US-001",
+				InputPath:   sStoryPath,
+			},
+		}
+
+		auditor := NewStoryQAAuditor(mockLLM, mockRunner)
+		auditor.SetAllowedCommands([]string{"go"})
+		auditor.SetE2ECommand("make e2e")
+
+		res, err := auditor.AuditStoryCompleteness(context.Background(), sState, sStoryPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Passed {
+			t.Errorf("expected audit to pass, got: %s", res.Summary)
+		}
+		if runnerCalled {
+			t.Errorf("expected unauthorized E2E command 'make' to not be invoked")
+		}
+	})
 }

@@ -375,14 +375,13 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 		// Check eviction & cooldown
 		r.mu.RLock()
 		evictedUntil, isEvicted := r.evictedUntil[c.Name]
-		until, inCooldown := r.cooldowns[c.Name]
 		r.mu.RUnlock()
 
 		if isEvicted && time.Now().Before(evictedUntil) {
 			continue
 		}
 
-		if inCooldown && time.Now().Before(until) {
+		if r.isCandidateInCooldown(c) {
 			continue
 		}
 
@@ -408,6 +407,8 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 			r.evictionReasons[c.Name] = err.Error()
 			r.mu.Unlock()
 			fmt.Fprintf(os.Stderr, "⚠️ [LLM Provider Evicted] Candidate '%s' (provider '%s') EVICTED for 30 minutes due to depleted credits / auth failure: %v\n", c.Name, c.Provider, err)
+		} else if isRateLimitOrQuota(err) {
+			r.handleRateLimitRotation(c, err)
 		} else if isTransientError(err) {
 			r.mu.Lock()
 			r.cooldowns[c.Name] = time.Now().Add(r.cooldownDuration)

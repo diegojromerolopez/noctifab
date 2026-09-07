@@ -168,8 +168,20 @@ trap cleanup_trap SIGTERM SIGINT
 echo "Running noctifab start..." >&2
 "${NOCTIFAB_BIN}" start . ${INTERACTIVE_FLAG} &
 NOCTIFAB_PID=$!
+set +e
 wait "${NOCTIFAB_PID}"
+START_EXIT_CODE=$?
+set -e
 NOCTIFAB_PID=""
+echo "noctifab start completed with exit code ${START_EXIT_CODE}." >&2
+
+# If on main and an integration branch exists, merge it so main branch has the completed work
+if git rev-parse --verify noctifab/implementation >/dev/null 2>&1; then
+  CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+  if [ "${CURRENT_BRANCH}" = "main" ]; then
+    git merge --ff-only noctifab/implementation 2>/dev/null || git merge --no-edit noctifab/implementation 2>/dev/null || true
+  fi
+fi
 
 # Mirror execution reports from report_mount to workspace report directory
 if [ -d "/app/report_mount" ] && [ -d "${TMP_DIR}" ]; then

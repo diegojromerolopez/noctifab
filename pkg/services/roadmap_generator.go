@@ -142,6 +142,7 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 
 			storiesCount := 0
 			specRefined := false
+			var rawStories []RawStoryItem
 			for _, act := range resp.Actions {
 				if act.Tool == "refine_spec" {
 					content, _ := act.Args["content"].(string)
@@ -159,21 +160,25 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 				if act.Tool == "create_story" {
 					filename, _ := act.Args["filename"].(string)
 					content, _ := act.Args["content"].(string)
-					if filename == "" || content == "" {
-						continue
+					if filename != "" && content != "" {
+						rawStories = append(rawStories, RawStoryItem{
+							Filename: filename,
+							Content:  content,
+						})
 					}
-
-					targetPath := NormalizeStoryPath(projectPath, filename, content)
-
-					if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-						return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)
-					}
-
-					if err := os.WriteFile(targetPath, []byte(content), 0644); err != nil {
-						return fmt.Errorf("failed to write story file %q: %w", targetPath, err)
-					}
-					storiesCount++
 				}
+			}
+
+			sanitizedStories := SanitizeAndCapStories(projectPath, rawStories, specContent, maxUserStories)
+			for _, st := range sanitizedStories {
+				targetPath := NormalizeStoryPath(projectPath, st.Filename, st.Content)
+				if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+					return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)
+				}
+				if err := os.WriteFile(targetPath, []byte(st.Content), 0644); err != nil {
+					return fmt.Errorf("failed to write story file %q: %w", targetPath, err)
+				}
+				storiesCount++
 			}
 
 			if storiesCount > 0 || specRefined {

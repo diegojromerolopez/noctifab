@@ -20,6 +20,14 @@ const (
 	MinLegacyTotalLineCount = 50
 )
 
+// recognizedSourceExtensions contains standard source code extensions for business logic
+var recognizedSourceExtensions = map[string]bool{
+	".go": true, ".py": true, ".java": true, ".c": true, ".cpp": true, ".cc": true,
+	".cxx": true, ".h": true, ".hpp": true, ".rs": true, ".rb": true, ".js": true,
+	".ts": true, ".jsx": true, ".tsx": true, ".ml": true, ".mli": true, ".scala": true,
+	".kt": true, ".cs": true, ".php": true, ".swift": true,
+}
+
 // ignoredLegacyFiles contains lowercase filenames of project metadata, documentation,
 // containers, VCS ignore rules, manifests, and build tooling configs that do not constitute legacy business logic.
 var ignoredLegacyFiles = map[string]bool{
@@ -74,7 +82,8 @@ func IsIgnoredLegacyFile(relPath string) bool {
 		lowerPart := strings.ToLower(part)
 		if lowerPart == "target" || lowerPart == "node_modules" || lowerPart == "vendor" ||
 			lowerPart == "build" || lowerPart == "dist" || lowerPart == "output" ||
-			lowerPart == "__pycache__" || lowerPart == "venv" || lowerPart == ".venv" {
+			lowerPart == "__pycache__" || lowerPart == "venv" || lowerPart == ".venv" ||
+			lowerPart == "log" || lowerPart == "logs" || lowerPart == "report" || lowerPart == "reports" {
 			return true
 		}
 	}
@@ -93,7 +102,13 @@ func IsIgnoredLegacyFile(relPath string) bool {
 		return true
 	}
 
-	if strings.HasSuffix(baseLower, ".lock") || strings.HasSuffix(baseLower, ".sum") {
+	if strings.HasSuffix(baseLower, ".lock") || strings.HasSuffix(baseLower, ".sum") ||
+		strings.HasSuffix(baseLower, ".log") || strings.HasSuffix(baseLower, ".out") || strings.HasSuffix(baseLower, ".pid") {
+		return true
+	}
+
+	ext := strings.ToLower(filepath.Ext(baseLower))
+	if ext == ".md" || ext == ".txt" || ext == ".json" || ext == ".yaml" || ext == ".yml" || ext == ".toml" || ext == ".xml" || ext == ".sql" {
 		return true
 	}
 
@@ -140,7 +155,7 @@ func CountSignificantLines(filePath string) (int, error) {
 // If the total non-manifest significant lines of code across all candidate files is less than
 // MinLegacyTotalLineCount (50 lines), the repository is classified as Greenfield and returns an empty slice.
 func ScanLegacyFiles(projectPath string) ([]string, error) {
-	exclude := []string{"roadmap", "user-stories", "tasks", "output", "dist", ".git", ".noctifab", "target", "node_modules", "vendor", "build", ".venv", "venv", "__pycache__"}
+	exclude := []string{"roadmap", "user-stories", "tasks", "output", "dist", ".git", ".noctifab", "target", "node_modules", "vendor", "build", ".venv", "venv", "__pycache__", "log", "logs", "report", "reports"}
 	files, err := ListWorkspaceSourceFiles(context.Background(), projectPath, exclude)
 	if err != nil {
 		return nil, err
@@ -156,6 +171,10 @@ func ScanLegacyFiles(projectPath string) ([]string, error) {
 
 	for _, rel := range files {
 		if IsIgnoredLegacyFile(rel) {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(rel))
+		if !recognizedSourceExtensions[ext] {
 			continue
 		}
 		fullPath := filepath.Join(projectPath, rel)

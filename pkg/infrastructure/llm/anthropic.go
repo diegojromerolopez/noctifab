@@ -70,12 +70,34 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	headers["Content-Type"] = "application/json"
 
 	if maxTokens <= 0 {
-		maxTokens = 4096
+		maxTokens = 8192
 	}
 
 	useCacheControl := len(prompt) > 2048
 	currentTemp := temperature
 	currentMaxTokens := maxTokens
+
+	// Claude Extended Thinking Token Guard:
+	// In Anthropic API, max_tokens bounds both thinking_tokens AND response text_tokens.
+	// If thinking is enabled or budget_tokens is set, max_tokens MUST be larger than
+	// budget_tokens to prevent output_tokens exhaustion (stop_reason: "max_tokens"
+	// with zero text blocks).
+	if a.extraBody != nil {
+		if th, ok := a.extraBody["thinking"].(map[string]interface{}); ok {
+			budgetTokens := 0
+			if b, ok := th["budget_tokens"].(float64); ok {
+				budgetTokens = int(b)
+			} else if b, ok := th["budget_tokens"].(int); ok {
+				budgetTokens = b
+			}
+			if budgetTokens > 0 && currentMaxTokens <= budgetTokens+2048 {
+				currentMaxTokens = budgetTokens + 4096
+			}
+			if currentMaxTokens < 8192 {
+				currentMaxTokens = 8192
+			}
+		}
+	}
 
 	timeout := a.timeout
 	if timeout <= 0 {
@@ -146,7 +168,21 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			return a.parseResponse(respBody)
+			callRes, pErr := a.parseResponse(respBody)
+			if pErr != nil {
+				// Check for thinking token exhaustion: stop_reason == "max_tokens" without text output
+				var resMap map[string]any
+				if json.Unmarshal(respBody, &resMap) == nil {
+					stopReason, _ := resMap["stop_reason"].(string)
+					if stopReason == "max_tokens" && currentMaxTokens < 32768 && attempt < 2 {
+						fmt.Fprintf(os.Stderr, "⚠ [Anthropic] Thinking consumed entire max_tokens (%d); increasing max_tokens to %d and retrying.\n", currentMaxTokens, currentMaxTokens*2)
+						currentMaxTokens = currentMaxTokens * 2
+						continue
+					}
+				}
+				return nil, pErr
+			}
+			return callRes, nil
 		}
 
 		bodyStr := string(respBody)

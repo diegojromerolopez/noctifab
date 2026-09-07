@@ -275,6 +275,16 @@ func TestCommandSyntaxChecker_Check(t *testing.T) {
 			t.Errorf("expected standard syntax check failed error message, got: %v", err)
 		}
 	})
+
+	t.Run("when path is a directory and command template has {file}, it safely returns nil without error", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		checker := &CommandSyntaxChecker{
+			Command: "ruby -c {file}",
+		}
+		if err := checker.Check(context.Background(), tmpDir); err != nil {
+			t.Fatalf("expected nil for directory path with {file} template, got: %v", err)
+		}
+	})
 }
 
 type mockSyntaxLLMClient struct {

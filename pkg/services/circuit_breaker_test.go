@@ -133,4 +133,35 @@ func TestTaskCircuitBreaker(t *testing.T) {
 			t.Errorf("expected breaker to trip when dotfiles are edited with passing tests")
 		}
 	})
+
+	t.Run("breaks read loop on duplicate inspections", func(t *testing.T) {
+		cb := NewTaskCircuitBreaker()
+
+		// 1st duplicate inspection: no warning, no force
+		cb.RecordDuplicateInspection()
+		warn, force, _ := cb.ShouldBreakReadLoop()
+		if warn || force {
+			t.Errorf("expected no break on first duplicate inspection")
+		}
+
+		// 2nd duplicate inspection: warn, no force
+		cb.RecordDuplicateInspection()
+		warn, force, msg := cb.ShouldBreakReadLoop()
+		if !warn || force || msg == "" {
+			t.Errorf("expected warning on 2nd duplicate inspection, got warn=%v force=%v", warn, force)
+		}
+
+		// 3rd duplicate inspection: force turn completion
+		cb.RecordDuplicateInspection()
+		warn, force, msg = cb.ShouldBreakReadLoop()
+		if !warn || !force || msg == "" {
+			t.Errorf("expected force turn on 3rd duplicate inspection, got warn=%v force=%v", warn, force)
+		}
+
+		// Mutating tool resets count
+		cb.RecordAction("write_file", map[string]any{"path": "src/app.py"})
+		if cb.ConsecutiveDuplicateInspections != 0 {
+			t.Errorf("expected mutation to reset duplicate inspections, got %d", cb.ConsecutiveDuplicateInspections)
+		}
+	})
 }

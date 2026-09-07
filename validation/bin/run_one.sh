@@ -114,12 +114,15 @@ if [ -n "${HOME:-}" ] && [ -d "${HOME}" ]; then
   mkdir -p "${PARENT_CACHE}/cargo/registry" "${PARENT_CACHE}/cargo/git" \
            "${PARENT_CACHE}/go-build" "${PARENT_CACHE}/go-mod" \
            "${PARENT_CACHE}/pip" "${PARENT_CACHE}/npm" "${PARENT_CACHE}/m2" \
-           "${PARENT_CACHE}/ccache"
+           "${PARENT_CACHE}/gradle" "${PARENT_CACHE}/ccache"
   CACHE_ARGS+=(
     -v "${PARENT_CACHE}:/root/.cache"
     -v "${PARENT_CACHE}/cargo/registry:/usr/local/cargo/registry"
     -v "${PARENT_CACHE}/cargo/git:/usr/local/cargo/git"
     -v "${PARENT_CACHE}/go-mod:/go/pkg/mod"
+    -v "${PARENT_CACHE}/gradle:/root/.gradle"
+    -v "${PARENT_CACHE}/m2:/root/.m2"
+    -e GRADLE_USER_HOME=/root/.gradle
   )
 fi
 
@@ -148,6 +151,7 @@ if [ "${INTERACTIVE}" = "1" ]; then
   EXIT_CODE=$?
 else
   docker run \
+    -t \
     --rm \
     --name "${CONTAINER}" \
     "${CACHE_ARGS[@]}" \

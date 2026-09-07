@@ -93,6 +93,20 @@ func TestResetTaskCmd(t *testing.T) {
 		assert.Contains(t, state.Tasks[0].FailureLog, "task reset limit reached")
 	})
 
+	t.Run("when task has MaxRetries > 5, it respects MaxRetries on reset", func(t *testing.T) {
+		t.Parallel()
+		task := domain.Task{ID: "task-1", Status: domain.TaskInProgress, Retries: 4, MaxRetries: 8, UpdatedAt: time.Now()}
+		repo := &inMemoryRepo{state: newTestState([]domain.Task{task})}
+		cmd := &ResetTaskCmd{TaskID: "task-1", Reason: "retry reset 5"}
+
+		err := cmd.Execute(context.Background(), repo)
+
+		require.NoError(t, err)
+		state, _ := repo.Load(context.Background())
+		assert.Equal(t, domain.TaskPending, state.Tasks[0].Status)
+		assert.Equal(t, 5, state.Tasks[0].Retries)
+	})
+
 	t.Run("race condition: when task already reached SUCCESS, it skips reset", func(t *testing.T) {
 		t.Parallel()
 		task := domain.Task{ID: "task-1", Status: domain.TaskSuccess, UpdatedAt: time.Now()}

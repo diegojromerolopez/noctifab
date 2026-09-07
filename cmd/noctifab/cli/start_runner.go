@@ -334,8 +334,14 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	var failedStories []string
-	for _, sf := range storyFiles {
+	for idx, sf := range storyFiles {
 		if err := storyOutcomes[sf]; err != nil {
+			storyID := fmt.Sprintf("story-%04d", idx+1)
+			featName := strings.TrimSuffix(filepath.Base(sf), filepath.Ext(sf))
+			if repo != nil && isStoryCompletedSuccessfully(cmdCtx, repo, sf, storyID, featName) {
+				storyOutcomes[sf] = nil
+				continue
+			}
 			failedStories = append(failedStories, fmt.Sprintf("%s (%v)", filepath.Base(sf), err))
 		}
 	}
@@ -378,16 +384,44 @@ func isStoryCompletedSuccessfully(ctx context.Context, repo domain.StateReposito
 
 	for _, s := range st.Stories {
 		if s.ID == featName || s.ID == storyID || s.FilePath == storyFile {
-			if s.Status != domain.StorySuccess {
-				return false
-			}
-			if st.Metadata.InputPath == storyFile || st.Metadata.FeatureName == featName {
-				if !allTasksSucceeded(st) {
-					return false
+			if s.Status == domain.StorySuccess {
+				if st.Metadata.InputPath == storyFile || st.Metadata.FeatureName == featName {
+					if !allTasksSucceeded(st) {
+						return false
+					}
 				}
+				return true
 			}
-			return true
+			break
 		}
+	}
+
+	// If story status in st.Stories wasn't SUCCESS, verify whether all tasks associated
+	// with this story actually succeeded (e.g. if the story recovered after an initial failure).
+	matchingTasks := 0
+	passedTasks := 0
+	prefix := featName + "-"
+	for _, t := range st.Tasks {
+		if t.StoryID == storyID || t.StoryID == featName || strings.HasPrefix(t.ID, prefix) || strings.HasPrefix(t.ID, storyID+"-") {
+			matchingTasks++
+			if t.Status == domain.TaskSuccess {
+				passedTasks++
+			}
+		}
+	}
+
+	if matchingTasks > 0 && matchingTasks == passedTasks {
+		now := time.Now().UTC()
+		for i, s := range st.Stories {
+			if s.ID == featName || s.ID == storyID || s.FilePath == storyFile {
+				st.Stories[i].Status = domain.StorySuccess
+				st.Stories[i].CompletedAt = &now
+				st.Stories[i].UpdatedAt = now
+				break
+			}
+		}
+		_ = repo.Save(ctx, st)
+		return true
 	}
 
 	if (st.Metadata.InputPath == storyFile || st.Metadata.FeatureName == featName) && st.StoryStatus == domain.StorySuccess && allTasksSucceeded(st) {

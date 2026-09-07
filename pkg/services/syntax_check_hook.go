@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -96,6 +97,16 @@ func (c *CommandSyntaxChecker) Check(ctx context.Context, path string) error {
 		return nil
 	}
 
+	// Guard against directory paths:
+	// A syntax check command template that targets individual files via {file}
+	// (e.g. "ruby -c {file}", "python3 -m py_compile {file}", "gcc -fsyntax-only {file}")
+	// cannot be applied directly to a directory path.
+	if fi, statErr := os.Stat(path); statErr == nil && fi.IsDir() {
+		if strings.Contains(cmdTemplate, "{file}") {
+			return nil
+		}
+	}
+
 	// First execution attempt with current command template.
 	out, err := c.runCommand(ctx, cmdTemplate, path)
 	if err == nil {
@@ -177,6 +188,14 @@ func (c *CommandSyntaxChecker) runCommand(ctx context.Context, cmdTemplate, path
 			cmd = exec.CommandContext(checkCtx, parts[0])
 		} else {
 			cmd = exec.CommandContext(checkCtx, parts[0], parts[1:]...)
+		}
+	}
+
+	if fi, statErr := os.Stat(path); statErr == nil {
+		if fi.IsDir() {
+			cmd.Dir = path
+		} else {
+			cmd.Dir = filepath.Dir(path)
 		}
 	}
 

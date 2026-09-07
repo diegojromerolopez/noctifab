@@ -288,10 +288,32 @@ func (u *FallbackAgent) assessWithLLM(ctx context.Context, state *domain.State, 
 			reason, _ := action.Args["reason"].(string)
 			fmt.Printf("✂ [FallbackAgent] LLM triggered scope triage: %s\n", reason)
 			u.sendCmd(&ScopeTriageCmd{Reason: reason, KeepStories: 2})
+		case "clear_agent":
+			agentID, _ := action.Args["agent_id"].(string)
+			reason, _ := action.Args["reason"].(string)
+			if agentID != "" {
+				fmt.Printf("🧹 [FallbackAgent] LLM cleared inconsistent agent %s: %s\n", agentID, reason)
+				u.sendCmd(&ClearInconsistentAgentCmd{AgentID: agentID, Reason: reason})
+			}
 		case "reset_task":
 			taskID, _ := action.Args["task_id"].(string)
 			reason, _ := action.Args["reason"].(string)
 			if taskID != "" {
+				// Guard: If this stall was an agent_inconsistency (WORKING agent but task not IN_PROGRESS),
+				// clear the inconsistent agent instead of resetting/penalizing the task.
+				clearedInconsistent := false
+				for _, s := range stalls {
+					if s.Task.ID == taskID && s.Reason == StallReasonAgentInconsistency && s.Agent != nil {
+						fmt.Printf("🧹 [FallbackAgent] Diverting reset_task on agent_inconsistency to clear_agent %s\n", s.Agent.ID)
+						u.sendCmd(&ClearInconsistentAgentCmd{AgentID: s.Agent.ID, Reason: reason})
+						clearedInconsistent = true
+						break
+					}
+				}
+				if clearedInconsistent {
+					continue
+				}
+
 				directive := fmt.Sprintf("Diagnostic Guidance from Fallback Agent: %s", reason)
 				fmt.Printf("🔧 [FallbackAgent] Resetting task %s: %s\n", taskID, reason)
 				u.sendCmd(&ResetTaskCmd{TaskID: taskID, Reason: reason, Directive: directive})

@@ -109,5 +109,7 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		QA:                     cfg.Agents.QA,
 		Fallback:               cfg.Agents.GetFallback(),
 		LastResort:             cfg.Agents.LastResort,
+		DefaultTestCommand:     cfg.Sandbox.TestCommand,
+		AllowedCommands:        cfg.Sandbox.AllowedCommands,
 	}
 }

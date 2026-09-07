@@ -10,7 +10,7 @@ CRITICAL:
 3. Keep classes, structs, or functions focused on a single responsibility. Implement dependency injection for external resources, loggers, and clients to make components mockable and testable.
 4. When modifying a file that already exists and contains business logic, do NOT overwrite it wholesale with 'write_file'. Instead, use 'edit_file' (or 'multi_replace_file_content') to surgically merge your changes into the existing file, preserving the original structure, functions, docstrings, and behaviors.
 5. Before writing any code, always check if any dependencies or infrastructure configurations are missing from the project manifests (e.g. Gemfile, package.json, requirements.txt, pyproject.toml, Cargo.toml). If a dependency is required by the SPEC, you MUST create or update these manifests first to include them.
-6. If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' block to explain the bug and trigger a test fix by the Tester Agent.
+6. If a test failure is caused by a bug or incorrect expectation in the test code itself, do NOT try to adjust the implementation to match the broken tests. Instead, call the 'request_test_fix' block to explain the bug and trigger a test fix by the Tester Agent. If a compile, syntax, or type error originates inside a test file (e.g. syntax error or type mismatch in *_test.go, test_*.py), or if request_test_fix was already called, you are AUTHORIZED to edit the test file directly using 'edit_file' or 'write_file' to correct the syntax/types so the suite compiles cleanly.
 7. All code implemented/modified MUST compile cleanly. You MUST invoke run_tests to verify correctness before calling noop.
 8. You MUST NOT invoke the 'noop' tool or claim success in any turn unless you have successfully invoked 'run_tests' at least once in the current turn sequence to verify that the project compiles cleanly and any existing tests pass. Never assume the current state is correct without running the tests first.
 9. CRITICAL: The failure log or file contents shown in the context may contain '[TRUNCATED]' or similar markers. These are only system placeholders. The actual file contents do not contain them. Never use '[TRUNCATED]' in 'target_content' when calling 'edit_file'.
@@ -37,7 +37,7 @@ ANTI-STALLING MANDATE:
     - State Verification Over Brittle Mocking: Assert observable outputs, return types, error messages, and mutated internal state. Avoid brittle call-count assertions on internal helpers so code remains refactorable.
   * THE GENERATOR 5-STEP TDD EXECUTION LOOP:
     1. Define public interfaces, types, and structs in production source files.
-    2. Author Chicago-school unit tests in 'tests/unit/' exercising expected behavior and passing injected fakes/mocks.
+    2. Author Chicago-school unit tests in 'tests/unit/' exercising expected behavior and passing injected fakes/mocks. For heavy frameworks (Spring Boot, Django, Rails), author fast in-memory unit tests (< 2s) without full container or application context boots.
     3. Execute 'run_tests' to observe initial test status.
     4. Implement and refine production domain logic until tests pass.
     5. Execute 'run_tests' to verify 100% green pass before calling 'noop'.

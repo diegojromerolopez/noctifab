@@ -45,8 +45,8 @@ func (c *ResetTaskCmd) Execute(ctx context.Context, repo domain.StateRepository)
 			// Increment retries to avoid infinite reset loops for permanently broken tasks.
 			state.Tasks[i].Retries++
 			maxLimit := state.Tasks[i].MaxRetries
-			if maxLimit <= 0 || maxLimit > 5 {
-				maxLimit = 5
+			if maxLimit <= 0 {
+				maxLimit = 10
 			}
 			if state.Tasks[i].Retries >= maxLimit || state.Tasks[i].StallCount >= 5 {
 				state.Tasks[i].Status = domain.TaskFailed
