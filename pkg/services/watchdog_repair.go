@@ -327,8 +327,15 @@ func (wr *WatchdogRepair) AttemptRepair(
 }
 
 func (wr *WatchdogRepair) runFormatterIfConfigured(ctx context.Context, state *domain.State) {
-	if wr.evaluator != nil && wr.evaluator.FormatterCommand != "" {
-		fmt.Printf("Orchestrator: Running formatter command (repair): %s\n", wr.evaluator.FormatterCommand)
-		_, _ = wr.sandbox.RunCommand(ctx, state.ProjectPath, wr.evaluator.FormatterCommand, "")
+	if wr.evaluator != nil {
+		if wr.evaluator.Formatter != nil {
+			fmt.Printf("Orchestrator: Running formatter command (repair): %s\n", wr.evaluator.Formatter.GetCommand())
+			_, _ = wr.evaluator.Formatter.Format(ctx, state.ProjectPath)
+			return
+		}
+		if wr.evaluator.FormatterCommand != "" {
+			fmt.Printf("Orchestrator: Running formatter command (repair): %s\n", wr.evaluator.FormatterCommand)
+			_, _ = wr.sandbox.RunCommand(ctx, state.ProjectPath, wr.evaluator.FormatterCommand, "")
+		}
 	}
 }

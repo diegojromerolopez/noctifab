@@ -5,39 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
-
-// pythonSyntaxCheckTimeout bounds each py_compile invocation so a hung
-// interpreter cannot block file write/edit tools indefinitely.
-const pythonSyntaxCheckTimeout = 10 * time.Second
-
-func checkPythonSyntax(ctx context.Context, path string) error {
-	if !strings.HasSuffix(path, ".py") {
-		return nil
-	}
-	checkCtx, cancel := context.WithTimeout(ctx, pythonSyntaxCheckTimeout)
-	defer cancel()
-	// Try running python3 -m py_compile
-	cmd := exec.CommandContext(checkCtx, "python3", "-m", "py_compile", path)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		// Fallback to python
-		cmdFallback := exec.CommandContext(checkCtx, "python", "-m", "py_compile", path)
-		if outFallback, errFallback := cmdFallback.CombinedOutput(); errFallback != nil {
-			errMsg := string(outFallback)
-			if len(errMsg) == 0 {
-				errMsg = string(out)
-			}
-			return fmt.Errorf("python syntax compilation failed:\n%s", errMsg)
-		}
-	}
-	return nil
-}
 
 // resolveSandboxPath checks prefix path jail and blacklists .noctifab
 func resolveSandboxPath(projectPath, targetPath string) (string, error) {
@@ -94,8 +67,20 @@ func (t *ReadFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	return string(content), nil
 }
 
+func determineFilePerm(path string) os.FileMode {
+	cleanRel := filepath.ToSlash(filepath.Clean(path))
+	if strings.HasPrefix(cleanRel, "bin/") || strings.HasPrefix(cleanRel, "exe/") || strings.HasPrefix(cleanRel, "scripts/") || strings.HasSuffix(cleanRel, ".sh") {
+		return 0755
+	}
+	return 0644
+}
+
 // WriteFileTool implements write_file.
-type WriteFileTool struct{}
+type WriteFileTool struct {
+	// SyntaxChecker is the optional post-write syntax validation hook.
+	// When nil a NoopSyntaxChecker is used (no external binary dependency).
+	SyntaxChecker SyntaxChecker
+}
 
 func (t *WriteFileTool) Name() string { return "write_file" }
 func (t *WriteFileTool) Description() string {
@@ -118,10 +103,14 @@ func (t *WriteFileTool) Execute(ctx context.Context, state *domain.State, args m
 		return "", err
 	}
 	content = normalizeMakefileTabs(path, content)
-	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+	perm := determineFilePerm(path)
+	if err := os.WriteFile(fullPath, []byte(content), perm); err != nil {
 		return "", err
 	}
-	if err := checkPythonSyntax(ctx, fullPath); err != nil {
+	if perm == 0755 {
+		_ = os.Chmod(fullPath, 0755)
+	}
+	if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
 		return "", err
 	}
 	return "File written successfully", nil
@@ -135,8 +124,22 @@ type ReplacementChunk struct {
 	ReplacementContent string
 }
 
+// syntaxCheckerOrNoop returns the given checker if non-nil, otherwise a
+// NoopSyntaxChecker. This provides a safe nil guard so tools constructed
+// without explicit injection (e.g. in unit tests) work correctly.
+func syntaxCheckerOrNoop(sc SyntaxChecker) SyntaxChecker {
+	if sc == nil {
+		return &NoopSyntaxChecker{}
+	}
+	return sc
+}
+
 // EditFileTool implements edit_file.
-type EditFileTool struct{}
+type EditFileTool struct {
+	// SyntaxChecker is the optional post-edit syntax validation hook.
+	// When nil a NoopSyntaxChecker is used (no external binary dependency).
+	SyntaxChecker SyntaxChecker
+}
 
 func (t *EditFileTool) Name() string { return "edit_file" }
 func (t *EditFileTool) Description() string {
@@ -195,50 +198,16 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	}
 
 	content := string(contentBytes)
-	lines := strings.Split(content, "\n")
-
-	for _, edit := range edits {
-		start := edit.StartLine
-		end := edit.EndLine
-		if start < 1 {
-			start = 1
-		}
-		if end > len(lines) {
-			end = len(lines)
-		}
-		if start > end {
-			return "", fmt.Errorf("invalid line range %d-%d", start, end)
-		}
-
-		// slice lines is 0-indexed, start/end are 1-indexed
-		targetSlice := lines[start-1 : end]
-		targetJoined := strings.Join(targetSlice, "\n")
-
-		if !strings.Contains(targetJoined, edit.TargetContent) {
-			return "", fmt.Errorf(
-				"edit_file failed: target_content not found in file (range %d-%d). "+
-					"The file content may have changed since you last read it. "+
-					"Call read_file first to get the current content, then retry edit_file with the exact matching target_content, "+
-					"or use write_file to overwrite the entire file with the corrected content",
-				edit.StartLine, edit.EndLine,
-			)
-		}
-
-		replacedJoined := strings.Replace(targetJoined, edit.TargetContent, edit.ReplacementContent, 1)
-		replacedLines := strings.Split(replacedJoined, "\n")
-
-		// Reassemble lines
-		newLines := append([]string{}, lines[:start-1]...)
-		newLines = append(newLines, replacedLines...)
-		newLines = append(newLines, lines[end:]...)
-		lines = newLines
+	newContent, err := ApplyFileEdits(content, edits, path)
+	if err != nil {
+		return "", err
 	}
 
-	newContent := normalizeMakefileTabs(path, strings.Join(lines, "\n"))
+	newContent = normalizeMakefileTabs(path, newContent)
 	if err := os.WriteFile(fullPath, []byte(newContent), 0644); err != nil {
 		return "", err
 	}
-	if err := checkPythonSyntax(ctx, fullPath); err != nil {
+	if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
 		return "", err
 	}
 	return "Edits applied successfully", nil
@@ -305,8 +274,11 @@ func (t *ListDirectoryTool) Execute(ctx context.Context, state *domain.State, ar
 
 // RunTestsTool implements run_tests by delegating execution to the active Sandbox engine.
 type RunTestsTool struct {
-	Runner  Sandbox
-	Timeout time.Duration
+	Runner           Sandbox
+	Formatter        Formatter
+	FormatterCommand string
+	Timeout          time.Duration
+	SyntaxChecker    SyntaxChecker
 }
 
 func (t *RunTestsTool) Name() string { return "run_tests" }
@@ -327,7 +299,37 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	}
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
-	return t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
+
+	// Fast-Path Syntax Pre-Gating:
+	// If a syntax_check_command is configured, pre-check syntax before spinning up the heavy test runner.
+	// If syntax validation fails (which executes in < 30ms), return immediately without executing the test runner.
+	if t.SyntaxChecker != nil {
+		if syntaxErr := t.SyntaxChecker.Check(runCtx, state.ProjectPath); syntaxErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ [Fast-Path Syntax Pre-Gating] Syntax check failed before test runner: %v\n", syntaxErr)
+			return syntaxErr.Error(), syntaxErr
+		}
+	}
+
+	// Deterministic Auto-Formatter Pre-Pass:
+	// Automatically run configured formatter_command or fallback to auto-detected local formatters.
+	if t.Formatter != nil {
+		if _, err := t.Formatter.Format(runCtx, state.ProjectPath); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Formatter pre-test auto-fix (%s) skipped on error: %v\n", t.Formatter.GetCommand(), err)
+		}
+	} else if t.FormatterCommand != "" {
+		if _, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Formatter pre-test auto-fix (%s) skipped on error: %v\n", t.FormatterCommand, err)
+		}
+	} else {
+		RunDeterministicAutoFormat(runCtx, t.Runner, state.ProjectPath)
+	}
+
+	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
+	if runCtx.Err() != nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+		timeoutMsg := fmt.Sprintf("TIMEOUT: Test command timed out after %v (possible infinite loop, deadlock, or blocking I/O waiting for input/socket).\nLast output:\n%s", timeout, out)
+		return timeoutMsg, fmt.Errorf("test command timed out after %v", timeout)
+	}
+	return out, err
 }
 
 // countLinterIssues counts the number of distinct linter issue lines in the
@@ -355,6 +357,7 @@ func countLinterIssues(output string) int {
 type RunLinterTool struct {
 	Runner           Sandbox
 	LinterCommand    string
+	Formatter        Formatter
 	FormatterCommand string
 	Timeout          time.Duration
 	// MaxLinterIssues is the maximum number of linter issues tolerated before
@@ -381,14 +384,23 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
 
-	// Auto-fix pre-step: automatically run formatter / auto-fixer command before running linter diagnostics
-	if t.FormatterCommand != "" {
+	// Auto-fix pre-step: automatically run configured formatter or fallback to auto-detected formatters
+	if t.Formatter != nil {
+		if _, err := t.Formatter.Format(runCtx, state.ProjectPath); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Formatter auto-fix (%s) failed and was skipped: %v\n", t.Formatter.GetCommand(), err)
+		}
+	} else if t.FormatterCommand != "" {
 		if _, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, ""); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Formatter auto-fix (%s) failed and was skipped: %v\n", t.FormatterCommand, err)
 		}
+	} else {
+		RunDeterministicAutoFormat(runCtx, t.Runner, state.ProjectPath)
 	}
 
 	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")
+	if runCtx.Err() != nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+		return fmt.Sprintf("TIMEOUT: Linter command timed out after %v.\nLast output:\n%s", timeout, out), fmt.Errorf("linter command timed out after %v", timeout)
+	}
 	if err == nil {
 		return out, nil
 	}

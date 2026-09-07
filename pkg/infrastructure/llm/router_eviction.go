@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 // RoleContextKey is the context key for passing the active agent role.
-type RoleContextKey struct{}
+type RoleContextKey = domain.RoleContextKey
 
 // WithRoleContext attaches an agent role name to the context.
 func WithRoleContext(ctx context.Context, role string) context.Context {
-	return context.WithValue(ctx, RoleContextKey{}, role)
+	return domain.WithRoleContext(ctx, role)
 }
 
 type stringKey string
@@ -53,7 +55,7 @@ func GetRoleFromContext(ctx context.Context) string {
 	return ""
 }
 
-// isEvictionError reports whether an error signals credit exhaustion or auth failure (401/402).
+// isEvictionError reports whether an error signals credit exhaustion, auth failure (401/402), or unrecoverable model errors (404/deprecated).
 func isEvictionError(err error) bool {
 	if err == nil {
 		return false
@@ -61,9 +63,12 @@ func isEvictionError(err error) bool {
 	if errors.Is(err, ErrCreditExhausted) {
 		return true
 	}
+	if isModelNotFoundOrDeprecated(err) {
+		return true
+	}
 	var he *httpError
 	if errors.As(err, &he) {
-		if he.StatusCode == 401 || he.StatusCode == 402 {
+		if he.StatusCode == 401 || he.StatusCode == 402 || he.StatusCode == 404 {
 			return true
 		}
 	}
@@ -73,7 +78,9 @@ func isEvictionError(err error) bool {
 		strings.Contains(msg, "payment required") ||
 		strings.Contains(msg, "credit exhausted") ||
 		strings.Contains(msg, "401 unauthorized") ||
-		strings.Contains(msg, "402 payment required")
+		strings.Contains(msg, "402 payment required") ||
+		strings.Contains(msg, "model not found") ||
+		(strings.Contains(msg, "model") && (strings.Contains(msg, "is not found") || strings.Contains(msg, "does not exist")))
 }
 
 // GetEvictedProviders returns a map of candidate names to their eviction details.

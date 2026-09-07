@@ -249,25 +249,79 @@ func (s *Scheduler) GetReadyTasks(state *domain.State, concurrencyLimit int) []d
 				depID = resolvedID
 			}
 			status, ok := statusMap[depID]
-			if !ok || status != domain.TaskSuccess {
+			if !ok {
+				// If the dependency does not exist in the task list at all:
+				// Check if it belongs to an earlier story whose tasks have all succeeded.
+				if depStoryID := ExtractStoryID(depID); depStoryID != "" {
+					depStoryIndex := parseStoryIndex(depStoryID)
+					tStoryIndex := parseStoryIndex(t.StoryID)
+					if depStoryIndex > 0 && (tStoryIndex == 0 || depStoryIndex < tStoryIndex) {
+						storyFinished := true
+						foundAny := false
+						for _, other := range state.Tasks {
+							if other.StoryID == depStoryID {
+								foundAny = true
+								if other.Status != domain.TaskSuccess {
+									storyFinished = false
+									break
+								}
+							}
+						}
+						if foundAny && storyFinished {
+							// The referenced earlier story exists and is fully completed; satisfy dependency.
+							continue
+						}
+					}
+				}
+				depsMet = false
+				break
+			}
+			if status != domain.TaskSuccess {
 				depsMet = false
 				break
 			}
 		}
 
-		// Story Completion Milestone Barrier:
-		// Ensure tasks belonging to a downstream story (e.g. US-002) do not execute
-		// until all tasks belonging to earlier upstream stories (e.g. US-001) have reached TaskSuccess.
+		// Cross-Story Pipelining vs Milestone Barrier:
+		// If task t declares explicit cross-story dependencies (e.g. DependsOn contains
+		// a task ID from an upstream story like US-001-TASK-001), then ONLY its declared
+		// dependencies govern its readiness. The coarse story-level milestone barrier is bypassed,
+		// allowing downstream tasks to execute as soon as their fine-grained prerequisites merge.
+		// If task t has NO cross-story dependencies declared, the milestone barrier ensures safe
+		// sequential ordering across stories.
 		if depsMet && t.StoryID != "" {
 			tStoryIndex := parseStoryIndex(t.StoryID)
 			if tStoryIndex > 0 {
-				for _, other := range state.Tasks {
-					if other.StoryID != "" && other.ID != t.ID {
-						otherStoryIndex := parseStoryIndex(other.StoryID)
-						if otherStoryIndex > 0 && otherStoryIndex < tStoryIndex {
-							if other.Status != domain.TaskSuccess {
-								depsMet = false
+				hasCrossStoryDep := false
+				for _, dep := range t.DependsOn {
+					depID := dep
+					if resolvedID, found := depIndex.resolve(dep); found {
+						depID = resolvedID
+					}
+					// Check if depID belongs to an earlier story
+					for _, other := range state.Tasks {
+						if other.ID == depID && other.StoryID != "" {
+							otherIndex := parseStoryIndex(other.StoryID)
+							if otherIndex > 0 && otherIndex < tStoryIndex {
+								hasCrossStoryDep = true
 								break
+							}
+						}
+					}
+					if hasCrossStoryDep {
+						break
+					}
+				}
+
+				if !hasCrossStoryDep {
+					for _, other := range state.Tasks {
+						if other.StoryID != "" && other.ID != t.ID {
+							otherStoryIndex := parseStoryIndex(other.StoryID)
+							if otherStoryIndex > 0 && otherStoryIndex < tStoryIndex {
+								if other.Status != domain.TaskSuccess {
+									depsMet = false
+									break
+								}
 							}
 						}
 					}

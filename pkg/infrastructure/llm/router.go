@@ -139,6 +139,14 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 
 	roleSetting := r.getRoleSetting(roleName)
 
+	// 0. If ensemble strategy is configured for this role, build ensemble candidate as top priority
+	if roleSetting.Ensemble.IsEnabled() {
+		ensCand := r.buildEnsembleCandidate(roleName, roleSetting.Ensemble)
+		if ensCand != nil {
+			candidates = append(candidates, *ensCand)
+		}
+	}
+
 	// 1. Process role-specific providers if configured
 	if len(roleSetting.Providers) > 0 {
 		for _, ref := range roleSetting.Providers {
@@ -258,79 +266,6 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 	return candidates
 }
 
-func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting {
-	if r.cfg != nil {
-		var agentRole config.AgentRoleConfig
-		switch strings.ToLower(roleName) {
-		case "orchestrator":
-			agentRole = r.cfg.Agents.Orchestrator
-		case "product_manager", "productmanager":
-			agentRole = r.cfg.Agents.ProductManager
-		case "planner":
-			agentRole = r.cfg.Agents.Planner
-		case "generator", "generators":
-			agentRole = r.cfg.Agents.Generators
-		case "tester", "testers":
-			agentRole = r.cfg.Agents.Testers
-		case "qa":
-			qa := r.cfg.Agents.QA
-			if len(qa.Providers) > 0 {
-				return config.RoleSetting{Model: qa.Model, Temperature: qa.Temperature, Profile: qa.Profile, Providers: qa.Providers}
-			}
-		case "auditor":
-			qa := r.cfg.Agents.QA
-			if len(qa.Providers) > 0 {
-				return config.RoleSetting{Model: qa.Model, Temperature: qa.Temperature, Profile: qa.Profile, Providers: qa.Providers}
-			}
-			pm := r.cfg.Agents.ProductManager
-			if len(pm.Providers) > 0 {
-				return config.RoleSetting{Model: pm.Model, Temperature: pm.Temperature, Profile: pm.Profile, Providers: pm.Providers}
-			}
-		case "unblocker":
-			agentRole = r.cfg.Agents.Unblocker
-		case "last_resort", "lastresort":
-			lr := r.cfg.Agents.LastResort
-			if len(lr.Providers) > 0 {
-				return config.RoleSetting{Model: lr.Model, Temperature: lr.Temperature, Profile: lr.Profile, Providers: lr.Providers}
-			}
-		}
-		if len(agentRole.Providers) > 0 {
-			return config.RoleSetting{
-				Model:       agentRole.Model,
-				Temperature: agentRole.Temperature,
-				Profile:     agentRole.Profile,
-				Providers:   agentRole.Providers,
-			}
-		}
-	}
-
-	switch strings.ToLower(roleName) {
-	case "orchestrator":
-		return r.roles.Orchestrator
-	case "product_manager", "productmanager":
-		return config.RoleSetting{}
-	case "planner":
-		return r.roles.Planner
-	case "generator", "generators":
-		return r.roles.Generator
-	case "tester", "testers":
-		return r.roles.Tester
-	case "qa":
-		return r.roles.QA
-	case "auditor":
-		if r.roles.QA.Model != "" || len(r.roles.QA.Providers) > 0 {
-			return r.roles.QA
-		}
-		return r.roles.Orchestrator
-	case "unblocker":
-		return r.roles.Unblocker
-	case "last_resort", "lastresort":
-		return r.roles.LastResort
-	default:
-		return config.RoleSetting{}
-	}
-}
-
 func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelOverride string) domain.LLMClient {
 	if spec.Provider == "" {
 		return nil
@@ -440,14 +375,13 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 		// Check eviction & cooldown
 		r.mu.RLock()
 		evictedUntil, isEvicted := r.evictedUntil[c.Name]
-		until, inCooldown := r.cooldowns[c.Name]
 		r.mu.RUnlock()
 
 		if isEvicted && time.Now().Before(evictedUntil) {
 			continue
 		}
 
-		if inCooldown && time.Now().Before(until) {
+		if r.isCandidateInCooldown(c) {
 			continue
 		}
 
@@ -473,6 +407,8 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 			r.evictionReasons[c.Name] = err.Error()
 			r.mu.Unlock()
 			fmt.Fprintf(os.Stderr, "⚠️ [LLM Provider Evicted] Candidate '%s' (provider '%s') EVICTED for 30 minutes due to depleted credits / auth failure: %v\n", c.Name, c.Provider, err)
+		} else if isRateLimitOrQuota(err) {
+			r.handleRateLimitRotation(c, err)
 		} else if isTransientError(err) {
 			r.mu.Lock()
 			r.cooldowns[c.Name] = time.Now().Add(r.cooldownDuration)
@@ -482,6 +418,39 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 
 	if lastErr != nil {
 		return nil, fmt.Errorf("all LLM provider candidates for role '%s' failed: %w", roleName, lastErr)
+	}
+
+	// Emergency recovery: If all candidates were skipped due to active cooldown or eviction,
+	// do not deadlock the orchestrator. Attempt the candidate with the earliest cooldown expiry.
+	if len(candidates) > 0 {
+		var fallbackCandidate *RouterCandidate
+		var earliestTime time.Time
+		r.mu.RLock()
+		for _, c := range candidates {
+			until := r.cooldowns[c.Name]
+			if evictedUntil := r.evictedUntil[c.Name]; evictedUntil.After(until) {
+				until = evictedUntil
+			}
+			if fallbackCandidate == nil || until.Before(earliestTime) {
+				candidateCopy := c
+				fallbackCandidate = &candidateCopy
+				earliestTime = until
+			}
+		}
+		r.mu.RUnlock()
+
+		if fallbackCandidate != nil {
+			fmt.Fprintf(os.Stderr, "⚠️ [LLM Router Recovery] All candidates for role '%s' in cooldown/eviction. Attempting emergency recovery with '%s' (%s)...\n", roleName, fallbackCandidate.Name, fallbackCandidate.Provider)
+			resp, err := fallbackCandidate.Client.Complete(ctx, prompt)
+			if err == nil {
+				r.mu.Lock()
+				delete(r.cooldowns, fallbackCandidate.Name)
+				delete(r.evictedUntil, fallbackCandidate.Name)
+				r.mu.Unlock()
+				return resp, nil
+			}
+			return nil, fmt.Errorf("all LLM provider candidates for role '%s' in cooldown/eviction (emergency recovery on '%s' failed: %w)", roleName, fallbackCandidate.Name, err)
+		}
 	}
 
 	return nil, fmt.Errorf("all LLM provider candidates for role '%s' are currently in cooldown or evicted", roleName)

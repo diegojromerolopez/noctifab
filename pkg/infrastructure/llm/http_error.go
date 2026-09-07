@@ -130,9 +130,34 @@ func isNonRetryableHTTPError(err error) bool {
 // the model. 404 (model not found) and invalid/deprecated model errors are
 // deliberately NOT skipped: falling back to another model in the catalog IS the
 // sensible reaction to an unknown model.
+// isRateLimitOrQuota reports whether an error represents an HTTP 429 rate limit or quota exhaustion.
+func isRateLimitOrQuota(err error) bool {
+	if err == nil {
+		return false
+	}
+	var he *httpError
+	if errors.As(err, &he) {
+		if he.StatusCode == http.StatusTooManyRequests {
+			return true
+		}
+		if he.StatusCode == http.StatusPaymentRequired {
+			return false
+		}
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "429") ||
+		strings.Contains(msg, "too many requests") ||
+		strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "ratelimit") ||
+		strings.Contains(msg, "resource_exhausted")
+}
+
 func shouldSkipModelFallback(err error) bool {
 	if isModelNotFoundOrDeprecated(err) {
 		return false
+	}
+	if isRateLimitOrQuota(err) {
+		return true
 	}
 	var he *httpError
 	if !errors.As(err, &he) {

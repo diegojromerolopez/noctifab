@@ -42,7 +42,7 @@ func (m *multiTurnCapturingLLM) Complete(_ context.Context, prompt string) (*dom
 	}
 	m.prompts = append(m.prompts, prompt)
 	if len(m.prompts) == 1 {
-		return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "run_tests", Args: map[string]any{}}}}, nil
+		return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "list_directory", Args: map[string]any{"path": "."}}}}, nil
 	}
 	return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "noop"}}}, nil
 }
@@ -56,6 +56,12 @@ func newPromptTestOrchestrator(t *testing.T, tempDir string, llm domain.LLMClien
 		name: "run_tests",
 		executeFn: func(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
 			return "tests passed", nil
+		},
+	})
+	reg.Register(&customTool{
+		name: "list_directory",
+		executeFn: func(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
+			return "file.txt", nil
 		},
 	})
 	validator := NewPolicyValidator(nil, "main", nil)

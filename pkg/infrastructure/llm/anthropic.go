@@ -42,6 +42,12 @@ type anthropicProviderClient struct {
 	timeout     time.Duration
 	idleTimeout time.Duration
 	streaming   bool
+	extraBody   map[string]interface{}
+}
+
+// SetExtraBody attaches provider-specific extra body parameters (such as disabling thinking).
+func (a *anthropicProviderClient) SetExtraBody(params map[string]interface{}) {
+	a.extraBody = params
 }
 
 // NewAnthropicProviderClient creates a ProviderClient for Anthropic (Claude) API.
@@ -64,12 +70,34 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	headers["Content-Type"] = "application/json"
 
 	if maxTokens <= 0 {
-		maxTokens = 4096
+		maxTokens = 8192
 	}
 
 	useCacheControl := len(prompt) > 2048
 	currentTemp := temperature
 	currentMaxTokens := maxTokens
+
+	// Claude Extended Thinking Token Guard:
+	// In Anthropic API, max_tokens bounds both thinking_tokens AND response text_tokens.
+	// If thinking is enabled or budget_tokens is set, max_tokens MUST be larger than
+	// budget_tokens to prevent output_tokens exhaustion (stop_reason: "max_tokens"
+	// with zero text blocks).
+	if a.extraBody != nil {
+		if th, ok := a.extraBody["thinking"].(map[string]interface{}); ok {
+			budgetTokens := 0
+			if b, ok := th["budget_tokens"].(float64); ok {
+				budgetTokens = int(b)
+			} else if b, ok := th["budget_tokens"].(int); ok {
+				budgetTokens = b
+			}
+			if budgetTokens > 0 && currentMaxTokens <= budgetTokens+2048 {
+				currentMaxTokens = budgetTokens + 4096
+			}
+			if currentMaxTokens < 8192 {
+				currentMaxTokens = 8192
+			}
+		}
+	}
 
 	timeout := a.timeout
 	if timeout <= 0 {
@@ -105,6 +133,11 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		if currentTemp > 0 {
 			payload["temperature"] = currentTemp
 		}
+		if a.extraBody != nil {
+			if th, ok := a.extraBody["thinking"].(map[string]interface{}); ok {
+				payload["thinking"] = th
+			}
+		}
 
 		reqBody, err := json.Marshal(payload)
 		if err != nil {
@@ -135,7 +168,21 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			return a.parseResponse(respBody)
+			callRes, pErr := a.parseResponse(respBody)
+			if pErr != nil {
+				// Check for thinking token exhaustion: stop_reason == "max_tokens" without text output
+				var resMap map[string]any
+				if json.Unmarshal(respBody, &resMap) == nil {
+					stopReason, _ := resMap["stop_reason"].(string)
+					if stopReason == "max_tokens" && currentMaxTokens < 32768 && attempt < 2 {
+						fmt.Fprintf(os.Stderr, "⚠ [Anthropic] Thinking consumed entire max_tokens (%d); increasing max_tokens to %d and retrying.\n", currentMaxTokens, currentMaxTokens*2)
+						currentMaxTokens = currentMaxTokens * 2
+						continue
+					}
+				}
+				return nil, pErr
+			}
+			return callRes, nil
 		}
 
 		bodyStr := string(respBody)
@@ -275,4 +322,52 @@ func (a *anthropicProviderClient) GetAvailableModels(ctx context.Context, apiKey
 		models = append(models, m.ID)
 	}
 	return models, nil
+}
+
+func (a *anthropicProviderClient) GetModelCapabilities(ctx context.Context, apiKey string) (map[string]ModelCapability, error) {
+	var url string
+	if a.url != "" {
+		if strings.HasSuffix(a.url, "/messages") {
+			url = strings.TrimSuffix(a.url, "/messages") + "/models"
+		} else {
+			url = a.url + "/models"
+		}
+	} else {
+		url = "https://api.anthropic.com/v1/models"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch Anthropic models (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Data []map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	return parseDynamicModelCapabilities(result.Data), nil
 }

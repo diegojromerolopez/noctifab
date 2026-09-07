@@ -52,6 +52,12 @@ type geminiProviderClient struct {
 	timeout     time.Duration
 	idleTimeout time.Duration
 	streaming   bool
+	extraBody   map[string]interface{}
+}
+
+// SetExtraBody attaches provider-specific extra parameters (such as disabling thinking).
+func (g *geminiProviderClient) SetExtraBody(params map[string]interface{}) {
+	g.extraBody = params
 }
 
 // NewGeminiProviderClient creates a ProviderClient for Gemini API.
@@ -76,6 +82,11 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	}
 	if maxTokens > 0 {
 		generationConfig["maxOutputTokens"] = maxTokens
+	}
+	if g.extraBody != nil {
+		if tc, ok := g.extraBody["thinkingConfig"]; ok {
+			generationConfig["thinkingConfig"] = tc
+		}
 	}
 	payload := map[string]any{
 		"contents": []map[string]any{
@@ -240,4 +251,56 @@ func (g *geminiProviderClient) GetAvailableModels(ctx context.Context, apiKey st
 		}
 	}
 	return models, nil
+}
+
+func (g *geminiProviderClient) GetModelCapabilities(ctx context.Context, apiKey string) (map[string]ModelCapability, error) {
+	var url string
+	if g.url != "" {
+		if strings.Contains(g.url, "generateContent") {
+			idx := strings.Index(g.url, "/models/")
+			if idx != -1 {
+				url = g.url[:idx] + "/models"
+				if qIdx := strings.Index(g.url, "?"); qIdx != -1 {
+					url += g.url[qIdx:]
+				}
+			} else {
+				url = g.url
+			}
+		} else {
+			url = g.url + "/models?key=" + apiKey
+		}
+	} else {
+		url = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", apiKey)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch models (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Models []map[string]interface{} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	return parseDynamicModelCapabilities(result.Models), nil
 }

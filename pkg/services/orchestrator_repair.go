@@ -116,11 +116,12 @@ func (o *Orchestrator) RunPostMergeRepairPhase(ctx context.Context, state *domai
 		}
 	}
 
-	if o.cfg.LastResort.Enabled {
-		fmt.Printf("⚡ [Last-Resort Agent] Escalating post-merge integration failure to sovereign repair...\n")
-		lraPassed, _ := o.RunLastResortAgent(ctx, &testTask, state, o.git, logMsg, "post_merge_global_integration_failure")
-		if lraPassed {
-			fmt.Printf("✨ [Last-Resort Agent] Post-merge integration repaired successfully!\n")
+	fbCfg := o.cfg.GetFallback()
+	if fbCfg.Enabled {
+		fmt.Printf("⚡ [Fallback Agent] Escalating post-merge integration failure to sovereign repair...\n")
+		fbPassed, _ := o.RunFallbackAgent(ctx, &testTask, state, o.git, logMsg, "post_merge_global_integration_failure")
+		if fbPassed {
+			fmt.Printf("✨ [Fallback Agent] Post-merge integration repaired successfully!\n")
 			_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 				st.BuildStatus = domain.BuildPassing
 				return nil

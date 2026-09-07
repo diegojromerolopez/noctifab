@@ -21,3 +21,16 @@ type ProviderClient interface {
 	// GetAvailableModels retrieves the list of model identifiers currently supported by the provider's API.
 	GetAvailableModels(ctx context.Context, apiKey string) ([]string, error)
 }
+
+// ModelCapability captures dynamic features discovered from the /models endpoint.
+type ModelCapability struct {
+	ID               string
+	SupportsThinking bool
+	ThinkingParam    string
+}
+
+// ModelCapabilityDiscoverer is an optional interface implemented by ProviderClients
+// that can discover dynamic model capabilities from the /models endpoint.
+type ModelCapabilityDiscoverer interface {
+	GetModelCapabilities(ctx context.Context, apiKey string) (map[string]ModelCapability, error)
+}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/google/uuid"
@@ -35,14 +36,43 @@ func (r *SQLiteRepository) rewriteRelationGroup(ctx context.Context, tx *sql.Tx,
 	}
 }
 
+func placeholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString("?")
+	}
+	return sb.String()
+}
+
 func (r *SQLiteRepository) saveStories(ctx context.Context, tx *sql.Tx, state *domain.State) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM stories WHERE state_id = ?", state.ID); err != nil {
+	if len(state.Stories) == 0 {
+		_, err := tx.ExecContext(ctx, "DELETE FROM stories WHERE state_id = ?", state.ID)
 		return err
 	}
-	for _, story := range state.Stories {
+	storyIDs := make([]any, len(state.Stories)+1)
+	storyIDs[0] = state.ID
+	for i, story := range state.Stories {
+		storyIDs[i+1] = story.ID
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO stories (id, state_id, title, file_path, status, started_at, completed_at, input_tokens, output_tokens, tokens_used, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				state_id = excluded.state_id,
+				title = excluded.title,
+				file_path = excluded.file_path,
+				status = excluded.status,
+				started_at = excluded.started_at,
+				completed_at = excluded.completed_at,
+				input_tokens = excluded.input_tokens,
+				output_tokens = excluded.output_tokens,
+				tokens_used = excluded.tokens_used,
+				updated_at = excluded.updated_at`,
 			story.ID, state.ID, story.Title, story.FilePath, string(story.Status),
 			nullTimePtr(story.StartedAt), nullTimePtr(story.CompletedAt), story.InputTokens, story.OutputTokens, story.TokensUsed, story.CreatedAt, story.UpdatedAt,
 		)
@@ -50,19 +80,26 @@ func (r *SQLiteRepository) saveStories(ctx context.Context, tx *sql.Tx, state *d
 			return err
 		}
 	}
-	return nil
+	query := fmt.Sprintf("DELETE FROM stories WHERE state_id = ? AND id NOT IN (%s)", placeholders(len(state.Stories)))
+	_, err := tx.ExecContext(ctx, query, storyIDs...)
+	return err
 }
 
 func (r *SQLiteRepository) saveTasks(ctx context.Context, tx *sql.Tx, state *domain.State) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM tasks WHERE state_id = ?", state.ID); err != nil {
+	if len(state.Tasks) == 0 {
+		_, err := tx.ExecContext(ctx, "DELETE FROM tasks WHERE state_id = ?", state.ID)
 		return err
 	}
 	seen := make(map[string]bool, len(state.Tasks))
-	for _, task := range state.Tasks {
+	taskIDs := make([]any, len(state.Tasks)+1)
+	taskIDs[0] = state.ID
+	for i, task := range state.Tasks {
 		if seen[task.ID] {
 			return fmt.Errorf("duplicate task ID in state: %s", task.ID)
 		}
 		seen[task.ID] = true
+		taskIDs[i+1] = task.ID
+
 		dependsOnJSON, err := json.Marshal(task.DependsOn)
 		if err != nil {
 			return err
@@ -78,7 +115,28 @@ func (r *SQLiteRepository) saveTasks(ctx context.Context, tx *sql.Tx, state *dom
 
 		_, err = tx.ExecContext(ctx,
 			`INSERT INTO tasks (id, state_id, title, description, status, change_type, assigned_to, progress, depends_on, target_files, partial_changelog, retries, max_retries, failure_log, created_at, updated_at, story_id, started_at, completed_at, input_tokens, output_tokens, tokens_used)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				state_id = excluded.state_id,
+				title = excluded.title,
+				description = excluded.description,
+				status = excluded.status,
+				change_type = excluded.change_type,
+				assigned_to = excluded.assigned_to,
+				progress = excluded.progress,
+				depends_on = excluded.depends_on,
+				target_files = excluded.target_files,
+				partial_changelog = excluded.partial_changelog,
+				retries = excluded.retries,
+				max_retries = excluded.max_retries,
+				failure_log = excluded.failure_log,
+				updated_at = excluded.updated_at,
+				story_id = excluded.story_id,
+				started_at = excluded.started_at,
+				completed_at = excluded.completed_at,
+				input_tokens = excluded.input_tokens,
+				output_tokens = excluded.output_tokens,
+				tokens_used = excluded.tokens_used`,
 			task.ID, state.ID, task.Title, task.Description, string(task.Status), string(task.ChangeType),
 			task.AssignedTo, task.Progress, string(dependsOnJSON), string(targetFilesJSON), string(partialChangelogJSON),
 			task.Retries, task.MaxRetries, task.FailureLog, task.CreatedAt, task.UpdatedAt,
@@ -88,7 +146,9 @@ func (r *SQLiteRepository) saveTasks(ctx context.Context, tx *sql.Tx, state *dom
 			return err
 		}
 	}
-	return nil
+	query := fmt.Sprintf("DELETE FROM tasks WHERE state_id = ? AND id NOT IN (%s)", placeholders(len(state.Tasks)))
+	_, err := tx.ExecContext(ctx, query, taskIDs...)
+	return err
 }
 
 func (r *SQLiteRepository) saveClarifications(ctx context.Context, tx *sql.Tx, state *domain.State) error {
@@ -96,7 +156,10 @@ func (r *SQLiteRepository) saveClarifications(ctx context.Context, tx *sql.Tx, s
 		return err
 	}
 	for _, clar := range state.Clarifications {
-		clarID := uuid.New().String()
+		clarID := clar.ID
+		if clarID == "" {
+			clarID = uuid.New().String()
+		}
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO clarifications (id, state_id, question, answer, resolved, asked_at)
 			VALUES (?, ?, ?, ?, ?, ?)`,
@@ -110,18 +173,20 @@ func (r *SQLiteRepository) saveClarifications(ctx context.Context, tx *sql.Tx, s
 }
 
 func (r *SQLiteRepository) saveActions(ctx context.Context, tx *sql.Tx, state *domain.State) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM actions WHERE state_id = ?", state.ID); err != nil {
-		return err
-	}
 	for _, act := range state.LastActions {
+		actID := act.ID
+		if actID == "" {
+			actID = fmt.Sprintf("%s-%d-%s", state.ID, act.Timestamp.UnixNano(), act.Tool)
+		}
 		argsJSON, err := json.Marshal(act.Args)
 		if err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO actions (state_id, timestamp, tool, args, reasoning, result, success)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			state.ID, act.Timestamp, act.Tool, string(argsJSON), act.Reasoning, act.Result, boolToInt(act.Success),
+			`INSERT INTO actions (state_id, action_id, timestamp, tool, args, reasoning, result, success)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(action_id) DO NOTHING`,
+			state.ID, actID, act.Timestamp, act.Tool, string(argsJSON), act.Reasoning, act.Result, boolToInt(act.Success),
 		)
 		if err != nil {
 			return err
@@ -131,47 +196,85 @@ func (r *SQLiteRepository) saveActions(ctx context.Context, tx *sql.Tx, state *d
 }
 
 func (r *SQLiteRepository) saveWorkspaceFiles(ctx context.Context, tx *sql.Tx, state *domain.State) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM workspace_files WHERE state_id = ?", state.ID); err != nil {
+	if len(state.Files) == 0 {
+		_, err := tx.ExecContext(ctx, "DELETE FROM workspace_files WHERE state_id = ?", state.ID)
 		return err
 	}
-	for _, file := range state.Files {
+	filePaths := make([]any, len(state.Files)+1)
+	filePaths[0] = state.ID
+	for i, file := range state.Files {
+		filePaths[i+1] = file.Path
 		_, err := tx.ExecContext(ctx,
-			`INSERT OR REPLACE INTO workspace_files (path, state_id, size, last_modified)
-			VALUES (?, ?, ?, ?)`,
+			`INSERT INTO workspace_files (path, state_id, size, last_modified)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(path, state_id) DO UPDATE SET
+				size = excluded.size,
+				last_modified = excluded.last_modified`,
 			file.Path, state.ID, file.Size, file.LastModified,
 		)
 		if err != nil {
 			return err
 		}
 	}
-	return nil
+	query := fmt.Sprintf("DELETE FROM workspace_files WHERE state_id = ? AND path NOT IN (%s)", placeholders(len(state.Files)))
+	_, err := tx.ExecContext(ctx, query, filePaths...)
+	return err
 }
 
 func (r *SQLiteRepository) saveValidationCriteria(ctx context.Context, tx *sql.Tx, state *domain.State) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM validation_criteria WHERE state_id = ?", state.ID); err != nil {
+	if len(state.ValidationCriteria) == 0 {
+		_, err := tx.ExecContext(ctx, "DELETE FROM validation_criteria WHERE state_id = ?", state.ID)
 		return err
 	}
-	for _, crit := range state.ValidationCriteria {
+	critIDs := make([]any, len(state.ValidationCriteria)+1)
+	critIDs[0] = state.ID
+	for i, crit := range state.ValidationCriteria {
+		critIDs[i+1] = crit.ID
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO validation_criteria (id, state_id, type, expression, description, passed, error_log)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				state_id = excluded.state_id,
+				type = excluded.type,
+				expression = excluded.expression,
+				description = excluded.description,
+				passed = excluded.passed,
+				error_log = excluded.error_log`,
 			crit.ID, state.ID, string(crit.Type), crit.Expression, crit.Description, boolToInt(crit.Passed), crit.ErrorLog,
 		)
 		if err != nil {
 			return err
 		}
 	}
-	return nil
+	query := fmt.Sprintf("DELETE FROM validation_criteria WHERE state_id = ? AND id NOT IN (%s)", placeholders(len(state.ValidationCriteria)))
+	_, err := tx.ExecContext(ctx, query, critIDs...)
+	return err
 }
 
 func (r *SQLiteRepository) saveActiveAgents(ctx context.Context, tx *sql.Tx, state *domain.State) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM active_agents WHERE state_id = ?", state.ID); err != nil {
+	if len(state.ActiveAgents) == 0 {
+		_, err := tx.ExecContext(ctx, "DELETE FROM active_agents WHERE state_id = ?", state.ID)
 		return err
 	}
-	for _, agent := range state.ActiveAgents {
+	agentIDs := make([]any, len(state.ActiveAgents)+1)
+	agentIDs[0] = state.ID
+	for i, agent := range state.ActiveAgents {
+		agentIDs[i+1] = agent.ID
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO active_agents (id, state_id, name, role, status, task_id, started_at, completed_at, input_tokens, output_tokens, tokens_used, last_error)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				state_id = excluded.state_id,
+				name = excluded.name,
+				role = excluded.role,
+				status = excluded.status,
+				task_id = excluded.task_id,
+				started_at = excluded.started_at,
+				completed_at = excluded.completed_at,
+				input_tokens = excluded.input_tokens,
+				output_tokens = excluded.output_tokens,
+				tokens_used = excluded.tokens_used,
+				last_error = excluded.last_error`,
 			agent.ID, state.ID, agent.Name, string(agent.Role), string(agent.Status), agent.TaskID,
 			nullTime(agent.StartedAt), nullTime(agent.CompletedAt), agent.InputTokens, agent.OutputTokens, agent.TokensUsed, agent.LastError,
 		)
@@ -179,5 +282,7 @@ func (r *SQLiteRepository) saveActiveAgents(ctx context.Context, tx *sql.Tx, sta
 			return err
 		}
 	}
-	return nil
+	query := fmt.Sprintf("DELETE FROM active_agents WHERE state_id = ? AND id NOT IN (%s)", placeholders(len(state.ActiveAgents)))
+	_, err := tx.ExecContext(ctx, query, agentIDs...)
+	return err
 }

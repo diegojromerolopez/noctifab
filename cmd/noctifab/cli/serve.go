@@ -76,36 +76,15 @@ var serveCmd = &cobra.Command{
 
 		// Initialize sandbox runner.
 		var sandboxRunner services.Sandbox
+		var depMgr *services.DependencyManager
+		if cfg.Sandbox.AutoInstallDeps || cfg.Sandbox.Mode != "docker" {
+			depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
+		}
 		if cfg.Sandbox.Mode == "docker" {
 			sandboxRunner = services.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			var depMgr *services.DependencyManager
-			if cfg.Sandbox.AutoInstallDeps {
-				depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
-			}
 			sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
 		}
-
-		// Initialize tool registry.
-		reg := services.NewToolRegistry()
-		reg.Register(&services.AddTaskTool{})
-		reg.Register(&services.CompleteTaskTool{})
-		reg.Register(&services.LogMessageTool{})
-		reg.Register(&services.NoopTool{})
-		reg.Register(&services.ReadFileTool{})
-		reg.Register(&services.WriteFileTool{})
-		reg.Register(&services.DeleteFileTool{})
-		reg.Register(&services.EditFileTool{})
-		reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-		reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-		reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-		runTimeout := 5 * time.Minute
-		if cfg.Sandbox.TimeoutSeconds > 0 {
-			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
-		}
-		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
-		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
-		reg.Register(&services.RequestTestFixTool{})
 
 		// Initialize LLM client with database budget store.
 		var budgetStore domain.BudgetStore
@@ -115,6 +94,32 @@ var serveCmd = &cobra.Command{
 			budgetStore = storage.NewPostgresBudgetStore(pgRepo.DB())
 		}
 		llmClient := llm.BuildFailoverClient(cfg, budgetStore)
+
+		// Initialize tool registry.
+		reg := services.NewToolRegistry()
+		reg.Register(&services.AddTaskTool{})
+		reg.Register(&services.CompleteTaskTool{})
+		reg.Register(&services.LogMessageTool{})
+		reg.Register(&services.NoopTool{})
+		reg.Register(&services.ReadFileTool{})
+		syntaxChecker := services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)
+		reg.Register(&services.WriteFileTool{SyntaxChecker: syntaxChecker})
+		reg.Register(&services.WriteFilesTool{SyntaxChecker: syntaxChecker})
+		reg.Register(&services.DeleteFileTool{})
+		reg.Register(&services.EditFileTool{SyntaxChecker: syntaxChecker})
+		reg.Register(&services.ApplyPatchTool{SyntaxChecker: syntaxChecker})
+		reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+		reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+		reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+		runTimeout := 5 * time.Minute
+		if cfg.Sandbox.TimeoutSeconds > 0 {
+			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
+		}
+		formatter := services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
+		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Formatter: formatter, FormatterCommand: cfg.Sandbox.FormatterCommand, Timeout: runTimeout, SyntaxChecker: syntaxChecker})
+		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), Formatter: formatter, FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
+		reg.Register(&services.RequestTestFixTool{})
+		reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})
 
 		// Initialize orchestrator components.
 		gitClient := services.NewGitClient(".")
@@ -139,7 +144,9 @@ var serveCmd = &cobra.Command{
 		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+		evaluator.Formatter = formatter
 		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
+		evaluator.SyntaxChecker = syntaxChecker
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
@@ -175,7 +182,10 @@ var serveCmd = &cobra.Command{
 			ExcludePaths:         cfg.Sandbox.ExcludePaths,
 			WorkspaceCache:       cfg.GetWorkspaceCache(),
 			QA:                   cfg.Agents.QA,
+			Fallback:             cfg.Agents.GetFallback(),
 			LastResort:           cfg.Agents.LastResort,
+			DefaultTestCommand:   cfg.Sandbox.TestCommand,
+			AllowedCommands:      cfg.Sandbox.AllowedCommands,
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.
@@ -190,19 +200,22 @@ var serveCmd = &cobra.Command{
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		if cfg.Unblocker.Enabled {
-			unblocker := services.NewUnblockerAgent(
+		fallbackCfg := cfg.GetFallback()
+		if fallbackCfg.Enabled {
+			fallbackAgent := services.NewFallbackAgent(
 				repo,
 				llmClient,
 				mailbox,
-				time.Duration(cfg.Unblocker.PollInterval),
-				cfg.Unblocker.MaxRetries,
-				time.Duration(cfg.Unblocker.StallThreshold),
-				time.Duration(cfg.Unblocker.ConflictThreshold),
-				cfg.Unblocker.LLMAssessment,
+				time.Duration(fallbackCfg.PollInterval),
+				fallbackCfg.MaxRetries,
+				time.Duration(fallbackCfg.StallThreshold),
+				time.Duration(fallbackCfg.ConflictThreshold),
+				fallbackCfg.LLMAssessment,
 			)
-			orchestrator.SetUnblocker(unblocker)
-			unblocker.Start(ctx)
+			fallbackAgent.SetBudgetCliff(fallbackCfg.BudgetCliffRatio, 0)
+			fallbackAgent.SetStallCountThreshold(fallbackCfg.Triggers.StallCountThreshold)
+			orchestrator.SetFallbackAgent(fallbackAgent)
+			fallbackAgent.Start(ctx)
 		}
 
 		// Graceful shutdown on SIGTERM / SIGINT.
@@ -363,74 +376,76 @@ func processStory(
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-orchestrator.TaskCompletedChan():
+		case <-orchestrator.StoryCompletedChan():
 		case <-ticker.C:
-			current, loadErr := repo.Load(ctx)
-			if loadErr != nil {
-				logf("⚠ Load error: %v\n", loadErr)
-				continue
-			}
+		}
+		current, loadErr := repo.Load(ctx)
+		if loadErr != nil {
+			logf("⚠ Load error: %v\n", loadErr)
+			continue
+		}
 
-			if current.StoryStatus == domain.StoryPaused {
-				continue
-			}
+		if current.StoryStatus == domain.StoryPaused {
+			continue
+		}
 
-			if current.StoryStatus == domain.StoryCancelled {
-				logf("❌ Story %s: execution cancelled by user.\n", item.Path)
-				// Revert running tasks to interrupted status
-				for i := range current.Tasks {
-					if current.Tasks[i].Status == domain.TaskInProgress || current.Tasks[i].Status == domain.TaskPending {
-						current.Tasks[i].Status = domain.TaskInterrupted
-						current.Tasks[i].UpdatedAt = time.Now()
-					}
+		if current.StoryStatus == domain.StoryCancelled {
+			logf("❌ Story %s: execution cancelled by user.\n", item.Path)
+			// Revert running tasks to interrupted status
+			for i := range current.Tasks {
+				if current.Tasks[i].Status == domain.TaskInProgress || current.Tasks[i].Status == domain.TaskPending {
+					current.Tasks[i].Status = domain.TaskInterrupted
+					current.Tasks[i].UpdatedAt = time.Now()
 				}
-				current.StoryError = "cancelled by user"
-				_ = repo.Save(ctx, current)
-
-				// Checkout back to base integration branch
-				gitClient := services.NewGitClient(current.ProjectPath)
-				_, _ = gitClient.Run(ctx, true, "checkout", baseBranch)
-
-				if logFile != nil {
-					_, _ = fmt.Fprintf(logFile, "=== Story CANCELLED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
-				}
-				return fmt.Errorf("story %s: cancelled by user", item.Path)
 			}
+			current.StoryError = "cancelled by user"
+			_ = repo.Save(ctx, current)
 
-			if _, err := orchestrator.RunOnce(ctx); err != nil {
-				logf("⚠ Orchestrator error: %v\n", err)
+			// Checkout back to base integration branch
+			gitClient := services.NewGitClient(current.ProjectPath)
+			_, _ = gitClient.Run(ctx, true, "checkout", baseBranch)
+
+			if logFile != nil {
+				_, _ = fmt.Fprintf(logFile, "=== Story CANCELLED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
 			}
+			return fmt.Errorf("story %s: cancelled by user", item.Path)
+		}
 
-			// Reload state to check completion status
-			current, loadErr = repo.Load(ctx)
-			if loadErr != nil {
-				return loadErr
-			}
+		if _, err := orchestrator.RunOnce(ctx); err != nil {
+			logf("⚠ Orchestrator error: %v\n", err)
+		}
 
-			if allTasksDone(current) {
-				logf("✅ All tasks finished for story: %s\n", item.Path)
-				finalErr := orchestrator.FinalizeUserStory(ctx, current)
-				current.StoryStatus = domain.StorySuccess
-				if finalErr != nil {
-					current.StoryStatus = domain.StoryFailed
-					current.StoryError = finalErr.Error()
-				}
-				_ = repo.Save(ctx, current)
-				if logFile != nil {
-					_, _ = fmt.Fprintf(logFile, "=== Story finished: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
-				}
-				return finalErr
-			}
+		// Reload state to check completion status
+		current, loadErr = repo.Load(ctx)
+		if loadErr != nil {
+			return loadErr
+		}
 
-			if anyTaskPermanentlyFailed(current) {
+		if allTasksDone(current) {
+			logf("✅ All tasks finished for story: %s\n", item.Path)
+			finalErr := orchestrator.FinalizeUserStory(ctx, current)
+			current.StoryStatus = domain.StorySuccess
+			if finalErr != nil {
 				current.StoryStatus = domain.StoryFailed
-				current.StoryError = fmt.Sprintf("story %s: one or more tasks failed permanently", item.Path)
-				_ = repo.Save(ctx, current)
-				logf("❌ Story %s has permanently failed tasks.\n", item.Path)
-				if logFile != nil {
-					_, _ = fmt.Fprintf(logFile, "=== Story FAILED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
-				}
-				return fmt.Errorf("story %s: one or more tasks failed permanently", item.Path)
+				current.StoryError = finalErr.Error()
 			}
+			_ = repo.Save(ctx, current)
+			if logFile != nil {
+				_, _ = fmt.Fprintf(logFile, "=== Story finished: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
+			}
+			return finalErr
+		}
+
+		if anyTaskPermanentlyFailed(current) {
+			current.StoryStatus = domain.StoryFailed
+			current.StoryError = fmt.Sprintf("story %s: one or more tasks failed permanently", item.Path)
+			_ = repo.Save(ctx, current)
+			logf("❌ Story %s has permanently failed tasks.\n", item.Path)
+			if logFile != nil {
+				_, _ = fmt.Fprintf(logFile, "=== Story FAILED: %s at %s ===\n", item.Path, time.Now().Format(time.RFC3339))
+			}
+			return fmt.Errorf("story %s: one or more tasks failed permanently", item.Path)
 		}
 	}
 }

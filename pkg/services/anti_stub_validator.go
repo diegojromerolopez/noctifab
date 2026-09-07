@@ -24,18 +24,34 @@ type AntiStubValidator struct{}
 
 var (
 	// Python stub patterns
-	pyRaiseNotImplRE = regexp.MustCompile(`(?i)raise\s+NotImplementedError(?:\(.*?\))?|raise\s+NotImplemented\b`)
-	pyDefHeaderRE    = regexp.MustCompile(`^\s*(?:async\s+)?def\s+([a-zA-Z0-9_]+)\s*\(`)
-	pyStubBodyRE     = regexp.MustCompile(`^\s*(?:pass|\.\.\.)\s*(?:#.*)?$`)
+	pyRaiseNotImplRE   = regexp.MustCompile(`(?i)raise\s+NotImplementedError(?:\(.*?\))?|raise\s+NotImplemented\b`)
+	pyDefHeaderRE      = regexp.MustCompile(`^\s*(?:async\s+)?def\s+([a-zA-Z0-9_]+)\s*\(`)
+	pyStubBodyRE       = regexp.MustCompile(`^\s*(?:pass|\.\.\.)\s*(?:#.*)?$`)
+	pyIfNameMainStubRE = regexp.MustCompile(`^\s*if\s+__name__\s*==\s*['"]__main__['"]\s*:\s*(?:pass|\.\.\.)\s*$`)
 
 	// Go stub patterns
-	goPanicStubRE = regexp.MustCompile(`(?i)panic\s*\(\s*["'](?:not\s+implemented|todo|unimplemented|stub)["']\s*\)`)
+	goPanicStubRE  = regexp.MustCompile(`(?i)panic\s*\(\s*["'](?:not\s+implemented|todo|unimplemented|stub)["']\s*\)`)
+	goEmptyMainRE  = regexp.MustCompile(`^\s*func\s+main\s*\(\s*\)\s*\{\s*\}`)
+	goMainHeaderRE = regexp.MustCompile(`^\s*func\s+main\s*\(\s*\)\s*\{\s*$`)
 
 	// Rust stub patterns
-	rustTodoStubRE = regexp.MustCompile(`\b(?:todo!|unimplemented!)\s*\(`)
+	rustTodoStubRE   = regexp.MustCompile(`\b(?:todo!|unimplemented!)\s*\(|^\s*(?:pub\s+)?(?:async\s+)?fn\s+main\s*\([^)]*\)\s*(?:->\s*[^{]+)?\{\s*\}`)
+	rustMainHeaderRE = regexp.MustCompile(`^\s*(?:pub\s+)?(?:async\s+)?fn\s+main\s*\([^)]*\)\s*(?:->\s*[^{]+)?\{\s*$`)
+
+	// C / C++ stub patterns
+	cEmptyMainRE  = regexp.MustCompile(`^\s*int\s+main\s*\([^)]*\)\s*\{\s*(?:return\s+0\s*;\s*)?\}`)
+	cMainHeaderRE = regexp.MustCompile(`^\s*int\s+main\s*\([^)]*\)\s*\{\s*$`)
+
+	// Java / Kotlin stub patterns
+	javaEmptyMainRE    = regexp.MustCompile(`^\s*(?:public\s+)?(?:static\s+)?void\s+main\s*\(\s*String\s*\[\s*\]\s*[a-zA-Z0-9_]*\s*\)\s*\{\s*\}`)
+	javaMainHeaderRE   = regexp.MustCompile(`^\s*(?:public\s+)?(?:static\s+)?void\s+main\s*\(\s*String\s*\[\s*\]\s*[a-zA-Z0-9_]*\s*\)\s*\{\s*$`)
+	kotlinEmptyMainRE  = regexp.MustCompile(`^\s*fun\s+main\s*\([^)]*\)\s*\{\s*\}`)
+	kotlinMainHeaderRE = regexp.MustCompile(`^\s*fun\s+main\s*\([^)]*\)\s*\{\s*$`)
 
 	// JS/TS stub patterns
 	jsThrowNotImplRE = regexp.MustCompile(`(?i)throw\s+new\s+Error\s*\(\s*["'](?:not\s+implemented|todo|unimplemented)["']\s*\)`)
+	jsEmptyMainRE    = regexp.MustCompile(`^\s*(?:export\s+)?(?:async\s+)?function\s+main\s*\([^)]*\)\s*\{\s*\}`)
+	jsMainHeaderRE   = regexp.MustCompile(`^\s*(?:export\s+)?(?:async\s+)?function\s+main\s*\([^)]*\)\s*\{\s*$`)
 
 	// Universal forbidden markers in production code
 	universalTodoRE = regexp.MustCompile(`(?i)(?:#|//|/\*)\s*(?:TODO|FIXME)\s*:\s*(?:implement|stub|fill\s+in|not\s+implemented)`)
@@ -48,6 +64,9 @@ var (
 	// Vacuous / Tautological test patterns
 	tautologyPyRE = regexp.MustCompile(`(?i)^\s*(?:assert\s+(?:True|1\s*==\s*1|0\s*==\s*0)\b|self\.assertTrue\s*\(\s*True\s*\)|self\.assertEqual\s*\(\s*(?:1\s*,\s*1|0\s*,\s*0|True\s*,\s*True)\s*\))`)
 	tautologyGoRE = regexp.MustCompile(`assert\.(?:True|Equal)\s*\(\s*t\s*,\s*(?:true|1\s*,\s*1)\s*\)`)
+
+	// Makefile stub patterns
+	makeStubEchoRE = regexp.MustCompile(`(?i)^\s*@?echo\s+["'].*["']\s*$|^\s*@?echo\s+[^"'].*$|^\s*@?true\s*$|^\s*:\s*$`)
 )
 
 // NewAntiStubValidator initializes an AntiStubValidator.
@@ -150,6 +169,14 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 					Snippet: trimmed,
 				})
 			}
+			if pyIfNameMainStubRE.MatchString(trimmed) {
+				violations = append(violations, AntiStubViolation{
+					Path:    path,
+					Line:    lineNum,
+					Rule:    "python_empty_stub_function",
+					Snippet: trimmed,
+				})
+			}
 			// Check for def function followed immediately by pass or ... (allowing Protocol/abstract definitions)
 			if pyDefHeaderRE.MatchString(line) && !isProtocolOrAbstractClass(lines, idx) {
 				// Look ahead to the next non-empty line
@@ -183,6 +210,22 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 					Rule:    "go_panic_stub",
 					Snippet: trimmed,
 				})
+			} else if goEmptyMainRE.MatchString(trimmed) {
+				violations = append(violations, AntiStubViolation{
+					Path:    path,
+					Line:    lineNum,
+					Rule:    "go_empty_main_stub",
+					Snippet: trimmed,
+				})
+			} else if goMainHeaderRE.MatchString(trimmed) {
+				if endLine, isStub := scanForEmptyBlock(lines, idx, numLines); isStub {
+					violations = append(violations, AntiStubViolation{
+						Path:    path,
+						Line:    endLine,
+						Rule:    "go_empty_main_stub",
+						Snippet: fmt.Sprintf("%s -> }", trimmed),
+					})
+				}
 			}
 		}
 
@@ -195,6 +238,57 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 					Rule:    "rust_todo_stub",
 					Snippet: trimmed,
 				})
+			} else if rustMainHeaderRE.MatchString(trimmed) {
+				if endLine, isStub := scanForEmptyBlock(lines, idx, numLines); isStub {
+					violations = append(violations, AntiStubViolation{
+						Path:    path,
+						Line:    endLine,
+						Rule:    "rust_todo_stub",
+						Snippet: fmt.Sprintf("%s -> }", trimmed),
+					})
+				}
+			}
+		}
+
+		// C / C++ checks
+		if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
+			if cEmptyMainRE.MatchString(trimmed) {
+				violations = append(violations, AntiStubViolation{
+					Path:    path,
+					Line:    lineNum,
+					Rule:    "c_empty_main_stub",
+					Snippet: trimmed,
+				})
+			} else if cMainHeaderRE.MatchString(trimmed) {
+				if endLine, isStub := scanForEmptyBlock(lines, idx, numLines); isStub {
+					violations = append(violations, AntiStubViolation{
+						Path:    path,
+						Line:    endLine,
+						Rule:    "c_empty_main_stub",
+						Snippet: fmt.Sprintf("%s -> }", trimmed),
+					})
+				}
+			}
+		}
+
+		// Java / Kotlin / Scala / C# checks
+		if ext == ".java" || ext == ".kt" || ext == ".scala" || ext == ".cs" {
+			if javaEmptyMainRE.MatchString(trimmed) || kotlinEmptyMainRE.MatchString(trimmed) {
+				violations = append(violations, AntiStubViolation{
+					Path:    path,
+					Line:    lineNum,
+					Rule:    "java_empty_main_stub",
+					Snippet: trimmed,
+				})
+			} else if javaMainHeaderRE.MatchString(trimmed) || kotlinMainHeaderRE.MatchString(trimmed) {
+				if endLine, isStub := scanForEmptyBlock(lines, idx, numLines); isStub {
+					violations = append(violations, AntiStubViolation{
+						Path:    path,
+						Line:    endLine,
+						Rule:    "java_empty_main_stub",
+						Snippet: fmt.Sprintf("%s -> }", trimmed),
+					})
+				}
 			}
 		}
 
@@ -207,6 +301,54 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 					Rule:    "javascript_not_implemented_stub",
 					Snippet: trimmed,
 				})
+			} else if jsEmptyMainRE.MatchString(trimmed) {
+				violations = append(violations, AntiStubViolation{
+					Path:    path,
+					Line:    lineNum,
+					Rule:    "javascript_empty_main_stub",
+					Snippet: trimmed,
+				})
+			} else if jsMainHeaderRE.MatchString(trimmed) {
+				if endLine, isStub := scanForEmptyBlock(lines, idx, numLines); isStub {
+					violations = append(violations, AntiStubViolation{
+						Path:    path,
+						Line:    endLine,
+						Rule:    "javascript_empty_main_stub",
+						Snippet: fmt.Sprintf("%s -> }", trimmed),
+					})
+				}
+			}
+		}
+
+		// Makefile stub checks
+		baseName := strings.ToLower(filepath.Base(path))
+		if baseName == "makefile" || baseName == "gnumakefile" || ext == ".mk" {
+			if strings.HasPrefix(trimmed, "test:") || strings.HasPrefix(trimmed, "build:") || strings.HasPrefix(trimmed, "e2e:") || strings.HasPrefix(trimmed, "check:") {
+				hasRealRecipe := false
+				hasEchoStub := false
+				for nextIdx := idx + 1; nextIdx < numLines; nextIdx++ {
+					nextRaw := lines[nextIdx]
+					nextTrimmed := strings.TrimSpace(nextRaw)
+					if nextTrimmed == "" || strings.HasPrefix(nextTrimmed, "#") {
+						continue
+					}
+					if !strings.HasPrefix(nextRaw, "\t") && !strings.HasPrefix(nextRaw, "  ") {
+						break
+					}
+					if makeStubEchoRE.MatchString(nextTrimmed) {
+						hasEchoStub = true
+					} else {
+						hasRealRecipe = true
+					}
+				}
+				if hasEchoStub && !hasRealRecipe {
+					violations = append(violations, AntiStubViolation{
+						Path:    path,
+						Line:    lineNum,
+						Rule:    "stub_makefile_target",
+						Snippet: fmt.Sprintf("%s (target only echoes message or exits 0 without invoking real test/build tools)", trimmed),
+					})
+				}
 			}
 		}
 
@@ -283,4 +425,36 @@ func getIndentation(line string) int {
 		}
 	}
 	return indent
+}
+
+// scanForEmptyBlock scans forward from a function header opening with '{'
+// to check if the body is completely empty or contains only a dummy return (e.g. return 0;).
+func scanForEmptyBlock(lines []string, startIdx int, numLines int) (int, bool) {
+	for nextIdx := startIdx + 1; nextIdx < numLines; nextIdx++ {
+		nextTrimmed := strings.TrimSpace(lines[nextIdx])
+		if nextTrimmed == "" || strings.HasPrefix(nextTrimmed, "//") || strings.HasPrefix(nextTrimmed, "/*") {
+			continue
+		}
+		if nextTrimmed == "}" {
+			return nextIdx + 1, true
+		}
+		if nextTrimmed == "return 0;" || nextTrimmed == "return 0; }" || nextTrimmed == "return;" || nextTrimmed == "return; }" {
+			if strings.HasSuffix(nextTrimmed, "}") {
+				return nextIdx + 1, true
+			}
+			for afterIdx := nextIdx + 1; afterIdx < numLines; afterIdx++ {
+				afterTrimmed := strings.TrimSpace(lines[afterIdx])
+				if afterTrimmed == "" || strings.HasPrefix(afterTrimmed, "//") {
+					continue
+				}
+				if afterTrimmed == "}" {
+					return afterIdx + 1, true
+				}
+				break
+			}
+			break
+		}
+		break
+	}
+	return 0, false
 }

@@ -19,19 +19,69 @@ import (
 // Returns latency duration and nil on success, or a descriptive error on failure
 // (auth, network, unknown provider).
 func Ping(ctx context.Context, provider, apiKey, url string) (time.Duration, error) {
+	latency, _, err := PingAndResolveModel(ctx, provider, apiKey, url, "")
+	return latency, err
+}
+
+// PingAndResolveModel verifies provider connectivity and validates the configured model against /models.
+// If the configured model is missing, invalid, or empty, it dynamically resolves and returns the
+// best (highest-ranked) available non-blacklisted model from the provider catalog.
+func PingAndResolveModel(ctx context.Context, provider, apiKey, url, configuredModel string) (time.Duration, string, error) {
 	pClient, err := newProviderClientForPing(provider, url)
 	if err != nil {
-		return 0, fmt.Errorf("unsupported LLM provider: %s", provider)
+		return 0, "", fmt.Errorf("unsupported LLM provider: %s", provider)
 	}
 
 	pingCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	start := time.Now()
-	if _, err := pClient.GetAvailableModels(pingCtx, apiKey); err != nil {
-		return 0, classifyPingError(provider, err)
+	available, err := pClient.GetAvailableModels(pingCtx, apiKey)
+	if err != nil {
+		return 0, "", classifyPingError(provider, err)
 	}
-	return time.Since(start), nil
+	latency := time.Since(start)
+
+	if len(available) == 0 {
+		return latency, configuredModel, nil
+	}
+
+	spec, _ := GetProviderSpec(strings.ToLower(provider))
+	parser := parseOpenAIModel
+	if spec != nil && spec.ParseModelFunc != nil {
+		parser = spec.ParseModelFunc
+	}
+	var parsedModels []*ProviderModelInfo
+	for _, m := range available {
+		if info, parsed := parser(m); parsed && info != nil {
+			parsedModels = append(parsedModels, info)
+		}
+	}
+
+	if len(parsedModels) == 0 {
+		return latency, configuredModel, nil
+	}
+
+	sortProviderModels(parsedModels)
+	normConfigured := normalizeModelName(configuredModel)
+	if normConfigured == "" || normConfigured == "auto" || normConfigured == "latest" {
+		return latency, parsedModels[0].Name, nil
+	}
+
+	// Check if configured model exists exactly or by prefix
+	for _, m := range parsedModels {
+		if normalizeModelName(m.Name) == normConfigured && !IsModelBlacklisted(m.Name) {
+			return latency, m.Name, nil
+		}
+	}
+
+	// Model not found in /models: select best available fallback model
+	bestFallback := selectFallbackModel(configuredModel, configuredModel, parsedModels)
+	if bestFallback != "" {
+		return latency, bestFallback, nil
+	}
+
+	return latency, parsedModels[0].Name, nil
 }
 
 // newProviderClientForPing mirrors the dispatch in client.go but returns an

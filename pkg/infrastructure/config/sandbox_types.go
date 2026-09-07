@@ -8,11 +8,18 @@ type LinterConfig struct {
 }
 
 type SandboxConfig struct {
-	Mode               string       `yaml:"mode"`
-	TimeoutSeconds     int          `yaml:"timeout_seconds"`
-	IdleTimeoutSeconds int          `yaml:"idle_timeout_seconds"`
-	TestCommand        string       `yaml:"test_command"`
-	FormatterCommand   string       `yaml:"formatter_command"`
+	Mode               string `yaml:"mode"`
+	TimeoutSeconds     int    `yaml:"timeout_seconds"`
+	IdleTimeoutSeconds int    `yaml:"idle_timeout_seconds"`
+	TestCommand        string `yaml:"test_command"`
+	FormatterCommand   string `yaml:"formatter_command"`
+	// SyntaxCheckCommand is an optional shell command template executed after
+	// every file write/edit to perform a lightweight syntax validation.
+	// Use {file} as a placeholder for the absolute path of the written file.
+	// Example: "python3 -m py_compile {file}" or "ruby -c {file}".
+	// When empty (default), no syntax check is performed — the tool is a pure
+	// I/O operation with zero external binary dependencies.
+	SyntaxCheckCommand string       `yaml:"syntax_check_command"`
 	Linter             LinterConfig `yaml:"linter"`
 	// Legacy flat fields for backward compatibility
 	LinterCommand                *string  `yaml:"linter_command,omitempty"`

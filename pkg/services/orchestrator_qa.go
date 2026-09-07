@@ -311,6 +311,7 @@ func (o *Orchestrator) persistQAResult(ctx context.Context, contract domain.Stor
 		return nil
 	})
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ [QA] Failed to persist QA result for task %s: %v\n", result.Phase.TaskID, err)
 		return err
 	}
 	o.recordQAResultMetrics(result)

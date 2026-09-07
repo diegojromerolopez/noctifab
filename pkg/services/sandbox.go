@@ -263,6 +263,8 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		cmd = exec.CommandContext(ctx, binary)
 	}
 	cmd.Dir = targetDir
+	rootProjectDir := ResolveRootProjectDir(projectPath)
+	cmd.Env = append(os.Environ(), BuildSharedCacheEnv(rootProjectDir)...)
 
 	if s.IsToolEvicted(binary) {
 		fmt.Printf("⚠️  [Sandbox Degraded] Tool %q was evicted. Skipping execution in degraded mode.\n", binary)

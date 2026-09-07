@@ -6,7 +6,7 @@ and one action; the effective template is resolved per `(agent, action)` key.
 
 ## The (agent, action) catalog
 
-There are **23 customizable templates across 7 agents**:
+There are **24 customizable templates across 8 agents**:
 
 | Agent | Actions |
 | --- | --- |
@@ -15,8 +15,11 @@ There are **23 customizable templates across 7 agents**:
 | `tester` | `write`, `fix`, `refactor`, `write_breadth_first` |
 | `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `implement_breadth_first`, `implement_breadth_first_fix`, `surgical_repair` |
 | `qa` | `acceptance` |
-| `last_resort` | `repair` |
+| `auditor` | `audit` |
+| `fallback` | `repair` |
+| `spike` | `generate` |
 | `spec` | `pm_draft`, `architect_enrich`, `tester_enrich`, `qa_enrich`, `consensus_audit`, `refine` |
+
 
 Run `noctifab prompts list` to see the catalog with each action's effective
 source.
@@ -92,7 +95,7 @@ prompts:
 Templates use Go [`text/template`](https://pkg.go.dev/text/template) syntax
 with named placeholders. The available placeholders per agent:
 
-### `tester/*`, `generator/*`, and `last_resort/*` — TaskPromptData
+### `tester/*`, `generator/*`, and `fallback/*` — TaskPromptData
 
 | Placeholder | Content |
 | --- | --- |
@@ -128,6 +131,14 @@ with named placeholders. The available placeholders per agent:
 | `{{.MaxScenarios}}` | Maximum scenarios accepted for the review |
 
 The QA contract permits exactly one declarative `propose_scenarios` action. It does not grant an executable tool or workspace mutation access.
+
+### `spike/generate` — SpikePromptData
+
+| Placeholder | Content |
+| --- | --- |
+| `{{.Spec}}` | Raw SPEC.md content used to implement the initial walking skeleton |
+
+The spike contract permits `write_files` and `write_file` actions to implement the greenfield codebase skeleton in a single shot.
 
 ### `spec/*` — SpecPromptData
 
@@ -194,6 +205,28 @@ All embedded default templates for `generator/*` and `tester/*` include a built-
 1. **Manifest Declarations**: Generator agents **can** update manifest files (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) to declare packages specified in `SPEC.md` or pre-baked in the container.
 2. **No Terminal Package Installation (`exec` Disabled)**: Agents cannot run shell package managers (`pip install`, `npm install`, `cargo add`, `go get`) directly because `exec` is forbidden by policy sandbox (`pkg/services/validator.go`).
 3. **Immediate Fallback on Import Errors**: If `run_tests` fails because an imported package is not available in the environment, the agent must immediately rewrite the code using standard library primitives (`asyncio`, `socket`, `net/http`, `node:fs`, etc.) instead of burning retries on un-fetchable imports.
+
+---
+
+## Prompt Compaction & Telegraphic Stripping (`context.compaction`)
+
+Noctifab provides built-in token compaction engines to compress prompt overhead by 30%–50% while preserving strict prompt contracts and technical requirements:
+
+### Compaction Modes
+Configured via `context.compaction` in `.noctifab/config.yaml`:
+- **`none` (Default)**: Sends original prompt text verbatim.
+- **`caveman`**: Applies aggressive telegraphic compaction:
+  - Strips polite conversational preambles (e.g., `"you are a software factory automation agent..."`, `"focus on creating the minimal implementation..."`).
+  - Removes conversational prefixes (e.g., `"please note that"`, `"in order to ensure that"`).
+  - Eliminates decorative dividers (`---`, `***`, `===`).
+  - Collapses consecutive blank lines into single line breaks.
+  - Strips HTML comments (`<!-- ... -->`) and Markdown image links from specification files via `CompactMarkdownSpec`.
+- **`simple_english`**: Replaces complex bureaucratic phrases and passive voice with direct active verbs (e.g., `"prioritize a clean, functional implementation that makes all tests pass"` → `"make all tests pass"`, `"utilize"` → `"use"`, `"in order to"` → `"to"`).
+
+### Strict Code Block & JSON Envelope Preservation
+All compaction routines use a state-aware scanner that detects fenced markdown code blocks (` ``` `):
+- Any lines enclosed in markdown fences (code samples, diff windows, JSON contracts) are **never modified, compacted, or altered**.
+- JSON schema output contracts appended at the end of agent prompts (`rendered.Contract`) are designated as uncompactable tails via `domain.WithUncompactableTail` and preserved byte-for-byte.
 
 ---
 

@@ -16,7 +16,11 @@ import (
 var hunkHeaderRegexp = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 
 // ApplyPatchTool implements apply_patch for single- and multi-file unified diff patching.
-type ApplyPatchTool struct{}
+type ApplyPatchTool struct {
+	// SyntaxChecker is the optional post-patch syntax validation hook.
+	// When nil a NoopSyntaxChecker is used (no external binary dependency).
+	SyntaxChecker SyntaxChecker
+}
 
 func (t *ApplyPatchTool) Name() string { return "apply_patch" }
 func (t *ApplyPatchTool) Description() string {
@@ -107,7 +111,7 @@ func (t *ApplyPatchTool) Execute(ctx context.Context, state *domain.State, args 
 			return "", fmt.Errorf("failed to write patched file %s: %w", targetRel, err)
 		}
 
-		if err := checkPythonSyntax(ctx, fullPath); err != nil {
+		if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
 			return "", err
 		}
 

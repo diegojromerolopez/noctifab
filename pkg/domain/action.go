@@ -7,6 +7,7 @@ import (
 
 // Action records execution history and outcomes of tools run by agents.
 type Action struct {
+	ID        string         `json:"id,omitempty"`
 	Timestamp time.Time      `json:"timestamp"`
 	Tool      string         `json:"tool"`
 	Args      map[string]any `json:"args"`

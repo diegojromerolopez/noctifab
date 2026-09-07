@@ -28,6 +28,9 @@ func ResolveAndSortTasks(tasks []domain.Task) ([]domain.Task, error) {
 				deps = append(deps, id)
 			} else if id, exists := idMap[dep]; exists {
 				deps = append(deps, id)
+			} else if isTaskReference(dep) && ExtractStoryID(dep) != "" {
+				// External cross-story task dependency; resolved by global task scheduler.
+				continue
 			} else {
 				return nil, fmt.Errorf("task '%s' depends on unresolved prerequisite '%s'", t.Title, dep)
 			}

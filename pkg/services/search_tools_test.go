@@ -141,3 +141,41 @@ func TestIsBinaryContent(t *testing.T) {
 		}
 	})
 }
+
+func TestFindFilesTool(t *testing.T) {
+	tool := &FindFilesTool{}
+
+	t.Run("when pattern is missing or empty it defaults to wildcard", func(t *testing.T) {
+		state, dir := grepState(t)
+		if err := os.WriteFile(filepath.Join(dir, "foo.go"), []byte("package foo"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "bar.py"), []byte("print('bar')"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		out, err := tool.Execute(context.Background(), state, map[string]any{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "foo.go") || !strings.Contains(out, "bar.py") {
+			t.Errorf("expected wildcard match of all files, got %q", out)
+		}
+	})
+
+	t.Run("when pattern is specified it filters matching files", func(t *testing.T) {
+		state, dir := grepState(t)
+		if err := os.WriteFile(filepath.Join(dir, "foo.go"), []byte("package foo"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "bar.py"), []byte("print('bar')"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		out, err := tool.Execute(context.Background(), state, map[string]any{"pattern": "*.go"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "foo.go") || strings.Contains(out, "bar.py") {
+			t.Errorf("expected only .go files, got %q", out)
+		}
+	})
+}

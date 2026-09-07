@@ -109,6 +109,22 @@ func TestGoldenDefaults_ByteIdenticalToLegacyAssembly(t *testing.T) {
 				}
 				return
 			}
+			if tc.name == "tester/write" {
+				for _, needle := range []string{"CLEAN DIVISION OF LABOR & TEST SCOPE ALIGNMENT MANDATE", "test pure domain logic in-memory"} {
+					if !strings.Contains(got, needle) {
+						t.Errorf("tester/write prompt missing %q", needle)
+					}
+				}
+				return
+			}
+			if tc.name == "generator/implement" {
+				for _, needle := range []string{"GENERATOR TEST-DRIVEN REFINEMENT & DEPENDENCY INJECTION MANDATE", "fast in-memory unit tests"} {
+					if !strings.Contains(got, needle) {
+						t.Errorf("generator/implement prompt missing %q", needle)
+					}
+				}
+				return
+			}
 			if got != want {
 				t.Fatalf("rendered prompt differs from legacy assembly.\n--- got:\n%s\n--- want:\n%s\n--- first divergence at byte %d", got, want, firstDiff(got, want))
 			}

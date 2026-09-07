@@ -39,10 +39,12 @@ const (
 	// AgentRoleResolver resolves source code merge conflicts.
 	AgentRoleResolver AgentRole = "RESOLVER"
 	// AgentRoleUnblocker monitors the pipeline for stalled tasks and agents and
-	// injects corrective actions to restore forward progress.
+	// injects corrective actions to restore forward progress (legacy alias for FALLBACK).
 	AgentRoleUnblocker AgentRole = "UNBLOCKER"
-	// AgentRoleLastResort executes deep holistic repairs with sovereign compromise authority.
+	// AgentRoleLastResort executes deep holistic repairs with sovereign compromise authority (legacy alias for FALLBACK).
 	AgentRoleLastResort AgentRole = "LAST_RESORT"
+	// AgentRoleFallback monitors pipeline health, executes scope triage, and performs sovereign repairs.
+	AgentRoleFallback AgentRole = "FALLBACK"
 	// AgentRoleAuditor performs whole-project specification acceptance audits prior to release.
 	AgentRoleAuditor AgentRole = "AUDITOR"
 )
@@ -111,11 +113,13 @@ type StoryStatus string
 
 const (
 	StoryIdle      StoryStatus = ""
+	StoryPending   StoryStatus = "PENDING"
 	StoryRunning   StoryStatus = "RUNNING"
 	StorySuccess   StoryStatus = "SUCCESS"
 	StoryFailed    StoryStatus = "FAILED"
 	StoryPaused    StoryStatus = "PAUSED"
 	StoryCancelled StoryStatus = "CANCELLED"
+	StoryDeferred  StoryStatus = "DEFERRED"
 )
 
 // Story represents a discrete user story on the roadmap with lifecycle timestamps and token metrics.

@@ -29,12 +29,12 @@ func upsertStoryContract(state *domain.State, contract domain.StoryContract) {
 func UpsertReviewPhase(phases []domain.ReviewPhase, phase domain.ReviewPhase) []domain.ReviewPhase {
 	for i := range phases {
 		if (phase.ID != "" && phases[i].ID == phase.ID) ||
-			(phase.StoryID != "" &&
-				phases[i].StoryID == phase.StoryID &&
+			(phase.TaskID != "" &&
 				phases[i].TaskID == phase.TaskID &&
 				phases[i].Role == phase.Role &&
 				phases[i].ArtifactID == phase.ArtifactID &&
-				phases[i].Attempt == phase.Attempt) {
+				phases[i].Attempt == phase.Attempt &&
+				(phase.StoryID == "" || phases[i].StoryID == "" || phases[i].StoryID == phase.StoryID)) {
 			phases[i] = phase
 			return phases
 		}

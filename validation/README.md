@@ -1,208 +1,281 @@
-# Noctifab E2E Autonomy Validation
+# Noctifab E2E Autonomy Validation Matrix
 
-This directory contains resources to run fully containerized, isolated, end-to-end (E2E) integration checks of `noctifab` implementing features autonomously inside a target project based only on its user story roadmap and configs.
+This directory contains resources to run fully containerized, isolated, end-to-end (E2E) integration checks of `noctifab` implementing software systems autonomously inside target validation projects based strictly on their technical specifications (`SPEC.md`).
 
-## Available Projects
+---
 
-1. **`frontpunch`**: Checks out the base `main` branch of the frontpunch spec and executes `roadmap/US-001.md`. Validates that the Python worker infrastructure is successfully planned, written, tested, and passing.
-2. **`todo-cli`**: Checks out the base `main` branch of a clean Todo CLI project spec and executes `roadmap/US-001.md`. Validates that task addition and listing commands are planned, implemented in `cmd/todo/main.go` and `internal/task/`, tested, and validated.
-3. **`wc`**: Checks out the base `main` branch of a Rust `wc` (word count) project spec and executes `roadmap/US-002.md`. Validates that a UNIX `wc`-compatible CLI is planned and implemented in Rust following SOLID/DDD principles and memory-efficient streaming, with `Cargo.toml` and `src/main.rs` present and tests passing.
-4. **`echo`**: Checks out the base `main` branch of a Go `echo` project spec and executes `roadmap/US-001.md`. Validates that a minimal `echo`-compatible CLI is planned and implemented in Go following clean formatting and with `cmd/echo/main.go` present and tests passing.
-5. **`calculator`**: Checks out the base `main` branch of a Ruby terminal calculator project spec and executes `SPEC.md`. Validates that a terminal-based calculator is planned and implemented in Ruby following SOLID/DDD principles and RuboCop lint rules, with `calculator.rb` and `lib/calculator/cli.rb` present and RSpec tests passing.
-6. **`fortune`**: Checks out the base `main` branch of a C fortune-quote project spec and executes `SPEC.md`. Validates that a C17 CLI is planned and implemented against the SQLite C API with a seeded 100-quote database, with `main.c` and a `Makefile` present and tests passing.
-7. **`t4`**: Checks out the base `main` branch of a simplified, bucket-less S3-style object store spec and executes `SPEC.md`. Validates that a C17 HTTP server with a pinned black-box contract (PUT/GET/HEAD/DELETE/list/`Range`, deterministic `ETag`) is planned and implemented, with `src/t4.c`, a `Makefile`, and a `docker-compose.yml` e2e harness present and tests passing.
-8. **`pyedis`**: Checks out the base `main` branch of a native Redis wire-protocol (RESP2/RESP3) key-value store spec and executes `SPEC.md`. Validates that an in-memory key-value store with AOF persistence, injected clock, and TCP RESP protocol is planned and implemented in Python 3.14 with type hints throughout (`mypy --strict`), with `app/main.py` and `pyproject.toml` present and tests passing.
-9. **`notebook`**: Checks out the base `main` branch of a notes REST API spec and executes `SPEC.md`. Validates that a TypeScript (strict) + Fastify service on PostgreSQL is planned and implemented, with `src/index.ts`, `package.json`, and a `docker-compose.yml` e2e harness present and tests passing.
-10. **`stricc`**: Checks out the base `main` branch of a C compiler spec written in Rust and executes `SPEC.md`. Validates that a defined-behavior safe C compiler with an LLVM 18 backend is planned and implemented in safe Rust (`#![deny(unsafe_code)]`), validated against GCC and Clang differential test suites.
-11. **`djanban`**: Checks out the base `main` branch of a legacy Django 5.x Kanban board spec and executes `SPEC.md`. Validates modernization of legacy models, views, and migrations.
-12. **`searchthedocs`**: Checks out the base `main` branch of a documentation scraper and vector search spec and executes `SPEC.md`. Validates async scraping queues and RAG vector search API.
-13. **`auth-vault`**: Checks out the base `main` branch of an OAuth2/OIDC zero-trust authorization server spec and executes `SPEC.md`. Validates PKI vault and zero-trust authentication.
-14. **`buffonstream`**: Checks out the base `main` branch of a Protobuf-native real-time streaming storage engine spec and executes `SPEC.md`. Validates bi-directional gRPC streaming.
-15. **`jpacioli`**: Checks out the base `main` branch of an enterprise double-entry financial accounting ledger and transaction engine spec and executes `SPEC.md`. Validates Java 21, Spring Boot 3.3+, Full Event Sourcing (ES), CQRS with materialized read projections, and Stateless JWT / RBAC permissions against PostgreSQL.
-16. **`ocalogue`**: Checks out the base `main` branch of a Datalog deductive logic engine spec and executes `SPEC.md`. Validates OCaml 5.x, Dune, Semi-Naive Fixpoint evaluation, Stratified Negation, and compliance with the Official Datalog Test Suite.
+## 1. The Validation Matrix at a Glance
 
-### Project Tiers (effectiveness classification)
+The matrix encompasses 17 distinct software projects covering diverse languages, paradigms, toolchains, and architectural boundaries:
 
-Projects are classified by **how much validation signal each run returns per unit of
-time/tokens** — the priority ramp to follow when reading results or running a subset.
+| Project | Language / Stack | Architecture Seam | Strong Axis |
+| :--- | :--- | :--- | :--- |
+| `echo` | Go CLI | Single-process CLI | Baseline smoke & full loop integrity |
+| `todo-cli` | Go CLI | CLI + JSON file persistence | Subcommand correctness & state handling |
+| `wc` | Rust CLI | CLI, strict compiler, memory-efficient streaming | Strict compiler adherence & streaming I/O |
+| `calculator` | Ruby CLI | CLI + REPL | Linter self-healing loop (RuboCop / RSpec) |
+| `fortune` | C17 + SQLite | Native memory management + embedded DB C API | Low-level correctness & build discipline |
+| `t4` | C17 | Network HTTP server, black-box public contract | Network server & HTTP protocol parsing |
+| `pyedis` | Python 3.14 (asyncio + RESP2/3) | In-memory key-value store, typed API, AOF persistence | Type rigor (`mypy --strict`), concurrency, durability |
+| `notebook` | TypeScript (React + Fastify + PostgreSQL) | Full-stack SPA + REST API + JWT Auth + WebSockets | Relational DB (SQL, migrations) + strict TypeScript |
+| `frontpunch` | Python + Valkey | Distributed task broker & async background workers | Concurrency, broker queues, worker lifecycle |
+| `djanban` | Python 3.12 + Django 5.x | Legacy codebase modernization & Kanban engine | Framework modernization & migration safety |
+| `stricc` | Rust + LLVM 18 + C | Safe C compiler, GCC/Clang differential testing | Rigor, compiler correctness & memory safety |
+| `searchthedocs` | Python 3.12 + FastAPI + Redis | Async scraping queues & RAG vector search engine | Async workers, search indexing & vector retrieval |
+| `auth-vault` | Go 1.22+ | OAuth2/OIDC Zero-Trust Authorization Server + PKI Vault | Rigor, cryptographic identity & zero-trust auth |
+| `buffonstream` | Go 1.22+ (gRPC / Protobuf) | Protobuf-native real-time bi-directional streaming storage | Protocol Buffers, gRPC & CDC streaming |
+| `jpacioli` | Java 21 + Spring Boot 3.3+ + PostgreSQL | Full Event Sourcing (ES) + CQRS + Financial Ledger + JWT/RBAC | Enterprise rigor, event sourcing & CQRS |
+| `ocalogue` | OCaml 5.x + Dune | Datalog deductive logic engine + Semi-Naive Fixpoint | Formal algorithmic logic & stratified negation |
+| `ninline` | Python 3.14 (CLI + Game Engine) | Generalized (M,N,K)-Game, Ray-Casting, Minimax AI | Model-per-Agent routing & deterministic search |
+
+---
+
+## 2. Tier Classification & Diagnostic Capability Ladder
+
+Validation projects are classified by **how much diagnostic signal each run yields per unit of execution time and LLM token consumption**.
+
+### 2.1 Tier Classification
 
 | Tier | Purpose | Projects |
 | :--- | :--- | :--- |
-| **Tier 0 — Baseline smoke** | Cheapest full-loop proof (init → PM → plan → generate → test → merge). Run first, always: if this stalls, nothing else is worth reading. | `echo` |
-| **Tier 1 — Differentiating seams** | New capability coverage the matrix previously lacked: network/black-box HTTP, typed-Python command API + durability, relational-DB + strict-TypeScript service, legacy Django modernization, zero-trust OAuth2/OIDC PKI, Protobuf real-time CDC streaming, and Java/Spring Boot Full Event Sourcing + CQRS double-entry accounting. The core set. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream`, `jpacioli` |
-| **Tier 2 — Rigor probes** | Deepen quality confidence under merciless toolchains, type systems, and linter discipline (incl. compiler correctness, Datalog deductive logic, assembly, and safety matrix). | `calculator`, `wc`, `fortune`, `stricc`, `ocalogue` |
-| **Tier 3 — Breadth** | State persistence and distributed/broker seams; heaviest runtime and highest API rate-limit exposure — run last or when targeting those seams specifically. | `todo-cli`, `frontpunch`, `searchthedocs` |
+| **Tier 0 — Baseline Smoke** | Fastest, cheapest full-loop proof (init → PM → plan → generate → test → merge). Always run first: if this fails, core orchestration is broken. | `echo` |
+| **Tier 1 — Differentiating Seams** | Core capability coverage testing network/HTTP, typed concurrency, relational databases, distributed brokers, security vaults, and event sourcing. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream`, `jpacioli`, `ninline` |
+| **Tier 2 — Rigor Probes** | Deep quality and discipline validation under unforgiving compilers, typecheckers, and linters. | `calculator`, `wc`, `fortune`, `stricc`, `ocalogue` |
+| **Tier 3 — Breadth & Heavy Integration** | Heavy runtime services, persistent state brokers, or multi-stage pipelines with high API rate-limit and duration footprint. | `todo-cli`, `frontpunch`, `searchthedocs` |
 
-**Quick triage run:** `echo t4 pyedis notebook` covers the four major seams; add
-Tiers 2–3 when validating depth rather than as the default feedback loop.
+### 2.2 Recommended Diagnostic Order (Progressive Capability Ladder)
+
+When validating changes to `noctifab` itself, run projects along this progressive diagnostic ladder so failures attribute cleanly to specific subsystems:
+
+| # | Project | Capability Tested | Failure Attribution |
+| :-: | :--- | :--- | :--- |
+| **Wave 1 — The Core Loop** | | | |
+| 1 | `echo` | Full loop integrity (init → PM → plan → generate → test → merge) with minimal tokens | Core orchestrator broken; stop here |
+| 2 | `todo-cli` | Subcommand parsing + JSON file-based state persistence | File persistence / state handling |
+| 3 | `calculator` | Linter self-healing loop (RSpec + RuboCop) | Linter retry/repair loop |
+| **Wave 2 — Strict Discipline** | | | |
+| 4 | `wc` | Strict compiler adherence (Rust + `clippy -D warnings`) | Architectural discipline / strict typing |
+| 5 | `fortune` | Native memory safety + SQLite C API integration | Native toolchain & C memory management |
+| **Wave 3 — Differentiating Seams** | | | |
+| 6 | `t4` | Network server: black-box HTTP contract (status codes, headers, `Range`, binary) | HTTP parsing & socket daemon handling |
+| 7 | `pyedis` | Typed Python (`mypy --strict`), DI clock/store, AOF persistence + async event loop | Concurrency & typing rigor |
+| 8 | `notebook` | Relational database (migrations, SQL, ephemeral PostgreSQL) + strict TypeScript | Relational DB & JS ecosystem |
+| **Wave 4 — Heavy Integration** | | | |
+| 9 | `frontpunch` | Distributed broker seam (external Valkey, background workers, scheduling) | Distributed queue / worker concurrency |
+
+**Fast Triage Check (4 Projects):** Running `echo`, `t4`, `pyedis`, and `notebook` de-risks the CLI loop, network server, typed concurrency, and relational DB seams in under 30 minutes.
 
 ---
 
-## Layout
+## 3. Architecture & Project Layout
 
 ```
 validation/
-├── Dockerfile.validation          # Shared base image (noctifab binary + projects + validate.sh)
-├── validate.sh                    # Per-project harness, runs inside the container
-├── run_one.sh                     # Build + run one project, capture log and execution report
-├── run_all.sh                     # Run every project in parallel, aggregate exit codes
-├── README.md                      # This file
-└── projects/
-    ├── frontpunch/{Dockerfile, SPEC.md, roadmap/, .noctifab/}
-    ├── todo-cli/{Dockerfile, SPEC.md, roadmap/, .noctifab/}
-    ├── wc/{Dockerfile, SPEC.md, roadmap/, .noctifab/}
-    ├── echo/{Dockerfile, SPEC.md, .noctifab/}
-    ├── calculator/{Dockerfile, SPEC.md, .noctifab/}
-    ├── fortune/{Dockerfile, SPEC.md, .noctifab/}
-    ├── t4/{Dockerfile, SPEC.md, .noctifab/}
-    ├── pyedis/{Dockerfile, SPEC.md, .noctifab/}
-    ├── notebook/{Dockerfile, SPEC.md, .noctifab/}
-    ├── stricc/{Dockerfile, SPEC.md, .noctifab/}
-    ├── djanban/{Dockerfile, SPEC.md, .noctifab/}
-    ├── searchthedocs/{Dockerfile, SPEC.md, .noctifab/}
+├── Dockerfile.validation          # Multi-stage base image (noctifab binary + projects)
+├── README.md                      # This comprehensive guide
+├── bin/                           # Harness execution scripts
+│   ├── matrix_runner.py           # Multi-project matrix runner with dynamic scale timeouts
+│   ├── runner_9projects.py        # Canonical 9-project sequential runner
+│   ├── runner_all17.py            # Comprehensive 17-project sequential runner
+│   ├── serial_runner.py           # Generic serial runner with dynamic timeouts
+│   ├── run_one.sh                 # Single project runner (build, mount, run, trace)
+│   ├── run_all.sh                 # Multi-project runner with parallel/serial flags
+│   ├── validate.sh                # Container entrypoint script executed inside Docker
+│   └── summarize_reports.sh       # Summary aggregator for execution reports
+└── projects/                      # Project definitions (isolated templates)
     ├── auth-vault/{Dockerfile, SPEC.md, .noctifab/}
     ├── buffonstream/{Dockerfile, SPEC.md, .noctifab/}
+    ├── calculator/{Dockerfile, SPEC.md, .noctifab/}
+    ├── djanban/{Dockerfile, SPEC.md, .noctifab/}
+    ├── echo/{Dockerfile, SPEC.md, .noctifab/}
+    ├── fortune/{Dockerfile, SPEC.md, .noctifab/}
+    ├── frontpunch/{Dockerfile, SPEC.md, .noctifab/}
     ├── jpacioli/{Dockerfile, SPEC.md, .noctifab/}
-    └── ocalogue/{Dockerfile, SPEC.md, test_suite/, .noctifab/}
+    ├── ninline/{Dockerfile, SPEC.md, .noctifab/}
+    ├── notebook/{Dockerfile, SPEC.md, .noctifab/}
+    ├── ocalogue/{Dockerfile, SPEC.md, test_suite/, .noctifab/}
+    ├── pyedis/{Dockerfile, SPEC.md, .noctifab/}
+    ├── searchthedocs/{Dockerfile, SPEC.md, .noctifab/}
+    ├── stricc/{Dockerfile, SPEC.md, .noctifab/}
+    ├── t4/{Dockerfile, SPEC.md, .noctifab/}
+    ├── todo-cli/{Dockerfile, SPEC.md, .noctifab/}
+    └── wc/{Dockerfile, SPEC.md, .noctifab/}
 ```
 
-Each project owns its own `Dockerfile` that layers the language toolchain it
-needs on top of the shared `noctifab-validation:base` image:
+### 3.1 Container Hierarchy & Toolchain Layering
 
-| Project     | `FROM`                       | Toolchain added                  | Target artifacts checked by `validate.sh` |
-|-------------|------------------------------|----------------------------------|-------------------------------------------|
-| `frontpunch`| `noctifab-validation:base`   | python3, pip, black, ruff, mypy  | `frontpunch/worker.py`                    |
-| `todo-cli`  | `noctifab-validation:base`   | go                               | `cmd/todo/main.go`                        |
-| `wc`        | `rust:1.84-alpine` (+ base)  | rustc, cargo, rustfmt, clippy    | `Cargo.toml`, `src/main.rs`               |
-| `echo`      | `noctifab-validation:base`   | go                               | `cmd/echo/main.go`                        |
-| `calculator`| `ruby:3.2-alpine` (+ base)   | ruby, rspec, rubocop             | `calculator.rb`, `lib/calculator/cli.rb`  |
-| `fortune`   | `noctifab-validation:base`   | gcc, make, sqlite-dev            | `main.c`, `Makefile`                      |
-| `t4`        | `alpine:3.21` (+ base)       | gcc, make, clang-format, clang-tidy | `Makefile`, `docker-compose.yml`, `src/t4.c` |
-| `pyedis`| `python:3.14-alpine` (+ base)| python3.14, redis, pytest, ruff, mypy | `app/main.py`, `pyproject.toml` |
-| `notebook`   | `node:22-alpine` (+ base)    | node22/npm, typescript, eslint, prettier, vitest, postgresql | `src/index.ts`, `package.json`, `docker-compose.yml` |
-| `stricc`     | `rust:alpine` (+ base)       | rustc, cargo, llvm18, gcc, clang | `Cargo.toml`, `stricc/src/main.rs`, `runtime/src/lib.rs` |
-| `djanban`    | `python:3.12-alpine` (+ base)| python3.12, django5              | `manage.py`, `djanban/settings.py`        |
-| `searchthedocs` | `python:3.12-alpine` (+ base) | python3.12, fastapi, redis      | `app/main.py`                             |
-| `auth-vault` | `golang:1.22-alpine` (+ base)| go                               | `cmd/server/main.go`                      |
-| `buffonstream` | `golang:1.22-alpine` (+ base)| go, protoc                       | `cmd/server/main.go`                      |
-| `jpacioli`   | `eclipse-temurin:21-jdk-alpine` (+ base)| java21, gradle, postgresql  | `build.gradle`, `src/**/*.java`           |
-| `ocalogue`   | `ocaml/opam:alpine-ocaml-5.2` (+ base)| ocaml5.2, opam, dune, menhir | `dune-project`, `lib/*.ml`                |
+The base image (`Dockerfile.validation`) is a multi-stage build: `golang:1.25-alpine` compiles the `noctifab` binary, which is copied into an `alpine:3.21` runtime alongside project templates and `validate.sh`. Each target project layers its required compilers, linters, and runtimes:
 
-The base image (`Dockerfile.validation`) is a multi-stage build: a
-`golang:1.25-alpine` builder compiles the `noctifab` binary, which is then
-copied into an `alpine:3.21` runtime alongside the validation projects and
-`validate.sh`. No language toolchain is installed in the base image — each
-project's `Dockerfile` is responsible for its own.
-
-### Secret handling
-
-Validation images are kept **credential-free**: `.dockerignore` excludes
-`validation/projects/*/.noctifab/secrets.yaml` from the build context, so no
-LLM key or VCS token is ever baked into a `noctifab-validation:*` image layer.
-
-At runtime, `run_one.sh` bind-mounts the project's `secrets.yaml` read-only
-into the container at `/run/secrets/noctifab-secrets.yaml`:
-
-```
-docker run -v <host>/validation/projects/<project>/.noctifab/secrets.yaml:/run/secrets/noctifab-secrets.yaml:ro ...
-```
-
-`validate.sh` copies that mounted file into the temporary workspace's
-`.noctifab/secrets.yaml` right after `cp -R`, so noctifab's config loader
-resolves `secret:OPENCODE_API_KEY` (and any other `secret:` references) from
-it as usual (`pkg/infrastructure/config/secrets.go:38`). If the runtime
-mount is missing, `validate.sh` falls back to a `secrets.yaml` baked into the
-project tree (with a warning) and otherwise aborts with a clear error.
-
-Override the host path to mount by setting `NOCTIFAB_SECRETS_FILE`.
+| Project | Base Layer (`FROM`) | Toolchains Installed | Target Artifacts Checked |
+| :--- | :--- | :--- | :--- |
+| `echo` | `noctifab-validation:base` | go, make | `cmd/echo/main.go` |
+| `todo-cli` | `noctifab-validation:base` | go, make | `cmd/todo/main.go` |
+| `wc` | `rust:1.84-alpine` (+ base) | rustc, cargo, rustfmt, clippy | `Cargo.toml`, `src/main.rs` |
+| `calculator` | `ruby:3.2-alpine` (+ base) | ruby, rspec, rubocop | `calculator.rb`, `lib/calculator/cli.rb` |
+| `fortune` | `noctifab-validation:base` | gcc, make, sqlite-dev | `main.c`, `Makefile` |
+| `t4` | `alpine:3.21` (+ base) | gcc, make, clang-format, clang-tidy | `Makefile`, `docker-compose.yml`, `src/t4.c` |
+| `pyedis` | `python:3.14-alpine` (+ base) | python3.14, redis, pytest, ruff, mypy | `app/main.py`, `pyproject.toml` |
+| `notebook` | `node:22-alpine` (+ base) | node22, npm, typescript, eslint, vitest, postgresql | `src/index.ts`, `package.json`, `docker-compose.yml` |
+| `frontpunch` | `noctifab-validation:base` | python3, pip, ruff, mypy, valkey | `frontpunch/worker.py` |
+| `djanban` | `python:3.12-alpine` (+ base) | python3.12, django5, ruff | `manage.py`, `djanban/settings.py` |
+| `stricc` | `rust:alpine` (+ base) | rustc, cargo, llvm18, gcc, clang | `Cargo.toml`, `stricc/src/main.rs` |
+| `searchthedocs` | `python:3.12-alpine` (+ base) | python3.12, fastapi, redis | `app/main.py` |
+| `auth-vault` | `golang:1.22-alpine` (+ base) | go, make | `cmd/server/main.go` |
+| `buffonstream` | `golang:1.22-alpine` (+ base) | go, protoc, make | `cmd/server/main.go` |
+| `jpacioli` | `eclipse-temurin:21-jdk-alpine` (+ base) | java21, gradle, postgresql | `build.gradle`, `src/**/*.java` |
+| `ocalogue` | `ocaml/opam:alpine-ocaml-5.2` (+ base) | ocaml5.2, opam, dune, menhir | `dune-project`, `lib/*.ml` |
+| `ninline` | `python:3.14-alpine` (+ base) | python3.14, pytest, ruff, mypy | `app/main.py` |
 
 ---
 
-## How It Works
+## 4. How It Works & Key Constraints
 
-1. **Base image** (`Dockerfile.validation`): multi-stage build compiles
-   `noctifab` and stages it into an `alpine:3.21` runtime along with the
-   validation projects and `validate.sh`.
-2. **Per-project image** (`validation/projects/<project>/Dockerfile`): builds
-   `FROM noctifab-validation:base` (or copies its artifacts) and installs the
-   project's own toolchain (Rust, Go, Python, ...). Each project therefore owns
-   its toolchain version pins.
-3. **Execution**: the container starts with no volume mounts (100% isolated
-   from your host filesystem).
-4. **Workspace initialization** (`validate.sh`):
-   - Copies the selected project template into a temporary runtime directory
-     (`tmp_verify_autonomy/`).
-   - Runs `git init`, checks out branch `main`, commits the initial config,
-     and sets up a local bare `origin` so `git push` works without a remote.
-   - Runs `noctifab start` using the target directory or specification (`SPEC.md`).
-     
-   > [!IMPORTANT]
-   > **Spec-Driven Validation Rule:** Checking in pre-written roadmap user stories (e.g. under `roadmap/`) for new validation projects is **strictly forbidden**. Validation projects must be defined and run solely based on `SPEC.md` to verify that `noctifab` is capable of autonomously decomposing specifications into user stories on the fly using its Product Manager Agent.
-5. **Validation check**: `validate.sh` asserts the target source file(s)
-   were created/modified and that the test suite executed; exits non-zero
-   otherwise.
-6. **Feedback report**: `gen_feedback.py` parses the captured container log
-   into a structured `<PROJECT>_FEEDBACK.md` (verdict, phase activity, build
-   failures, test failures, policy violations, parser/runtime errors, spec
-   ambiguity, raw tail) at the repository root.
+### 4.1 Execution Flow
+
+1. **Isolation**: Containers execute with zero host filesystem mutation, except for mounted output paths (`output/src/`, `output/log/`, `output/report/`, `output/dist/`).
+2. **Ephemeral Workspace Initialization** (`validate.sh`):
+   - Copies the project template to `/tmp_verify_autonomy/`.
+   - Initializes a fresh Git repository, creates a local bare `origin`, and commits baseline files.
+   - Copies the securely mounted `secrets.yaml` into `.noctifab/secrets.yaml`.
+   - Executes `noctifab start` using the root directory or `SPEC.md`.
+3. **Verification & Assertions**:
+   - `validate.sh` verifies that expected source code artifacts were created.
+   - Executes test suites (`make test`, `cargo test`, `pytest`, `rspec`, etc.) and linters.
+   - Emits structured exit codes and syncs final outputs.
+
+### 4.2 Spec-Driven Validation Rule (Host Side)
+
+> [!IMPORTANT]
+> **Strictly Prohibited:** AI agents developing `noctifab` must **never** modify, pre-create, hand-edit, or check in static user stories under any `validation/projects/<project>/roadmap/` directory.
+> Validation projects exist specifically to test whether Noctifab autonomously decomposes a raw `SPEC.md` into roadmaps and stories on the fly via its Product Manager Agent. Having existing fixture stories in legacy projects is acceptable, and Noctifab generating stories autonomously at runtime is expected; what is forbidden is manually writing roadmap files as a shortcut.
+
+### 4.3 Configuration Immutability Mandate
+
+> [!CAUTION]
+> AI agents are strictly forbidden from modifying any validation project's `.noctifab/config.yaml` configuration file before or during validation execution. The project configuration must remain exactly as defined in the target project.
+
+### 4.4 What the SPECs Demand of Generated Code
+
+Every `SPEC.md` across all 17 projects enforces consistent engineering standards:
+- **SOLID & Domain-Driven Design (DDD)**: Single-responsibility modules, domain entities decoupled from framework/transport layers.
+- **Dependency Injection (DI)**: Injected stores, clocks, database connection pools, and brokers; zero global state singletons.
+- **Realistic Unit Testing**: Testing with real collaborator objects wired through DI (e.g. real store with fake clock) rather than blanket mock objects.
+- **Hermetic Integration Testing**: In-memory or temporary file doubles (`:memory:` SQLite, temp AOF file, ephemeral containers).
+- **Zero-Finding Linter Passes**: Generated code must pass all configured linters (`ruff`, `mypy --strict`, `clippy -D warnings`, `rubocop`, `clang-tidy`, `eslint`).
 
 ---
 
-## How to Run
+## 5. Execution Guide & Harness Usage
 
-### 1. Credentials Setup (git-ignored, never baked into images)
+### 5.1 Secret Handling & Credentials Setup
+
+Validation images are strictly **credential-free**. Secret files are excluded from image builds via `.dockerignore`.
+
 Create `validation/projects/<project>/.noctifab/secrets.yaml` on the host:
 ```yaml
-# validation/projects/frontpunch/.noctifab/secrets.yaml
 OPENCODE_API_KEY: "your-actual-api-key"
 GITHUB_TOKEN: "your-optional-github-token"
 ```
-`run_one.sh` bind-mounts this file read-only into the container at
-`/run/secrets/noctifab-secrets.yaml`; `validate.sh` copies it into the
-project workspace so noctifab resolves `secret:OPENCODE_API_KEY` from it.
-No `OPENCODE_API_KEY` env var or `-e` flag is required.
-Override the path with `NOCTIFAB_SECRETS_FILE=<path>`.
 
-### 2. Run projects (Parallel or Serial)
-Run all projects in parallel:
+At runtime, `run_one.sh` bind-mounts this file read-only into `/run/secrets/noctifab-secrets.yaml`, and `validate.sh` copies it into the ephemeral workspace. You can override the host secrets path by setting `NOCTIFAB_SECRETS_FILE=<path>`.
+
+### 5.2 Execution Commands
+
+#### 1. Flexible Matrix Runner (Recommended for targeted testing)
+Runs any subset of projects with automatic scale-based dynamic timeouts:
 ```bash
+python3 validation/bin/matrix_runner.py echo t4 pyedis
+# Or with comma-separated flag:
+python3 validation/bin/matrix_runner.py --projects=wc,notebook,djanban
+# With fixed timeout override:
+python3 validation/bin/matrix_runner.py echo --timeout=1200
+```
+
+#### 2. Canonical 9-Project Sequential Runner
+Runs the 9 core diagnostic projects in sequence and writes `PROJECT_FEEDBACK.md` and `VAL_PROJECT_FEEDBACK.md`:
+```bash
+python3 validation/bin/runner_9projects.py
+# With custom timeout:
+python3 validation/bin/runner_9projects.py --timeout=1500
+```
+
+#### 3. Full 17-Project Comprehensive Runner
+Executes the full suite across all 17 validation projects sequentially:
+```bash
+python3 validation/bin/runner_all17.py
+```
+
+#### 4. Make Targets
+```bash
+# Run a single project
+make validate PROJECT=echo
+
+# Reuse existing docker images (skipping the rebuild phase)
+make validate PROJECT=echo SKIP_BUILD=1
+
+# Run all projects in parallel
 make validate-all
-```
 
-Run projects sequentially (serial mode, one after the other):
-```bash
+# Run all projects in serial mode
 make validate-all SERIAL=1
-./validation/run_all.sh --serial
 ```
 
-Run a specific subset of validation projects (parallel or serial):
+#### 5. Direct Shell Scripts
 ```bash
-make validate-all PROJECT=echo,wc,t4
-make validate-all SERIAL=1 PROJECT=echo,t4
-./validation/run_all.sh --serial --projects echo,wc,t4
+# Run a single project directly
+./validation/bin/run_one.sh wc
+
+# Run a subset sequentially
+./validation/bin/run_all.sh --serial --projects echo,t4,pyedis
 ```
 
-Skip the image build step (reuse existing `noctifab-validation:*` images):
+### 5.3 Scale-Based Dynamic Timeouts
+
+Validation runs apply execution envelopes scaled by architectural complexity (Complexity Units, $CU$):
+
+| Scale Class | Complexity Units | Max Runtime Envelope | Target Projects |
+| :--- | :---: | :---: | :--- |
+| **Tier 0 / Small CLI Utilities** | $CU < 35$ | 15–20 minutes | `echo`, `calculator`, `wc`, `todo-cli`, `fortune` |
+| **Tier 1 / Medium Systems** | $35 \le CU \le 75$ | 30 minutes | `t4`, `frontpunch`, `ocalogue`, `ninline`, `pyedis`, `stricc` |
+| **Tier 2 / Large Multi-Subsystem** | $CU > 75$ | 35–40 minutes | `notebook`, `djanban`, `auth-vault`, `buffonstream`, `searchthedocs`, `jpacioli` |
+
+If a project exceeds its dynamic scale envelope (or explicit `--timeout` limit), the container execution is cleanly terminated and recorded.
+
+---
+
+## 6. Monitoring, Telemetry & Artifact Inspection
+
+### 6.1 Monitoring Rule for AI Agents
+
+> [!IMPORTANT]
+> When executing validation runs in the background, **AI agents MUST NOT execute periodic 60-second polling loops or schedule recurring timers**.
+> Launch the runner as a background task and wait for completion notifications or inspect the live execution reports on demand.
+
+### 6.2 Output Artifact Locations
+
+All artifacts are persisted directly under the project's output directory:
+
+| Artifact | Path | Description |
+| :--- | :--- | :--- |
+| **Live Source Code** | `validation/projects/<project>/output/src/` | Real-time generated codebase as Noctifab writes/edits files |
+| **Execution Report** | `validation/projects/<project>/output/report/*.md` | Live atomic execution report emitted by Noctifab |
+| **Console Output** | `validation/projects/<project>/output/log/<project>.log` | Combined stdout/stderr of the container run |
+| **Wrapper Trace** | `validation/projects/<project>/output/log/<project>.wrap.log` | Container launch, image build, and lifecycle trace |
+| **Compiled Distributables** | `validation/projects/<project>/output/dist/` | Compiled binaries and executables produced by the run |
+| **Run Feedback** | `validation/projects/<project>/output/feedback/*.md` | Individual project evaluation report |
+| **Global Summary** | `VAL_PROJECT_FEEDBACK.md` | Aggregated cross-project validation analysis |
+
+To aggregate metrics, durations, and token consumption across all finished runs, run:
 ```bash
-make validate-all SKIP_BUILD=1
+make validate-summary
+# Or directly:
+./validation/bin/summarize_reports.sh
 ```
 
-### 3. Run a single project
-```bash
-make validate PROJECT=todo-cli
-./validation/run_one.sh wc
-```
+### 6.3 Known Failure Signatures & Diagnostic Indicators
 
-### Execution Timeout Limit (10-Minute Mandate)
-A maximum execution time limit of **10 minutes** (unless another time limit is explicitly specified by the user or task request) MUST be set for each execution of each validation project. If a validation execution reaches 10 minutes (or the specified custom limit), agents must terminate the container run cleanly and record the results.
-
-### 4. Output artifacts
-- `validation/projects/<project>/output/src/` — live generated source codebase, updated in real time as Noctifab creates and modifies files.
-- `validation/projects/<project>/output/report/*.md` — live atomic execution report updated during execution.
-- `validation/projects/<project>/output/log/<project>.log` — full combined stdout/stderr of the container.
-- `validation/projects/<project>/output/log/<project>.wrap.log` — `run_one.sh` build/launch/exit trace.
-- `validation/projects/<project>/output/dist/` — compiled binaries and build outputs produced by the run.
-- `validation/projects/<project>/output/feedback/<PROJECT>_FEEDBACK.md` — structured review of the run.
-- `.validation-logs/run_all.<timestamp>.log` — `run_all.sh` global aggregate log.
-  These feedback, report, source, dist, and log files are git-ignored (see `.gitignore`) as they are local analysis artifacts, not source.
-
+- **Linter Self-Healing Stall**: Repeated identical modifications attempting to satisfy a linter (e.g. RuboCop in `calculator`) — indicates retry ceiling reached or conflicting rules.
+- **API Quota Saturation**: HTTP `429` errors with backoff retry indications — caused by running too many heavy parallel containers on a single LLM API key; resolve by running in serial mode or wave batches.
+- **Roadmap Over-Decomposition**: Product Manager Agent generates excessive stories ($> 15$ for a small utility) without completing the foundation — verify PM prompt constraints for minimum working entrypoints.
+- **Provider Eviction / Cooldown**: Model eviction triggered by transient compiler errors — ensure error classification distinguishes model non-existence from code errors.
+- **Missing Build Dependencies**: Exit code 127 in `validate.sh` — indicates a toolchain package (`make`, `gcc`) was omitted from the project's `Dockerfile`.

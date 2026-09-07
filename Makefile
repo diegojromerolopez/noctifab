@@ -76,9 +76,9 @@ validate:
 	fi; \
 	for proj in $(subst $(comma),$(space),$(PROJECT)); do \
 		if [ "$(SKIP_BUILD)" = "1" ]; then \
-			NOCTIFAB_SKIP_BUILD=1 ./validation/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
+			NOCTIFAB_SKIP_BUILD=1 ./validation/bin/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
 		else \
-			./validation/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
+			./validation/bin/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
 		fi; \
 	done
 
@@ -91,7 +91,7 @@ validate-all:
 	if [ "$(SKIP_BUILD)" = "1" ]; then FLAGS="$$FLAGS --skip-build"; fi; \
 	if [ "$(SERIAL)" = "1" ]; then FLAGS="$$FLAGS --serial"; fi; \
 	if [ -n "$(PROJECT)" ]; then FLAGS="$$FLAGS --projects=$(PROJECT)"; fi; \
-	./validation/run_all.sh $$FLAGS
+	./validation/bin/run_all.sh $$FLAGS
 
 # Build base + all per-project validation Docker images
 validate-images:
@@ -102,6 +102,6 @@ validate-images:
 
 # Summarize performance and token consumption from execution reports
 validate-summary:
-	@./validation/summarize_reports.sh
+	@./validation/bin/summarize_reports.sh
 
 

@@ -17,9 +17,27 @@ var validateCmd = &cobra.Command{
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		configPath := ".noctifab/config.yaml"
+		if flag := cmd.Flags().Lookup("config"); flag != nil && flag.Changed {
+			configPath = flag.Value.String()
+		}
+
 		cfg, err := config.Load(cmd)
 		if err != nil {
-			return err
+			if fixFlag {
+				if fixErr := runAIConfigFix(cmd, configPath, err, yesFlag); fixErr != nil {
+					return fixErr
+				}
+				// Retry loading configuration after repair
+				cfg, err = config.Load(cmd)
+				if err != nil {
+					return fmt.Errorf("configuration still invalid after repair: %w", err)
+				}
+			} else {
+				fmt.Printf("❌ Failed to parse configuration %s:\n   %v\n\n", configPath, err)
+				fmt.Println("💡 Tip: Run 'noctifab validate --fix' (or -f) to automatically diagnose and repair configuration errors using AI.")
+				return err
+			}
 		}
 
 		fmt.Println("Validating configuration...")

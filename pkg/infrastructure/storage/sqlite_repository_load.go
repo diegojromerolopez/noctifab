@@ -224,10 +224,14 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 		return err
 	}
 
-	// Load Actions
+	// Load Actions (bounded to most recent MaxLastActions in chronological order)
 	rowsAc, err := r.db.QueryContext(ctx,
-		`SELECT timestamp, tool, args, reasoning, result, success
-		FROM actions WHERE state_id = ?`, state.ID)
+		`SELECT action_id, timestamp, tool, args, reasoning, result, success
+		FROM (
+			SELECT id, action_id, timestamp, tool, args, reasoning, result, success
+			FROM actions WHERE state_id = ?
+			ORDER BY id DESC LIMIT ?
+		) sub ORDER BY id ASC`, state.ID, domain.MaxLastActions)
 	if err != nil {
 		return err
 	}
@@ -238,7 +242,7 @@ func (r *SQLiteRepository) loadStateRelations(ctx context.Context, state *domain
 		var act domain.Action
 		var argsStr string
 		var successInt int
-		err := rowsAc.Scan(&act.Timestamp, &act.Tool, &argsStr, &act.Reasoning, &act.Result, &successInt)
+		err := rowsAc.Scan(&act.ID, &act.Timestamp, &act.Tool, &argsStr, &act.Reasoning, &act.Result, &successInt)
 		if err != nil {
 			return err
 		}

@@ -44,6 +44,10 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			return err
 		}
 		featName := filepath.Base(currentStoryFile)
+		storyID := services.ExtractStoryID(currentStoryFile)
+		if storyID == "" {
+			storyID = featName
+		}
 		configuredBranch := deps.cfg.VCS.GetIntegrationBranch()
 		if strings.ToLower(deps.cfg.VCS.BranchStrategy) == "per_story_isolated" {
 			configuredBranch = ""
@@ -82,7 +86,6 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 		state.Metadata.FeatureName = featName
 		state.Metadata.BaseBranch = baseBranch
 		state.Metadata.IntegrationBranch = integrationBranch
-		state.Tasks = nil
 		state.StoryStatus = domain.StoryRunning
 
 		now := time.Now().UTC()
@@ -151,25 +154,73 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			deps.gitClient, deps.rebaseQueue, deps.evaluator, deps.vcsClient, deps.orchConfig, orchRuntime,
 		)
 
-		if deps.cfg.Unblocker.Enabled {
-			unblocker := services.NewUnblockerAgent(
+		fallbackCfg := deps.cfg.GetFallback()
+		if fallbackCfg.Enabled {
+			fallbackAgent := services.NewFallbackAgent(
 				deps.repo,
 				deps.llmClient,
 				deps.mailbox,
-				time.Duration(deps.cfg.Unblocker.PollInterval),
-				deps.cfg.Unblocker.MaxRetries,
-				time.Duration(deps.cfg.Unblocker.StallThreshold),
-				time.Duration(deps.cfg.Unblocker.ConflictThreshold),
-				deps.cfg.Unblocker.LLMAssessment,
+				time.Duration(fallbackCfg.PollInterval),
+				fallbackCfg.MaxRetries,
+				time.Duration(fallbackCfg.StallThreshold),
+				time.Duration(fallbackCfg.ConflictThreshold),
+				fallbackCfg.LLMAssessment,
 			)
-			orchestrator.SetUnblocker(unblocker)
-			unblockerCtx, cancelUnblocker := context.WithCancel(ctx)
-			defer cancelUnblocker()
-			unblocker.Start(unblockerCtx)
+			fallbackAgent.SetBudgetCliff(fallbackCfg.BudgetCliffRatio, 0)
+			fallbackAgent.SetStallCountThreshold(fallbackCfg.Triggers.StallCountThreshold)
+			orchestrator.SetFallbackAgent(fallbackAgent)
+			fallbackCtx, cancelFallback := context.WithCancel(ctx)
+			defer cancelFallback()
+			fallbackAgent.Start(fallbackCtx)
 		}
 
 		if err := orchestrator.PlanStory(ctx, state, string(specBytes)); err != nil {
 			return err
+		}
+
+		if stLoaded, loadErr := deps.repo.Load(ctx); loadErr == nil && stLoaded != nil {
+			state = stLoaded
+		}
+		storyTasks := getStoryTasks(state, featName, storyID)
+		isFirstScaffoldStory := strings.HasPrefix(storyID, "US-001") || strings.HasPrefix(featName, "US-001")
+		if isFirstScaffoldStory && len(storyTasks) > 0 && deps.evaluator != nil {
+			allTasksGreen := true
+			for _, t := range storyTasks {
+				passed, _, valErr := deps.evaluator.ValidateTask(ctx, state, t)
+				if !passed || valErr != nil {
+					allTasksGreen = false
+					break
+				}
+			}
+			if allTasksGreen {
+				fmt.Printf("🚀 [Spike Fast Exit] Walking skeleton already compiles cleanly and passes all test assertions (%d tasks). Marking %s as SUCCESS.\n", len(storyTasks), featName)
+				now := time.Now().UTC()
+				for i := range state.Tasks {
+					for _, st := range storyTasks {
+						if state.Tasks[i].ID == st.ID {
+							state.Tasks[i].Status = domain.TaskSuccess
+							state.Tasks[i].Progress = 100
+							state.Tasks[i].UpdatedAt = now
+						}
+					}
+				}
+				for i, s := range state.Stories {
+					if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
+						state.Stories[i].Status = domain.StorySuccess
+						state.Stories[i].UpdatedAt = now
+					}
+				}
+				_ = deps.repo.Save(ctx, state)
+				if deps.executionReporter != nil {
+					deps.executionReporter.Observe(ctx, domain.ExecutionEvent{
+						Kind:    domain.EventStoryFinished,
+						StoryID: featName,
+						Outcome: domain.OutcomeSuccess,
+						At:      now,
+					})
+				}
+				return nil
+			}
 		}
 
 		// Immediate dispatch of initial ready tasks without waiting for the first ticker tick.
@@ -181,26 +232,100 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
+			case <-orchestrator.TaskCompletedChan():
+			case <-orchestrator.StoryCompletedChan():
 			case <-ticker.C:
-				_, _ = orchestrator.RunOnce(ctx)
-				st, err := deps.repo.Load(ctx)
-				if err != nil {
-					return err
-				}
-				if allTasksFinished(st) {
-					for _, t := range st.Tasks {
-						if t.Status == domain.TaskFailed {
-							return fmt.Errorf("story execution failed: task %s (%s) failed", t.ID, t.Title)
-						}
+			}
+			_, _ = orchestrator.RunOnce(ctx)
+			st, err := deps.repo.Load(ctx)
+			if err != nil {
+				return err
+			}
+			storyTasks := getStoryTasks(st, featName, storyID)
+			if len(storyTasks) > 0 && allStoryTasksFinished(storyTasks) {
+				for _, t := range storyTasks {
+					if t.Status == domain.TaskFailed {
+						return fmt.Errorf("story execution failed: task %s (%s) failed", t.ID, t.Title)
 					}
-					if st.StoryStatus == domain.StoryFailed {
+				}
+				for _, s := range st.Stories {
+					if (s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile) && s.Status == domain.StoryFailed {
 						return fmt.Errorf("story execution failed: story finalization status marked as failed")
 					}
-					if st.StoryStatus == domain.StorySuccess {
-						return nil
-					}
 				}
+				return nil
 			}
 		}
+	}
+}
+
+func getStoryTasks(state *domain.State, featName, storyID string) []domain.Task {
+	if state == nil {
+		return nil
+	}
+	if len(state.Stories) <= 1 && len(state.Tasks) > 0 {
+		return state.Tasks
+	}
+	var tasks []domain.Task
+	for _, t := range state.Tasks {
+		if (storyID != "" && t.StoryID == storyID) || (featName != "" && t.StoryID == featName) ||
+			(storyID != "" && strings.HasPrefix(t.ID, storyID+"-")) || (featName != "" && strings.HasPrefix(t.ID, featName+"-")) {
+			tasks = append(tasks, t)
+		}
+	}
+	return tasks
+}
+
+func allStoryTasksFinished(tasks []domain.Task) bool {
+	if len(tasks) == 0 {
+		return false
+	}
+	for _, t := range tasks {
+		if t.Status != domain.TaskSuccess && t.Status != domain.TaskFailed {
+			return false
+		}
+	}
+	return true
+}
+
+func buildStoryPlanner(deps storyExecutorDeps) func(ctx context.Context, currentStoryFile string) error {
+	return func(ctx context.Context, currentStoryFile string) error {
+		specBytes, err := os.ReadFile(currentStoryFile)
+		if err != nil {
+			return err
+		}
+		featName := filepath.Base(currentStoryFile)
+		storyID := services.ExtractStoryID(currentStoryFile)
+		if storyID == "" {
+			storyID = featName
+		}
+		state, err := deps.repo.Load(ctx)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return errors.New("nil state loaded")
+		}
+		for _, t := range state.Tasks {
+			if (storyID != "" && t.StoryID == storyID) || (featName != "" && t.StoryID == featName) {
+				return nil
+			}
+		}
+
+		planState := *state
+		planState.Metadata.InputPath = currentStoryFile
+		planState.Metadata.FeatureName = featName
+
+		orchRuntime := services.OrchestratorRuntimeDependencies{
+			Mailbox:        deps.mailbox,
+			WatchdogRepair: deps.repairHandler,
+			PromptRenderer: deps.promptRenderer,
+			Observer:       deps.executionReporter,
+		}
+		orchestrator := services.NewOrchestratorWithRuntime(
+			deps.repo, deps.reg, deps.llmClient, deps.validator, deps.scheduler,
+			deps.gitClient, deps.rebaseQueue, deps.evaluator, deps.vcsClient, deps.orchConfig, orchRuntime,
+		)
+		return orchestrator.PlanStory(ctx, &planState, string(specBytes))
 	}
 }

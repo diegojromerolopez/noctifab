@@ -11,6 +11,7 @@ To ensure high maintainability, safety, and suitability for E2E validation, the 
 - `Cargo.toml` is a workspace-root single crate (no workspaces).
 - Allowed external crates: `clap` (v4, derive) for CLI parsing; `assert_cmd`, `predicates`, `tempfile` for tests only. No other dependencies.
 - Lint: `cargo fmt --check` and `cargo clippy -- -D warnings` must pass.
+- Testing & Concurrency Invariant: Tests are plain Rust unit and integration tests under `tests/`. All tests must execute deterministically under standard `cargo test` with thread-safe test isolation (using `tempfile` and isolated stream buffers) without acquiring external daemon locks or requiring concurrent compilation processes.
 - NOTE: This SPEC scopes only the `wc` Rust target. The repository-root AGENTS.md applies to the noctifab Go host and its BDD rules do NOT transfer here. Tests are plain Rust `#[test]` tests under `tests/`.
 
 ---

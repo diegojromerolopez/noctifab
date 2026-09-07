@@ -82,7 +82,8 @@ type CodeChurnSummary struct {
 
 type SelfCorrectionSummary struct {
 	RetryCount           int `json:"retry_count"`
-	UnblockerInvocations int `json:"unblocker_invocations"`
+	FallbackInvocations  int `json:"fallback_invocations"`
+	UnblockerInvocations int `json:"unblocker_invocations,omitempty"`
 	WatchdogInvocations  int `json:"watchdog_invocations"`
 	TaskAttempts         int `json:"task_attempts"`
 	TaskSuccesses        int `json:"task_successes"`

@@ -189,14 +189,21 @@ func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
 // Unrecognised errors are returned immediately so the caller's retry/fallback
 // ladder can classify them.
 func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) (*ProviderCallResult, error) {
+	filteredExtra := make(map[string]interface{})
+	for k, v := range o.extraBody {
+		if !globalCapabilityCache.isExtraParamUnsupported(model, k) {
+			filteredExtra[k] = v
+		}
+	}
+
 	opts := completionOptions{
 		enforceJSON:     !globalCapabilityCache.isJSONModeUnsupported(model),
 		disableJSONMode: o.disableJSONMode || globalCapabilityCache.isJSONModeUnsupported(model),
 		maxTokens:       maxTokens,
 		temperature:     &temperature,
-		extraBody:       o.extraBody,
+		extraBody:       filteredExtra,
 	}
-	if globalCapabilityCache.isTemperatureUnsupported(model) {
+	if isNoTemperatureModel(model) || globalCapabilityCache.isTemperatureUnsupported(model) {
 		opts.temperature = nil
 	}
 	if globalCapabilityCache.isMaxTokensUnsupported(model) {
@@ -245,6 +252,8 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 		} else {
 			fmt.Fprintf(os.Stderr, "⚠ Streaming call returned empty content; retrying with non-streaming POST.\n")
 		}
+		// Disable streaming for this client session to avoid repeated 30-60s streaming hangs
+		o.streaming = false
 	}
 
 	client := o.sdkClient(apiKey)
@@ -256,8 +265,19 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 		reqOpts = append(reqOpts, option.WithJSONSet(k, v))
 	}
 
+	postCtx := ctx
+	if ctx.Err() != nil {
+		postTimeout := o.timeout
+		if postTimeout <= 0 {
+			postTimeout = 60 * time.Second
+		}
+		var cancel context.CancelFunc
+		postCtx, cancel = context.WithTimeout(context.Background(), postTimeout)
+		defer cancel()
+	}
+
 	start := time.Now()
-	completion, err := client.Chat.Completions.New(ctx, params, reqOpts...)
+	completion, err := client.Chat.Completions.New(postCtx, params, reqOpts...)
 	if err != nil {
 		return nil, o.sdkError(err)
 	}

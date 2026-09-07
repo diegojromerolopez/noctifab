@@ -54,7 +54,10 @@ type OrchestratorConfig struct {
 	Context                config.ContextConfig
 	WorkspaceCache         config.WorkspaceCacheConfig
 	QA                     config.QAConfig
+	Fallback               config.FallbackAgentConfig
 	LastResort             config.LastResortAgentConfig
+	DefaultTestCommand     string
+	AllowedCommands        []string
 }
 
 // QADependencies contains the optional infrastructure used only when QA is enabled.
@@ -70,33 +73,44 @@ func (c OrchestratorConfig) GetWorkspaceCache() config.WorkspaceCacheConfig {
 	return c.WorkspaceCache
 }
 
+func (c OrchestratorConfig) GetFallback() config.FallbackAgentConfig {
+	if c.Fallback.Enabled || c.Fallback.Model != "" || c.Fallback.Profile != "" || len(c.Fallback.Providers) > 0 {
+		return c.Fallback
+	}
+	if c.LastResort.Enabled || c.LastResort.Model != "" || c.LastResort.Profile != "" || len(c.LastResort.Providers) > 0 {
+		return c.LastResort
+	}
+	return c.Fallback
+}
+
 type Orchestrator struct {
-	repo              domain.StateRepository
-	registry          Registry
-	llmClient         domain.LLMClient
-	validator         Validator
-	scheduler         *Scheduler
-	git               *GitClient
-	rebaseQueue       *RebaseQueue
-	evaluator         *TestValidator
-	vcsClient         domain.VCSClient
-	cfg               OrchestratorConfig
-	mailbox           *CommandMailbox
-	watchdogRepair    RepairHandler
-	promptRenderer    PromptRenderer
-	metricsMu         sync.RWMutex
-	metricsCollector  *MetricsCollector
-	unblocker         *UnblockerAgent
-	qa                *QARuntimeCoordinator
-	timesMu           sync.Mutex
-	storyStartedAt    time.Time
-	totalActions      int64
-	taskCompletedChan chan struct{}
-	lastWorkspaceSync time.Time
-	observer          domain.ExecutionObserver
-	acceptanceAuditor *AcceptanceAuditor
-	storyQAAuditor    *StoryQAAuditor
-	tokenAccounting   TokenAccountingService
+	repo               domain.StateRepository
+	registry           Registry
+	llmClient          domain.LLMClient
+	validator          Validator
+	scheduler          *Scheduler
+	git                *GitClient
+	rebaseQueue        *RebaseQueue
+	evaluator          *TestValidator
+	vcsClient          domain.VCSClient
+	cfg                OrchestratorConfig
+	mailbox            *CommandMailbox
+	watchdogRepair     RepairHandler
+	promptRenderer     PromptRenderer
+	metricsMu          sync.RWMutex
+	metricsCollector   *MetricsCollector
+	fallbackAgent      *FallbackAgent
+	qa                 *QARuntimeCoordinator
+	timesMu            sync.Mutex
+	storyStartedAt     time.Time
+	totalActions       int64
+	taskCompletedChan  chan struct{}
+	storyCompletedChan chan struct{}
+	lastWorkspaceSync  time.Time
+	observer           domain.ExecutionObserver
+	acceptanceAuditor  *AcceptanceAuditor
+	storyQAAuditor     *StoryQAAuditor
+	tokenAccounting    TokenAccountingService
 	// executeTaskFn is the task execution entry point used by the dispatch
 	// loop. It defaults to (*Orchestrator).executeTask and exists as an
 	// injection seam for unit tests.
@@ -158,28 +172,31 @@ func NewOrchestratorWithRuntime(
 			runner = eval.Runner
 		}
 		storyAuditor = NewStoryQAAuditor(client, runner)
+		storyAuditor.SetDefaultTestCommand(cfg.DefaultTestCommand)
+		storyAuditor.SetAllowedCommands(cfg.AllowedCommands)
 	}
 	o := &Orchestrator{
-		repo:              repo,
-		registry:          reg,
-		llmClient:         client,
-		validator:         val,
-		scheduler:         sched,
-		git:               git,
-		rebaseQueue:       queue,
-		evaluator:         eval,
-		vcsClient:         vcsClient,
-		cfg:               cfg,
-		mailbox:           runtime.Mailbox,
-		watchdogRepair:    runtime.WatchdogRepair,
-		promptRenderer:    runtime.PromptRenderer,
-		qa:                runtime.QA,
-		metricsCollector:  NewMetricsCollector(cfg.MetricsEnabled),
-		taskCompletedChan: make(chan struct{}, 100),
-		observer:          runtime.Observer,
-		acceptanceAuditor: auditor,
-		storyQAAuditor:    storyAuditor,
-		tokenAccounting:   NewTokenAccountingService(),
+		repo:               repo,
+		registry:           reg,
+		llmClient:          client,
+		validator:          val,
+		scheduler:          sched,
+		git:                git,
+		rebaseQueue:        queue,
+		evaluator:          eval,
+		vcsClient:          vcsClient,
+		cfg:                cfg,
+		mailbox:            runtime.Mailbox,
+		watchdogRepair:     runtime.WatchdogRepair,
+		promptRenderer:     runtime.PromptRenderer,
+		qa:                 runtime.QA,
+		metricsCollector:   NewMetricsCollector(cfg.MetricsEnabled),
+		taskCompletedChan:  make(chan struct{}, 100),
+		storyCompletedChan: make(chan struct{}, 50),
+		observer:           runtime.Observer,
+		acceptanceAuditor:  auditor,
+		storyQAAuditor:     storyAuditor,
+		tokenAccounting:    NewTokenAccountingService(),
 	}
 	o.executeTaskFn = o.executeTask
 	if queue != nil {
@@ -278,12 +295,17 @@ func (o *Orchestrator) setLastWorkspaceSync(t time.Time) {
 	o.timesMu.Unlock()
 }
 
-// SetUnblocker attaches an UnblockerAgent to the Orchestrator. It must be called
-// before Start so the goroutine is launched alongside the main polling loop.
-func (o *Orchestrator) SetUnblocker(u *UnblockerAgent) {
+// SetFallbackAgent attaches a FallbackAgent to the Orchestrator. It must be called
+// before Start so the watchdog goroutine is launched alongside the main polling loop.
+func (o *Orchestrator) SetFallbackAgent(f *FallbackAgent) {
 	if o != nil {
-		o.unblocker = u
+		o.fallbackAgent = f
 	}
+}
+
+// SetUnblocker attaches an UnblockerAgent to the Orchestrator (alias for SetFallbackAgent).
+func (o *Orchestrator) SetUnblocker(u *FallbackAgent) {
+	o.SetFallbackAgent(u)
 }
 
 // Start runs the polling loop
@@ -291,9 +313,9 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	if o.rebaseQueue != nil {
 		go o.rebaseQueue.Start(ctx)
 	}
-	// Start unblocker goroutine alongside the main polling loop (nil-safe).
-	if o.unblocker != nil {
-		o.unblocker.Start(ctx)
+	// Start fallback agent goroutine alongside the main polling loop (nil-safe).
+	if o.fallbackAgent != nil {
+		o.fallbackAgent.Start(ctx)
 	}
 	for {
 		hasWork, err := o.RunOnce(ctx)
@@ -319,6 +341,11 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 				default:
 				}
 			case <-o.taskCompletedChan:
+				select {
+				case combinedWakeup <- struct{}{}:
+				default:
+				}
+			case <-o.storyCompletedChan:
 				select {
 				case combinedWakeup <- struct{}{}:
 				default:
@@ -424,4 +451,32 @@ func (o *Orchestrator) markTaskFailed(ctx context.Context, taskID, reason string
 		fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist FAILED status for task %s: %v\n", taskID, err)
 	}
 	return err
+}
+
+// TaskCompletedChan returns the read-only channel signaled whenever a task completes.
+func (o *Orchestrator) TaskCompletedChan() <-chan struct{} {
+	if o == nil {
+		return nil
+	}
+	return o.taskCompletedChan
+}
+
+// StoryCompletedChan returns the read-only channel signaled whenever a user story finishes.
+func (o *Orchestrator) StoryCompletedChan() <-chan struct{} {
+	if o == nil {
+		return nil
+	}
+	return o.storyCompletedChan
+}
+
+// NotifyStoryCompleted signals that a user story has reached terminal state (success or failure),
+// instantly waking up any waiting orchestrator or runner event loops.
+func (o *Orchestrator) NotifyStoryCompleted() {
+	if o == nil || o.storyCompletedChan == nil {
+		return
+	}
+	select {
+	case o.storyCompletedChan <- struct{}{}:
+	default:
+	}
 }

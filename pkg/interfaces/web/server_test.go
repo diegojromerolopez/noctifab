@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,24 +15,44 @@ import (
 )
 
 type mockRepo struct {
+	mu    sync.RWMutex
 	state *domain.State
 }
 
 func (m *mockRepo) Load(ctx context.Context) (*domain.State, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if m.state == nil {
-		m.state = &domain.State{
+		return &domain.State{
 			StoryStatus: domain.StoryRunning,
 			Tasks: []domain.Task{
 				{ID: "task-1", Title: "Initialize Schema", Status: domain.TaskSuccess},
 			},
-		}
+		}, nil
 	}
-	return m.state, nil
+	return m.state.Clone(), nil
 }
 
 func (m *mockRepo) Save(ctx context.Context, s *domain.State) error {
-	m.state = s
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s == nil {
+		m.state = nil
+		return nil
+	}
+	m.state = s.Clone()
 	return nil
+}
+
+func (m *mockRepo) MutateState(fn func(s *domain.State)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.state == nil {
+		m.state = &domain.State{
+			StoryStatus: domain.StoryRunning,
+		}
+	}
+	fn(m.state)
 }
 
 func (m *mockRepo) LoadByID(ctx context.Context, id string) (*domain.State, error) {
@@ -100,13 +121,15 @@ func TestWebServer_Endpoints(t *testing.T) {
 		}
 	})
 
-	t.Run("GET /api/v1/state includes last_resort_used and last_resort active agent", func(t *testing.T) {
-		repo.state.Tasks = []domain.Task{
-			{ID: "task-99", Title: "Deadlocked Task", Status: domain.TaskSuccess, LastResortUsed: true},
-		}
-		repo.state.ActiveAgents = []domain.Agent{
-			{ID: "agent-last_resort-task-99", Role: domain.AgentRoleLastResort, Status: domain.AgentWorking, TaskID: "task-99"},
-		}
+	t.Run("GET /api/v1/state includes fallback_used, last_resort_used, and active agents", func(t *testing.T) {
+		repo.MutateState(func(s *domain.State) {
+			s.Tasks = []domain.Task{
+				{ID: "task-99", Title: "Deadlocked Task", Status: domain.TaskSuccess, FallbackUsed: true, LastResortUsed: true},
+			}
+			s.ActiveAgents = []domain.Agent{
+				{ID: "agent-fallback-task-99", Role: domain.AgentRoleFallback, Status: domain.AgentWorking, TaskID: "task-99"},
+			}
+		})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/state", nil)
 		rec := httptest.NewRecorder()
 
@@ -115,11 +138,14 @@ func TestWebServer_Endpoints(t *testing.T) {
 			t.Errorf("expected 200 OK, got %d", rec.Code)
 		}
 		body := rec.Body.String()
+		if !strings.Contains(body, `"fallback_used":true`) {
+			t.Errorf("expected state to contain fallback_used: true, got: %s", body)
+		}
 		if !strings.Contains(body, `"last_resort_used":true`) {
 			t.Errorf("expected state to contain last_resort_used: true, got: %s", body)
 		}
-		if !strings.Contains(body, `"role":"LAST_RESORT"`) {
-			t.Errorf("expected state to contain role: LAST_RESORT, got: %s", body)
+		if !strings.Contains(body, `"role":"FALLBACK"`) {
+			t.Errorf("expected state to contain role: FALLBACK, got: %s", body)
 		}
 	})
 
@@ -168,9 +194,11 @@ func TestWebServer_Endpoints(t *testing.T) {
 	})
 
 	t.Run("GET /api/v1/clarifications lists clarifications", func(t *testing.T) {
-		repo.state.Clarifications = []domain.Clarification{
-			{ID: "c-1", Question: "Use SQLite or PostgreSQL?", Resolved: false},
-		}
+		repo.MutateState(func(s *domain.State) {
+			s.Clarifications = []domain.Clarification{
+				{ID: "c-1", Question: "Use SQLite or PostgreSQL?", Resolved: false},
+			}
+		})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/clarifications?pending=true", nil)
 		rec := httptest.NewRecorder()
 
@@ -194,9 +222,11 @@ func TestWebServer_Endpoints(t *testing.T) {
 	})
 
 	t.Run("GET /api/v1/orders/list returns orders", func(t *testing.T) {
-		repo.state.Orders = []domain.StoryOrder{
-			{ID: "order-1", Prompt: "Build Auth", Status: "PENDING"},
-		}
+		repo.MutateState(func(s *domain.State) {
+			s.Orders = []domain.StoryOrder{
+				{ID: "order-1", Prompt: "Build Auth", Status: "PENDING"},
+			}
+		})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/list", nil)
 		rec := httptest.NewRecorder()
 

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"strings"
 )
 
 // LLMAction represents a specific tool call request produced by the LLM.
@@ -51,4 +52,22 @@ func UncompactableTailLen(ctx context.Context) int {
 		return n
 	}
 	return 0
+}
+
+// RoleContextKey is the typed context key for passing the active agent role.
+type RoleContextKey struct{}
+
+// WithRoleContext attaches an agent role name to the context.
+func WithRoleContext(ctx context.Context, role string) context.Context {
+	return context.WithValue(ctx, RoleContextKey{}, role)
+}
+
+// GetRoleFromContext retrieves the active agent role name from context.
+func GetRoleFromContext(ctx context.Context) string {
+	if roleVal := ctx.Value(RoleContextKey{}); roleVal != nil {
+		if roleStr, ok := roleVal.(string); ok && roleStr != "" {
+			return strings.ToLower(roleStr)
+		}
+	}
+	return ""
 }
