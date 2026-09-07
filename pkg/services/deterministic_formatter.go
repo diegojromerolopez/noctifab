@@ -22,6 +22,14 @@ func RunDeterministicAutoFormat(ctx context.Context, runner Sandbox, projectPath
 }
 
 func detectDeterministicFormatters(projectPath string) []string {
+	if projectPath == "" {
+		return nil
+	}
+	clean := filepath.Clean(projectPath)
+	if clean == "." || clean == "/" || clean == "/tmp" || clean == "/var/tmp" || clean == filepath.Clean(os.TempDir()) {
+		return nil
+	}
+
 	var cmds []string
 
 	// 1. Go: gofmt

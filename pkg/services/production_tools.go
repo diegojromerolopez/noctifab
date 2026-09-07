@@ -311,8 +311,7 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 	}
 
 	// Deterministic Auto-Formatter Pre-Pass:
-	// Automatically run deterministic local formatters, then any configured formatter_command
-	RunDeterministicAutoFormat(runCtx, t.Runner, state.ProjectPath)
+	// Automatically run configured formatter_command or fallback to auto-detected local formatters.
 	if t.Formatter != nil {
 		if _, err := t.Formatter.Format(runCtx, state.ProjectPath); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Formatter pre-test auto-fix (%s) skipped on error: %v\n", t.Formatter.GetCommand(), err)
@@ -321,6 +320,8 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 		if _, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, ""); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Formatter pre-test auto-fix (%s) skipped on error: %v\n", t.FormatterCommand, err)
 		}
+	} else {
+		RunDeterministicAutoFormat(runCtx, t.Runner, state.ProjectPath)
 	}
 
 	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, command, pkg)
@@ -383,8 +384,7 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
 
-	// Auto-fix pre-step: automatically run deterministic local formatters then configured formatter
-	RunDeterministicAutoFormat(runCtx, t.Runner, state.ProjectPath)
+	// Auto-fix pre-step: automatically run configured formatter or fallback to auto-detected formatters
 	if t.Formatter != nil {
 		if _, err := t.Formatter.Format(runCtx, state.ProjectPath); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Formatter auto-fix (%s) failed and was skipped: %v\n", t.Formatter.GetCommand(), err)
@@ -393,6 +393,8 @@ func (t *RunLinterTool) Execute(ctx context.Context, state *domain.State, args m
 		if _, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.FormatterCommand, ""); err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Formatter auto-fix (%s) failed and was skipped: %v\n", t.FormatterCommand, err)
 		}
+	} else {
+		RunDeterministicAutoFormat(runCtx, t.Runner, state.ProjectPath)
 	}
 
 	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, t.LinterCommand, "")

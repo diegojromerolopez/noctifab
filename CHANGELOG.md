@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.82.1] - 2026-09-07
+
+### Fixed
+- **Deterministic Auto-Formatter Pre-Pass Isolation & Test Hermeticity**:
+  - Guarded `detectDeterministicFormatters` against scanning system root (`/`) and temporary directories (`/tmp`, `/var/tmp`, `os.TempDir()`), preventing accidental detection of foreign language files in CI runner temp directories.
+  - Made `RunDeterministicAutoFormat` a fallback in `RunTestsTool` and `RunLinterTool` when no explicit `Formatter` or `FormatterCommand` is configured.
+  - Updated `production_tools_test.go` to use `t.TempDir()` instead of `/tmp`, ensuring strict test hermeticity across platforms.
+
 ## [0.82.0] - 2026-09-07
+
 
 ### Added
 - **Product Manager Pre-Flight QA Auditor & Story Sanitizer**:

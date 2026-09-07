@@ -65,4 +65,12 @@ func TestRunDeterministicAutoFormat_NilRunnerOrEmptyPath(t *testing.T) {
 	runner := &testDeterministicSandboxRunner{}
 	RunDeterministicAutoFormat(context.Background(), runner, "")
 	assert.Empty(t, runner.executedCommands)
+
+	runner = &testDeterministicSandboxRunner{}
+	RunDeterministicAutoFormat(context.Background(), runner, "/tmp")
+	assert.Empty(t, runner.executedCommands)
+
+	runner = &testDeterministicSandboxRunner{}
+	RunDeterministicAutoFormat(context.Background(), runner, "/")
+	assert.Empty(t, runner.executedCommands)
 }

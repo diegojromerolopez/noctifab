@@ -127,7 +127,7 @@ func TestRunTestsTool_Timeout(t *testing.T) {
 		Timeout: 50 * time.Millisecond,
 	}
 
-	out, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/tmp"}, map[string]any{})
+	out, err := tool.Execute(context.Background(), &domain.State{ProjectPath: t.TempDir()}, map[string]any{})
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -143,7 +143,7 @@ func TestRunLinterTool_Timeout(t *testing.T) {
 		Timeout:       50 * time.Millisecond,
 	}
 
-	out, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/tmp"}, map[string]any{})
+	out, err := tool.Execute(context.Background(), &domain.State{ProjectPath: t.TempDir()}, map[string]any{})
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -170,7 +170,7 @@ func TestRunTestsTool_FormatterCommand(t *testing.T) {
 		Timeout:          5 * time.Second,
 	}
 
-	_, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/tmp"}, map[string]any{
+	_, err := tool.Execute(context.Background(), &domain.State{ProjectPath: t.TempDir()}, map[string]any{
 		"command": "pytest",
 	})
 	if err != nil {
@@ -187,6 +187,34 @@ func TestRunTestsTool_FormatterCommand(t *testing.T) {
 	}
 }
 
+func TestRunTestsTool_AutoFormatFallback(t *testing.T) {
+	tempDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte("module test\n"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main\n"), 0644)
+
+	mockSandbox := &trackingMockSandbox{}
+	tool := &RunTestsTool{
+		Runner:  mockSandbox,
+		Timeout: 5 * time.Second,
+	}
+
+	_, err := tool.Execute(context.Background(), &domain.State{ProjectPath: tempDir}, map[string]any{
+		"command": "go test ./...",
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(mockSandbox.commands) != 2 {
+		t.Fatalf("expected 2 commands executed (auto-formatter then tests), got %d: %v", len(mockSandbox.commands), mockSandbox.commands)
+	}
+	if mockSandbox.commands[0] != "gofmt -w ." {
+		t.Errorf("expected first command to be gofmt, got %q", mockSandbox.commands[0])
+	}
+	if mockSandbox.commands[1] != "go test ./..." {
+		t.Errorf("expected second command to be test runner, got %q", mockSandbox.commands[1])
+	}
+}
+
 func TestRunTestsTool_SyntaxChecker(t *testing.T) {
 	mockSandbox := &trackingMockSandbox{}
 	tool := &RunTestsTool{
@@ -195,7 +223,7 @@ func TestRunTestsTool_SyntaxChecker(t *testing.T) {
 		Timeout:       5 * time.Second,
 	}
 
-	out, err := tool.Execute(context.Background(), &domain.State{ProjectPath: "/tmp"}, map[string]any{
+	out, err := tool.Execute(context.Background(), &domain.State{ProjectPath: t.TempDir()}, map[string]any{
 		"command": "pytest",
 	})
 	if err == nil {
