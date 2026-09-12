@@ -36,7 +36,10 @@ PROJECT_SCALE_TIMEOUTS = {
     "ocalogue": 1800,    # 30m (Datalog deductive engine + Dune)
     "ninline": 1800,     # 30m (Connect-4 game + minimax AI)
     "pyedis": 1800,      # 30m (Redis protocol + async concurrency + AOF)
-    "stricc": 1800,      # 30m (C compiler frontend + LLVM)
+    "stricc": 1800,        # 30m (C compiler frontend + LLVM)
+    "actodis": 1800,       # 30m (Erlang/OTP actor Redis)
+    "thredis": 1800,       # 30m (.NET 9 thread-based Redis)
+    "dotchess": 1800,      # 30m (.NET 9 UCI chess engine)
 
     # Large Enterprise & Multi-Tier Stacks
     "notebook": 2100,      # 35m (React SPA + Fastify REST + WebSockets + PostgreSQL)

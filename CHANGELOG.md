@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.85.0] - 2026-09-12
+
+### Added
+- **New Validation Projects (`actodis`, `thredis`, `dotchess`)**:
+  - Added `actodis`: Actor-based Erlang/OTP 27 implementation of Redis with native RESP2/RESP3 wire protocol, supervised partition actors, concurrent ETS tables, dedicated TTL eviction and AOF persistence actors, and full Pyedis-parity test suites.
+  - Added `thredis`: Thread-based .NET 9 / C# 13 implementation of Redis with native RESP2/RESP3 wire protocol, high-throughput `System.IO.Pipelines`, thread-safe `ConcurrentDictionary` store with fine-grained locking, background channel AOF persistence, and Pyedis-parity test suites.
+  - Added `dotchess`: Headless UCI chess engine in .NET 9 / C# 13 runnable on Linux, featuring 64-bit Bitboards, legal move generator (pawns, en-passant, promotions, castling safety), Alpha-Beta negamax search with Quiescence search, and verified against the canonical Stockfish **Perft** benchmark suite (`test_suite/perftsuite.epd`).
+- **Validation Matrix Expansion & Harness Support**:
+  - Expanded validation matrix from 17 to 20 projects across `validation/README.md`, `README.md`, `validation/bin/matrix_runner.py`, and `validation/bin/runner_all17.py`.
+  - Updated `validation/bin/validate.sh` to natively detect and run Erlang (`rebar3 eunit`) and .NET (`dotnet test`) test suites, execute UCI protocol black-box behavioral verification for `dotchess`, and package build artifacts to `/app/dist_mount`.
+  - Configured per-project Dockerfiles for `actodis` (`erlang:27-alpine` + `redis`), `thredis` (`dotnet:9.0-alpine` + `redis`), and `dotchess` (`dotnet:9.0-alpine`).
+
+### Removed
+- **Obsolete Pointer File Cleanup**:
+  - Removed `validation/projects/TESTING_GUIDE.md` and consolidated all documentation references directly into `validation/README.md`.
+
 ## [0.84.0] - 2026-09-12
 
 ### Added

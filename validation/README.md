@@ -6,7 +6,7 @@ This directory contains resources to run fully containerized, isolated, end-to-e
 
 ## 1. The Validation Matrix at a Glance
 
-The matrix encompasses 17 distinct software projects covering diverse languages, paradigms, toolchains, and architectural boundaries:
+The matrix encompasses 20 distinct software projects covering diverse languages, paradigms, toolchains, and architectural boundaries:
 
 | Project | Language / Stack | Architecture Seam | Strong Axis |
 | :--- | :--- | :--- | :--- |
@@ -27,6 +27,9 @@ The matrix encompasses 17 distinct software projects covering diverse languages,
 | `jpacioli` | Java 21 + Spring Boot 3.3+ + PostgreSQL | Full Event Sourcing (ES) + CQRS + Financial Ledger + JWT/RBAC | Enterprise rigor, event sourcing & CQRS |
 | `ocalogue` | OCaml 5.x + Dune | Datalog deductive logic engine + Semi-Naive Fixpoint | Formal algorithmic logic & stratified negation |
 | `ninline` | Python 3.14 (CLI + Game Engine) | Generalized (M,N,K)-Game, Ray-Casting, Minimax AI | Model-per-Agent routing & deterministic search |
+| `actodis` | Erlang/OTP 27 + Rebar3 | Actor-based Redis RESP key-value store + AOF persistence | Actor concurrency, OTP supervision & binary pattern matching |
+| `thredis` | .NET 9 (C# 13) | Thread-based Redis RESP store + Pipelines + Channels | Multithreaded systems programming, Pipelines & Channels |
+| `dotchess` | .NET 9 (C# 13) | Headless UCI chess engine + 64-bit Bitboards + Alpha-Beta | Stockfish Perft mathematical verification & UCI protocol |
 
 ---
 
@@ -39,7 +42,7 @@ Validation projects are classified by **how much diagnostic signal each run yiel
 | Tier | Purpose | Projects |
 | :--- | :--- | :--- |
 | **Tier 0 — Baseline Smoke** | Fastest, cheapest full-loop proof (init → PM → plan → generate → test → merge). Always run first: if this fails, core orchestration is broken. | `echo` |
-| **Tier 1 — Differentiating Seams** | Core capability coverage testing network/HTTP, typed concurrency, relational databases, distributed brokers, security vaults, and event sourcing. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream`, `jpacioli`, `ninline` |
+| **Tier 1 — Differentiating Seams** | Core capability coverage testing network/HTTP, typed concurrency, relational databases, distributed brokers, security vaults, and event sourcing. | `t4`, `pyedis`, `notebook`, `djanban`, `auth-vault`, `buffonstream`, `jpacioli`, `ninline`, `actodis`, `thredis`, `dotchess` |
 | **Tier 2 — Rigor Probes** | Deep quality and discipline validation under unforgiving compilers, typecheckers, and linters. | `calculator`, `wc`, `fortune`, `stricc`, `ocalogue` |
 | **Tier 3 — Breadth & Heavy Integration** | Heavy runtime services, persistent state brokers, or multi-stage pipelines with high API rate-limit and duration footprint. | `todo-cli`, `frontpunch`, `searchthedocs` |
 
@@ -83,10 +86,12 @@ validation/
 │   ├── validate.sh                # Container entrypoint script executed inside Docker
 │   └── summarize_reports.sh       # Summary aggregator for execution reports
 └── projects/                      # Project definitions (isolated templates)
+    ├── actodis/{Dockerfile, SPEC.md, .noctifab/}
     ├── auth-vault/{Dockerfile, SPEC.md, .noctifab/}
     ├── buffonstream/{Dockerfile, SPEC.md, .noctifab/}
     ├── calculator/{Dockerfile, SPEC.md, .noctifab/}
     ├── djanban/{Dockerfile, SPEC.md, .noctifab/}
+    ├── dotchess/{Dockerfile, SPEC.md, test_suite/, .noctifab/}
     ├── echo/{Dockerfile, SPEC.md, .noctifab/}
     ├── fortune/{Dockerfile, SPEC.md, .noctifab/}
     ├── frontpunch/{Dockerfile, SPEC.md, .noctifab/}
@@ -98,6 +103,7 @@ validation/
     ├── searchthedocs/{Dockerfile, SPEC.md, .noctifab/}
     ├── stricc/{Dockerfile, SPEC.md, .noctifab/}
     ├── t4/{Dockerfile, SPEC.md, .noctifab/}
+    ├── thredis/{Dockerfile, SPEC.md, .noctifab/}
     ├── todo-cli/{Dockerfile, SPEC.md, .noctifab/}
     └── wc/{Dockerfile, SPEC.md, .noctifab/}
 ```
@@ -125,6 +131,9 @@ The base image (`Dockerfile.validation`) is a multi-stage build: `golang:1.25-al
 | `jpacioli` | `eclipse-temurin:21-jdk-alpine` (+ base) | java21, gradle, postgresql | `build.gradle`, `src/**/*.java` |
 | `ocalogue` | `ocaml/opam:alpine-ocaml-5.2` (+ base) | ocaml5.2, opam, dune, menhir | `dune-project`, `lib/*.ml` |
 | `ninline` | `python:3.14-alpine` (+ base) | python3.14, pytest, ruff, mypy | `app/main.py` |
+| `actodis` | `erlang:27-alpine` (+ base) | erlang27, rebar3, redis | `rebar.config`, `src/*.erl` |
+| `thredis` | `mcr.microsoft.com/dotnet/sdk:9.0-alpine` (+ base) | dotnet9, make, redis | `Thredis.sln`, `src/**/*.cs` |
+| `dotchess` | `mcr.microsoft.com/dotnet/sdk:9.0-alpine` (+ base) | dotnet9, make | `Dotchess.sln`, `src/**/*.cs` |
 
 ---
 
@@ -236,7 +245,7 @@ Validation runs apply execution envelopes scaled by architectural complexity (Co
 | Scale Class | Complexity Units | Max Runtime Envelope | Target Projects |
 | :--- | :---: | :---: | :--- |
 | **Tier 0 / Small CLI Utilities** | $CU < 35$ | 15–20 minutes | `echo`, `calculator`, `wc`, `todo-cli`, `fortune` |
-| **Tier 1 / Medium Systems** | $35 \le CU \le 75$ | 30 minutes | `t4`, `frontpunch`, `ocalogue`, `ninline`, `pyedis`, `stricc` |
+| **Tier 1 / Medium Systems** | $35 \le CU \le 75$ | 30 minutes | `t4`, `frontpunch`, `ocalogue`, `ninline`, `pyedis`, `stricc`, `actodis`, `thredis`, `dotchess` |
 | **Tier 2 / Large Multi-Subsystem** | $CU > 75$ | 35–40 minutes | `notebook`, `djanban`, `auth-vault`, `buffonstream`, `searchthedocs`, `jpacioli` |
 
 If a project exceeds its dynamic scale envelope (or explicit `--timeout` limit), the container execution is cleanly terminated and recorded.

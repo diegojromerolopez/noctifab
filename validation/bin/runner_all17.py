@@ -37,6 +37,9 @@ PROJECT_SCALE_TIMEOUTS = {
     "ninline": 1800,       # 30m (Connect-4 game + minimax AI)
     "pyedis": 1800,        # 30m (Redis protocol + async concurrency + AOF)
     "stricc": 1800,        # 30m (C compiler frontend + LLVM)
+    "actodis": 1800,       # 30m (Erlang/OTP actor Redis)
+    "thredis": 1800,       # 30m (.NET 9 thread-based Redis)
+    "dotchess": 1800,      # 30m (.NET 9 UCI chess engine)
 
     # Tier 2: Large Enterprise & Multi-Tier Stacks (CU > 75)
     "notebook": 2100,      # 35m (React SPA + Fastify REST + WebSockets + PostgreSQL)
@@ -62,6 +65,9 @@ PROJECTS = [
     "ninline",
     "ocalogue",
     "stricc",
+    "actodis",
+    "thredis",
+    "dotchess",
 
     # Tier 2: Large Multi-Tier & Enterprise
     "notebook",
