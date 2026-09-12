@@ -67,6 +67,7 @@ The Fallback Agent is invoked automatically under specific pipeline conditions a
 | **TR-13** | **Watchdog Timeout Failure** | Task test execution hangs and exhausts watchdog repair turns | `triggers.watchdog_timeout_turns` (default: `2`) | **Mode 2** (Sovereign Omni-Builder) |
 | **TR-14** | **Post-Merge Integration Collapse** | Global integration test suite fails on `integrationBranch` after story task completion | Global test failure after 2 repair turns | **Mode 2** (Sovereign Omni-Builder) |
 | **TR-15** | **Hard-Stop Permanent Failure** | Task stalls repeatedly even after sovereign intervention attempts | `task.StallCount >= 5` | **Mode 1** (Hard-Stop Sentry) |
+| **TR-16** | **Whole-Project Pipeline Bottleneck / Stagnation** | Stories remain failed or incomplete after iteration loops, or stagnation circuit breaker halts | Loop budget exhausted or circuit breaker tripped | **Mode 2** (Sovereign Rescue Takeover) |
 
 ---
 
@@ -159,6 +160,18 @@ The Fallback Agent is invoked automatically under specific pipeline conditions a
 
 ---
 
+### Scenario 7: Whole-Project Sovereign Rescue Takeover (Architecture Dissolution)
+* **Trigger**: **TR-16** (Unresolved story failures after loop budget exhaustion or stagnation circuit breaker).
+* **What Happens**:
+  1. When iteration loops conclude and any stories remain failed or incomplete, the orchestrator triggers an automatic **Sovereign Rescue Takeover** via `DispatchSovereignRescue` (`cmd/noctifab/cli/start_sovereign_rescue.go`).
+  2. If the parent loop context expired due to execution timeout (`runtime.max_duration`), `DispatchSovereignRescue` automatically decouples from the expired context and allocates an independent emergency rescue context runway (default 10 minutes) so that sovereign recovery is never paralyzed by prior loop budget exhaustion.
+  3. All architectural boundaries, story divisions, and specialized worker roles are dissolved.
+  4. A single Sovereign LLM Agent directly takes control of the entire workspace. It receives `SPEC.md`, the failure diagnostics, compiler/test error logs, and any tool execution errors from previous turns formatted into a structured JSON envelope prompt.
+  5. The Sovereign Agent directly implements missing code, writes unit tests under `tests/`, and supplies standard `build`, `test` (exiting 1 on 0 tests), and `e2e` Makefile targets.
+  6. It executes `ValidateTask` (Dual-Gate Verification, with degraded tolerance for absent host toolchains). Upon success, it commits the changes and marks all stories complete, delivering a runnable project without manual intervention.
+
+---
+
 ## 4. Sovereign Permissions vs. Standard Worker Roles
 
 The Fallback Agent possesses elevated workspace permissions compared to standard isolated worker roles:
@@ -226,6 +239,12 @@ fallback:
     qa_deadlock_turns: 2
     watchdog_timeout_turns: 2
     stall_count_threshold: 2
+
+  # Whole-project emergency sovereign takeover engine (TR-16)
+  sovereign_rescue:
+    enabled: true
+    max_turns: 2      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
+    timeout: 5m
 
 agents:
   fallback:

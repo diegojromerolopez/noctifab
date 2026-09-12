@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -107,6 +109,27 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
 	}
 
+	// Dual-Gate Build Verification:
+	// Verify that the whole project compiles cleanly before executing the test suite.
+	// Catches incomplete stubs, empty translation units, missing header files, and compiler errors.
+	if buildCmd := DetectDefaultBuildCommand(state.ProjectPath); buildCmd != "" && v.Runner != nil {
+		buildTimeout := v.RunTimeout
+		if buildTimeout <= 0 {
+			buildTimeout = 5 * time.Minute
+		}
+		buildCtx, buildCancel := context.WithTimeout(ctx, buildTimeout)
+		buildOut, buildErr := v.Runner.RunCommand(buildCtx, state.ProjectPath, buildCmd, "")
+		buildCancel()
+		if buildErr != nil {
+			if isMissingToolOutput(buildOut + " " + buildErr.Error()) {
+				fmt.Printf("⚠️  [Validation Degraded] Task %s: required build tool is absent on host (%s). Proceeding in degraded mode.\n", task.ID, buildCmd)
+			} else {
+				fmt.Printf("❌ Orchestrator: Task %s project build gate (%s) failed: %v\n", task.ID, buildCmd, buildErr)
+				return false, fmt.Sprintf("Build verification failed (%s):\n%s\n%v", buildCmd, buildOut, buildErr), nil
+			}
+		}
+	}
+
 	runs := v.Runs
 	if runs <= 0 {
 		runs = 1
@@ -189,17 +212,16 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 
 		fmt.Printf("Orchestrator: Task test execution finished (passed=%t, out_len=%d)\n", err == nil, len(out))
 
-		outLower := strings.ToLower(out)
-		noTestsRan := strings.Contains(outLower, "no tests ran") ||
-			strings.Contains(outLower, "ran 0 tests") ||
-			strings.Contains(outLower, "collected 0 items") ||
-			strings.Contains(outLower, "collected 0 tests") ||
-			strings.Contains(outLower, "exit status 5")
+		noTestsRan := isZeroTestExecution(state.ProjectPath, out)
+		outputMsg := out
+		if noTestsRan && strings.TrimSpace(outputMsg) == "" {
+			outputMsg = "Test suite failed: 0 test files discovered in tests/ directory and 0 test assertions executed."
+		}
 
 		results[0] = TestRunResult{
 			RunID:  1,
 			Passed: err == nil && !noTestsRan,
-			Output: out,
+			Output: outputMsg,
 		}
 		return results
 	}
@@ -217,22 +239,50 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 			out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
 			runCancel()
 
-			outLower := strings.ToLower(out)
-			noTestsRan := strings.Contains(outLower, "no tests ran") ||
-				strings.Contains(outLower, "ran 0 tests") ||
-				strings.Contains(outLower, "collected 0 items") ||
-				strings.Contains(outLower, "collected 0 tests") ||
-				strings.Contains(outLower, "exit status 5")
+			noTestsRan := isZeroTestExecution(state.ProjectPath, out)
+			outputMsg := out
+			if noTestsRan && strings.TrimSpace(outputMsg) == "" {
+				outputMsg = "Test suite failed: 0 test files discovered in tests/ directory and 0 test assertions executed."
+			}
 
 			results[idx] = TestRunResult{
 				RunID:  idx + 1,
 				Passed: err == nil && !noTestsRan,
-				Output: out,
+				Output: outputMsg,
 			}
 		}(i)
 	}
 	wg.Wait()
 	return results
+}
+
+func isZeroTestExecution(projectPath string, out string) bool {
+	outLower := strings.ToLower(out)
+	if strings.Contains(outLower, "no tests ran") ||
+		strings.Contains(outLower, "ran 0 tests") ||
+		strings.Contains(outLower, "collected 0 items") ||
+		strings.Contains(outLower, "collected 0 tests") ||
+		strings.Contains(outLower, "exit status 5") {
+		return true
+	}
+	testCmd := DetectDefaultTestCommand(projectPath)
+	if strings.HasPrefix(testCmd, "make") {
+		testsDir := filepath.Join(projectPath, "tests")
+		entries, err := os.ReadDir(testsDir)
+		hasTestFiles := false
+		if err == nil {
+			for _, e := range entries {
+				if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+					hasTestFiles = true
+					break
+				}
+			}
+		}
+		if !hasTestFiles || strings.TrimSpace(out) == "" {
+			return true
+		}
+	}
+	return false
 }
 
 func lastFailureOutput(results []TestRunResult) string {

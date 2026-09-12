@@ -301,6 +301,8 @@ func (r *Renderer) RenderMarkdown(snapshot *ReportSnapshot) []byte {
 			vStatus := "PASSED"
 			if snapshot.Status == domain.ExecutionFailed {
 				vStatus = "FAILED"
+			} else if snapshot.Status != domain.ExecutionSuccess {
+				vStatus = "INCOMPLETE"
 			}
 			fmt.Fprintf(&sb, "| `%s` | %s | `%s` | %s | %s |\n",
 				r.sanitizeCell(pc.ID), r.sanitizeCell(pc.Interface), r.sanitizeCell(execs), r.sanitizeCell(expStr), vStatus)

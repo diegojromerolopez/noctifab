@@ -575,6 +575,21 @@ To preserve LLM context economics and minimize Time-To-First-Token (TTFT):
 - **Routine Task Thinking Suppression**: Extended chain-of-thought thinking generates large reasoning token payloads that introduce 20–60 second latencies per turn. For routine, high-frequency execution roles (`generator`, `tester`, `spike`), Noctifab automatically suppresses extended reasoning (`enable_thinking: false`, `thinking_budget: 0`, `reasoning_effort: "low"`, `thinkingConfig.thinkingBudget: 0`).
 - **Preserved Strategic Reasoning**: Full extended thinking and deep reasoning capabilities are preserved for strategic planning and diagnostic roles (`planner`, `product_manager`, `auditor`, `fallback`).
 
+### 18. Dual-Gate Verification & Zero-Tests Protection (`pkg/services/test_validator.go`)
+- **Build Pre-Gate (`DetectDefaultBuildCommand`)**: Detects `Makefile` (`make build` / `make all`), Cargo (`cargo check`), Go (`go build ./...`), or npm (`npm run build`). Executes clean project compilation before invoking test runners. Compiler failures route directly into surgical repair turns with raw compiler stderr.
+- **Zero-Tests Detection (`isZeroTestExecution`)**: Rejects vacuum test runs (empty `tests/` directories or runner reporting 0 assertions executed). Fails task validation with an actionable directive requiring the agent to write test assertions.
+- **Makefile Standard Recipes**: Mandates three recipes in generated Makefiles: `build`, `test` (exiting with code 1 if 0 tests are found), and `e2e` (black-box behavioral validation).
+
+### 19. Dynamic Self-Healing & Remediation Loop Extension (`cmd/noctifab/cli/start_dag_loop.go`)
+- **Dynamic Remediation Budget**: When loop budgets expire with pending remediation tasks or unfinished stories, automatically grants up to +2 dynamic loops to allow autonomous LLM completion.
+- **Circuit Breaker Protection**: Halts early if the model stagnates with identical failure signatures and zero codebase changes, preventing infinite loops or token exhaustion.
+- **Per-Story Remediation Scoping**: Scopes story QA remediation counts per-story, preventing remediation budgets from leaking across independent user stories.
+
+### 20. Automatic Sovereign Rescue Takeover (`cmd/noctifab/cli/start_sovereign_rescue.go`)
+- **Architecture Dissolution**: When specialized multi-agent stories fail, stall, or exhaust loop iterations, all architectural boundaries, story divisions, and worker roles are automatically dissolved.
+- **Direct Sovereign LLM Takeover**: A single sovereign agent directly takes control of the entire workspace with full authority to write code, author unit tests under `tests/`, implement `build`/`test`/`e2e` Makefile recipes, and pass Dual-Gate verification.
+- **Zero-Block Guarantee**: Eliminates over-specialization paralysis, guaranteeing that the pipeline never deadlocks or terminates with an incomplete build while an autonomous LLM turn can deliver a working program.
+
 ---
 
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.

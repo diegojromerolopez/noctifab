@@ -1,0 +1,326 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
+)
+
+// SovereignRescueOptions parameters for autonomous whole-project sovereign recovery.
+type SovereignRescueOptions struct {
+	TargetDir     string
+	Cfg           *config.Config
+	Repo          domain.StateRepository
+	GitClient     *services.GitClient
+	StoryFiles    []string
+	FailedStories []string
+	LLMClient     domain.LLMClient
+	ToolRegistry  *services.ToolRegistry
+	Validator     *services.TestValidator
+	MaxTurns      int
+	TurnTimeout   time.Duration
+}
+
+// DispatchSovereignRescue prepares execution parameters, ensures a viable context runway
+// (decoupling from expired iteration loop timeouts), and triggers sovereign project rescue.
+func DispatchSovereignRescue(ctx context.Context, opts SovereignRescueOptions) error {
+	if opts.Cfg != nil {
+		rescueCfg := opts.Cfg.GetSovereignRescue()
+		if !rescueCfg.IsEnabled() {
+			fmt.Fprintf(os.Stderr, "ℹ [Sovereign Rescue] Sovereign rescue is disabled in configuration.\n")
+			return errors.New("sovereign rescue is disabled in configuration")
+		}
+		if opts.MaxTurns <= 0 {
+			opts.MaxTurns = rescueCfg.GetMaxTurns()
+		}
+		if opts.TurnTimeout <= 0 {
+			opts.TurnTimeout = rescueCfg.GetTimeout()
+		}
+	} else {
+		if opts.MaxTurns <= 0 {
+			opts.MaxTurns = 2
+		}
+		if opts.TurnTimeout <= 0 {
+			opts.TurnTimeout = 5 * time.Minute
+		}
+	}
+
+	rescueCtx := ctx
+	// Emergency Context Runway:
+	// If the parent loop context already timed out or has negligible runway remaining (< 2m),
+	// allocate a dedicated sovereign rescue timeout from background so that emergency unblocking
+	// is not paralyzed by prior loop budget exhaustion.
+	needsFreshRunway := false
+	if ctx.Err() != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(ctx.Err(), context.Canceled) {
+			needsFreshRunway = true
+		}
+	} else if dl, ok := ctx.Deadline(); ok && time.Until(dl) < 2*time.Minute {
+		needsFreshRunway = true
+	}
+
+	if needsFreshRunway {
+		totalRunway := opts.TurnTimeout * time.Duration(opts.MaxTurns)
+		if totalRunway < 10*time.Minute {
+			totalRunway = 10 * time.Minute
+		}
+		fmt.Fprintf(os.Stderr, "ℹ [Sovereign Rescue] Loop context deadline exhausted; engaging dedicated %v sovereign rescue runway.\n", totalRunway)
+		var cancel context.CancelFunc
+		rescueCtx, cancel = context.WithTimeout(context.Background(), totalRunway)
+		defer cancel()
+	}
+
+	return runSovereignProjectRescue(rescueCtx, opts)
+}
+
+// runSovereignProjectRescue executes an emergency sovereign single-agent takeover
+// of the entire workspace when specialized multi-agent stories fail or stall.
+func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions) error {
+	if opts.LLMClient == nil || opts.ToolRegistry == nil || opts.Validator == nil {
+		return fmt.Errorf("cannot execute sovereign rescue: missing required LLM, registry, or validator dependencies")
+	}
+
+	maxTurns := opts.MaxTurns
+	if maxTurns <= 0 {
+		maxTurns = 2
+	}
+
+	turnTimeout := opts.TurnTimeout
+	if turnTimeout <= 0 {
+		turnTimeout = 3 * time.Minute
+	}
+
+	fmt.Fprintf(os.Stderr, "\n%s\n", strings.Repeat("=", 80))
+	fmt.Fprintf(os.Stderr, "🚨 [SOVEREIGN RESCUE TAKEOVER ACTIVATED]\n")
+	fmt.Fprintf(os.Stderr, "Standard multi-agent pipeline concluded with %d failed/incomplete story(ies).\n", len(opts.FailedStories))
+	fmt.Fprintf(os.Stderr, "Dissolving all architectural boundaries, story divisions, and worker roles.\n")
+	fmt.Fprintf(os.Stderr, "Engaging direct Sovereign LLM Agent to complete and verify the project...\n")
+	fmt.Fprintf(os.Stderr, "%s\n\n", strings.Repeat("=", 80))
+
+	// 1. Purge any stale Git or worktree locks
+	if opts.GitClient != nil {
+		opts.GitClient.CleanStaleLocks(ctx)
+	}
+
+	// 2. Read SPEC.md ground-truth requirements
+	specBytes, _ := os.ReadFile(filepath.Join(opts.TargetDir, "SPEC.md"))
+	specContent := string(specBytes)
+	if strings.TrimSpace(specContent) == "" {
+		specContent = "Implement a working application based on the repository user stories."
+	}
+
+	// 3. Obtain initial failure diagnostics
+	dummyTask := domain.Task{
+		ID:          "sovereign-project-rescue",
+		Title:       "Whole-Project Sovereign Rescue",
+		Description: "Direct sovereign unblocking and completion of the full codebase",
+	}
+
+	var state *domain.State
+	if opts.Repo != nil {
+		state, _ = opts.Repo.Load(ctx)
+	}
+	if state == nil {
+		state = &domain.State{
+			ProjectPath: opts.TargetDir,
+		}
+	}
+
+	_, lastFailureLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
+	if strings.TrimSpace(lastFailureLog) == "" {
+		lastFailureLog = strings.Join(opts.FailedStories, "\n")
+	}
+
+	// 4. Multi-Turn Sovereign Rescue Loop
+	for turn := 1; turn <= maxTurns; turn++ {
+		fmt.Printf("🔧 [Sovereign Rescue] Turn %d/%d: Prompting direct sovereign LLM agent...\n", turn, maxTurns)
+
+		prompt := buildSovereignRescuePrompt(specContent, opts.FailedStories, lastFailureLog, turn, maxTurns)
+
+		turnCtx, cancel := context.WithTimeout(ctx, turnTimeout)
+		resp, err := opts.LLMClient.Complete(turnCtx, prompt)
+		cancel()
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ [Sovereign Rescue] Turn %d LLM invocation error: %v\n", turn, err)
+			continue
+		}
+
+		var toolErrors []string
+		if resp != nil && len(resp.Actions) > 0 {
+			actionsExecuted := 0
+			for _, action := range resp.Actions {
+				if action.Tool == "noop" {
+					continue
+				}
+				tool, ok := opts.ToolRegistry.Get(action.Tool)
+				if ok {
+					_, execErr := tool.Execute(ctx, state, action.Args)
+					if execErr != nil {
+						errMsg := fmt.Sprintf("tool %s failed: %v", action.Tool, execErr)
+						fmt.Fprintf(os.Stderr, "⚠ [Sovereign Tool Failed] %s\n", errMsg)
+						toolErrors = append(toolErrors, errMsg)
+					} else {
+						actionsExecuted++
+					}
+				} else {
+					errMsg := fmt.Sprintf("tool %q is not registered in ToolRegistry", action.Tool)
+					fmt.Fprintf(os.Stderr, "⚠ [Sovereign Tool Failed] %s\n", errMsg)
+					toolErrors = append(toolErrors, errMsg)
+				}
+			}
+			fmt.Printf("🔧 [Sovereign Rescue] Turn %d: executed %d workspace actions\n", turn, actionsExecuted)
+
+			// Stage and commit rescued code
+			if opts.GitClient != nil {
+				_, _ = opts.GitClient.Run(ctx, true, "add", "-A")
+				_, _ = opts.GitClient.Run(ctx, true, "commit", "-m",
+					fmt.Sprintf("fix(sovereign-rescue): direct unblock turn %d/%d", turn, maxTurns))
+			}
+		} else {
+			toolErrors = append(toolErrors, "response contained 0 actionable tool invocations; you must invoke write_file, write_files, or edit_file")
+		}
+
+		// Re-evaluate verification gate
+		passed, newLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
+		if passed {
+			fmt.Printf("✨ [Sovereign Rescue] Turn %d/%d succeeded! All project gates, builds, and test assertions passed.\n", turn, maxTurns)
+
+			// Mark stories and state as completed in repo
+			if opts.Repo != nil {
+				_ = updateRescueSuccessState(ctx, opts.Repo, opts.StoryFiles)
+			}
+			return nil
+		}
+
+		lastFailureLog = newLog
+		if len(toolErrors) > 0 {
+			lastFailureLog = fmt.Sprintf("WORKSPACE TOOL EXECUTION ERRORS IN TURN %d:\n- %s\n\nVALIDATION OUTPUT:\n%s", turn, strings.Join(toolErrors, "\n- "), newLog)
+		}
+		fmt.Printf("⚠️ [Sovereign Rescue] Turn %d verification failed. Feeding diagnostics into turn %d...\n", turn, turn+1)
+	}
+
+	return fmt.Errorf("sovereign rescue exhausted %d turns without passing all validation gates. Last error:\n%s", maxTurns, lastFailureLog)
+}
+
+func buildSovereignRescuePrompt(specContent string, failedStories []string, failureLog string, turn, maxTurns int) string {
+	var sb strings.Builder
+	sb.WriteString("You are Noctifab's Sovereign Omni-Agent.\n")
+	sb.WriteString("The standard multi-agent pipeline encountered an unresolvable bottleneck and could not finish.\n")
+	sb.WriteString("All role restrictions, story divisions, and architectural boundaries are DISSOLVED.\n")
+	sb.WriteString("You have sovereign, direct authority to inspect, create, and modify ANY file in the workspace.\n\n")
+
+	sb.WriteString("=== GROUND TRUTH SPECIFICATION (SPEC.md) ===\n")
+	sb.WriteString(specContent)
+	sb.WriteString("\n\n")
+
+	if len(failedStories) > 0 {
+		sb.WriteString("=== UNRESOLVED / FAILED ROADMAP STORIES ===\n")
+		for _, s := range failedStories {
+			sb.WriteString("- ")
+			sb.WriteString(s)
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString(fmt.Sprintf("=== CURRENT FAILURE DIAGNOSTICS (Turn %d of %d) ===\n", turn, maxTurns))
+	sb.WriteString(failureLog)
+	sb.WriteString("\n\n")
+
+	sb.WriteString("=== DIRECT MANDATE ===\n")
+	sb.WriteString("1. Directly write or modify all source code, headers, and configuration files needed to fulfill SPEC.md.\n")
+	sb.WriteString("2. Author genuine unit tests under tests/ directory with real assertions (0 tests or empty tests will FAIL).\n")
+	sb.WriteString("3. Ensure the project contains a Makefile with three standard recipes:\n")
+	sb.WriteString("   - build: compiles all source binaries cleanly without errors.\n")
+	sb.WriteString("   - test: executes unit tests and exits with code 1 if 0 tests are found.\n")
+	sb.WriteString("   - e2e: executes end-to-end black-box verification of compiled binaries.\n")
+	sb.WriteString("4. Fix all compilation errors, missing translation units, or syntax issues reported above.\n")
+	sb.WriteString("5. Strictly avoid placeholder stubs, error-masking shell tricks, and tautological tests (e.g., 'TODO: implement', 'pass', empty main functions, '|| true', 'assert True'). The anti-stub validator strictly rejects them.\n")
+	sb.WriteString("6. Return tool calls using write_file, write_files, or edit_file to apply changes to the workspace.\n\n")
+
+	sb.WriteString("=== REQUIRED RESPONSE FORMAT ===\n")
+	sb.WriteString("You MUST respond ONLY with a single JSON object matching this schema (do NOT wrap in markdown code fences):\n")
+	sb.WriteString("{\n")
+	sb.WriteString("  \"reasoning\": \"Explanation of fixes applied to unblock the project\",\n")
+	sb.WriteString("  \"actions\": [\n")
+	sb.WriteString("    {\n")
+	sb.WriteString("      \"tool\": \"write_file\",\n")
+	sb.WriteString("      \"args\": {\n")
+	sb.WriteString("        \"path\": \"src/main.py\",\n")
+	sb.WriteString("        \"content\": \"...\"\n")
+	sb.WriteString("      }\n")
+	sb.WriteString("    },\n")
+	sb.WriteString("    {\n")
+	sb.WriteString("      \"tool\": \"write_files\",\n")
+	sb.WriteString("      \"args\": {\n")
+	sb.WriteString("        \"files\": [\n")
+	sb.WriteString("          {\"path\": \"tests/test_app.py\", \"content\": \"...\"},\n")
+	sb.WriteString("          {\"path\": \"Makefile\", \"content\": \"...\"}\n")
+	sb.WriteString("        ]\n")
+	sb.WriteString("      }\n")
+	sb.WriteString("    }\n")
+	sb.WriteString("  ]\n")
+	sb.WriteString("}\n")
+
+	return sb.String()
+}
+
+func updateRescueSuccessState(ctx context.Context, repo domain.StateRepository, storyFiles []string) error {
+	st, err := repo.Load(ctx)
+	if err != nil || st == nil {
+		return err
+	}
+
+	st.BuildStatus = domain.BuildPassing
+	st.StoryStatus = domain.StorySuccess
+	st.StoryError = ""
+
+	// Mark all existing stories as succeeded
+	for i := range st.Stories {
+		st.Stories[i].Status = domain.StorySuccess
+	}
+
+	// Also ensure any stories in storyFiles have StorySuccess records
+	existingStoryIDs := make(map[string]bool)
+	for _, s := range st.Stories {
+		existingStoryIDs[s.ID] = true
+	}
+
+	for idx, sf := range storyFiles {
+		storyID := fmt.Sprintf("story-%04d", idx+1)
+		featName := strings.TrimSuffix(filepath.Base(sf), filepath.Ext(sf))
+		if !existingStoryIDs[storyID] {
+			st.Stories = append(st.Stories, domain.Story{
+				ID:     storyID,
+				Title:  featName,
+				Status: domain.StorySuccess,
+			})
+		}
+	}
+
+	// Mark any pending tasks as success
+	for i := range st.Tasks {
+		if st.Tasks[i].Status != domain.TaskFailed {
+			st.Tasks[i].Status = domain.TaskSuccess
+		}
+	}
+
+	action := domain.Action{
+		Timestamp: time.Now().UTC(),
+		Tool:      "sovereign_rescue_success",
+		Reasoning: "Autonomous sovereign rescue takeover completed all project requirements and passed validation gates",
+		Success:   true,
+	}
+	st.LastActions = append(st.LastActions, action)
+
+	return repo.Save(ctx, st)
+}

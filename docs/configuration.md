@@ -527,6 +527,10 @@ fallback:
     qa_deadlock_turns: 2
     watchdog_timeout_turns: 2
     stall_count_threshold: 4
+  sovereign_rescue:
+    enabled: true
+    max_turns: 2
+    timeout: "5m"
 ```
 
 - **`enabled`** (Boolean): Activate the fallback watchdog goroutine (default: `true`). When `false`, no stall scanning is performed.
@@ -542,6 +546,10 @@ fallback:
   - **`qa_deadlock_turns`** (Integer): Number of consecutive QA deadlock turns before escalating (default: `2`).
   - **`watchdog_timeout_turns`** (Integer): Number of watchdog timeout failures before escalating (default: `2`).
   - **`stall_count_threshold`** (Integer): Number of cumulative stall cycles before summoning sovereign repair (default: `4`).
+- **`sovereign_rescue`**: Configures the whole-project emergency sovereign takeover engine (TR-16):
+  - **`enabled`** (Boolean): Enable autonomous sovereign rescue takeover upon loop exhaustion (default: `true`).
+  - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `2`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
+  - **`timeout`** (Duration): Per-turn execution timeout limit for sovereign LLM completions (default: `5m`).
 
 See [fallback_agent.md](fallback_agent.md) for full references on the unified self-healing architecture, triggers, and compromise hierarchy.
 
@@ -677,6 +685,10 @@ fallback:
     qa_deadlock_turns: 2
     watchdog_timeout_turns: 2
     stall_count_threshold: 4
+  sovereign_rescue:
+    enabled: true
+    max_turns: 2
+    timeout: "5m"
 
 storage:
   provider: "sqlite"

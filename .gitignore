@@ -56,6 +56,8 @@ __pycache__/
 
 # Feedback notes and proposals (local analysis artifacts, not source)
 *_FEEDBACK.md
+validation/projects/*/FEEDBACK.md
+GLOBAL_VALIDATION_INSIGHTS.md
 VALIDATION_CONTAINERS_REGISTRY.md
 POPULARITY_FEATURE_PROPOSALS.md
 MAXIMUM_AUTONOMY_PLAN.md

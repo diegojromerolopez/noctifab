@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/stretchr/testify/assert"
@@ -170,4 +171,178 @@ func TestRunStoryIterationLoops_ConcurrentExecution(t *testing.T) {
 		}
 		assert.Less(t, delta, 500*time.Millisecond, "Child story handoff should be nearly instantaneous")
 	})
+
+	t.Run("when pending remediation tasks remain at loop end, dynamic remediation loop extension is granted", func(t *testing.T) {
+		tempDir := t.TempDir()
+		us1 := filepath.Join(tempDir, "US-001.md")
+		require.NoError(t, os.WriteFile(us1, []byte("# US-001\ndepends_on: []\n"), 0644))
+
+		cfg := config.DefaultConfig()
+		cfg.Agents.Orchestrator.Number = 1
+		cfg.Runtime.Loops = 1
+
+		// Create in-memory mock repository with a pending remediation task
+		mockRepo := &mockDAGStateRepo{
+			state: &domain.State{
+				ProjectPath: tempDir,
+				Tasks: []domain.Task{
+					{ID: "qa-remediation-us-001-1", Status: domain.TaskPending},
+				},
+			},
+		}
+
+		var loopCount int32
+		executor := func(ctx context.Context, storyFile string) error {
+			currentLoop := atomic.AddInt32(&loopCount, 1)
+			if currentLoop == 1 {
+				// First loop fails, but pending remediation task exists in repo
+				return errors.New("initial loop missing requirements")
+			}
+			// In extended loop, mark remediation task as success
+			mockRepo.mu.Lock()
+			mockRepo.state.Tasks[0].Status = domain.TaskSuccess
+			mockRepo.mu.Unlock()
+			return nil
+		}
+
+		opts := StoryLoopOptions{
+			Cfg:          cfg,
+			TargetDir:    tempDir,
+			StoryFiles:   []string{us1},
+			Repo:         mockRepo,
+			ExecuteStory: executor,
+			GitClient:    services.NewGitClient(tempDir),
+			TotalLoops:   1, // Configured for 1 loop, but should dynamically extend to loop 2
+		}
+
+		outcomes, err := runStoryIterationLoops(context.Background(), opts)
+		require.NoError(t, err)
+		assert.NoError(t, outcomes[us1])
+		assert.Equal(t, int32(2), atomic.LoadInt32(&loopCount), "Expected 2 loops executed due to dynamic remediation extension")
+	})
+
+	t.Run("when all pending tasks and story errors are resolved, loop terminates with overall success without running unnecessary loops", func(t *testing.T) {
+		tempDir := t.TempDir()
+		us1 := filepath.Join(tempDir, "US-001.md")
+		require.NoError(t, os.WriteFile(us1, []byte("# US-001\ndepends_on: []\n"), 0644))
+
+		cfg := config.DefaultConfig()
+		cfg.Agents.Orchestrator.Number = 1
+		cfg.Runtime.Loops = 5 // Configured for 5 loops
+
+		mockRepo := &mockDAGStateRepo{
+			state: &domain.State{
+				ProjectPath: tempDir,
+				Tasks: []domain.Task{
+					{ID: "task-1", Status: domain.TaskPending},
+				},
+				Stories: []domain.Story{
+					{ID: "US-001", Status: domain.StoryRunning},
+				},
+			},
+		}
+
+		var loopInvocations int32
+		executor := func(ctx context.Context, storyFile string) error {
+			current := atomic.AddInt32(&loopInvocations, 1)
+			if current == 1 {
+				// Loop 1 resolves the task and story
+				mockRepo.mu.Lock()
+				mockRepo.state.Tasks[0].Status = domain.TaskSuccess
+				mockRepo.state.Stories[0].Status = domain.StorySuccess
+				mockRepo.mu.Unlock()
+				return nil
+			}
+			return nil
+		}
+
+		opts := StoryLoopOptions{
+			Cfg:          cfg,
+			TargetDir:    tempDir,
+			StoryFiles:   []string{us1},
+			Repo:         mockRepo,
+			ExecuteStory: executor,
+			GitClient:    services.NewGitClient(tempDir),
+			TotalLoops:   5,
+		}
+
+		outcomes, err := runStoryIterationLoops(context.Background(), opts)
+		require.NoError(t, err)
+		assert.NoError(t, outcomes[us1])
+		// Since all blocks were resolved in loop 1, it must immediately finish and NOT run loops 2-5
+		assert.Equal(t, int32(1), atomic.LoadInt32(&loopInvocations), "Expected loop to terminate early once all blocks are resolved")
+	})
+
+	t.Run("when stagnation circuit breaker detects unresolvable stagnation, it halts cleanly without hanging", func(t *testing.T) {
+		tempDir := t.TempDir()
+		us1 := filepath.Join(tempDir, "US-001.md")
+		require.NoError(t, os.WriteFile(us1, []byte("# US-001\ndepends_on: []\n"), 0644))
+
+		cfg := config.DefaultConfig()
+		cfg.Agents.Orchestrator.Number = 1
+		cfg.Runtime.Loops = 5
+
+		var loopInvocations int32
+		executor := func(ctx context.Context, storyFile string) error {
+			atomic.AddInt32(&loopInvocations, 1)
+			// Returns identical failure repeatedly
+			return errors.New("persistent unresolvable dependency missing")
+		}
+
+		opts := StoryLoopOptions{
+			Cfg:          cfg,
+			TargetDir:    tempDir,
+			StoryFiles:   []string{us1},
+			ExecuteStory: executor,
+			GitClient:    services.NewGitClient(tempDir),
+			TotalLoops:   5,
+		}
+
+		outcomes, err := runStoryIterationLoops(context.Background(), opts)
+		require.NoError(t, err)
+		assert.Error(t, outcomes[us1])
+		// Circuit breaker trips after 2 consecutive identical failures without progress
+		assert.Equal(t, int32(2), atomic.LoadInt32(&loopInvocations), "Circuit breaker should stop execution after identical consecutive failures")
+	})
+}
+
+type mockDAGStateRepo struct {
+	mu    sync.Mutex
+	state *domain.State
+}
+
+func (m *mockDAGStateRepo) Load(ctx context.Context) (*domain.State, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.state, nil
+}
+
+func (m *mockDAGStateRepo) Save(ctx context.Context, st *domain.State) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.state = st
+	return nil
+}
+
+func (m *mockDAGStateRepo) LoadByID(ctx context.Context, id string) (*domain.State, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.state, nil
+}
+
+func (m *mockDAGStateRepo) LoadAll(ctx context.Context) ([]*domain.State, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.state != nil {
+		return []*domain.State{m.state}, nil
+	}
+	return nil, nil
+}
+
+func (m *mockDAGStateRepo) LoadAllSummaries(ctx context.Context) ([]domain.StateSummary, error) {
+	return nil, nil
+}
+
+func (m *mockDAGStateRepo) PruneFinishedStates(ctx context.Context, keepLast int) (int, error) {
+	return 0, nil
 }

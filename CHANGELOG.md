@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.84.0] - 2026-09-12
+
+### Added
+- **Sovereign Rescue Configuration & Context Runway**:
+  - Implemented `DispatchSovereignRescue` (`cmd/noctifab/cli/start_sovereign_rescue.go`), which dynamically detects whether the parent iteration loop context timed out or is near deadline expiration, provisioning a dedicated emergency rescue context runway (default 10 minutes) so sovereign unblocking is never paralyzed by prior loop budget exhaustion.
+  - Exposed first-class `fallback.sovereign_rescue` configuration setting (`max_turns: 2` by default, `timeout: 5m`, `enabled: true`), with resolution support for `agents.fallback.rescue_max_turns` and environment variable `NOCTIFAB_RESCUE_MAX_TURNS`.
+- **Multi-Turn Workspace Tool Error Feedback**:
+  - Captured tool execution errors and unregistered tool calls during sovereign rescue turns, automatically prepending them to diagnostic failure logs on subsequent turns to empower multi-turn self-correction.
+- **Strict JSON Envelope & Anti-Stub Prompt Directives**:
+  - Enhanced `buildSovereignRescuePrompt` with an explicit JSON envelope schema (`reasoning` and `actions` supporting `write_file`, `write_files`, and `edit_file`) and strict anti-stub directives, preventing output parsing failures and instant anti-stub rejections.
+- **Validation Projects Fallback Configuration**:
+  - Configured first-class root `fallback` and `agents.fallback` blocks (with `sovereign_rescue` enabled, `max_turns: 2`, and `timeout: 5m`) across all 17 validation test suite projects.
+
+### Fixed
+- **Degraded Mode for Missing Build Toolchains**:
+  - Updated `TestValidator.ValidateTask` (`pkg/services/test_validator.go`) to check `isMissingToolOutput` during build pre-gate verification; when build tools (e.g. `make`, `cargo`) are absent on host or sandbox environments, validation now proceeds in degraded mode rather than permanently deadlocking task execution.
+
+## [0.83.0] - 2026-09-07
+
+### Added
+- **Dual-Gate Verification (Build Pre-Gate + Test Gate)**:
+  - Added `DetectDefaultBuildCommand` supporting Makefile (`make build`/`make all`), Cargo (`cargo check`), Go (`go build ./...`), and npm (`npm run build`).
+  - Added Build Pre-Gate in `ValidateTask` executing the project build command before test execution; compiler failures route immediately to the generator surgical repair turn with full compiler output.
+  - Added `isZeroTestExecution` gate detecting empty test suites or zero assertions executed, failing validation with an explicit error to mandate real test authoring.
+- **Dynamic Remediation Loop Extension**:
+  - Automatically extends loop iteration budget by up to +2 passes when pending remediation tasks or unfinished stories remain at the end of the configured loop count.
+  - Built-in circuit breakers halt early if identical failure signatures persist with zero worktree modifications.
+- **Mandatory `e2e` Target & Black-Box Behavioral Contract Execution**:
+  - Updated Product Manager and Generator prompt templates to strictly require `build`, `test` (failing on 0 tests), and `e2e` targets in generated Makefiles.
+  - Hardened `validation/bin/validate.sh` to enforce non-empty test suites, check for `e2e` Makefile targets, and execute real black-box CLI behavioral contracts against compiled binaries (`fortune`, `todo-cli`, `t4`, `wc`, `echo`).
+- **Automatic Sovereign Rescue Takeover**:
+  - Implemented `runSovereignProjectRescue` (`cmd/noctifab/cli/start_sovereign_rescue.go`), an autonomous emergency takeover engine activated whenever stories remain failed or incomplete at the end of the iteration loop budget.
+  - Automatically dissolves all specialized multi-agent boundaries and role restrictions, engaging a single direct Sovereign LLM Agent with direct workspace authority to author missing code, write unit tests under `tests/`, implement `build`/`test`/`e2e` Makefile targets, and force full verification completion.
+- **Story-Scoped Remediation**:
+  - Scoped completeness audit remediation counts per story, preventing remediation counts from leaking between independent stories in a project.
+
+### Fixed
+- **Markdown Contract Scenario Report Rendering**:
+  - Fixed reporting renderer so black-box contract scenarios accurately reflect failure (`FAILED`) and incomplete status rather than false passes when tasks fail.
+
 ## [0.82.1] - 2026-09-07
 
 ### Fixed

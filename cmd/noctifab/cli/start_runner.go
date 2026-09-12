@@ -346,7 +346,23 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if len(failedStories) > 0 {
-		return fmt.Errorf("execution finished with %d incomplete/failed stories across %d loops:\n - %s", len(failedStories), totalLoops, strings.Join(failedStories, "\n - "))
+		rescueOpts := SovereignRescueOptions{
+			TargetDir:     targetDir,
+			Cfg:           cfg,
+			Repo:          repo,
+			GitClient:     gitClient,
+			StoryFiles:    storyFiles,
+			FailedStories: failedStories,
+			LLMClient:     llmClient,
+			ToolRegistry:  reg,
+			Validator:     evaluator,
+		}
+		if rescueErr := DispatchSovereignRescue(cmdCtx, rescueOpts); rescueErr == nil {
+			fmt.Printf("\n✨ [Sovereign Rescue Takeover] Sovereign rescue resolved all remaining roadblocks! All stories marked complete.\n")
+			failedStories = nil
+		} else {
+			return fmt.Errorf("execution finished with %d incomplete/failed stories across %d loops (sovereign rescue failed: %v):\n - %s", len(failedStories), totalLoops, rescueErr, strings.Join(failedStories, "\n - "))
+		}
 	}
 
 	finalOutcome = domain.ExecutionSuccess

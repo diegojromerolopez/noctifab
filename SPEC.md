@@ -1795,6 +1795,9 @@ The **Fallback Agent** (`pkg/services/fallback_agent.go`, `pkg/services/orchestr
    - Emits prominent critical log alerts (`🚨 [CRITICAL ALERT] Fallback Agent triggered`).
    - Registers in `State.ActiveAgents` and logs structured actions to `State.LastActions`.
    - Displays real-time status, badges, and filters in the Web Dashboard.
+7. **Whole-Project Sovereign Rescue Takeover (`start_sovereign_rescue.go`):**
+   - When the multi-agent pipeline finishes iteration loops with incomplete or failed stories (or upon stagnation circuit breaker halts), the orchestrator automatically activates Whole-Project Sovereign Rescue Takeover.
+   - All architectural boundaries, story divisions, and worker roles are dissolved. A single Sovereign LLM Agent directly takes control of the entire workspace with full authority to write code, author unit tests under `tests/`, implement `build`/`test`/`e2e` Makefile recipes, and pass Dual-Gate verification.
 
 
 ### 3.6.15. Whole-Project Acceptance Auditor Agent

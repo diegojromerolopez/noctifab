@@ -219,6 +219,11 @@ func DefaultConfig() *Config {
 				WatchdogTimeoutTurns:      2,
 				StallCountThreshold:       2,
 			},
+			SovereignRescue: SovereignRescueConfig{
+				Enabled:  boolPtr(true),
+				MaxTurns: 2,
+				Timeout:  Duration(5 * time.Minute),
+			},
 		},
 		Unblocker: UnblockerConfig{
 			Enabled:           true,
@@ -235,6 +240,11 @@ func DefaultConfig() *Config {
 				QADeadlockTurns:           2,
 				WatchdogTimeoutTurns:      2,
 				StallCountThreshold:       2,
+			},
+			SovereignRescue: SovereignRescueConfig{
+				Enabled:  boolPtr(true),
+				MaxTurns: 2,
+				Timeout:  Duration(5 * time.Minute),
 			},
 		},
 		Context: ContextConfig{

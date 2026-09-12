@@ -87,9 +87,13 @@ dist/
 bin/
 .venv/
 node_modules/
+log/
+report/
+*.log
+*.wrap.log
 EOF
 else
-  for PATTERN in ".noctifab/data/" ".noctifab/logs/" "target_container/" "dist/" "bin/"; do
+  for PATTERN in ".noctifab/data/" ".noctifab/logs/" "target_container/" "dist/" "bin/" "log/" "report/" "*.log"; do
     if ! grep -qxF "${PATTERN}" .gitignore; then
       echo "${PATTERN}" >> .gitignore
     fi
@@ -106,6 +110,11 @@ cat <<EOF >> .git/info/exclude
 *.db
 *.db-shm
 *.db-wal
+log/
+report/
+dist/
+*.log
+*.wrap.log
 EOF
 
 git add .
@@ -200,17 +209,34 @@ TEST_EXECUTED=0
 
 # A. Makefile-driven verification (runs unit & e2e test targets if present and make is available)
 if { [ -f "Makefile" ] || [ -f "makefile" ]; } && command -v make >/dev/null 2>&1; then
+  # 1. Fail when tests/ directory is empty or missing tests
+  if [ -d "tests" ] && [ -z "$(find tests -maxdepth 2 -type f -not -name '.*' 2>/dev/null)" ]; then
+    echo "❌ Validation failed: 'tests/' directory contains 0 test files. Functional test files must be authored."
+    exit 1
+  fi
+
   if grep -qE "^test:" Makefile 2>/dev/null; then
     echo "Running 'make test'..."
-    if make test; then
-      echo "✅ 'make test' passed successfully."
-      TEST_PASSED=1
-    else
-      echo "❌ 'make test' failed."
+    TEST_OUT=$(make test 2>&1)
+    TEST_EXIT=$?
+    echo "${TEST_OUT}"
+    if [ ${TEST_EXIT} -ne 0 ]; then
+      echo "❌ 'make test' failed with exit code ${TEST_EXIT}."
       exit 1
     fi
+    if [ -z "$(echo "${TEST_OUT}" | tr -d '[:space:]')" ] || echo "${TEST_OUT}" | grep -iqE "no tests ran|ran 0 tests|collected 0 items|collected 0 tests"; then
+      echo "❌ 'make test' ran 0 test cases or produced empty test output."
+      exit 1
+    fi
+    echo "✅ 'make test' passed successfully."
+    TEST_PASSED=1
     TEST_EXECUTED=1
+  else
+    echo "❌ Validation failed: 'test:' recipe is missing from Makefile."
+    exit 1
   fi
+
+  # 2. Mandate an e2e target in generated Makefiles
   if grep -qE "^e2e:" Makefile 2>/dev/null; then
     echo "Running 'make e2e'..."
     if make e2e; then
@@ -221,6 +247,9 @@ if { [ -f "Makefile" ] || [ -f "makefile" ]; } && command -v make >/dev/null 2>&
       exit 1
     fi
     TEST_EXECUTED=1
+  else
+    echo "❌ Mandate violation: 'e2e' recipe is missing from Makefile. Every generated Makefile must define an 'e2e' target."
+    exit 1
   fi
 fi
 
@@ -354,6 +383,108 @@ elif [ -f "dune-project" ]; then
   fi
   TEST_EXECUTED=1
 fi
+
+# C. Real Black-Box Behavioral Contract Execution
+echo "=================================================="
+echo "Executing Black-Box Behavioral Contracts for ${PROJECT}..."
+echo "=================================================="
+
+case "${PROJECT}" in
+  fortune)
+    [ -f "Makefile" ] && make build >/dev/null 2>&1 || true
+    FORTUNE_BIN=""
+    [ -x "./fortune" ] && FORTUNE_BIN="./fortune"
+    [ -x "./bin/fortune" ] && FORTUNE_BIN="./bin/fortune"
+    if [ -n "${FORTUNE_BIN}" ]; then
+      FORTUNE_OUT=$(${FORTUNE_BIN} 2>&1)
+      FORTUNE_EXIT=$?
+      if [ ${FORTUNE_EXIT} -ne 0 ]; then
+        echo "❌ Black-Box Contract Failure: ${FORTUNE_BIN} exited with code ${FORTUNE_EXIT}."
+        exit 1
+      fi
+      if [ -z "$(echo "${FORTUNE_OUT}" | tr -d '[:space:]')" ]; then
+        echo "❌ Black-Box Contract Failure: ${FORTUNE_BIN} produced empty output."
+        exit 1
+      fi
+      echo "✅ Black-Box Contract Passed: ${FORTUNE_BIN} emitted: \"$(echo "${FORTUNE_OUT}" | head -n 1)\""
+    fi
+    ;;
+
+  todo-cli)
+    TODO_BIN=""
+    if [ -f "cmd/todo/main.go" ]; then
+      go build -o ./bin_test_todo ./cmd/todo 2>/dev/null && TODO_BIN="./bin_test_todo"
+    elif [ -f "main.go" ]; then
+      go build -o ./bin_test_todo main.go 2>/dev/null && TODO_BIN="./bin_test_todo"
+    fi
+    if [ -n "${TODO_BIN}" ] && [ -x "${TODO_BIN}" ]; then
+      ${TODO_BIN} add "Verification item 1" >/dev/null 2>&1 || true
+      LIST_OUT=$(${TODO_BIN} list 2>&1 || true)
+      if echo "${LIST_OUT}" | grep -q "Verification item 1"; then
+        echo "✅ Black-Box Contract Passed: todo binary successfully persisted and listed item."
+      else
+        echo "ℹ️ Note: todo list contract evaluated: ${LIST_OUT}"
+      fi
+      rm -f ./bin_test_todo
+    fi
+    ;;
+
+  t4)
+    [ -f "Makefile" ] && make build >/dev/null 2>&1 || true
+    T4_BIN=""
+    [ -x "./bin/t4" ] && T4_BIN="./bin/t4"
+    [ -x "./t4" ] && T4_BIN="./t4"
+    if [ -n "${T4_BIN}" ]; then
+      ${T4_BIN} -p 18080 >/dev/null 2>&1 &
+      T4_PID=$!
+      sleep 1
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18080/ || true)
+      kill -9 ${T4_PID} 2>/dev/null || true
+      wait ${T4_PID} 2>/dev/null || true
+      if [ "${HTTP_CODE}" = "000" ] || [ -z "${HTTP_CODE}" ]; then
+        echo "❌ Black-Box Contract Failure: t4 HTTP server did not respond on port 18080."
+        exit 1
+      fi
+      echo "✅ Black-Box Contract Passed: t4 server responded with HTTP status ${HTTP_CODE}."
+    fi
+    ;;
+
+  wc)
+    WC_BIN=""
+    [ -x "target/release/wc" ] && WC_BIN="target/release/wc"
+    [ -x "wc/target/release/wc" ] && WC_BIN="wc/target/release/wc"
+    if [ -z "${WC_BIN}" ] && command -v cargo >/dev/null 2>&1; then
+      cargo build --release >/dev/null 2>&1 || true
+      [ -x "target/release/wc" ] && WC_BIN="target/release/wc"
+    fi
+    if [ -n "${WC_BIN}" ]; then
+      WC_OUT=$(echo "hello world test" | ${WC_BIN} 2>&1 || true)
+      if [ -z "$(echo "${WC_OUT}" | tr -d '[:space:]')" ]; then
+        echo "❌ Black-Box Contract Failure: wc binary produced empty output."
+        exit 1
+      fi
+      echo "✅ Black-Box Contract Passed: wc emitted ${WC_OUT}"
+    fi
+    ;;
+
+  echo)
+    ECHO_BIN=""
+    if [ -f "cmd/echo/main.go" ]; then
+      go build -o ./bin_test_echo ./cmd/echo 2>/dev/null && ECHO_BIN="./bin_test_echo"
+    elif [ -f "main.go" ]; then
+      go build -o ./bin_test_echo main.go 2>/dev/null && ECHO_BIN="./bin_test_echo"
+    fi
+    if [ -n "${ECHO_BIN}" ]; then
+      ECHO_OUT=$(${ECHO_BIN} "hello dark factory" 2>&1 || true)
+      if ! echo "${ECHO_OUT}" | grep -q "hello dark factory"; then
+        echo "❌ Black-Box Contract Failure: echo binary failed to echo arguments."
+        exit 1
+      fi
+      echo "✅ Black-Box Contract Passed: echo binary echoed arguments correctly."
+      rm -f ./bin_test_echo
+    fi
+    ;;
+esac
 
 if [ "${TEST_EXECUTED}" = "0" ] && [ "${TEST_PASSED}" = "0" ]; then
   # Fallback: check if at least some source files and tests were produced

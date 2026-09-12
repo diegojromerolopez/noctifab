@@ -590,3 +590,42 @@ llm:
       model: "auto"
       api_keys: "OPENROUTER_API_KEY"
 ```
+
+---
+
+## 8. Fallback Agent & Autonomous Sovereign Rescue Takeover
+
+A self-healing configuration designed for unattended dark-factory execution. If tasks stall, retries exhaust, or cyclic compiler deadlocks occur, the fallback agent intervenes. If the primary execution loop exhausts all iterations, the Autonomous Sovereign Rescue Takeover Engine takes over the entire workspace to implement missing requirements, fix build errors, and verify tests.
+
+```yaml
+config_version: "2.0"
+
+fallback:
+  enabled: true
+  poll_interval: "30s"
+  max_retries: 3
+  stall_threshold: "5m"
+  conflict_threshold: "15m"
+  llm_assessment: true
+  triggers:
+    retries_exhaustion: true
+    cyclic_loop_detection: true
+    missing_toolchain_fast_abort: true
+    qa_deadlock_turns: 2
+    watchdog_timeout_turns: 2
+    stall_count_threshold: 4
+  sovereign_rescue:
+    enabled: true
+    max_turns: 2      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
+    timeout: "5m"
+
+agents:
+  fallback:
+    enabled: true
+    temperature: 0.1
+    max_turns: 2
+    timeout: 180s
+    allow_spec_mutation: true
+    allow_scope_reduction: true
+    enforce_spec_quality: true
+```

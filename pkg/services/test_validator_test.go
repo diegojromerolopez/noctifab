@@ -226,6 +226,153 @@ func TestTestValidatorValidateTask(t *testing.T) {
 			t.Errorf("expected sandbox not to be called on syntax failure, got %d calls", sb.calls)
 		}
 	})
+
+	t.Run("when project has Makefile build target and build fails it fails validation with compiler error", func(t *testing.T) {
+		buildDir := t.TempDir()
+		buildState := &domain.State{ProjectPath: buildDir}
+		_ = os.WriteFile(filepath.Join(buildDir, "Makefile"), []byte("build:\n\tgcc src/*.c\n"), 0644)
+
+		sb := &scriptedSandbox{
+			results: []error{errors.New("exit status 1")},
+			outputs: []string{"src/route.c:1: error: ISO C forbids an empty translation unit"},
+		}
+		v := NewTestValidator(sb, false, nil, nil)
+		ok, msg, err := v.ValidateTask(context.Background(), buildState, validatorTask())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Fatalf("expected validation failure when build gate fails")
+		}
+		if !strings.Contains(msg, "Build verification failed (make build)") {
+			t.Errorf("expected build verification failure message, got %q", msg)
+		}
+		if !strings.Contains(msg, "empty translation unit") {
+			t.Errorf("expected compiler error in failure message, got %q", msg)
+		}
+	})
+
+	t.Run("when project has Makefile build target and build tool is absent on host it proceeds in degraded mode", func(t *testing.T) {
+		buildDir := t.TempDir()
+		buildState := &domain.State{ProjectPath: buildDir}
+		_ = os.WriteFile(filepath.Join(buildDir, "Makefile"), []byte("build:\n\tgcc -o app main.c\ntest:\n\t./test\n"), 0644)
+		_ = os.Mkdir(filepath.Join(buildDir, "tests"), 0755)
+		_ = os.WriteFile(filepath.Join(buildDir, "tests", "test_app.c"), []byte("int test() { return 1; }"), 0644)
+
+		sb := &scriptedSandbox{
+			results: []error{errors.New("exit status 127"), nil},
+			outputs: []string{"make: command not found", "All tests passed"},
+		}
+		v := NewTestValidator(sb, false, nil, nil)
+		ok, msg, err := v.ValidateTask(context.Background(), buildState, validatorTask())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !ok {
+			t.Fatalf("expected validation to proceed in degraded mode when build tool is absent, got: %s", msg)
+		}
+		if !strings.Contains(msg, "All validation runs passed successfully") {
+			t.Errorf("expected test suite to pass after degraded build, got %q", msg)
+		}
+	})
+
+	t.Run("when make test runs with 0 tests in tests directory it fails validation with zero tests error", func(t *testing.T) {
+		testDir := t.TempDir()
+		testState := &domain.State{ProjectPath: testDir}
+		_ = os.WriteFile(filepath.Join(testDir, "Makefile"), []byte("test:\n\t./bin/test_suite\n"), 0644)
+		_ = os.Mkdir(filepath.Join(testDir, "tests"), 0755)
+
+		sb := &scriptedSandbox{
+			results: []error{nil},
+			outputs: []string{""},
+		}
+		v := NewTestValidator(sb, false, nil, nil)
+		ok, msg, err := v.ValidateTask(context.Background(), testState, validatorTask())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Fatalf("expected validation failure when 0 test files exist in tests directory")
+		}
+		if !strings.Contains(msg, "0 test files discovered in tests/ directory") {
+			t.Errorf("expected 0 test files error in message, got %q", msg)
+		}
+	})
+
+	t.Run("when build block is resolved and make build succeeds, it proceeds to test suite and passes", func(t *testing.T) {
+		resolvedDir := t.TempDir()
+		resolvedState := &domain.State{ProjectPath: resolvedDir}
+		_ = os.WriteFile(filepath.Join(resolvedDir, "Makefile"), []byte("build:\n\tgcc src/*.c\ntest:\n\t./bin/test_suite\n"), 0644)
+		_ = os.Mkdir(filepath.Join(resolvedDir, "tests"), 0755)
+		_ = os.WriteFile(filepath.Join(resolvedDir, "tests", "test_main.c"), []byte("#include <assert.h>\nint main() {\n    assert(1 == 1);\n    return 0;\n}\n"), 0644)
+
+		sb := &scriptedSandbox{
+			results: []error{nil, nil},
+			outputs: []string{"compilation successful", "PASS: 5 tests passed"},
+		}
+		v := NewTestValidator(sb, false, nil, nil)
+		ok, msg, err := v.ValidateTask(context.Background(), resolvedState, validatorTask())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !ok {
+			t.Fatalf("expected validation success after build and test blocks resolved, got: %s", msg)
+		}
+		if !strings.Contains(msg, "All validation runs passed successfully") {
+			t.Errorf("expected success message, got %q", msg)
+		}
+		if sb.calls != 2 {
+			t.Errorf("expected 2 sandbox calls (build pre-gate + test runner), got %d", sb.calls)
+		}
+	})
+
+	t.Run("when zero-tests block is resolved by authoring test files in tests directory, it validates successfully", func(t *testing.T) {
+		resolvedTestDir := t.TempDir()
+		resolvedTestState := &domain.State{ProjectPath: resolvedTestDir}
+		_ = os.WriteFile(filepath.Join(resolvedTestDir, "Makefile"), []byte("test:\n\t./bin/test_suite\n"), 0644)
+		testsPath := filepath.Join(resolvedTestDir, "tests")
+		_ = os.Mkdir(testsPath, 0755)
+		_ = os.WriteFile(filepath.Join(testsPath, "test_fortune.c"), []byte("void test_fortune() {}\n"), 0644)
+
+		sb := &scriptedSandbox{
+			results: []error{nil},
+			outputs: []string{"OK: 12 tests executed successfully"},
+		}
+		v := NewTestValidator(sb, false, nil, nil)
+		ok, msg, err := v.ValidateTask(context.Background(), resolvedTestState, validatorTask())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !ok {
+			t.Fatalf("expected validation success once test files exist, got: %s", msg)
+		}
+	})
+
+	t.Run("when anti-stub block is resolved by replacing stubs with concrete implementation, validation passes", func(t *testing.T) {
+		taskDir := t.TempDir()
+		taskState := &domain.State{ProjectPath: taskDir}
+		pyFile := filepath.Join(taskDir, "service.py")
+		// Initially a stub
+		_ = os.WriteFile(pyFile, []byte("def run():\n    pass\n"), 0644)
+		task := domain.Task{ID: "T1", Title: "real task", TargetFiles: []string{"service.py"}}
+
+		sb := &scriptedSandbox{results: []error{nil}, outputs: []string{"OK: 1 test passed"}}
+		v := NewTestValidator(sb, false, nil, nil)
+		ok, _, _ := v.ValidateTask(context.Background(), taskState, task)
+		if ok {
+			t.Fatal("expected stub validation to fail initially")
+		}
+
+		// Resolve stub block by replacing with real, functional implementation
+		_ = os.WriteFile(pyFile, []byte("def run():\n    result = 42 * 2\n    return result\n"), 0644)
+		ok, msg, err := v.ValidateTask(context.Background(), taskState, task)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !ok {
+			t.Fatalf("expected validation to pass once stub block is resolved, got: %s", msg)
+		}
+	})
 }
 
 type mockValidatorSyntaxChecker struct {

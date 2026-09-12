@@ -243,6 +243,56 @@ func TestGitClient_CleanStaleLocks(t *testing.T) {
 			t.Errorf("expected lock with active current PID to be preserved even if older than threshold")
 		}
 	})
+
+	t.Run("when stale index.lock blocks git repository, CleanStaleLocks resolves the block and unblocks git operations", func(t *testing.T) {
+		repoDir := t.TempDir()
+		g := NewGitClient(repoDir)
+
+		// Initialize real git repo
+		_, err := g.Run(context.Background(), true, "init")
+		if err != nil {
+			t.Skipf("git not available in environment: %v", err)
+		}
+		_, _ = g.Run(context.Background(), true, "config", "user.email", "test@example.com")
+		_, _ = g.Run(context.Background(), true, "config", "user.name", "Test User")
+
+		// Create initial file
+		testFile := filepath.Join(repoDir, "file.txt")
+		_ = os.WriteFile(testFile, []byte("content 1"), 0644)
+		_, err = g.Run(context.Background(), true, "add", "file.txt")
+		if err != nil {
+			t.Fatalf("git add failed: %v", err)
+		}
+		_, err = g.Run(context.Background(), true, "commit", "-m", "commit 1")
+		if err != nil {
+			t.Fatalf("git commit failed: %v", err)
+		}
+
+		// Simulate orphaned git block: create stale index.lock with dead PID
+		lockPath := filepath.Join(repoDir, ".git", "index.lock")
+		_ = os.WriteFile(lockPath, []byte("9999999"), 0644)
+
+		// Git operation must fail due to lock block
+		_ = os.WriteFile(testFile, []byte("content 2"), 0644)
+		_, blockedErr := g.Run(context.Background(), true, "add", "file.txt")
+		if blockedErr == nil {
+			t.Fatal("expected git operation to fail while index.lock exists")
+		}
+
+		// Resolve the lock block via CleanStaleLocks
+		g.CleanStaleLocks(context.Background())
+
+		// Verify index.lock was removed
+		if _, statErr := os.Stat(lockPath); !os.IsNotExist(statErr) {
+			t.Fatal("expected stale index.lock to be purged by CleanStaleLocks")
+		}
+
+		// Git operation now succeeds cleanly
+		_, unblockedErr := g.Run(context.Background(), true, "add", "file.txt")
+		if unblockedErr != nil {
+			t.Fatalf("expected git operation to succeed once lock block was resolved, got: %v", unblockedErr)
+		}
+	})
 }
 
 func TestOptimisticUnionMerge(t *testing.T) {

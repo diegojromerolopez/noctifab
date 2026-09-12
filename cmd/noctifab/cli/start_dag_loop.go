@@ -41,6 +41,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 
 	var prevGitHead string
 	var prevFailureSig string
+	dynamicExtensionsGranted := 0
 
 	storyConcurrency := opts.Cfg.Agents.Orchestrator.Number
 	if storyConcurrency <= 0 {
@@ -290,7 +291,35 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 		}
 		prevGitHead = currentGitHead
 		prevFailureSig = currentFailureSig
+
+		// Dynamic Self-Healing & Remediation Loop Extension
+		const maxRemediationExtensions = 2
+		if loopIdx == opts.TotalLoops && dynamicExtensionsGranted < maxRemediationExtensions {
+			if hasPending, pendingCount := hasPendingRemediationOrTasks(ctx, opts.Repo); hasPending {
+				dynamicExtensionsGranted++
+				opts.TotalLoops++
+				fmt.Printf("\n🔧 [Dynamic Remediation Extension] Detected %d pending task(s) / remediation directives. Extending loop budget (+1, now loop %d/%d) to allow autonomous LLM completion...\n",
+					pendingCount, loopIdx+1, opts.TotalLoops)
+			}
+		}
 	}
 
 	return storyOutcomes, nil
+}
+
+func hasPendingRemediationOrTasks(ctx context.Context, repo domain.StateRepository) (bool, int) {
+	if repo == nil {
+		return false, 0
+	}
+	st, err := repo.Load(ctx)
+	if err != nil || st == nil {
+		return false, 0
+	}
+	pendingCount := 0
+	for _, t := range st.Tasks {
+		if t.Status == domain.TaskPending || t.Status == domain.TaskInProgress {
+			pendingCount++
+		}
+	}
+	return pendingCount > 0, pendingCount
 }

@@ -85,6 +85,13 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.Runtime.MaxDuration = Duration(d)
 		}
 	}
+	if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_MAX_TURNS"); ok {
+		if i, err := strconv.Atoi(val); err == nil && i > 0 {
+			cfg.Fallback.SovereignRescue.MaxTurns = i
+			cfg.Unblocker.SovereignRescue.MaxTurns = i
+			cfg.Agents.Fallback.RescueMaxTurns = i
+		}
+	}
 	if val, ok := os.LookupEnv("NOCTIFAB_SANDBOX_MODE"); ok {
 		cfg.Sandbox.Mode = val
 	}

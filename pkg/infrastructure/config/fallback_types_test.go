@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -55,4 +56,79 @@ func TestFallbackConfig_Defaults(t *testing.T) {
 	if triggers.StallCountThreshold != 2 {
 		t.Errorf("expected Fallback.Triggers.StallCountThreshold to be 2, got %v", triggers.StallCountThreshold)
 	}
+
+	sr := cfg.GetSovereignRescue()
+	if !sr.IsEnabled() {
+		t.Errorf("expected SovereignRescue to be enabled by default")
+	}
+	if sr.GetMaxTurns() != 2 {
+		t.Errorf("expected SovereignRescue.GetMaxTurns to default to 2, got %d", sr.GetMaxTurns())
+	}
+	if sr.GetTimeout() != 5*time.Minute {
+		t.Errorf("expected SovereignRescue.GetTimeout to default to 5m, got %v", sr.GetTimeout())
+	}
+}
+
+func TestSovereignRescueConfig_CustomAndResolution(t *testing.T) {
+	t.Run("custom fallback.sovereign_rescue values are respected", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Fallback.SovereignRescue.MaxTurns = 4
+		cfg.Fallback.SovereignRescue.Timeout = Duration(10 * time.Minute)
+
+		sr := cfg.GetSovereignRescue()
+		if sr.GetMaxTurns() != 4 {
+			t.Errorf("expected MaxTurns 4, got %d", sr.GetMaxTurns())
+		}
+		if sr.GetTimeout() != 10*time.Minute {
+			t.Errorf("expected Timeout 10m, got %v", sr.GetTimeout())
+		}
+	})
+
+	t.Run("agents.fallback.rescue_max_turns is resolved if fallback.sovereign_rescue is unset", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Fallback.SovereignRescue.MaxTurns = 0
+		cfg.Agents.Fallback.RescueMaxTurns = 5
+
+		sr := cfg.GetSovereignRescue()
+		if sr.GetMaxTurns() != 5 {
+			t.Errorf("expected MaxTurns 5 from agents.fallback.rescue_max_turns, got %d", sr.GetMaxTurns())
+		}
+	})
+
+	t.Run("nil config returns safe default MaxTurns of 2", func(t *testing.T) {
+		var cfg *Config
+		sr := cfg.GetSovereignRescue()
+		if sr.GetMaxTurns() != 2 {
+			t.Errorf("expected default MaxTurns 2, got %d", sr.GetMaxTurns())
+		}
+	})
+
+	t.Run("env var NOCTIFAB_RESCUE_MAX_TURNS overrides MaxTurns", func(t *testing.T) {
+		cfg := DefaultConfig()
+		_ = os.Setenv("NOCTIFAB_RESCUE_MAX_TURNS", "6")
+		defer func() { _ = os.Unsetenv("NOCTIFAB_RESCUE_MAX_TURNS") }()
+
+		applyEnvOverrides(cfg)
+		sr := cfg.GetSovereignRescue()
+		if sr.GetMaxTurns() != 6 {
+			t.Errorf("expected MaxTurns 6 from NOCTIFAB_RESCUE_MAX_TURNS env var, got %d", sr.GetMaxTurns())
+		}
+	})
+
+	t.Run("env var NOCTIFAB_RESCUE_MAX_TURNS works directly on GetSovereignRescue without explicit applyEnvOverrides", func(t *testing.T) {
+		_ = os.Setenv("NOCTIFAB_RESCUE_MAX_TURNS", "8")
+		defer func() { _ = os.Unsetenv("NOCTIFAB_RESCUE_MAX_TURNS") }()
+
+		cfg := &Config{}
+		sr := cfg.GetSovereignRescue()
+		if sr.GetMaxTurns() != 8 {
+			t.Errorf("expected MaxTurns 8, got %d", sr.GetMaxTurns())
+		}
+
+		var nilCfg *Config
+		srNil := nilCfg.GetSovereignRescue()
+		if srNil.GetMaxTurns() != 8 {
+			t.Errorf("expected nilCfg MaxTurns 8, got %d", srNil.GetMaxTurns())
+		}
+	})
 }

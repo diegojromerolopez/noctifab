@@ -643,3 +643,25 @@ sandbox:
     - rustc
     - git
 ```
+
+---
+
+## Environment Variables Reference
+
+Configuration values can be set or overridden via environment variables without editing `.noctifab/config.yaml`:
+
+| Environment Variable | Description | Default |
+|---|---|---|
+| `NOCTIFAB_RESCUE_MAX_TURNS` | Maximum multi-turn cycles for Autonomous Sovereign Rescue Takeover (`fallback.sovereign_rescue.max_turns`) | `2` |
+| `NOCTIFAB_FALLBACK_ENABLED` | Enable or disable the background fallback watchdog goroutine (`fallback.enabled`) | `true` |
+| `NOCTIFAB_FALLBACK_POLL_INTERVAL` | Fallback watchdog polling interval (e.g. `30s`, `1m`) | `30s` |
+| `NOCTIFAB_FALLBACK_MAX_RETRIES` | Maximum retry/unblock attempts before marking a task failed | `3` |
+| `NOCTIFAB_FALLBACK_STALL_THRESHOLD` | Duration before an un-updated in-progress task is considered stalled | `5m` |
+| `NOCTIFAB_FALLBACK_CONFLICT_THRESHOLD` | Duration before intervening on conflict-blocked tasks | `15m` |
+| `NOCTIFAB_MAX_ACTIONS` | Maximum agent actions allowed per run (`runtime.max_actions`) | `100` |
+| `NOCTIFAB_MAX_DURATION` | Maximum overall execution duration (e.g. `45m`, `2h`) | `0` (unlimited) |
+| `NOCTIFAB_SANDBOX_MODE` | Sandbox execution mode (`host`, `docker`, or `disabled`) | `host` |
+| `NOCTIFAB_DB_PATH` | Path to the SQLite state database | `.noctifab/data/noctifab.db` |
+| `NOCTIFAB_LLM_PROVIDER` | Primary LLM provider name (`openai`, `anthropic`, `gemini`, etc.) | `openai` |
+| `NOCTIFAB_LLM_MODEL` | Primary LLM model identifier | `latest` |
+| `NOCTIFAB_LOG_LEVEL` | Log verbosity (`debug`, `info`, `warn`, `error`) | `info` |

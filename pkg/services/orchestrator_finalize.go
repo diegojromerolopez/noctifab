@@ -135,11 +135,21 @@ func (o *Orchestrator) shouldAuditStoryCompleteness(state *domain.State) bool {
 	if o.storyQAAuditor == nil || state == nil {
 		return false
 	}
-	// Count existing remediation tasks for this story to avoid exceeding max retry threshold (2)
+	storyID := ExtractStoryID(state.Metadata.InputPath)
+	if storyID == "" {
+		storyID = state.Metadata.FeatureName
+	}
+	// Count existing remediation tasks for this specific story to avoid exceeding max retry threshold (2)
 	remediationCount := 0
 	for _, t := range state.Tasks {
 		if strings.HasPrefix(t.ID, "qa-remediation-") {
-			remediationCount++
+			if storyID != "" {
+				if t.StoryID == storyID || strings.HasPrefix(strings.ToLower(t.ID), "qa-remediation-"+strings.ToLower(storyID)) {
+					remediationCount++
+				}
+			} else {
+				remediationCount++
+			}
 		}
 	}
 	return remediationCount < 2
@@ -150,23 +160,37 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 		return false
 	}
 
-	remediationCount := 0
-	var prevTaskIDs []string
-	currentStoryID := ""
-	for _, t := range state.Tasks {
-		if strings.HasPrefix(t.ID, "qa-remediation-") {
-			remediationCount++
-		}
-		if t.StoryID != "" && currentStoryID == "" {
-			currentStoryID = t.StoryID
-		}
-		prevTaskIDs = append(prevTaskIDs, t.ID)
+	currentStoryID := ExtractStoryID(state.Metadata.InputPath)
+	if currentStoryID == "" {
+		currentStoryID = state.Metadata.FeatureName
 	}
 	if currentStoryID == "" {
-		currentStoryID = ExtractStoryID(state.Metadata.InputPath)
+		for _, t := range state.Tasks {
+			if t.StoryID != "" {
+				currentStoryID = t.StoryID
+				break
+			}
+		}
 	}
 	if currentStoryID == "" {
 		currentStoryID = "US-001"
+	}
+
+	remediationCount := 0
+	var prevTaskIDs []string
+	storyPrefix := strings.ToLower(currentStoryID)
+	for _, t := range state.Tasks {
+		if strings.HasPrefix(t.ID, "qa-remediation-") && (t.StoryID == currentStoryID || strings.HasPrefix(strings.ToLower(t.ID), "qa-remediation-"+storyPrefix)) {
+			remediationCount++
+		}
+		if t.StoryID == currentStoryID || strings.HasPrefix(t.ID, currentStoryID+"-") {
+			prevTaskIDs = append(prevTaskIDs, t.ID)
+		}
+	}
+	if len(prevTaskIDs) == 0 {
+		for _, t := range state.Tasks {
+			prevTaskIDs = append(prevTaskIDs, t.ID)
+		}
 	}
 
 	taskID := fmt.Sprintf("qa-remediation-%s-%d", strings.ToLower(currentStoryID), remediationCount+1)

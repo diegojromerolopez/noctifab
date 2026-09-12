@@ -267,9 +267,15 @@ func getStoryTasks(state *domain.State, featName, storyID string) []domain.Task 
 		return state.Tasks
 	}
 	var tasks []domain.Task
+	storyLower := strings.ToLower(storyID)
+	featLower := strings.ToLower(featName)
 	for _, t := range state.Tasks {
+		idLower := strings.ToLower(t.ID)
+		isRemediation := (storyLower != "" && strings.HasPrefix(idLower, "qa-remediation-"+storyLower)) ||
+			(featLower != "" && strings.HasPrefix(idLower, "qa-remediation-"+featLower))
 		if (storyID != "" && t.StoryID == storyID) || (featName != "" && t.StoryID == featName) ||
-			(storyID != "" && strings.HasPrefix(t.ID, storyID+"-")) || (featName != "" && strings.HasPrefix(t.ID, featName+"-")) {
+			(storyID != "" && strings.HasPrefix(t.ID, storyID+"-")) || (featName != "" && strings.HasPrefix(t.ID, featName+"-")) ||
+			isRemediation {
 			tasks = append(tasks, t)
 		}
 	}
