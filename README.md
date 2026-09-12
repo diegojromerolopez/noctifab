@@ -901,6 +901,10 @@ To optimize validation container runs for near-instantaneous development feedbac
 | **`buffonstream`** | Go 1.22+ (gRPC / Protobuf) | `SPEC.md` | Protobuf-Native Storage Engine & Real-Time Bi-Directional Streaming passes |
 | **`jpacioli`** | Java 21 + Spring Boot 3.3+ + PostgreSQL | `SPEC.md` | Full Event Sourcing (ES) + CQRS Double-Entry Financial Ledger + JWT/RBAC passes |
 | **`ocalogue`** | OCaml 5.x + Dune | `SPEC.md` | Datalog Deductive Logic Engine + Semi-Naive Fixpoint + Official Test Suite passes |
+| **`ninline`** | Python 3.14 (CLI + Game Engine) | `SPEC.md` | Generalized (M,N,K)-Game + Minimax AI with Alpha-Beta pruning passes |
+| **`actodis`** | Erlang/OTP 27 + Rebar3 | `SPEC.md` | Actor-based Redis RESP Key-Value Store + AOF persistence passes |
+| **`thredis`** | .NET 9 (C# 13) | `SPEC.md` | Thread-based Redis RESP Key-Value Store + Pipelines + Channels passes |
+| **`dotchess`** | .NET 9 (C# 13) | `SPEC.md` | Headless UCI Chess Engine + Stockfish Canonical Perft Validation passes |
 
 The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
 

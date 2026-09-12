@@ -16,11 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added automated recompilation (`make build`), hermetic unit test gating (`go test -race`), and automated Docker image rebuilding for both `base` and project-specific images.
   - Created convenience launcher `validation/bin/pyedis_loop.py` forwarding directly to `single_project_loop.py pyedis`.
   - Added Makefile convenience targets `make pyedis-loop` and `make auto-improve PROJECT=<name>`.
+- **New Validation Projects (`actodis`, `thredis`, `dotchess`)**:
+  - Added `actodis`: Actor-based Erlang/OTP 27 implementation of Redis with native RESP2/RESP3 wire protocol, supervised partition actors, concurrent ETS tables, dedicated TTL eviction and AOF persistence actors, and full Pyedis-parity test suites.
+  - Added `thredis`: Thread-based .NET 9 / C# 13 implementation of Redis with native RESP2/RESP3 wire protocol, high-throughput `System.IO.Pipelines`, thread-safe `ConcurrentDictionary` store with fine-grained locking, background channel AOF persistence, and Pyedis-parity test suites.
+  - Added `dotchess`: Headless UCI chess engine in .NET 9 / C# 13 runnable on Linux, featuring 64-bit Bitboards, legal move generator (pawns, en-passant, promotions, castling safety), Alpha-Beta negamax search with Quiescence search, and verified against the canonical Stockfish **Perft** benchmark suite (`test_suite/perftsuite.epd`).
+- **Validation Matrix Expansion & Harness Support**:
+  - Expanded validation matrix from 17 to 20 projects across `validation/README.md`, `README.md`, `validation/bin/matrix_runner.py`, and `validation/bin/runner_all17.py`.
+  - Updated `validation/bin/validate.sh` to natively detect and run Erlang (`rebar3 eunit`) and .NET (`dotnet test`) test suites, execute UCI protocol black-box behavioral verification for `dotchess`, and package build artifacts to `/app/dist_mount`.
+  - Configured per-project Dockerfiles for `actodis` (`erlang:27-alpine` + `redis`), `thredis` (`dotnet:9.0-alpine` + `redis`), and `dotchess` (`dotnet:9.0-alpine`).
 - **Architectural Design & Documentation**:
   - Authored `docs/validation_feedback_loop_design.md` detailing the 6-phase improvement pipeline, agnosticism guardrail AST filters, and mathematical fitness scoring.
   - Authored `docs/single_project_loop.md` detailing single-project micro-loop mechanics, token telemetry schema, and CLI options.
   - Registered both documents in `docs/index.md` toctree.
   - Updated `validation/README.md` (Section 5.2.6) and root `README.md` (Feature #33 and running validation commands).
+
+### Removed
+- **Obsolete Pointer File Cleanup**:
+  - Removed `validation/projects/TESTING_GUIDE.md` and consolidated all documentation references directly into `validation/README.md`.
 
 ## [0.84.0] - 2026-09-12
 

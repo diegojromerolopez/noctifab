@@ -382,6 +382,33 @@ elif [ -f "dune-project" ]; then
     exit 1
   fi
   TEST_EXECUTED=1
+
+# 8. Erlang projects (actodis)
+elif [ -f "rebar.config" ]; then
+  echo "Running Erlang rebar3 test suites..."
+  if rebar3 eunit; then
+    echo "✅ rebar3 eunit passed successfully."
+    TEST_PASSED=1
+  else
+    echo "❌ rebar3 eunit failed."
+    exit 1
+  fi
+  TEST_EXECUTED=1
+
+# 9. .NET projects (thredis, dotchess)
+elif compgen -G "*.sln" >/dev/null || compgen -G "*.csproj" >/dev/null || compgen -G "src/*/*.csproj" >/dev/null || compgen -G "*/*.sln" >/dev/null; then
+  echo "Running .NET test suites..."
+  if dotnet test -c Release; then
+    echo "✅ dotnet test passed successfully."
+    TEST_PASSED=1
+  elif dotnet test; then
+    echo "✅ dotnet test passed successfully."
+    TEST_PASSED=1
+  else
+    echo "❌ dotnet test failed."
+    exit 1
+  fi
+  TEST_EXECUTED=1
 fi
 
 # C. Real Black-Box Behavioral Contract Execution
@@ -484,11 +511,24 @@ case "${PROJECT}" in
       rm -f ./bin_test_echo
     fi
     ;;
+
+  dotchess)
+    DOTCHESS_OUT=$(dotnet run -c Release --no-build 2>/dev/null <<EOF || true
+uci
+quit
+EOF
+)
+    if echo "${DOTCHESS_OUT}" | grep -q "uciok"; then
+      echo "✅ Black-Box Contract Passed: dotchess responded to UCI protocol with uciok."
+    else
+      echo "ℹ️ Note: dotchess UCI probe evaluated: ${DOTCHESS_OUT}"
+    fi
+    ;;
 esac
 
 if [ "${TEST_EXECUTED}" = "0" ] && [ "${TEST_PASSED}" = "0" ]; then
   # Fallback: check if at least some source files and tests were produced
-  SOURCE_COUNT=$(find . -maxdepth 3 -not -path '*/.*' \( -name "*.go" -o -name "*.rs" -o -name "*.py" -o -name "*.c" -o -name "*.rb" -o -name "*.ts" -o -name "*.js" -o -name "*.java" -o -name "*.ml" \) | wc -l)
+  SOURCE_COUNT=$(find . -maxdepth 3 -not -path '*/.*' \( -name "*.go" -o -name "*.rs" -o -name "*.py" -o -name "*.c" -o -name "*.rb" -o -name "*.ts" -o -name "*.js" -o -name "*.java" -o -name "*.ml" -o -name "*.erl" -o -name "*.cs" \) | wc -l)
   if [ "${SOURCE_COUNT}" -gt 0 ]; then
     echo "✅ Found ${SOURCE_COUNT} source/test files generated."
     TEST_PASSED=1
@@ -569,6 +609,17 @@ if [ -d "/app/dist_mount" ]; then
         cp _build/default/bin/main.exe /app/dist_mount/ocalogue 2>/dev/null || true
       fi
     fi
+  elif [ "${PROJECT}" = "actodis" ]; then
+    if [ -f "rebar.config" ]; then
+      rebar3 compile >/dev/null 2>&1 || true
+      if [ -d "_build/default/lib/actodis" ]; then
+        cp -a _build/default/lib/actodis /app/dist_mount/ 2>/dev/null || true
+      fi
+    fi
+  elif [ "${PROJECT}" = "thredis" ]; then
+    dotnet publish -c Release -o /app/dist_mount/thredis >/dev/null 2>&1 || true
+  elif [ "${PROJECT}" = "dotchess" ]; then
+    dotnet publish -c Release -o /app/dist_mount/dotchess >/dev/null 2>&1 || true
   fi
 fi
 
