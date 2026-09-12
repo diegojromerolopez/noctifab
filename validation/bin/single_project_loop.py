@@ -723,15 +723,18 @@ def run_project_validation(project: str, timeout_seconds: int) -> Dict[str, Any]
 # 5. Closed-Loop Controller & Markdown Reporter
 # ==============================================================================
 
-def write_loop_markdown_report(project: str, iterations_data: List[Dict[str, Any]]):
+def write_loop_markdown_report(project: str, iterations_data: List[Dict[str, Any]], total_loop_duration: float = 0.0, target_duration_seconds: Optional[int] = None):
     """Writes <PROJECT>_LOOP_REPORT.md at repository root."""
     report_file = os.path.join(ROOT_DIR, f"{project.upper().replace('-', '_')}_LOOP_REPORT.md")
 
+    target_str = f"{target_duration_seconds / 3600:.2f}h ({target_duration_seconds:,}s)" if target_duration_seconds else "Unbounded"
     doc = f"""# Autonomous Feedback & Improvement Loop Report: `{project}`
 
 **Target Project**: `validation/projects/{project}`  
 **Execution Timestamp**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}  
 **Total Iterations Executed**: {len(iterations_data)}  
+**Target Loop Duration**: {target_str}  
+**Total Wall-Clock Time Elapsed**: {total_loop_duration / 3600:.2f}h ({total_loop_duration:.1f}s)  
 
 ---
 
@@ -837,7 +840,9 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Single-Project Autonomous Feedback & Improvement Loop for Noctifab")
     parser.add_argument("project", nargs="?", default="pyedis", help="Target validation project (e.g. pyedis, thredis, calculator, t4). Default: pyedis")
-    parser.add_argument("--max-iterations", type=int, default=3, help="Maximum loop iterations (default: 3)")
+    parser.add_argument("--max-iterations", type=int, default=None, help="Maximum loop iterations (default: 3 if no duration specified)")
+    parser.add_argument("--duration-hours", type=float, default=None, help="Total duration limit in hours for the autonomous feedback loop (e.g. 5 or 2.5)")
+    parser.add_argument("--duration", type=int, default=None, help="Total duration limit in seconds for the autonomous feedback loop (e.g. 18000)")
     parser.add_argument("--timeout", type=int, default=None, help="Timeout in seconds per run (default: dynamic by project scale)")
     parser.add_argument("--dry-run", action="store_true", help="Harvest existing telemetry without running container")
     parser.add_argument("--skip-compile", action="store_true", help="Skip recompiling Noctifab binary")
@@ -851,8 +856,23 @@ def main():
 
     timeout = args.timeout if args.timeout and args.timeout > 0 else PROJECT_SCALE_TIMEOUTS.get(project, 1800)
 
+    # Resolve duration constraints
+    target_duration_seconds: Optional[int] = None
+    if args.duration_hours is not None and args.duration_hours > 0:
+        target_duration_seconds = int(args.duration_hours * 3600)
+    elif args.duration is not None and args.duration > 0:
+        target_duration_seconds = int(args.duration)
+
+    if args.max_iterations is not None:
+        max_iterations = args.max_iterations
+    elif target_duration_seconds is not None:
+        max_iterations = 999
+    else:
+        max_iterations = 3
+
+    duration_str = f"{target_duration_seconds/3600:.2f}h ({target_duration_seconds:,}s)" if target_duration_seconds else "unbounded"
     log_header(f"NOCTIFAB SINGLE-PROJECT AUTONOMOUS IMPROVEMENT LOOP: {project.upper()}")
-    log_step("CONFIG", f"Project: {project} | Max Iterations: {args.max_iterations} | Timeout: {timeout}s ({timeout/60:.0f}m)")
+    log_step("CONFIG", f"Project: {project} | Max Iterations: {max_iterations} | Loop Duration: {duration_str} | Timeout/Run: {timeout}s ({timeout/60:.0f}m)")
 
     output_dir = os.path.join(project_dir, "output")
     log_file = os.path.join(output_dir, "log", f"{project}.log")
@@ -886,9 +906,23 @@ def main():
             sys.exit(1)
 
     iterations_data = []
+    loop_start_time = time.time()
+    iteration_idx = 0
 
-    for i in range(1, args.max_iterations + 1):
-        log_header(f"LOOP ITERATION {i} OF {args.max_iterations}: {project.upper()}")
+    while True:
+        iteration_idx += 1
+        elapsed_loop_time = time.time() - loop_start_time
+
+        if target_duration_seconds is not None and elapsed_loop_time >= target_duration_seconds:
+            log_step("TIME", f"Target duration limit reached ({elapsed_loop_time/3600:.2f}h / {target_duration_seconds/3600:.2f}h). Concluding loop.")
+            break
+
+        if iteration_idx > max_iterations:
+            log_step("ITER", f"Max iterations ({max_iterations}) reached. Concluding loop.")
+            break
+
+        time_status = f" | Elapsed: {elapsed_loop_time/3600:.2f}h | Remaining: {(target_duration_seconds - elapsed_loop_time)/3600:.2f}h" if target_duration_seconds else ""
+        log_header(f"LOOP ITERATION {iteration_idx} (Max: {max_iterations}{time_status}): {project.upper()}")
 
         # Ensure every iteration starts completely from anew
         clean_project_workspace(project)
@@ -899,11 +933,17 @@ def main():
 
         # 2. Check for success
         if result["exit_code"] == 0:
-            log_success(f"Iteration {i}: {project} passed all verification gates! Target achieved.")
+            log_success(f"Iteration {iteration_idx}: {project} passed all verification gates! Target achieved.")
+            break
+
+        # Check duration before moving to next iteration
+        elapsed_loop_time = time.time() - loop_start_time
+        if target_duration_seconds is not None and elapsed_loop_time >= target_duration_seconds:
+            log_step("TIME", f"Target duration limit reached after iteration {iteration_idx} ({elapsed_loop_time/3600:.2f}h / {target_duration_seconds/3600:.2f}h).")
             break
 
         # 3. If further iterations remain, apply self-improvement actions
-        if i < args.max_iterations:
+        if iteration_idx < max_iterations:
             diag = result["diagnostic"]
             log_step("DIAGNOSE", f"Identified {len(diag.bottlenecks)} bottlenecks. Formulating agnostic improvements...")
 
@@ -917,9 +957,10 @@ def main():
                     log_error("Failed to recompile Noctifab during iteration. Stopping loop.")
                     break
 
+    total_loop_duration = time.time() - loop_start_time
     # Final summary report
-    write_loop_markdown_report(project, iterations_data)
-    log_header("LOOP COMPLETE")
+    write_loop_markdown_report(project, iterations_data, total_loop_duration=total_loop_duration, target_duration_seconds=target_duration_seconds)
+    log_header(f"LOOP COMPLETE: Executed {len(iterations_data)} iteration(s) in {total_loop_duration/3600:.2f}h ({total_loop_duration:.1f}s)")
 
 
 if __name__ == "__main__":

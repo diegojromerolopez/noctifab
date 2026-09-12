@@ -104,13 +104,19 @@ validate-images:
 validate-summary:
 	@./validation/bin/summarize_reports.sh
 
-# Run autonomous feedback and improvement loop on pyedis
+# Run autonomous feedback and improvement loop on pyedis (e.g. make pyedis-loop DURATION_HOURS=5 or make pyedis-loop ARGS="--duration-hours 5")
 pyedis-loop:
-	@python3 validation/bin/single_project_loop.py pyedis
+	@FLAGS="$(ARGS)"; \
+	if [ -n "$(DURATION_HOURS)" ]; then FLAGS="$$FLAGS --duration-hours $(DURATION_HOURS)"; fi; \
+	if [ -n "$(MAX_ITERATIONS)" ]; then FLAGS="$$FLAGS --max-iterations $(MAX_ITERATIONS)"; fi; \
+	python3 validation/bin/single_project_loop.py pyedis $$FLAGS
 
-# Run autonomous feedback and improvement loop on any specified PROJECT (e.g. make auto-improve PROJECT=thredis)
+# Run autonomous feedback and improvement loop on any specified PROJECT (e.g. make auto-improve PROJECT=thredis DURATION_HOURS=5)
 auto-improve:
-	@python3 validation/bin/single_project_loop.py $(PROJECT)
+	@FLAGS="$(ARGS)"; \
+	if [ -n "$(DURATION_HOURS)" ]; then FLAGS="$$FLAGS --duration-hours $(DURATION_HOURS)"; fi; \
+	if [ -n "$(MAX_ITERATIONS)" ]; then FLAGS="$$FLAGS --max-iterations $(MAX_ITERATIONS)"; fi; \
+	python3 validation/bin/single_project_loop.py $(PROJECT) $$FLAGS
 
 
 

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.86.0] - 2026-09-12
+
+### Added
+- **Time-Bounded Autonomous Loop Execution (`validation/bin/single_project_loop.py`)**:
+  - Added `--duration-hours` (float) and `--duration` (int seconds) CLI options to support time-budgeted execution runs (e.g. `--duration-hours 5` for 5-hour loops).
+  - Dynamically computes total elapsed wall-clock time and allows iterations to run continuously up to the configured time limit or until all verification gates pass.
+  - Formatted loop countdown timer and progress indicators across iterations.
+  - Tracked total wall-clock elapsed time in the generated `<PROJECT>_LOOP_REPORT.md` report header.
+  - Enhanced Makefile convenience targets `pyedis-loop` and `auto-improve` with `DURATION_HOURS`, `MAX_ITERATIONS`, and `ARGS` parameter forwarding.
+  - Documented duration-based loop capabilities in `docs/single_project_loop.md` and `validation/README.md`.
+
 ## [0.85.0] - 2026-09-12
 
 ### Added

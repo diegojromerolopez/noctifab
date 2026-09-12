@@ -92,18 +92,20 @@ python3 validation/bin/single_project_loop.py [PROJECT] [OPTIONS]
 
 ### Arguments & Flags
 *   `[project]`: Target validation project name (`pyedis`, `thredis`, `calculator`, `t4`, `wc`, etc.). Defaults to `pyedis`.
-*   `--max-iterations=N`: Number of closed-loop improvement cycles before concluding (default: `3`).
+*   `--duration-hours=HOURS`: Total duration limit in hours for the autonomous loop (e.g. `5` or `2.5`). When set, the loop executes iterations until total elapsed wall-clock time reaches the limit or verification succeeds.
+*   `--duration=SECONDS`: Total duration limit in seconds for the autonomous loop (e.g. `18000`).
+*   `--max-iterations=N`: Number of closed-loop improvement cycles before concluding (default: `3` if no duration is specified; unbounded until duration is reached when duration is set).
 *   `--timeout=SECONDS`: Per-run timeout ceiling. If omitted, applies dynamic scale-based timeouts (Small CLI: 15–20m, Medium Systems: 30m, Large Enterprise: 35–40m).
 *   `--dry-run`: Extracts and displays diagnostic metrics and token usage from existing artifacts on disk without launching a Docker container.
 *   `--skip-compile`: Skips recompiling Noctifab and updating the base image (useful for rapid diagnostic inspection).
 
 ### Common Examples
 
-#### 1. Running on `pyedis` (Python 3.14 Redis RESP Store)
+#### 1. Running on `pyedis` for 5 Hours (Time-Bounded Soak & Improvement)
 ```bash
-python3 validation/bin/single_project_loop.py pyedis
+python3 validation/bin/single_project_loop.py pyedis --duration-hours 5
 # Or via Makefile
-make pyedis-loop
+make pyedis-loop DURATION_HOURS=5
 ```
 
 #### 2. Running on `thredis` (.NET 9 Multithreaded Redis)

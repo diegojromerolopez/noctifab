@@ -246,6 +246,11 @@ python3 validation/bin/single_project_loop.py pyedis
 # Or via Makefile:
 make pyedis-loop
 
+# Run on pyedis with duration limit (e.g. 5 hours)
+python3 validation/bin/single_project_loop.py pyedis --duration-hours 5
+# Or via Makefile:
+make pyedis-loop DURATION_HOURS=5
+
 # Run on thredis or calculator with custom iterations
 python3 validation/bin/single_project_loop.py thredis --max-iterations=3
 # Or via Makefile:
