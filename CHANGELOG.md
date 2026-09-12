@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.85.0] - 2026-09-12
+
+### Added
+- **Single-Project Autonomous Feedback & Improvement Loop (`validation/bin/single_project_loop.py`)**:
+  - Implemented an automated closed-loop self-improvement engine that executes any chosen target validation project (`pyedis`, `thredis`, `calculator`, `t4`, etc., defaulting to `pyedis`).
+  - Integrated deep multi-channel telemetry harvesting directly from the SQLite database (`.noctifab/data/noctifab.db`), querying failed tool actions (`actions WHERE success = 0`), task retry counters, and story lifecycle stats.
+  - Implemented comprehensive **Token Accounting & Inflation Detection**, tracking prompt and completion tokens broken down by agent role and task, computing tokens per completed task, and factoring token economy into a multi-objective scalar fitness function.
+  - Ingested container console logs for compiler and typechecker diagnostics (`mypy --strict`), linter churn, unit test tracebacks, and negative constraint violations (e.g. forbidden `pytest` rule in `pyedis`).
+  - Added automated recompilation (`make build`), hermetic unit test gating (`go test -race`), and automated Docker image rebuilding for both `base` and project-specific images.
+  - Created convenience launcher `validation/bin/pyedis_loop.py` forwarding directly to `single_project_loop.py pyedis`.
+  - Added Makefile convenience targets `make pyedis-loop` and `make auto-improve PROJECT=<name>`.
+- **Architectural Design & Documentation**:
+  - Authored `docs/validation_feedback_loop_design.md` detailing the 6-phase improvement pipeline, agnosticism guardrail AST filters, and mathematical fitness scoring.
+  - Authored `docs/single_project_loop.md` detailing single-project micro-loop mechanics, token telemetry schema, and CLI options.
+  - Registered both documents in `docs/index.md` toctree.
+  - Updated `validation/README.md` (Section 5.2.6) and root `README.md` (Feature #33 and running validation commands).
+
 ## [0.84.0] - 2026-09-12
 
 ### Added

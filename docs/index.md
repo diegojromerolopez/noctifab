@@ -45,6 +45,8 @@ fallback_agent
 loop_orchestration
 secrets
 noctifab_evaluation_report
+validation_feedback_loop_design
+single_project_loop
 ```
 
 ---
