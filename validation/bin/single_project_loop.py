@@ -522,19 +522,24 @@ def rebuild_validation_images(project: str) -> bool:
     return True
 
 
-def clean_project_workspace(project: str) -> None:
-    """Wipes all generated artifacts, databases, caches, and dangling containers to ensure each iteration starts from anew."""
-    log_step("CLEAN", f"Purging previous workspace state, caches, and artifacts for '{project}' to start from anew...")
-
-    # 1. Terminate and remove any dangling Docker containers for this project
+def remove_project_containers(project: str) -> None:
+    """Forcefully stops and removes all Docker containers associated with the project."""
     try:
         ps_cmd = f"docker ps -aq --filter name=validate-{project}"
         container_ids = subprocess.check_output(ps_cmd, shell=True, text=True).strip().split()
         if container_ids:
             subprocess.run(["docker", "rm", "-f"] + container_ids, capture_output=True, text=True)
-            log_step("CLEAN", f"Removed {len(container_ids)} dangling Docker container(s) for {project}.")
+            log_step("DOCKER", f"Removed existing Docker container(s) for {project}: {', '.join(container_ids)}")
     except Exception:
         pass
+
+
+def clean_project_workspace(project: str) -> None:
+    """Wipes all generated artifacts, databases, caches, and dangling containers to ensure each iteration starts from anew."""
+    log_step("CLEAN", f"Purging previous workspace state, caches, and artifacts for '{project}' to start from anew...")
+
+    # 1. Terminate and remove any existing or dangling Docker containers for this project
+    remove_project_containers(project)
 
     project_dir = os.path.join(PROJECTS_DIR, project)
     output_dir = os.path.join(project_dir, "output")
@@ -666,6 +671,9 @@ def run_project_validation(project: str, timeout_seconds: int) -> Dict[str, Any]
     duration = time.time() - start_time
     exit_code = 124 if timed_out else (proc.returncode if proc.returncode is not None else 1)
     status_str = "TIMEOUT" if timed_out else ("SUCCESS" if exit_code == 0 else f"FAILED (exit {exit_code})")
+
+    # Forcefully remove the Docker container now that the run has concluded
+    remove_project_containers(project)
 
     log_step("FINISH", f"{project} finished in {duration:.1f}s with status: {status_str}")
 

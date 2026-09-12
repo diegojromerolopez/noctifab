@@ -82,6 +82,18 @@ fi
 
 # 2. Launch the validation container in the background.
 CONTAINER="validate-${PROJECT}-$$"
+
+# Remove any existing containers for this project so we always start from anew
+EXISTING_CONTAINERS="$(docker ps -aq --filter name="validate-${PROJECT}" 2>/dev/null || true)"
+if [ -n "${EXISTING_CONTAINERS}" ]; then
+  docker rm -f ${EXISTING_CONTAINERS} >/dev/null 2>&1 || true
+fi
+
+cleanup() {
+  docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
 LOG_FILE="${LOG_DIR}/${PROJECT}.log"
 TS="$(date +%H:%M:%S)"
 echo "[${TS}] launching ${CONTAINER} (project=${PROJECT}, image=${IMAGE})..."
