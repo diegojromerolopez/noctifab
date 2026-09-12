@@ -486,10 +486,11 @@ def compile_noctifab() -> bool:
 
 def rebuild_validation_images(project: str) -> bool:
     """Rebuilds the noctifab-validation:base and project-specific Docker images with the newly compiled binary."""
-    log_step("DOCKER", "Rebuilding noctifab-validation:base Docker image...")
+    log_step("DOCKER", "Rebuilding noctifab-validation:base Docker image (--no-cache)...")
     res = subprocess.run(
         [
             "docker", "build",
+            "--no-cache",
             "-f", os.path.join(ROOT_DIR, "validation", "Dockerfile.validation"),
             "-t", "noctifab-validation:base",
             ROOT_DIR,
@@ -503,10 +504,11 @@ def rebuild_validation_images(project: str) -> bool:
 
     project_dockerfile = os.path.join(PROJECTS_DIR, project, "Dockerfile")
     if os.path.exists(project_dockerfile):
-        log_step("DOCKER", f"Rebuilding noctifab-validation:{project} Docker image...")
+        log_step("DOCKER", f"Rebuilding noctifab-validation:{project} Docker image (--no-cache)...")
         res_proj = subprocess.run(
             [
                 "docker", "build",
+                "--no-cache",
                 "-f", project_dockerfile,
                 "-t", f"noctifab-validation:{project}",
                 ROOT_DIR,
@@ -518,7 +520,15 @@ def rebuild_validation_images(project: str) -> bool:
             log_error(f"Docker {project} image rebuild failed:\n{res_proj.stderr}")
             return False
 
-    log_success(f"Validation Docker images updated for {project}.")
+    # Explicitly verify the binary inside the container
+    ver_cmd = ["docker", "run", "--rm", f"noctifab-validation:{project}", "noctifab", "version"]
+    ver_res = subprocess.run(ver_cmd, capture_output=True, text=True)
+    if ver_res.returncode == 0:
+        log_success(f"Verified container binary: {ver_res.stdout.strip()}")
+    else:
+        log_warning(f"Could not verify container version: {ver_res.stderr.strip()}")
+
+    log_success(f"Validation Docker images successfully updated for {project}.")
     return True
 
 

@@ -18,7 +18,11 @@ WORKDIR /app
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache \
-    go build -o bin/noctifab cmd/noctifab/main.go
+    VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
+    GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown") && \
+    CGO_ENABLED=0 go build \
+      -ldflags "-X github.com/diegojromerolopez/noctifab/pkg/version.Version=${VERSION} -X github.com/diegojromerolopez/noctifab/pkg/version.GitCommit=${GIT_COMMIT}" \
+      -o bin/noctifab cmd/noctifab/main.go
 
 FROM alpine:3.21
 RUN apk add --no-cache git bash docker-cli curl
