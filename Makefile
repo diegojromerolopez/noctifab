@@ -104,4 +104,13 @@ validate-images:
 validate-summary:
 	@./validation/bin/summarize_reports.sh
 
+# Run autonomous feedback and improvement loop on pyedis
+pyedis-loop:
+	@python3 validation/bin/single_project_loop.py pyedis
+
+# Run autonomous feedback and improvement loop on any specified PROJECT (e.g. make auto-improve PROJECT=thredis)
+auto-improve:
+	@python3 validation/bin/single_project_loop.py $(PROJECT)
+
+
 

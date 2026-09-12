@@ -212,6 +212,7 @@ The core engine runs a continuous polling event loop that drives all development
 30. **Dynamic Capability Discovery via `/models` & Routine Task Extended Thinking Suppression**: Dynamically queries the provider `/models` endpoint to discover reasoning capabilities and token ceilings with zero hardcoded model names. For routine scaffolding, syntax repairs, and single-line edits, Noctifab automatically suppresses heavy reasoning/extended thinking budgets (`budget_tokens: 0` / minimal reasoning) to accelerate turn turnaround times.
 31. **True Telegraphic (`caveman`) & Plain English (`simple_english`) Prompt Compaction**: Advanced prompt compression engine that strips prose boilerplate, conversational filler, markdown formatting bloat, and empty lines, rendering telegraphic bullet directives while strictly preserving technical invariants, code blocks, file paths, and contract schemas. Operates in conjunction with Spec & Context slicing to deliver minimal token payloads.
 32. **Multi-Story Parallel Concurrency (`orchestrator.number: 2-3`)**: Enables concurrent story orchestration where up to $N$ stories execute simultaneously across isolated worker pipelines, maximizing hardware and LLM provider concurrency.
+33. **Single-Project Autonomous Feedback & Improvement Loop (`validation/bin/single_project_loop.py`)**: Closed-loop diagnostic and self-healing micro-loop that executes any target validation project (e.g. `pyedis`, `thredis`, `calculator`), harvests multi-channel telemetry (SQLite state database, per-agent token accounting, failed tool actions, compiler/mypy/linter errors), analyzes root causes, recompiles Noctifab, and re-tests in rapid 10–25 minute cycles (`make pyedis-loop`, `make auto-improve PROJECT=<name>`).
 
 ---
 
@@ -921,9 +922,13 @@ make validate
 make validate PROJECT=todo-cli
 make validate PROJECT=wc
 make validate PROJECT=frontpunch
+
+# Run the autonomous feedback & improvement loop (recompiles and tests in closed iterations)
+make pyedis-loop
+make auto-improve PROJECT=thredis
 ```
 
-See [`validation/README.md`](validation/README.md) for full setup and credential details.
+See [`validation/README.md`](validation/README.md) and [`docs/single_project_loop.md`](docs/single_project_loop.md) for full setup and credential details.
 
 ## Collaboration & Coding Standards
 

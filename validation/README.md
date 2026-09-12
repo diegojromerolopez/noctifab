@@ -238,6 +238,23 @@ make validate-all SERIAL=1
 ./validation/bin/run_all.sh --serial --projects echo,t4,pyedis
 ```
 
+#### 6. Single-Project Autonomous Feedback & Improvement Loop
+Runs an automated closed-loop self-improvement cycle on any project (harvesting SQLite DB, tokens, logs, reports, recompiling Noctifab, and re-testing):
+```bash
+# Run on pyedis (default)
+python3 validation/bin/single_project_loop.py pyedis
+# Or via Makefile:
+make pyedis-loop
+
+# Run on thredis or calculator with custom iterations
+python3 validation/bin/single_project_loop.py thredis --max-iterations=3
+# Or via Makefile:
+make auto-improve PROJECT=thredis
+
+# Dry-run inspection of existing telemetry on disk without re-running container
+python3 validation/bin/single_project_loop.py pyedis --dry-run
+```
+
 ### 5.3 Scale-Based Dynamic Timeouts
 
 Validation runs apply execution envelopes scaled by architectural complexity (Complexity Units, $CU$):
