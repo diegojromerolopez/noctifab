@@ -24,6 +24,7 @@ import glob
 import re
 import sqlite3
 import json
+import shutil
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -521,12 +522,96 @@ def rebuild_validation_images(project: str) -> bool:
     return True
 
 
+def clean_project_workspace(project: str) -> None:
+    """Wipes all generated artifacts, databases, caches, and dangling containers to ensure each iteration starts from anew."""
+    log_step("CLEAN", f"Purging previous workspace state, caches, and artifacts for '{project}' to start from anew...")
+
+    # 1. Terminate and remove any dangling Docker containers for this project
+    try:
+        ps_cmd = f"docker ps -aq --filter name=validate-{project}"
+        container_ids = subprocess.check_output(ps_cmd, shell=True, text=True).strip().split()
+        if container_ids:
+            subprocess.run(["docker", "rm", "-f"] + container_ids, capture_output=True, text=True)
+            log_step("CLEAN", f"Removed {len(container_ids)} dangling Docker container(s) for {project}.")
+    except Exception:
+        pass
+
+    project_dir = os.path.join(PROJECTS_DIR, project)
+    output_dir = os.path.join(project_dir, "output")
+
+    # 2. Clean project output directory
+    if os.path.exists(output_dir):
+        # We preserve empty log, report, and dist directory shells to avoid Docker bind-mount synchronization issues on macOS/Linux hosts
+        for item in os.listdir(output_dir):
+            item_path = os.path.join(output_dir, item)
+            if item in ("log", "report", "dist"):
+                # Clean contents within these directories
+                if os.path.isdir(item_path):
+                    for sub in os.listdir(item_path):
+                        sub_path = os.path.join(item_path, sub)
+                        try:
+                            if os.path.isdir(sub_path) and not os.path.islink(sub_path):
+                                shutil.rmtree(sub_path, ignore_errors=True)
+                            else:
+                                os.remove(sub_path)
+                        except Exception:
+                            pass
+            else:
+                # Remove all other generated files, source directories, .git, .noctifab, caches, etc.
+                try:
+                    if os.path.isdir(item_path) and not os.path.islink(item_path):
+                        shutil.rmtree(item_path, ignore_errors=True)
+                    else:
+                        os.remove(item_path)
+                except Exception:
+                    pass
+    else:
+        os.makedirs(output_dir, exist_ok=True)
+
+    # Ensure empty directory shells exist for mounting
+    for sub in ("log", "report", "dist"):
+        os.makedirs(os.path.join(output_dir, sub), exist_ok=True)
+
+    # 3. Clean any state or data files inside validation/projects/<project>/.noctifab/ if present
+    # (Strictly preserve config.yaml and secrets.yaml)
+    noctifab_dir = os.path.join(project_dir, ".noctifab")
+    if os.path.exists(noctifab_dir):
+        for item in ["data", "logs", "worktrees", "state.json", "run.lock"]:
+            target = os.path.join(noctifab_dir, item)
+            if os.path.exists(target):
+                try:
+                    if os.path.isdir(target) and not os.path.islink(target):
+                        shutil.rmtree(target, ignore_errors=True)
+                    else:
+                        os.remove(target)
+                except Exception:
+                    pass
+
+    # 4. Remove any stray generated files or toolchain caches in the project directory root
+    protected_entries = {".noctifab", "Dockerfile", "SPEC.md", "output", "README.md"}
+    if os.path.exists(project_dir):
+        for entry in os.listdir(project_dir):
+            if entry not in protected_entries:
+                entry_path = os.path.join(project_dir, entry)
+                if entry in ("__pycache__", ".venv", ".pytest_cache", ".mypy_cache", "target", "node_modules", ".git", "build", "_build", "dist", "bin") or entry.endswith((".pyc", ".db", ".log", ".json", ".lock")):
+                    try:
+                        if os.path.isdir(entry_path) and not os.path.islink(entry_path):
+                            shutil.rmtree(entry_path, ignore_errors=True)
+                        else:
+                            os.remove(entry_path)
+                    except Exception:
+                        pass
+
+    log_success(f"Workspace for '{project}' completely wiped and reset to pristine state.")
+
+
 # ==============================================================================
 # 4. Project Execution Runner
 # ==============================================================================
 
 def run_project_validation(project: str, timeout_seconds: int) -> Dict[str, Any]:
     """Executes target project container with streaming activity monitoring."""
+    clean_project_workspace(project)
     log_header(f"EXECUTING VALIDATION RUN: {project} (Timeout: {timeout_seconds}s / {timeout_seconds/60:.0f}m)")
     start_time = time.time()
     cmd = [os.path.join(ROOT_DIR, "validation", "bin", "run_one.sh"), project]
@@ -778,7 +863,7 @@ def main():
 
     # Initial Build check
     if not args.skip_compile:
-        if not compile_noctifab() or not rebuild_validation_base_image():
+        if not compile_noctifab() or not rebuild_validation_images(project):
             log_error("Initial compilation failed. Aborting loop.")
             sys.exit(1)
 
@@ -786,6 +871,9 @@ def main():
 
     for i in range(1, args.max_iterations + 1):
         log_header(f"LOOP ITERATION {i} OF {args.max_iterations}: {project.upper()}")
+
+        # Ensure every iteration starts completely from anew
+        clean_project_workspace(project)
 
         # 1. Run validation project
         result = run_project_validation(project, timeout_seconds=timeout)
@@ -806,8 +894,8 @@ def main():
 
             # Recompile and prepare for next iteration
             if not args.skip_compile:
-                log_step("IMPROVE", "Recompiling Noctifab and updating base image...")
-                if not compile_noctifab() or not rebuild_validation_base_image():
+                log_step("IMPROVE", f"Recompiling Noctifab and updating validation images for {project}...")
+                if not compile_noctifab() or not rebuild_validation_images(project):
                     log_error("Failed to recompile Noctifab during iteration. Stopping loop.")
                     break
 
