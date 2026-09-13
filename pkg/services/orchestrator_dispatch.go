@@ -224,9 +224,28 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 					}
 				}
 
+				if buildOK && o.acceptanceAuditor != nil {
+					auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
+					if auditErr != nil {
+						fmt.Fprintf(os.Stderr, "⚠ Story %s: Acceptance Audit encountered an error: %v\n", state.Metadata.FeatureName, auditErr)
+					} else if auditResult != nil && !auditResult.Passed && len(auditResult.Gaps) > 0 {
+						if o.shouldRemediateAcceptanceAudit(state) {
+							if o.queueAcceptanceRemediationTask(ctx, state, auditResult) {
+								return true, nil
+							}
+						}
+						buildOK = false
+						fmt.Printf("❌ Story %s: Whole-project Acceptance Audit failed with %d specification gap(s):\n", state.Metadata.FeatureName, len(auditResult.Gaps))
+						for _, g := range auditResult.Gaps {
+							fmt.Printf(" - %s\n", g)
+						}
+					}
+				}
+
 				if buildOK {
 					if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
 						fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
+						buildOK = false
 					}
 				}
 			} else {

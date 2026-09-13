@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.87.0] - 2026-09-13
+
+### Added
+- **Actionable Whole-Project Acceptance Audit Gate (`pkg/services/acceptance_auditor.go`, `pkg/services/orchestrator_acceptance.go`, `pkg/services/orchestrator_dispatch.go`)**:
+  - Made the Whole-Project Acceptance Audit Gate actionable and behavioral: the auditor now pre-flights the workspace's black-box E2E test suite (`docker-compose.e2e.yml`, `make e2e`, or configured test commands) and passes the real execution output to the auditor LLM prompt.
+  - Added anti-gaming and anti-tautology validation invariants: audits evaluate whether all functional contracts, commands, and interfaces declared in `SPEC.md` are covered by real assertions rather than empty/tautological test recipes (e.g. process start + `SIGTERM` without payloads).
+  - Wired an autonomous internal remediation loop: when specification gaps or missing/tautological E2E tests are detected, Noctifab injects a targeted remediation task (`spec-remediation-<n>`) specifying the missing contracts and requiring non-tautological E2E tests.
+  - Enforced strict failure gating in `FinalizeUserStory`: if whole-project acceptance audit fails after remediation attempts, story finalization returns an error and the build exits non-zero (`exit 1`), signaling failures to outer autonomous feedback loops.
+- **Server Archetype Safeguards in Story Sanitizer (`pkg/services/story_sanitizer.go`)**:
+  - Prevented network servers, TCP daemons, key-value stores, wire protocol engines, and databases (`tcp`, `socket`, `daemon`, `server`, `key-value`, `database`, `wire-protocol`, `resp2`, `resp3`) from being misclassified as small single-binary CLI tools and truncated to 1 feature story.
+- **Subsystem & Anti-Tautology Directives in PM Prompts (`pkg/infrastructure/prompts/defaults/product_manager/`)**:
+  - Mandated comprehensive functional subsystem coverage across user stories to prevent complex specs from being collapsed into superficial scaffolding.
+  - Added explicit black-box E2E anti-tautology invariants across Product Manager, Auditor, and Generator prompts.
+
 ## [0.86.0] - 2026-09-12
 
 ### Added

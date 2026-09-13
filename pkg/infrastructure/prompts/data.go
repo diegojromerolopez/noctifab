@@ -71,6 +71,7 @@ type AcceptanceAuditPromptData struct {
 	StoryContracts  string
 	PublicContracts string
 	TaskSummaries   string
+	E2ELog          string
 }
 
 // SpecPromptData backs the spec/* action templates.

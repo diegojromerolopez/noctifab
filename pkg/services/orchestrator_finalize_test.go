@@ -229,7 +229,8 @@ func TestOrchestrator_FinalizeUserStory(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(repoDir, "SPEC.md"), []byte("# Redis Spec\nPING, GET, SET, KEYS"), 0644))
 
 		err = orch.FinalizeUserStory(context.Background(), state)
-		assert.NoError(t, err)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "acceptance audit failed")
 		assert.Equal(t, 0, vcs.prCalls, "PR creation must be aborted when acceptance audit fails")
 	})
 

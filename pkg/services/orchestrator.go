@@ -161,16 +161,18 @@ func NewOrchestratorWithRuntime(
 	if runtime.Observer == nil {
 		runtime.Observer = &NoopExecutionReporter{}
 	}
+	var runner Sandbox
+	if eval != nil {
+		runner = eval.Runner
+	}
 	auditor := runtime.AcceptanceAuditor
 	if auditor == nil {
-		auditor = NewAcceptanceAuditor(client, runtime.PromptRenderer)
+		auditor = NewAcceptanceAuditor(client, runtime.PromptRenderer, runner)
+		auditor.SetDefaultTestCommand(cfg.DefaultTestCommand)
+		auditor.SetAllowedCommands(cfg.AllowedCommands)
 	}
 	storyAuditor := runtime.StoryQAAuditor
 	if storyAuditor == nil {
-		var runner Sandbox
-		if eval != nil {
-			runner = eval.Runner
-		}
 		storyAuditor = NewStoryQAAuditor(client, runner)
 		storyAuditor.SetDefaultTestCommand(cfg.DefaultTestCommand)
 		storyAuditor.SetAllowedCommands(cfg.AllowedCommands)

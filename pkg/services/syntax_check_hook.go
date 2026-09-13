@@ -49,9 +49,11 @@ func (n *NoopSyntaxChecker) Check(_ context.Context, _ string) error {
 //  2. If the command is valid but code syntax is broken, it requests the LLM to
 //     fix the syntax error, writes the repaired content back to disk, and re-checks.
 type CommandSyntaxChecker struct {
-	Command   string
-	LLMClient domain.LLMClient
-	mu        sync.RWMutex
+	Command          string
+	CommandsByExt    map[string]string
+	InapplicableKeys map[string]bool
+	LLMClient        domain.LLMClient
+	mu               sync.RWMutex
 }
 
 // NewCommandSyntaxChecker returns a CommandSyntaxChecker without an LLM client.
@@ -68,9 +70,34 @@ func NewCommandSyntaxCheckerWithLLM(command string, llmClient domain.LLMClient) 
 		return &NoopSyntaxChecker{}
 	}
 	return &CommandSyntaxChecker{
-		Command:   trimmed,
-		LLMClient: llmClient,
+		Command:          trimmed,
+		CommandsByExt:    make(map[string]string),
+		InapplicableKeys: make(map[string]bool),
+		LLMClient:        llmClient,
 	}
+}
+
+func getFileKey(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext != "" {
+		return ext
+	}
+	return strings.ToLower(filepath.Base(path))
+}
+
+func (c *CommandSyntaxChecker) isKeyInapplicable(key string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.InapplicableKeys != nil && c.InapplicableKeys[key]
+}
+
+func (c *CommandSyntaxChecker) markKeyInapplicable(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.InapplicableKeys == nil {
+		c.InapplicableKeys = make(map[string]bool)
+	}
+	c.InapplicableKeys[key] = true
 }
 
 // GetCommand returns the current in-memory command template thread-safely.
@@ -88,18 +115,61 @@ func (c *CommandSyntaxChecker) SetCommand(cmd string) {
 	c.Command = strings.TrimSpace(cmd)
 }
 
+// GetCommandForPath returns the command template appropriate for the given file path.
+func (c *CommandSyntaxChecker) GetCommandForPath(path string) string {
+	key := getFileKey(path)
+	if c.isKeyInapplicable(key) {
+		return ""
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.CommandsByExt != nil {
+		if cmd, ok := c.CommandsByExt[key]; ok {
+			return cmd
+		}
+	}
+	return c.Command
+}
+
+// SetCommandForPath updates the command template for the given file's extension or name.
+func (c *CommandSyntaxChecker) SetCommandForPath(path string, cmd string) {
+	key := getFileKey(path)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.CommandsByExt == nil {
+		c.CommandsByExt = make(map[string]string)
+	}
+	trimmed := strings.TrimSpace(cmd)
+	if trimmed == "" {
+		if c.InapplicableKeys == nil {
+			c.InapplicableKeys = make(map[string]bool)
+		}
+		c.InapplicableKeys[key] = true
+		delete(c.CommandsByExt, key)
+	} else {
+		c.CommandsByExt[key] = trimmed
+		if c.InapplicableKeys != nil {
+			delete(c.InapplicableKeys, key)
+		}
+	}
+}
+
 // Check implements SyntaxChecker. It executes the configured syntax check command,
 // and if execution fails and an LLMClient is present, it self-heals by analyzing
 // the command and repairing syntax errors.
 func (c *CommandSyntaxChecker) Check(ctx context.Context, path string) error {
-	cmdTemplate := c.GetCommand()
+	key := getFileKey(path)
+	if c.isKeyInapplicable(key) {
+		return nil
+	}
+
+	cmdTemplate := c.GetCommandForPath(path)
 	if strings.TrimSpace(cmdTemplate) == "" {
 		return nil
 	}
 
 	// Guard against directory paths:
 	// A syntax check command template that targets individual files via {file}
-	// (e.g. "ruby -c {file}", "python3 -m py_compile {file}", "gcc -fsyntax-only {file}")
 	// cannot be applied directly to a directory path.
 	if fi, statErr := os.Stat(path); statErr == nil && fi.IsDir() {
 		if strings.Contains(cmdTemplate, "{file}") {
@@ -128,17 +198,31 @@ func (c *CommandSyntaxChecker) Check(ctx context.Context, path string) error {
 	// Step 1: Analyze with the LLM if the syntax check command itself is wrong or inapplicable.
 	diag, diagErr := c.diagnoseCommand(ctx, path, cmdTemplate, out, content)
 	if diagErr == nil && (diag.CommandIsWrong || !diag.AppliesToFile) {
-		fmt.Fprintf(os.Stderr, "⚠ [SyntaxChecker] Syntax check command %q is inapplicable/wrong for %s: %s. Updating command to %q.\n",
-			cmdTemplate, path, diag.Explanation, diag.SuggestedCommand)
-		c.SetCommand(diag.SuggestedCommand)
+		fmt.Fprintf(os.Stderr, "⚠ [SyntaxChecker] Syntax check command %q is inapplicable/wrong for %s: %s. Updating command for %s to %q.\n",
+			cmdTemplate, path, diag.Explanation, key, diag.SuggestedCommand)
 
-		if !diag.AppliesToFile || c.GetCommand() == "" {
-			// Inapplicable file type (e.g. non-source config or unsupported toolchain). Pass write.
+		if !diag.AppliesToFile {
+			// Inapplicable file type (e.g. non-source config, Makefile, or unsupported toolchain).
+			// Mark this extension/key as inapplicable so subsequent writes avoid spurious checks,
+			// while leaving the primary source code command untouched.
+			c.markKeyInapplicable(key)
+			if strings.TrimSpace(diag.SuggestedCommand) != "" {
+				c.SetCommandForPath(path, diag.SuggestedCommand)
+			}
+			return nil
+		}
+
+		// The command applies to this file type, but had wrong flags/executable.
+		// Update both in-memory global command and per-extension mapping.
+		c.SetCommand(diag.SuggestedCommand)
+		c.SetCommandForPath(path, diag.SuggestedCommand)
+		activeCmd := c.GetCommandForPath(path)
+		if activeCmd == "" {
 			return nil
 		}
 
 		// Re-run with the corrected command.
-		newOut, newErr := c.runCommand(ctx, c.GetCommand(), path)
+		newOut, newErr := c.runCommand(ctx, activeCmd, path)
 		if newErr == nil {
 			return nil
 		}
@@ -147,14 +231,18 @@ func (c *CommandSyntaxChecker) Check(ctx context.Context, path string) error {
 
 	// Step 2: The command is applicable, but the file content has a syntax error.
 	// Try to fix it via calls to the LLM.
-	repairedContent, repairErr := c.repairSyntax(ctx, path, c.GetCommand(), out, content)
+	activeCmd := c.GetCommandForPath(path)
+	if activeCmd == "" {
+		return nil
+	}
+	repairedContent, repairErr := c.repairSyntax(ctx, path, activeCmd, out, content)
 	if repairErr == nil && strings.TrimSpace(repairedContent) != "" && repairedContent != content {
 		perm := os.FileMode(0644)
 		if info, statErr := os.Stat(path); statErr == nil {
 			perm = info.Mode().Perm()
 		}
 		if writeErr := os.WriteFile(path, []byte(repairedContent), perm); writeErr == nil {
-			secondOut, secondErr := c.runCommand(ctx, c.GetCommand(), path)
+			secondOut, secondErr := c.runCommand(ctx, activeCmd, path)
 			if secondErr == nil {
 				fmt.Fprintf(os.Stderr, "✨ [SyntaxChecker] Successfully auto-repaired syntax error in %s via LLM.\n", path)
 				return nil

@@ -174,4 +174,94 @@ func TestAcceptanceAuditor(t *testing.T) {
 		assert.Len(t, res.Gaps, 1)
 		assert.Contains(t, res.Gaps[0], "docker-compose")
 	})
+
+	t.Run("detects E2E command across Makefile and docker compose manifests", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		auditor := NewAcceptanceAuditor(nil, nil)
+
+		assert.Empty(t, auditor.detectE2ECommand(tmpDir))
+
+		// Makefile with e2e: target
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "Makefile"), []byte("e2e:\n\tpytest tests/e2e\n"), 0600))
+		assert.Equal(t, "make e2e", auditor.detectE2ECommand(tmpDir))
+
+		// docker-compose.yml with e2e service
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "docker-compose.yml"), []byte("services:\n  e2e:\n    image: test\n"), 0600))
+		assert.Equal(t, "docker compose up --build --exit-code-from e2e", auditor.detectE2ECommand(tmpDir))
+
+		// docker-compose.e2e.yml takes precedence
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "docker-compose.e2e.yml"), []byte("services:\n  test-runner:\n    image: test\n"), 0600))
+		assert.Equal(t, "docker compose -f docker-compose.e2e.yml up --build --exit-code-from test-runner", auditor.detectE2ECommand(tmpDir))
+	})
+
+	t.Run("collectWorkspaceSnapshot includes test files and key domain modules", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testsDir := filepath.Join(tmpDir, "tests", "unit")
+		require.NoError(t, os.MkdirAll(testsDir, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(testsDir, "test_store.py"), []byte("def test_ping(): pass"), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "store.py"), []byte("class Store: pass"), 0600))
+
+		auditor := NewAcceptanceAuditor(nil, nil)
+		snapshot := auditor.collectWorkspaceSnapshot(context.Background(), tmpDir)
+		assert.Contains(t, snapshot, "test_store.py")
+		assert.Contains(t, snapshot, "def test_ping")
+		assert.Contains(t, snapshot, "store.py")
+	})
+
+	t.Run("shouldRemediateAcceptanceAudit respects max retry threshold", func(t *testing.T) {
+		mock := &mockAuditorLLM{}
+		auditor := NewAcceptanceAuditor(mock, nil)
+		orch := &Orchestrator{acceptanceAuditor: auditor}
+
+		state := &domain.State{
+			Tasks: []domain.Task{
+				{ID: "task-1", Status: domain.TaskSuccess},
+			},
+		}
+		assert.True(t, orch.shouldRemediateAcceptanceAudit(state))
+
+		// 1 remediation task
+		state.Tasks = append(state.Tasks, domain.Task{ID: "spec-remediation-1", Status: domain.TaskSuccess})
+		assert.True(t, orch.shouldRemediateAcceptanceAudit(state))
+
+		// 2 remediation tasks - exhausted
+		state.Tasks = append(state.Tasks, domain.Task{ID: "spec-remediation-2", Status: domain.TaskSuccess})
+		assert.False(t, orch.shouldRemediateAcceptanceAudit(state))
+	})
+
+	t.Run("queueAcceptanceRemediationTask creates structured remediation task", func(t *testing.T) {
+		mock := &mockAuditorLLM{}
+		auditor := NewAcceptanceAuditor(mock, nil)
+		orch := &Orchestrator{acceptanceAuditor: auditor}
+
+		state := &domain.State{
+			Metadata: domain.StateMetadata{FeatureName: "US-FINAL"},
+			Tasks: []domain.Task{
+				{ID: "US-001-TASK-001", Status: domain.TaskSuccess},
+			},
+		}
+
+		auditResult := &AcceptanceAuditResult{
+			Passed:  false,
+			Summary: "Missing PING, SET, GET commands and black-box E2E test harness",
+			Gaps: []string{
+				"Missing protocol command PING",
+				"Missing protocol command SET",
+				"Missing E2E test harness tests/e2e/run_tests.sh",
+			},
+		}
+
+		queued := orch.queueAcceptanceRemediationTask(context.Background(), state, auditResult)
+		assert.True(t, queued)
+		require.Len(t, state.Tasks, 2)
+
+		task := state.Tasks[1]
+		assert.Equal(t, "spec-remediation-1", task.ID)
+		assert.Contains(t, task.Title, "Specification & Contract Remediation")
+		assert.Contains(t, task.Description, "Missing protocol command PING")
+		assert.Contains(t, task.Description, "Missing protocol command SET")
+		assert.Contains(t, task.Description, "non-tautological, behavioral black-box E2E tests")
+		assert.Equal(t, domain.TaskPending, task.Status)
+		assert.Equal(t, []string{"US-001-TASK-001"}, task.DependsOn)
+	})
 }

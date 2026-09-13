@@ -359,7 +359,6 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		}
 		if rescueErr := DispatchSovereignRescue(cmdCtx, rescueOpts); rescueErr == nil {
 			fmt.Printf("\n✨ [Sovereign Rescue Takeover] Sovereign rescue resolved all remaining roadblocks! All stories marked complete.\n")
-			failedStories = nil
 		} else {
 			return fmt.Errorf("execution finished with %d incomplete/failed stories across %d loops (sovereign rescue failed: %v):\n - %s", len(failedStories), totalLoops, rescueErr, strings.Join(failedStories, "\n - "))
 		}

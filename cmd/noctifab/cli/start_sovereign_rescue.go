@@ -232,7 +232,7 @@ func buildSovereignRescuePrompt(specContent string, failedStories []string, fail
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("=== CURRENT FAILURE DIAGNOSTICS (Turn %d of %d) ===\n", turn, maxTurns))
+	fmt.Fprintf(&sb, "=== CURRENT FAILURE DIAGNOSTICS (Turn %d of %d) ===\n", turn, maxTurns)
 	sb.WriteString(failureLog)
 	sb.WriteString("\n\n")
 

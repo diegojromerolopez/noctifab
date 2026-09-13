@@ -285,6 +285,57 @@ func TestCommandSyntaxChecker_Check(t *testing.T) {
 			t.Fatalf("expected nil for directory path with {file} template, got: %v", err)
 		}
 	})
+
+	t.Run("when file is inapplicable, original command is preserved for primary source files", func(t *testing.T) {
+		dir := t.TempDir()
+		makefile := filepath.Join(dir, "Makefile")
+		if err := os.WriteFile(makefile, []byte("all:\n\techo ok\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		pyFile := filepath.Join(dir, "main.py")
+		if err := os.WriteFile(pyFile, []byte("print('hi')\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		mockLLM := &mockSyntaxLLMClient{
+			completeFunc: func(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+				return &domain.LLMResponse{
+					Actions: []domain.LLMAction{
+						{
+							Tool: "diagnose_syntax_command",
+							Args: map[string]any{
+								"command_is_wrong":  true,
+								"explanation":       "Makefile is not checked by python compiler",
+								"suggested_command": "make -n -f {file}",
+								"applies_to_file":   false,
+							},
+						},
+					},
+				}, nil
+			},
+		}
+
+		checker := &CommandSyntaxChecker{
+			Command:   "echo {file}",
+			LLMClient: mockLLM,
+		}
+
+		// Check Makefile: fails initially (if command failed) but here echo succeeds.
+		// Let's set command to a command that fails on Makefile: "test -f"
+		checker.SetCommand("false")
+		if err := checker.Check(context.Background(), makefile); err != nil {
+			t.Fatalf("expected check to pass for inapplicable file: %v", err)
+		}
+
+		// Ensure c.Command or pyFile command is not corrupted by Makefile
+		if checker.GetCommandForPath(pyFile) == "make -n -f {file}" {
+			t.Errorf("expected python file to NOT be corrupted with Makefile command, got: %q", checker.GetCommandForPath(pyFile))
+		}
+		// Second check on makefile is immediately skipped as inapplicable
+		if err := checker.Check(context.Background(), makefile); err != nil {
+			t.Fatalf("expected second check on makefile to be skipped: %v", err)
+		}
+	})
 }
 
 type mockSyntaxLLMClient struct {

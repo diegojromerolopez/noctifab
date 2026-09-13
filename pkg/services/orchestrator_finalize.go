@@ -40,8 +40,8 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	// 2. Whole-Project Acceptance Audit Gate: Verify implemented codebase against SPEC.md
 	auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
 	if auditErr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ Story %s: Whole-project Acceptance Audit encountered an error: %v\nSkipping PR creation to prevent releasing unverified changes.\n", state.Metadata.FeatureName, auditErr)
-		return nil
+		fmt.Fprintf(os.Stderr, "⚠ Story %s: Whole-project Acceptance Audit encountered an error: %v\nSkipping release to prevent releasing unverified changes.\n", state.Metadata.FeatureName, auditErr)
+		return fmt.Errorf("acceptance audit error: %w", auditErr)
 	}
 	if auditResult != nil && !auditResult.Passed {
 		var sb strings.Builder
@@ -52,9 +52,9 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 				fmt.Fprintf(&sb, " - %s\n", gap)
 			}
 		}
-		sb.WriteString("Skipping PR creation to prevent releasing incomplete specification implementation.\n")
+		sb.WriteString("Failing story finalization to prevent releasing incomplete specification implementation.\n")
 		fmt.Print(sb.String())
-		return nil
+		return fmt.Errorf("acceptance audit failed: %s", auditResult.Summary)
 	}
 
 	// Ensure integration branch exists locally before bumping if branch creation is enabled

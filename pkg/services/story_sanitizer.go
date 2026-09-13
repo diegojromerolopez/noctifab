@@ -27,12 +27,17 @@ func IsSmallCLIProject(specContent string, maxUserStories int) bool {
 		return true
 	}
 
-	// Exclude complex distributed, multi-tier, or frontend systems
+	// Exclude complex distributed, multi-tier, network servers, or frontend systems
 	if strings.Contains(lower, "react") || strings.Contains(lower, "vue") ||
 		strings.Contains(lower, "microservice") || strings.Contains(lower, "kubernetes") ||
 		strings.Contains(lower, "spring boot") || strings.Contains(lower, "django") ||
 		strings.Contains(lower, "fastapi + redis") || strings.Contains(lower, "oauth2") ||
-		strings.Contains(lower, "protobuf-native") || strings.Contains(lower, "vector search") {
+		strings.Contains(lower, "protobuf-native") || strings.Contains(lower, "vector search") ||
+		strings.Contains(lower, "tcp") || strings.Contains(lower, "socket") ||
+		strings.Contains(lower, "daemon") || strings.Contains(lower, "server") ||
+		strings.Contains(lower, "key-value") || strings.Contains(lower, "database") ||
+		strings.Contains(lower, "wire-protocol") || strings.Contains(lower, "wire protocol") ||
+		strings.Contains(lower, "resp2") || strings.Contains(lower, "resp3") {
 		return false
 	}
 

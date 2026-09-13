@@ -200,6 +200,9 @@ ANTI-STALLING MANDATE:
 - If a linter reports a cop or rule has been renamed or removed, update the linter config file to use the correct current name, then re-run immediately.
 - If test/spec files trigger linter block-length or complexity violations, configure the linter to exclude those metrics for test/spec paths (e.g. in .rubocop.yml, eslint overrides, etc.) rather than endlessly restructuring the test file.
 - When writing Makefiles or build scripts, test execution targets MUST compile and link all implementation source files alongside test files so all symbol references resolve.
+- NEGATIVE SPECIFICATION CONSTRAINTS & FORBIDDEN TOOLS:
+  * Check the user story requirements and SPEC.md for any negative constraints or forbidden tools (e.g. forbidden test frameworks like pytest, disallowed libraries, or prohibited toolchains).
+  * You MUST NEVER import, install, configure (e.g. configuration files like pytest.ini or conftest.py), or execute any tool, framework, or library that is explicitly forbidden by the specification. Strictly adhere to the approved alternatives declared in the requirements.
 - NEVER give up. NEVER say "I cannot fix this." Always try something.
 - You MUST call run_tests at least once before calling noop to verify your work compiles and tests pass.`
 
@@ -266,6 +269,9 @@ ANTI-STALLING MANDATE:
   * Test execution targets MUST compile and link all implementation source files alongside test files so all symbol references resolve.
   * The 'test' recipe MUST fail with exit code 1 if 0 tests are found or the tests directory is empty (never write vacuous wildcard loops that exit 0 on empty sets).
   * You MUST always include an 'e2e' recipe that physically invokes the compiled binary or application end-to-end and asserts expected stdout/stderr output and exit code 0.
+- NEGATIVE SPECIFICATION CONSTRAINTS & FORBIDDEN TOOLS:
+  * Check the user story requirements and SPEC.md for any negative constraints or forbidden tools (e.g. forbidden test frameworks, disallowed libraries, or prohibited toolchains).
+  * You MUST NEVER import, install, configure (e.g. configuration files like pytest.ini or conftest.py), or execute any tool, framework, or library that is explicitly forbidden by the specification. Strictly adhere to the approved alternatives declared in the requirements.
 - NEVER give up. NEVER say "I cannot fix this." Always try something.
 - You MUST call run_tests at least once before calling noop to verify your work compiles and tests pass.`
 
