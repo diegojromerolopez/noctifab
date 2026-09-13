@@ -131,6 +131,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	linterDeferred := false
 	seenFileDependentCalls := make(map[string]bool)
 	circuitBreaker := NewTaskCircuitBreaker()
+	anyFileMutated := false
 
 	for turn := 0; turn < maxTurns; turn++ {
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
@@ -231,8 +232,14 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				if action.Tool == "run_tests" {
 					circuitBreaker.RecordTestResult(execErr == nil)
 					if execErr == nil {
-						fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: explicit run_tests passed cleanly! Fast-exiting turn loop.\n", task.ID)
-						hasNoop = true
+						statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
+						hasChanges := anyFileMutated || strings.TrimSpace(statusOut) != ""
+						if hasChanges {
+							fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: explicit run_tests passed cleanly! Fast-exiting turn loop.\n", task.ID)
+							hasNoop = true
+						} else {
+							fmt.Printf("ℹ [Baseline Tests Passed] Task %s: existing tests passed; awaiting task-specific file mutations.\n", task.ID)
+						}
 					}
 				}
 				if execErr != nil {
@@ -258,6 +265,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					// Reset linter failure counter and duplicate tool tracker on any successful file mutation.
 					if IsMutatingTool(action.Tool) {
 						fileMutated = true
+						anyFileMutated = true
 						circuitBreaker.RecordAction(action.Tool, action.Args)
 						consecutiveLinterFailures = 0
 						seenFileDependentCalls = make(map[string]bool)
@@ -277,6 +285,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				fmt.Printf("Orchestrator: Task %s [Generator] requested test fix (count %d): %s\n", task.ID, testFixRequestCount, feedback)
 
 				o.RunTesterAgent(ctx, task, state, fileContexts, "fix", feedback)
+				anyFileMutated = true
 
 				// Stage and commit test fixes
 				statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")

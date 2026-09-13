@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.87.5] - 2026-09-13
+
+### Fixed
+- **Prevent Zero-Mutation Fast-Exit in Generator (`pkg/services/orchestrator_generator.go`)**:
+  - `Fast Exit on Verified Green` now strictly verifies that file mutations occurred (`anyFileMutated`) or uncommitted changes exist in the worktree before fast-exiting a turn loop on passing tests.
+  - Prevents tasks from prematurely exiting on pre-existing baseline test passes without implementing their assigned files or tests.
+- **Story Self-Dependency Stripping & Walking Skeleton Prioritization (`pkg/services/story_dag_scheduler.go`)**:
+  - Stripped self-dependencies in `AddStory` so user stories listing their own ID under `depends_on` do not deadlock the scheduling DAG.
+  - Ordered dispatch in `Execute` so zero-dependency stories and foundational walking skeletons/scaffolds run first before dependent feature stories.
+- **Product Manager US-001 Walking Skeleton Mandate (`pkg/infrastructure/prompts/defaults/product_manager/generate.tmpl`)**:
+  - Enforced that the initial walking skeleton must strictly be assigned `US-001` with `depends_on: []`, with subsequent feature stories numbered sequentially and depending on `["US-001"]`.
+
 ## [0.87.4] - 2026-09-13
 
 ### Fixed

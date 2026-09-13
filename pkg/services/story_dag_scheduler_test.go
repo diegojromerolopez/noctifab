@@ -216,4 +216,37 @@ func TestStoryDAGScheduler_InputValidationAndEdgeCases(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{"custom-story.md"}, executed)
 	})
+
+	t.Run("strips self-dependencies and executes without deadlock", func(t *testing.T) {
+		scheduler := services.NewStoryDAGScheduler(2)
+		scheduler.AddStory(services.StoryWorkItem{Path: "US-001.md", Spec: "depends_on: [\"US-001\"]"})
+
+		var executed []string
+		err := scheduler.Execute(context.Background(), func(ctx context.Context, item services.StoryWorkItem) error {
+			executed = append(executed, services.ExtractStoryID(item.Path))
+			return nil
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"US-001"}, executed)
+	})
+
+	t.Run("prioritizes zero-dependency walking skeleton ahead of feature stories", func(t *testing.T) {
+		scheduler := services.NewStoryDAGScheduler(1) // Concurrency 1 ensures strict serial ordering
+		// Add feature story first, and skeleton story last
+		scheduler.AddStory(services.StoryWorkItem{Path: "US-003-feature.md", Spec: "depends_on: []"})
+		scheduler.AddStory(services.StoryWorkItem{Path: "US-004-runnable-walking-skeleton.md", Spec: "depends_on: []"})
+
+		var executed []string
+		err := scheduler.Execute(context.Background(), func(ctx context.Context, item services.StoryWorkItem) error {
+			executed = append(executed, services.ExtractStoryID(item.Path))
+			return nil
+		})
+
+		require.NoError(t, err)
+		// US-004 (walking skeleton) must be dispatched first despite being added second
+		require.Len(t, executed, 2)
+		assert.Equal(t, "US-004", executed[0])
+		assert.Equal(t, "US-003", executed[1])
+	})
 }

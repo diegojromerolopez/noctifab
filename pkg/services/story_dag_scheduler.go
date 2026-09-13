@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -83,7 +84,13 @@ func (s *StoryDAGScheduler) AddStory(item StoryWorkItem) {
 		storyID = filepath.Base(item.Path)
 	}
 
-	deps := ParseStoryDependencies(item.Spec)
+	rawDeps := ParseStoryDependencies(item.Spec)
+	var deps []string
+	for _, dep := range rawDeps {
+		if dep != storyID && dep != filepath.Base(item.Path) {
+			deps = append(deps, dep)
+		}
+	}
 
 	node := &StoryDAGNode{
 		Item:      item,
@@ -113,6 +120,16 @@ func (s *StoryDAGScheduler) MarkStoryCompleted(storyIDOrPath string) {
 	}
 }
 
+func isSkeletonStory(node *StoryDAGNode) bool {
+	if node == nil {
+		return false
+	}
+	lowerPath := strings.ToLower(node.Item.Path)
+	lowerSpec := strings.ToLower(node.Item.Spec)
+	return strings.Contains(lowerPath, "skeleton") || strings.Contains(lowerPath, "scaffold") ||
+		strings.Contains(lowerPath, "foundation") || strings.Contains(lowerSpec, "walking skeleton")
+}
+
 // Execute runs all queued user stories concurrently according to the dependency DAG.
 // processFunc is invoked concurrently for each unblocked user story.
 func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx context.Context, item StoryWorkItem) error) error {
@@ -121,6 +138,26 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 		s.mu.Unlock()
 		return nil
 	}
+	// Prioritize zero-dependency stories (especially walking skeletons/scaffolds)
+	// so the foundation entrypoint is built first before dependent feature stories.
+	sort.SliceStable(s.storyIDs, func(i, j int) bool {
+		nodeI := s.nodes[s.storyIDs[i]]
+		nodeJ := s.nodes[s.storyIDs[j]]
+		if nodeI == nil || nodeJ == nil {
+			return false
+		}
+		lenI := len(nodeI.DependsOn)
+		lenJ := len(nodeJ.DependsOn)
+		if lenI != lenJ {
+			return lenI < lenJ
+		}
+		isSkelI := isSkeletonStory(nodeI)
+		isSkelJ := isSkeletonStory(nodeJ)
+		if isSkelI != isSkelJ {
+			return isSkelI
+		}
+		return s.storyIDs[i] < s.storyIDs[j]
+	})
 	s.mu.Unlock()
 
 	cond := sync.NewCond(&s.mu)
