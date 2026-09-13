@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.87.1] - 2026-09-13
+
+### Fixed
+- **Whole-Project Acceptance Audit Gate CLI Wiring (`cmd/noctifab/cli/start_acceptance_gate.go`, `cmd/noctifab/cli/start_runner.go`)**:
+  - Wired the mandatory `RunWholeProjectAcceptanceGate` into the CLI runner lifecycle before releasing execution with `domain.ExecutionSuccess`.
+  - Audits the finalized workspace against root `SPEC.md` and pre-flights the workspace's black-box E2E suite (`make e2e`).
+  - Triggers targeted sovereign remediation when specification gaps or tautological tests are detected. If contracts remain unfulfilled, fails the execution with a non-zero exit code (`exit 1`) to alert outer autonomous loops.
+- **Story Scoping in Multi-Story Execution (`cmd/noctifab/cli/start_story_executor.go`, `pkg/services/orchestrator_sync.go`, `pkg/services/orchestrator_dispatch.go`)**:
+  - Scoped task completion checks in `allTasksFinished` and `allTasksSucceeded` to the active story when running via `StoryDAGScheduler`, allowing intermediate stories to complete Story QA review and remediation.
+  - Ensured Story QA audit executes before `start_story_executor` marks a story finished, continuing the execution loop if QA remediation tasks are injected.
+  - Correctly recorded `StorySuccess` / `StoryFailed` outcomes in `st.Stories` on finalization.
+
 ## [0.87.0] - 2026-09-13
 
 ### Added

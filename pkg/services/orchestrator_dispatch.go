@@ -259,6 +259,23 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 					st.BuildStatus = domain.BuildFailing
 					st.StoryStatus = domain.StoryFailed
 				}
+				now := time.Now().UTC()
+				storyID := ExtractStoryID(state.Metadata.InputPath)
+				if storyID == "" {
+					storyID = state.Metadata.FeatureName
+				}
+				for i, s := range st.Stories {
+					if s.ID == state.Metadata.FeatureName || s.FilePath == state.Metadata.InputPath || (storyID != "" && s.ID == storyID) {
+						if buildOK {
+							st.Stories[i].Status = domain.StorySuccess
+						} else {
+							st.Stories[i].Status = domain.StoryFailed
+						}
+						st.Stories[i].CompletedAt = &now
+						st.Stories[i].UpdatedAt = now
+						break
+					}
+				}
 				return nil
 			}); err != nil {
 				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist story finalization status: %v\n", err)

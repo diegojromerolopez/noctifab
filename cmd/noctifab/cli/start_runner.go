@@ -364,6 +364,24 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Whole-Project Acceptance Audit Gate:
+	// Verify that the completed codebase fulfills all functional contracts and has genuine black-box E2E tests.
+	gateOpts := AcceptanceGateOptions{
+		TargetDir:      targetDir,
+		Cfg:            cfg,
+		Repo:           repo,
+		LLMClient:      llmClient,
+		PromptRenderer: promptRenderer,
+		SandboxRunner:  sandboxRunner,
+		GitClient:      gitClient,
+		StoryFiles:     storyFiles,
+		ToolRegistry:   reg,
+		Validator:      evaluator,
+	}
+	if gateErr := RunWholeProjectAcceptanceGate(cmdCtx, gateOpts); gateErr != nil {
+		return gateErr
+	}
+
 	finalOutcome = domain.ExecutionSuccess
 
 	standbyRequested := webEnabled

@@ -243,6 +243,18 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			}
 			storyTasks := getStoryTasks(st, featName, storyID)
 			if len(storyTasks) > 0 && allStoryTasksFinished(storyTasks) {
+				// If story status is still running or idle, invoke RunOnce to execute Story QA and finalization gates
+				if st.StoryStatus == domain.StoryRunning || st.StoryStatus == domain.StoryIdle {
+					_, _ = orchestrator.RunOnce(ctx)
+					if stReloaded, err := deps.repo.Load(ctx); err == nil && stReloaded != nil {
+						st = stReloaded
+						storyTasks = getStoryTasks(st, featName, storyID)
+						// If Story QA queued a new remediation task, continue the execution loop
+						if !allStoryTasksFinished(storyTasks) {
+							continue
+						}
+					}
+				}
 				for _, t := range storyTasks {
 					if t.Status == domain.TaskFailed {
 						return fmt.Errorf("story execution failed: task %s (%s) failed", t.ID, t.Title)
