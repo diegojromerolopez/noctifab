@@ -38,23 +38,36 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	}
 
 	// 2. Whole-Project Acceptance Audit Gate: Verify implemented codebase against SPEC.md
-	auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
-	if auditErr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ Story %s: Whole-project Acceptance Audit encountered an error: %v\nSkipping release to prevent releasing unverified changes.\n", state.Metadata.FeatureName, auditErr)
-		return fmt.Errorf("acceptance audit error: %w", auditErr)
-	}
-	if auditResult != nil && !auditResult.Passed {
-		var sb strings.Builder
-		fmt.Fprintf(&sb, "⚠ Story %s: Whole-project Acceptance Audit FAILED.\nSummary: %s\n", state.Metadata.FeatureName, auditResult.Summary)
-		if len(auditResult.Gaps) > 0 {
-			sb.WriteString("Unimplemented specification gaps detected:\n")
-			for _, gap := range auditResult.Gaps {
-				fmt.Fprintf(&sb, " - %s\n", gap)
-			}
+	// In multi-story workflows, only run the whole-project acceptance audit if this is the final story
+	// (all other stories are already finished or deferred). Intermediate stories are verified by Story QA.
+	isFinalStory := true
+	for _, s := range state.Stories {
+		if s.ID != state.Metadata.FeatureName && s.Status != domain.StorySuccess && s.Status != domain.StoryDeferred {
+			isFinalStory = false
+			break
 		}
-		sb.WriteString("Failing story finalization to prevent releasing incomplete specification implementation.\n")
-		fmt.Print(sb.String())
-		return fmt.Errorf("acceptance audit failed: %s", auditResult.Summary)
+	}
+	var auditResult *AcceptanceAuditResult
+	if isFinalStory {
+		var auditErr error
+		auditResult, auditErr = o.RunAcceptanceAudit(ctx, state)
+		if auditErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Story %s: Whole-project Acceptance Audit encountered an error: %v\nSkipping release to prevent releasing unverified changes.\n", state.Metadata.FeatureName, auditErr)
+			return fmt.Errorf("acceptance audit error: %w", auditErr)
+		}
+		if auditResult != nil && !auditResult.Passed {
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "⚠ Story %s: Whole-project Acceptance Audit FAILED.\nSummary: %s\n", state.Metadata.FeatureName, auditResult.Summary)
+			if len(auditResult.Gaps) > 0 {
+				sb.WriteString("Unimplemented specification gaps detected:\n")
+				for _, gap := range auditResult.Gaps {
+					fmt.Fprintf(&sb, " - %s\n", gap)
+				}
+			}
+			sb.WriteString("Failing story finalization to prevent releasing incomplete specification implementation.\n")
+			fmt.Print(sb.String())
+			return fmt.Errorf("acceptance audit failed: %s", auditResult.Summary)
+		}
 	}
 
 	// Ensure integration branch exists locally before bumping if branch creation is enabled

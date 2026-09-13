@@ -234,6 +234,61 @@ func TestOrchestrator_FinalizeUserStory(t *testing.T) {
 		assert.Equal(t, 0, vcs.prCalls, "PR creation must be aborted when acceptance audit fails")
 	})
 
+	t.Run("when story is intermediate in multi-story workflow, whole-project acceptance audit is deferred to final story", func(t *testing.T) {
+		repoDir, _, cleanup := setupTestGitRepo(t)
+		defer cleanup()
+
+		err := os.WriteFile(filepath.Join(repoDir, "VERSION"), []byte("1.0.0"), 0644)
+		require.NoError(t, err)
+
+		vcs := &mockVCSForFinalize{}
+		git := NewGitClient(repoDir)
+		// Mock auditor LLM that would fail if called
+		mockLLM := &mockAuditorLLM{
+			response: &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "submit_acceptance_audit",
+						Args: map[string]any{
+							"passed":  false,
+							"summary": "Should not be called for intermediate story",
+						},
+					},
+				},
+			},
+		}
+
+		orch := &Orchestrator{
+			vcsClient:         vcs,
+			git:               git,
+			cfg:               OrchestratorConfig{AutoCreatePR: true},
+			acceptanceAuditor: NewAcceptanceAuditor(mockLLM, nil),
+		}
+
+		state := &domain.State{
+			ProjectPath: repoDir,
+			Metadata: domain.StateMetadata{
+				FeatureName:       "US-0001",
+				IntegrationBranch: "noctifab/story-us-0001",
+				BaseBranch:        "main",
+			},
+			Stories: []domain.Story{
+				{ID: "US-0001", Status: domain.StoryRunning},
+				{ID: "US-0002", Status: domain.StoryPending},
+			},
+			Tasks: []domain.Task{
+				{ID: "t1", StoryID: "US-0001", Title: "Scaffolding", Status: domain.TaskSuccess},
+			},
+		}
+
+		_, err = git.Run(context.Background(), true, "checkout", "-b", "noctifab/story-us-0001")
+		require.NoError(t, err)
+
+		err = orch.FinalizeUserStory(context.Background(), state)
+		assert.NoError(t, err, "Intermediate story should finalize cleanly without triggering whole-project acceptance audit")
+		assert.Equal(t, 1, vcs.prCalls)
+	})
+
 	t.Run("shouldAuditStoryCompleteness scopes remediation count per story", func(t *testing.T) {
 		orch := &Orchestrator{
 			storyQAAuditor: &StoryQAAuditor{},

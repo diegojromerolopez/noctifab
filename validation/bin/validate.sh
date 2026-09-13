@@ -198,6 +198,11 @@ if [ -d "/app/report_mount" ] && [ -d "${TMP_DIR}" ]; then
   cp -f /app/report_mount/*.md "${TMP_DIR}/report/" 2>/dev/null || true
 fi
 
+if [ ${START_EXIT_CODE} -ne 0 ]; then
+  echo "❌ Noctifab start failed with exit code ${START_EXIT_CODE}." >&2
+  exit ${START_EXIT_CODE}
+fi
+
 
 # 8. Verify results by executing tests and validating behavior
 echo "=================================================="

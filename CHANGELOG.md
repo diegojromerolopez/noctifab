@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.87.3] - 2026-09-13
+
+### Fixed
+- **Whole-Project Acceptance Audit Deferral for Intermediate Stories (`pkg/services/orchestrator_finalize.go`)**:
+  - Scoped the Whole-Project Acceptance Audit in `FinalizeUserStory` so it only runs if the story being finalized is the final story in the roadmap (all other stories completed or deferred).
+  - In multi-story workflows, intermediate stories (`US-001`) are verified by Story QA without prematurely asserting downstream features (`US-002`, `US-003`), allowing downstream stories to be scheduled and executed.
+- **Fail-Fast Error Propagation in Validation Runner (`validation/bin/validate.sh`)**:
+  - Ensured `validate.sh` checks `${START_EXIT_CODE}` immediately after `noctifab start` finishes and exits with that error code instead of swallowing failures and executing local `make test` recipes.
+
 ## [0.87.2] - 2026-09-13
 
 ### Fixed
