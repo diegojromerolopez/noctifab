@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.87.2] - 2026-09-13
+
+### Fixed
+- **Per-Feature Dedicated E2E Test Scenario Mandate Across Prompts (`pkg/infrastructure/prompts/defaults/`)**:
+  - Replaced generic/loose `make e2e` recipe instructions across all Generator prompt templates (`implement.tmpl`, `fix.tmpl`, `refactor.tmpl`, `single_pass.tmpl`, `single_pass_fix.tmpl`, `implement_breadth_first.tmpl`, `implement_breadth_first_fix.tmpl`, `surgical_repair.tmpl`) with an explicit requirement to author real black-box E2E tests covering at least ONE dedicated test scenario for EACH individual feature, command, and flag declared in `SPEC.md` (e.g. for key-value stores: separate test cases exercising `PING`, `ECHO`, `GET`, `SET`, `DEL`, `EXISTS`, `EXPIRE`, `TTL`, `KEYS`, `INCR`, `DECR`, `FLUSHALL`).
+  - Formally outlawed tautological E2E recipes (e.g. `python3 -c "import ...; print('ok')"` or tests that only connect/disconnect without sending real domain payloads).
+  - Enforced systematic feature enumeration and per-feature scenario audits in `acceptance_audit.tmpl`, requiring the auditor to fail the audit and report missing command scenarios in `gaps`.
+  - Reinforced Product Manager and Tester prompt guidelines (`generate.tmpl`, `audit.tmpl`, `write.tmpl`, `fix.tmpl`) with the per-feature E2E scenario mandate and Chicago-school outside-in behavioral testing.
+
 ## [0.87.1] - 2026-09-13
 
 ### Fixed

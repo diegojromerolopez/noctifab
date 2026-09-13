@@ -109,18 +109,18 @@ func TestGoldenDefaults_ByteIdenticalToLegacyAssembly(t *testing.T) {
 				}
 				return
 			}
-			if tc.name == "tester/write" {
-				for _, needle := range []string{"CLEAN DIVISION OF LABOR & TEST SCOPE ALIGNMENT MANDATE", "test pure domain logic in-memory"} {
+			if tc.agent == AgentTester {
+				for _, needle := range []string{"CLEAN DIVISION OF LABOR & TEST SCOPE ALIGNMENT MANDATE", "SPECIFIC E2E SCENARIO PER FEATURE"} {
 					if !strings.Contains(got, needle) {
-						t.Errorf("tester/write prompt missing %q", needle)
+						t.Errorf("%s prompt missing %q", tc.name, needle)
 					}
 				}
 				return
 			}
-			if tc.name == "generator/implement" {
-				for _, needle := range []string{"GENERATOR TEST-DRIVEN REFINEMENT & DEPENDENCY INJECTION MANDATE", "fast in-memory unit tests"} {
+			if tc.agent == AgentGenerator {
+				for _, needle := range []string{"runs real black-box E2E tests against the running application, covering at least ONE specific test scenario for EACH individual feature"} {
 					if !strings.Contains(got, needle) {
-						t.Errorf("generator/implement prompt missing %q", needle)
+						t.Errorf("%s prompt missing %q", tc.name, needle)
 					}
 				}
 				return

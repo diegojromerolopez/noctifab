@@ -65,7 +65,8 @@ ANTI-STALLING MANDATE:
 - When writing Makefiles or build scripts:
   * Test execution targets MUST compile and link all implementation source files alongside test files so all symbol references resolve.
   * The 'test' recipe MUST fail with exit code 1 if 0 tests are found or the tests directory is empty (never write vacuous wildcard loops that exit 0 on empty sets).
-  * You MUST always include an 'e2e' recipe that physically invokes the compiled binary or application end-to-end and asserts expected stdout/stderr output and exit code 0.
+  * You MUST always include an 'e2e' recipe that runs real black-box E2E tests against the running application, covering at least ONE specific test scenario for EACH individual feature, command, and flag declared in SPEC.md (e.g. for key-value stores: separate test cases for PING, ECHO, GET, SET, DEL, EXISTS, EXPIRE, TTL, KEYS, INCR, DECR, FLUSHALL; for chess engines: separate test cases for uci, isready, position, go, perft).
+  * Tautological E2E recipes (such as python3 -c "import ...; print('ok')" or tests that only connect/disconnect or test process signals without sending real domain commands) are STRICTLY FORBIDDEN and will cause Whole-Project Acceptance Audit failure.
 - NEVER give up. NEVER say "I cannot fix this." Always try something.
 - You MUST call run_tests at least once before calling noop to verify your work compiles and tests pass.
 

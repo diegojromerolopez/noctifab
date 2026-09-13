@@ -17,15 +17,20 @@ E2E & BLACK-BOX INTEGRATION TEST STATUS:
 {{.E2ELog}}
 {{end}}
 AUDIT INSTRUCTIONS:
-1. Verify whether ALL commands, public API signatures, CLI flags, wire protocol envelopes, and core data types described in SPEC.md have been implemented.
-2. Check for critical omissions (e.g. missing CLI subcommands, missing protocol commands like PING/EXPIRE/KEYS/FLUSHALL, missing required files like Dockerfile or Makefile targets).
-3. BEHAVIORAL CONTRACT & E2E TEST VERIFICATION:
-   - For every command, API endpoint, or wire protocol capability specified in SPEC.md, verify that there is a genuine, non-tautological black-box test in the test suites or E2E harness exercising the command with real input and asserting expected outputs.
-   - REJECT TAUTOLOGICAL / GAMED TESTS: If the test suites or 'e2e' targets in Makefiles/scripts only connect and disconnect without sending commands, only test process shutdown/SIGTERM without testing business commands, or contain vacuous assertions, set "passed": false and list the missing or tautological command tests in "gaps".
+1. SPECIFICATION FEATURE ENUMERATION & MATRIX CHECK:
+   - Systematically list and inspect ALL functional features, commands, endpoints, flags, and data capabilities declared in SPEC.md.
+     (e.g., for Redis/pyedis: PING, ECHO, GET, SET, DEL, EXISTS, EXPIRE, TTL, KEYS, INCR, DECR, FLUSHALL, persistence, etc.)
+   - FOR EACH INDIVIDUAL FEATURE/COMMAND, verify that the workspace contains AT LEAST ONE specific, dedicated, non-tautological E2E test scenario exercising that exact feature/command against the running system and asserting its returned payload and state change.
+2. REJECT GENERIC SMOKE TESTS & TAUTOLOGICAL E2E RECIPES:
+   - A generic walking skeleton test (e.g. 'python3 -c "import src.main; print(\"ok\")"'), a test that only connects/disconnects, or a test that only checks process start/SIGTERM without exercising domain commands is STRICTLY TAUTOLOGICAL and FAILS this audit.
+   - If an 'e2e' recipe or integration test suite does not exercise explicit scenarios per feature/command, set "passed": false.
+3. GRANULAR GAP REPORTING:
+   - For every feature, command, or capability in SPEC.md that lacks an explicit, dedicated E2E test scenario or fails verification, add a specific entry to the "gaps" array:
+     "Missing E2E test scenario for feature/command: <NAME>"
    - If E2E test execution failed, set "passed": false and report the failure in "gaps".
 4. Deprecated & Broken Tooling Audit: Inspect all Makefiles, shell scripts, and CI workflows for deprecated or invalid tooling invocations. Specifically:
    - Forbid 'docker-compose' (hyphenated); enforce modern 'docker compose' (space).
    - Forbid uninstalled package managers (e.g. 'pipenv' or 'poetry' when missing from workspace manifests) and obsolete Python 2 idioms.
    - If any script or Makefile contains 'docker-compose' or deprecated tooling, set "passed": false and list the offending file/command in "gaps".
-5. If ANY required command, public contract, or valid tooling invariant from SPEC.md is missing, violated, or unverified by black-box tests, you MUST set "passed": false and list each specific missing item or violation in the "gaps" array.
-6. If all required functionality from SPEC.md is implemented, verified by real behavioral tests, and tooling is modern and clean, set "passed": true and provide a concise summary.
+5. If ANY required command or feature from SPEC.md lacks an explicit E2E scenario, is unimplemented, or violates valid tooling invariants, you MUST set "passed": false and list each specific missing item in the "gaps" array.
+6. If all required features from SPEC.md are implemented, EACH feature has at least one dedicated behavioral E2E test scenario with verified outputs, and tooling is clean, set "passed": true and provide a concise summary.
