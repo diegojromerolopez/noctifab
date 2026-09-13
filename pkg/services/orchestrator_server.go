@@ -128,7 +128,11 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		}); err != nil {
 			return fmt.Errorf("failed to persist planned tasks: %w", err)
 		}
-		state.Tasks = plannedTasks
+		if updatedState, err := o.repo.Load(ctx); err == nil && updatedState != nil {
+			state.Tasks = updatedState.Tasks
+		} else {
+			state.Tasks = append(state.Tasks, plannedTasks...)
+		}
 
 		fmt.Printf("📋 Plan created: %d tasks for story %s\n", len(plannedTasks), state.Metadata.FeatureName)
 		return nil

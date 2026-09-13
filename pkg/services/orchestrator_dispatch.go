@@ -224,7 +224,15 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 					}
 				}
 
-				if buildOK && o.acceptanceAuditor != nil {
+				isFinalStory := true
+				for _, s := range state.Stories {
+					if s.ID != state.Metadata.FeatureName && s.Status != domain.StorySuccess && s.Status != domain.StoryDeferred {
+						isFinalStory = false
+						break
+					}
+				}
+
+				if isFinalStory && buildOK && o.acceptanceAuditor != nil {
 					auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
 					if auditErr != nil {
 						fmt.Fprintf(os.Stderr, "⚠ Story %s: Acceptance Audit encountered an error: %v\n", state.Metadata.FeatureName, auditErr)

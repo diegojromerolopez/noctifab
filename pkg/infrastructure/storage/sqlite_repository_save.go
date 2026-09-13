@@ -87,18 +87,21 @@ func (r *SQLiteRepository) saveStories(ctx context.Context, tx *sql.Tx, state *d
 
 func (r *SQLiteRepository) saveTasks(ctx context.Context, tx *sql.Tx, state *domain.State) error {
 	if len(state.Tasks) == 0 {
-		_, err := tx.ExecContext(ctx, "DELETE FROM tasks WHERE state_id = ?", state.ID)
-		return err
+		return nil
 	}
 	seen := make(map[string]bool, len(state.Tasks))
 	taskIDs := make([]any, len(state.Tasks)+1)
 	taskIDs[0] = state.ID
+	storyIDs := make(map[string]bool)
 	for i, task := range state.Tasks {
 		if seen[task.ID] {
 			return fmt.Errorf("duplicate task ID in state: %s", task.ID)
 		}
 		seen[task.ID] = true
 		taskIDs[i+1] = task.ID
+		if task.StoryID != "" {
+			storyIDs[task.StoryID] = true
+		}
 
 		dependsOnJSON, err := json.Marshal(task.DependsOn)
 		if err != nil {
@@ -146,6 +149,23 @@ func (r *SQLiteRepository) saveTasks(ctx context.Context, tx *sql.Tx, state *dom
 			return err
 		}
 	}
+
+	if len(storyIDs) > 0 {
+		var storyPlaceholders []string
+		var deleteArgs []any
+		deleteArgs = append(deleteArgs, state.ID)
+		for sID := range storyIDs {
+			storyPlaceholders = append(storyPlaceholders, "?")
+			deleteArgs = append(deleteArgs, sID)
+		}
+		deleteArgs = append(deleteArgs, taskIDs[1:]...)
+		query := fmt.Sprintf("DELETE FROM tasks WHERE state_id = ? AND story_id IN (%s) AND id NOT IN (%s)",
+			strings.Join(storyPlaceholders, ","),
+			placeholders(len(state.Tasks)))
+		_, err := tx.ExecContext(ctx, query, deleteArgs...)
+		return err
+	}
+
 	query := fmt.Sprintf("DELETE FROM tasks WHERE state_id = ? AND id NOT IN (%s)", placeholders(len(state.Tasks)))
 	_, err := tx.ExecContext(ctx, query, taskIDs...)
 	return err

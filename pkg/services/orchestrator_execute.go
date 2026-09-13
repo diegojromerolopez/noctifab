@@ -94,7 +94,12 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				return nil
 			}
 		}
-		return fmt.Errorf("task %s not found in state", taskID)
+		t := *task
+		t.Status = domain.TaskInProgress
+		t.Progress = 10
+		t.UpdatedAt = time.Now()
+		st.Tasks = append(st.Tasks, t)
+		return nil
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to update task status to IN_PROGRESS for task %s: %v\n", taskID, err)
@@ -258,7 +263,8 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			}
 		}
 		if targetTask == nil {
-			return fmt.Errorf("task %s not found in state", taskID)
+			st.Tasks = append(st.Tasks, *task)
+			targetTask = &st.Tasks[len(st.Tasks)-1]
 		}
 
 		if targetTask.MaxRetries <= 0 {

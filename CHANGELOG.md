@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.87.4] - 2026-09-13
+
+### Fixed
+- **Multi-Story Task Isolation & Non-Destructive State Persistence (`pkg/infrastructure/storage/sqlite_repository_save.go`)**:
+  - Prevented catastrophic task pruning in `saveTasks` when saving partial state: `DELETE FROM tasks WHERE ... AND id NOT IN (...)` is now strictly scoped to the active `story_id`s present in `state.Tasks`, preventing concurrent stories from purging each other's tasks from the database.
+  - Eliminated full table task deletion on `len(state.Tasks) == 0`.
+- **Defensive Task State Recovery (`pkg/services/orchestrator_execute.go`, `orchestrator_execute_helpers.go`)**:
+  - Added self-healing task reattachment during `updateStateWithRetry` in `executeTask` when setting `TaskInProgress` and saving final task outcome: if the target task is missing from `st.Tasks` due to concurrent OCC state refreshes, the in-memory `task` domain model is automatically attached and updated rather than throwing `task not found in state`.
+- **Global Story Task Preservation in Planning (`pkg/services/orchestrator_server.go`)**:
+  - Updated `PlanStory` so `state.Tasks` preserves all roadmap tasks across stories rather than overwriting in-memory state with only newly planned tasks.
+- **Whole-Project Acceptance Audit Deferral in Dispatch Loop (`pkg/services/orchestrator_dispatch.go`)**:
+  - Added the missing `isFinalStory` guard to `RunAcceptanceAudit` in `RunOnce`, ensuring whole-project acceptance audits are deferred until the final story is executing.
+
 ## [0.87.3] - 2026-09-13
 
 ### Fixed
