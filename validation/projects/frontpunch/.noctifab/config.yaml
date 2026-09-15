@@ -296,6 +296,8 @@ sandbox:
     max_issues: 100
     consecutive_failures: 2
     max_retries: 3
+  e2e:
+    mode: docker
   exclude_paths:
   - node_modules/
   - vendor/
@@ -310,6 +312,7 @@ sandbox:
   - .noctifab/
   - .git/
   allowed_commands:
+  - docker
   - python
   - python3
   - coverage

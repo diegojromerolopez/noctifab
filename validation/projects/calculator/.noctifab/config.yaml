@@ -263,6 +263,8 @@ sandbox:
     max_issues: 100
     consecutive_failures: 2
     max_retries: 3
+  e2e:
+    mode: docker
   exclude_paths:
   - vendor/
   - .bundle/
@@ -271,6 +273,7 @@ sandbox:
   - .noctifab/
   - .git/
   allowed_commands:
+  - docker
   - ruby
   - rspec
   - rubocop

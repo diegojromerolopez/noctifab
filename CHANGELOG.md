@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.89.1] - 2026-09-15
+
+### Changed
+- **Validation Projects Configuration (`validation/projects/*/.noctifab/config.yaml`)**:
+  - Configured `sandbox.e2e.mode: docker` across all 20 validation projects (`actodis`, `auth-vault`, `buffonstream`, `calculator`, `djanban`, `dotchess`, `echo`, `fortune`, `frontpunch`, `jpacioli`, `ninline`, `notebook`, `ocalogue`, `pyedis`, `searchthedocs`, `stricc`, `t4`, `thredis`, `todo-cli`, `wc`).
+  - Ensured `"docker"` is present in `allowed_commands` across all validation projects.
+  - Enhanced `TestLoadValidationProjectConfigs` (`pkg/infrastructure/config/validation_projects_test.go`) to explicitly verify `GetE2EMode() == "docker"` for every validation project.
+
 ## [0.89.0] - 2026-09-15
 
 ### Added

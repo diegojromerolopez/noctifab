@@ -292,12 +292,15 @@ sandbox:
     max_issues: 100
     consecutive_failures: 2
     max_retries: 3
+  e2e:
+    mode: docker
   exclude_paths:
   - target/
   - target_container/
   - .noctifab/
   - .git/
   allowed_commands:
+  - docker
   - cargo
   - rustc
   - git
