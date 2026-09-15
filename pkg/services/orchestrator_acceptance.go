@@ -78,3 +78,8 @@ func (o *Orchestrator) queueAcceptanceRemediationTask(ctx context.Context, state
 	fmt.Printf("🔍 [Acceptance Gate] Missing specification features or E2E contracts detected (%d gap(s)). Triggering remediation cycle (Task: %s)...\n", len(auditResult.Gaps), taskID)
 	return true
 }
+
+// SetAcceptanceAuditor overrides the acceptance auditor service (useful for tests).
+func (o *Orchestrator) SetAcceptanceAuditor(auditor *AcceptanceAuditor) {
+	o.acceptanceAuditor = auditor
+}

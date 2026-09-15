@@ -2010,6 +2010,9 @@ sandbox:
   # Examples: "python3 -m py_compile {file}" | "ruby -c {file}" | "gofmt -e {file}" | "node --check {file}" | "bash -n {file}"
   syntax_check_command: ""          # Default: empty (no-op — language-agnostic)
   max_linter_retries: 3         # Max linter retry turns per task (default: 3)
+  e2e:
+    mode: "docker"              # E2E acceptance test strategy: docker (default) or native
+    command: ""                 # Optional explicit E2E command override
   exclude_paths:                # Scanned path exclusions
     - "node_modules/"
     - "vendor/"

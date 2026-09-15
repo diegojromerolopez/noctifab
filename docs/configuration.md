@@ -360,6 +360,9 @@ sandbox:
   formatter_command: "go fmt ./..."
   syntax_check_command: "gofmt -e {file}"
   linter_command: "golangci-lint run"
+  e2e:
+    mode: docker # "docker" (default) or "native"
+    command: ""  # optional explicit command override
   exclude_paths:
     - "node_modules/"
     - "vendor/"
@@ -370,6 +373,8 @@ sandbox:
 ```
 
 - **`mode`** (String): Isolation strategy environment. Values: `host` (jail checks on the developer machine) or `docker` (complete container sandbox isolation).
+- **`e2e.mode`** (String): End-to-end acceptance testing execution strategy. Values: `docker` (default, discovers `docker-compose.e2e.yml` or `docker-compose.yml`) or `native` (local test execution via `make e2e`, `npm run test:e2e`, or language-specific runners such as `pytest tests/e2e`, `cargo test --test e2e`, `go test -v ./tests/e2e/...`).
+- **`e2e.command`** (String): Optional explicit shell command override for E2E testing (e.g. `make e2e` or `pytest tests/e2e`). When specified, takes precedence over auto-detection in all modes.
 - **`timeout_seconds`** (Integer): Absolute execution wall-clock time limit in seconds for test and script execution processes.
 - **`idle_timeout_seconds`** (Integer): Active watchdog timeout. Kills processes immediately if they output no bytes on stdout/stderr for this duration.
 - **`test_command`** (String): Command executed by the Test Validator to run the unit/integration test suites (e.g. `npm test`, `pytest`).

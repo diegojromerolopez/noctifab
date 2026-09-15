@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -176,6 +177,12 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.Sandbox.FormatterCommand != "go fmt ./..." {
 		t.Errorf("expected Sandbox.FormatterCommand 'go fmt ./...', got %q", cfg.Sandbox.FormatterCommand)
 	}
+	if cfg.Sandbox.GetE2EMode() != "docker" {
+		t.Errorf("expected Sandbox.GetE2EMode 'docker', got %q", cfg.Sandbox.GetE2EMode())
+	}
+	if cfg.Sandbox.GetE2ECommand() != "" {
+		t.Errorf("expected Sandbox.GetE2ECommand '', got %q", cfg.Sandbox.GetE2ECommand())
+	}
 	if cfg.Sandbox.GetLinterCommand() != "golangci-lint run" {
 		t.Errorf("expected GetLinterCommand 'golangci-lint run', got %q", cfg.Sandbox.GetLinterCommand())
 	}
@@ -344,6 +351,51 @@ sandbox:
 		}
 		if cfg.Sandbox.GetMaxLinterRetries() != 6 {
 			t.Errorf("expected GetMaxLinterRetries 6, got %d", cfg.Sandbox.GetMaxLinterRetries())
+		}
+	})
+}
+
+func TestSandboxE2EConfig(t *testing.T) {
+	t.Run("default is docker mode with empty command", func(t *testing.T) {
+		cfg := DefaultConfig()
+		if cfg.Sandbox.GetE2EMode() != "docker" {
+			t.Errorf("expected default E2E mode 'docker', got %q", cfg.Sandbox.GetE2EMode())
+		}
+		if cfg.Sandbox.GetE2ECommand() != "" {
+			t.Errorf("expected default E2E command '', got %q", cfg.Sandbox.GetE2ECommand())
+		}
+	})
+
+	t.Run("unmarshals native mode and custom command", func(t *testing.T) {
+		yamlData := `
+sandbox:
+  e2e:
+    mode: native
+    command: make e2e
+`
+		cfg := DefaultConfig()
+		if err := yaml.Unmarshal([]byte(yamlData), cfg); err != nil {
+			t.Fatalf("unexpected yaml unmarshal error: %v", err)
+		}
+		if cfg.Sandbox.GetE2EMode() != "native" {
+			t.Errorf("expected E2E mode 'native', got %q", cfg.Sandbox.GetE2EMode())
+		}
+		if cfg.Sandbox.GetE2ECommand() != "make e2e" {
+			t.Errorf("expected E2E command 'make e2e', got %q", cfg.Sandbox.GetE2ECommand())
+		}
+	})
+
+	t.Run("validation rejects invalid e2e mode", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Sandbox.E2E.Mode = "kubernetes"
+		cfg.VCS.TokenValue = "token"
+		cfg.LLM.APIKeyValue = "dummy"
+		err := cfg.Validate()
+		if err == nil {
+			t.Fatal("expected validation error for invalid e2e mode, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid sandbox.e2e.mode") {
+			t.Errorf("unexpected error message: %v", err)
 		}
 	})
 }

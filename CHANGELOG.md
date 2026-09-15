@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.89.0] - 2026-09-15
+
+### Added
+- **Configurable E2E Testing Architecture (`sandbox.e2e`) (`pkg/infrastructure/config/sandbox_types.go`, `defaults.go`, `config.go`)**:
+  - Added structured `sandbox.e2e` configuration supporting `mode` (`"docker"` or `"native"`) and explicit `command` overrides.
+  - Set default E2E mode to `"docker"` (the Clean Docker Architecture approach) with fallback to `"native"`.
+  - Added `"docker"`, `"uv"`, and `"mise"` to sandbox `allowed_commands` and package managers whitelist to enable hermetic toolchains.
+- **E2E Command Detection Engine (`pkg/services/e2e_detector.go`)**:
+  - Implemented decoupled, language-agnostic detection hierarchy for both Docker and Native execution.
+  - In `docker` mode (default): prioritizes `docker-compose.e2e.yml`, `docker-compose.yml` (`e2e:` service), with fallback to `Makefile` (`e2e:`).
+  - In `native` mode: isolates and executes local test runners without requiring container daemons, supporting `Makefile` (`e2e:`), Node (`npm run test:e2e`), Python (`uv run pytest tests/e2e` or `pytest tests/e2e`), Rust (`cargo test --test e2e`), and Go (`go test -v ./tests/e2e/...`).
+- **Auditor Integration (`pkg/services/acceptance_auditor.go`, `story_qa_auditor.go`, `orchestrator.go`)**:
+  - Wired `E2EConfig` dynamically into both `AcceptanceAuditor` (whole-project acceptance gate) and `StoryQAAuditor` (per-story completeness gate).
+  - Configured CLI runner and daemon server entrypoints to thread sandbox E2E settings into the orchestrator.
+
 ## [0.88.0] - 2026-09-15
 
 ### Added

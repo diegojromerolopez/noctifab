@@ -199,6 +199,11 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
+	e2eMode := cfg.Sandbox.GetE2EMode()
+	if e2eMode != "docker" && e2eMode != "native" {
+		return fmt.Errorf("invalid sandbox.e2e.mode: %s (must be docker or native)", cfg.Sandbox.E2E.Mode)
+	}
+
 	roles := map[string]AgentRoleConfig{
 		"orchestrator":    cfg.Agents.Orchestrator,
 		"product_manager": cfg.Agents.ProductManager,

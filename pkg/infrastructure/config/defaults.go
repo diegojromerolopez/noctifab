@@ -162,10 +162,14 @@ func DefaultConfig() *Config {
 			IdleTimeoutSeconds: 30,
 			TestCommand:        "go test -v ./...",
 			FormatterCommand:   "go fmt ./...",
-			ExcludePaths:       []string{".noctifab"},
+			E2E: E2EConfig{
+				Mode: "docker",
+			},
+			ExcludePaths: []string{".noctifab"},
 			AllowedCommands: []string{
+				"docker",
 				"go", "git", "make", "cmake", "ninja", "gcc", "clang", "g++", "clang++",
-				"python", "python3", "pytest", "pytest-cov", "coverage", "tox", "nox", "flake8", "black", "isort", "ruff", "mypy",
+				"python", "python3", "pytest", "pytest-cov", "coverage", "tox", "nox", "flake8", "black", "isort", "ruff", "mypy", "uv", "mise",
 				"npm", "npx", "node", "pnpm", "yarn", "vitest", "jest", "tsc", "eslint", "prettier",
 				"cargo", "rustc", "cargo-tarpaulin", "cargo-nextest", "rustfmt", "clippy-driver",
 				"ruby", "bundle", "gem", "rspec", "rubocop", "rake",
@@ -174,7 +178,7 @@ func DefaultConfig() *Config {
 				"gcov", "lcov", "valgrind", "clang-format", "clang-tidy",
 			},
 			AutoInstallDeps: false,
-			PackageManagers: []string{"pip", "go", "brew", "curl", "npm", "cargo", "gem", "opam", "gradle"},
+			PackageManagers: []string{"pip", "uv", "go", "brew", "curl", "npm", "cargo", "gem", "opam", "gradle"},
 		},
 		Roles: RolesConfig{
 			Orchestrator: RoleSetting{Profile: "orchestrator", Temperature: 0.0},

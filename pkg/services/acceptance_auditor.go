@@ -29,6 +29,7 @@ type AcceptanceAuditor struct {
 	renderer        PromptRenderer
 	runner          Sandbox
 	e2eCmd          string
+	e2eMode         string
 	defaultTestCmd  string
 	allowedCommands []string
 }
@@ -54,6 +55,10 @@ func (a *AcceptanceAuditor) ConfigureFromConfig(cfg *config.Config) {
 	if cfg != nil {
 		a.defaultTestCmd = cfg.Sandbox.TestCommand
 		a.allowedCommands = cfg.Sandbox.AllowedCommands
+		a.e2eMode = cfg.Sandbox.GetE2EMode()
+		if cmd := cfg.Sandbox.GetE2ECommand(); cmd != "" {
+			a.e2eCmd = cmd
+		}
 	}
 }
 
@@ -65,6 +70,19 @@ func (a *AcceptanceAuditor) SetRunner(runner Sandbox) {
 // SetE2ECommand sets the custom E2E command.
 func (a *AcceptanceAuditor) SetE2ECommand(cmd string) {
 	a.e2eCmd = cmd
+}
+
+// SetE2EMode sets the E2E mode ("docker" or "native").
+func (a *AcceptanceAuditor) SetE2EMode(mode string) {
+	a.e2eMode = mode
+}
+
+// SetE2EConfig sets the E2E configuration mode and command.
+func (a *AcceptanceAuditor) SetE2EConfig(e2e config.E2EConfig) {
+	a.e2eMode = e2e.Mode
+	if e2e.Command != "" {
+		a.e2eCmd = e2e.Command
+	}
 }
 
 // SetDefaultTestCommand sets the default test command.
@@ -168,24 +186,7 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 }
 
 func (a *AcceptanceAuditor) detectE2ECommand(projectPath string) string {
-	if a.e2eCmd != "" {
-		return a.e2eCmd
-	}
-	if _, err := os.Stat(filepath.Join(projectPath, "docker-compose.e2e.yml")); err == nil {
-		return "docker compose -f docker-compose.e2e.yml up --build --exit-code-from test-runner"
-	}
-	if _, err := os.Stat(filepath.Join(projectPath, "docker-compose.yml")); err == nil {
-		if content, rErr := os.ReadFile(filepath.Join(projectPath, "docker-compose.yml")); rErr == nil && strings.Contains(string(content), "e2e:") {
-			return "docker compose up --build --exit-code-from e2e"
-		}
-	}
-	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
-		content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile"))
-		if rErr == nil && strings.Contains(string(content), "e2e:") {
-			return "make e2e"
-		}
-	}
-	return ""
+	return DetectE2ECommand(projectPath, a.e2eMode, a.e2eCmd)
 }
 
 func (a *AcceptanceAuditor) isCommandAllowed(cmdStr string) bool {

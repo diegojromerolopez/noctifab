@@ -58,6 +58,7 @@ type OrchestratorConfig struct {
 	LastResort             config.LastResortAgentConfig
 	DefaultTestCommand     string
 	AllowedCommands        []string
+	E2E                    config.E2EConfig
 }
 
 // QADependencies contains the optional infrastructure used only when QA is enabled.
@@ -170,12 +171,14 @@ func NewOrchestratorWithRuntime(
 		auditor = NewAcceptanceAuditor(client, runtime.PromptRenderer, runner)
 		auditor.SetDefaultTestCommand(cfg.DefaultTestCommand)
 		auditor.SetAllowedCommands(cfg.AllowedCommands)
+		auditor.SetE2EConfig(cfg.E2E)
 	}
 	storyAuditor := runtime.StoryQAAuditor
 	if storyAuditor == nil {
 		storyAuditor = NewStoryQAAuditor(client, runner)
 		storyAuditor.SetDefaultTestCommand(cfg.DefaultTestCommand)
 		storyAuditor.SetAllowedCommands(cfg.AllowedCommands)
+		storyAuditor.SetE2EConfig(cfg.E2E)
 	}
 	o := &Orchestrator{
 		repo:               repo,
@@ -205,11 +208,6 @@ func NewOrchestratorWithRuntime(
 		queue.SetConflictResolver(o.resolveGitRebaseConflict)
 	}
 	return o
-}
-
-// SetAcceptanceAuditor overrides the acceptance auditor service (useful for tests).
-func (o *Orchestrator) SetAcceptanceAuditor(auditor *AcceptanceAuditor) {
-	o.acceptanceAuditor = auditor
 }
 
 func NewOrchestrator(

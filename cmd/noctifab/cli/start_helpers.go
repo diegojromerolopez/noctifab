@@ -111,5 +111,6 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		LastResort:             cfg.Agents.LastResort,
 		DefaultTestCommand:     cfg.Sandbox.TestCommand,
 		AllowedCommands:        cfg.Sandbox.AllowedCommands,
+		E2E:                    cfg.Sandbox.E2E,
 	}
 }
