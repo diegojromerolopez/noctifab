@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Single-Project Autonomous Feedback & Improvement Loop for Noctifab.
+Validation Project Autonomous Feedback & Improvement Loop for Noctifab.
 
 Executes containerized Noctifab validation against ANY chosen target project
 (e.g., pyedis, thredis, calculator, t4, etc.), harvests multi-channel telemetry
@@ -9,11 +9,11 @@ diagnoses root causes, gates code/prompt changes, recompiles the Noctifab binary
 and re-executes the project in a closed self-improving feedback loop.
 
 Usage:
-  python3 validation/bin/single_project_loop.py <project> [--max-iterations=N] [--timeout=SECONDS] [--dry-run]
+  python3 validation/bin/validation_project_loop.py <project> [--max-iterations=N] [--timeout=SECONDS] [--dry-run]
   # Examples:
-  python3 validation/bin/single_project_loop.py pyedis
-  python3 validation/bin/single_project_loop.py thredis --max-iterations=3
-  python3 validation/bin/single_project_loop.py calculator --dry-run
+  python3 validation/bin/validation_project_loop.py pyedis
+  python3 validation/bin/validation_project_loop.py thredis --max-iterations=3
+  python3 validation/bin/validation_project_loop.py calculator --dry-run
 """
 
 import os
@@ -838,7 +838,7 @@ def write_loop_markdown_report(project: str, iterations_data: List[Dict[str, Any
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Single-Project Autonomous Feedback & Improvement Loop for Noctifab")
+    parser = argparse.ArgumentParser(description="Validation Project Autonomous Feedback & Improvement Loop for Noctifab")
     parser.add_argument("project", nargs="?", default="pyedis", help="Target validation project (e.g. pyedis, thredis, calculator, t4). Default: pyedis")
     parser.add_argument("--max-iterations", type=int, default=None, help="Maximum loop iterations (default: 3 if no duration specified)")
     parser.add_argument("--duration-hours", type=float, default=None, help="Total duration limit in hours for the autonomous feedback loop (e.g. 5 or 2.5)")

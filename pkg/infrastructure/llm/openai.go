@@ -179,6 +179,12 @@ func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
 	if apiKey != "" {
 		opts = append(opts, option.WithAPIKey(apiKey))
 	}
+	if o.provider == "openrouter" {
+		opts = append(opts,
+			option.WithHeader("HTTP-Referer", "https://github.com/diegojromerolopez/noctifab"),
+			option.WithHeader("X-Title", "Noctifab"),
+		)
+	}
 	return openai.NewClient(opts...)
 }
 

@@ -244,6 +244,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		}
 	}
 
+	modelFallbacks := 0
 	for {
 		var callRes *ProviderCallResult
 		var responseBody []byte
@@ -393,10 +394,11 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			shouldFallback = false
 		}
 
-		if shouldFallback {
+		if shouldFallback && modelFallbacks < 1 {
 			nextModel := c.getNextLowerModel(ctx, apiKey, activeModel)
 			if nextModel != "" {
-				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to model: %s...\n", activeModel, err, nextModel)
+				modelFallbacks++
+				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to model: %s (attempt %d/1)...\n", activeModel, err, nextModel, modelFallbacks)
 				activeModel = nextModel
 				continue
 			}

@@ -102,11 +102,17 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	if v.Formatter != nil {
 		fmt.Printf("Orchestrator: Task %s running formatter pre-pass...\n", task.ID)
 		_, _ = v.Formatter.Format(ctx, state.ProjectPath)
-	} else if v.FormatterCommand != "" {
-		// Deterministic Auto-Formatter Pre-Pass:
-		// Automatically run auto-fix formatter before test execution.
-		fmt.Printf("Orchestrator: Task %s running formatter command %q...\n", task.ID, v.FormatterCommand)
-		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
+	} else {
+		formatCmd := v.FormatterCommand
+		if formatCmd == "" {
+			formatCmd = DetectDefaultFormatterCommand(state.ProjectPath)
+		}
+		if formatCmd != "" && v.Runner != nil {
+			// Deterministic Auto-Formatter Pre-Pass:
+			// Automatically run local formatter before test execution (never linters).
+			fmt.Printf("Orchestrator: Task %s running deterministic local formatter %q...\n", task.ID, formatCmd)
+			_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, formatCmd, "")
+		}
 	}
 
 	// Dual-Gate Build Verification:

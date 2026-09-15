@@ -58,6 +58,31 @@ func isNoTemperatureModel(model string) bool {
 	return false
 }
 
+var noctifabResponseSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"reasoning": map[string]any{
+			"type": "string",
+		},
+		"actions": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tool": map[string]any{
+						"type": "string",
+					},
+					"args": map[string]any{
+						"type": "object",
+					},
+				},
+				"required": []string{"tool", "args"},
+			},
+		},
+	},
+	"required": []string{"reasoning", "actions"},
+}
+
 // buildChatParams assembles SDK request params from completionOptions.
 func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCompletionNewParams {
 	params := openai.ChatCompletionNewParams{
@@ -75,12 +100,24 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 	if opts.maxTokens > 0 {
 		params.MaxCompletionTokens = openai.Int(int64(opts.maxTokens))
 	}
-	// response_format=json_object is suppressed when disableJSONMode is set.
+	// response_format=json_schema or json_object is suppressed when disableJSONMode is set.
 	// This is required for providers/models that cannot use forced JSON mode
 	// (e.g. QwenCloud thinking models). ExtractJSONBlock handles the parsing.
 	if opts.enforceJSON && !opts.disableJSONMode {
-		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
-			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+		if !globalCapabilityCache.isJSONSchemaUnsupported(model) {
+			params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+				OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
+					JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
+						Name:        "noctifab_response",
+						Description: openai.String("Structured response conforming to Noctifab reasoning and actions contract"),
+						Schema:      noctifabResponseSchema,
+					},
+				},
+			}
+		} else {
+			params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+				OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+			}
 		}
 	}
 	return params
@@ -95,6 +132,15 @@ func ensureJSONKeyword(prompt string) string {
 		return prompt
 	}
 	return prompt + "\n\nRespond with a single JSON object only."
+}
+
+// looksLikeJSONSchemaRejection detects 400s caused by models or relays that do not support
+// response_format=json_schema. The retry falls back to response_format=json_object.
+func looksLikeJSONSchemaRejection(body string) bool {
+	low := strings.ToLower(body)
+	return strings.Contains(low, "json_schema") ||
+		strings.Contains(low, "structured outputs") ||
+		(strings.Contains(low, "response_format") && strings.Contains(low, "schema"))
 }
 
 // looksLikeRouterUnavailable detects gateway-side model routing failures such
@@ -139,6 +185,7 @@ type providerCapabilityCache struct {
 	mu                     sync.RWMutex
 	noTemperature          map[string]bool
 	noMaxTokens            map[string]bool
+	noJSONSchema           map[string]bool
 	noJSONMode             map[string]bool
 	unsupportedExtraParams map[string]map[string]bool
 }
@@ -146,8 +193,26 @@ type providerCapabilityCache struct {
 var globalCapabilityCache = &providerCapabilityCache{
 	noTemperature:          make(map[string]bool),
 	noMaxTokens:            make(map[string]bool),
+	noJSONSchema:           make(map[string]bool),
 	noJSONMode:             make(map[string]bool),
 	unsupportedExtraParams: make(map[string]map[string]bool),
+}
+
+func (c *providerCapabilityCache) isJSONSchemaUnsupported(model string) bool {
+	key := normalizeModelKey(model)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.noJSONSchema[key]
+}
+
+func (c *providerCapabilityCache) markJSONSchemaUnsupported(model string) {
+	if model == "" {
+		return
+	}
+	key := normalizeModelKey(model)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.noJSONSchema[key] = true
 }
 
 func (c *providerCapabilityCache) isTemperatureUnsupported(model string) bool {
@@ -234,6 +299,10 @@ func adaptOptionsForError(opts completionOptions, err error, model string) (comp
 		return opts, false
 	}
 	switch {
+	case he.StatusCode == http.StatusBadRequest && opts.enforceJSON && looksLikeJSONSchemaRejection(he.Body):
+		fmt.Fprintln(os.Stderr, "⚠ Server rejected response_format=json_schema; retrying with json_object.")
+		globalCapabilityCache.markJSONSchemaUnsupported(model)
+		return opts, true
 	case he.StatusCode == http.StatusBadRequest && opts.enforceJSON && looksLikeResponseFormatRejection(he.Body):
 		fmt.Fprintln(os.Stderr, "⚠ Server rejected response_format; retrying without JSON enforcement.")
 		opts.enforceJSON = false

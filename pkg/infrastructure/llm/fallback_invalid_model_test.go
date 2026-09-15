@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -426,4 +427,29 @@ func TestComplete_AnthropicInvalidModelRecoveryE2E(t *testing.T) {
 	require.Len(t, requestedModels, 2)
 	assert.Equal(t, "claude-3-7-sonnet", requestedModels[0])
 	assert.Equal(t, "claude-3-7-sonnet-20250219", requestedModels[1])
+}
+
+func TestShouldSkipModelFallback_FastFailTimeoutsAndDeadlines(t *testing.T) {
+	testCases := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{"context deadline exceeded", context.DeadlineExceeded, true},
+		{"context canceled", context.Canceled, true},
+		{"http 504 gateway timeout", &httpError{StatusCode: http.StatusGatewayTimeout, Body: "Gateway Timeout"}, true},
+		{"http 502 bad gateway", &httpError{StatusCode: http.StatusBadGateway, Body: "Bad Gateway"}, true},
+		{"http 503 service unavailable", &httpError{StatusCode: http.StatusServiceUnavailable, Body: "Service Unavailable"}, true},
+		{"http 408 request timeout", &httpError{StatusCode: http.StatusRequestTimeout, Body: "Request Timeout"}, true},
+		{"connection refused error", errors.New("dial tcp 127.0.0.1:80: connect: connection refused"), true},
+		{"generic timeout string", errors.New("net/http: request canceled while waiting for connection (Client.Timeout exceeded)"), true},
+		{"model not found error (should NOT skip)", errors.New("model 'unknown-xyz' not found"), false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := shouldSkipModelFallback(tc.err)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
 }

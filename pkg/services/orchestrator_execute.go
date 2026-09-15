@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -44,8 +45,6 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	if task == nil {
 		return
 	}
-
-	task.TargetFiles = collectTargetFilesRecursively(*task, state.Tasks)
 
 	fmt.Printf("Orchestrator: Task %s (%s) is starting...\n", taskID, task.Title)
 
@@ -120,14 +119,37 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		taskState.ProjectPath = worktreeDir
 	}
 
+	// Strict Target File Prompt Slicing:
+	// Slice turn context strictly to direct task.TargetFiles for implementation.
 	var fileContexts []string
 	slicer := NewContextSlicer(o.cfg.Context)
+	targetSet := make(map[string]bool)
 	for _, file := range task.TargetFiles {
+		if file == "" {
+			continue
+		}
+		targetSet[file] = true
 		fullPath, err := resolveSandboxPath(taskState.ProjectPath, file)
 		if err == nil {
 			if content, err := os.ReadFile(fullPath); err == nil {
 				sliced := slicer.SliceFileContext(file, string(content), "")
 				fileContexts = append(fileContexts, capText(sliced, fileContextCapChars))
+			}
+		}
+	}
+
+	// For ancestor dependencies, supply only immediate symbol outlines rather than dumping entire files
+	depFiles := collectTargetFilesRecursively(*task, state.Tasks)
+	symbolSlicer := &ContextSlicer{mode: config.ContextModeTreeSitter}
+	for _, df := range depFiles {
+		if targetSet[df] || df == "" {
+			continue
+		}
+		fullPath, err := resolveSandboxPath(taskState.ProjectPath, df)
+		if err == nil {
+			if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
+				outline := symbolSlicer.SliceFileContext(df, string(content), "")
+				fileContexts = append(fileContexts, capText(outline, 1500))
 			}
 		}
 	}

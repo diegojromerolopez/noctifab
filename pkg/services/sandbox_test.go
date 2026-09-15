@@ -210,3 +210,41 @@ func TestDetectDefaultTestCommand(t *testing.T) {
 		t.Errorf("expected 'go test -v ./...', got %q", got)
 	}
 }
+
+func TestDetectDefaultFormatterCommand(t *testing.T) {
+	// 1. Makefile with format target
+	tmpMake := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpMake, "Makefile"), []byte("all:\n\nformat:\n\t@echo fmt\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultFormatterCommand(tmpMake); got != "make format" {
+		t.Errorf("expected 'make format', got %q", got)
+	}
+
+	// 2. Go
+	tmpGo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpGo, "go.mod"), []byte("module test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultFormatterCommand(tmpGo); got != "go fmt ./..." {
+		t.Errorf("expected 'go fmt ./...', got %q", got)
+	}
+
+	// 3. Cargo.toml
+	tmpRust := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpRust, "Cargo.toml"), []byte("[package]"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultFormatterCommand(tmpRust); got != "cargo fmt" {
+		t.Errorf("expected 'cargo fmt', got %q", got)
+	}
+
+	// 4. package.json
+	tmpJS := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpJS, "package.json"), []byte(`{"scripts":{"format":"prettier -w ."}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultFormatterCommand(tmpJS); got != "npm run format" {
+		t.Errorf("expected 'npm run format', got %q", got)
+	}
+}

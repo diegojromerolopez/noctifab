@@ -1,6 +1,6 @@
-# Single-Project Autonomous Feedback & Improvement Loop
+# Validation Project Autonomous Feedback & Improvement Loop
 
-The **Single-Project Autonomous Feedback Loop** (`validation/bin/single_project_loop.py`) turns any validation target project (e.g. `pyedis`, `thredis`, `calculator`, `t4`) into a rapid, closed-loop diagnostic and self-healing sensor for Noctifab.
+The **Validation Project Autonomous Feedback Loop** (`validation/bin/validation_project_loop.py`) turns any validation target project (e.g. `pyedis`, `thredis`, `calculator`, `t4`) into a rapid, closed-loop diagnostic and self-healing sensor for Noctifab.
 
 Rather than waiting hours for the entire validation matrix to execute, this micro-loop executes a targeted project, extracts deep operational and token accounting telemetry, evaluates bottlenecks, verifies improvements, recompiles Noctifab, and re-tests the project in **10–25 minute cycles**.
 
@@ -12,11 +12,11 @@ Rather than waiting hours for the entire validation matrix to execute, this micr
 The runner is completely decoupled from specific project names:
 ```bash
 # Run on pyedis (default)
-python3 validation/bin/single_project_loop.py pyedis
+python3 validation/bin/validation_project_loop.py pyedis
 
 # Run on thredis or calculator
-python3 validation/bin/single_project_loop.py thredis
-python3 validation/bin/single_project_loop.py calculator
+python3 validation/bin/validation_project_loop.py thredis
+python3 validation/bin/validation_project_loop.py calculator
 
 # Via convenience Make targets
 make pyedis-loop
@@ -84,10 +84,10 @@ flowchart TD
 
 ## 4. CLI Usage & Flags
 
-The runner is located at `validation/bin/single_project_loop.py` and supports the following options:
+The runner is located at `validation/bin/validation_project_loop.py` and supports the following options:
 
 ```bash
-python3 validation/bin/single_project_loop.py [PROJECT] [OPTIONS]
+python3 validation/bin/validation_project_loop.py [PROJECT] [OPTIONS]
 ```
 
 ### Arguments & Flags
@@ -103,21 +103,21 @@ python3 validation/bin/single_project_loop.py [PROJECT] [OPTIONS]
 
 #### 1. Running on `pyedis` for 5 Hours (Time-Bounded Soak & Improvement)
 ```bash
-python3 validation/bin/single_project_loop.py pyedis --duration-hours 5
+python3 validation/bin/validation_project_loop.py pyedis --duration-hours 5
 # Or via Makefile
 make pyedis-loop DURATION_HOURS=5
 ```
 
 #### 2. Running on `thredis` (.NET 9 Multithreaded Redis)
 ```bash
-python3 validation/bin/single_project_loop.py thredis --max-iterations=2
+python3 validation/bin/validation_project_loop.py thredis --max-iterations=2
 # Or via Makefile
 make auto-improve PROJECT=thredis
 ```
 
 #### 3. Inspecting Existing Run Diagnostics without Re-running
 ```bash
-python3 validation/bin/single_project_loop.py pyedis --dry-run
+python3 validation/bin/validation_project_loop.py pyedis --dry-run
 ```
 
 ---

@@ -73,7 +73,7 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 		maxTokens = 8192
 	}
 
-	useCacheControl := len(prompt) > 2048
+	useCacheControl := len(prompt) > 1024
 	currentTemp := temperature
 	currentMaxTokens := maxTokens
 

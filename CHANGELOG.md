@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.88.0] - 2026-09-15
+
+### Added
+- **Native Structured Outputs (JSON Schema) (`pkg/infrastructure/llm/openai_adapt.go`, `gemini.go`)**:
+  - Enforced native structured outputs via `response_format: {"type": "json_schema"}` with the strict canonical `noctifab_response` schema for OpenAI-compatible providers and `responseSchema` for Gemini.
+  - Implemented adaptive fallback to `json_object` and raw text when third-party gateways or older models reject structured schema parameters.
+- **Fast-Fail Provider Cascades (`pkg/infrastructure/llm/client.go`, `http_error.go`)**:
+  - Broadened `shouldSkipModelFallback` to immediately skip lower-model iteration on context deadlines, network timeouts, connection refusals, and 502/503/504 gateway errors.
+  - Capped internal model fallback attempts to at most 1 per provider invocation, preventing 5-10 sequential sub-model timeouts and immediately triggering router cascading to alternative providers.
+- **Turn Budget Right-Sizing (`pkg/infrastructure/config/defaults.go`)**:
+  - Right-sized default turn budgets: reduced `Generators.Iterations` from 20 to 8 and `Testers.Iterations` from 15 to 6, eliminating wasteful turn thrashing.
+- **Strict Target File Prompt Slicing (`pkg/services/orchestrator_execute.go`)**:
+  - Preserved `task.TargetFiles` strictly for the current task's direct targets instead of overwriting with the full transitive dependency closure.
+  - Extracted concise TreeSitter symbol outlines (capped at 1,500 characters) for ancestor dependency files, preventing 95KB prompt context explosions.
+- **Deterministic Local Pre-Passes (Formatters Only) (`pkg/services/sandbox.go`, `test_validator.go`, `orchestrator_execute_turns.go`)**:
+  - Added automatic detection of deterministic host code formatters (`go fmt`, `cargo fmt`, `make format/fmt`, `npm run format`) before test execution and git commits.
+  - Strictly prevented linter invocations during pre-formatting passes.
+- **Prompt Prefix Caching (`pkg/infrastructure/llm/anthropic.go`, `openai.go`)**:
+  - Lowered Anthropic prompt caching threshold from 2048 to 1024 characters to activate `cache_control: ephemeral` on standard prompt lengths.
+  - Injected OpenRouter application attribution headers (`HTTP-Referer`, `X-Title`) for optimal provider routing and caching.
+
 ## [0.87.5] - 2026-09-13
 
 ### Fixed
