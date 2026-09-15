@@ -172,6 +172,21 @@ Every `SPEC.md` across all 17 projects enforces consistent engineering standards
 - **Hermetic Integration Testing**: In-memory or temporary file doubles (`:memory:` SQLite, temp AOF file, ephemeral containers).
 - **Zero-Finding Linter Passes**: Generated code must pass all configured linters (`ruff`, `mypy --strict`, `clippy -D warnings`, `rubocop`, `clang-tidy`, `eslint`).
 
+### 4.5 E2E Acceptance Testing Configuration (`sandbox.e2e`)
+
+All 20 validation project templates configure `sandbox.e2e.mode: docker` by default and declare `"docker"` in `sandbox.allowed_commands`:
+```yaml
+sandbox:
+  mode: host
+  e2e:
+    mode: docker
+  allowed_commands:
+    - "docker"
+```
+
+- **Clean Docker Architecture**: In default containerized validation runs, acceptance tests execute inside self-contained Docker Compose environments (e.g. `docker-compose.e2e.yml` or `docker-compose.yml`), preventing runtime state or dependency leakage into the host.
+- **Native Execution Option**: When running Noctifab directly on the host (e.g. using `native_project_loop.py` against a local clone), `sandbox.e2e.mode: native` can be used to leverage fast, hermetic local runtimes (`uv`, `mise`, `cargo`, `go test`) with sub-second startup times. In native mode, Noctifab's `E2EDetector` automatically detects and skips Docker-based Makefile `e2e:` recipes to prevent unintended container spawns.
+
 ---
 
 ## 5. Execution Guide & Harness Usage

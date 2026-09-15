@@ -73,9 +73,12 @@ sandbox:
   test_command: "go test -v ./..."
   linter_command: "golangci-lint run"
   formatter_command: "go fmt ./..."
+  e2e:
+    mode: docker
   allowed_commands:
     - "go"
     - "git"
+    - "docker"
 ```
 
 ---
@@ -152,6 +155,8 @@ sandbox:
   test_command: "npm test"
   linter_command: "npm run lint"
   formatter_command: "npx prettier --write ."
+  e2e:
+    mode: native
   allowed_commands:
     - "node"
     - "npm"

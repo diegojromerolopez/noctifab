@@ -403,12 +403,14 @@ The following flags can be passed to the root command or configured in `.noctifa
 | `--sast-scanners` | `gosec` | Comma-separated SAST scanners (`gosec`, `bandit`) |
 | `--sast-fail-on-severity` | `high` | Minimum severity to block the PR |
 
-## Dependency Auto-Install Configuration
+## Dependency Auto-Install & E2E Testing Configuration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `sandbox.auto_install_deps` | `false` | Auto-install missing toolchain dependencies |
-| `sandbox.package_managers` | `["pip","go","brew","curl","npm"]` | Package managers to use for installation |
+| `sandbox.package_managers` | `["pip","uv","go","brew","curl","npm"]` | Package managers to use for installation |
+| `sandbox.e2e.mode` | `docker` | E2E acceptance test runner mode (`docker` or `native`) |
+| `sandbox.e2e.command` | `""` | Optional explicit command override for E2E testing |
 
 ---
 
@@ -560,6 +562,8 @@ sandbox:
   test_command: "coverage run --branch -m unittest discover -s tests -p \"test_*.py\" && coverage report --fail-under=80"
   linter_command: "ruff check ."
   formatter_command: "black ." # or "ruff format ."
+  e2e:
+    mode: docker # or "native"
   allowed_commands:
     - python
     - git
@@ -567,6 +571,8 @@ sandbox:
     - coverage
     - ruff
     - black
+    - uv
+    - docker
 ```
 
 ### Ruby

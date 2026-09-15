@@ -380,6 +380,38 @@ sandbox:
     - bash
 ```
 
+### End-to-End (E2E) Acceptance Testing Configuration (`sandbox.e2e`)
+
+Noctifab automatically discovers and executes end-to-end acceptance tests during Story QA audits and the Whole-Project Acceptance Gate. Configure the testing strategy via `sandbox.e2e`:
+
+```yaml
+sandbox:
+  mode: host
+  timeout_seconds: 300
+  e2e:
+    mode: docker       # "docker" (default) or "native"
+    command: ""        # Optional explicit command override (e.g. "make e2e", "pytest tests/e2e")
+```
+
+#### 1. The Clean Docker Architecture Approach (`mode: docker`, Default)
+- Isolates acceptance test runs inside self-contained Docker Compose environments without polluting host packages or state.
+- **Detection Priority**:
+  1. `docker-compose.e2e.yml` → `docker compose -f docker-compose.e2e.yml up --build --exit-code-from test-runner`
+  2. `docker-compose.yml` (containing `e2e:` service) → `docker compose up --build --exit-code-from e2e`
+  3. Fallback: `Makefile` (`e2e:` target) → `make e2e`
+- Ensure `docker` is added to `sandbox.allowed_commands`.
+
+#### 2. Native Hermetic Execution (`mode: native`)
+- Bypasses Docker entirely, executing tests directly against fast local runtimes (e.g. `uv`, `mise`, `cargo`, `go test`) with sub-second startup times and hermetic environment isolation.
+- **Detection Priority**:
+  1. `Makefile` with a native `e2e:` target → `make e2e`
+  2. Node.js `package.json` (`test:e2e` or `e2e` scripts) → `npm run test:e2e` / `npm run e2e`
+  3. Python (`pyproject.toml`, `requirements.txt`, or `setup.py` with `tests/e2e` or `test/e2e`) → `uv run pytest tests/e2e` (if `uv` is installed) or `pytest tests/e2e`
+  4. Rust (`Cargo.toml` with `tests/e2e` or `tests/e2e.rs`) → `cargo test --test e2e`
+  5. Go (`go.mod` with `tests/e2e`) → `go test -v ./tests/e2e/...`
+  6. Fallback: `Makefile` (`test:` target) → `make test`
+- **Docker Leak Guard**: If a repository's `Makefile` has an `e2e:` rule that delegates internally to `docker compose`, the native detection engine automatically detects this and bypasses the rule, preventing container launches in native mode.
+
 ---
 
 ## 8. Containerized Execution & Dockerfile Best Practices

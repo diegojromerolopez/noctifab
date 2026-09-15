@@ -125,6 +125,17 @@ make validate-all
 For the recommended execution order, capability ladder, and tier classification, consult [`validation/README.md`](../validation/README.md).
 *Note: These E2E validation runs utilize host compiler and package manager mount caching (Go and Cargo) to speed up iterations and support near-instantaneous incremental testing.*
 
+### 6. E2E Acceptance Testing Architecture (`sandbox.e2e`)
+During story execution and the final Whole-Project Acceptance Gate, Noctifab automatically runs end-to-end acceptance tests via `pkg/services/e2e_detector.go`. This supports two primary architectural execution patterns configured via `.noctifab/config.yaml`:
+
+- **The Clean Docker Architecture Approach (`sandbox.e2e.mode: docker`, default)**:
+  Runs acceptance tests inside isolated Docker Compose services (`docker-compose.e2e.yml` or `docker-compose.yml`), ensuring zero pollution of host packages, global toolchains, or running daemons. Requires `"docker"` in `sandbox.allowed_commands`.
+- **Native Hermetic Execution (`sandbox.e2e.mode: native`)**:
+  Executes acceptance tests directly on the host using fast, isolated runners (such as `uv run pytest tests/e2e`, `cargo test --test e2e`, `go test -v ./tests/e2e/...`, or `npm run test:e2e`).
+  - **Docker Leak Guard**: In native mode, if a `Makefile` defines an `e2e:` target that delegates internally to `docker compose`, the `E2EDetector` automatically detects the container invocation and bypasses it to prevent unintended container spawns.
+- **Explicit Override (`sandbox.e2e.command: "..."`)**:
+  When set, overrides all auto-detection logic across both modes.
+
 ---
 
 ## Formatting and Linting

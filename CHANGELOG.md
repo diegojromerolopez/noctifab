@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.89.3] - 2026-09-16
+
+### Documentation
+- **E2E Acceptance Testing & Sandbox Architecture**:
+  - Updated `SPEC.md`, `README.md`, `validation/README.md`, `docs/configuration.md`, `docs/cli_usage.md`, `docs/configuration_guidelines.md`, `docs/configuration_examples.md`, and `docs/developer_guide.md`.
+  - Documented the dual Clean Docker Architecture (`sandbox.e2e.mode: docker`) and Native Hermetic Execution (`sandbox.e2e.mode: native`) workflows.
+  - Documented auto-detection precedence in `pkg/services/e2e_detector.go`, explicit command override (`sandbox.e2e.command`), and the native Docker leak guard (`isMakefileE2ENative`).
+  - Documented default configuration across all 20 validation projects.
+
 ## [0.89.2] - 2026-09-15
 
 ### Fixed
