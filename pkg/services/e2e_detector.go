@@ -50,10 +50,11 @@ func detectDockerE2ECommand(projectPath string) string {
 }
 
 func detectNativeE2ECommand(projectPath string) string {
-	// 1. Explicit Makefile e2e target has highest priority for native execution
+	// 1. Explicit Makefile e2e target has highest priority for native execution,
+	// unless its recipe explicitly invokes docker.
 	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
 		content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile"))
-		if rErr == nil && strings.Contains(string(content), "e2e:") {
+		if rErr == nil && strings.Contains(string(content), "e2e:") && isMakefileE2ENative(string(content)) {
 			return "make e2e"
 		}
 	}
@@ -123,4 +124,26 @@ func detectNativeE2ECommand(projectPath string) string {
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+func isMakefileE2ENative(content string) bool {
+	lines := strings.Split(content, "\n")
+	inE2E := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "e2e:") {
+			inE2E = true
+			continue
+		}
+		if inE2E {
+			if strings.HasPrefix(line, "\t") || strings.HasPrefix(line, " ") {
+				if strings.Contains(trimmed, "docker") {
+					return false
+				}
+			} else if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+				break
+			}
+		}
+	}
+	return inE2E
 }

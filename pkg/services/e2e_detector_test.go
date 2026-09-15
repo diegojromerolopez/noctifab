@@ -39,10 +39,16 @@ func TestDetectE2ECommand(t *testing.T) {
 	})
 
 	t.Run("native mode detection hierarchy", func(t *testing.T) {
-		t.Run("prefers Makefile e2e target if present", func(t *testing.T) {
+		t.Run("prefers Makefile e2e target if present and native", func(t *testing.T) {
 			tmpDir := t.TempDir()
 			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "Makefile"), []byte("e2e:\n\tpytest tests/e2e\n"), 0600))
 			assert.Equal(t, "make e2e", DetectE2ECommand(tmpDir, "native", ""))
+		})
+
+		t.Run("ignores Makefile e2e target if it invokes docker in native mode", func(t *testing.T) {
+			tmpDir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "Makefile"), []byte("test:\n\tpython3 -m unittest\n\ne2e:\n\tdocker compose up --build --exit-code-from e2e\n"), 0600))
+			assert.Equal(t, "make test", DetectE2ECommand(tmpDir, "native", ""))
 		})
 
 		t.Run("detects node package.json test:e2e script", func(t *testing.T) {
