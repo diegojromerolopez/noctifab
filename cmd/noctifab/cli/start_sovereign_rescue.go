@@ -16,17 +16,19 @@ import (
 
 // SovereignRescueOptions parameters for autonomous whole-project sovereign recovery.
 type SovereignRescueOptions struct {
-	TargetDir     string
-	Cfg           *config.Config
-	Repo          domain.StateRepository
-	GitClient     *services.GitClient
-	StoryFiles    []string
-	FailedStories []string
-	LLMClient     domain.LLMClient
-	ToolRegistry  *services.ToolRegistry
-	Validator     *services.TestValidator
-	MaxTurns      int
-	TurnTimeout   time.Duration
+	TargetDir          string
+	Cfg                *config.Config
+	Repo               domain.StateRepository
+	GitClient          *services.GitClient
+	StoryFiles         []string
+	FailedStories      []string
+	AcceptanceGaps     []string
+	PostValidationFunc func(ctx context.Context, state *domain.State) (bool, string)
+	LLMClient          domain.LLMClient
+	ToolRegistry       *services.ToolRegistry
+	Validator          *services.TestValidator
+	MaxTurns           int
+	TurnTimeout        time.Duration
 }
 
 // DispatchSovereignRescue prepares execution parameters, ensures a viable context runway
@@ -136,14 +138,18 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 
 	_, lastFailureLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
 	if strings.TrimSpace(lastFailureLog) == "" {
-		lastFailureLog = strings.Join(opts.FailedStories, "\n")
+		if len(opts.AcceptanceGaps) > 0 {
+			lastFailureLog = fmt.Sprintf("Acceptance Audit Gaps:\n- %s", strings.Join(opts.AcceptanceGaps, "\n- "))
+		} else {
+			lastFailureLog = strings.Join(opts.FailedStories, "\n")
+		}
 	}
 
 	// 4. Multi-Turn Sovereign Rescue Loop
 	for turn := 1; turn <= maxTurns; turn++ {
 		fmt.Printf("🔧 [Sovereign Rescue] Turn %d/%d: Prompting direct sovereign LLM agent...\n", turn, maxTurns)
 
-		prompt := buildSovereignRescuePrompt(specContent, opts.FailedStories, lastFailureLog, turn, maxTurns)
+		prompt := buildSovereignRescuePrompt(specContent, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, turn, maxTurns)
 
 		turnCtx, cancel := context.WithTimeout(ctx, turnTimeout)
 		turnCtx = domain.WithRoleContext(turnCtx, string(domain.AgentRoleFallback))
@@ -193,6 +199,14 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 
 		// Re-evaluate verification gate
 		passed, newLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
+		if passed && opts.PostValidationFunc != nil {
+			var postErr string
+			passed, postErr = opts.PostValidationFunc(ctx, state)
+			if !passed {
+				newLog = fmt.Sprintf("Unit tests passed, but Acceptance Audit failed:\n%s", postErr)
+			}
+		}
+
 		if passed {
 			fmt.Printf("✨ [Sovereign Rescue] Turn %d/%d succeeded! All project gates, builds, and test assertions passed.\n", turn, maxTurns)
 
@@ -213,7 +227,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	return fmt.Errorf("sovereign rescue exhausted %d turns without passing all validation gates. Last error:\n%s", maxTurns, lastFailureLog)
 }
 
-func buildSovereignRescuePrompt(specContent string, failedStories []string, failureLog string, turn, maxTurns int) string {
+func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGaps []string, failureLog string, turn, maxTurns int) string {
 	var sb strings.Builder
 	sb.WriteString("You are Noctifab's Sovereign Omni-Agent.\n")
 	sb.WriteString("The standard multi-agent pipeline encountered an unresolvable bottleneck and could not finish.\n")
@@ -223,6 +237,18 @@ func buildSovereignRescuePrompt(specContent string, failedStories []string, fail
 	sb.WriteString("=== GROUND TRUTH SPECIFICATION (SPEC.md) ===\n")
 	sb.WriteString(specContent)
 	sb.WriteString("\n\n")
+
+	if len(acceptanceGaps) > 0 {
+		sb.WriteString("=== WHOLE-PROJECT ACCEPTANCE AUDIT GAPS (REQUIRED REMEDIATION) ===\n")
+		sb.WriteString("The project failed the Whole-Project Acceptance Audit with the following concrete specification gaps.\n")
+		sb.WriteString("You MUST implement all missing files, commands, schemas, and test scenarios enumerated below:\n")
+		for _, gap := range acceptanceGaps {
+			sb.WriteString("- ")
+			sb.WriteString(gap)
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
 
 	if len(failedStories) > 0 {
 		sb.WriteString("=== UNRESOLVED / FAILED ROADMAP STORIES ===\n")

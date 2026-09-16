@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.89.6] - 2026-09-16
+
+### Added
+- **Acceptance-Aware Sovereign Remediation (`cmd/noctifab/cli/start_sovereign_rescue.go`, `cmd/noctifab/cli/start_acceptance_gate.go`)**:
+  - Wired `AcceptanceGaps` into `SovereignRescueOptions` and `buildSovereignRescuePrompt`, ensuring whole-project acceptance audit gap enumerations are prominently injected into the sovereign rescue prompt.
+  - Added `PostValidationFunc` to `SovereignRescueOptions`, preventing sovereign rescue from prematurely concluding on existing green unit tests when acceptance gaps remain unfulfilled.
+  - Added comprehensive unit tests in `cmd/noctifab/cli/start_sovereign_rescue_acceptance_test.go`.
+
+### Fixed
+- **Pre-seeded Non-Code Extensions in SyntaxChecker (`pkg/services/syntax_check_hook.go`)**:
+  - Initialized `CommandSyntaxChecker.InapplicableKeys` with non-executable formats (`.md`, `.yaml`, `.json`, `.toml`, `Makefile`, `Dockerfile`, `.gitignore`, etc.), eliminating redundant 1.5s LLM diagnosis roundtrips on non-code writes.
+- **Story QA Prompt Slicing & Compaction (`pkg/services/story_qa_auditor.go`)**:
+  - Filtered workspace snapshot to task target and test files and tightened character envelopes (8k story / 6k files / 6k diff), reducing QA prompt size from ~36 KB to ~12 KB and cutting latency by ~60%.
+- **Spike Timeout Configuration (`pkg/infrastructure/config/defaults.go`)**:
+  - Increased default `SpikeConfig.TimeoutSeconds` to 120s to allow complex walking skeleton generations to complete without deadline contention.
+
 ## [0.89.5] - 2026-09-16
 
 ### Fixed

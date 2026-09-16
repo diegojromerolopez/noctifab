@@ -72,8 +72,18 @@ func NewCommandSyntaxCheckerWithLLM(command string, llmClient domain.LLMClient) 
 	return &CommandSyntaxChecker{
 		Command:          trimmed,
 		CommandsByExt:    make(map[string]string),
-		InapplicableKeys: make(map[string]bool),
+		InapplicableKeys: defaultInapplicableKeys(),
 		LLMClient:        llmClient,
+	}
+}
+
+func defaultInapplicableKeys() map[string]bool {
+	return map[string]bool{
+		".md": true, ".markdown": true, ".rst": true,
+		".yaml": true, ".yml": true, ".json": true, ".toml": true,
+		".ini": true, ".cfg": true, ".conf": true, ".env": true,
+		".gitignore": true, ".dockerignore": true,
+		"makefile": true, "dockerfile": true, "license": true,
 	}
 }
 

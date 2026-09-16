@@ -73,15 +73,30 @@ func RunWholeProjectAcceptanceGate(ctx context.Context, opts AcceptanceGateOptio
 		if rescueCfg.IsEnabled() && opts.ToolRegistry != nil && opts.Validator != nil {
 			fmt.Printf("⚡ [Whole-Project Acceptance Gate] Triggering sovereign remediation for %d specification gap(s)...\n", len(auditResult.Gaps))
 			rescueOpts := SovereignRescueOptions{
-				TargetDir:     opts.TargetDir,
-				Cfg:           opts.Cfg,
-				Repo:          opts.Repo,
-				GitClient:     opts.GitClient,
-				StoryFiles:    opts.StoryFiles,
-				FailedStories: []string{fmt.Sprintf("Whole-Project Acceptance Audit (%s)", auditResult.Summary)},
-				LLMClient:     opts.LLMClient,
-				ToolRegistry:  opts.ToolRegistry,
-				Validator:     opts.Validator,
+				TargetDir:      opts.TargetDir,
+				Cfg:            opts.Cfg,
+				Repo:           opts.Repo,
+				GitClient:      opts.GitClient,
+				StoryFiles:     opts.StoryFiles,
+				FailedStories:  []string{fmt.Sprintf("Whole-Project Acceptance Audit (%s)", auditResult.Summary)},
+				AcceptanceGaps: auditResult.Gaps,
+				PostValidationFunc: func(ctx context.Context, s *domain.State) (bool, string) {
+					reAudit, reErr := auditor.AuditProjectAcceptance(ctx, s)
+					if reErr != nil {
+						return false, fmt.Sprintf("audit execution error: %v", reErr)
+					}
+					if reAudit != nil && reAudit.Passed {
+						return true, ""
+					}
+					if reAudit != nil && len(reAudit.Gaps) > 0 {
+						auditResult = reAudit
+						return false, fmt.Sprintf("unresolved acceptance gaps:\n - %s", strings.Join(reAudit.Gaps, "\n - "))
+					}
+					return false, "whole-project acceptance audit did not pass"
+				},
+				LLMClient:    opts.LLMClient,
+				ToolRegistry: opts.ToolRegistry,
+				Validator:    opts.Validator,
 			}
 			if rescueErr := DispatchSovereignRescue(ctx, rescueOpts); rescueErr == nil {
 				fmt.Printf("✨ [Whole-Project Acceptance Gate] Sovereign remediation completed. Re-running acceptance audit...\n")

@@ -200,7 +200,13 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 		diffContext, _ = git.Run(ctx, false, "diff", "HEAD~1")
 	}
 
-	workspaceSnapshot := CollectWorkspaceSourceSnapshot(ctx, state.ProjectPath, nil, 50, 3000)
+	var targetFiles []string
+	if state != nil {
+		for _, t := range state.Tasks {
+			targetFiles = append(targetFiles, t.TargetFiles...)
+		}
+	}
+	workspaceSnapshot := CollectWorkspaceSourceSnapshot(ctx, state.ProjectPath, targetFiles, 20, 1500)
 	prompt := a.buildPrompt(storyContent, workspaceSnapshot, diffContext, state)
 
 	auditCtx := context.WithValue(ctx, AgentRoleKey, "qa")
@@ -216,16 +222,16 @@ func (a *StoryQAAuditor) buildPrompt(storyContent, workspaceSnapshot, diffContex
 	var sb strings.Builder
 	sb.WriteString("You are the QA Acceptance Agent. Your task is to verify whether the accumulated generated code and tests completely fulfill all features, acceptance criteria, and Definitions of Done (DoD) defined in the target User Story.\n\n")
 	sb.WriteString("TARGET USER STORY:\n```markdown\n")
-	sb.WriteString(capText(storyContent, 20000))
+	sb.WriteString(capText(storyContent, 8000))
 	sb.WriteString("\n```\n\n")
 
 	sb.WriteString("WORKSPACE SOURCE FILES:\n```\n")
-	sb.WriteString(capText(workspaceSnapshot, 15000))
+	sb.WriteString(capText(workspaceSnapshot, 6000))
 	sb.WriteString("\n```\n\n")
 
 	if strings.TrimSpace(diffContext) != "" {
 		sb.WriteString("ACCUMULATED GIT DIFF:\n```diff\n")
-		sb.WriteString(capText(diffContext, 15000))
+		sb.WriteString(capText(diffContext, 6000))
 		sb.WriteString("\n```\n\n")
 	}
 

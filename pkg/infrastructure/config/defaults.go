@@ -77,7 +77,7 @@ func DefaultConfig() *Config {
 			Spike: SpikeConfig{
 				Enabled:        true,
 				MaxTurns:       2,
-				TimeoutSeconds: 60,
+				TimeoutSeconds: 120,
 			},
 		},
 		WorkspaceCache: WorkspaceCacheConfig{

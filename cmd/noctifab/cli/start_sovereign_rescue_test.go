@@ -354,7 +354,7 @@ func TestSovereignProjectRescue(t *testing.T) {
 	})
 
 	t.Run("when buildSovereignRescuePrompt is called, it includes strict JSON schema and anti-stub instructions", func(t *testing.T) {
-		prompt := buildSovereignRescuePrompt("Build a CLI tool", []string{"US-001 (failed)"}, "error: build failed", 1, 2)
+		prompt := buildSovereignRescuePrompt("Build a CLI tool", []string{"US-001 (failed)"}, nil, "error: build failed", 1, 2)
 		assert.Contains(t, prompt, "REQUIRED RESPONSE FORMAT")
 		assert.Contains(t, prompt, "\"reasoning\"")
 		assert.Contains(t, prompt, "\"write_files\"")

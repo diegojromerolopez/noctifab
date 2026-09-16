@@ -336,6 +336,15 @@ func TestCommandSyntaxChecker_Check(t *testing.T) {
 			t.Fatalf("expected second check on makefile to be skipped: %v", err)
 		}
 	})
+
+	t.Run("when initialized via constructor, preseeded non-code files are immediately skipped without command execution", func(t *testing.T) {
+		checker := NewCommandSyntaxChecker("false") // "false" would always error if executed
+		for _, name := range []string{"README.md", "doc.markdown", "spec.rst", "config.yaml", "settings.yml", "data.json", "pyproject.toml", "Makefile", "Dockerfile", ".gitignore", "LICENSE"} {
+			if err := checker.Check(context.Background(), "/tmp/test/"+name); err != nil {
+				t.Errorf("expected preseeded file %q to be skipped as inapplicable, got error: %v", name, err)
+			}
+		}
+	})
 }
 
 type mockSyntaxLLMClient struct {
