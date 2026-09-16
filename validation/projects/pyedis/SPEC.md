@@ -31,14 +31,42 @@ pyedis/
 │   ├── main.py               # asyncio TCP server entrypoint (run_server) + SIGINT/SIGTERM handlers
 │   ├── resp.py               # RESP wire protocol encoder & streaming decoder (chunking + pipelining)
 │   ├── store.py              # Store (in-memory dict + expiration index), DI clock, async lock
-│   ├── commands.py           # Command dispatcher, arity & syntax validation, error envelopes
-│   └── persistence.py        # AOF append logger (with absolute expire_at) + startup replay
+│   ├── persistence.py        # AOF append logger (with absolute expire_at) + startup replay
+│   └── commands/             # Modular command handlers: each command is in its own dedicated file
+│       ├── __init__.py       # Command dispatcher registry importing each command handler
+│       ├── base.py           # Base command handler protocol and context
+│       ├── ping.py           # PING command handler
+│       ├── echo.py           # ECHO command handler
+│       ├── quit.py           # QUIT command handler
+│       ├── get.py            # GET command handler
+│       ├── set.py            # SET command handler
+│       ├── del_cmd.py        # DEL command handler (avoids Python reserved keyword)
+│       ├── exists.py         # EXISTS command handler
+│       ├── incr.py           # INCR command handler
+│       ├── decr.py           # DECR command handler
+│       ├── expire.py         # EXPIRE command handler
+│       ├── ttl.py            # TTL command handler
+│       ├── keys.py           # KEYS command handler
+│       └── flushall.py       # FLUSHALL command handler
 ├── tests/
 │   ├── unit/
 │   │   ├── test_store.py     # Set/get/del/incr/ttl with injected deterministic mock clock
 │   │   ├── test_resp.py      # RESP frame encoding, streaming chunk reassembly, pipelined buffers
-│   │   ├── test_commands.py  # Arity, unknown commands, case-insensitivity, syntax/type errors, NX/XX
-│   │   └── test_persistence.py  # AOF round-trip: write, absolute TTL replay, corrupt line recovery
+│   │   ├── test_persistence.py  # AOF round-trip: write, absolute TTL replay, corrupt line recovery
+│   │   └── commands/         # Dedicated unit tests for each command file
+│   │       ├── test_ping.py
+│   │       ├── test_echo.py
+│   │       ├── test_quit.py
+│   │       ├── test_get.py
+│   │       ├── test_set.py
+│   │       ├── test_del.py
+│   │       ├── test_exists.py
+│   │       ├── test_incr.py
+│   │       ├── test_decr.py
+│   │       ├── test_expire.py
+│   │       ├── test_ttl.py
+│   │       ├── test_keys.py
+│   │       └── test_flushall.py
 │   ├── integration/
 │   │   └── test_server.py    # Live TCP socket tests via redis-py (commands, pipeline, concurrency, restart)
 │   └── e2e/
@@ -174,7 +202,7 @@ Every successful state-modifying mutation (`SET`, `DEL`, `INCR`, `DECR`, `EXPIRE
 - **SOLID & Domain-Driven Design (DDD):**
   - `src/resp.py`: Pure protocol encoding and streaming decoding without networking or storage logic.
   - `src/store.py`: In-memory storage, expiration logic, and clock abstractions without socket or AOF dependencies.
-  - `src/commands.py`: Command routing, syntax parsing, and RESP envelope generation.
+  - `src/commands/`: Modular command handlers (each in its own file), routing, syntax parsing, and RESP envelope generation.
   - `src/persistence.py`: AOF append logger and replay engine.
   - `src/main.py`: Composition root, `asyncio.start_server` TCP loop, and signal handling.
 - **Dependency Injection (DI):** The store, clock, and AOF logger are injected into dispatchers and server factories via constructors. No global mutable state or unmockable singletons.
@@ -202,7 +230,7 @@ To ensure feature-parity between `pyedis` and official Redis, the automated test
 - **TTL Overwrite:** Setting an existing expiring key with a plain `SET` clears expiration; `TTL` returns `-1`.
 - **Active Sweep before `KEYS`:** Expired keys are purged and not returned by `KEYS *`.
 
-### 9.3 Command Semantics & Dispatch Suite (`tests/unit/test_commands.py`)
+### 9.3 Command Semantics & Dispatch Suite (`tests/unit/commands/`)
 - **Arity Errors:** Verifies exact error string `-ERR wrong number of arguments for '<cmd>' command\r\n` when commands are invoked with too few or too many arguments (`PING`, `GET`, `SET`, `DEL`, `EXISTS`, `INCR`, `DECR`, `EXPIRE`, `TTL`, `KEYS`, `QUIT`).
 - **Case-Insensitivity:** Verifies `set`, `SET`, `Set`, `sEt` execute identically.
 - **`SET` Flag Permutations:**
