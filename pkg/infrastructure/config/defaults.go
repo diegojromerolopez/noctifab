@@ -130,8 +130,8 @@ func DefaultConfig() *Config {
 				MaxCallLimit: 0,
 				Backends:     nil,
 			},
-			MaxTimeout:  Duration(60 * time.Second),
-			IdleTimeout: Duration(15 * time.Second),
+			MaxTimeout:  Duration(180 * time.Second),
+			IdleTimeout: Duration(30 * time.Second),
 			Streaming:   boolPtr(true),
 			// skip_on_credit_exhausted: stop attempting a provider chain the
 			// moment an HTTP 402 credit-limit response is detected, rather than

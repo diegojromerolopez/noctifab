@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.89.5] - 2026-09-16
+
+### Fixed
+- **LLM Streaming Timeout Resilience (`pkg/infrastructure/llm/openai.go`, `pkg/infrastructure/config/defaults.go`)**:
+  - Configured streaming HTTP client (`sdkStreamingHTTPClient`) with `Timeout: 0`, preventing Go's standard `http.Client.Timeout` from aborting active, continuous token streams mid-generation while leaving liveness checks to sliding `idle_timeout` and context deadlines.
+  - Increased default backend `MaxTimeout` to 180s and `IdleTimeout` to 30s to comfortably accommodate large prompt completions.
+- **Roadmap Prompt Slicing (`pkg/services/roadmap_slicer.go`, `pkg/services/roadmap_generator.go`)**:
+  - Added `SliceSpecForRoadmap` to compress massive test matrices and large config blocks when feeding `SPEC.md` to the Product Manager agent.
+  - Preserves architectural definitions and acceptance gates while avoiding LLM token blowups during initial story decomposition.
+
 ## [0.89.4] - 2026-09-16
 
 ### Fixed

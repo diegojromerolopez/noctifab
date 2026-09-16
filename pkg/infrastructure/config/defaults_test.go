@@ -131,11 +131,11 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if time.Duration(cfg.LLM.Failover.Cooldown) != 5*time.Minute {
 		t.Errorf("expected LLM.Failover.Cooldown 5m, got %v", time.Duration(cfg.LLM.Failover.Cooldown))
 	}
-	if time.Duration(cfg.LLM.MaxTimeout) != 60*time.Second {
-		t.Errorf("expected LLM.MaxTimeout 60s, got %v", time.Duration(cfg.LLM.MaxTimeout))
+	if time.Duration(cfg.LLM.MaxTimeout) != 180*time.Second {
+		t.Errorf("expected LLM.MaxTimeout 180s, got %v", time.Duration(cfg.LLM.MaxTimeout))
 	}
-	if time.Duration(cfg.LLM.IdleTimeout) != 15*time.Second {
-		t.Errorf("expected LLM.IdleTimeout 15s, got %v", time.Duration(cfg.LLM.IdleTimeout))
+	if time.Duration(cfg.LLM.IdleTimeout) != 30*time.Second {
+		t.Errorf("expected LLM.IdleTimeout 30s, got %v", time.Duration(cfg.LLM.IdleTimeout))
 	}
 	if cfg.LLM.Streaming == nil || !*cfg.LLM.Streaming {
 		t.Error("expected LLM.Streaming true")

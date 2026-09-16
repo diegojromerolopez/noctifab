@@ -165,15 +165,31 @@ func (o *baseOpenAIClient) sdkHTTPClient() *http.Client {
 	return &http.Client{Timeout: timeout}
 }
 
+// sdkStreamingHTTPClient builds an *http.Client for streaming where connection/idle
+// liveness is governed by sliding inter-chunk timers and request context, avoiding
+// premature termination of active token streams by Go's http.Client.Timeout.
+func (o *baseOpenAIClient) sdkStreamingHTTPClient() *http.Client {
+	return &http.Client{Timeout: 0}
+}
+
 // sdkClient builds an SDK client bound to this provider's base URL and key.
 // SDK-level retries are disabled (WithMaxRetries(0)) so that only client.go's
 // explicit retry loop controls retry cadence. Without this, the SDK adds 2
 // implicit retries on top of client.go's own loop, multiplying a single hung
 // call into up to 9 total attempts (3 SDK × 3 client.go).
 func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
+	return o.buildClientWithOptions(apiKey, o.sdkHTTPClient())
+}
+
+// sdkStreamingClient builds an SDK client configured for streaming requests.
+func (o *baseOpenAIClient) sdkStreamingClient(apiKey string) openai.Client {
+	return o.buildClientWithOptions(apiKey, o.sdkStreamingHTTPClient())
+}
+
+func (o *baseOpenAIClient) buildClientWithOptions(apiKey string, httpClient *http.Client) openai.Client {
 	opts := []option.RequestOption{
 		option.WithBaseURL(o.sdkBaseURL(apiKey)),
-		option.WithHTTPClient(o.sdkHTTPClient()),
+		option.WithHTTPClient(httpClient),
 		option.WithMaxRetries(0),
 	}
 	if apiKey != "" {
@@ -335,7 +351,7 @@ func tempOrDefault(t float64) float64 {
 // that keep streaming are never cut short — total duration remains capped by
 // the http.Client timeout (max_timeout).
 func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, apiKey, prompt string, opts completionOptions) (*ProviderCallResult, error) {
-	client := o.sdkClient(apiKey)
+	client := o.sdkStreamingClient(apiKey)
 	params := buildChatParams(model, prompt, opts)
 
 	// Build extra request options for provider-specific body params (e.g. enable_thinking).
