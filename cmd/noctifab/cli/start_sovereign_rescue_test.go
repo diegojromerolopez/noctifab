@@ -20,6 +20,7 @@ type mockRescueLLM struct {
 	mu        sync.Mutex
 	calls     int
 	prompts   []string
+	roles     []string
 	responses []*domain.LLMResponse
 	errs      []error
 }
@@ -28,6 +29,7 @@ func (m *mockRescueLLM) Complete(ctx context.Context, prompt string) (*domain.LL
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.prompts = append(m.prompts, prompt)
+	m.roles = append(m.roles, domain.GetRoleFromContext(ctx))
 	idx := m.calls
 	m.calls++
 	if idx < len(m.errs) && m.errs[idx] != nil {
@@ -397,5 +399,41 @@ func TestSovereignProjectRescue(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "sovereign rescue exhausted 2 turns")
 		assert.Equal(t, 2, mockLLM.calls, "expected exactly 2 turns from default configuration")
+	})
+
+	t.Run("when sovereign rescue calls Complete it passes fallback role in context", func(t *testing.T) {
+		tempDir := t.TempDir()
+		mockRepo := &mockDAGStateRepo{
+			state: &domain.State{ProjectPath: tempDir},
+		}
+
+		mockLLM := &mockRescueLLM{
+			responses: []*domain.LLMResponse{
+				{Actions: []domain.LLMAction{{Tool: "noop"}}},
+			},
+		}
+		reg := services.NewToolRegistry()
+		reg.Register(&services.NoopTool{})
+
+		sandbox := &mockRescueSandbox{
+			runFunc: func(ctx context.Context, dir string, cmd string, pkg string) (string, error) {
+				return "OK", nil
+			},
+		}
+		validator := services.NewTestValidator(sandbox, false, mockLLM, reg.Tools())
+
+		opts := SovereignRescueOptions{
+			TargetDir:    tempDir,
+			Cfg:          config.DefaultConfig(),
+			Repo:         mockRepo,
+			LLMClient:    mockLLM,
+			ToolRegistry: reg,
+			Validator:    validator,
+			MaxTurns:     1,
+		}
+
+		_ = DispatchSovereignRescue(context.Background(), opts)
+		require.NotEmpty(t, mockLLM.roles, "expected Complete to have been called")
+		assert.Equal(t, "fallback", mockLLM.roles[0], "expected Complete to receive fallback role in context")
 	})
 }

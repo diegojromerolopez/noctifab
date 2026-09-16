@@ -146,6 +146,8 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		prompt := buildSovereignRescuePrompt(specContent, opts.FailedStories, lastFailureLog, turn, maxTurns)
 
 		turnCtx, cancel := context.WithTimeout(ctx, turnTimeout)
+		turnCtx = domain.WithRoleContext(turnCtx, string(domain.AgentRoleFallback))
+		turnCtx = context.WithValue(turnCtx, "agent_role", "fallback")
 		resp, err := opts.LLMClient.Complete(turnCtx, prompt)
 		cancel()
 

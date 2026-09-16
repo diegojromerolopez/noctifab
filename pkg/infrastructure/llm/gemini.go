@@ -48,16 +48,22 @@ var parseGeminiModelProvider = NewModelParser(ParserConfig{
 })
 
 type geminiProviderClient struct {
-	url         string
-	timeout     time.Duration
-	idleTimeout time.Duration
-	streaming   bool
-	extraBody   map[string]interface{}
+	url            string
+	timeout        time.Duration
+	idleTimeout    time.Duration
+	streaming      bool
+	extraBody      map[string]interface{}
+	responseSchema map[string]any
 }
 
 // SetExtraBody attaches provider-specific extra parameters (such as disabling thinking).
 func (g *geminiProviderClient) SetExtraBody(params map[string]interface{}) {
 	g.extraBody = params
+}
+
+// SetResponseSchema attaches an optional explicit Gemini response schema.
+func (g *geminiProviderClient) SetResponseSchema(schema map[string]any) {
+	g.responseSchema = schema
 }
 
 // NewGeminiProviderClient creates a ProviderClient for Gemini API.
@@ -76,7 +82,7 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	headers := make(map[string]string)
 	headers["Content-Type"] = "application/json"
 
-	useResponseSchema := true
+	useResponseSchema := g.responseSchema != nil
 	var respBody []byte
 	var respStatusCode int
 	var respHeader http.Header
@@ -86,25 +92,8 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 			"temperature":      tempOrDefault(temperature),
 			"responseMimeType": "application/json",
 		}
-		if useResponseSchema {
-			generationConfig["responseSchema"] = map[string]any{
-				"type": "OBJECT",
-				"properties": map[string]any{
-					"reasoning": map[string]any{"type": "STRING"},
-					"actions": map[string]any{
-						"type": "ARRAY",
-						"items": map[string]any{
-							"type": "OBJECT",
-							"properties": map[string]any{
-								"tool": map[string]any{"type": "STRING"},
-								"args": map[string]any{"type": "OBJECT"},
-							},
-							"required": []string{"tool", "args"},
-						},
-					},
-				},
-				"required": []string{"reasoning", "actions"},
-			}
+		if useResponseSchema && g.responseSchema != nil {
+			generationConfig["responseSchema"] = g.responseSchema
 		}
 		if maxTokens > 0 {
 			generationConfig["maxOutputTokens"] = maxTokens

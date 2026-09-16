@@ -32,6 +32,10 @@ type completionOptions struct {
 	// extraBody holds provider-specific key-value pairs to include verbatim
 	// in the request body (e.g. enable_thinking for QwenCloud thinking mode).
 	extraBody map[string]interface{}
+	// jsonSchema optionally provides a specific strict JSON schema. When nil,
+	// enforceJSON defaults to universal json_object mode, avoiding unconstrained
+	// property stripping on dynamic tool arguments and diverse agent prompts.
+	jsonSchema *shared.ResponseFormatJSONSchemaJSONSchemaParam
 }
 
 func normalizeModelKey(model string) string {
@@ -83,6 +87,12 @@ var noctifabResponseSchema = map[string]any{
 	"required": []string{"reasoning", "actions"},
 }
 
+var NoctifabResponseSchema = shared.ResponseFormatJSONSchemaJSONSchemaParam{
+	Name:        "noctifab_response",
+	Description: openai.String("Structured response conforming to Noctifab reasoning and actions contract"),
+	Schema:      noctifabResponseSchema,
+}
+
 // buildChatParams assembles SDK request params from completionOptions.
 func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCompletionNewParams {
 	params := openai.ChatCompletionNewParams{
@@ -103,15 +113,13 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 	// response_format=json_schema or json_object is suppressed when disableJSONMode is set.
 	// This is required for providers/models that cannot use forced JSON mode
 	// (e.g. QwenCloud thinking models). ExtractJSONBlock handles the parsing.
+	// When opts.jsonSchema is nil, default to json_object mode, preserving dynamic tool
+	// argument properties and diverse role prompts without schema constraint coercion.
 	if opts.enforceJSON && !opts.disableJSONMode {
-		if !globalCapabilityCache.isJSONSchemaUnsupported(model) {
+		if opts.jsonSchema != nil && !globalCapabilityCache.isJSONSchemaUnsupported(model) {
 			params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
 				OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
-					JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
-						Name:        "noctifab_response",
-						Description: openai.String("Structured response conforming to Noctifab reasoning and actions contract"),
-						Schema:      noctifabResponseSchema,
-					},
+					JSONSchema: *opts.jsonSchema,
 				},
 			}
 		} else {
@@ -302,6 +310,7 @@ func adaptOptionsForError(opts completionOptions, err error, model string) (comp
 	case he.StatusCode == http.StatusBadRequest && opts.enforceJSON && looksLikeJSONSchemaRejection(he.Body):
 		fmt.Fprintln(os.Stderr, "⚠ Server rejected response_format=json_schema; retrying with json_object.")
 		globalCapabilityCache.markJSONSchemaUnsupported(model)
+		opts.jsonSchema = nil
 		return opts, true
 	case he.StatusCode == http.StatusBadRequest && opts.enforceJSON && looksLikeResponseFormatRejection(he.Body):
 		fmt.Fprintln(os.Stderr, "⚠ Server rejected response_format; retrying without JSON enforcement.")

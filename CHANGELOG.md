@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.89.4] - 2026-09-16
+
+### Fixed
+- **Structured Outputs & JSON Mode Resilience (`pkg/infrastructure/llm/openai_adapt.go`, `pkg/infrastructure/llm/gemini.go`)**:
+  - Reverted global hardcoded `noctifabResponseSchema` enforcement across standard JSON completions.
+  - Standardized `enforceJSON` on universal `json_object` mode (`ResponseFormatJSONObjectParam` in OpenAI and `responseMimeType: "application/json"` in Gemini), preventing models from stripping dynamic tool arguments (`path`, `content`, `command`, `title`, etc.) or returning empty `{}` argument maps.
+  - Resolved task generation failures in Planner agents (`planning failed: no tasks were generated`), which were previously caused by models being constrained to action schemas rather than task arrays.
+  - Added support for optional explicit `jsonSchema` and `responseSchema` overrides when specified by callers, with automated fallback on schema rejection.
+- **Sovereign Rescue Role Routing (`cmd/noctifab/cli/start_sovereign_rescue.go`)**:
+  - Injected `domain.AgentRoleFallback` and `agent_role` into Sovereign Rescue turn context, ensuring router candidate resolution targets configured fallback providers instead of failing on empty `role ''`.
+- **Regression Tests**:
+  - Added comprehensive test suites in `pkg/infrastructure/llm/structured_outputs_test.go` and `cmd/noctifab/cli/start_sovereign_rescue_test.go` covering default JSON object mode, explicit schema configuration, schema rejection fallback, and Sovereign Rescue context role propagation.
+
 ## [0.89.3] - 2026-09-16
 
 ### Documentation
