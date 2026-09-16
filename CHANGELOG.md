@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.89.7] - 2026-09-16
+
+### Fixed
+- **Zero-Retry LLM Temperature Negotiation (`pkg/infrastructure/llm/anthropic.go`, `pkg/infrastructure/llm/openai.go`, `pkg/infrastructure/llm/openai_adapt.go`, `pkg/infrastructure/llm/client_catalog.go`)**:
+  - Implemented `hasThinkingEnabled` check across Anthropic and OpenAI-compatible client adapters, automatically omitting explicit `temperature` upfront when thinking/reasoning parameters are active.
+  - Automatically construct Anthropic-native `thinking` blocks (`"type": "enabled", "budget_tokens": ...`) in `client_catalog.go` when `enable_thinking` is configured.
+  - Integrated `globalCapabilityCache.markTemperatureUnsupported(model)` into `anthropic.go`, ensuring models rejecting custom temperatures never repeat HTTP 400 parameter retries on subsequent requests.
+- **Optimistic Pipelined Story QA Auditing (`pkg/services/orchestrator_dispatch.go`)**:
+  - For intermediate stories, once task executions and local unit tests succeed, Noctifab immediately merges and finalizes the story to unblock downstream dependent stories without blocking delay.
+  - Intermediate Story QA auditing executes asynchronously in a background goroutine, streaming diagnostics and persisting any detected feature gaps directly to the story file via `refineStoryFileWithGaps`.
+  - The final story executes synchronous Story QA and Whole-Project Acceptance Audits prior to loop release, preserving strict Definition of Done verification without serial pipeline stalls.
+
 ## [0.89.6] - 2026-09-16
 
 ### Added

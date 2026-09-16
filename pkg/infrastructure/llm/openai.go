@@ -225,7 +225,7 @@ func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt strin
 		temperature:     &temperature,
 		extraBody:       filteredExtra,
 	}
-	if isNoTemperatureModel(model) || globalCapabilityCache.isTemperatureUnsupported(model) {
+	if isNoTemperatureModel(model) || globalCapabilityCache.isTemperatureUnsupported(model) || hasThinkingEnabled(opts.extraBody) {
 		opts.temperature = nil
 	}
 	if globalCapabilityCache.isMaxTokensUnsupported(model) {

@@ -93,6 +93,34 @@ var NoctifabResponseSchema = shared.ResponseFormatJSONSchemaJSONSchemaParam{
 	Schema:      noctifabResponseSchema,
 }
 
+// hasThinkingEnabled checks if thinking/reasoning parameters are active in extra_body.
+func hasThinkingEnabled(extra map[string]interface{}) bool {
+	if extra == nil {
+		return false
+	}
+	if v, ok := extra["enable_thinking"]; ok {
+		switch val := v.(type) {
+		case bool:
+			if val {
+				return true
+			}
+		case string:
+			if strings.ToLower(val) == "true" {
+				return true
+			}
+		}
+	}
+	if th, ok := extra["thinking"].(map[string]interface{}); ok {
+		if t, ok := th["type"].(string); ok && t == "enabled" {
+			return true
+		}
+		if _, ok := th["budget_tokens"]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // buildChatParams assembles SDK request params from completionOptions.
 func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCompletionNewParams {
 	params := openai.ChatCompletionNewParams{
@@ -104,7 +132,7 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 			IncludeUsage: openai.Bool(true),
 		},
 	}
-	if opts.temperature != nil && !isNoTemperatureModel(model) && !globalCapabilityCache.isTemperatureUnsupported(model) {
+	if opts.temperature != nil && !isNoTemperatureModel(model) && !globalCapabilityCache.isTemperatureUnsupported(model) && !hasThinkingEnabled(opts.extraBody) {
 		params.Temperature = openai.Float(tempOrDefault(*opts.temperature))
 	}
 	if opts.maxTokens > 0 {

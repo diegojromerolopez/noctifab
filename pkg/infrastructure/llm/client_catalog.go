@@ -46,6 +46,22 @@ func (c *Client) providerClient() ProviderClient {
 	extra := make(map[string]interface{})
 	if c.EnableThinking != nil {
 		extra["enable_thinking"] = *c.EnableThinking
+		if strings.EqualFold(c.Provider, "claude") || strings.EqualFold(c.Provider, "anthropic") {
+			if *c.EnableThinking {
+				budget := 2048
+				if c.ThinkingBudget != nil && *c.ThinkingBudget > 0 {
+					budget = *c.ThinkingBudget
+				}
+				extra["thinking"] = map[string]interface{}{
+					"type":          "enabled",
+					"budget_tokens": budget,
+				}
+			} else {
+				extra["thinking"] = map[string]interface{}{
+					"type": "disabled",
+				}
+			}
+		}
 	}
 	if c.ThinkingBudget != nil {
 		extra["thinking_budget"] = *c.ThinkingBudget

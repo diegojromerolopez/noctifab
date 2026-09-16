@@ -77,6 +77,10 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	currentTemp := temperature
 	currentMaxTokens := maxTokens
 
+	if hasThinkingEnabled(a.extraBody) || globalCapabilityCache.isTemperatureUnsupported(model) {
+		currentTemp = 0
+	}
+
 	// Claude Extended Thinking Token Guard:
 	// In Anthropic API, max_tokens bounds both thinking_tokens AND response text_tokens.
 	// If thinking is enabled or budget_tokens is set, max_tokens MUST be larger than
@@ -190,6 +194,7 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 			if looksLikeInvalidTemperature(bodyStr) && currentTemp > 0 {
 				fmt.Fprintln(os.Stderr, "⚠ Server rejected the temperature value; retrying with the provider default.")
 				currentTemp = 0
+				globalCapabilityCache.markTemperatureUnsupported(model)
 				continue
 			}
 			if looksLikeMaxTokensRejection(bodyStr) && currentMaxTokens > 4096 {
