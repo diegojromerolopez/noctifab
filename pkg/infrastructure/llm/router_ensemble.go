@@ -319,7 +319,11 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 					Ensemble:    pm.Ensemble,
 				}
 			}
-		case "fallback":
+		case "fallback", "sovereign_rescue", "sovereignrescue":
+			sr := r.cfg.GetSovereignRescue()
+			if len(sr.Providers) > 0 {
+				return config.RoleSetting{Providers: sr.Providers}
+			}
 			fb := r.cfg.Agents.GetFallback()
 			if len(fb.Providers) > 0 {
 				return config.RoleSetting{Model: fb.Model, Temperature: fb.Temperature, Profile: fb.Profile, Providers: fb.Providers}

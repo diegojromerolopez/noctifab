@@ -17,7 +17,7 @@ func TestSovereignRescue_AcceptanceGapsInPrompt(t *testing.T) {
 		"Missing E2E test scenario for AOF persistence",
 		"Missing requirements.txt",
 	}
-	prompt := buildSovereignRescuePrompt("Build Redis store", []string{"US-001 (failed)"}, gaps, "error log", 1, 2)
+	prompt := buildSovereignRescuePrompt("Build Redis store", []string{"US-001 (failed)"}, gaps, "error log", 1, 2, "docker", false)
 
 	assert.Contains(t, prompt, "WHOLE-PROJECT ACCEPTANCE AUDIT GAPS (REQUIRED REMEDIATION)")
 	assert.Contains(t, prompt, "Missing E2E test scenario for AOF persistence")

@@ -224,9 +224,10 @@ func DefaultConfig() *Config {
 				StallCountThreshold:       2,
 			},
 			SovereignRescue: SovereignRescueConfig{
-				Enabled:  boolPtr(true),
-				MaxTurns: 2,
-				Timeout:  Duration(5 * time.Minute),
+				Enabled:                  boolPtr(true),
+				MaxTurns:                 10,
+				Timeout:                  Duration(5 * time.Minute),
+				MissingToolchainStrategy: "auto",
 			},
 		},
 		Unblocker: UnblockerConfig{
@@ -246,9 +247,10 @@ func DefaultConfig() *Config {
 				StallCountThreshold:       2,
 			},
 			SovereignRescue: SovereignRescueConfig{
-				Enabled:  boolPtr(true),
-				MaxTurns: 2,
-				Timeout:  Duration(5 * time.Minute),
+				Enabled:                  boolPtr(true),
+				MaxTurns:                 10,
+				Timeout:                  Duration(5 * time.Minute),
+				MissingToolchainStrategy: "auto",
 			},
 		},
 		Context: ContextConfig{

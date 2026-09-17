@@ -456,6 +456,40 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 		assert.Equal(t, "claude", candidates[1].Name)
 		assert.Equal(t, "openai", candidates[2].Name)
 	})
+
+	t.Run("Scenario: Sovereign Rescue providers override roles.fallback with temperature", func(t *testing.T) {
+		temp := 0.3
+		cfg := &config.Config{
+			LLM: config.LLMConfig{
+				Providers: []config.ProviderSpec{
+					{Name: "gemini", Provider: "gemini", Model: "gemini-3.6-pro"},
+					{Name: "openai", Provider: "openai", Model: "gpt-5.6-luna"},
+				},
+			},
+			Roles: config.RolesConfig{
+				Fallback: config.RoleSetting{
+					Profile: "default-fallback-profile",
+				},
+			},
+			Fallback: config.FallbackConfig{
+				SovereignRescue: config.SovereignRescueConfig{
+					Providers: []config.AgentProviderRef{
+						{Name: "gemini", Temperature: &temp},
+					},
+				},
+			},
+		}
+
+		router := NewResilientLLMRouter(cfg, nil)
+		candidates := router.ResolveCandidatesForRole("fallback")
+
+		require.Len(t, candidates, 1)
+		assert.Equal(t, "gemini", candidates[0].Name)
+		assert.Equal(t, "gemini-3.6-pro", candidates[0].Model)
+		if c, ok := candidates[0].Client.(*Client); ok {
+			assert.Equal(t, 0.3, c.Temperature)
+		}
+	})
 }
 
 func pointerToBool(b bool) *bool { return &b }

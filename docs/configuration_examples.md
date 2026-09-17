@@ -621,8 +621,12 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
-    max_turns: 2      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
+    max_turns: 10      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
     timeout: "5m"
+    missing_toolchain_strategy: auto # "auto" | "docker" | "local" | "off"
+    providers:
+      - name: gemini
+        temperature: 0.3
 
 agents:
   fallback:

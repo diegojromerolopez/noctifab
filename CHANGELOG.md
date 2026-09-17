@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.90.0] - 2026-09-17
+
+### Added
+- **Multi-Turn Sovereign Rescue Diagnostic Feedback Pipeline (`cmd/noctifab/cli/start_sovereign_rescue.go`, `cmd/noctifab/cli/start_sovereign_diagnostics.go`)**:
+  - Implemented `CollectSovereignDiagnostics`, aggregating task failure traces, compiler/test error logs, acceptance gaps, and regex-extracted offending source files with line markers (`>>`) into sovereign rescue prompts.
+  - Enabled multi-turn sovereign recovery loop (defaulting to 10 turns via `fallback.sovereign_rescue.max_turns` and `NOCTIFAB_RESCUE_MAX_TURNS`), re-evaluating diagnostics and error envelopes turn-by-turn.
+  - Added logging of corrective steps to console/stderr and atomic persistence of turn-by-turn corrective actions (`sovereign_rescue_step`) into `State.LastActions` and the database.
+  - Ensured `updateRescueSuccessState` marks both stories and tasks as succeeded upon successful sovereign resolution.
+- **Language-Agnostic Test Discovery Pre-Flight & Package Initialization (`pkg/services/test_discovery_preflight.go`, `pkg/services/test_validator.go`)**:
+  - Implemented `PrepareTestEnvironment` to recursively ensure test packages and directories have necessary markers (e.g. `__init__.py`) before runner execution, preventing silent omissions of nested test suites.
+  - Added `DiscoverTestFiles` and `EvaluateTestExecution` in `TestValidator` to identify zero-test executions and flag discrepancies between discovered test files and executed tests.
+- **Missing Host Toolchains Fallback Strategy (`cmd/noctifab/cli/start_sovereign_toolchain.go`, `pkg/infrastructure/config/fallback_types.go`, `defaults.go`)**:
+  - Added `fallback.sovereign_rescue.missing_toolchain_strategy` (`auto`, `docker`, `local`, `off`), configurable via `NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY` with default `"auto"`.
+  - In `"docker"` or `"auto"` (when Docker daemon is active), Sovereign Rescue is instructed to author a minimal `Dockerfile` and delegate `Makefile` targets (`build`, `test`, `e2e`) through `docker run --rm -v $(PWD):/app -w /app ...`, seamlessly mapping workspace output to the host.
+- **Sovereign Rescue Providers Configuration Schema (`pkg/infrastructure/config/fallback_types.go`, `pkg/infrastructure/llm/router.go`, `pkg/infrastructure/llm/router_ensemble.go`)**:
+  - Added `providers` to `SovereignRescueConfig` using the identical `[]AgentProviderRef` schema as `agents.<role>.providers`, overriding `roles.fallback.profile`.
+  - Enhanced `ResilientLLMRouter` candidate resolution to honor `AgentProviderRef` temperature and max token overrides.
+  - Updated all 20 validation projects and `pyedis` configuration files to include default `missing_toolchain_strategy: auto` and `providers` specifications.
+
 ## [0.89.7] - 2026-09-16
 
 ### Fixed

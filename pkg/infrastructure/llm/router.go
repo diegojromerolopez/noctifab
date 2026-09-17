@@ -195,6 +195,12 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 				seen[key] = true
 
 				overrideSpec := spec
+				if ref.Temperature != nil {
+					overrideSpec.Temperature = *ref.Temperature
+				}
+				if ref.MaxTokens != nil {
+					overrideSpec.MaxTokens = *ref.MaxTokens
+				}
 				if ref.EnableThinking != nil {
 					overrideSpec.EnableThinking = ref.EnableThinking
 				}
@@ -204,6 +210,11 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 
 				client := r.buildClientForSpec(overrideSpec, m)
 				if client != nil {
+					if ref.Temperature != nil {
+						if c, ok := client.(*Client); ok {
+							c.Temperature = *ref.Temperature
+						}
+					}
 					candidates = append(candidates, RouterCandidate{
 						Name:     overrideSpec.Name,
 						Provider: overrideSpec.Provider,

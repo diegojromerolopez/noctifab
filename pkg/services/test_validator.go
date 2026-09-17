@@ -3,8 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -98,6 +96,10 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 			return false, fmt.Sprintf("Fast-path syntax check failed:\n%v", syntaxErr), nil
 		}
 	}
+
+	// Pre-Flight Test Environment & Structural Hygiene:
+	// Verify and prepare test structure across supported languages so test runners discover nested test suites.
+	_ = PrepareTestEnvironment(state.ProjectPath)
 
 	if v.Formatter != nil {
 		fmt.Printf("Orchestrator: Task %s running formatter pre-pass...\n", task.ID)
@@ -218,10 +220,10 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 
 		fmt.Printf("Orchestrator: Task test execution finished (passed=%t, out_len=%d)\n", err == nil, len(out))
 
-		noTestsRan := isZeroTestExecution(state.ProjectPath, out)
+		noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, out)
 		outputMsg := out
-		if noTestsRan && strings.TrimSpace(outputMsg) == "" {
-			outputMsg = "Test suite failed: 0 test files discovered in tests/ directory and 0 test assertions executed."
+		if noTestsRan && (strings.TrimSpace(outputMsg) == "" || notice != "") {
+			outputMsg = notice
 		}
 
 		results[0] = TestRunResult{
@@ -245,10 +247,10 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 			out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
 			runCancel()
 
-			noTestsRan := isZeroTestExecution(state.ProjectPath, out)
+			noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, out)
 			outputMsg := out
-			if noTestsRan && strings.TrimSpace(outputMsg) == "" {
-				outputMsg = "Test suite failed: 0 test files discovered in tests/ directory and 0 test assertions executed."
+			if noTestsRan && (strings.TrimSpace(outputMsg) == "" || notice != "") {
+				outputMsg = notice
 			}
 
 			results[idx] = TestRunResult{
@@ -263,32 +265,8 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 }
 
 func isZeroTestExecution(projectPath string, out string) bool {
-	outLower := strings.ToLower(out)
-	if strings.Contains(outLower, "no tests ran") ||
-		strings.Contains(outLower, "ran 0 tests") ||
-		strings.Contains(outLower, "collected 0 items") ||
-		strings.Contains(outLower, "collected 0 tests") ||
-		strings.Contains(outLower, "exit status 5") {
-		return true
-	}
-	testCmd := DetectDefaultTestCommand(projectPath)
-	if strings.HasPrefix(testCmd, "make") {
-		testsDir := filepath.Join(projectPath, "tests")
-		entries, err := os.ReadDir(testsDir)
-		hasTestFiles := false
-		if err == nil {
-			for _, e := range entries {
-				if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-					hasTestFiles = true
-					break
-				}
-			}
-		}
-		if !hasTestFiles || strings.TrimSpace(out) == "" {
-			return true
-		}
-	}
-	return false
+	zeroOrSkipped, _ := EvaluateTestExecution(projectPath, out)
+	return zeroOrSkipped
 }
 
 func lastFailureOutput(results []TestRunResult) string {

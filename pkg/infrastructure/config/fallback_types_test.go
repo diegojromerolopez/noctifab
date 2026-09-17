@@ -61,8 +61,8 @@ func TestFallbackConfig_Defaults(t *testing.T) {
 	if !sr.IsEnabled() {
 		t.Errorf("expected SovereignRescue to be enabled by default")
 	}
-	if sr.GetMaxTurns() != 2 {
-		t.Errorf("expected SovereignRescue.GetMaxTurns to default to 2, got %d", sr.GetMaxTurns())
+	if sr.GetMaxTurns() != 10 {
+		t.Errorf("expected SovereignRescue.GetMaxTurns to default to 10, got %d", sr.GetMaxTurns())
 	}
 	if sr.GetTimeout() != 5*time.Minute {
 		t.Errorf("expected SovereignRescue.GetTimeout to default to 5m, got %v", sr.GetTimeout())
@@ -95,11 +95,11 @@ func TestSovereignRescueConfig_CustomAndResolution(t *testing.T) {
 		}
 	})
 
-	t.Run("nil config returns safe default MaxTurns of 2", func(t *testing.T) {
+	t.Run("nil config returns safe default MaxTurns of 10", func(t *testing.T) {
 		var cfg *Config
 		sr := cfg.GetSovereignRescue()
-		if sr.GetMaxTurns() != 2 {
-			t.Errorf("expected default MaxTurns 2, got %d", sr.GetMaxTurns())
+		if sr.GetMaxTurns() != 10 {
+			t.Errorf("expected default MaxTurns 10, got %d", sr.GetMaxTurns())
 		}
 	})
 
@@ -129,6 +129,54 @@ func TestSovereignRescueConfig_CustomAndResolution(t *testing.T) {
 		srNil := nilCfg.GetSovereignRescue()
 		if srNil.GetMaxTurns() != 8 {
 			t.Errorf("expected nilCfg MaxTurns 8, got %d", srNil.GetMaxTurns())
+		}
+	})
+
+	t.Run("missing toolchain strategy defaults to auto and supports custom and env overrides", func(t *testing.T) {
+		cfg := DefaultConfig()
+		sr := cfg.GetSovereignRescue()
+		if sr.GetMissingToolchainStrategy() != "auto" {
+			t.Errorf("expected default strategy 'auto', got %q", sr.GetMissingToolchainStrategy())
+		}
+
+		cfg.Fallback.SovereignRescue.MissingToolchainStrategy = "docker"
+		sr = cfg.GetSovereignRescue()
+		if sr.GetMissingToolchainStrategy() != "docker" {
+			t.Errorf("expected strategy 'docker', got %q", sr.GetMissingToolchainStrategy())
+		}
+
+		_ = os.Setenv("NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY", "local")
+		defer func() { _ = os.Unsetenv("NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY") }()
+
+		applyEnvOverrides(cfg)
+		sr = cfg.GetSovereignRescue()
+		if sr.GetMissingToolchainStrategy() != "local" {
+			t.Errorf("expected strategy 'local' from env override, got %q", sr.GetMissingToolchainStrategy())
+		}
+
+		var nilCfg *Config
+		srNil := nilCfg.GetSovereignRescue()
+		if srNil.GetMissingToolchainStrategy() != "local" {
+			t.Errorf("expected nilCfg strategy 'local' from env override, got %q", srNil.GetMissingToolchainStrategy())
+		}
+	})
+
+	t.Run("sovereign rescue providers are resolved and preserved", func(t *testing.T) {
+		cfg := DefaultConfig()
+		temp := 0.3
+		cfg.Fallback.SovereignRescue.Providers = []AgentProviderRef{
+			{Name: "gemini", Temperature: &temp},
+		}
+
+		sr := cfg.GetSovereignRescue()
+		if len(sr.Providers) != 1 {
+			t.Fatalf("expected 1 provider, got %d", len(sr.Providers))
+		}
+		if sr.Providers[0].Name != "gemini" {
+			t.Errorf("expected provider name 'gemini', got %q", sr.Providers[0].Name)
+		}
+		if sr.Providers[0].Temperature == nil || *sr.Providers[0].Temperature != 0.3 {
+			t.Errorf("expected provider temperature 0.3, got %v", sr.Providers[0].Temperature)
 		}
 	})
 }

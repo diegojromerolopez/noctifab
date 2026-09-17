@@ -29,6 +29,7 @@ type SovereignRescueOptions struct {
 	Validator          *services.TestValidator
 	MaxTurns           int
 	TurnTimeout        time.Duration
+	ToolchainStrategy  string
 }
 
 // DispatchSovereignRescue prepares execution parameters, ensures a viable context runway
@@ -46,12 +47,18 @@ func DispatchSovereignRescue(ctx context.Context, opts SovereignRescueOptions) e
 		if opts.TurnTimeout <= 0 {
 			opts.TurnTimeout = rescueCfg.GetTimeout()
 		}
+		if opts.ToolchainStrategy == "" {
+			opts.ToolchainStrategy = rescueCfg.GetMissingToolchainStrategy()
+		}
 	} else {
 		if opts.MaxTurns <= 0 {
-			opts.MaxTurns = 2
+			opts.MaxTurns = 10
 		}
 		if opts.TurnTimeout <= 0 {
 			opts.TurnTimeout = 5 * time.Minute
+		}
+		if opts.ToolchainStrategy == "" {
+			opts.ToolchainStrategy = "auto"
 		}
 	}
 
@@ -92,7 +99,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 
 	maxTurns := opts.MaxTurns
 	if maxTurns <= 0 {
-		maxTurns = 2
+		maxTurns = 10
 	}
 
 	turnTimeout := opts.TurnTimeout
@@ -137,19 +144,16 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	}
 
 	_, lastFailureLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
-	if strings.TrimSpace(lastFailureLog) == "" {
-		if len(opts.AcceptanceGaps) > 0 {
-			lastFailureLog = fmt.Sprintf("Acceptance Audit Gaps:\n- %s", strings.Join(opts.AcceptanceGaps, "\n- "))
-		} else {
-			lastFailureLog = strings.Join(opts.FailedStories, "\n")
-		}
-	}
+	diagnostics := CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog)
+
+	resolvedStrategy := ResolveToolchainStrategy(ctx, opts.ToolchainStrategy, nil)
 
 	// 4. Multi-Turn Sovereign Rescue Loop
 	for turn := 1; turn <= maxTurns; turn++ {
 		fmt.Printf("🔧 [Sovereign Rescue] Turn %d/%d: Prompting direct sovereign LLM agent...\n", turn, maxTurns)
 
-		prompt := buildSovereignRescuePrompt(specContent, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, turn, maxTurns)
+		detectedMissing := DetectMissingToolchainIndicator(diagnostics)
+		prompt := buildSovereignRescuePrompt(specContent, opts.FailedStories, opts.AcceptanceGaps, diagnostics, turn, maxTurns, resolvedStrategy, detectedMissing)
 
 		turnCtx, cancel := context.WithTimeout(ctx, turnTimeout)
 		turnCtx = domain.WithRoleContext(turnCtx, string(domain.AgentRoleFallback))
@@ -163,21 +167,36 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		}
 
 		var toolErrors []string
+		actionsExecuted := 0
 		if resp != nil && len(resp.Actions) > 0 {
-			actionsExecuted := 0
 			for _, action := range resp.Actions {
 				if action.Tool == "noop" {
 					continue
 				}
 				tool, ok := opts.ToolRegistry.Get(action.Tool)
 				if ok {
-					_, execErr := tool.Execute(ctx, state, action.Args)
+					out, execErr := tool.Execute(ctx, state, action.Args)
 					if execErr != nil {
 						errMsg := fmt.Sprintf("tool %s failed: %v", action.Tool, execErr)
 						fmt.Fprintf(os.Stderr, "⚠ [Sovereign Tool Failed] %s\n", errMsg)
 						toolErrors = append(toolErrors, errMsg)
 					} else {
 						actionsExecuted++
+						fmt.Printf("   ✓ Action %s succeeded\n", action.Tool)
+					}
+					if state != nil {
+						actionRecord := domain.Action{
+							Timestamp: time.Now().UTC(),
+							Tool:      action.Tool,
+							Args:      action.Args,
+							Reasoning: fmt.Sprintf("[Sovereign Rescue Turn %d/%d] %s", turn, maxTurns, resp.Reasoning),
+							Result:    out,
+							Success:   execErr == nil,
+						}
+						if execErr != nil {
+							actionRecord.Result = execErr.Error()
+						}
+						state.LastActions = append(state.LastActions, actionRecord)
 					}
 				} else {
 					errMsg := fmt.Sprintf("tool %q is not registered in ToolRegistry", action.Tool)
@@ -194,7 +213,29 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 					fmt.Sprintf("fix(sovereign-rescue): direct unblock turn %d/%d", turn, maxTurns))
 			}
 		} else {
-			toolErrors = append(toolErrors, "response contained 0 actionable tool invocations; you must invoke write_file, write_files, or edit_file")
+			toolErrors = append(toolErrors, "response contained 0 actionable tool invocations; you must invoke write_file, write_files, edit_file, or install_package")
+		}
+
+		// Log and persist corrective step in database
+		correctiveSummary := resp.Reasoning
+		if correctiveSummary == "" {
+			correctiveSummary = fmt.Sprintf("Turn %d executed %d actions", turn, actionsExecuted)
+		}
+		fmt.Printf("📝 [Sovereign Rescue] Turn %d/%d Corrective Step: %s\n", turn, maxTurns, correctiveSummary)
+
+		if opts.Repo != nil {
+			stepAction := domain.Action{
+				Timestamp: time.Now().UTC(),
+				Tool:      "sovereign_rescue_step",
+				Reasoning: fmt.Sprintf("[Turn %d/%d] %s", turn, maxTurns, correctiveSummary),
+				Success:   len(toolErrors) == 0 && actionsExecuted > 0,
+				Result:    fmt.Sprintf("actions=%d, tool_errors=%d", actionsExecuted, len(toolErrors)),
+			}
+			if len(toolErrors) > 0 {
+				stepAction.Result = fmt.Sprintf("actions=%d, errors: %s", actionsExecuted, strings.Join(toolErrors, "; "))
+			}
+			state.LastActions = append(state.LastActions, stepAction)
+			_ = opts.Repo.Save(ctx, state)
 		}
 
 		// Re-evaluate verification gate
@@ -221,13 +262,14 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		if len(toolErrors) > 0 {
 			lastFailureLog = fmt.Sprintf("WORKSPACE TOOL EXECUTION ERRORS IN TURN %d:\n- %s\n\nVALIDATION OUTPUT:\n%s", turn, strings.Join(toolErrors, "\n- "), newLog)
 		}
+		diagnostics = CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog)
 		fmt.Printf("⚠️ [Sovereign Rescue] Turn %d verification failed. Feeding diagnostics into turn %d...\n", turn, turn+1)
 	}
 
 	return fmt.Errorf("sovereign rescue exhausted %d turns without passing all validation gates. Last error:\n%s", maxTurns, lastFailureLog)
 }
 
-func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGaps []string, failureLog string, turn, maxTurns int) string {
+func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGaps []string, failureLog string, turn, maxTurns int, resolvedStrategy string, detectedMissing bool) string {
 	var sb strings.Builder
 	sb.WriteString("You are Noctifab's Sovereign Omni-Agent.\n")
 	sb.WriteString("The standard multi-agent pipeline encountered an unresolvable bottleneck and could not finish.\n")
@@ -264,6 +306,10 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 	sb.WriteString(failureLog)
 	sb.WriteString("\n\n")
 
+	if directive := BuildToolchainFallbackDirective(resolvedStrategy, detectedMissing); directive != "" {
+		sb.WriteString(directive)
+	}
+
 	sb.WriteString("=== DIRECT MANDATE ===\n")
 	sb.WriteString("1. Directly write or modify all source code, headers, and configuration files needed to fulfill SPEC.md.\n")
 	sb.WriteString("2. Author genuine unit tests under tests/ directory with real assertions (0 tests or empty tests will FAIL).\n")
@@ -273,7 +319,7 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 	sb.WriteString("   - e2e: executes end-to-end black-box verification of compiled binaries.\n")
 	sb.WriteString("4. Fix all compilation errors, missing translation units, or syntax issues reported above.\n")
 	sb.WriteString("5. Strictly avoid placeholder stubs, error-masking shell tricks, and tautological tests (e.g., 'TODO: implement', 'pass', empty main functions, '|| true', 'assert True'). The anti-stub validator strictly rejects them.\n")
-	sb.WriteString("6. Return tool calls using write_file, write_files, or edit_file to apply changes to the workspace.\n\n")
+	sb.WriteString("6. Return tool calls using write_file, write_files, edit_file, or install_package to apply changes to the workspace.\n\n")
 
 	sb.WriteString("=== REQUIRED RESPONSE FORMAT ===\n")
 	sb.WriteString("You MUST respond ONLY with a single JSON object matching this schema (do NOT wrap in markdown code fences):\n")
@@ -335,11 +381,9 @@ func updateRescueSuccessState(ctx context.Context, repo domain.StateRepository, 
 		}
 	}
 
-	// Mark any pending tasks as success
+	// Mark all tasks as succeeded since sovereign rescue takeover passed all gates and implemented the full project
 	for i := range st.Tasks {
-		if st.Tasks[i].Status != domain.TaskFailed {
-			st.Tasks[i].Status = domain.TaskSuccess
-		}
+		st.Tasks[i].Status = domain.TaskSuccess
 	}
 
 	action := domain.Action{

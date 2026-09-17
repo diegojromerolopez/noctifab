@@ -90,7 +90,11 @@ func RunWholeProjectAcceptanceGate(ctx context.Context, opts AcceptanceGateOptio
 					}
 					if reAudit != nil && len(reAudit.Gaps) > 0 {
 						auditResult = reAudit
-						return false, fmt.Sprintf("unresolved acceptance gaps:\n - %s", strings.Join(reAudit.Gaps, "\n - "))
+						return false, fmt.Sprintf("Acceptance Audit Summary: %s\nUnresolved acceptance gaps:\n - %s", reAudit.Summary, strings.Join(reAudit.Gaps, "\n - "))
+					}
+					if reAudit != nil && strings.TrimSpace(reAudit.Summary) != "" {
+						auditResult = reAudit
+						return false, fmt.Sprintf("Acceptance Audit Summary: %s", reAudit.Summary)
 					}
 					return false, "whole-project acceptance audit did not pass"
 				},

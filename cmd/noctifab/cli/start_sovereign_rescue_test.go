@@ -167,7 +167,17 @@ func TestSovereignProjectRescue(t *testing.T) {
 			}
 		}
 
-		// Assert sovereign rescue telemetry action recorded
+		// Assert sovereign rescue telemetry and corrective step actions recorded in database
+		var foundStepAction bool
+		for _, a := range st.LastActions {
+			if a.Tool == "sovereign_rescue_step" {
+				foundStepAction = true
+				assert.Contains(t, a.Reasoning, "Turn 1/2")
+				break
+			}
+		}
+		assert.True(t, foundStepAction, "expected sovereign_rescue_step action recorded in state.LastActions")
+
 		lastAction := st.LastActions[len(st.LastActions)-1]
 		assert.Equal(t, "sovereign_rescue_success", lastAction.Tool)
 		assert.True(t, lastAction.Success)
@@ -354,15 +364,16 @@ func TestSovereignProjectRescue(t *testing.T) {
 	})
 
 	t.Run("when buildSovereignRescuePrompt is called, it includes strict JSON schema and anti-stub instructions", func(t *testing.T) {
-		prompt := buildSovereignRescuePrompt("Build a CLI tool", []string{"US-001 (failed)"}, nil, "error: build failed", 1, 2)
+		prompt := buildSovereignRescuePrompt("Build a CLI tool", []string{"US-001 (failed)"}, nil, "error: build failed", 1, 2, "docker", true)
 		assert.Contains(t, prompt, "REQUIRED RESPONSE FORMAT")
 		assert.Contains(t, prompt, "\"reasoning\"")
 		assert.Contains(t, prompt, "\"write_files\"")
 		assert.Contains(t, prompt, "anti-stub validator")
 		assert.Contains(t, prompt, "US-001 (failed)")
+		assert.Contains(t, prompt, "MISSING HOST TOOLCHAIN & CONTAINERIZED DOCKER FALLBACK")
 	})
 
-	t.Run("when DispatchSovereignRescue is called without MaxTurns it defaults to 2 turns", func(t *testing.T) {
+	t.Run("when DispatchSovereignRescue is called without MaxTurns it defaults to 10 turns", func(t *testing.T) {
 		tempDir := t.TempDir()
 		mockRepo := &mockDAGStateRepo{
 			state: &domain.State{ProjectPath: tempDir},
@@ -370,8 +381,6 @@ func TestSovereignProjectRescue(t *testing.T) {
 
 		mockLLM := &mockRescueLLM{
 			responses: []*domain.LLMResponse{
-				{Actions: []domain.LLMAction{{Tool: "noop"}}},
-				{Actions: []domain.LLMAction{{Tool: "noop"}}},
 				{Actions: []domain.LLMAction{{Tool: "noop"}}},
 			},
 		}
@@ -392,13 +401,13 @@ func TestSovereignProjectRescue(t *testing.T) {
 			LLMClient:    mockLLM,
 			ToolRegistry: reg,
 			Validator:    validator,
-			MaxTurns:     0, // Unset, should default to 2
+			MaxTurns:     0, // Unset, should default to 10
 		}
 
 		err := DispatchSovereignRescue(context.Background(), opts)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "sovereign rescue exhausted 2 turns")
-		assert.Equal(t, 2, mockLLM.calls, "expected exactly 2 turns from default configuration")
+		assert.Contains(t, err.Error(), "sovereign rescue exhausted 10 turns")
+		assert.Equal(t, 10, mockLLM.calls, "expected exactly 10 turns from default configuration")
 	})
 
 	t.Run("when sovereign rescue calls Complete it passes fallback role in context", func(t *testing.T) {

@@ -3,14 +3,18 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // SovereignRescueConfig configures the autonomous whole-project sovereign recovery engine.
 type SovereignRescueConfig struct {
-	Enabled  *bool    `yaml:"enabled,omitempty"`
-	MaxTurns int      `yaml:"max_turns"`
-	Timeout  Duration `yaml:"timeout,omitempty"`
+	Enabled                  *bool              `yaml:"enabled,omitempty"`
+	MaxTurns                 int                `yaml:"max_turns"`
+	MaxAttempts              int                `yaml:"max_attempts,omitempty"`
+	Timeout                  Duration           `yaml:"timeout,omitempty"`
+	MissingToolchainStrategy string             `yaml:"missing_toolchain_strategy,omitempty"`
+	Providers                []AgentProviderRef `yaml:"providers,omitempty"`
 }
 
 func (s SovereignRescueConfig) IsEnabled() bool {
@@ -20,11 +24,22 @@ func (s SovereignRescueConfig) IsEnabled() bool {
 	return true
 }
 
+func (s SovereignRescueConfig) GetMissingToolchainStrategy() string {
+	strat := strings.ToLower(strings.TrimSpace(s.MissingToolchainStrategy))
+	if strat == "" {
+		return "auto"
+	}
+	return strat
+}
+
 func (s SovereignRescueConfig) GetMaxTurns() int {
 	if s.MaxTurns > 0 {
 		return s.MaxTurns
 	}
-	return 2
+	if s.MaxAttempts > 0 {
+		return s.MaxAttempts
+	}
+	return 10
 }
 
 func (s SovereignRescueConfig) GetTimeout() time.Duration {
@@ -108,41 +123,76 @@ func (a AgentsConfig) GetFallback() FallbackAgentConfig {
 }
 
 // GetSovereignRescue resolves the SovereignRescueConfig from fallback.sovereign_rescue
-// or agents.fallback.sovereign_rescue/rescue_max_turns with a default MaxTurns of 2.
+// or agents.fallback.sovereign_rescue/rescue_max_turns with a default MaxTurns of 10.
 // The NOCTIFAB_RESCUE_MAX_TURNS environment variable takes highest precedence if set.
 func (c *Config) GetSovereignRescue() SovereignRescueConfig {
 	if c == nil {
-		res := SovereignRescueConfig{MaxTurns: 2, Timeout: Duration(5 * time.Minute)}
+		res := SovereignRescueConfig{MaxTurns: 10, Timeout: Duration(5 * time.Minute), MissingToolchainStrategy: "auto"}
 		if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_MAX_TURNS"); ok {
 			if i, err := strconv.Atoi(val); err == nil && i > 0 {
 				res.MaxTurns = i
 			}
+		} else if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_MAX_ATTEMPTS"); ok {
+			if i, err := strconv.Atoi(val); err == nil && i > 0 {
+				res.MaxTurns = i
+			}
+		}
+		if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY"); ok && strings.TrimSpace(val) != "" {
+			res.MissingToolchainStrategy = strings.ToLower(strings.TrimSpace(val))
 		}
 		return res
 	}
 	fb := c.GetFallback()
 	res := fb.SovereignRescue
 	if res.MaxTurns <= 0 {
+		if res.MaxAttempts > 0 {
+			res.MaxTurns = res.MaxAttempts
+		} else {
+			fbAgent := c.Agents.GetFallback()
+			if fbAgent.SovereignRescue != nil && fbAgent.SovereignRescue.MaxTurns > 0 {
+				res.MaxTurns = fbAgent.SovereignRescue.MaxTurns
+				if fbAgent.SovereignRescue.Timeout > 0 {
+					res.Timeout = fbAgent.SovereignRescue.Timeout
+				}
+				if fbAgent.SovereignRescue.Enabled != nil {
+					res.Enabled = fbAgent.SovereignRescue.Enabled
+				}
+				if fbAgent.SovereignRescue.MissingToolchainStrategy != "" {
+					res.MissingToolchainStrategy = fbAgent.SovereignRescue.MissingToolchainStrategy
+				}
+				if len(fbAgent.SovereignRescue.Providers) > 0 {
+					res.Providers = fbAgent.SovereignRescue.Providers
+				}
+			} else if fbAgent.RescueMaxTurns > 0 {
+				res.MaxTurns = fbAgent.RescueMaxTurns
+			}
+		}
+	}
+	if len(res.Providers) == 0 {
 		fbAgent := c.Agents.GetFallback()
-		if fbAgent.SovereignRescue != nil && fbAgent.SovereignRescue.MaxTurns > 0 {
-			res.MaxTurns = fbAgent.SovereignRescue.MaxTurns
-			if fbAgent.SovereignRescue.Timeout > 0 {
-				res.Timeout = fbAgent.SovereignRescue.Timeout
-			}
-			if fbAgent.SovereignRescue.Enabled != nil {
-				res.Enabled = fbAgent.SovereignRescue.Enabled
-			}
-		} else if fbAgent.RescueMaxTurns > 0 {
-			res.MaxTurns = fbAgent.RescueMaxTurns
+		if fbAgent.SovereignRescue != nil && len(fbAgent.SovereignRescue.Providers) > 0 {
+			res.Providers = fbAgent.SovereignRescue.Providers
+		} else if len(fbAgent.Providers) > 0 {
+			res.Providers = fbAgent.Providers
 		}
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_MAX_TURNS"); ok {
 		if i, err := strconv.Atoi(val); err == nil && i > 0 {
 			res.MaxTurns = i
 		}
+	} else if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_MAX_ATTEMPTS"); ok {
+		if i, err := strconv.Atoi(val); err == nil && i > 0 {
+			res.MaxTurns = i
+		}
+	}
+	if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY"); ok && strings.TrimSpace(val) != "" {
+		res.MissingToolchainStrategy = strings.ToLower(strings.TrimSpace(val))
+	}
+	if res.MissingToolchainStrategy == "" {
+		res.MissingToolchainStrategy = "auto"
 	}
 	if res.MaxTurns <= 0 {
-		res.MaxTurns = 2
+		res.MaxTurns = 10
 	}
 	if res.Timeout <= 0 {
 		res.Timeout = Duration(5 * time.Minute)

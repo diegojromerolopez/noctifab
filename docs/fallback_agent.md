@@ -168,7 +168,8 @@ The Fallback Agent is invoked automatically under specific pipeline conditions a
   3. All architectural boundaries, story divisions, and specialized worker roles are dissolved.
   4. A single Sovereign LLM Agent directly takes control of the entire workspace. It receives `SPEC.md`, the failure diagnostics, compiler/test error logs, and any tool execution errors from previous turns formatted into a structured JSON envelope prompt.
   5. The Sovereign Agent directly implements missing code, writes unit tests under `tests/`, and supplies standard `build`, `test` (exiting 1 on 0 tests), and `e2e` Makefile targets.
-  6. It executes `ValidateTask` (Dual-Gate Verification, with degraded tolerance for absent host toolchains). Upon success, it commits the changes and marks all stories complete, delivering a runnable project without manual intervention.
+  6. **Missing Host Toolchain Recovery**: If a required compiler or tool is absent on the host, Sovereign Rescue dynamically adapts based on `fallback.sovereign_rescue.missing_toolchain_strategy` (`"auto"`, `"docker"`, `"local"`, or `"off"`). Under `"docker"` (or `"auto"` when Docker is available), it writes a minimal `Dockerfile` and delegates `Makefile` recipes (`build`, `test`, `e2e`) through `docker run --rm -v $(PWD):/app -w /app ...`, ensuring verification passes inside the container. Under `"local"`, it uses `install_package` on the host.
+  7. It executes `ValidateTask` (Dual-Gate Verification). Upon success, it commits the changes and marks all stories complete, delivering a runnable project without manual intervention.
 
 ---
 
@@ -243,8 +244,12 @@ fallback:
   # Whole-project emergency sovereign takeover engine (TR-16)
   sovereign_rescue:
     enabled: true
-    max_turns: 2      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
+    max_turns: 10      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
     timeout: 5m
+    missing_toolchain_strategy: auto # "auto" | "docker" | "local" | "off"
+    providers:
+      - name: gemini
+        temperature: 0.3
 
 agents:
   fallback:

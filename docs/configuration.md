@@ -534,8 +534,12 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
-    max_turns: 2
+    max_turns: 10
     timeout: "5m"
+    missing_toolchain_strategy: "auto"
+    providers:
+      - name: gemini
+        temperature: 0.3
 ```
 
 - **`enabled`** (Boolean): Activate the fallback watchdog goroutine (default: `true`). When `false`, no stall scanning is performed.
@@ -553,8 +557,14 @@ fallback:
   - **`stall_count_threshold`** (Integer): Number of cumulative stall cycles before summoning sovereign repair (default: `4`).
 - **`sovereign_rescue`**: Configures the whole-project emergency sovereign takeover engine (TR-16):
   - **`enabled`** (Boolean): Enable autonomous sovereign rescue takeover upon loop exhaustion (default: `true`).
-  - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `2`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
+  - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `10`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
   - **`timeout`** (Duration): Per-turn execution timeout limit for sovereign LLM completions (default: `5m`).
+  - **`missing_toolchain_strategy`** (String): Strategy for handling missing host toolchains or compilers during sovereign recovery (default: `"auto"`). Configurable via environment variable `NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY`. Options:
+    - `"auto"`: Probes for Docker daemon availability. If Docker is running, uses `"docker"`; otherwise falls back to `"local"`.
+    - `"docker"`: Instructs the agent to create a `Dockerfile` with the missing compiler/runtime and wire `Makefile` (`build`, `test`, `e2e`) to execute containerized via `docker run --rm -v $(PWD):/app -w /app ...`.
+    - `"local"`: Instructs the agent to install missing tools onto the host machine via `install_package` (pip, brew, apt, npm, cargo, etc.).
+    - `"off"`: Disables fallback recovery for missing toolchains.
+  - **`providers`** (List of `AgentProviderRef`): Explicit prioritized LLM providers for Sovereign Rescue. Uses the identical schema as `agents.<role>.providers` (`name`, `model`, `temperature`, `max_tokens`, etc.), overriding `roles.fallback.profile`. Every corrective turn is logged to console/stderr and persisted directly to `state.LastActions` in the database.
 
 See [fallback_agent.md](fallback_agent.md) for full references on the unified self-healing architecture, triggers, and compromise hierarchy.
 
@@ -692,7 +702,7 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
-    max_turns: 2
+    max_turns: 10
     timeout: "5m"
 
 storage:

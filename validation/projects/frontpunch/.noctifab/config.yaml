@@ -157,8 +157,12 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
-    max_turns: 2
+    max_turns: 10
     timeout: 5m
+    missing_toolchain_strategy: auto
+    providers:
+      - name: gemini
+        temperature: 0.3
 workspace_cache:
   enabled: true
 poll_interval: 1s

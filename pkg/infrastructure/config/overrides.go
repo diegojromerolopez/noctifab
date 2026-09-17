@@ -92,6 +92,10 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.Agents.Fallback.RescueMaxTurns = i
 		}
 	}
+	if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY"); ok && strings.TrimSpace(val) != "" {
+		cfg.Fallback.SovereignRescue.MissingToolchainStrategy = strings.ToLower(strings.TrimSpace(val))
+		cfg.Unblocker.SovereignRescue.MissingToolchainStrategy = strings.ToLower(strings.TrimSpace(val))
+	}
 	if val, ok := os.LookupEnv("NOCTIFAB_SANDBOX_MODE"); ok {
 		cfg.Sandbox.Mode = val
 	}
