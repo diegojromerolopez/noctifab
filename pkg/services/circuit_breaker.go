@@ -121,6 +121,14 @@ func (cb *TaskCircuitBreaker) RecordDuplicateInspection() {
 	cb.ConsecutiveDuplicateInspections++
 }
 
+// ResetTurn resets turn-level duplicate inspection counters while preserving task-level progress tracking.
+func (cb *TaskCircuitBreaker) ResetTurn() {
+	if cb == nil {
+		return
+	}
+	cb.ConsecutiveDuplicateInspections = 0
+}
+
 // ShouldBreakReadLoop evaluates whether an agent is stuck in repetitive read/find inspection loops.
 // Returns (warn, forceTurn, reason).
 func (cb *TaskCircuitBreaker) ShouldBreakReadLoop() (bool, bool, string) {

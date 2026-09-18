@@ -36,6 +36,10 @@ func TestDetectE2ECommand(t *testing.T) {
 		// 4. docker-compose.e2e.yml beats docker-compose.yml
 		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "docker-compose.e2e.yml"), []byte("services:\n  test-runner:\n    image: test\n"), 0600))
 		assert.Equal(t, "docker compose -f docker-compose.e2e.yml up --build --exit-code-from test-runner", DetectE2ECommand(tmpDir, "docker", ""))
+
+		// 5. docker-compose.e2e.yml with custom test-runner-e2e service dynamically detected
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "docker-compose.e2e.yml"), []byte("services:\n  pyedis-server:\n    image: redis\n  test-runner-e2e:\n    image: pyedis-test\n"), 0600))
+		assert.Equal(t, "docker compose -f docker-compose.e2e.yml up --build --exit-code-from test-runner-e2e", DetectE2ECommand(tmpDir, "docker", ""))
 	})
 
 	t.Run("native mode detection hierarchy", func(t *testing.T) {

@@ -182,8 +182,7 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			state = stLoaded
 		}
 		storyTasks := getStoryTasks(state, featName, storyID)
-		isFirstScaffoldStory := strings.HasPrefix(storyID, "US-001") || strings.HasPrefix(featName, "US-001")
-		if isFirstScaffoldStory && len(storyTasks) > 0 && deps.evaluator != nil {
+		if len(storyTasks) > 0 && deps.evaluator != nil {
 			allTasksGreen := true
 			for _, t := range storyTasks {
 				passed, _, valErr := deps.evaluator.ValidateTask(ctx, state, t)
@@ -193,7 +192,7 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 				}
 			}
 			if allTasksGreen {
-				fmt.Printf("🚀 [Spike Fast Exit] Walking skeleton already compiles cleanly and passes all test assertions (%d tasks). Marking %s as SUCCESS.\n", len(storyTasks), featName)
+				fmt.Printf("🚀 [Fast Exit on Verified Green] All %d tasks in %s already compile cleanly and pass all test assertions. Marking %s as SUCCESS.\n", len(storyTasks), featName, featName)
 				now := time.Now().UTC()
 				for i := range state.Tasks {
 					for _, st := range storyTasks {

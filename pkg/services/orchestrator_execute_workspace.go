@@ -63,6 +63,7 @@ func (o *Orchestrator) setupTaskWorkspace(
 		worktreeDir = filepath.Join(state.ProjectPath, ".noctifab", "worktrees", fmt.Sprintf("task-%s", taskID))
 		_, _ = o.git.Run(ctx, true, "worktree", "remove", "--force", worktreeDir)
 		_ = os.RemoveAll(worktreeDir)
+		_, _ = o.git.Run(ctx, true, "worktree", "prune")
 		_ = os.MkdirAll(filepath.Dir(worktreeDir), 0755)
 
 		branchExists := false
@@ -81,18 +82,26 @@ func (o *Orchestrator) setupTaskWorkspace(
 				_, _ = o.git.Run(ctx, true, "worktree", "add", worktreeDir, branchName)
 			}
 		}
-		taskGit = NewGitClient(worktreeDir)
-		SeedTaskWorktreeWorkspace(state.ProjectPath, worktreeDir)
 
-		var cleanupOnce sync.Once
-		cleanup = func() {
-			cleanupOnce.Do(func() {
-				_, _ = o.git.Run(ctx, true, "worktree", "remove", "--force", worktreeDir)
-				_ = os.RemoveAll(worktreeDir)
-				_, _ = o.git.Run(ctx, true, "worktree", "prune")
-			})
+		// Verify worktree directory actually exists on disk.
+		if info, statErr := os.Stat(worktreeDir); statErr == nil && info.IsDir() {
+			taskGit = NewGitClient(worktreeDir)
+			SeedTaskWorktreeWorkspace(state.ProjectPath, worktreeDir)
+
+			var cleanupOnce sync.Once
+			cleanup = func() {
+				cleanupOnce.Do(func() {
+					_, _ = o.git.Run(ctx, true, "worktree", "remove", "--force", worktreeDir)
+					_ = os.RemoveAll(worktreeDir)
+					_, _ = o.git.Run(ctx, true, "worktree", "prune")
+				})
+			}
+			return worktreeDir, taskGit, cleanup, nil
 		}
-		return worktreeDir, taskGit, cleanup, nil
+
+		// Fallback: If worktree creation failed to materialize directory on disk, fallback to in-place branch.
+		fmt.Fprintf(os.Stderr, "Orchestrator: Worktree creation failed for %s, falling back to in-place workspace execution\n", worktreeDir)
+		_, _ = o.git.Run(ctx, true, "worktree", "prune")
 	}
 
 	taskGit = o.git

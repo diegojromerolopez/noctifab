@@ -90,7 +90,14 @@ func TestGoldenDefaults_ByteIdenticalToLegacyAssembly(t *testing.T) {
 			got := rendered.Full()
 			want := legacyPreprocessPrompt(tc.legacy)
 			if tc.agent == AgentProductManager {
-				needles := []string{"exactly one fenced `noctifab-contract` JSON block", "```noctifab-contract", `"allowed_executables"`}
+				needles := []string{
+					"exactly one fenced `noctifab-contract` JSON block",
+					"```noctifab-contract",
+					`"allowed_executables"`,
+					"MODULAR FILE DECOMPOSITION & ANTI-MONOLITH MANDATE",
+					"Single Responsibility & File Separation",
+					"Anti-Monolith Mandate",
+				}
 				if tc.action == "generate" {
 					needles = append(needles, "COMPLEXITY UNIT (CU) ROADMAP SIZING RULE")
 				}
@@ -110,7 +117,11 @@ func TestGoldenDefaults_ByteIdenticalToLegacyAssembly(t *testing.T) {
 				return
 			}
 			if tc.agent == AgentTester {
-				for _, needle := range []string{"CLEAN DIVISION OF LABOR & TEST SCOPE ALIGNMENT MANDATE", "SPECIFIC E2E SCENARIO PER FEATURE"} {
+				for _, needle := range []string{
+					"CLEAN DIVISION OF LABOR & TEST SCOPE ALIGNMENT MANDATE",
+					"SPECIFIC E2E SCENARIO PER FEATURE",
+					"2-SECOND NETWORK/HTTP TIMEOUT MANDATE",
+				} {
 					if !strings.Contains(got, needle) {
 						t.Errorf("%s prompt missing %q", tc.name, needle)
 					}
@@ -118,9 +129,16 @@ func TestGoldenDefaults_ByteIdenticalToLegacyAssembly(t *testing.T) {
 				return
 			}
 			if tc.agent == AgentGenerator {
-				for _, needle := range []string{"runs real black-box E2E tests against the running application, covering at least ONE specific test scenario for EACH individual feature"} {
+				for _, needle := range []string{
+					"runs real black-box E2E tests against the running application, covering at least ONE specific test scenario for EACH individual feature",
+				} {
 					if !strings.Contains(got, needle) {
 						t.Errorf("%s prompt missing %q", tc.name, needle)
+					}
+				}
+				if tc.action == "single_pass" || tc.action == "single_pass_fix" {
+					if !strings.Contains(got, "MAXIMUM 2-SECOND TIMEOUT MANDATE") {
+						t.Errorf("%s prompt missing 2-second timeout mandate", tc.name)
 					}
 				}
 				return

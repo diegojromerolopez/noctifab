@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.91.0] - 2026-09-19
+
+### Added
+- **Autonomous `run_e2e_tests` Tool & Agent Sandboxing (`pkg/services/e2e_tool.go`, `pkg/services/validator.go`, `cmd/noctifab/cli/start_helpers.go`, `cmd/noctifab/cli/serve.go`)**:
+  - Implemented `run_e2e_tests` tool implementing `domain.Tool`, whitelisting it in default profiles for `generator`, `tester`, and `auditor` roles.
+  - Enabled agents to execute containerized and native E2E test suites in-turn without manual orchestration prompts.
+- **Dynamic E2E Command Detection (`pkg/services/e2e_detector.go`)**:
+  - Eliminated hardcoded compose service names (`--exit-code-from test-runner`), replacing it with dynamic compose parsing that discovers services (`test-runner-e2e`, `test-runner`, `test-client`, `e2e`).
+  - Automatically resolves Makefile targets (`make e2e`) and language-specific native runners.
+- **Synchronous Story-Level E2E Verification (`pkg/services/orchestrator_dispatch.go`)**:
+  - Enforced that the Story QA gate and containerized E2E test verification run synchronously after every completed story prior to release finalization.
+- **Auditor Context Enrichment & Remediation Injection (`pkg/services/story_qa_auditor.go`, `pkg/services/acceptance_auditor.go`, `pkg/services/orchestrator_finalize.go`, `pkg/services/orchestrator_acceptance.go`)**:
+  - Enriched Auditor LLM prompts with test failure output, container error traces, and the full contents of `docker-compose.e2e.yml`, `docker-compose.yml`, `Dockerfile*`, and `tests/e2e/run_tests.sh`.
+  - Injected container configuration files into `TargetFiles` and remediation task descriptions so Generator and Tester agents can directly edit and repair containers and code.
+- **Story-Level Sovereign Rescue Escalation (`pkg/services/orchestrator_finalize.go`)**:
+  - When standard story remediation attempts fail (`remediationCount >= 1`), the orchestrator automatically escalates the blocked story to `RunFallbackAgent` with sovereign repair authority.
+
 ## [0.90.0] - 2026-09-17
 
 ### Added

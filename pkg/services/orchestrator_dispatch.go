@@ -213,64 +213,38 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 					}
 				}
 
-				if isFinalStory {
-					// Final Story: run synchronous Story-Level QA Feature Completeness Gate
-					// and Whole-Project Acceptance Audit before final release.
-					if o.shouldAuditStoryCompleteness(state) {
-						storyQAResult, qaErr := o.AuditStoryCompleteness(ctx, state)
-						if qaErr == nil && storyQAResult != nil && !storyQAResult.Passed && len(storyQAResult.MissingFeatures) > 0 {
-							if o.queueStoryRemediationTask(ctx, state, storyQAResult) {
+				// Synchronous Story-Level QA Feature Completeness & E2E Verification Gate:
+				// Every completed story must execute its E2E verification before release finalization.
+				if o.shouldAuditStoryCompleteness(state) {
+					storyQAResult, qaErr := o.AuditStoryCompleteness(ctx, state)
+					if qaErr == nil && storyQAResult != nil && !storyQAResult.Passed && len(storyQAResult.MissingFeatures) > 0 {
+						if o.queueStoryRemediationTask(ctx, state, storyQAResult) {
+							return true, nil
+						}
+						buildOK = false
+						fmt.Printf("❌ Story %s: Definition of Done audit failed with %d missing feature(s):\n", state.Metadata.FeatureName, len(storyQAResult.MissingFeatures))
+						for _, f := range storyQAResult.MissingFeatures {
+							fmt.Printf(" - %s\n", f)
+						}
+					}
+				}
+
+				if isFinalStory && buildOK && o.acceptanceAuditor != nil {
+					// Final Story: additionally run Whole-Project Acceptance Audit before final release.
+					auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
+					if auditErr != nil {
+						fmt.Fprintf(os.Stderr, "⚠ Story %s: Acceptance Audit encountered an error: %v\n", state.Metadata.FeatureName, auditErr)
+					} else if auditResult != nil && !auditResult.Passed && len(auditResult.Gaps) > 0 {
+						if o.shouldRemediateAcceptanceAudit(state) {
+							if o.queueAcceptanceRemediationTask(ctx, state, auditResult) {
 								return true, nil
 							}
-							buildOK = false
-							fmt.Printf("❌ Story %s: Definition of Done audit failed with %d missing feature(s):\n", state.Metadata.FeatureName, len(storyQAResult.MissingFeatures))
-							for _, f := range storyQAResult.MissingFeatures {
-								fmt.Printf(" - %s\n", f)
-							}
 						}
-					}
-
-					if buildOK && o.acceptanceAuditor != nil {
-						auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
-						if auditErr != nil {
-							fmt.Fprintf(os.Stderr, "⚠ Story %s: Acceptance Audit encountered an error: %v\n", state.Metadata.FeatureName, auditErr)
-						} else if auditResult != nil && !auditResult.Passed && len(auditResult.Gaps) > 0 {
-							if o.shouldRemediateAcceptanceAudit(state) {
-								if o.queueAcceptanceRemediationTask(ctx, state, auditResult) {
-									return true, nil
-								}
-							}
-							buildOK = false
-							fmt.Printf("❌ Story %s: Whole-project Acceptance Audit failed with %d specification gap(s):\n", state.Metadata.FeatureName, len(auditResult.Gaps))
-							for _, g := range auditResult.Gaps {
-								fmt.Printf(" - %s\n", g)
-							}
+						buildOK = false
+						fmt.Printf("❌ Story %s: Whole-project Acceptance Audit failed with %d specification gap(s):\n", state.Metadata.FeatureName, len(auditResult.Gaps))
+						for _, g := range auditResult.Gaps {
+							fmt.Printf(" - %s\n", g)
 						}
-					}
-				} else {
-					// Intermediate Story Pipelining:
-					// Unit tests succeeded; finalize & merge immediately to unblock child stories,
-					// while running Story QA audit asynchronously in the background.
-					if o.shouldAuditStoryCompleteness(state) {
-						snapshotState := state.Clone()
-						go func(st *domain.State) {
-							qaCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-							defer cancel()
-							storyQAResult, qaErr := o.AuditStoryCompleteness(qaCtx, st)
-							if qaErr != nil {
-								fmt.Fprintf(os.Stderr, "⚠ [Optimistic Story QA] Background QA error for %s: %v\n", st.Metadata.FeatureName, qaErr)
-								return
-							}
-							if storyQAResult != nil && !storyQAResult.Passed && len(storyQAResult.MissingFeatures) > 0 {
-								fmt.Printf("⚠ [Optimistic Story QA] Background QA audit for %s detected %d missing feature(s):\n", st.Metadata.FeatureName, len(storyQAResult.MissingFeatures))
-								for _, f := range storyQAResult.MissingFeatures {
-									fmt.Printf(" - %s\n", f)
-								}
-								refineStoryFileWithGaps(st.ProjectPath, st.Metadata.InputPath, st.Metadata.FeatureName, storyQAResult)
-							} else {
-								fmt.Printf("✨ [Optimistic Story QA] Background QA audit for %s passed successfully.\n", st.Metadata.FeatureName)
-							}
-						}(snapshotState)
 					}
 				}
 

@@ -696,7 +696,7 @@ def main():
     parser.add_argument("--max-iterations", type=int, default=None, help="Maximum loop iterations (default: 3 if no duration specified)")
     parser.add_argument("--duration-hours", type=float, default=None, help="Total duration limit in hours (e.g. 2.5)")
     parser.add_argument("--duration", type=int, default=None, help="Total duration limit in seconds")
-    parser.add_argument("--timeout", type=int, default=1800, help="Timeout in seconds per run (default: 1800s / 30m)")
+    parser.add_argument("--timeout", type=int, default=7200, help="Timeout in seconds per run (default: 7200s / 2h)")
     parser.add_argument("--dry-run", action="store_true", help="Harvest existing telemetry without running Noctifab")
     parser.add_argument("--skip-compile", action="store_true", help="Skip recompiling Noctifab binary")
     parser.add_argument("--preserve-workspace", action="store_true", help="Do not wipe project workspace before running")

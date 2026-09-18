@@ -123,6 +123,9 @@ func ExecuteSpike(
 					if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
 						continue
 					}
+					if isMakefile(cleanPath) {
+						contentStr = StandardizeMakefile(contentStr)
+					}
 					fullPath := filepath.Join(projectPath, cleanPath)
 					if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 						continue
@@ -137,6 +140,9 @@ func ExecuteSpike(
 				if strings.TrimSpace(path) != "" {
 					cleanPath := filepath.Clean(strings.TrimSpace(path))
 					if !strings.HasPrefix(cleanPath, "..") && !filepath.IsAbs(cleanPath) {
+						if isMakefile(cleanPath) {
+							content = StandardizeMakefile(content)
+						}
 						fullPath := filepath.Join(projectPath, cleanPath)
 						if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err == nil {
 							if err := os.WriteFile(fullPath, []byte(content), 0644); err == nil {
@@ -147,6 +153,13 @@ func ExecuteSpike(
 				}
 			}
 		}
+	}
+
+	// Ensure any written or existing Makefile in project root has standard targets
+	rootMakefilePath := filepath.Join(projectPath, "Makefile")
+	if mfBytes, err := os.ReadFile(rootMakefilePath); err == nil {
+		stdMF := StandardizeMakefile(string(mfBytes))
+		_ = os.WriteFile(rootMakefilePath, []byte(stdMF), 0644)
 	}
 
 	durMS := time.Since(spikeStart).Milliseconds()

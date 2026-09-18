@@ -67,6 +67,7 @@ func (t *ApplyPatchTool) Execute(ctx context.Context, state *domain.State, args 
 	}
 
 	var modifiedFiles []string
+	var snapshots []fileRollbackSnapshot
 	for _, diff := range diffs {
 		targetRel := cleanDiffPath(diff.Header.NewPath)
 		if targetRel == "" || targetRel == "/dev/null" {
@@ -74,17 +75,22 @@ func (t *ApplyPatchTool) Execute(ctx context.Context, state *domain.State, args 
 		}
 
 		if targetRel == "" || targetRel == "/dev/null" {
+			rollbackAll(snapshots)
 			return "", errors.New("patch target file path cannot be resolved")
 		}
 
 		fullPath, err := resolveSandboxPath(state.ProjectPath, targetRel)
 		if err != nil {
+			rollbackAll(snapshots)
 			return "", err
 		}
+
+		snapshots = append(snapshots, snapshotFile(fullPath))
 
 		// Handle file deletion if new path is /dev/null
 		if cleanDiffPath(diff.Header.NewPath) == "/dev/null" {
 			if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+				rollbackAll(snapshots)
 				return "", fmt.Errorf("failed to delete file %s: %w", targetRel, err)
 			}
 			modifiedFiles = append(modifiedFiles, targetRel+" (deleted)")
@@ -99,19 +105,23 @@ func (t *ApplyPatchTool) Execute(ctx context.Context, state *domain.State, args 
 
 		patchedLines, err := applyFileDiff(existingLines, diff)
 		if err != nil {
+			rollbackAll(snapshots)
 			return "", fmt.Errorf("failed to apply patch to %s: %w", targetRel, err)
 		}
 
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+			rollbackAll(snapshots)
 			return "", fmt.Errorf("failed to create directory for %s: %w", targetRel, err)
 		}
 
 		newContent := strings.Join(patchedLines, "\n")
 		if err := os.WriteFile(fullPath, []byte(newContent), 0644); err != nil {
+			rollbackAll(snapshots)
 			return "", fmt.Errorf("failed to write patched file %s: %w", targetRel, err)
 		}
 
 		if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
+			rollbackAll(snapshots)
 			return "", err
 		}
 

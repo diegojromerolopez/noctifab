@@ -340,3 +340,36 @@ func TestPolicyValidator_GuidanceFormatting(t *testing.T) {
 		t.Errorf("expected reason to contain allowed commands guidance, got: %s", resCmd.Reason)
 	}
 }
+
+func TestPolicyValidator_EmptyArguments(t *testing.T) {
+	state := &domain.State{ProjectPath: "/test/project"}
+	validator := NewPolicyValidator([]string{}, "main", nil)
+	ctx := context.WithValue(context.Background(), AgentRoleKey, "generator")
+
+	t.Run("empty args map for write_file is blocked immediately", func(t *testing.T) {
+		res, err := validator.Validate(ctx, domain.Action{Tool: "write_file", Args: map[string]any{}}, state)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Allowed {
+			t.Error("expected write_file with empty args map to be blocked")
+		}
+		if !strings.Contains(res.Reason, "empty arguments") {
+			t.Errorf("expected reason to mention empty arguments, got: %s", res.Reason)
+		}
+	})
+
+	t.Run("empty path argument for read_file is blocked", func(t *testing.T) {
+		res, err := validator.Validate(ctx, domain.Action{Tool: "read_file", Args: map[string]any{"path": "   "}}, state)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Allowed {
+			t.Error("expected read_file with whitespace path to be blocked")
+		}
+		if !strings.Contains(res.Reason, "non-empty 'path'") {
+			t.Errorf("expected reason to mention non-empty path, got: %s", res.Reason)
+		}
+	})
+}
+

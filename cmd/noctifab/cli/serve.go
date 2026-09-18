@@ -117,6 +117,7 @@ var serveCmd = &cobra.Command{
 		}
 		formatter := services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
 		reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Formatter: formatter, FormatterCommand: cfg.Sandbox.FormatterCommand, Timeout: runTimeout, SyntaxChecker: syntaxChecker})
+		reg.Register(&services.RunE2ETestsTool{Runner: sandboxRunner, Timeout: runTimeout, E2EMode: cfg.Sandbox.E2E.Mode, E2ECmd: cfg.Sandbox.E2E.Command})
 		reg.Register(&services.RunLinterTool{Runner: sandboxRunner, LinterCommand: cfg.Sandbox.GetLinterCommand(), Formatter: formatter, FormatterCommand: cfg.Sandbox.FormatterCommand, MaxLinterIssues: cfg.Sandbox.GetMaxLinterIssues(), Timeout: runTimeout})
 		reg.Register(&services.RequestTestFixTool{})
 		reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})

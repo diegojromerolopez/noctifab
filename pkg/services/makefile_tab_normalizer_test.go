@@ -1,6 +1,7 @@
 package services
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -53,3 +54,34 @@ clean:
 		}
 	})
 }
+
+func TestStandardizeMakefile(t *testing.T) {
+	t.Run("adds standard targets when missing", func(t *testing.T) {
+		input := "test:\n  pytest\n"
+		got := StandardizeMakefile(input)
+		if !strings.Contains(got, ".PHONY:") {
+			t.Errorf("expected .PHONY: in standardized Makefile")
+		}
+		if !strings.Contains(got, "all: build") {
+			t.Errorf("expected all: build in standardized Makefile")
+		}
+		if !strings.Contains(got, "clean:") {
+			t.Errorf("expected clean: in standardized Makefile")
+		}
+		if !strings.Contains(got, "run:") {
+			t.Errorf("expected run: in standardized Makefile")
+		}
+	})
+
+	t.Run("preserves existing build and test targets", func(t *testing.T) {
+		input := ".PHONY: test\n\nbuild:\n\tpython3 setup.py build\n\ntest:\n\tpytest\n"
+		got := StandardizeMakefile(input)
+		if !strings.Contains(got, "all: build") {
+			t.Errorf("expected all: build alias added")
+		}
+		if !strings.Contains(got, "python3 setup.py build") {
+			t.Errorf("expected existing build target preserved")
+		}
+	})
+}
+

@@ -23,9 +23,9 @@ Task Details:
    - Linting & Formatting: Code should be cleanly formatted and pass static analysis. A working test-passing solution within linter tolerance is prioritized over stalling on stylistic warnings.
    - Chicago-School Unit Testing: Use real collaborating domain objects via Dependency Injection (DI) with injectable clocks/streams. Do not mock internal helpers.
 6. SECURITY & SAST INVARIANTS: Compromise authority NEVER allows security compromises. All generated code must pass SAST scans with zero high-severity findings (no hardcoded secrets, no SQL injections).
-7. RUN TESTS: You MUST invoke 'run_tests' to verify that your changes compile and 100% of the aligned test suite passes before calling 'noop'.{{.Context}}
+7. RUN TESTS & E2E: You MUST invoke 'run_tests' (and 'run_e2e_tests' if containerized E2E is configured or failing) to verify that your changes compile and 100% of the test suite passes before calling 'noop'.{{.Context}}
 
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response.
-- If run_tests fails, READ the error output carefully, target the failing files immediately, and fix them in the SAME turn.
+- If run_tests or run_e2e_tests fails, READ the error output carefully, target the failing files immediately, and fix them in the SAME turn.
 - A clean-compiling, test-passing build with a robust, well-defined fallback is infinitely superior to a broken build with a 100% theoretical specification.

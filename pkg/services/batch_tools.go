@@ -103,23 +103,34 @@ func (t *WriteFilesTool) Execute(ctx context.Context, state *domain.State, args 
 	}
 
 	var writtenPaths []string
+	var snapshots []fileRollbackSnapshot
 	for _, entry := range entries {
 		fullPath, err := resolveSandboxPath(state.ProjectPath, entry.path)
 		if err != nil {
+			rollbackAll(snapshots)
 			return "", err
 		}
+		snapshots = append(snapshots, snapshotFile(fullPath))
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+			rollbackAll(snapshots)
 			return "", fmt.Errorf("failed creating parent directory for %s: %w", entry.path, err)
 		}
-		content := normalizeMakefileTabs(entry.path, entry.content)
+		content := entry.content
+		if isMakefile(entry.path) {
+			content = StandardizeMakefile(content)
+		} else {
+			content = normalizeMakefileTabs(entry.path, content)
+		}
 		perm := determineFilePerm(entry.path)
 		if err := os.WriteFile(fullPath, []byte(content), perm); err != nil {
+			rollbackAll(snapshots)
 			return "", fmt.Errorf("failed writing file %s: %w", entry.path, err)
 		}
 		if perm == 0755 {
 			_ = os.Chmod(fullPath, 0755)
 		}
 		if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
+			rollbackAll(snapshots)
 			return "", fmt.Errorf("syntax check failed on %s: %w", entry.path, err)
 		}
 		writtenPaths = append(writtenPaths, entry.path)

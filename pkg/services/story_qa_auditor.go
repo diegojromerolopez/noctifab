@@ -95,6 +95,9 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 		return &StoryQAResult{Passed: true, Summary: "No project path; story QA audit skipped"}, nil
 	}
 
+	var executionLogs []string
+	var hasFailure bool
+
 	// 1. QA Pre-Flight & E2E Test Execution Gate:
 	// If an E2E test command is configured or detected, run it first to verify real integration.
 	e2eCmd := a.detectE2ECommand(state.ProjectPath)
@@ -109,13 +112,8 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 					fmt.Printf("⚠️  [Story QA Pre-Flight] Sandbox policy restriction on E2E command %q (%v); skipping E2E gate.\n", e2eCmd, e2eErr)
 				} else {
 					fmt.Printf("❌ [Story QA] E2E verification failed: %v\n", e2eErr)
-					return &StoryQAResult{
-						Passed:  false,
-						Summary: fmt.Sprintf("E2E test suite failed (%s): %v\n%s", e2eCmd, e2eErr, capText(e2eOut, 1500)),
-						MissingFeatures: []string{
-							fmt.Sprintf("E2E test execution failure (%s): %s", e2eCmd, capText(e2eOut, 500)),
-						},
-					}, nil
+					hasFailure = true
+					executionLogs = append(executionLogs, fmt.Sprintf("E2E test suite failed (%s): %v\n%s", e2eCmd, e2eErr, capText(e2eOut, 1500)))
 				}
 			} else {
 				fmt.Printf("✅ [Story QA] E2E verification passed successfully.\n")
@@ -137,13 +135,8 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 					fmt.Printf("⚠️  [Story QA Pre-Flight] Sandbox policy restriction on test command %q (%v); skipping workspace regression check.\n", testCmd, testErr)
 				} else {
 					fmt.Printf("❌ [Story QA] Whole-workspace regression detected: %v\n", testErr)
-					return &StoryQAResult{
-						Passed:  false,
-						Summary: fmt.Sprintf("Whole-workspace regression detected (%s): %v\n%s", testCmd, testErr, capText(testOut, 1500)),
-						MissingFeatures: []string{
-							fmt.Sprintf("Regression in whole-workspace test suite (%s): %s", testCmd, capText(testOut, 500)),
-						},
-					}, nil
+					hasFailure = true
+					executionLogs = append(executionLogs, fmt.Sprintf("Whole-workspace regression detected (%s): %v\n%s", testCmd, testErr, capText(testOut, 1500)))
 				}
 			} else {
 				fmt.Printf("✅ [Story QA] Whole-workspace regression check passed.\n")
@@ -189,6 +182,13 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 	}
 
 	if a.llmClient == nil {
+		if hasFailure {
+			return &StoryQAResult{
+				Passed:          false,
+				Summary:         strings.Join(executionLogs, "\n"),
+				MissingFeatures: executionLogs,
+			}, nil
+		}
 		return &StoryQAResult{Passed: true, Summary: "No LLM client configured; story QA audit skipped"}, nil
 	}
 
@@ -207,23 +207,53 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 		}
 	}
 	workspaceSnapshot := CollectWorkspaceSourceSnapshot(ctx, state.ProjectPath, targetFiles, 20, 1500)
-	prompt := a.buildPrompt(storyContent, workspaceSnapshot, diffContext, state)
+	_, containerContext := collectE2EContainerFiles(state.ProjectPath)
+	prompt := a.buildPrompt(storyContent, workspaceSnapshot, diffContext, strings.Join(executionLogs, "\n"), containerContext, state)
 
 	auditCtx := context.WithValue(ctx, AgentRoleKey, "qa")
 	resp, err := a.llmClient.Complete(auditCtx, prompt)
 	if err != nil {
+		if hasFailure {
+			return &StoryQAResult{
+				Passed:          false,
+				Summary:         strings.Join(executionLogs, "\n"),
+				MissingFeatures: executionLogs,
+			}, nil
+		}
 		return nil, fmt.Errorf("story QA audit LLM call failed: %w", err)
 	}
 
-	return a.parseAuditResponse(resp), nil
+	result := a.parseAuditResponse(resp)
+	if hasFailure {
+		result.Passed = false
+		if len(result.MissingFeatures) == 0 {
+			result.MissingFeatures = executionLogs
+		}
+		if result.Summary == "" || result.Summary == "Story QA audit evaluated" || result.Summary == "Empty LLM response received" {
+			result.Summary = strings.Join(executionLogs, "\n")
+		}
+	}
+	return result, nil
 }
 
-func (a *StoryQAAuditor) buildPrompt(storyContent, workspaceSnapshot, diffContext string, state *domain.State) string {
+func (a *StoryQAAuditor) buildPrompt(storyContent, workspaceSnapshot, diffContext, executionLogs, containerContext string, state *domain.State) string {
 	var sb strings.Builder
 	sb.WriteString("You are the QA Acceptance Agent. Your task is to verify whether the accumulated generated code and tests completely fulfill all features, acceptance criteria, and Definitions of Done (DoD) defined in the target User Story.\n\n")
 	sb.WriteString("TARGET USER STORY:\n```markdown\n")
 	sb.WriteString(capText(storyContent, 8000))
 	sb.WriteString("\n```\n\n")
+
+	if strings.TrimSpace(executionLogs) != "" {
+		sb.WriteString("TEST & E2E EXECUTION LOGS:\n```\n")
+		sb.WriteString(capText(executionLogs, 4000))
+		sb.WriteString("\n```\n\n")
+	}
+
+	if strings.TrimSpace(containerContext) != "" {
+		sb.WriteString("CONTAINER & HARNESS CONFIGURATION FILES (docker-compose, Dockerfile, scripts):\n")
+		sb.WriteString(containerContext)
+		sb.WriteString("\n\n")
+	}
 
 	sb.WriteString("WORKSPACE SOURCE FILES:\n```\n")
 	sb.WriteString(capText(workspaceSnapshot, 6000))
@@ -244,8 +274,9 @@ func (a *StoryQAAuditor) buildPrompt(storyContent, workspaceSnapshot, diffContex
 	sb.WriteString(`AUDIT RULES:
 1. Inspect every feature, command, CLI option, network wire behavior, error envelope, and edge case required by the User Story.
 2. Verify that each requirement is genuinely implemented in production code and verified by real tests (no stubs, no mocks in production code, no empty pass blocks).
-3. If ANY required feature from the user story is missing, incomplete, or omitted, set "passed": false and enumerate each missing item in "missing_features".
-4. If all features and acceptance criteria are fully met, set "passed": true and "missing_features": [].
+3. If test execution or containerized E2E verification failed, analyze the failure logs, error traces, Dockerfile, and docker-compose files above. Explain the root cause in "summary" and provide concrete, actionable fixes in "missing_features" (e.g. docker-compose service names, missing dependencies, Dockerfile commands, or code fixes) so the Generator and Tester agents can directly repair them.
+4. If ANY required feature from the user story is missing, incomplete, or test execution failed, set "passed": false and enumerate each missing item in "missing_features".
+5. If all features and acceptance criteria are fully met and tests pass, set "passed": true and "missing_features": [].
 
 Respond ONLY with a JSON object in this exact schema:
 {

@@ -57,11 +57,36 @@ func (o *Orchestrator) queueAcceptanceRemediationTask(ctx context.Context, state
 	for _, gap := range auditResult.Gaps {
 		fmt.Fprintf(&sb, "- %s\n", gap)
 	}
+	if len(auditResult.Fixes) > 0 {
+		sb.WriteString("\nAUDITOR PROPOSED FIXES & REMEDIATION BLUEPRINT:\n")
+		for i, fix := range auditResult.Fixes {
+			fmt.Fprintf(&sb, "%d. [%s] %s: %s\n", i+1, fix.Action, fix.File, fix.Description)
+		}
+	}
 	fmt.Fprintf(&sb, "\nSummary: %s\n\n", auditResult.Summary)
 	sb.WriteString("MANDATE:\n")
-	sb.WriteString("1. Implement all missing commands, protocols, and modules declared in SPEC.md.\n")
+	sb.WriteString("1. Apply all proposed fixes listed above, implementing missing commands, exports, and dispatcher bindings declared in SPEC.md.\n")
 	sb.WriteString("2. Author non-tautological, behavioral black-box E2E tests covering each command's observable inputs and outputs.\n")
 	sb.WriteString("3. Verify that all unit and E2E tests pass before completing your turn.\n")
+
+	var targetFiles []string
+	for _, fix := range auditResult.Fixes {
+		if fix.File != "" {
+			targetFiles = append(targetFiles, fix.File)
+		}
+	}
+
+	isE2E := strings.Contains(auditResult.Summary, "E2E") || strings.Contains(strings.Join(auditResult.Gaps, " "), "E2E")
+	if isE2E && state.ProjectPath != "" {
+		containerFiles, containerContext := collectE2EContainerFiles(state.ProjectPath)
+		targetFiles = append(targetFiles, containerFiles...)
+		if containerContext != "" {
+			sb.WriteString("\n### 📦 CONTAINER & E2E HARNESS CONFIGURATION FILES:\n")
+			sb.WriteString(containerContext)
+		}
+		sb.WriteString("\n### 🐳 MANDATORY E2E VERIFICATION INSTRUCTION:\n")
+		sb.WriteString("You have access to the 'run_e2e_tests' tool. You MUST run 'run_e2e_tests' to verify that the containerized E2E test suite passes before declaring your task complete.\n")
+	}
 
 	remediationTask := domain.Task{
 		ID:          taskID,
@@ -70,6 +95,7 @@ func (o *Orchestrator) queueAcceptanceRemediationTask(ctx context.Context, state
 		StoryID:     currentStoryID,
 		Status:      domain.TaskPending,
 		DependsOn:   prevTaskIDs,
+		TargetFiles: targetFiles,
 		CreatedAt:   time.Now().UTC(),
 		Retries:     0,
 	}

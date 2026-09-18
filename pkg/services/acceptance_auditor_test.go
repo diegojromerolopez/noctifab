@@ -249,6 +249,18 @@ func TestAcceptanceAuditor(t *testing.T) {
 				"Missing protocol command SET",
 				"Missing E2E test harness tests/e2e/run_tests.sh",
 			},
+			Fixes: []ProposedFix{
+				{
+					File:        "src/commands/ping.py",
+					Action:      "create",
+					Description: "Implement PingCommand with PONG response",
+				},
+				{
+					File:        "src/server.py",
+					Action:      "wire_into_dispatcher",
+					Description: "Register PingCommand in the command router",
+				},
+			},
 		}
 
 		queued := orch.queueAcceptanceRemediationTask(context.Background(), state, auditResult)
@@ -260,8 +272,41 @@ func TestAcceptanceAuditor(t *testing.T) {
 		assert.Contains(t, task.Title, "Specification & Contract Remediation")
 		assert.Contains(t, task.Description, "Missing protocol command PING")
 		assert.Contains(t, task.Description, "Missing protocol command SET")
-		assert.Contains(t, task.Description, "non-tautological, behavioral black-box E2E tests")
+		assert.Contains(t, task.Description, "AUDITOR PROPOSED FIXES & REMEDIATION BLUEPRINT")
+		assert.Contains(t, task.Description, "src/commands/ping.py")
+		assert.Contains(t, task.Description, "wire_into_dispatcher")
 		assert.Equal(t, domain.TaskPending, task.Status)
 		assert.Equal(t, []string{"US-001-TASK-001"}, task.DependsOn)
+	})
+
+	t.Run("parseAuditResponse extracts proposed fixes correctly", func(t *testing.T) {
+		auditor := NewAcceptanceAuditor(nil, nil)
+		resp := &domain.LLMResponse{
+			Actions: []domain.LLMAction{
+				{
+					Tool: "submit_acceptance_audit",
+					Args: map[string]any{
+						"passed":  false,
+						"summary": "Missing dispatch for key commands",
+						"gaps":    []any{"Missing DEL command in server dispatcher"},
+						"fixes": []any{
+							map[string]any{
+								"file":        "src/server.py",
+								"action":      "wire_into_dispatcher",
+								"description": "Register DelCommand in RESP dispatch loop",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		res := auditor.parseAuditResponse(resp)
+		assert.False(t, res.Passed)
+		assert.Len(t, res.Gaps, 1)
+		require.Len(t, res.Fixes, 1)
+		assert.Equal(t, "src/server.py", res.Fixes[0].File)
+		assert.Equal(t, "wire_into_dispatcher", res.Fixes[0].Action)
+		assert.Equal(t, "Register DelCommand in RESP dispatch loop", res.Fixes[0].Description)
 	})
 }

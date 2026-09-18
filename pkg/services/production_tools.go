@@ -99,10 +99,15 @@ func (t *WriteFileTool) Execute(ctx context.Context, state *domain.State, args m
 	if err != nil {
 		return "", err
 	}
+	snap := snapshotFile(fullPath)
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 		return "", err
 	}
-	content = normalizeMakefileTabs(path, content)
+	if isMakefile(path) {
+		content = StandardizeMakefile(content)
+	} else {
+		content = normalizeMakefileTabs(path, content)
+	}
 	perm := determineFilePerm(path)
 	if err := os.WriteFile(fullPath, []byte(content), perm); err != nil {
 		return "", err
@@ -111,6 +116,7 @@ func (t *WriteFileTool) Execute(ctx context.Context, state *domain.State, args m
 		_ = os.Chmod(fullPath, 0755)
 	}
 	if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
+		snap.rollback()
 		return "", err
 	}
 	return "File written successfully", nil
@@ -191,6 +197,7 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 	if err != nil {
 		return "", err
 	}
+	snap := snapshotFile(fullPath)
 
 	contentBytes, err := os.ReadFile(fullPath)
 	if err != nil {
@@ -208,6 +215,7 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 		return "", err
 	}
 	if err := syntaxCheckerOrNoop(t.SyntaxChecker).Check(ctx, fullPath); err != nil {
+		snap.rollback()
 		return "", err
 	}
 	return "Edits applied successfully", nil

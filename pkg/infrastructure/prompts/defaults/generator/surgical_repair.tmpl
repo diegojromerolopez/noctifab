@@ -9,6 +9,7 @@ SURGICAL REPAIR INSTRUCTIONS:
 2. SURGICAL EDIT ONLY: Use 'edit_file' (or 'multi_replace_file_content') to make the minimal localized edit required to fix the issue. DO NOT overwrite files wholesale. DO NOT rewrite working code.
 3. DO NOT STUB OR MOCK: The fix must be genuine working code that resolves the specific syntax/logic defect.
 4. RUN TESTS: Invoke 'run_tests' to verify that your surgical patch compiles and all tests pass. If further refinements are required, you have a 2nd turn to finalize the fix.
+5. PRESERVE MODULAR FILE SPLITTING: Maintain single responsibility and modular file boundaries. Never merge distinct modular files into a monolithic file while repairing defects.
 
 ANTI-STALLING MANDATE:
 - Your #1 priority is FORWARD PROGRESS. Never produce an empty response. Never call only noop without having written or modified at least one file.

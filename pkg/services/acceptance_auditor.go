@@ -16,11 +16,19 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// ProposedFix describes a concrete remedial action suggested by the auditor.
+type ProposedFix struct {
+	File        string `json:"file"`
+	Description string `json:"description"`
+	Action      string `json:"action"`
+}
+
 // AcceptanceAuditResult encapsulates the whole-project audit against SPEC.md.
 type AcceptanceAuditResult struct {
-	Passed  bool     `json:"passed"`
-	Summary string   `json:"summary"`
-	Gaps    []string `json:"gaps,omitempty"`
+	Passed  bool          `json:"passed"`
+	Summary string        `json:"summary"`
+	Gaps    []string      `json:"gaps,omitempty"`
+	Fixes   []ProposedFix `json:"fixes,omitempty"`
 }
 
 // AcceptanceAuditor compares the implemented codebase against the root SPEC.md.
@@ -147,6 +155,10 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 					e2eLog = fmt.Sprintf("⚠️  Sandbox policy restriction on E2E command %q (%v); skipped.", e2eCmd, e2eErr)
 				} else {
 					e2eLog = fmt.Sprintf("❌ E2E test execution FAILED (%s):\n%s\nError: %v", e2eCmd, capText(e2eOut, 2000), e2eErr)
+					_, containerContext := collectE2EContainerFiles(state.ProjectPath)
+					if containerContext != "" {
+						e2eLog += "\nCONTAINER & HARNESS CONFIGURATION FILES:\n" + containerContext
+					}
 				}
 			} else {
 				e2eLog = fmt.Sprintf("✅ E2E test execution PASSED (%s):\n%s", e2eCmd, capText(e2eOut, 2000))
@@ -219,7 +231,7 @@ func (a *AcceptanceAuditor) collectWorkspaceSnapshot(ctx context.Context, projec
 		if strings.Contains(lower, "command") || strings.Contains(lower, "main") ||
 			strings.Contains(lower, "cli") || strings.Contains(lower, "server") ||
 			strings.Contains(lower, "app") || strings.HasSuffix(lower, "makefile") ||
-			strings.Contains(lower, "compose") || strings.HasSuffix(lower, ".sh") ||
+			strings.Contains(lower, "compose") || strings.Contains(lower, "dockerfile") || strings.HasSuffix(lower, ".sh") ||
 			strings.HasSuffix(lower, "pyproject.toml") || strings.HasSuffix(lower, "go.mod") ||
 			strings.HasSuffix(lower, "cargo.toml") || strings.Contains(lower, "test") ||
 			strings.Contains(lower, "spec") || strings.Contains(lower, "store") ||
@@ -304,10 +316,28 @@ func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *Accept
 					}
 				}
 			}
+			var fixes []ProposedFix
+			if rawFixes, ok := act.Args["fixes"].([]any); ok {
+				for _, f := range rawFixes {
+					if fm, ok := f.(map[string]any); ok {
+						file, _ := fm["file"].(string)
+						desc, _ := fm["description"].(string)
+						action, _ := fm["action"].(string)
+						if file != "" || desc != "" {
+							fixes = append(fixes, ProposedFix{
+								File:        file,
+								Description: desc,
+								Action:      action,
+							})
+						}
+					}
+				}
+			}
 			return &AcceptanceAuditResult{
 				Passed:  passed && len(gaps) == 0,
 				Summary: summary,
 				Gaps:    gaps,
+				Fixes:   fixes,
 			}
 		}
 	}
@@ -315,9 +345,10 @@ func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *Accept
 	// Fallback JSON parsing from reasoning or content
 	if strings.Contains(resp.Reasoning, "submit_acceptance_audit") || strings.Contains(resp.Reasoning, "\"passed\"") {
 		var parsed struct {
-			Passed  bool     `json:"passed"`
-			Summary string   `json:"summary"`
-			Gaps    []string `json:"gaps"`
+			Passed  bool          `json:"passed"`
+			Summary string        `json:"summary"`
+			Gaps    []string      `json:"gaps"`
+			Fixes   []ProposedFix `json:"fixes"`
 		}
 		start := strings.Index(resp.Reasoning, "{")
 		end := strings.LastIndex(resp.Reasoning, "}")
@@ -327,6 +358,7 @@ func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *Accept
 					Passed:  parsed.Passed && len(parsed.Gaps) == 0,
 					Summary: parsed.Summary,
 					Gaps:    parsed.Gaps,
+					Fixes:   parsed.Fixes,
 				}
 			}
 		}

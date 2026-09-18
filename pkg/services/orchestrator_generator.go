@@ -80,8 +80,8 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			promptContext = append(promptContext, sb.String())
 		} else if task.FailureLog != "" {
 			warning := "WARNING: The previous implementation/refactoring changes from the failed attempt have been preserved in the workspace files. You must inspect the existing code/tests, identify the bugs, and modify the files to fix the failures."
-			summary := summarizeFailureLog(task.FailureLog)
-			promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the code to address these specific errors.", warning, summary))
+			diagCtx := buildFailureDiagnosticsContext(task, state.ProjectPath)
+			promptContext = append(promptContext, fmt.Sprintf("%s\n\n%s", warning, diagCtx))
 		}
 		if diffOut, dErr := o.git.Run(ctx, false, "diff"); dErr == nil && strings.TrimSpace(diffOut) != "" {
 			promptContext = append(promptContext, fmt.Sprintf("### 🔍 FAILED ATTEMPT GIT DIFF\nThe following diff shows the exact changes made in the failed attempt:\n```diff\n%s\n```", strings.TrimSpace(diffOut)))
@@ -131,9 +131,11 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	linterDeferred := false
 	seenFileDependentCalls := make(map[string]bool)
 	circuitBreaker := NewTaskCircuitBreaker()
+	failedIncrementalEdits := make(map[string]int)
 	anyFileMutated := false
 
 	for turn := 0; turn < maxTurns; turn++ {
+		circuitBreaker.ResetTurn()
 		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
 		o.recordTokenUsage(ctx, currentPrompt, resp)
 		if err != nil {
@@ -173,6 +175,30 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				continue
 			}
 
+			// Precondition: check cached inspection before rejecting duplicates
+			if cachedOut, cachedErr, hasCache := diagCache.TryGetCachedInspection(action.Tool, action.Args); hasCache {
+				fmt.Printf("Orchestrator: Task %s [Generator] inspection action %s served from cache\n", task.ID, action.Tool)
+				circuitBreaker.RecordDuplicateInspection()
+				warn, forceTurn, reason := circuitBreaker.ShouldBreakReadLoop()
+				if forceTurn {
+					fmt.Printf("⚡ [Circuit Breaker] Task %s [Generator]: %s\n", task.ID, reason)
+					hasNoop = true
+					turnToolOutputs = append(turnToolOutputs, reason)
+					break
+				}
+				if cachedErr != nil {
+					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, cachedErr, capText(cachedOut, 2000)))
+				} else {
+					executed++
+					msg := fmt.Sprintf("Tool %s served from cache (unmodified). Output:\n%s", action.Tool, capText(cachedOut, 2000))
+					if warn {
+						msg += "\n" + reason
+					}
+					turnToolOutputs = append(turnToolOutputs, msg)
+				}
+				continue
+			}
+
 			// Precondition: A tool that depends on files cannot be called twice with identical arguments if no file mutations have occurred in between
 			if IsFileDependentTool(action.Tool) {
 				key := buildArgsKey(action.Tool, action.Args)
@@ -196,17 +222,6 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				seenFileDependentCalls[key] = true
 			}
 
-			if cachedOut, cachedErr, hasCache := diagCache.TryGetCachedInspection(action.Tool, action.Args); hasCache {
-				fmt.Printf("Orchestrator: Task %s [Generator] inspection action %s served from cache\n", task.ID, action.Tool)
-				if cachedErr != nil {
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, cachedErr, capText(cachedOut, 2000)))
-				} else {
-					executed++
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, capText(cachedOut, 2000)))
-				}
-				continue
-			}
-
 			if cachedOut, cachedErr, hasCache := diagCache.TryGetCachedResult(action.Tool); hasCache {
 				fmt.Printf("Orchestrator: Task %s [Generator] diagnostic action %s served from cache\n", task.ID, action.Tool)
 				if cachedErr != nil {
@@ -215,6 +230,14 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, capText(cachedOut, 2000)))
 				}
+				continue
+			}
+
+			// Steer agent away from repeated failed incremental edits to full-file write
+			editTargetFile, _ := action.Args["path"].(string)
+			if (action.Tool == "edit_file" || action.Tool == "apply_patch") && editTargetFile != "" && failedIncrementalEdits[editTargetFile] >= 2 {
+				msg := fmt.Sprintf("[INCREMENTAL EDIT BLOCKED: FULL REWRITE REQUIRED] Incremental editing (edit_file / apply_patch) on '%s' failed multiple times due to content/line mismatches. You MUST now call 'write_file' with the full desired content to overwrite '%s' completely and reliably.", editTargetFile, editTargetFile)
+				turnToolOutputs = append(turnToolOutputs, msg)
 				continue
 			}
 
@@ -229,25 +252,30 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				out, execErr := tool.Execute(genCtx, state, action.Args)
 				diagCache.OnToolExecuted(action.Tool, action.Args, out, execErr)
 				fmt.Printf("🛠️  [Tool Executed] task=%s role=GENERATOR tool=%s success=%t\n", task.ID, action.Tool, execErr == nil)
-				if action.Tool == "run_tests" {
+				if action.Tool == "run_tests" || action.Tool == "run_e2e_tests" {
 					circuitBreaker.RecordTestResult(execErr == nil)
 					if execErr == nil {
 						statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
 						hasChanges := anyFileMutated || strings.TrimSpace(statusOut) != ""
 						if hasChanges {
-							fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: explicit run_tests passed cleanly! Fast-exiting turn loop.\n", task.ID)
+							fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: explicit %s passed cleanly! Fast-exiting turn loop.\n", task.ID, action.Tool)
 							hasNoop = true
 						} else {
-							fmt.Printf("ℹ [Baseline Tests Passed] Task %s: existing tests passed; awaiting task-specific file mutations.\n", task.ID)
+							fmt.Printf("ℹ [Baseline Tests Passed] Task %s: existing %s passed; awaiting task-specific file mutations.\n", task.ID, action.Tool)
 						}
 					}
 				}
 				if execErr != nil {
-					failedOut := out
-					if action.Tool == "run_tests" || action.Tool == "run_linter" {
-						failedOut = summarizeFailureLog(out)
+					if action.Tool == "edit_file" || action.Tool == "apply_patch" {
+						if editTargetFile != "" {
+							failedIncrementalEdits[editTargetFile]++
+						}
 					}
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, capText(failedOut, 3000)))
+					if action.Tool == "run_tests" || action.Tool == "run_e2e_tests" || action.Tool == "run_linter" {
+						turnToolOutputs = append(turnToolOutputs, formatTurnDiagnosticFeedback(action.Tool, execErr, out))
+					} else {
+						turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, capText(out, 3000)))
+					}
 					// Track linter consecutive failures.
 					if action.Tool == "run_linter" {
 						consecutiveLinterFailures++
@@ -262,6 +290,9 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				} else {
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, capText(out, 2000)))
+					if action.Tool == "write_file" && editTargetFile != "" {
+						delete(failedIncrementalEdits, editTargetFile)
+					}
 					// Reset linter failure counter and duplicate tool tracker on any successful file mutation.
 					if IsMutatingTool(action.Tool) {
 						fileMutated = true

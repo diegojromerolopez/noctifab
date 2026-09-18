@@ -67,6 +67,12 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox, llmCli
 		Timeout:          runTimeout,
 		SyntaxChecker:    syntaxChecker,
 	})
+	reg.Register(&services.RunE2ETestsTool{
+		Runner:  sandboxRunner,
+		Timeout: runTimeout,
+		E2EMode: cfg.Sandbox.E2E.Mode,
+		E2ECmd:  cfg.Sandbox.E2E.Command,
+	})
 	reg.Register(&services.RunLinterTool{
 		Runner:           sandboxRunner,
 		LinterCommand:    cfg.Sandbox.GetLinterCommand(),

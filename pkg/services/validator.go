@@ -49,11 +49,11 @@ var defaultRoleProfiles = map[string]ProfileConfig{
 		AllowedCommands: []string{},
 	},
 	"tester": {
-		AllowedTools:    []string{"read_file", "write_file", "write_files", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "write_files", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_e2e_tests", "run_linter", "noop"},
 		AllowedCommands: []string{},
 	},
 	"generator": {
-		AllowedTools:    []string{"read_file", "write_file", "write_files", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_linter", "request_test_fix", "noop"},
+		AllowedTools:    []string{"read_file", "write_file", "write_files", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_e2e_tests", "run_linter", "request_test_fix", "noop"},
 		AllowedCommands: []string{},
 	},
 }
@@ -181,12 +181,25 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 		}
 	}
 
+	// Immediate check: Guard against empty tool arguments
+	if action.Tool != "noop" && action.Tool != "run_tests" && action.Tool != "run_e2e_tests" && action.Tool != "run_linter" {
+		if action.Args == nil || len(action.Args) == 0 {
+			return &ValidationResult{
+				Allowed: false,
+				Reason:  fmt.Sprintf("Invalid tool call: '%s' was invoked with empty arguments (map[]). Please provide the required arguments for this tool.", action.Tool),
+			}, nil
+		}
+	}
+
 	// 2. Global sandbox path checks (always enforced)
 	switch action.Tool {
 	case "write_files":
 		entries, err := parseWriteFilesArgs(action.Args)
 		if err != nil {
-			return &ValidationResult{Allowed: false, Reason: fmt.Sprintf("invalid write_files args: %v", err)}, nil
+			return &ValidationResult{Allowed: false, Reason: fmt.Sprintf("Invalid tool call: 'write_files' argument validation failed: %v. Required schema: write_files(files={'relative/path': 'content'}).", err)}, nil
+		}
+		if len(entries) == 0 {
+			return &ValidationResult{Allowed: false, Reason: "Invalid tool call: 'write_files' requires a non-empty 'files' dictionary mapping file paths to file contents. Required schema: write_files(files={'relative/path': 'content'})."}, nil
 		}
 		cleanProj := filepath.Clean(state.ProjectPath)
 		for _, entry := range entries {
@@ -237,15 +250,107 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 			}
 		}
 
+	case "list_directory":
+		path, _ := action.Args["path"].(string)
+		if strings.TrimSpace(path) == "" {
+			path = "."
+			if action.Args == nil {
+				action.Args = make(map[string]any)
+			}
+			action.Args["path"] = "."
+		}
+
 	case "write_file", "edit_file", "apply_patch", "read_file", "delete_file":
+		if action.Tool == "write_file" {
+			path, _ := action.Args["path"].(string)
+			if strings.TrimSpace(path) == "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Invalid tool call: 'write_file' requires a non-empty 'path' string argument. Example: write_file(path='src/module.py', content='def run(): pass').",
+				}, nil
+			}
+		}
+		if action.Tool == "edit_file" {
+			path, _ := action.Args["path"].(string)
+			oldContent, hasOld := action.Args["old_content"].(string)
+			_, hasNew := action.Args["new_content"].(string)
+			_, hasReplacements := action.Args["replacements"].([]any)
+			if strings.TrimSpace(path) == "" || (!hasReplacements && (!hasOld || !hasNew || oldContent == "")) {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Invalid tool call: 'edit_file' requires 'path', 'old_content' (non-empty string to replace), and 'new_content' (replacement string). Example: edit_file(path='src/module.py', old_content='old', new_content='new').",
+				}, nil
+			}
+		}
+		if action.Tool == "apply_patch" {
+			patch, hasPatch := action.Args["patch"].(string)
+			if !hasPatch {
+				patch, hasPatch = action.Args["diff"].(string)
+			}
+			if !hasPatch || strings.TrimSpace(patch) == "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Invalid tool call: 'apply_patch' requires a non-empty 'patch' or 'diff' string argument containing a unified diff.",
+				}, nil
+			}
+		}
+		if action.Tool == "read_file" {
+			path, _ := action.Args["path"].(string)
+			if strings.TrimSpace(path) == "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Invalid tool call: 'read_file' requires a non-empty 'path' string argument. Example: read_file(path='src/module.py').",
+				}, nil
+			}
+		}
+		if action.Tool == "delete_file" {
+			path, _ := action.Args["path"].(string)
+			if strings.TrimSpace(path) == "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Invalid tool call: 'delete_file' requires a non-empty 'path' string argument. Example: delete_file(path='temp.txt').",
+				}, nil
+			}
+		}
+		if action.Tool == "apply_patch" {
+			patch, hasPatch := action.Args["patch"].(string)
+			if !hasPatch {
+				patch, hasPatch = action.Args["diff"].(string)
+			}
+			if !hasPatch || strings.TrimSpace(patch) == "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Invalid tool call: 'apply_patch' requires a non-empty 'patch' or 'diff' string argument containing a unified diff.",
+				}, nil
+			}
+		}
+		if action.Tool == "read_file" {
+			path, _ := action.Args["path"].(string)
+			if strings.TrimSpace(path) == "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Invalid tool call: 'read_file' requires a non-empty 'path' string argument. Example: read_file(path='src/module.py').",
+				}, nil
+			}
+		}
+		if action.Tool == "delete_file" {
+			path, _ := action.Args["path"].(string)
+			if strings.TrimSpace(path) == "" {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Invalid tool call: 'delete_file' requires a non-empty 'path' string argument. Example: delete_file(path='temp.txt').",
+				}, nil
+			}
+		}
+
 		path, ok := action.Args["path"].(string)
 		if !ok && action.Tool == "apply_patch" {
 			// apply_patch may specify file paths inside the patch payload itself
 			path = "."
 			ok = true
 		}
-		if !ok {
-			return &ValidationResult{Allowed: false, Reason: "missing path argument"}, nil
+		if !ok || strings.TrimSpace(path) == "" {
+			return &ValidationResult{Allowed: false, Reason: fmt.Sprintf("Invalid tool call: '%s' requires a non-empty 'path' string argument.", action.Tool)}, nil
 		}
 		// Path traversal check
 		cleanProj := filepath.Clean(state.ProjectPath)
@@ -322,7 +427,7 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 			}, nil
 		}
 
-	case "run_tests":
+	case "run_tests", "run_e2e_tests":
 		command, _ := action.Args["command"].(string)
 		if command != "" {
 			parts := strings.Fields(command)

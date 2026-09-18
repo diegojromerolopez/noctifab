@@ -62,6 +62,15 @@ func (o *Orchestrator) executeTesterFirstTurn(
 	o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "implement")
 	_ = o.stageAndCommit(ctx, taskGit, taskID, "feat(core): implement minimal functionality for task %s - %s", task.Title)
 
+	// Fast Exit on Verified Green: If tests are already 100% passing after implementation,
+	// skip the redundant Generator Refactor turn!
+	if o.evaluator != nil {
+		if passed, _, err := o.evaluator.ValidateTask(ctx, taskState, *task); passed && err == nil {
+			fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: tests are already 100%% green after implementation! Skipping refactor turn.\n", taskID)
+			return ""
+		}
+	}
+
 	// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
 	recentTestsContext := o.collectRecentTestsContext(ctx, taskGit, taskState.ProjectPath)
 
@@ -116,6 +125,15 @@ func (o *Orchestrator) executeGeneratorFirstTurn(
 		remediationCtx := append(fileContexts, o.formatTesterAntiStubViolations(testViolations))
 		o.RunTesterAgent(ctx, *task, taskState, remediationCtx, "fix", "")
 		_ = o.stageAndCommit(ctx, taskGit, taskID, "test(core): remediate vacuous tests for task %s - %s", task.Title)
+	}
+
+	// Fast Exit on Verified Green: If tests are already 100% passing after test authoring,
+	// skip the redundant Generator Refactor turn to save time and prevent regressions!
+	if o.evaluator != nil {
+		if passed, _, err := o.evaluator.ValidateTask(ctx, taskState, *task); passed && err == nil {
+			fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: tests are already 100%% green after test authoring! Skipping refactor turn.\n", taskID)
+			return ""
+		}
 	}
 
 	// Read recently written tests from git to pass to the Generator Agent for the Refactor phase

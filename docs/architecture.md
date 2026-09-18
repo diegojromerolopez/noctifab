@@ -170,9 +170,9 @@ Noctifab exposes the following implemented roles and retained experimental capab
 | Role Key | Agent Name | Domain Scope & Responsibility |
 | :--- | :--- | :--- |
 | **`orchestrator`** | Orchestrator Agent | Coordinates state persistence, VCS branch rebasing, task assignment, and PR creation. |
-| **`product_manager`** | Product Manager Agent | Analyzes `SPEC.md` and existing user stories in `roadmap/user-stories/`. Employs **Progressive Roadmapping**: on Pass 1, immediately emits `US-001-walking-skeleton.md` with runnable contracts to allow code implementation to start in $<3$ minutes, deferring deeper decomposition to subsequent passes. Enriches stories with explicit Definitions of Done (DoD), language-agnostic interface contracts, I/O formatting invariants, error prefixes, exit codes, and comprehensive edge-case scenario matrices before task planning starts. |
-| **`planner`** | Task Planner Agent | Decomposes User Stories into a Directed Acyclic Graph (DAG) of executable technical tasks, automatically serializing task entities into `roadmap/tasks/`. |
-| **`generators`** | Generator Agent | Writes production source code and initial feature logic in task branches. |
+| **`product_manager`** | Product Manager Agent | Analyzes `SPEC.md` and existing user stories in `roadmap/user-stories/`. Employs **Progressive Roadmapping**: on Pass 1, immediately emits `US-001-walking-skeleton.md` with runnable contracts to allow code implementation to start in $<3$ minutes, deferring deeper decomposition to subsequent passes. Enforces the **Modular File Decomposition & Anti-Monolith Mandate**: overrides lone gigantic files in `SPEC.md` and prescribes fine-grained, single-responsibility files and co-located tests. Enriches stories with explicit Definitions of Done (DoD), language-agnostic interface contracts, I/O formatting invariants, error prefixes, exit codes, and comprehensive edge-case scenario matrices before task planning starts. |
+| **`planner`** | Task Planner Agent | Decomposes User Stories into a Directed Acyclic Graph (DAG) of executable technical tasks targeting fine-grained modular files, automatically serializing task entities into `roadmap/tasks/`. |
+| **`generators`** | Generator Agent | Writes production source code and initial feature logic in task branches, strictly adhering to single-responsibility modular file splitting and avoiding monolithic file consolidation. |
 | **`testers`** | Tester Agent | Independently writes black-box test suites (unit, integration, e2e) against public contracts. |
 | **`resolver`** | Resolver Agent | Resolves complex 3-way Git merge and rebase conflicts across parallel worker branches using a 5-tier merge engine (including whole-file dual reimplementation). |
 | **`qa`** | Experimental QA capability | Retained but disabled in Phase 0; no QA runtime executes. |
@@ -192,7 +192,23 @@ During multi-turn task execution, Generator and Tester agents can enter an oscil
 
 To prevent execution livelocks, deadlock stalls, and broken builds, `noctifab` provides a unified **Fallback Agent** (`fallback`, [docs/fallback_agent.md](fallback_agent.md)) combining continuous health monitoring with sovereign repair authority:
 1. **Passive Watchdog Mode**: Non-invasive background daemon that polls pipeline state every 30s. Fixes routine CLI hangs via 0-token regex fast-paths, manages stall cooldowns, evaluates budget/timeout cliffs, and resets stalled tasks with injected recovery directives without altering code.
-2. **Active Sovereign Omni-Builder Mode**: Directly summoned when a task accumulates repeated stalls, exhausts retry budgets, or encounters toolchain deadlocks. Operates with sovereign cross-domain authority across code, tests, and specification contracts under the 4-Tier Compromise Hierarchy to force a clean compiling, test-passing release.
+### Autonomous Multi-Agent E2E Verification & Story QA Pipeline
+
+To ensure that distributed multi-agent story execution does not produce broken container environments or integration failures, `noctifab` provides a closed-loop, multi-agent E2E testing and remediation pipeline:
+
+1. **Dynamic E2E Command Detection (`pkg/services/e2e_detector.go`)**:
+   - Eliminates hardcoded test commands. In `docker` mode, it prioritizes `make e2e` or dynamically parses `docker-compose.e2e.yml` and `docker-compose.yml` to extract the active test runner service (`test-runner-e2e`, `test-runner`, `test-client`, or `e2e`), executing `docker compose ... up --build --exit-code-from <service>`. In `native` mode, it dynamically maps to `make e2e`, `make test`, `pytest tests/e2e`, `cargo test --test e2e`, or `go test -v ./tests/e2e/...`.
+2. **`run_e2e_tests` Autonomous Tool (`pkg/services/e2e_tool.go`)**:
+   - Exposes a dedicated tool to `generator`, `tester`, and `auditor` agent profiles. Agents can invoke containerized E2E testing directly at any turn to verify networking, process lifecycles, and wire protocols in real time.
+3. **Synchronous Per-Story E2E Verification Gate (`pkg/services/orchestrator_dispatch.go`)**:
+   - Evaluates after every single completed user story prior to release finalization. If the story introduces integration or container regressions, the story branch is blocked from merging.
+4. **Rich Auditor Context Injection & Diagnostic Feedback Loop (`pkg/services/story_qa_auditor.go`)**:
+   - When E2E fails, Noctifab feeds the execution error logs, container exit codes, and full contents of `docker-compose.e2e.yml`, `docker-compose.yml`, `Dockerfile*`, and runner scripts into the Auditor LLM prompt.
+   - The Auditor LLM analyzes the failure and returns structured root-cause summaries and concrete missing features/fixes.
+5. **Remediation Task TargetFiles & Container Context Injection (`pkg/services/orchestrator_finalize.go`)**:
+   - When a remediation task is queued (`qa-remediation-us-xxx-N` or `spec-remediation-N`), all detected container files (`docker-compose.e2e.yml`, `Dockerfile*`) are automatically added to `TargetFiles` and their contents injected into the task description. The Generator and Tester receive the auditor's diagnosis and use `run_e2e_tests` to verify repairs.
+6. **Sovereign Rescue Escalation (`pkg/services/orchestrator_finalize.go`)**:
+   - If standard story remediation is exhausted (`remediationCount >= 1`), the orchestrator automatically escalates the story to the Sovereign Rescue Agent (`FallbackAgent`) with full authority to repair container definitions, Dockerfiles, and code.
 
 ---
 
