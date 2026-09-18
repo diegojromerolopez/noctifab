@@ -201,10 +201,8 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 	}
 
 	var targetFiles []string
-	if state != nil {
-		for _, t := range state.Tasks {
-			targetFiles = append(targetFiles, t.TargetFiles...)
-		}
+	for _, t := range state.Tasks {
+		targetFiles = append(targetFiles, t.TargetFiles...)
 	}
 	workspaceSnapshot := CollectWorkspaceSourceSnapshot(ctx, state.ProjectPath, targetFiles, 20, 1500)
 	_, containerContext := collectE2EContainerFiles(state.ProjectPath)

@@ -264,10 +264,6 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 	return results
 }
 
-func isZeroTestExecution(projectPath string, out string) bool {
-	zeroOrSkipped, _ := EvaluateTestExecution(projectPath, out)
-	return zeroOrSkipped
-}
 
 func lastFailureOutput(results []TestRunResult) string {
 	for i := len(results) - 1; i >= 0; i-- {

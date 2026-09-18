@@ -183,7 +183,7 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 
 	// Immediate check: Guard against empty tool arguments
 	if action.Tool != "noop" && action.Tool != "run_tests" && action.Tool != "run_e2e_tests" && action.Tool != "run_linter" {
-		if action.Args == nil || len(action.Args) == 0 {
+		if len(action.Args) == 0 {
 			return &ValidationResult{
 				Allowed: false,
 				Reason:  fmt.Sprintf("Invalid tool call: '%s' was invoked with empty arguments (map[]). Please provide the required arguments for this tool.", action.Tool),
@@ -253,7 +253,6 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 	case "list_directory":
 		path, _ := action.Args["path"].(string)
 		if strings.TrimSpace(path) == "" {
-			path = "."
 			if action.Args == nil {
 				action.Args = make(map[string]any)
 			}
