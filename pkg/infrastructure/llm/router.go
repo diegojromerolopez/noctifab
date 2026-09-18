@@ -201,11 +201,15 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 				if ref.MaxTokens != nil {
 					overrideSpec.MaxTokens = *ref.MaxTokens
 				}
-				if ref.EnableThinking != nil {
-					overrideSpec.EnableThinking = ref.EnableThinking
+				if th := ref.GetEnableThinking(); th != nil {
+					overrideSpec.EnableThinking = th
+				} else if roleSetting.Thinking != nil && roleSetting.Thinking.Enabled != nil {
+					overrideSpec.EnableThinking = roleSetting.Thinking.Enabled
 				}
-				if ref.ThinkingBudget != nil {
-					overrideSpec.ThinkingBudget = ref.ThinkingBudget
+				if tb := ref.GetThinkingBudget(); tb != nil {
+					overrideSpec.ThinkingBudget = tb
+				} else if roleSetting.Thinking != nil && roleSetting.Thinking.Budget != nil {
+					overrideSpec.ThinkingBudget = roleSetting.Thinking.Budget
 				}
 
 				client := r.buildClientForSpec(overrideSpec, m)
@@ -344,12 +348,12 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 		client.DisableJSONMode = true
 	}
 
-	if spec.EnableThinking != nil {
-		client.EnableThinking = spec.EnableThinking
+	if th := spec.GetEnableThinking(); th != nil {
+		client.EnableThinking = th
 	}
 
-	if spec.ThinkingBudget != nil {
-		client.ThinkingBudget = spec.ThinkingBudget
+	if tb := spec.GetThinkingBudget(); tb != nil {
+		client.ThinkingBudget = tb
 	}
 
 	if r.cfg != nil {

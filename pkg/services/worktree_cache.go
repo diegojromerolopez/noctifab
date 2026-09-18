@@ -218,6 +218,8 @@ func BuildSharedCacheEnv(rootProjectDir string) []string {
 		fmt.Sprintf("DUNE_CACHE_ROOT=%s", filepath.Join(cacheBase, "dune")),
 		fmt.Sprintf("HEX_HOME=%s", filepath.Join(cacheBase, "hex")),
 		fmt.Sprintf("MIX_HOME=%s", filepath.Join(cacheBase, "mix")),
+		"DOCKER_BUILDKIT=1",
+		"COMPOSE_DOCKER_CLI_BUILD=1",
 	}
 
 	// Python virtual environment projection: prepend bin to PATH if present

@@ -230,11 +230,11 @@ func (r *ResilientLLMRouter) resolveClientFromRef(ref config.AgentProviderRef) d
 	if ref.Temperature != nil {
 		overrideSpec.Temperature = *ref.Temperature
 	}
-	if ref.EnableThinking != nil {
-		overrideSpec.EnableThinking = ref.EnableThinking
+	if th := ref.GetEnableThinking(); th != nil {
+		overrideSpec.EnableThinking = th
 	}
-	if ref.ThinkingBudget != nil {
-		overrideSpec.ThinkingBudget = ref.ThinkingBudget
+	if tb := ref.GetThinkingBudget(); tb != nil {
+		overrideSpec.ThinkingBudget = tb
 	}
 	if len(ref.ExtraParams) > 0 {
 		if overrideSpec.ExtraParams == nil {
@@ -259,6 +259,7 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 					Model:       spike.Model,
 					Temperature: spike.Temperature,
 					Profile:     spike.Profile,
+					Thinking:    spike.Thinking,
 					Providers:   spike.Providers,
 					MaxTokens:   spike.MaxTokens,
 				}
@@ -280,6 +281,7 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 					Model:       qa.Model,
 					Temperature: qa.Temperature,
 					Profile:     qa.Profile,
+					Thinking:    qa.Thinking,
 					Providers:   qa.Providers,
 					MaxTokens:   qa.MaxTokens,
 					Ensemble:    qa.Ensemble,
@@ -292,6 +294,7 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 					Model:       auditor.Model,
 					Temperature: auditor.Temperature,
 					Profile:     auditor.Profile,
+					Thinking:    auditor.Thinking,
 					Providers:   auditor.Providers,
 					MaxTokens:   auditor.MaxTokens,
 					Ensemble:    auditor.Ensemble,
@@ -341,6 +344,7 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 				Model:       agentRole.Model,
 				Temperature: agentRole.Temperature,
 				Profile:     agentRole.Profile,
+				Thinking:    agentRole.Thinking,
 				Providers:   agentRole.Providers,
 				MaxTokens:   agentRole.MaxTokens,
 				Ensemble:    agentRole.Ensemble,

@@ -59,6 +59,8 @@ func TestBuildSharedCacheEnv(t *testing.T) {
 		assert.Equal(t, filepath.Join(cacheBase, "dune"), envMap["DUNE_CACHE_ROOT"])
 		assert.Equal(t, filepath.Join(cacheBase, "hex"), envMap["HEX_HOME"])
 		assert.Equal(t, filepath.Join(cacheBase, "mix"), envMap["MIX_HOME"])
+		assert.Equal(t, "1", envMap["DOCKER_BUILDKIT"])
+		assert.Equal(t, "1", envMap["COMPOSE_DOCKER_CLI_BUILD"])
 	})
 
 	t.Run("when .venv exists in root, it injects VIRTUAL_ENV and prepends PATH", func(t *testing.T) {

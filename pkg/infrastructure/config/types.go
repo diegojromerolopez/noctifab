@@ -77,6 +77,7 @@ type SpikeConfig struct {
 	Temperature    float64            `yaml:"temperature,omitempty"`
 	Profile        string             `yaml:"profile,omitempty"`
 	MaxTokens      int64              `yaml:"max_tokens,omitempty"`
+	Thinking       *ThinkingConfig    `yaml:"thinking,omitempty"`
 	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
 }
 
@@ -101,6 +102,7 @@ type QAConfig struct {
 	Model              string             `yaml:"model,omitempty"`
 	Temperature        float64            `yaml:"temperature,omitempty"`
 	Profile            string             `yaml:"profile,omitempty"`
+	Thinking           *ThinkingConfig    `yaml:"thinking,omitempty"`
 	Providers          []AgentProviderRef `yaml:"providers,omitempty"`
 	MaxTokens          int64              `yaml:"max_tokens,omitempty"`
 	Ensemble           EnsembleConfig     `yaml:"ensemble,omitempty"`
@@ -122,6 +124,7 @@ type AgentRoleConfig struct {
 	Model          string             `yaml:"model,omitempty"`
 	Temperature    float64            `yaml:"temperature,omitempty"`
 	Profile        string             `yaml:"profile,omitempty"`
+	Thinking       *ThinkingConfig    `yaml:"thinking,omitempty"`
 	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
 	MaxUserStories int                `yaml:"max_user_stories,omitempty"`
 	UserStories    UserStoriesConfig  `yaml:"user_stories,omitempty"`
@@ -234,6 +237,8 @@ type ProviderSpec struct {
 	// client skips the response_format field entirely and relies on
 	// ExtractJSONBlock to parse the JSON envelope from the raw response.
 	DisableJSONMode bool `yaml:"disable_json_mode,omitempty"`
+	// Thinking controls chain-of-thought / extended reasoning settings.
+	Thinking *ThinkingConfig `yaml:"thinking,omitempty"`
 	// EnableThinking enables chain-of-thought / reasoning output (e.g. QwenCloud thinking mode).
 	EnableThinking *bool `yaml:"enable_thinking,omitempty"`
 	// ThinkingBudget caps the reasoning token budget (e.g. for QwenCloud thinking models).
@@ -316,6 +321,7 @@ type AgentProviderRef struct {
 	Count          int               `yaml:"count,omitempty"`
 	MaxTokens      *int              `yaml:"max_tokens,omitempty"`
 	Temperature    *float64          `yaml:"temperature,omitempty"`
+	Thinking       *ThinkingConfig   `yaml:"thinking,omitempty"`
 	EnableThinking *bool             `yaml:"enable_thinking,omitempty"`
 	ThinkingBudget *int              `yaml:"thinking_budget,omitempty"`
 	ExtraParams    map[string]string `yaml:"extra_params,omitempty"`
@@ -333,6 +339,7 @@ type RoleSetting struct {
 	Model       string             `yaml:"model,omitempty"`
 	Temperature float64            `yaml:"temperature"`
 	Profile     string             `yaml:"profile,omitempty"`
+	Thinking    *ThinkingConfig    `yaml:"thinking,omitempty"`
 	Providers   []AgentProviderRef `yaml:"providers,omitempty"`
 	MaxTokens   int64              `yaml:"max_tokens,omitempty"`
 	Ensemble    EnsembleConfig     `yaml:"ensemble,omitempty"`

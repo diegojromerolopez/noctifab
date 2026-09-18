@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.92.0] - 2026-09-19
+
+### Added
+- **Docker Layer Caching & BuildKit Acceleration (`pkg/services/worktree_cache.go`, agent prompt templates)**:
+  - Injected `DOCKER_BUILDKIT=1` and `COMPOSE_DOCKER_CLI_BUILD=1` into `BuildSharedCacheEnv` across sandbox and E2E runner environments.
+  - Added strict `DOCKER LAYER CACHING & MINIMAL BASE IMAGE MANDATE` to generator, tester, and planner templates, enforcing minimal base images and dependency installation separation from source code copying (`COPY . .`).
+- **Aggressive Multi-Block Prompt Prefix Caching (`pkg/infrastructure/llm/anthropic.go`, `pkg/domain/llm_client.go`)**:
+  - Implemented structured multi-block prompt caching in Anthropic provider with dedicated ephemeral breakpoints (`cache_control: {"type": "ephemeral"}`).
+  - Cached static template instructions ($\ge 1000$ chars) across all project tasks, and cached task details across continuation turns, significantly cutting Time-to-First-Token and token consumption.
+  - Added `domain.WithCacheablePrefix` and `domain.CacheablePrefixLen` for orchestrator-directed and auto-detected continuation boundaries (`\n\nTOOL OUTPUTS FROM PREVIOUS TURN`).
+- **Structured Per-Provider and Per-Role Thinking Configuration (`pkg/infrastructure/config/thinking_types.go`, `pkg/infrastructure/config/types.go`, `pkg/infrastructure/llm/router.go`, `pkg/infrastructure/llm/router_ensemble.go`)**:
+  - Added structured `thinking:` configuration block (`enabled: true|false`, `budget: <tokens>`), disabled by default across all roles and providers.
+  - Enabled per-provider thinking overrides in `providers: [...]` list entries (e.g. enabling thinking specifically for Claude while leaving Gemini and OpenAI standard).
+  - Supported role-level thinking inheritance and backward compatibility with flat `enable_thinking` and `thinking_budget`.
+
 ## [0.91.0] - 2026-09-19
 
 ### Added

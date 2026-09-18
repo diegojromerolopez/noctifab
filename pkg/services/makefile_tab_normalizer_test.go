@@ -84,4 +84,3 @@ func TestStandardizeMakefile(t *testing.T) {
 		}
 	})
 }
-

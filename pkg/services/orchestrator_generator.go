@@ -112,6 +112,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	genCtx := context.WithValue(ctx, AgentRoleKey, "generator")
 	// Compaction must never rewrite the output contract at the end of the prompt.
 	genCtx = domain.WithUncompactableTail(genCtx, len(rendered.Contract))
+	genCtx = domain.WithCacheablePrefix(genCtx, len(rendered.Body))
 	o.registerAgentStart(ctx, "generator", task.ID)
 
 	currentPrompt := genPrompt

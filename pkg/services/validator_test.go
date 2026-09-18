@@ -372,4 +372,3 @@ func TestPolicyValidator_EmptyArguments(t *testing.T) {
 		}
 	})
 }
-

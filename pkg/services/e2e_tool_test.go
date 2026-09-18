@@ -13,11 +13,11 @@ import (
 )
 
 type mockE2ERunner struct {
-	lastCmd  string
-	lastPkg  string
-	retOut   string
-	retErr   error
-	delay    time.Duration
+	lastCmd string
+	lastPkg string
+	retOut  string
+	retErr  error
+	delay   time.Duration
 }
 
 func (m *mockE2ERunner) RunCommand(ctx context.Context, dir, cmd, pkg string) (string, error) {

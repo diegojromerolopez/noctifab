@@ -153,7 +153,11 @@ func (o *Orchestrator) RunFallbackAgent(
 
 		llmCtx, cancel := context.WithTimeout(ctx, turnTimeout)
 		llmCtx = context.WithValue(llmCtx, AgentRoleKey, "fallback")
-		llmCtx = domain.WithUncompactableTail(llmCtx, len(prompts.Contract(prompts.AgentFallback)))
+		contractLen := len(prompts.Contract(prompts.AgentFallback))
+		llmCtx = domain.WithUncompactableTail(llmCtx, contractLen)
+		if len(promptBody) > contractLen {
+			llmCtx = domain.WithCacheablePrefix(llmCtx, len(promptBody)-contractLen)
+		}
 
 		resp, err := o.llmClient.Complete(llmCtx, promptBody)
 		cancel()

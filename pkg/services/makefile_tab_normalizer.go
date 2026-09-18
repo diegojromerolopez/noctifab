@@ -166,4 +166,3 @@ func StandardizeMakefile(content string) string {
 
 	return normalizeMakefileTabs("Makefile", result.String())
 }
-

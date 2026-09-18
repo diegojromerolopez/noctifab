@@ -606,6 +606,17 @@ To preserve LLM context economics and minimize Time-To-First-Token (TTFT):
 - **Direct Sovereign LLM Takeover**: A single sovereign agent directly takes control of the entire workspace with full authority to write code, author unit tests under `tests/`, implement `build`/`test`/`e2e` Makefile recipes, and pass Dual-Gate verification.
 - **Zero-Block Guarantee**: Eliminates over-specialization paralysis, guaranteeing that the pipeline never deadlocks or terminates with an incomplete build while an autonomous LLM turn can deliver a working program.
 
+### 21. Aggressive Multi-Block Prompt Prefix Caching (`pkg/infrastructure/llm/anthropic.go`, `pkg/domain/llm_client.go`)
+- **Structured Multi-Block Breakpoints**: Splits prompt payloads into distinct content blocks with ephemeral cache control markers (`cache_control: {"type": "ephemeral"}`):
+  - **Block 0 (Static System & Template Instructions)**: Cached across all tasks and user stories in a project.
+  - **Block 1 (Task Details & File Contexts)**: Cached across continuation turns 1..N of a task.
+  - **Block 2 (Dynamic Turn Outputs & Contract)**: Dynamic tail processed with minimal input token cost.
+- **Context-Directed & Auto-Detected Boundaries**: Leverages `domain.WithCacheablePrefix` and auto-detects continuation turn boundaries (`\n\nTOOL OUTPUTS FROM PREVIOUS TURN`), achieving high prompt cache hit rates and sub-second Time-to-First-Token (TTFT).
+
+### 22. Docker Layer Caching & BuildKit Acceleration (`pkg/services/worktree_cache.go`, agent prompt templates)
+- **Automatic BuildKit Activation**: Injects `DOCKER_BUILDKIT=1` and `COMPOSE_DOCKER_CLI_BUILD=1` into all sandbox executions via `BuildSharedCacheEnv`.
+- **Dependency-First Layering Mandate**: Prompts enforce copying dependency manifests (`requirements.txt`, `package.json`, `go.mod`, `Cargo.toml`, `Gemfile`) and running installation steps in dedicated layers before application source code (`COPY . .`), maximizing Docker layer cache reusability across edits.
+
 ---
 
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.

@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 func init() {
@@ -116,16 +118,7 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	}
 
 	for attempt := 0; attempt < 3; attempt++ {
-		var messageContent any = prompt
-		if useCacheControl {
-			messageContent = []map[string]any{
-				{
-					"type":          "text",
-					"text":          prompt,
-					"cache_control": map[string]string{"type": "ephemeral"},
-				},
-			}
-		}
+		messageContent := buildAnthropicUserMessageContent(ctx, prompt, useCacheControl)
 
 		payload := map[string]any{
 			"model": model,
@@ -375,4 +368,103 @@ func (a *anthropicProviderClient) GetModelCapabilities(ctx context.Context, apiK
 	}
 
 	return parseDynamicModelCapabilities(result.Data), nil
+}
+
+// buildAnthropicUserMessageContent constructs structured content blocks for Anthropic
+// messages, placing ephemeral cache_control breakpoints on stable prompt prefixes.
+func buildAnthropicUserMessageContent(ctx context.Context, prompt string, useCacheControl bool) any {
+	if !useCacheControl {
+		return prompt
+	}
+
+	prefixLen := domain.CacheablePrefixLen(ctx)
+	if prefixLen <= 0 || prefixLen >= len(prompt) {
+		// Auto-detect multi-turn continuation boundary
+		if idx := strings.Index(prompt, "\n\nTOOL OUTPUTS FROM PREVIOUS TURN"); idx >= 500 {
+			prefixLen = idx
+		}
+	}
+
+	if prefixLen > 0 && prefixLen < len(prompt) {
+		prefix := prompt[:prefixLen]
+		suffix := prompt[prefixLen:]
+
+		// Check if prefix can be split into static template instructions vs task details
+		taskDetailsIdx := strings.Index(prefix, "\nTask Details:")
+		if taskDetailsIdx < 0 {
+			taskDetailsIdx = strings.Index(prefix, "\n\nTask Details:")
+		}
+
+		if taskDetailsIdx >= 1000 {
+			staticPart := prefix[:taskDetailsIdx]
+			dynamicPrefix := prefix[taskDetailsIdx:]
+			var blocks []map[string]any
+			if len(staticPart) > 0 {
+				blocks = append(blocks, map[string]any{
+					"type":          "text",
+					"text":          staticPart,
+					"cache_control": map[string]string{"type": "ephemeral"},
+				})
+			}
+			if len(dynamicPrefix) > 0 {
+				blocks = append(blocks, map[string]any{
+					"type":          "text",
+					"text":          dynamicPrefix,
+					"cache_control": map[string]string{"type": "ephemeral"},
+				})
+			}
+			if len(suffix) > 0 {
+				blocks = append(blocks, map[string]any{
+					"type": "text",
+					"text": suffix,
+				})
+			}
+			if len(blocks) > 0 {
+				return blocks
+			}
+		}
+
+		// Single breakpoint on prefixLen
+		var blocks []map[string]any
+		blocks = append(blocks, map[string]any{
+			"type":          "text",
+			"text":          prefix,
+			"cache_control": map[string]string{"type": "ephemeral"},
+		})
+		if len(suffix) > 0 {
+			blocks = append(blocks, map[string]any{
+				"type": "text",
+				"text": suffix,
+			})
+		}
+		return blocks
+	}
+
+	// Auto-detect static template instructions in Turn 1 without explicit prefixLen
+	taskDetailsIdx := strings.Index(prompt, "\nTask Details:")
+	if taskDetailsIdx < 0 {
+		taskDetailsIdx = strings.Index(prompt, "\n\nTask Details:")
+	}
+	if taskDetailsIdx >= 1000 && taskDetailsIdx < len(prompt) {
+		return []map[string]any{
+			{
+				"type":          "text",
+				"text":          prompt[:taskDetailsIdx],
+				"cache_control": map[string]string{"type": "ephemeral"},
+			},
+			{
+				"type": "text",
+				"text": prompt[taskDetailsIdx:],
+			},
+		}
+	}
+
+	// Fallback to single block with cache_control
+	return []map[string]any{
+		{
+			"type":          "text",
+			"text":          prompt,
+			"cache_control": map[string]string{"type": "ephemeral"},
+		},
+	}
 }

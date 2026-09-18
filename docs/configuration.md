@@ -242,18 +242,36 @@ agents:
   - **`api_key`** / **`api_keys`** (String or List of Strings): API authentication key value, secret reference, or secret name(s) in `secrets.yaml` / environment variables.
   - **`url`** (String): Endpoint URL override (required for self-hosted models or `ollama`).
   - **`max_retries`** / **`retry_backoff`** / **`max_timeout`**: Resilient retries and timeout constraints.
-  - **`enable_thinking`** (Boolean): Enable chain-of-thought reasoning mode (e.g. `enable_thinking: true` for QwenCloud `qwen3.8-max` models). When enabled, `noctifab` automatically bypasses `response_format: json_object` and parses JSON envelopes directly from reasoning trace outputs.
-  - **`thinking_budget`** (Integer): Token budget cap for reasoning output when `enable_thinking` is enabled (e.g. `8192`).
-  - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when `enable_thinking: true`, but can be explicitly set for third-party gateways that reject forced JSON schemas.
+  - **`thinking`** (Map): Structured chain-of-thought reasoning configuration:
+    - **`enabled`** (Boolean): Enable reasoning mode (`true` or `false`). Defaults to `false` (disabled by default).
+    - **`budget`** (Integer): Token budget cap for reasoning output (e.g. `8192`).
+  - **`enable_thinking`** / **`thinking_budget`**: Backward-compatible flat flags for reasoning mode and budget.
+  - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when thinking is enabled, but can be explicitly set for third-party gateways that reject forced JSON schemas.
   - **`extra_params`** (Map of Strings): Custom key-value pairs merged verbatim into the provider request body for provider-specific extensions.
-- **`roles.<agent>.providers`** / **`agents.<role>.ensemble.models`** (List of Agent Provider Refs): Role-specific provider or ensemble model references:
+- **`roles.<agent>.providers`** / **`agents.<role>.providers`** (List of Agent Provider Refs): Role-specific provider or ensemble model references:
   - **`name`** (String): References a provider declared in `llm.providers`.
-  - **`count`** (Integer): Number of independent model instances/samples to spawn for this provider spec (default: `1`). Useful for Self-Consistency voting in `consensus`, multi-sample generation in `best_of_n_scored`, and parallel quorum scaling in `parallel`.
+  - **`count`** (Integer): Number of independent model instances/samples to spawn for this provider spec (default: `1`).
   - **`model`** (String): Optional model override.
   - **`temperature`** (Float): Optional temperature override.
   - **`max_tokens`** (Integer): Optional max token override (`-1` for unlimited).
-  - **`enable_thinking`** (Boolean): Optional reasoning mode toggle.
-  - **`thinking_budget`** (Integer): Optional reasoning token budget cap.
+  - **`thinking`** (Map): Per-provider thinking configuration overrides (`enabled: true|false`, `budget: <tokens>`). For example:
+    ```yaml
+    agents:
+      product_manager:
+        number: 1
+        iterations: 2
+        max_user_stories: 5
+        passes: 3
+        providers:
+          - name: claude
+            thinking:
+              enabled: true
+              budget: 8192
+          - name: gemini
+          - name: openai
+    ```
+    In this setup, thinking is enabled solely for `claude`, while remaining disabled by default for `gemini` and `openai`.
+  - **`enable_thinking`** / **`thinking_budget`**: Optional backward-compatible flat reasoning toggles.
   - **`extra_params`** (Map of Strings): Optional request body overrides.
 - **`max_timeout`** (Duration): Maximum overall completion timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines.
 

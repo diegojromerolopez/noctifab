@@ -75,6 +75,7 @@ func ExecuteSpike(
 
 	spikeCtx := llm.WithRoleContext(ctx, "spike")
 	spikeCtx = domain.WithUncompactableTail(spikeCtx, len(rendered.Contract))
+	spikeCtx = domain.WithCacheablePrefix(spikeCtx, len(rendered.Body))
 
 	timeoutSec := cfg.Agents.Spike.TimeoutSeconds
 	if timeoutSec <= 0 {

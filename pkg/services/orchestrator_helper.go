@@ -65,6 +65,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	testerCtx := context.WithValue(ctx, AgentRoleKey, "tester")
 	// Compaction must never rewrite the output contract at the end of the prompt.
 	testerCtx = domain.WithUncompactableTail(testerCtx, len(rendered.Contract))
+	testerCtx = domain.WithCacheablePrefix(testerCtx, len(rendered.Body))
 	o.registerAgentStart(ctx, "tester", task.ID)
 
 	currentPrompt := testPrompt
