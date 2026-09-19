@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.92.1] - 2026-09-19
+
+### Fixed
+- **Sovereign Rescue & Fallback Agent Mandatory E2E Verification (`cmd/noctifab/cli/start_sovereign_rescue.go`, `cmd/noctifab/cli/start_sovereign_rescue_gates.go`, `pkg/services/orchestrator_fallback.go`)**:
+  - Implemented mandatory E2E verification gate in both post-pipeline Sovereign Rescue and in-loop Fallback Agent (`RunFallbackAgent`), verifying detected E2E test suites (`make e2e` or Docker Compose) after unit tests pass.
+  - Turn verification is rejected if E2E fails, with error traces automatically captured and fed into subsequent turn prompts to force autonomous repair.
+- **Anti-Stub & Non-Tautological Test Quality Gate (`cmd/noctifab/cli/start_sovereign_rescue_gates.go`, `pkg/services/orchestrator_fallback.go`, `pkg/services/orchestrator_generator.go`)**:
+  - Integrated `AntiStubValidator` quality checks across both rescue mechanisms, rejecting turns containing tautological assertions (`assert True`, `self.assertTrue(True)`, `|| true`, empty stubs).
+  - Enriched `summarizeFailureLog` to preserve full multi-line Anti-Stub violation reports in agent diagnostic prompts.
+- **Scoped Sovereign Rescue State Updates (`cmd/noctifab/cli/start_sovereign_rescue.go`)**:
+  - Refactored `updateRescueSuccessState` to only mark rescued failed stories and their corresponding tasks as `SUCCESS`.
+  - Prevented premature completion stamps on downstream unexecuted stories, ensuring multi-agent pipeline resumption for remaining roadmap items.
+- **Makefile Space-Indented Target Normalization (`pkg/services/makefile_tab_normalizer.go`)**:
+  - Implemented heuristic target unindentation for space-indented targets (e.g. `    e2e:`) to column 0, preventing them from being tabbed into recipes under preceding targets.
+- **Make No-Op Zero-Test Detection (`pkg/services/test_discovery_preflight.go`)**:
+  - Added `"nothing to be done"` to test execution failure markers in `EvaluateTestExecution`, ensuring `make: Nothing to be done for '<target>'` does not silently pass as successful execution.
+- **Pyedis Validation Specification Alignment (`validation/projects/pyedis/SPEC.md`)**:
+  - Synchronized Pyedis validation specification with Section 9.5 socket and protocol integration hygiene rules, forbidding fragile byte counts and indefinite reads on keep-alive connections.
+
 ## [0.92.0] - 2026-09-19
 
 ### Added

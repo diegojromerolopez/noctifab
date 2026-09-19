@@ -196,6 +196,48 @@ func (o *Orchestrator) RunFallbackAgent(
 		// Re-evaluate tests
 		if o.evaluator != nil {
 			passed, newLogMsg, _ := o.evaluator.ValidateTask(ctx, taskState, effectiveTask)
+
+			// E2E Verification Gate:
+			// If unit tests passed and an E2E suite is detected, run the E2E verification gate.
+			if passed && o.evaluator.Runner != nil && taskState != nil && taskState.ProjectPath != "" {
+				e2eMode := o.cfg.E2E.Mode
+				e2eCmd := o.cfg.E2E.Command
+				detectedE2E := DetectE2ECommand(taskState.ProjectPath, e2eMode, e2eCmd)
+				if detectedE2E != "" {
+					e2eTimeout := 5 * time.Minute
+					if turnTimeout > 0 {
+						e2eTimeout = turnTimeout
+					}
+					e2eCtx, e2eCancel := context.WithTimeout(ctx, e2eTimeout)
+					fmt.Printf("🔍 [Fallback Agent] Running E2E verification gate: %q...\n", detectedE2E)
+					e2eOut, e2eErr := o.evaluator.Runner.RunCommand(e2eCtx, taskState.ProjectPath, detectedE2E, "")
+					e2eCancel()
+					if e2eErr != nil {
+						passed = false
+						newLogMsg = fmt.Sprintf("Unit tests passed, but E2E verification failed (%s):\n%s\n%v", detectedE2E, e2eOut, e2eErr)
+						fmt.Printf("⚠️ [Fallback Agent] E2E verification failed: %v\n", e2eErr)
+					} else {
+						fmt.Printf("✅ [Fallback Agent] E2E verification gate PASSED (%s)!\n", detectedE2E)
+					}
+				}
+			}
+
+			// Anti-Stub & Anti-Gaming Quality Gate:
+			if passed && taskState != nil && taskState.ProjectPath != "" {
+				antiStub := NewAntiStubValidator()
+				violations, _ := antiStub.ValidateWorkspace(taskState.ProjectPath, effectiveTask.TargetFiles)
+				if len(violations) > 0 {
+					passed = false
+					var sb strings.Builder
+					fmt.Fprintf(&sb, "Anti-stub / anti-gaming validation failed with %d violation(s):\n", len(violations))
+					for _, v := range violations {
+						fmt.Fprintf(&sb, "- %s:%d: [%s] %s\n", v.Path, v.Line, v.Rule, v.Snippet)
+					}
+					newLogMsg = sb.String()
+					fmt.Printf("⚠️ [Fallback Agent] Anti-Stub validation failed with %d violation(s)\n", len(violations))
+				}
+			}
+
 			if passed {
 				successMsg := fmt.Sprintf("✨ [Fallback Agent] Sovereign unblock successful on turn %d/%d for task %s!", turn, maxTurns, effectiveTask.ID)
 				fmt.Println(successMsg)

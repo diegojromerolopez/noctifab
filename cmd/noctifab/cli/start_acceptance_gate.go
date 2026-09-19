@@ -98,9 +98,10 @@ func RunWholeProjectAcceptanceGate(ctx context.Context, opts AcceptanceGateOptio
 					}
 					return false, "whole-project acceptance audit did not pass"
 				},
-				LLMClient:    opts.LLMClient,
-				ToolRegistry: opts.ToolRegistry,
-				Validator:    opts.Validator,
+				LLMClient:     opts.LLMClient,
+				ToolRegistry:  opts.ToolRegistry,
+				Validator:     opts.Validator,
+				SandboxRunner: opts.SandboxRunner,
 			}
 			if rescueErr := DispatchSovereignRescue(ctx, rescueOpts); rescueErr == nil {
 				fmt.Printf("✨ [Whole-Project Acceptance Gate] Sovereign remediation completed. Re-running acceptance audit...\n")

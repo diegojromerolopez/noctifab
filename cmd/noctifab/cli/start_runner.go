@@ -356,6 +356,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			LLMClient:     llmClient,
 			ToolRegistry:  reg,
 			Validator:     evaluator,
+			SandboxRunner: sandboxRunner,
 		}
 		if rescueErr := DispatchSovereignRescue(cmdCtx, rescueOpts); rescueErr == nil {
 			fmt.Printf("\n✨ [Sovereign Rescue Takeover] Sovereign rescue resolved all remaining roadblocks! All stories marked complete.\n")

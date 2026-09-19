@@ -36,6 +36,14 @@ func normalizeMakefileTabs(path string, content string) string {
 			continue
 		}
 
+		// If a line is indented with spaces/tabs but is clearly a target definition (e.g. "  e2e:" or "  test:"),
+		// unindent it to column 0 so it becomes a valid top-level Makefile rule rather than being absorbed into the previous recipe.
+		if hasLeadingSpace && isTargetDefinition(trimmed) && isLikelyTargetName(trimmed) {
+			lines[i] = trimmed
+			inRule = true
+			continue
+		}
+
 		if inRule && hasLeadingSpace {
 			// Convert leading spaces/tabs into a single standard Makefile tab prefix
 			lines[i] = "\t" + strings.TrimLeft(line, " \t")
@@ -46,6 +54,22 @@ func normalizeMakefileTabs(path string, content string) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func isLikelyTargetName(trimmed string) bool {
+	idx := strings.Index(trimmed, ":")
+	if idx <= 0 {
+		return false
+	}
+	targetName := strings.TrimSpace(trimmed[:idx])
+	if strings.ContainsAny(targetName, " \"'<>|;$") {
+		return false
+	}
+	lower := strings.ToLower(targetName)
+	if lower == "docker" || lower == "echo" || lower == "printf" || lower == "python" || lower == "python3" || lower == "sh" || lower == "bash" {
+		return false
+	}
+	return true
 }
 
 // isTargetDefinition reports whether a top-level line defines a Makefile rule target.

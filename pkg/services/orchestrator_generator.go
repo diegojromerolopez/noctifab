@@ -403,7 +403,7 @@ func summarizeFailureLog(log string) string {
 	capture := false
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "ERROR:") || strings.HasPrefix(trimmed, "FAIL:") {
+		if strings.HasPrefix(trimmed, "ERROR:") || strings.HasPrefix(trimmed, "FAIL:") || strings.Contains(line, "Anti-stub") {
 			capture = true
 		}
 		if capture {

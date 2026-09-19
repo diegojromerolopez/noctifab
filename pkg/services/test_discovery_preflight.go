@@ -190,6 +190,7 @@ func EvaluateTestExecution(projectPath string, out string) (bool, string) {
 		strings.Contains(outLower, "[no test files]") ||
 		strings.Contains(outLower, "no tests found") ||
 		strings.Contains(outLower, "no tests were found") ||
+		strings.Contains(outLower, "nothing to be done") ||
 		strings.Contains(outLower, "exit status 5") {
 		return true, "Test suite execution failed: 0 test assertions executed."
 	}

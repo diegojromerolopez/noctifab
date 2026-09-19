@@ -99,6 +99,16 @@ func TestEvaluateTestExecution(t *testing.T) {
 		}
 	})
 
+	t.Run("when output contains make nothing to be done it reports failure", func(t *testing.T) {
+		zero, msg := EvaluateTestExecution(tmpDir, "make: Nothing to be done for `e2e'.")
+		if !zero {
+			t.Errorf("expected zero=true for make nothing to be done, got false")
+		}
+		if msg == "" {
+			t.Errorf("expected non-empty failure message")
+		}
+	})
+
 	t.Run("when output is empty and test files exist it reports failure", func(t *testing.T) {
 		projDir := t.TempDir()
 		_ = os.MkdirAll(filepath.Join(projDir, "tests"), 0755)

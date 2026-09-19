@@ -45,12 +45,22 @@ clean:
 		}
 	})
 
-	t.Run("handles .mk extension", func(t *testing.T) {
-		input := "target:\n  echo hello"
-		expected := "target:\n\techo hello"
-		got := normalizeMakefileTabs("rules.mk", input)
+	t.Run("unindents targets mistakenly indented with spaces", func(t *testing.T) {
+		input := `format:
+    python3 -m compileall -q src tests
+
+    e2e:
+    docker compose up
+`
+		expected := `format:
+	python3 -m compileall -q src tests
+
+e2e:
+	docker compose up
+`
+		got := normalizeMakefileTabs("Makefile", input)
 		if got != expected {
-			t.Errorf("expected .mk file to be normalized")
+			t.Errorf("expected space-indented e2e: target to be unindented to column 0:\n%s\ngot:\n%s", expected, got)
 		}
 	})
 }

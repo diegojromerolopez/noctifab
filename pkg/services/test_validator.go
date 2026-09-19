@@ -264,7 +264,6 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 	return results
 }
 
-
 func lastFailureOutput(results []TestRunResult) string {
 	for i := len(results) - 1; i >= 0; i-- {
 		if !results[i].Passed {

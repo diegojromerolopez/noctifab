@@ -27,6 +27,7 @@ type SovereignRescueOptions struct {
 	LLMClient          domain.LLMClient
 	ToolRegistry       *services.ToolRegistry
 	Validator          *services.TestValidator
+	SandboxRunner      services.Sandbox
 	MaxTurns           int
 	TurnTimeout        time.Duration
 	ToolchainStrategy  string
@@ -240,11 +241,25 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 
 		// Re-evaluate verification gate
 		passed, newLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
+		if passed && opts.SandboxRunner != nil {
+			var e2eErrLog string
+			passed, e2eErrLog = verifySovereignE2E(ctx, opts.TargetDir, opts.SandboxRunner, opts.Cfg)
+			if !passed {
+				newLog = fmt.Sprintf("Unit tests passed, but E2E verification gate failed:\n%s", e2eErrLog)
+			}
+		}
+		if passed {
+			var antiStubErr string
+			passed, antiStubErr = auditSovereignAntiStub(opts.TargetDir)
+			if !passed {
+				newLog = fmt.Sprintf("Unit tests and E2E passed, but Anti-Stub/Tautology Quality Gate failed:\n%s", antiStubErr)
+			}
+		}
 		if passed && opts.PostValidationFunc != nil {
 			var postErr string
 			passed, postErr = opts.PostValidationFunc(ctx, state)
 			if !passed {
-				newLog = fmt.Sprintf("Unit tests passed, but Acceptance Audit failed:\n%s", postErr)
+				newLog = fmt.Sprintf("Unit tests, E2E, and Anti-Stub passed, but Acceptance Audit failed:\n%s", postErr)
 			}
 		}
 
@@ -253,7 +268,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 
 			// Mark stories and state as completed in repo
 			if opts.Repo != nil {
-				_ = updateRescueSuccessState(ctx, opts.Repo, opts.StoryFiles)
+				_ = updateRescueSuccessState(ctx, opts.Repo, opts.StoryFiles, opts.FailedStories, opts.AcceptanceGaps)
 			}
 			return nil
 		}
@@ -316,9 +331,9 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 	sb.WriteString("3. Ensure the project contains a Makefile with three standard recipes:\n")
 	sb.WriteString("   - build: compiles all source binaries cleanly without errors.\n")
 	sb.WriteString("   - test: executes unit tests and exits with code 1 if 0 tests are found.\n")
-	sb.WriteString("   - e2e: executes end-to-end black-box verification of compiled binaries.\n")
+	sb.WriteString("   - e2e: executes end-to-end black-box verification of compiled binaries (e2e is strictly validated; if e2e fails or is missing, the turn is rejected).\n")
 	sb.WriteString("4. Fix all compilation errors, missing translation units, or syntax issues reported above.\n")
-	sb.WriteString("5. Strictly avoid placeholder stubs, error-masking shell tricks, and tautological tests (e.g., 'TODO: implement', 'pass', empty main functions, '|| true', 'assert True'). The anti-stub validator strictly rejects them.\n")
+	sb.WriteString("5. Strictly avoid placeholder stubs, error-masking shell tricks, and tautological tests (e.g., 'TODO: implement', 'pass', empty main functions, '|| true', 'assert True'). The anti-stub validator and non-tautological test auditor strictly reject them.\n")
 	sb.WriteString("6. Return tool calls using write_file, write_files, edit_file, or install_package to apply changes to the workspace.\n\n")
 
 	sb.WriteString("=== REQUIRED RESPONSE FORMAT ===\n")
@@ -348,7 +363,7 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 	return sb.String()
 }
 
-func updateRescueSuccessState(ctx context.Context, repo domain.StateRepository, storyFiles []string) error {
+func updateRescueSuccessState(ctx context.Context, repo domain.StateRepository, storyFiles, failedStories, acceptanceGaps []string) error {
 	st, err := repo.Load(ctx)
 	if err != nil || st == nil {
 		return err
@@ -358,12 +373,47 @@ func updateRescueSuccessState(ctx context.Context, repo domain.StateRepository, 
 	st.StoryStatus = domain.StorySuccess
 	st.StoryError = ""
 
-	// Mark all existing stories as succeeded
-	for i := range st.Stories {
-		st.Stories[i].Status = domain.StorySuccess
+	isWholeProjectAudit := len(acceptanceGaps) > 0
+	targetStoryKeys := make(map[string]bool)
+	for _, fs := range failedStories {
+		parts := strings.Fields(fs)
+		if len(parts) > 0 {
+			clean := strings.TrimSuffix(parts[0], filepath.Ext(parts[0]))
+			targetStoryKeys[clean] = true
+			if idx := strings.Index(clean, "-"); idx > 0 {
+				if secondIdx := strings.Index(clean[idx+1:], "-"); secondIdx > 0 {
+					targetStoryKeys[clean[:idx+1+secondIdx]] = true
+				}
+			}
+		}
 	}
 
-	// Also ensure any stories in storyFiles have StorySuccess records
+	matchesStory := func(story domain.Story) bool {
+		if isWholeProjectAudit || len(targetStoryKeys) == 0 {
+			return true
+		}
+		if targetStoryKeys[story.ID] || targetStoryKeys[story.Title] {
+			return true
+		}
+		for key := range targetStoryKeys {
+			if strings.Contains(story.ID, key) || strings.Contains(story.Title, key) || strings.Contains(story.FilePath, key) {
+				return true
+			}
+		}
+		return false
+	}
+
+	matchedStories := 0
+	matchedStoryIDs := make(map[string]bool)
+	for i := range st.Stories {
+		if matchesStory(st.Stories[i]) {
+			st.Stories[i].Status = domain.StorySuccess
+			matchedStories++
+			matchedStoryIDs[st.Stories[i].ID] = true
+			matchedStoryIDs[st.Stories[i].Title] = true
+		}
+	}
+
 	existingStoryIDs := make(map[string]bool)
 	for _, s := range st.Stories {
 		existingStoryIDs[s.ID] = true
@@ -372,24 +422,43 @@ func updateRescueSuccessState(ctx context.Context, repo domain.StateRepository, 
 	for idx, sf := range storyFiles {
 		storyID := fmt.Sprintf("story-%04d", idx+1)
 		featName := strings.TrimSuffix(filepath.Base(sf), filepath.Ext(sf))
-		if !existingStoryIDs[storyID] {
+		tempStory := domain.Story{ID: storyID, Title: featName, FilePath: sf}
+		if matchesStory(tempStory) && !existingStoryIDs[storyID] {
 			st.Stories = append(st.Stories, domain.Story{
 				ID:     storyID,
 				Title:  featName,
 				Status: domain.StorySuccess,
 			})
+			matchedStoryIDs[storyID] = true
+			matchedStoryIDs[featName] = true
 		}
 	}
 
-	// Mark all tasks as succeeded since sovereign rescue takeover passed all gates and implemented the full project
+	allStoriesMatched := len(st.Stories) > 0 && matchedStories == len(st.Stories)
 	for i := range st.Tasks {
-		st.Tasks[i].Status = domain.TaskSuccess
+		task := &st.Tasks[i]
+		belongs := isWholeProjectAudit || len(targetStoryKeys) == 0 || allStoriesMatched
+		if !belongs {
+			if matchedStoryIDs[task.StoryID] {
+				belongs = true
+			} else {
+				for key := range targetStoryKeys {
+					if strings.Contains(task.ID, key) || strings.Contains(task.StoryID, key) {
+						belongs = true
+						break
+					}
+				}
+			}
+		}
+		if belongs {
+			task.Status = domain.TaskSuccess
+		}
 	}
 
 	action := domain.Action{
 		Timestamp: time.Now().UTC(),
 		Tool:      "sovereign_rescue_success",
-		Reasoning: "Autonomous sovereign rescue takeover completed all project requirements and passed validation gates",
+		Reasoning: "Autonomous sovereign rescue completed requirements and passed validation gates",
 		Success:   true,
 	}
 	st.LastActions = append(st.LastActions, action)

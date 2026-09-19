@@ -259,6 +259,11 @@ To ensure feature-parity between `pyedis` and official Redis, the automated test
 ### 9.5 Socket & Protocol Integration Suite (`tests/integration/test_server.py`)
 - Runs a live `pyedis` TCP server on `127.0.0.1` with an ephemeral port.
 - **Raw Socket Verification:** Tests raw TCP socket connections sending inline strings and multi-bulk arrays.
+- **Testing Hygiene & Fragile Byte Counting Prohibition:**
+  - Integration tests MUST NOT use manual string counting, hand-calculated byte lengths, or hardcoded `reader.readexactly(N)` magic integers. Calling indefinite `reader.read()` (waiting for EOF) on live connections is strictly forbidden because the server maintains persistent keep-alive connections across pipelined commands.
+  - Command-level integration tests MUST interact with the server via the development dependency `redis.Redis` (or `redis.asyncio.Redis` from `redis>=5.0`), asserting on deserialized Python responses rather than raw socket byte streams.
+  - Wire-level and error-recovery tests (e.g., malformed frames, inline commands) MUST construct payloads programmatically using encoder helper functions and read responses line-by-line (`reader.readline()`), with bounded timeouts (`asyncio.wait_for(..., timeout=2)`), or parse incoming bytes with standard protocol decoders (`RespDecoder`) rather than fixed byte-count slicing.
+  - Server integration tests MUST run the server in an isolated background thread or dynamic async task using ephemeral ports (`port=0`), exposing a clean setup/teardown fixture that guarantees graceful client/server socket termination without leaving unclosed transport warnings or orphaned background tasks.
 - **Official Driver Interop (`redis-py`):**
   - Connects using `r = redis.Redis(host="127.0.0.1", port=PORT)`.
   - Executes full command suite (`ping`, `set`, `get`, `delete`, `exists`, `incr`, `decr`, `expire`, `ttl`, `keys`, `flushall`).
