@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -23,9 +24,12 @@ type StoryQAResult struct {
 
 // StoryQAAuditor reviews the generated codebase against the active User Story requirements.
 type StoryQAAuditor struct {
-	llmClient domain.LLMClient
-	runner    Sandbox
-	e2eCmd    string
+	llmClient       domain.LLMClient
+	runner          Sandbox
+	e2eCmd          string
+	e2eMode         string
+	defaultTestCmd  string
+	allowedCommands []string
 }
 
 // NewStoryQAAuditor creates a StoryQAAuditor instance.
@@ -40,6 +44,28 @@ func NewStoryQAAuditor(client domain.LLMClient, runner ...Sandbox) *StoryQAAudit
 	}
 }
 
+// ConfigureFromConfig attaches sandbox policies and configured test commands for QA pre-flight validation.
+func (a *StoryQAAuditor) ConfigureFromConfig(cfg *config.Config) {
+	if cfg != nil {
+		a.defaultTestCmd = cfg.Sandbox.TestCommand
+		a.allowedCommands = cfg.Sandbox.AllowedCommands
+		a.e2eMode = cfg.Sandbox.GetE2EMode()
+		if cmd := cfg.Sandbox.GetE2ECommand(); cmd != "" {
+			a.e2eCmd = cmd
+		}
+	}
+}
+
+// SetDefaultTestCommand sets the custom default workspace test command.
+func (a *StoryQAAuditor) SetDefaultTestCommand(cmd string) {
+	a.defaultTestCmd = cmd
+}
+
+// SetAllowedCommands sets the whitelisted binaries allowed by the sandbox policy.
+func (a *StoryQAAuditor) SetAllowedCommands(cmds []string) {
+	a.allowedCommands = cmds
+}
+
 // SetRunner attaches a sandbox runner for E2E validation.
 func (a *StoryQAAuditor) SetRunner(runner Sandbox) {
 	a.runner = runner
@@ -50,48 +76,72 @@ func (a *StoryQAAuditor) SetE2ECommand(cmd string) {
 	a.e2eCmd = cmd
 }
 
+// SetE2EMode sets the E2E mode ("docker" or "native").
+func (a *StoryQAAuditor) SetE2EMode(mode string) {
+	a.e2eMode = mode
+}
+
+// SetE2EConfig sets the E2E configuration mode and command.
+func (a *StoryQAAuditor) SetE2EConfig(e2e config.E2EConfig) {
+	a.e2eMode = e2e.Mode
+	if e2e.Command != "" {
+		a.e2eCmd = e2e.Command
+	}
+}
+
 // AuditStoryCompleteness verifies whether the codebase fulfills all requirements of the active story.
 func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *domain.State, storyPath string) (*StoryQAResult, error) {
 	if state == nil || strings.TrimSpace(state.ProjectPath) == "" {
 		return &StoryQAResult{Passed: true, Summary: "No project path; story QA audit skipped"}, nil
 	}
 
-	// 1. E2E Test Execution Gate:
+	var executionLogs []string
+	var hasFailure bool
+
+	// 1. QA Pre-Flight & E2E Test Execution Gate:
 	// If an E2E test command is configured or detected, run it first to verify real integration.
 	e2eCmd := a.detectE2ECommand(state.ProjectPath)
 	if e2eCmd != "" && a.runner != nil {
-		fmt.Printf("🔍 [Story QA] Running E2E test verification command: %q...\n", e2eCmd)
-		e2eOut, e2eErr := a.runner.RunCommand(ctx, state.ProjectPath, e2eCmd, "")
-		if e2eErr != nil {
-			fmt.Printf("❌ [Story QA] E2E verification failed: %v\n", e2eErr)
-			return &StoryQAResult{
-				Passed:  false,
-				Summary: fmt.Sprintf("E2E test suite failed (%s): %v\n%s", e2eCmd, e2eErr, capText(e2eOut, 1500)),
-				MissingFeatures: []string{
-					fmt.Sprintf("E2E test execution failure (%s): %s", e2eCmd, capText(e2eOut, 500)),
-				},
-			}, nil
+		if !a.isCommandAllowed(e2eCmd) {
+			fmt.Printf("⚠️  [Story QA Pre-Flight] Skipping E2E command %q: binary not in sandbox allowed_commands\n", e2eCmd)
+		} else {
+			fmt.Printf("🔍 [Story QA] Running E2E test verification command: %q...\n", e2eCmd)
+			e2eOut, e2eErr := a.runner.RunCommand(ctx, state.ProjectPath, e2eCmd, "")
+			if e2eErr != nil {
+				if isSandboxViolation(e2eErr, e2eOut) {
+					fmt.Printf("⚠️  [Story QA Pre-Flight] Sandbox policy restriction on E2E command %q (%v); skipping E2E gate.\n", e2eCmd, e2eErr)
+				} else {
+					fmt.Printf("❌ [Story QA] E2E verification failed: %v\n", e2eErr)
+					hasFailure = true
+					executionLogs = append(executionLogs, fmt.Sprintf("E2E test suite failed (%s): %v\n%s", e2eCmd, e2eErr, capText(e2eOut, 1500)))
+				}
+			} else {
+				fmt.Printf("✅ [Story QA] E2E verification passed successfully.\n")
+			}
 		}
-		fmt.Printf("✅ [Story QA] E2E verification passed successfully.\n")
 	}
 
-	// 2. Whole-Workspace Regression Guarding Gate:
+	// 2. QA Pre-Flight & Whole-Workspace Regression Guarding Gate:
 	// Execute full project test suite to guarantee that modifications didn't introduce regressions to other modules.
 	testCmd := a.detectWorkspaceTestCommand(state.ProjectPath)
 	if testCmd != "" && testCmd != e2eCmd && a.runner != nil {
-		fmt.Printf("🔍 [Story QA] Running Whole-Workspace Regression Guard: %q...\n", testCmd)
-		testOut, testErr := a.runner.RunCommand(ctx, state.ProjectPath, testCmd, "")
-		if testErr != nil {
-			fmt.Printf("❌ [Story QA] Whole-workspace regression detected: %v\n", testErr)
-			return &StoryQAResult{
-				Passed:  false,
-				Summary: fmt.Sprintf("Whole-workspace regression detected (%s): %v\n%s", testCmd, testErr, capText(testOut, 1500)),
-				MissingFeatures: []string{
-					fmt.Sprintf("Regression in whole-workspace test suite (%s): %s", testCmd, capText(testOut, 500)),
-				},
-			}, nil
+		if !a.isCommandAllowed(testCmd) {
+			fmt.Printf("⚠️  [Story QA Pre-Flight] Skipping workspace regression command %q: binary not in sandbox allowed_commands\n", testCmd)
+		} else {
+			fmt.Printf("🔍 [Story QA] Running Whole-Workspace Regression Guard: %q...\n", testCmd)
+			testOut, testErr := a.runner.RunCommand(ctx, state.ProjectPath, testCmd, "")
+			if testErr != nil {
+				if isSandboxViolation(testErr, testOut) {
+					fmt.Printf("⚠️  [Story QA Pre-Flight] Sandbox policy restriction on test command %q (%v); skipping workspace regression check.\n", testCmd, testErr)
+				} else {
+					fmt.Printf("❌ [Story QA] Whole-workspace regression detected: %v\n", testErr)
+					hasFailure = true
+					executionLogs = append(executionLogs, fmt.Sprintf("Whole-workspace regression detected (%s): %v\n%s", testCmd, testErr, capText(testOut, 1500)))
+				}
+			} else {
+				fmt.Printf("✅ [Story QA] Whole-workspace regression check passed.\n")
+			}
 		}
-		fmt.Printf("✅ [Story QA] Whole-workspace regression check passed.\n")
 	}
 
 	ctx, span := telemetry.Tracer().Start(ctx, "AuditStoryCompleteness",
@@ -132,6 +182,13 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 	}
 
 	if a.llmClient == nil {
+		if hasFailure {
+			return &StoryQAResult{
+				Passed:          false,
+				Summary:         strings.Join(executionLogs, "\n"),
+				MissingFeatures: executionLogs,
+			}, nil
+		}
 		return &StoryQAResult{Passed: true, Summary: "No LLM client configured; story QA audit skipped"}, nil
 	}
 
@@ -143,32 +200,66 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 		diffContext, _ = git.Run(ctx, false, "diff", "HEAD~1")
 	}
 
-	workspaceSnapshot := CollectWorkspaceSourceSnapshot(ctx, state.ProjectPath, nil, 50, 3000)
-	prompt := a.buildPrompt(storyContent, workspaceSnapshot, diffContext, state)
+	var targetFiles []string
+	for _, t := range state.Tasks {
+		targetFiles = append(targetFiles, t.TargetFiles...)
+	}
+	workspaceSnapshot := CollectWorkspaceSourceSnapshot(ctx, state.ProjectPath, targetFiles, 20, 1500)
+	_, containerContext := collectE2EContainerFiles(state.ProjectPath)
+	prompt := a.buildPrompt(storyContent, workspaceSnapshot, diffContext, strings.Join(executionLogs, "\n"), containerContext, state)
 
 	auditCtx := context.WithValue(ctx, AgentRoleKey, "qa")
 	resp, err := a.llmClient.Complete(auditCtx, prompt)
 	if err != nil {
+		if hasFailure {
+			return &StoryQAResult{
+				Passed:          false,
+				Summary:         strings.Join(executionLogs, "\n"),
+				MissingFeatures: executionLogs,
+			}, nil
+		}
 		return nil, fmt.Errorf("story QA audit LLM call failed: %w", err)
 	}
 
-	return a.parseAuditResponse(resp), nil
+	result := a.parseAuditResponse(resp)
+	if hasFailure {
+		result.Passed = false
+		if len(result.MissingFeatures) == 0 {
+			result.MissingFeatures = executionLogs
+		}
+		if result.Summary == "" || result.Summary == "Story QA audit evaluated" || result.Summary == "Empty LLM response received" {
+			result.Summary = strings.Join(executionLogs, "\n")
+		}
+	}
+	return result, nil
 }
 
-func (a *StoryQAAuditor) buildPrompt(storyContent, workspaceSnapshot, diffContext string, state *domain.State) string {
+func (a *StoryQAAuditor) buildPrompt(storyContent, workspaceSnapshot, diffContext, executionLogs, containerContext string, state *domain.State) string {
 	var sb strings.Builder
 	sb.WriteString("You are the QA Acceptance Agent. Your task is to verify whether the accumulated generated code and tests completely fulfill all features, acceptance criteria, and Definitions of Done (DoD) defined in the target User Story.\n\n")
 	sb.WriteString("TARGET USER STORY:\n```markdown\n")
-	sb.WriteString(capText(storyContent, 20000))
+	sb.WriteString(capText(storyContent, 8000))
 	sb.WriteString("\n```\n\n")
 
+	if strings.TrimSpace(executionLogs) != "" {
+		sb.WriteString("TEST & E2E EXECUTION LOGS:\n```\n")
+		sb.WriteString(capText(executionLogs, 4000))
+		sb.WriteString("\n```\n\n")
+	}
+
+	if strings.TrimSpace(containerContext) != "" {
+		sb.WriteString("CONTAINER & HARNESS CONFIGURATION FILES (docker-compose, Dockerfile, scripts):\n")
+		sb.WriteString(containerContext)
+		sb.WriteString("\n\n")
+	}
+
 	sb.WriteString("WORKSPACE SOURCE FILES:\n```\n")
-	sb.WriteString(capText(workspaceSnapshot, 15000))
+	sb.WriteString(capText(workspaceSnapshot, 6000))
 	sb.WriteString("\n```\n\n")
 
 	if strings.TrimSpace(diffContext) != "" {
 		sb.WriteString("ACCUMULATED GIT DIFF:\n```diff\n")
-		sb.WriteString(capText(diffContext, 15000))
+		sb.WriteString(capText(diffContext, 6000))
 		sb.WriteString("\n```\n\n")
 	}
 
@@ -181,8 +272,9 @@ func (a *StoryQAAuditor) buildPrompt(storyContent, workspaceSnapshot, diffContex
 	sb.WriteString(`AUDIT RULES:
 1. Inspect every feature, command, CLI option, network wire behavior, error envelope, and edge case required by the User Story.
 2. Verify that each requirement is genuinely implemented in production code and verified by real tests (no stubs, no mocks in production code, no empty pass blocks).
-3. If ANY required feature from the user story is missing, incomplete, or omitted, set "passed": false and enumerate each missing item in "missing_features".
-4. If all features and acceptance criteria are fully met, set "passed": true and "missing_features": [].
+3. If test execution or containerized E2E verification failed, analyze the failure logs, error traces, Dockerfile, and docker-compose files above. Explain the root cause in "summary" and provide concrete, actionable fixes in "missing_features" (e.g. docker-compose service names, missing dependencies, Dockerfile commands, or code fixes) so the Generator and Tester agents can directly repair them.
+4. If ANY required feature from the user story is missing, incomplete, or test execution failed, set "passed": false and enumerate each missing item in "missing_features".
+5. If all features and acceptance criteria are fully met and tests pass, set "passed": true and "missing_features": [].
 
 Respond ONLY with a JSON object in this exact schema:
 {
@@ -262,41 +354,87 @@ func storyFileExists(path string) bool {
 }
 
 func (a *StoryQAAuditor) detectE2ECommand(projectPath string) string {
-	if a.e2eCmd != "" {
-		return a.e2eCmd
-	}
-	if _, err := os.Stat(filepath.Join(projectPath, "docker-compose.e2e.yml")); err == nil {
-		return "docker compose -f docker-compose.e2e.yml up --build --exit-code-from test-runner"
-	}
-	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
-		content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile"))
-		if rErr == nil && strings.Contains(string(content), "e2e:") {
-			return "make e2e"
+	return DetectE2ECommand(projectPath, a.e2eMode, a.e2eCmd)
+}
+
+func (a *StoryQAAuditor) isCommandAllowed(cmdStr string) bool {
+	allowed := a.allowedCommands
+	if len(allowed) == 0 {
+		if hs, ok := a.runner.(*HostSandbox); ok && len(hs.AllowedCommands) > 0 {
+			allowed = hs.AllowedCommands
 		}
 	}
-	return ""
+	if len(allowed) == 0 {
+		return true
+	}
+	trimmed := strings.TrimSpace(cmdStr)
+	if trimmed == "" {
+		return true
+	}
+	parts := strings.Fields(trimmed)
+	if len(parts) == 0 {
+		return true
+	}
+	binary := parts[0]
+	for _, auth := range allowed {
+		if auth == "*" || auth == binary || auth == "sh" || auth == "bash" {
+			return true
+		}
+	}
+	return false
+}
+
+func isSandboxViolation(err error, out string) bool {
+	if err == nil {
+		return false
+	}
+	combined := err.Error() + " " + out
+	return strings.Contains(combined, "Sandbox violation") ||
+		strings.Contains(combined, "whitelist of allowed commands") ||
+		strings.Contains(combined, "Role authorization violation")
 }
 
 func (a *StoryQAAuditor) detectWorkspaceTestCommand(projectPath string) string {
-	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
-		if content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile")); rErr == nil {
-			c := string(content)
-			if strings.Contains(c, "test:") || strings.Contains(c, "test-all:") || strings.Contains(c, "check:") {
-				return "make test"
+	// Pre-Flight Priority 1: Configured default test command from .noctifab/config.yaml
+	if a.defaultTestCmd != "" && a.isCommandAllowed(a.defaultTestCmd) {
+		return a.defaultTestCmd
+	}
+
+	// Pre-Flight Priority 2: Workspace build/test tooling authorized by sandbox policy
+	if a.isCommandAllowed("make") {
+		if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
+			if content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile")); rErr == nil {
+				c := string(content)
+				if strings.Contains(c, "test:") || strings.Contains(c, "test-all:") || strings.Contains(c, "check:") {
+					return "make test"
+				}
 			}
 		}
 	}
-	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
-		return "go test ./..."
+	if a.isCommandAllowed("go") {
+		if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+			return "go test ./..."
+		}
 	}
-	if _, err := os.Stat(filepath.Join(projectPath, "pyproject.toml")); err == nil {
-		return "pytest -v"
+	if a.isCommandAllowed("pytest") || a.isCommandAllowed("python") || a.isCommandAllowed("python3") {
+		if _, err := os.Stat(filepath.Join(projectPath, "pyproject.toml")); err == nil {
+			return "pytest -v"
+		}
 	}
-	if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
-		return "cargo test"
+	if a.isCommandAllowed("cargo") {
+		if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
+			return "cargo test"
+		}
 	}
-	if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
-		return "npm test"
+	if a.isCommandAllowed("npm") {
+		if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
+			return "npm test"
+		}
+	}
+	if a.isCommandAllowed("dune") {
+		if _, err := os.Stat(filepath.Join(projectPath, "dune-project")); err == nil {
+			return "dune runtest"
+		}
 	}
 	return ""
 }

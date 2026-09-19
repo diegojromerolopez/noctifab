@@ -205,17 +205,22 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 
 			buildOK := o.allTasksSucceeded(state)
 			if buildOK {
-				// Story-Level QA Feature Completeness Gate:
-				// Review the user story requirements vs generated codebase.
-				// If features are missing and remediation attempts remain, queue remediation task to trigger another Generator-Tester cycle.
+				isFinalStory := true
+				for _, s := range state.Stories {
+					if s.ID != state.Metadata.FeatureName && s.Status != domain.StorySuccess && s.Status != domain.StoryDeferred {
+						isFinalStory = false
+						break
+					}
+				}
+
+				// Synchronous Story-Level QA Feature Completeness & E2E Verification Gate:
+				// Every completed story must execute its E2E verification before release finalization.
 				if o.shouldAuditStoryCompleteness(state) {
 					storyQAResult, qaErr := o.AuditStoryCompleteness(ctx, state)
 					if qaErr == nil && storyQAResult != nil && !storyQAResult.Passed && len(storyQAResult.MissingFeatures) > 0 {
 						if o.queueStoryRemediationTask(ctx, state, storyQAResult) {
-							// Return true to continue the task processing loop with the newly added remediation task.
 							return true, nil
 						}
-						// If remediation attempts are exhausted, the story fails Definition of Done review
 						buildOK = false
 						fmt.Printf("❌ Story %s: Definition of Done audit failed with %d missing feature(s):\n", state.Metadata.FeatureName, len(storyQAResult.MissingFeatures))
 						for _, f := range storyQAResult.MissingFeatures {
@@ -224,9 +229,29 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 					}
 				}
 
+				if isFinalStory && buildOK && o.acceptanceAuditor != nil {
+					// Final Story: additionally run Whole-Project Acceptance Audit before final release.
+					auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
+					if auditErr != nil {
+						fmt.Fprintf(os.Stderr, "⚠ Story %s: Acceptance Audit encountered an error: %v\n", state.Metadata.FeatureName, auditErr)
+					} else if auditResult != nil && !auditResult.Passed && len(auditResult.Gaps) > 0 {
+						if o.shouldRemediateAcceptanceAudit(state) {
+							if o.queueAcceptanceRemediationTask(ctx, state, auditResult) {
+								return true, nil
+							}
+						}
+						buildOK = false
+						fmt.Printf("❌ Story %s: Whole-project Acceptance Audit failed with %d specification gap(s):\n", state.Metadata.FeatureName, len(auditResult.Gaps))
+						for _, g := range auditResult.Gaps {
+							fmt.Printf(" - %s\n", g)
+						}
+					}
+				}
+
 				if buildOK {
 					if finalErr := o.FinalizeUserStory(ctx, state); finalErr != nil {
 						fmt.Fprintf(os.Stderr, "Orchestrator: finalization failed: %v\n", finalErr)
+						buildOK = false
 					}
 				}
 			} else {
@@ -240,10 +265,28 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 					st.BuildStatus = domain.BuildFailing
 					st.StoryStatus = domain.StoryFailed
 				}
+				now := time.Now().UTC()
+				storyID := ExtractStoryID(state.Metadata.InputPath)
+				if storyID == "" {
+					storyID = state.Metadata.FeatureName
+				}
+				for i, s := range st.Stories {
+					if s.ID == state.Metadata.FeatureName || s.FilePath == state.Metadata.InputPath || (storyID != "" && s.ID == storyID) {
+						if buildOK {
+							st.Stories[i].Status = domain.StorySuccess
+						} else {
+							st.Stories[i].Status = domain.StoryFailed
+						}
+						st.Stories[i].CompletedAt = &now
+						st.Stories[i].UpdatedAt = now
+						break
+					}
+				}
 				return nil
 			}); err != nil {
 				fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist story finalization status: %v\n", err)
 			}
+			o.NotifyStoryCompleted()
 			return false, nil
 		}
 

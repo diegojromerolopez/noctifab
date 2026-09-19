@@ -38,23 +38,36 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	}
 
 	// 2. Whole-Project Acceptance Audit Gate: Verify implemented codebase against SPEC.md
-	auditResult, auditErr := o.RunAcceptanceAudit(ctx, state)
-	if auditErr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ Story %s: Whole-project Acceptance Audit encountered an error: %v\nSkipping PR creation to prevent releasing unverified changes.\n", state.Metadata.FeatureName, auditErr)
-		return nil
-	}
-	if auditResult != nil && !auditResult.Passed {
-		var sb strings.Builder
-		fmt.Fprintf(&sb, "⚠ Story %s: Whole-project Acceptance Audit FAILED.\nSummary: %s\n", state.Metadata.FeatureName, auditResult.Summary)
-		if len(auditResult.Gaps) > 0 {
-			sb.WriteString("Unimplemented specification gaps detected:\n")
-			for _, gap := range auditResult.Gaps {
-				fmt.Fprintf(&sb, " - %s\n", gap)
-			}
+	// In multi-story workflows, only run the whole-project acceptance audit if this is the final story
+	// (all other stories are already finished or deferred). Intermediate stories are verified by Story QA.
+	isFinalStory := true
+	for _, s := range state.Stories {
+		if s.ID != state.Metadata.FeatureName && s.Status != domain.StorySuccess && s.Status != domain.StoryDeferred {
+			isFinalStory = false
+			break
 		}
-		sb.WriteString("Skipping PR creation to prevent releasing incomplete specification implementation.\n")
-		fmt.Print(sb.String())
-		return nil
+	}
+	var auditResult *AcceptanceAuditResult
+	if isFinalStory {
+		var auditErr error
+		auditResult, auditErr = o.RunAcceptanceAudit(ctx, state)
+		if auditErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Story %s: Whole-project Acceptance Audit encountered an error: %v\nSkipping release to prevent releasing unverified changes.\n", state.Metadata.FeatureName, auditErr)
+			return fmt.Errorf("acceptance audit error: %w", auditErr)
+		}
+		if auditResult != nil && !auditResult.Passed {
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "⚠ Story %s: Whole-project Acceptance Audit FAILED.\nSummary: %s\n", state.Metadata.FeatureName, auditResult.Summary)
+			if len(auditResult.Gaps) > 0 {
+				sb.WriteString("Unimplemented specification gaps detected:\n")
+				for _, gap := range auditResult.Gaps {
+					fmt.Fprintf(&sb, " - %s\n", gap)
+				}
+			}
+			sb.WriteString("Failing story finalization to prevent releasing incomplete specification implementation.\n")
+			fmt.Print(sb.String())
+			return fmt.Errorf("acceptance audit failed: %s", auditResult.Summary)
+		}
 	}
 
 	// Ensure integration branch exists locally before bumping if branch creation is enabled
@@ -135,11 +148,21 @@ func (o *Orchestrator) shouldAuditStoryCompleteness(state *domain.State) bool {
 	if o.storyQAAuditor == nil || state == nil {
 		return false
 	}
-	// Count existing remediation tasks for this story to avoid exceeding max retry threshold (2)
+	storyID := ExtractStoryID(state.Metadata.InputPath)
+	if storyID == "" {
+		storyID = state.Metadata.FeatureName
+	}
+	// Count existing remediation tasks for this specific story to avoid exceeding max retry threshold
 	remediationCount := 0
 	for _, t := range state.Tasks {
-		if strings.HasPrefix(t.ID, "qa-remediation-") {
-			remediationCount++
+		if strings.HasPrefix(t.ID, "qa-remediation-") || strings.HasPrefix(t.ID, "sovereign-rescue-") {
+			if storyID != "" {
+				if t.StoryID == storyID || strings.HasPrefix(strings.ToLower(t.ID), "qa-remediation-"+strings.ToLower(storyID)) {
+					remediationCount++
+				}
+			} else {
+				remediationCount++
+			}
 		}
 	}
 	return remediationCount < 2
@@ -150,27 +173,46 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 		return false
 	}
 
-	remediationCount := 0
-	var prevTaskIDs []string
-	currentStoryID := ""
-	for _, t := range state.Tasks {
-		if strings.HasPrefix(t.ID, "qa-remediation-") {
-			remediationCount++
-		}
-		if t.StoryID != "" && currentStoryID == "" {
-			currentStoryID = t.StoryID
-		}
-		prevTaskIDs = append(prevTaskIDs, t.ID)
+	currentStoryID := ExtractStoryID(state.Metadata.InputPath)
+	if currentStoryID == "" {
+		currentStoryID = state.Metadata.FeatureName
 	}
 	if currentStoryID == "" {
-		currentStoryID = ExtractStoryID(state.Metadata.InputPath)
+		for _, t := range state.Tasks {
+			if t.StoryID != "" {
+				currentStoryID = t.StoryID
+				break
+			}
+		}
 	}
 	if currentStoryID == "" {
 		currentStoryID = "US-001"
 	}
 
-	taskID := fmt.Sprintf("qa-remediation-%s-%d", strings.ToLower(currentStoryID), remediationCount+1)
-	title := fmt.Sprintf("QA Remediation: Implement Missing Features for %s", currentStoryID)
+	remediationCount := 0
+	var prevTaskIDs []string
+	storyPrefix := strings.ToLower(currentStoryID)
+	for _, t := range state.Tasks {
+		if (strings.HasPrefix(t.ID, "qa-remediation-") || strings.HasPrefix(t.ID, "sovereign-rescue-")) &&
+			(t.StoryID == currentStoryID || strings.HasPrefix(strings.ToLower(t.ID), "qa-remediation-"+storyPrefix)) {
+			remediationCount++
+		}
+		if t.StoryID == currentStoryID || strings.HasPrefix(t.ID, currentStoryID+"-") {
+			prevTaskIDs = append(prevTaskIDs, t.ID)
+		}
+	}
+	if len(prevTaskIDs) == 0 {
+		for _, t := range state.Tasks {
+			prevTaskIDs = append(prevTaskIDs, t.ID)
+		}
+	}
+
+	isE2E := strings.Contains(qaResult.Summary, "E2E") || strings.Contains(strings.Join(qaResult.MissingFeatures, " "), "E2E")
+	var targetFiles []string
+	var containerContext string
+	if isE2E && state.ProjectPath != "" {
+		targetFiles, containerContext = collectE2EContainerFiles(state.ProjectPath)
+	}
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "QA Acceptance Review detected missing or incomplete features for %s:\n", currentStoryID)
@@ -179,6 +221,42 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 	}
 	fmt.Fprintf(&sb, "\nSummary: %s\n\nImplement the missing functionality and verify with tests.", qaResult.Summary)
 
+	if isE2E {
+		sb.WriteString("\n\n### 🐳 MANDATORY E2E VERIFICATION INSTRUCTION:\n")
+		sb.WriteString("The containerized E2E test suite failed with the error reported above.\n")
+		sb.WriteString("You have access to the 'run_e2e_tests' tool. You MUST inspect and correct the Dockerfile, docker-compose configuration, and/or test runner scripts, and run 'run_e2e_tests' to verify that the E2E suite passes before declaring your task complete.\n")
+		if containerContext != "" {
+			sb.WriteString("\n### 📦 CONTAINER & E2E HARNESS CONFIGURATION FILES:\n")
+			sb.WriteString(containerContext)
+		}
+	}
+
+	// Sovereign Rescue Escalation: If standard remediation retries are exhausted, escalate directly to FallbackAgent
+	if remediationCount >= 1 {
+		fmt.Printf("🚨 [Story QA Gate] Story %s exhausted %d standard QA remediation(s). Escalating to Sovereign Rescue Agent...\n", currentStoryID, remediationCount)
+		sovereignTask := domain.Task{
+			ID:          fmt.Sprintf("sovereign-rescue-%s", strings.ToLower(currentStoryID)),
+			Title:       fmt.Sprintf("Sovereign Rescue: Unblock Story %s QA & E2E Verification", currentStoryID),
+			Description: sb.String() + "\n\nSOVEREIGN REPAIR DIRECTIVE: Standard remediation failed to unblock QA/E2E verification. Fallback Agent has sovereign authority to repair docker-compose, Dockerfiles, and code, and verify with run_e2e_tests and run_tests.",
+			StoryID:     currentStoryID,
+			TargetFiles: targetFiles,
+			Status:      domain.TaskPending,
+			DependsOn:   prevTaskIDs,
+			CreatedAt:   time.Now().UTC(),
+		}
+		if o.git != nil {
+			success, _ := o.RunFallbackAgent(ctx, &sovereignTask, state, o.git, qaResult.Summary, "story_qa_persistent_e2e_failure")
+			if success {
+				fmt.Printf("✨ [Story QA Gate] Sovereign Rescue Agent successfully resolved blockers for story %s!\n", currentStoryID)
+				return true
+			}
+		}
+		return false
+	}
+
+	taskID := fmt.Sprintf("qa-remediation-%s-%d", strings.ToLower(currentStoryID), remediationCount+1)
+	title := fmt.Sprintf("QA Remediation: Implement Missing Features for %s", currentStoryID)
+
 	remediationTask := domain.Task{
 		ID:          taskID,
 		Title:       title,
@@ -186,6 +264,7 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 		StoryID:     currentStoryID,
 		Status:      domain.TaskPending,
 		DependsOn:   prevTaskIDs,
+		TargetFiles: targetFiles,
 		CreatedAt:   time.Now().UTC(),
 		Retries:     0,
 	}
@@ -206,6 +285,31 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 		return nil
 	})
 	return err == nil
+}
+
+func collectE2EContainerFiles(projectPath string) ([]string, string) {
+	candidates := []string{
+		"docker-compose.e2e.yml",
+		"docker-compose.yml",
+		"Dockerfile.e2e",
+		"Dockerfile",
+		"tests/e2e/run_tests.sh",
+		"tests/e2e/Dockerfile",
+		"Makefile",
+	}
+	var matchedFiles []string
+	var sb strings.Builder
+
+	for _, relPath := range candidates {
+		fullPath := filepath.Join(projectPath, relPath)
+		if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+			matchedFiles = append(matchedFiles, relPath)
+			if content, rErr := os.ReadFile(fullPath); rErr == nil {
+				fmt.Fprintf(&sb, "\n--- File: %s ---\n```\n%s\n```\n", relPath, string(content))
+			}
+		}
+	}
+	return matchedFiles, sb.String()
 }
 
 func refineStoryFileWithGaps(projectPath, inputPath, storyID string, qaResult *StoryQAResult) {

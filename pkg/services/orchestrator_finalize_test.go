@@ -229,7 +229,177 @@ func TestOrchestrator_FinalizeUserStory(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(repoDir, "SPEC.md"), []byte("# Redis Spec\nPING, GET, SET, KEYS"), 0644))
 
 		err = orch.FinalizeUserStory(context.Background(), state)
-		assert.NoError(t, err)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "acceptance audit failed")
 		assert.Equal(t, 0, vcs.prCalls, "PR creation must be aborted when acceptance audit fails")
+	})
+
+	t.Run("when story is intermediate in multi-story workflow, whole-project acceptance audit is deferred to final story", func(t *testing.T) {
+		repoDir, _, cleanup := setupTestGitRepo(t)
+		defer cleanup()
+
+		err := os.WriteFile(filepath.Join(repoDir, "VERSION"), []byte("1.0.0"), 0644)
+		require.NoError(t, err)
+
+		vcs := &mockVCSForFinalize{}
+		git := NewGitClient(repoDir)
+		// Mock auditor LLM that would fail if called
+		mockLLM := &mockAuditorLLM{
+			response: &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "submit_acceptance_audit",
+						Args: map[string]any{
+							"passed":  false,
+							"summary": "Should not be called for intermediate story",
+						},
+					},
+				},
+			},
+		}
+
+		orch := &Orchestrator{
+			vcsClient:         vcs,
+			git:               git,
+			cfg:               OrchestratorConfig{AutoCreatePR: true},
+			acceptanceAuditor: NewAcceptanceAuditor(mockLLM, nil),
+		}
+
+		state := &domain.State{
+			ProjectPath: repoDir,
+			Metadata: domain.StateMetadata{
+				FeatureName:       "US-0001",
+				IntegrationBranch: "noctifab/story-us-0001",
+				BaseBranch:        "main",
+			},
+			Stories: []domain.Story{
+				{ID: "US-0001", Status: domain.StoryRunning},
+				{ID: "US-0002", Status: domain.StoryPending},
+			},
+			Tasks: []domain.Task{
+				{ID: "t1", StoryID: "US-0001", Title: "Scaffolding", Status: domain.TaskSuccess},
+			},
+		}
+
+		_, err = git.Run(context.Background(), true, "checkout", "-b", "noctifab/story-us-0001")
+		require.NoError(t, err)
+
+		err = orch.FinalizeUserStory(context.Background(), state)
+		assert.NoError(t, err, "Intermediate story should finalize cleanly without triggering whole-project acceptance audit")
+		assert.Equal(t, 1, vcs.prCalls)
+	})
+
+	t.Run("shouldAuditStoryCompleteness scopes remediation count per story", func(t *testing.T) {
+		orch := &Orchestrator{
+			storyQAAuditor: &StoryQAAuditor{},
+		}
+
+		// State has 2 remediation tasks for US-001
+		state := &domain.State{
+			Metadata: domain.StateMetadata{
+				InputPath:   "roadmap/user-stories/US-002.md",
+				FeatureName: "US-002",
+			},
+			Tasks: []domain.Task{
+				{ID: "qa-remediation-us-001-1", StoryID: "US-001", Status: domain.TaskSuccess},
+				{ID: "qa-remediation-us-001-2", StoryID: "US-001", Status: domain.TaskSuccess},
+			},
+		}
+
+		// For US-002, remediationCount is 0, so it should be eligible for auditing
+		assert.True(t, orch.shouldAuditStoryCompleteness(state), "US-002 must be eligible for audit even if US-001 exhausted its 2 remediations")
+
+		// For US-001, remediationCount is 2, so it should not be eligible for auditing
+		state.Metadata.InputPath = "roadmap/user-stories/US-001.md"
+		state.Metadata.FeatureName = "US-001"
+		assert.False(t, orch.shouldAuditStoryCompleteness(state), "US-001 should not be eligible after 2 remediations")
+	})
+
+	t.Run("queueStoryRemediationTask correctly assigns story ID for active story", func(t *testing.T) {
+		mockRepo := &mockStateRepo{
+			state: &domain.State{
+				Metadata: domain.StateMetadata{
+					InputPath:   "roadmap/user-stories/US-002.md",
+					FeatureName: "US-002",
+				},
+				Tasks: []domain.Task{
+					{ID: "US-001-TASK-001", StoryID: "US-001", Status: domain.TaskSuccess},
+					{ID: "US-002-TASK-001", StoryID: "US-002", Status: domain.TaskSuccess},
+				},
+			},
+		}
+		orch := &Orchestrator{
+			repo: mockRepo,
+		}
+
+		qaResult := &StoryQAResult{
+			Passed:          false,
+			Summary:         "Missing sqlite quote repository",
+			MissingFeatures: []string{"sqlite_quote_repository.c is missing"},
+		}
+
+		ok := orch.queueStoryRemediationTask(context.Background(), mockRepo.state, qaResult)
+		assert.True(t, ok)
+		assert.Equal(t, 3, len(mockRepo.state.Tasks))
+		queuedTask := mockRepo.state.Tasks[2]
+		assert.Equal(t, "qa-remediation-us-002-1", queuedTask.ID)
+		assert.Equal(t, "US-002", queuedTask.StoryID)
+		assert.Equal(t, domain.TaskPending, queuedTask.Status)
+	})
+
+	t.Run("when story remediation task resolves all missing features, finalization succeeds", func(t *testing.T) {
+		repoDir, _, cleanup := setupTestGitRepo(t)
+		defer cleanup()
+
+		err := os.WriteFile(filepath.Join(repoDir, "VERSION"), []byte("1.0.0"), 0644)
+		require.NoError(t, err)
+
+		vcs := &mockVCSForFinalize{}
+		git := NewGitClient(repoDir)
+
+		// Mock acceptance auditor that initially passed project audit
+		mockLLM := &mockAuditorLLM{
+			response: &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "submit_acceptance_audit",
+						Args: map[string]any{
+							"passed":  true,
+							"summary": "All acceptance criteria verified",
+						},
+					},
+				},
+			},
+		}
+
+		orch := &Orchestrator{
+			vcsClient:         vcs,
+			git:               git,
+			cfg:               OrchestratorConfig{AutoCreatePR: true},
+			acceptanceAuditor: NewAcceptanceAuditor(mockLLM, nil),
+		}
+
+		state := &domain.State{
+			ProjectPath: repoDir,
+			Metadata: domain.StateMetadata{
+				FeatureName:       "US-0004",
+				InputPath:         "roadmap/user-stories/US-0004.md",
+				IntegrationBranch: "noctifab/story-us-0004",
+				BaseBranch:        "main",
+			},
+			Tasks: []domain.Task{
+				{ID: "t1", Title: "Base feature", Status: domain.TaskSuccess},
+				// Remediation task that successfully fixed the missing features:
+				{ID: "qa-remediation-us-0004-1", StoryID: "US-0004", Title: "Remediate missing features", Status: domain.TaskSuccess, ChangeType: domain.ChangeTypeFix, PartialChangelog: []string{"Remediated missing feature"}},
+			},
+		}
+
+		_, err = git.Run(context.Background(), true, "checkout", "-b", "noctifab/story-us-0004")
+		require.NoError(t, err)
+
+		err = orch.FinalizeUserStory(context.Background(), state)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, vcs.prCalls, "PR must be created when remediation task succeeded and resolved all blockers")
+		assert.Equal(t, "feat: US-0004", vcs.prTitle)
 	})
 }

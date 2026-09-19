@@ -8,9 +8,9 @@ import (
 const (
 	// toolOutputCapChars caps each tool output embedded into the next agent
 	// turn's prompt.
-	toolOutputCapChars = 8000
+	toolOutputCapChars = 3000
 	// fileContextCapChars caps each file content embedded into a task prompt.
-	fileContextCapChars = 16000
+	fileContextCapChars = 8000
 	// defaultAgentIterations is the fallback number of agent loop turns when
 	// no per-role iterations value is configured.
 	defaultAgentIterations = 20

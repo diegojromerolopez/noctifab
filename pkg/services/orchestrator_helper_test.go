@@ -178,3 +178,51 @@ func TestRunGeneratorAgent_LimitRequestTestFix(t *testing.T) {
 
 	assert.Equal(t, 1, mockLLMClient.testerAgentInvokeCount, "request_test_fix should be limited to 1 call per task execution")
 }
+
+type fastExitMockLLM struct {
+	genCalls int
+}
+
+func (m *fastExitMockLLM) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	if strings.Contains(prompt, "Context Gathering phase") {
+		return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "noop"}}}, nil
+	}
+	m.genCalls++
+	if m.genCalls == 1 {
+		return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "run_tests"}}}, nil
+	}
+	return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "noop"}}}, nil
+}
+
+func TestRunGeneratorAgent_ZeroTurnFastExitOnVerifiedGreen(t *testing.T) {
+	tempDir := t.TempDir()
+	state := &domain.State{ProjectPath: tempDir}
+	task := domain.Task{ID: "task-fast-exit", Title: "Fast Exit Test"}
+	repo := &mockRepo{state: state}
+	reg := NewToolRegistry()
+
+	testsCalled := false
+	reg.Register(&customTool{
+		name: "run_tests",
+		executeFn: func(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
+			testsCalled = true
+			return "10 passed, 0 failed in 0.05s", nil
+		},
+	})
+
+	mockLLMClient := &fastExitMockLLM{}
+	validator := NewPolicyValidator(nil, "main", nil)
+	scheduler := NewScheduler(NewFileLockRegistry())
+	git := NewGitClient(tempDir)
+	queue := NewRebaseQueue(git)
+	evaluator := NewTestValidator(nil, false, mockLLMClient, nil)
+	vcsClient := &mockVCS{}
+	cfg := OrchestratorConfig{PollInterval: 10 * time.Millisecond}
+
+	orch := NewOrchestrator(repo, reg, mockLLMClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
+
+	orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "implement")
+
+	assert.Equal(t, 1, mockLLMClient.genCalls, "Agent should immediately fast-exit on turn 1 when explicit run_tests passes cleanly")
+	assert.True(t, testsCalled, "run_tests tool should have executed")
+}

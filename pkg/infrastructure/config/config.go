@@ -199,6 +199,11 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
+	e2eMode := cfg.Sandbox.GetE2EMode()
+	if e2eMode != "docker" && e2eMode != "native" {
+		return fmt.Errorf("invalid sandbox.e2e.mode: %s (must be docker or native)", cfg.Sandbox.E2E.Mode)
+	}
+
 	roles := map[string]AgentRoleConfig{
 		"orchestrator":    cfg.Agents.Orchestrator,
 		"product_manager": cfg.Agents.ProductManager,
@@ -335,6 +340,28 @@ func validateYAMLContract(data []byte) error {
 	return nil
 }
 
+// ValidateBytes validates raw YAML configuration bytes and decodes into a Config struct.
+func ValidateBytes(data []byte) (*Config, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, fmt.Errorf("configuration data is empty")
+	}
+	if err := validateYAMLContract(data); err != nil {
+		return nil, err
+	}
+	cfg := DefaultConfig()
+	cfg.Runtime.Loops = 0
+	cfg.Runtime.Loop.Count = 0
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+	}
+	if err := validateConfigVersion(cfg.ConfigVersion); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 // validLLMProviders is the allowlist of LLM provider names accepted by
 // configuration validation. It must stay in sync with the provider registry in
 // the llm package (pkg/infrastructure/llm/provider_registry.go); the drift
@@ -383,7 +410,7 @@ func NormalizeArchitecture(arch string) string {
 	switch strings.ToLower(strings.TrimSpace(arch)) {
 	case "code_first", "code_first_verification_loop", "cfv", "dfv":
 		return "code_first"
-	case "single_pass", "single_pass_execution", "spe":
+	case "single_pass", "single_pass_execution", "spe", "single_pass_co_synthesis", "co_synthesis", "single_pass_synthesis", "spcs":
 		return "single_pass"
 	case "breadth_first", "breadth_first_generation", "bfg", "big":
 		return "breadth_first"

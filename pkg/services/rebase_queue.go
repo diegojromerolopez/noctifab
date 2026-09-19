@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -168,9 +170,64 @@ func (q *RebaseQueue) Push(ctx context.Context, branch, base string) error {
 	}
 }
 
+const defaultStaleLockThreshold = 60 * time.Second
+
+// isProcessAlive checks whether a process with the given PID is actively running.
+func isProcessAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = proc.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, syscall.ESRCH) {
+		return false
+	}
+	if errors.Is(err, syscall.EPERM) {
+		return true
+	}
+	return false
+}
+
+// isLockFileStale determines if a git lock file is stale. If the lock contains a PID,
+// it checks whether the process is alive; if dead, the lock is stale.
+// If the lock contains no PID or cannot be parsed, it falls back to the threshold (default 60s).
+func isLockFileStale(path string, info os.FileInfo, fallbackThreshold time.Duration) bool {
+	if info == nil {
+		return false
+	}
+	// Check if the lock file contains a valid process PID
+	if data, err := os.ReadFile(path); err == nil {
+		trimmed := strings.TrimSpace(string(data))
+		if pid, parseErr := strconv.Atoi(trimmed); parseErr == nil && pid > 0 {
+			if !isProcessAlive(pid) {
+				return true
+			}
+			// Process is actively running; the lock is definitely active.
+			return false
+		}
+	}
+
+	if fallbackThreshold <= 0 {
+		fallbackThreshold = defaultStaleLockThreshold
+	}
+	return time.Since(info.ModTime()) > fallbackThreshold
+}
+
 // CleanStaleLocks purges stale Git lock files (.git/index.lock, .git/worktrees/*/*.lock)
-// older than 5 seconds to prevent permanent lock contention and deadlocks.
+// using process liveness detection and a 60-second fallback threshold to prevent
+// race conditions during active git commands while clearing orphaned locks.
 func (g *GitClient) CleanStaleLocks(ctx context.Context) {
+	g.CleanStaleLocksWithThreshold(ctx, defaultStaleLockThreshold)
+}
+
+// CleanStaleLocksWithThreshold purges stale Git lock files with a custom fallback age threshold.
+func (g *GitClient) CleanStaleLocksWithThreshold(ctx context.Context, fallbackThreshold time.Duration) {
 	if g == nil || g.dir == "" {
 		return
 	}
@@ -178,14 +235,14 @@ func (g *GitClient) CleanStaleLocks(ctx context.Context) {
 	if info, err := os.Stat(gitDir); err == nil && info.IsDir() {
 		idxLock := filepath.Join(gitDir, "index.lock")
 		if lockInfo, err := os.Stat(idxLock); err == nil {
-			if time.Since(lockInfo.ModTime()) > 5*time.Second {
+			if isLockFileStale(idxLock, lockInfo, fallbackThreshold) {
 				_ = os.Remove(idxLock)
 			}
 		}
 		wtDir := filepath.Join(gitDir, "worktrees")
 		_ = filepath.Walk(wtDir, func(path string, info os.FileInfo, err error) error {
 			if err == nil && !info.IsDir() && strings.HasSuffix(path, ".lock") {
-				if time.Since(info.ModTime()) > 5*time.Second {
+				if isLockFileStale(path, info, fallbackThreshold) {
 					_ = os.Remove(path)
 				}
 			}
@@ -234,7 +291,18 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 	// Checkout base
 	_, err = q.git.Run(ctx, true, "checkout", base)
 	if err != nil {
-		return fmt.Errorf("failed to checkout base %s: %w", base, err)
+		// If index is stuck with unmerged changes, abort merge and reset index before retrying
+		_, _ = q.git.Run(ctx, true, "merge", "--abort")
+		_, _ = q.git.Run(ctx, true, "reset", "--hard", "HEAD")
+		_, err = q.git.Run(ctx, true, "checkout", base)
+		if err != nil {
+			// Self-healing fallback: create base branch from HEAD if it does not yet exist
+			_, _ = q.git.Run(ctx, true, "checkout", "-b", base)
+			_, err = q.git.Run(ctx, true, "checkout", base)
+			if err != nil {
+				return fmt.Errorf("failed to checkout base %s: %w", base, err)
+			}
+		}
 	}
 
 	// Tier 1: Non-interactive merge
@@ -309,12 +377,20 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 	_, _ = q.git.Run(ctx, true, "merge", "--abort")
 	_, _ = q.git.Run(ctx, true, "checkout", base)
 	// Checkout files from branch directly
-	_, _ = q.git.Run(ctx, true, "checkout", branch, "--", ".")
-	_, _ = q.git.Run(ctx, true, "add", "-A")
-	if _, forceCommitErr := q.git.Run(ctx, true, "commit", "-m", fmt.Sprintf("feat: forced overlay merge of branch %s [fallback tier 5]", branch)); forceCommitErr == nil {
-		fmt.Printf("✨ [Conflict Resolved] Tier 5 Direct Overlay merge succeeded for %q\n", branch)
-		return nil
+	if _, checkoutErr := q.git.Run(ctx, true, "checkout", branch, "--", "."); checkoutErr == nil {
+		_, _ = q.git.Run(ctx, true, "add", "-A")
+		if forceCommitOut, forceCommitErr := q.git.Run(ctx, true, "commit", "-m", fmt.Sprintf("feat: forced overlay merge of branch %s [fallback tier 5]", branch)); forceCommitErr == nil {
+			fmt.Printf("✨ [Conflict Resolved] Tier 5 Direct Overlay merge succeeded for %q\n", branch)
+			return nil
+		} else if strings.Contains(forceCommitOut, "nothing to commit") || strings.Contains(forceCommitOut, "working tree clean") {
+			fmt.Printf("✨ [Conflict Resolved] Tier 5 Direct Overlay: branch %q already up to date with %q\n", branch, base)
+			return nil
+		}
 	}
+
+	// Clean up working tree so subsequent rebase/merge jobs don't suffer from an unmerged index
+	_, _ = q.git.Run(ctx, true, "merge", "--abort")
+	_, _ = q.git.Run(ctx, true, "reset", "--hard", "HEAD")
 
 	fmt.Fprintf(os.Stderr, "⚠️ [RebaseQueue] All merge tiers failed for branch %q.\n", branch)
 	return fmt.Errorf("all merge fallback tiers (1-5) failed to integrate branch %s into %s", branch, base)

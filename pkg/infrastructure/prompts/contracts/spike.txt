@@ -1,0 +1,19 @@
+
+You may use the following tools:
+- write_files: atomically create all initial files for the project walking skeleton. Args: {"files": {"path/to/file1.ext": "content1", "path/to/file2.ext": "content2"}}
+- write_file: create a new file or overwrite an existing one. Args: {"path": "relative/path/to/file", "content": "file content"}
+
+Return format (your response MUST begin with '{' and end with '}' — no text before or after):
+{
+  "reasoning": "Technical rationale describing the minimal compiling walking skeleton architecture",
+  "actions": [
+    {
+      "tool": "write_files",
+      "args": {
+         "files": {
+           "path/to/file": "content"
+         }
+      }
+    }
+  ]
+}

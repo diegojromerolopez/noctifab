@@ -16,8 +16,13 @@ FROM golang:1.25-alpine AS go-builder
 RUN apk add --no-cache git bash build-base
 WORKDIR /app
 COPY . .
-RUN --mount=type=cache,target=/root/.cache \
-    go build -o bin/noctifab cmd/noctifab/main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache \
+    VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
+    GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown") && \
+    CGO_ENABLED=0 go build \
+      -ldflags "-X github.com/diegojromerolopez/noctifab/pkg/version.Version=${VERSION} -X github.com/diegojromerolopez/noctifab/pkg/version.GitCommit=${GIT_COMMIT}" \
+      -o bin/noctifab cmd/noctifab/main.go
 
 FROM alpine:3.21
 RUN apk add --no-cache git bash docker-cli curl
@@ -30,7 +35,7 @@ COPY --from=go-builder /app/bin/noctifab /usr/local/bin/noctifab
 COPY validation/projects /app/projects
 
 # Copy the scripts and set them up
-COPY validation/validate.sh /app/validate.sh
+COPY validation/bin/validate.sh /app/validate.sh
 RUN chmod +x /app/validate.sh
 
 # Run the verification script directly in the container

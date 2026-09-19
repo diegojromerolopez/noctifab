@@ -362,6 +362,80 @@ func TestExtractJSONBlockStripsThinkingTags(t *testing.T) {
 	}
 }
 
+func TestExtractJSONBlock_EmbeddedCodeFencesInStringLiteral(t *testing.T) {
+	t.Run("when markdown code fences appear inside a JSON string value, they are preserved", func(t *testing.T) {
+		in := "Here is the response:\n" +
+			"```json\n" +
+			"{\n" +
+			"  \"reasoning\": \"Creating documentation and script\",\n" +
+			"  \"actions\": [\n" +
+			"    {\n" +
+			"      \"tool\": \"write_file\",\n" +
+			"      \"args\": {\n" +
+			"        \"path\": \"README.md\",\n" +
+			"        \"content\": \"# My Tool\\n\\n```bash\\ncargo test\\n```\\n\\nDone.\\n\"\n" +
+			"      }\n" +
+			"    }\n" +
+			"  ]\n" +
+			"}\n" +
+			"```\n" +
+			"Hope that helps!"
+
+		got, err := ExtractJSONBlock(in)
+		if err != nil {
+			t.Fatalf("unexpected error extracting JSON block: %v", err)
+		}
+
+		resp, err := LenientUnmarshal(got)
+		if err != nil {
+			t.Fatalf("failed to unmarshal extracted JSON: %v", err)
+		}
+
+		if len(resp.Actions) != 1 {
+			t.Fatalf("expected 1 action, got %d", len(resp.Actions))
+		}
+
+		content, ok := resp.Actions[0].Args["content"].(string)
+		if !ok {
+			t.Fatalf("expected string content argument")
+		}
+
+		if !strings.Contains(content, "```bash\ncargo test\n```") {
+			t.Errorf("expected embedded code fence to be preserved intact, got: %q", content)
+		}
+	})
+
+	t.Run("when raw JSON contains embedded multi-language code fences in string, it extracts and unmarshals cleanly", func(t *testing.T) {
+		in := "{\n" +
+			"  \"reasoning\": \"Writing tutorial with rust and python blocks\",\n" +
+			"  \"actions\": [\n" +
+			"    {\n" +
+			"      \"tool\": \"write_file\",\n" +
+			"      \"args\": {\n" +
+			"        \"path\": \"tutorial.md\",\n" +
+			"        \"content\": \"```rust\\nfn main() {\\n    println!(\\\"hi\\\");\\n}\\n```\\n\\n```python\\nprint('hi')\\n```\\n\"\n" +
+			"      }\n" +
+			"    }\n" +
+			"  ]\n" +
+			"}"
+
+		got, err := ExtractJSONBlock(in)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		resp, err := LenientUnmarshal(got)
+		if err != nil {
+			t.Fatalf("unmarshal error: %v", err)
+		}
+
+		content := resp.Actions[0].Args["content"].(string)
+		if !strings.Contains(content, "```rust") || !strings.Contains(content, "```python") {
+			t.Errorf("expected all embedded fences preserved, got: %q", content)
+		}
+	})
+}
+
 func TestLLMResponseIsExpectedShape(t *testing.T) {
 	// Sanity: domain.LLMResponse is still importable and used.
 	var r domain.LLMResponse

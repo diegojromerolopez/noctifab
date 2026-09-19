@@ -150,6 +150,66 @@ func DetectDefaultTestCommand(projectPath string) string {
 	return "go test -v ./..."
 }
 
+// DetectDefaultBuildCommand inspects the workspace directory for manifest or build files
+// and returns the appropriate compilation/build target for the project, if applicable.
+func DetectDefaultBuildCommand(projectPath string) string {
+	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
+		content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile"))
+		if rErr == nil {
+			s := string(content)
+			if strings.Contains(s, "build:") || strings.Contains(s, "build :") {
+				return "make build"
+			}
+			if strings.Contains(s, "all:") || strings.Contains(s, "all :") {
+				return "make all"
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
+		return "cargo check"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
+		content, rErr := os.ReadFile(filepath.Join(projectPath, "package.json"))
+		if rErr == nil && strings.Contains(string(content), "\"build\"") {
+			return "npm run build"
+		}
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+		return "go build ./..."
+	}
+	return ""
+}
+
+// DetectDefaultFormatterCommand inspects the workspace directory for manifest or format tool configurations
+// and returns the appropriate deterministic local code formatting command (never linters).
+func DetectDefaultFormatterCommand(projectPath string) string {
+	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
+		content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile"))
+		if rErr == nil {
+			s := string(content)
+			if strings.Contains(s, "format:") || strings.Contains(s, "format :") {
+				return "make format"
+			}
+			if strings.Contains(s, "fmt:") || strings.Contains(s, "fmt :") {
+				return "make fmt"
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+		return "go fmt ./..."
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
+		return "cargo fmt"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
+		content, rErr := os.ReadFile(filepath.Join(projectPath, "package.json"))
+		if rErr == nil && strings.Contains(string(content), "\"format\"") {
+			return "npm run format"
+		}
+	}
+	return ""
+}
+
 func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Duration, depMgr *DependencyManager) *HostSandbox {
 	return &HostSandbox{
 		AllowedCommands: allowed,
@@ -263,6 +323,8 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		cmd = exec.CommandContext(ctx, binary)
 	}
 	cmd.Dir = targetDir
+	rootProjectDir := ResolveRootProjectDir(projectPath)
+	cmd.Env = append(os.Environ(), BuildSharedCacheEnv(rootProjectDir)...)
 
 	if s.IsToolEvicted(binary) {
 		fmt.Printf("⚠️  [Sandbox Degraded] Tool %q was evicted. Skipping execution in degraded mode.\n", binary)

@@ -20,7 +20,8 @@ type Config struct {
 	Telemetry      TelemetryConfig          `yaml:"telemetry"`
 	Logging        LoggingConfig            `yaml:"logging"`
 	SAST           SASTConfig               `yaml:"sast"`
-	Unblocker      UnblockerConfig          `yaml:"unblocker"`
+	Fallback       FallbackConfig           `yaml:"fallback,omitempty"`
+	Unblocker      UnblockerConfig          `yaml:"unblocker,omitempty"`
 	Context        ContextConfig            `yaml:"context"`
 	Notifications  NotificationsConfig      `yaml:"notifications"`
 	WorkspaceCache WorkspaceCacheConfig     `yaml:"workspace_cache"`
@@ -60,9 +61,28 @@ type AgentsConfig struct {
 	Testers            AgentRoleConfig       `yaml:"testers"`
 	QA                 QAConfig              `yaml:"qa"`
 	Auditor            AgentRoleConfig       `yaml:"auditor"`
-	Unblocker          AgentRoleConfig       `yaml:"unblocker"`
-	LastResort         LastResortAgentConfig `yaml:"last_resort"`
+	Fallback           FallbackAgentConfig   `yaml:"fallback,omitempty"`
+	Unblocker          AgentRoleConfig       `yaml:"unblocker,omitempty"`
+	LastResort         LastResortAgentConfig `yaml:"last_resort,omitempty"`
 	WorkspaceCache     WorkspaceCacheConfig  `yaml:"workspace_cache"`
+	Spike              SpikeConfig           `yaml:"spike,omitempty"`
+}
+
+// SpikeConfig configures the greenfield prototyping spike phase.
+type SpikeConfig struct {
+	Enabled        bool               `yaml:"enabled"`
+	MaxTurns       int                `yaml:"max_turns,omitempty"`
+	TimeoutSeconds int                `yaml:"timeout_seconds,omitempty"`
+	Model          string             `yaml:"model,omitempty"`
+	Temperature    float64            `yaml:"temperature,omitempty"`
+	Profile        string             `yaml:"profile,omitempty"`
+	MaxTokens      int64              `yaml:"max_tokens,omitempty"`
+	Thinking       *ThinkingConfig    `yaml:"thinking,omitempty"`
+	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
+}
+
+func (s SpikeConfig) IsEnabled() bool {
+	return s.Enabled
 }
 
 // QAConfig reserves the bounded configuration contract for the experimental QA role.
@@ -82,7 +102,20 @@ type QAConfig struct {
 	Model              string             `yaml:"model,omitempty"`
 	Temperature        float64            `yaml:"temperature,omitempty"`
 	Profile            string             `yaml:"profile,omitempty"`
+	Thinking           *ThinkingConfig    `yaml:"thinking,omitempty"`
 	Providers          []AgentProviderRef `yaml:"providers,omitempty"`
+	MaxTokens          int64              `yaml:"max_tokens,omitempty"`
+	Ensemble           EnsembleConfig     `yaml:"ensemble,omitempty"`
+}
+
+type UserStoryComplexityConfig struct {
+	Min int `yaml:"min,omitempty"`
+	Max int `yaml:"max,omitempty"`
+}
+
+type UserStoriesConfig struct {
+	MaxCount   int                       `yaml:"max_count,omitempty"`
+	Complexity UserStoryComplexityConfig `yaml:"complexity,omitempty"`
 }
 
 type AgentRoleConfig struct {
@@ -91,9 +124,28 @@ type AgentRoleConfig struct {
 	Model          string             `yaml:"model,omitempty"`
 	Temperature    float64            `yaml:"temperature,omitempty"`
 	Profile        string             `yaml:"profile,omitempty"`
+	Thinking       *ThinkingConfig    `yaml:"thinking,omitempty"`
 	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
 	MaxUserStories int                `yaml:"max_user_stories,omitempty"`
+	UserStories    UserStoriesConfig  `yaml:"user_stories,omitempty"`
 	Passes         int                `yaml:"passes,omitempty"`
+	MaxTokens      int64              `yaml:"max_tokens,omitempty"`
+	Ensemble       EnsembleConfig     `yaml:"ensemble,omitempty"`
+}
+
+func (a AgentRoleConfig) GetMaxUserStories() int {
+	if a.UserStories.MaxCount > 0 {
+		return a.UserStories.MaxCount
+	}
+	return a.MaxUserStories
+}
+
+func (a AgentRoleConfig) GetMinComplexity() int {
+	return a.UserStories.Complexity.Min
+}
+
+func (a AgentRoleConfig) GetMaxComplexity() int {
+	return a.UserStories.Complexity.Max
 }
 
 type OCCConfig struct {
@@ -185,6 +237,8 @@ type ProviderSpec struct {
 	// client skips the response_format field entirely and relies on
 	// ExtractJSONBlock to parse the JSON envelope from the raw response.
 	DisableJSONMode bool `yaml:"disable_json_mode,omitempty"`
+	// Thinking controls chain-of-thought / extended reasoning settings.
+	Thinking *ThinkingConfig `yaml:"thinking,omitempty"`
 	// EnableThinking enables chain-of-thought / reasoning output (e.g. QwenCloud thinking mode).
 	EnableThinking *bool `yaml:"enable_thinking,omitempty"`
 	// ThinkingBudget caps the reasoning token budget (e.g. for QwenCloud thinking models).
@@ -260,19 +314,35 @@ func (v VCSConfig) GetIntegrationBranch() string {
 }
 
 type AgentProviderRef struct {
-	Name           string   `yaml:"name,omitempty"`
-	Provider       string   `yaml:"provider,omitempty"`
-	Model          string   `yaml:"model,omitempty"`
-	Models         []string `yaml:"models,omitempty"`
-	EnableThinking *bool    `yaml:"enable_thinking,omitempty"`
-	ThinkingBudget *int     `yaml:"thinking_budget,omitempty"`
+	Name           string            `yaml:"name,omitempty"`
+	Provider       string            `yaml:"provider,omitempty"`
+	Model          string            `yaml:"model,omitempty"`
+	Models         []string          `yaml:"models,omitempty"`
+	Count          int               `yaml:"count,omitempty"`
+	MaxTokens      *int              `yaml:"max_tokens,omitempty"`
+	Temperature    *float64          `yaml:"temperature,omitempty"`
+	Thinking       *ThinkingConfig   `yaml:"thinking,omitempty"`
+	EnableThinking *bool             `yaml:"enable_thinking,omitempty"`
+	ThinkingBudget *int              `yaml:"thinking_budget,omitempty"`
+	ExtraParams    map[string]string `yaml:"extra_params,omitempty"`
+}
+
+// GetCount returns the number of model instances configured, defaulting to 1.
+func (a AgentProviderRef) GetCount() int {
+	if a.Count <= 0 {
+		return 1
+	}
+	return a.Count
 }
 
 type RoleSetting struct {
 	Model       string             `yaml:"model,omitempty"`
 	Temperature float64            `yaml:"temperature"`
 	Profile     string             `yaml:"profile,omitempty"`
+	Thinking    *ThinkingConfig    `yaml:"thinking,omitempty"`
 	Providers   []AgentProviderRef `yaml:"providers,omitempty"`
+	MaxTokens   int64              `yaml:"max_tokens,omitempty"`
+	Ensemble    EnsembleConfig     `yaml:"ensemble,omitempty"`
 }
 
 type RolesConfig struct {
@@ -281,8 +351,9 @@ type RolesConfig struct {
 	Generator    RoleSetting `yaml:"generator"`
 	Tester       RoleSetting `yaml:"tester"`
 	QA           RoleSetting `yaml:"qa"`
-	Unblocker    RoleSetting `yaml:"unblocker"`
-	LastResort   RoleSetting `yaml:"last_resort"`
+	Fallback     RoleSetting `yaml:"fallback"`
+	Unblocker    RoleSetting `yaml:"unblocker,omitempty"`
+	LastResort   RoleSetting `yaml:"last_resort,omitempty"`
 }
 
 type ProfileConfig struct {
@@ -315,28 +386,8 @@ type SASTConfig struct {
 	FailOnSeverity string   `yaml:"fail_on_severity"`
 }
 
-// UnblockerConfig controls the autonomous unblocker agent that periodically
-// scans for stalled or blocked tasks/agents and injects corrective interventions.
-type UnblockerConfig struct {
-	// Enabled activates the unblocker goroutine (default: true).
-	Enabled bool `yaml:"enabled"`
-	// PollInterval defines how often the unblocker wakes up to scan for stalls (default: 30s).
-	PollInterval Duration `yaml:"poll_interval"`
-	// MaxRetries defines the maximum number of unblock/reset attempts before permanently failing a task (default: 3).
-	MaxRetries int `yaml:"max_retries"`
-	// StallThreshold is how long a task must be frozen IN_PROGRESS before being
-	// considered stalled (default: 5m).
-	StallThreshold Duration `yaml:"stall_threshold"`
-	// ConflictThreshold is how long a CONFLICT_BLOCKED task waits before the
-	// unblocker intervenes (default: 15m).
-	ConflictThreshold Duration `yaml:"conflict_threshold"`
-	// LLMAssessment enables LLM-based root-cause diagnosis of stalls. When false,
-	// the unblocker applies heuristic-only corrections without calling the LLM
-	// (cheaper, but less precise) (default: true).
-	LLMAssessment bool `yaml:"llm_assessment"`
-	// LastResortTriggers controls the threshold and signals for summoning the Last-Resort Agent.
-	LastResortTriggers LastResortTriggersConfig `yaml:"last_resort_triggers"`
-}
+// UnblockerConfig is a backwards-compatible alias for FallbackConfig.
+type UnblockerConfig = FallbackConfig
 
 type ContextMode string
 
@@ -349,6 +400,7 @@ const (
 type ContextConfig struct {
 	Mode              string `yaml:"mode"`
 	DiffWindowLines   int    `yaml:"diff_window_lines"`
+	WindowSize        int    `yaml:"window_size"`
 	CavemanCompaction bool   `yaml:"caveman_compaction"`
 	Compaction        string `yaml:"compaction"` // Options: "none" (default), "simple_english", "caveman"
 }
@@ -362,6 +414,16 @@ func (c ContextConfig) GetCompactionMode() string {
 		return "caveman"
 	}
 	return "none"
+}
+
+func (c ContextConfig) GetWindowLines() int {
+	if c.WindowSize > 0 {
+		return c.WindowSize
+	}
+	if c.DiffWindowLines > 0 {
+		return c.DiffWindowLines
+	}
+	return 15
 }
 
 func (c ContextConfig) GetMode() ContextMode {

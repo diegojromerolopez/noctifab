@@ -730,6 +730,45 @@ See [architecture.md](architecture.md#3-dynamic-model-fallback-engine-provider-s
 
 ---
 
+## Preflight Model Verification & Auto-Resolution (`/models`)
+
+During the startup preflight phase (`noctifab start`), Noctifab executes `llm.PingAndResolveModel` against each configured LLM provider:
+
+1. **Upfront Catalog Query**: Queries `/models` to verify network connectivity, auth token validity, and the active model list.
+2. **Missing & Deprecated Model Upgrades**: If a configured model is missing or deprecated (e.g. returning 404 or missing from the provider catalog), Noctifab automatically scores and selects the **highest-ranked available active model** before worker agents begin.
+3. **Alias Pinning**: Model aliases such as `auto`, `latest`, or empty string are dynamically resolved and pinned upfront.
+4. **Fail-Fast Pruning**: Any candidate endpoint that fails with an authentication error (401/402) or 404 is evicted immediately, preventing agents from wasting turns retrying non-existent routes.
+
+---
+
+## In-Memory Parameter Capability Cache (`globalCapabilityCache`)
+
+Different LLM providers and reasoning models enforce distinct constraints on chat completion parameters (e.g., rejecting explicit `temperature`, rejecting `max_tokens` in favor of `max_completion_tokens`, or rejecting `response_format=json_object`):
+
+1. **One-Error Learning**:
+   When any provider API rejects a parameter (e.g. `400 Bad Request: Unsupported parameter: 'temperature'`), Noctifab's `providerCapabilityCache` records the restriction in memory keyed by normalized model name.
+2. **Zero-Retry Guarantee on Subsequent Turns**:
+   From that turn onward, all subsequent requests to that model across any agent role automatically filter out the rejected parameter. The system never relies on repetitive fallback retries for known incompatible parameters.
+3. **Proactive Reasoning Model Handling**:
+   For reasoning model families (`o1`, `o3`, `o4`, `gpt-5`, `gpt-5.6-luna`, and `claude`), Noctifab proactively omits `temperature` and uses `max_completion_tokens` directly on the very first attempt.
+
+---
+
+## Dynamic Model Capability Discovery & Routine Task Extended Thinking Suppression
+
+To avoid hardcoding model names while maintaining zero latency overhead during rapid coding cycles, Noctifab dynamically discovers model parameter capabilities and suppresses reasoning token delays on routine tasks:
+
+### 1. Dynamic Parameter Discovery via `/models`
+- During preflight and model initialization, Noctifab queries the provider's `/models` endpoint and parses metadata schemas (`supported_parameters`, `capabilities`, `thinkingConfig`, `architecture`).
+- Discovered model attributes (such as thinking support, max completion tokens, and parameter restrictions) are cached dynamically in memory with zero reliance on hardcoded model string lists.
+
+### 2. Routine Task Extended Thinking Suppression
+- Extended chain-of-thought thinking (e.g. Claude Extended Thinking, Gemini Thinking, OpenAI Reasoning Effort, Qwen Thinking) produces hundreds of reasoning tokens per turn, introducing 20–60 second latency pauses.
+- For high-frequency routine execution roles (**`generator`**, **`tester`**, **`spike`**), Noctifab automatically suppresses extended reasoning tokens (`enable_thinking: false`, `thinking_budget: 0`, `reasoning_effort: "low"`).
+- For strategic planning and high-level analysis roles (**`planner`**, **`product_manager`**, **`auditor`**, **`fallback`**), full extended reasoning and thinking budgets are preserved.
+
+---
+
 ## 1-Click Local LLM Profiles & DeepSeek-R1 Reasoning Support
 
 Noctifab provides built-in, pre-tuned configuration profiles for local model deployments (Ollama, vLLM, LMDeploy, and OpenAI-compatible local engines) via `noctifab init --profile <preset>`:

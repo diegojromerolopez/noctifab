@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"strings"
 )
 
 // LLMAction represents a specific tool call request produced by the LLM.
@@ -51,4 +52,41 @@ func UncompactableTailLen(ctx context.Context) int {
 		return n
 	}
 	return 0
+}
+
+// cacheablePrefixKey carries the byte length of the static cacheable prefix
+// at the beginning of a prompt (e.g. system instructions and static body).
+type cacheablePrefixKey struct{}
+
+// WithCacheablePrefix marks the first prefixLen bytes of the prompt sent with
+// ctx as cacheable static prefix, enabling structured multi-block prompt caching.
+func WithCacheablePrefix(ctx context.Context, prefixLen int) context.Context {
+	return context.WithValue(ctx, cacheablePrefixKey{}, prefixLen)
+}
+
+// CacheablePrefixLen returns the cacheable static prefix length recorded in
+// ctx, or 0 when none was set.
+func CacheablePrefixLen(ctx context.Context) int {
+	if n, ok := ctx.Value(cacheablePrefixKey{}).(int); ok && n > 0 {
+		return n
+	}
+	return 0
+}
+
+// RoleContextKey is the typed context key for passing the active agent role.
+type RoleContextKey struct{}
+
+// WithRoleContext attaches an agent role name to the context.
+func WithRoleContext(ctx context.Context, role string) context.Context {
+	return context.WithValue(ctx, RoleContextKey{}, role)
+}
+
+// GetRoleFromContext retrieves the active agent role name from context.
+func GetRoleFromContext(ctx context.Context) string {
+	if roleVal := ctx.Value(RoleContextKey{}); roleVal != nil {
+		if roleStr, ok := roleVal.(string); ok && roleStr != "" {
+			return strings.ToLower(roleStr)
+		}
+	}
+	return ""
 }

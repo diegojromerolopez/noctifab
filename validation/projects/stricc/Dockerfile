@@ -3,7 +3,9 @@ FROM noctifab-validation:base AS noctifab-artifacts
 
 FROM rust:alpine
 
-RUN apk add --no-cache git bash docker-cli curl gcc make clang llvm18
+RUN rustup component add rustfmt clippy
+
+RUN apk add --no-cache git bash docker-cli curl gcc make clang llvm18 build-base
 
 COPY --from=noctifab-artifacts /usr/local/bin/noctifab /usr/local/bin/noctifab
 COPY --from=noctifab-artifacts /app/projects /app/projects

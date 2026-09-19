@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +44,7 @@ type StoryDAGScheduler struct {
 	storyIDs      []string // preserves order of discovery
 	mu            sync.Mutex
 	maxConcurrent int
+	pipelined     bool
 	gitMergeMutex sync.Mutex // serializes git branch merging during state finalization
 }
 
@@ -57,6 +59,21 @@ func NewStoryDAGScheduler(maxConcurrent int) *StoryDAGScheduler {
 	}
 }
 
+// SetPipelined configures whether child stories can begin planning and task dispatch
+// concurrently once parent stories are running, unblocking fine-grained task pipelining.
+func (s *StoryDAGScheduler) SetPipelined(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pipelined = enabled
+}
+
+// IsPipelined returns whether pipelined scheduling is enabled.
+func (s *StoryDAGScheduler) IsPipelined() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pipelined
+}
+
 // AddStory parses a StoryWorkItem and adds it to the scheduling graph.
 func (s *StoryDAGScheduler) AddStory(item StoryWorkItem) {
 	s.mu.Lock()
@@ -67,7 +84,13 @@ func (s *StoryDAGScheduler) AddStory(item StoryWorkItem) {
 		storyID = filepath.Base(item.Path)
 	}
 
-	deps := ParseStoryDependencies(item.Spec)
+	rawDeps := ParseStoryDependencies(item.Spec)
+	var deps []string
+	for _, dep := range rawDeps {
+		if dep != storyID && dep != filepath.Base(item.Path) {
+			deps = append(deps, dep)
+		}
+	}
 
 	node := &StoryDAGNode{
 		Item:      item,
@@ -82,6 +105,31 @@ func (s *StoryDAGScheduler) AddStory(item StoryWorkItem) {
 	s.nodes[storyID] = node
 }
 
+// MarkStoryCompleted marks a story node as already succeeded without executing it, unblocking dependent stories.
+func (s *StoryDAGScheduler) MarkStoryCompleted(storyIDOrPath string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	storyID := ExtractStoryID(storyIDOrPath)
+	if storyID == "" {
+		storyID = filepath.Base(storyIDOrPath)
+	}
+
+	if node, exists := s.nodes[storyID]; exists {
+		node.Status = StoryNodeSuccess
+	}
+}
+
+func isSkeletonStory(node *StoryDAGNode) bool {
+	if node == nil {
+		return false
+	}
+	lowerPath := strings.ToLower(node.Item.Path)
+	lowerSpec := strings.ToLower(node.Item.Spec)
+	return strings.Contains(lowerPath, "skeleton") || strings.Contains(lowerPath, "scaffold") ||
+		strings.Contains(lowerPath, "foundation") || strings.Contains(lowerSpec, "walking skeleton")
+}
+
 // Execute runs all queued user stories concurrently according to the dependency DAG.
 // processFunc is invoked concurrently for each unblocked user story.
 func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx context.Context, item StoryWorkItem) error) error {
@@ -90,6 +138,26 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 		s.mu.Unlock()
 		return nil
 	}
+	// Prioritize zero-dependency stories (especially walking skeletons/scaffolds)
+	// so the foundation entrypoint is built first before dependent feature stories.
+	sort.SliceStable(s.storyIDs, func(i, j int) bool {
+		nodeI := s.nodes[s.storyIDs[i]]
+		nodeJ := s.nodes[s.storyIDs[j]]
+		if nodeI == nil || nodeJ == nil {
+			return false
+		}
+		lenI := len(nodeI.DependsOn)
+		lenJ := len(nodeJ.DependsOn)
+		if lenI != lenJ {
+			return lenI < lenJ
+		}
+		isSkelI := isSkeletonStory(nodeI)
+		isSkelJ := isSkeletonStory(nodeJ)
+		if isSkelI != isSkelJ {
+			return isSkelI
+		}
+		return s.storyIDs[i] < s.storyIDs[j]
+	})
 	s.mu.Unlock()
 
 	cond := sync.NewCond(&s.mu)
@@ -136,9 +204,22 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 			depsSatisfied := true
 			for _, depID := range node.DependsOn {
 				depNode, exists := s.nodes[depID]
-				if !exists || depNode.Status != StoryNodeSuccess {
+				if !exists {
 					depsSatisfied = false
 					break
+				}
+				if s.pipelined {
+					// In pipelined mode, child stories can be dispatched to start planning
+					// and task execution as soon as parent stories are RUNNING or SUCCESS.
+					if depNode.Status != StoryNodeRunning && depNode.Status != StoryNodeSuccess {
+						depsSatisfied = false
+						break
+					}
+				} else {
+					if depNode.Status != StoryNodeSuccess {
+						depsSatisfied = false
+						break
+					}
 				}
 			}
 

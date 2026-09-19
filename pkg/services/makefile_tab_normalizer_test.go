@@ -1,6 +1,7 @@
 package services
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -44,12 +45,52 @@ clean:
 		}
 	})
 
-	t.Run("handles .mk extension", func(t *testing.T) {
-		input := "target:\n  echo hello"
-		expected := "target:\n\techo hello"
-		got := normalizeMakefileTabs("rules.mk", input)
+	t.Run("unindents targets mistakenly indented with spaces", func(t *testing.T) {
+		input := `format:
+    python3 -m compileall -q src tests
+
+    e2e:
+    docker compose up
+`
+		expected := `format:
+	python3 -m compileall -q src tests
+
+e2e:
+	docker compose up
+`
+		got := normalizeMakefileTabs("Makefile", input)
 		if got != expected {
-			t.Errorf("expected .mk file to be normalized")
+			t.Errorf("expected space-indented e2e: target to be unindented to column 0:\n%s\ngot:\n%s", expected, got)
+		}
+	})
+}
+
+func TestStandardizeMakefile(t *testing.T) {
+	t.Run("adds standard targets when missing", func(t *testing.T) {
+		input := "test:\n  pytest\n"
+		got := StandardizeMakefile(input)
+		if !strings.Contains(got, ".PHONY:") {
+			t.Errorf("expected .PHONY: in standardized Makefile")
+		}
+		if !strings.Contains(got, "all: build") {
+			t.Errorf("expected all: build in standardized Makefile")
+		}
+		if !strings.Contains(got, "clean:") {
+			t.Errorf("expected clean: in standardized Makefile")
+		}
+		if !strings.Contains(got, "run:") {
+			t.Errorf("expected run: in standardized Makefile")
+		}
+	})
+
+	t.Run("preserves existing build and test targets", func(t *testing.T) {
+		input := ".PHONY: test\n\nbuild:\n\tpython3 setup.py build\n\ntest:\n\tpytest\n"
+		got := StandardizeMakefile(input)
+		if !strings.Contains(got, "all: build") {
+			t.Errorf("expected all: build alias added")
+		}
+		if !strings.Contains(got, "python3 setup.py build") {
+			t.Errorf("expected existing build target preserved")
 		}
 	})
 }

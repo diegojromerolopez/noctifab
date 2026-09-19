@@ -171,7 +171,8 @@ func (c *Collector) Observe(ctx context.Context, event domain.ExecutionEvent) {
 	}
 
 	// Self-correction agent tracking
-	if event.AgentRole == string(domain.AgentRoleUnblocker) {
+	if event.AgentRole == string(domain.AgentRoleFallback) || event.AgentRole == string(domain.AgentRoleUnblocker) || event.AgentRole == string(domain.AgentRoleLastResort) {
+		c.snapshot.SelfCorrection.FallbackInvocations++
 		c.snapshot.SelfCorrection.UnblockerInvocations++
 	}
 	if event.AgentRole == "watchdog" || event.Name == "watchdog_repair" {

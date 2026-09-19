@@ -57,14 +57,20 @@ func ExtractJSONBlock(input string) (string, error) {
 // code. A fence is ` ``` ` optionally followed by a language tag (rust, go,
 // `json`, bash, ...) and terminated by a closing ` ``` ` line. Only
 // "fenced" code is stripped — JSON envelopes that happen to be wrapped in
-// ` ```json ` are re-exposed as the JSON text they contain.
+// stripFencedCodeBlocks removes markdown fenced code blocks (```...```) so the
+// scanner does not pick up `{` / `}` characters embedded in fenced source code.
+// It is string-literal-aware: backticks (```) appearing inside JSON string values
+// (e.g. within "content": "```rust\n...") are preserved as part of the string payload.
+// Outer JSON envelope code fences (```json...``` or ```...```) are unwrapped.
 func stripFencedCodeBlocks(input string) string {
 	var builder strings.Builder
 	i := 0
 	n := len(input)
+	inString := false
+	escaped := false
+	jsonDepth := 0
+
 	for i < n {
-		// Detect a fence opening: a line starting with ``` (after optional
-		// leading whitespace). We do a per-line scan so we keep newlines.
 		lineEnd := strings.IndexByte(input[i:], '\n')
 		var line string
 		if lineEnd == -1 {
@@ -73,76 +79,152 @@ func stripFencedCodeBlocks(input string) string {
 			line = input[i : i+lineEnd]
 		}
 		trimmed := strings.TrimLeft(line, " \t")
-		if strings.HasPrefix(trimmed, "```") {
-			// Skip the entire fenced block through its matching closing ``` .
-			start := i + lineEnd + 1
-			if lineEnd == -1 {
-				// Opening fence is the last line — nothing else to keep.
-				return builder.String()
-			}
-			// Search for a closing fence line.
-			closed := false
-			j := start
-			for j < n {
-				end := strings.IndexByte(input[j:], '\n')
-				var l string
-				if end == -1 {
-					l = input[j:]
-				} else {
-					l = input[j : j+end]
+
+		// If we are NOT inside a JSON string, check for markdown code fences.
+		if !inString && strings.HasPrefix(trimmed, "```") {
+			lang := strings.TrimSpace(strings.TrimPrefix(trimmed, "```"))
+			isJSONEnvelope := (lang == "" || strings.EqualFold(lang, "json"))
+
+			if isJSONEnvelope {
+				// Outer JSON envelope fence: unwrap by consuming lines until matching closing fence.
+				// We scan line-by-line while updating inString, escaped, and jsonDepth so that
+				// any inner ``` inside JSON strings are not mistaken for the closing fence.
+				start := i + lineEnd + 1
+				if lineEnd == -1 {
+					return builder.String()
 				}
-				lt := strings.TrimLeft(l, " \t")
-				if strings.HasPrefix(lt, "```") {
-					// Found closing fence. Check if it's a `json` tagged fence
-					// we should unwrap rather than drop.
-					lang := strings.TrimSpace(strings.TrimPrefix(trimmed, "```"))
-					if lang == `` || strings.EqualFold(lang, "json") {
-						// Re-expose the inner content of this fence as
-						// un-fenced text so the JSON block scanner sees it.
-						inner := input[start:j]
-						if end != -1 {
-							// Include the closing newline.
-							inner += "\n"
+				j := start
+				closed := false
+				for j < n {
+					end := strings.IndexByte(input[j:], '\n')
+					var l string
+					if end == -1 {
+						l = input[j:]
+					} else {
+						l = input[j : j+end]
+					}
+					lt := strings.TrimLeft(l, " \t")
+
+					// If we are NOT in a string and jsonDepth has balanced to 0,
+					// a line starting with ``` is the closing fence for this envelope.
+					if !inString && jsonDepth == 0 && strings.HasPrefix(lt, "```") {
+						closed = true
+						if end == -1 {
+							i = n
+						} else {
+							i = j + end + 1
 						}
-						builder.WriteString(inner)
+						break
+					}
+
+					// Otherwise, this line is part of the unwrapped JSON payload.
+					builder.WriteString(l)
+					if end != -1 {
+						builder.WriteByte('\n')
+					}
+
+					// Update lexical state across this line
+					for k := 0; k < len(l); k++ {
+						ch := l[k]
+						if inString {
+							if escaped {
+								escaped = false
+							} else if ch == '\\' {
+								escaped = true
+							} else if ch == '"' {
+								inString = false
+							}
+						} else {
+							switch ch {
+							case '"':
+								inString = true
+							case '{':
+								jsonDepth++
+							case '}':
+								if jsonDepth > 0 {
+									jsonDepth--
+								}
+							}
+						}
+					}
+
+					if end == -1 {
+						i = n
+						break
+					}
+					j = j + end + 1
+				}
+				if closed {
+					continue
+				}
+				i = n
+				continue
+			} else {
+				// Non-JSON code fence (e.g. ```rust, ```python, ```bash).
+				// Skip lines until closing ```.
+				start := i + lineEnd + 1
+				if lineEnd == -1 {
+					return builder.String()
+				}
+				j := start
+				for j < n {
+					end := strings.IndexByte(input[j:], '\n')
+					var l string
+					if end == -1 {
+						l = input[j:]
+					} else {
+						l = input[j : j+end]
+					}
+					lt := strings.TrimLeft(l, " \t")
+					if strings.HasPrefix(lt, "```") {
+						if end == -1 {
+							i = n
+						} else {
+							i = j + end + 1
+						}
+						break
 					}
 					if end == -1 {
-						closed = true
 						i = n
-					} else {
-						closed = true
-						i = j + end + 1
+						break
 					}
-					break
+					j = j + end + 1
 				}
-				if end == -1 {
-					// ran out of input without closing fence — drop rest.
-					i = n
-					closed = true
-					break
-				}
-				j = j + end + 1
+				continue
 			}
-			if !closed {
-				// No closing fence — never started a skip; leave the opening
-				// fence line so subsequent JSON scanning still operates on its
-				// trailing content.
-				builder.WriteString(line)
-				if lineEnd != -1 {
-					builder.WriteByte('\n')
-					i = i + lineEnd + 1
-				} else {
-					i = n
-				}
-			}
-			continue
 		}
+
+		// Regular line outside of outer fences: append to builder and update lexical state
 		builder.WriteString(line)
 		if lineEnd != -1 {
 			builder.WriteByte('\n')
 			i = i + lineEnd + 1
 		} else {
 			i = n
+		}
+
+		for k := 0; k < len(line); k++ {
+			ch := line[k]
+			if inString {
+				if escaped {
+					escaped = false
+				} else if ch == '\\' {
+					escaped = true
+				} else if ch == '"' {
+					inString = false
+				}
+			} else {
+				switch ch {
+				case '"':
+					inString = true
+				case '{':
+					jsonDepth++
+				case '}':
+					if jsonDepth > 0 {
+						jsonDepth--
+					}
+				}
+			}
 		}
 	}
 	return builder.String()

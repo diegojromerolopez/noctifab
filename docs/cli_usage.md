@@ -92,6 +92,12 @@ noctifab start [target_dir] --standby -d
 | `--spec` | `-s` | `SPEC.md` | Path to feature specification file |
 | `--resume` | | `false` | Resume execution from the first incomplete user story, skipping completed stories |
 
+#### Automated Preflight Diagnostics
+Before dispatching agents, `noctifab start` runs comprehensive preflight verification:
+- **Toolchain & Binary Integrity**: Inspects `$PATH` for sandbox test, lint, and formatting toolchains.
+- **Provider Live Model Discovery**: Calls each provider's `/models` endpoint to test authentication and validate model availability. Deprecated or 404 models are automatically upgraded to the provider's highest-ranked active flagship model upfront, eliminating startup failover delays.
+- **Quality Gate Validation**: Verifies release gate constraints and language consistency before state initialization.
+
 ### 4. `demo`
 Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Ideal for testing Noctifab's dark factory loop with zero LLM API keys.
 
@@ -397,12 +403,14 @@ The following flags can be passed to the root command or configured in `.noctifa
 | `--sast-scanners` | `gosec` | Comma-separated SAST scanners (`gosec`, `bandit`) |
 | `--sast-fail-on-severity` | `high` | Minimum severity to block the PR |
 
-## Dependency Auto-Install Configuration
+## Dependency Auto-Install & E2E Testing Configuration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `sandbox.auto_install_deps` | `false` | Auto-install missing toolchain dependencies |
-| `sandbox.package_managers` | `["pip","go","brew","curl","npm"]` | Package managers to use for installation |
+| `sandbox.package_managers` | `["pip","uv","go","brew","curl","npm"]` | Package managers to use for installation |
+| `sandbox.e2e.mode` | `docker` | E2E acceptance test runner mode (`docker` or `native`) |
+| `sandbox.e2e.command` | `""` | Optional explicit command override for E2E testing |
 
 ---
 
@@ -554,6 +562,8 @@ sandbox:
   test_command: "coverage run --branch -m unittest discover -s tests -p \"test_*.py\" && coverage report --fail-under=80"
   linter_command: "ruff check ."
   formatter_command: "black ." # or "ruff format ."
+  e2e:
+    mode: docker # or "native"
   allowed_commands:
     - python
     - git
@@ -561,6 +571,8 @@ sandbox:
     - coverage
     - ruff
     - black
+    - uv
+    - docker
 ```
 
 ### Ruby
@@ -637,3 +649,25 @@ sandbox:
     - rustc
     - git
 ```
+
+---
+
+## Environment Variables Reference
+
+Configuration values can be set or overridden via environment variables without editing `.noctifab/config.yaml`:
+
+| Environment Variable | Description | Default |
+|---|---|---|
+| `NOCTIFAB_RESCUE_MAX_TURNS` | Maximum multi-turn cycles for Autonomous Sovereign Rescue Takeover (`fallback.sovereign_rescue.max_turns`) | `2` |
+| `NOCTIFAB_FALLBACK_ENABLED` | Enable or disable the background fallback watchdog goroutine (`fallback.enabled`) | `true` |
+| `NOCTIFAB_FALLBACK_POLL_INTERVAL` | Fallback watchdog polling interval (e.g. `30s`, `1m`) | `30s` |
+| `NOCTIFAB_FALLBACK_MAX_RETRIES` | Maximum retry/unblock attempts before marking a task failed | `3` |
+| `NOCTIFAB_FALLBACK_STALL_THRESHOLD` | Duration before an un-updated in-progress task is considered stalled | `5m` |
+| `NOCTIFAB_FALLBACK_CONFLICT_THRESHOLD` | Duration before intervening on conflict-blocked tasks | `15m` |
+| `NOCTIFAB_MAX_ACTIONS` | Maximum agent actions allowed per run (`runtime.max_actions`) | `100` |
+| `NOCTIFAB_MAX_DURATION` | Maximum overall execution duration (e.g. `45m`, `2h`) | `0` (unlimited) |
+| `NOCTIFAB_SANDBOX_MODE` | Sandbox execution mode (`host`, `docker`, or `disabled`) | `host` |
+| `NOCTIFAB_DB_PATH` | Path to the SQLite state database | `.noctifab/data/noctifab.db` |
+| `NOCTIFAB_LLM_PROVIDER` | Primary LLM provider name (`openai`, `anthropic`, `gemini`, etc.) | `openai` |
+| `NOCTIFAB_LLM_MODEL` | Primary LLM model identifier | `latest` |
+| `NOCTIFAB_LOG_LEVEL` | Log verbosity (`debug`, `info`, `warn`, `error`) | `info` |

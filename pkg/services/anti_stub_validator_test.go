@@ -55,6 +55,13 @@ def read_file(p):
 		violations := v.ValidateContent("src/reader.py", code)
 		assert.Empty(t, violations)
 	})
+
+	t.Run("when python has if name == main with pass, it detects violation", func(t *testing.T) {
+		code := `if __name__ == '__main__': pass`
+		violations := v.ValidateContent("src/main.py", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "python_empty_stub_function", violations[0].Rule)
+	})
 }
 
 func TestAntiStubValidator_ShellMasks(t *testing.T) {
@@ -104,6 +111,133 @@ fn handle_req() {
 		violations := v.ValidateContent("src/main.rs", code)
 		assert.Len(t, violations, 1)
 		assert.Equal(t, "rust_todo_stub", violations[0].Rule)
+	})
+
+	t.Run("when Rust has single-line empty main fn, it detects violation", func(t *testing.T) {
+		code := `fn main() {}`
+		violations := v.ValidateContent("src/main.rs", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "rust_todo_stub", violations[0].Rule)
+	})
+
+	t.Run("when Rust has multi-line empty main fn, it detects violation", func(t *testing.T) {
+		code := `
+fn main() {
+}
+`
+		violations := v.ValidateContent("src/main.rs", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "rust_todo_stub", violations[0].Rule)
+	})
+
+	t.Run("when Rust has real main implementation, it is allowed", func(t *testing.T) {
+		code := `
+fn main() {
+    if let Err(e) = wc::run(std::env::args()) {
+        std::process::exit(1);
+    }
+}
+`
+		violations := v.ValidateContent("src/main.rs", code)
+		assert.Empty(t, violations)
+	})
+
+	t.Run("when Go has single-line empty main, it detects violation", func(t *testing.T) {
+		code := `package main
+
+func main() {}
+`
+		violations := v.ValidateContent("main.go", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "go_empty_main_stub", violations[0].Rule)
+	})
+
+	t.Run("when Go has multi-line empty main, it detects violation", func(t *testing.T) {
+		code := `package main
+
+func main() {
+}
+`
+		violations := v.ValidateContent("main.go", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "go_empty_main_stub", violations[0].Rule)
+	})
+
+	t.Run("when Go has real main, it is allowed", func(t *testing.T) {
+		code := `package main
+
+func main() {
+	app.Run()
+}
+`
+		violations := v.ValidateContent("main.go", code)
+		assert.Empty(t, violations)
+	})
+
+	t.Run("when C has single-line empty main, it detects violation", func(t *testing.T) {
+		code := `int main(void) { return 0; }`
+		violations := v.ValidateContent("src/main.c", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "c_empty_main_stub", violations[0].Rule)
+	})
+
+	t.Run("when C has multi-line empty main with return 0, it detects violation", func(t *testing.T) {
+		code := `int main(int argc, char **argv) {
+    return 0;
+}
+`
+		violations := v.ValidateContent("src/main.c", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "c_empty_main_stub", violations[0].Rule)
+	})
+
+	t.Run("when C has real main with server dispatch, it is allowed", func(t *testing.T) {
+		code := `int main(int argc, char **argv) {
+    server_t *srv = server_create(8080);
+    return server_run(srv);
+}
+`
+		violations := v.ValidateContent("src/main.c", code)
+		assert.Empty(t, violations)
+	})
+
+	t.Run("when Java has empty main, it detects violation", func(t *testing.T) {
+		code := `public class Main {
+    public static void main(String[] args) {}
+}
+`
+		violations := v.ValidateContent("src/Main.java", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "java_empty_main_stub", violations[0].Rule)
+	})
+
+	t.Run("when Java has multi-line empty main, it detects violation", func(t *testing.T) {
+		code := `public class Main {
+    public static void main(String[] args) {
+    }
+}
+`
+		violations := v.ValidateContent("src/Main.java", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "java_empty_main_stub", violations[0].Rule)
+	})
+
+	t.Run("when Java has real main, it is allowed", func(t *testing.T) {
+		code := `public class Main {
+    public static void main(String[] args) {
+        SpringApplication.run(Main.class, args);
+    }
+}
+`
+		violations := v.ValidateContent("src/Main.java", code)
+		assert.Empty(t, violations)
+	})
+
+	t.Run("when JS/TS has empty main function, it detects violation", func(t *testing.T) {
+		code := `export async function main() {}`
+		violations := v.ValidateContent("src/index.ts", code)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "javascript_empty_main_stub", violations[0].Rule)
 	})
 
 	t.Run("when JS has throw not implemented, it detects violation", func(t *testing.T) {
@@ -159,4 +293,30 @@ func TestAntiStubValidator_ValidateWorkspace(t *testing.T) {
 	targetViolations, err := v.ValidateWorkspace(tmpDir, []string{"src/valid.py"})
 	require.NoError(t, err)
 	assert.Empty(t, targetViolations)
+}
+
+func TestAntiStubValidator_MakefileStubs(t *testing.T) {
+	v := services.NewAntiStubValidator()
+
+	t.Run("when Makefile test target only echoes message, it detects violation", func(t *testing.T) {
+		makefile := `
+.PHONY: test
+test:
+	@echo "Running unit tests..."
+`
+		violations := v.ValidateContent("Makefile", makefile)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "stub_makefile_target", violations[0].Rule)
+	})
+
+	t.Run("when Makefile test target runs real test command, it is allowed", func(t *testing.T) {
+		makefile := `
+.PHONY: test
+test:
+	@echo "Running tests..."
+	npm run test
+`
+		violations := v.ValidateContent("Makefile", makefile)
+		assert.Empty(t, violations)
+	})
 }

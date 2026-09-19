@@ -1,5 +1,13 @@
 package config
 
+import "strings"
+
+// E2EConfig defines configuration for end-to-end acceptance testing.
+type E2EConfig struct {
+	Mode    string `yaml:"mode"`    // "docker" (default) or "native"
+	Command string `yaml:"command"` // optional explicit override
+}
+
 type LinterConfig struct {
 	Command             *string `yaml:"command,omitempty"`
 	MaxIssues           *int    `yaml:"max_issues,omitempty"`
@@ -8,12 +16,20 @@ type LinterConfig struct {
 }
 
 type SandboxConfig struct {
-	Mode               string       `yaml:"mode"`
-	TimeoutSeconds     int          `yaml:"timeout_seconds"`
-	IdleTimeoutSeconds int          `yaml:"idle_timeout_seconds"`
-	TestCommand        string       `yaml:"test_command"`
-	FormatterCommand   string       `yaml:"formatter_command"`
+	Mode               string `yaml:"mode"`
+	TimeoutSeconds     int    `yaml:"timeout_seconds"`
+	IdleTimeoutSeconds int    `yaml:"idle_timeout_seconds"`
+	TestCommand        string `yaml:"test_command"`
+	FormatterCommand   string `yaml:"formatter_command"`
+	// SyntaxCheckCommand is an optional shell command template executed after
+	// every file write/edit to perform a lightweight syntax validation.
+	// Use {file} as a placeholder for the absolute path of the written file.
+	// Example: "python3 -m py_compile {file}" or "ruby -c {file}".
+	// When empty (default), no syntax check is performed — the tool is a pure
+	// I/O operation with zero external binary dependencies.
+	SyntaxCheckCommand string       `yaml:"syntax_check_command"`
 	Linter             LinterConfig `yaml:"linter"`
+	E2E                E2EConfig    `yaml:"e2e"`
 	// Legacy flat fields for backward compatibility
 	LinterCommand                *string  `yaml:"linter_command,omitempty"`
 	MaxLinterRetries             *int     `yaml:"max_linter_retries,omitempty"`
@@ -64,4 +80,17 @@ func (s SandboxConfig) GetMaxLinterRetries() int {
 		return *s.MaxLinterRetries
 	}
 	return 3
+}
+
+// GetE2EMode returns the configured E2E mode ("docker" or "native"), defaulting to "docker".
+func (s SandboxConfig) GetE2EMode() string {
+	if s.E2E.Mode != "" {
+		return strings.ToLower(strings.TrimSpace(s.E2E.Mode))
+	}
+	return "docker"
+}
+
+// GetE2ECommand returns the configured custom E2E command override.
+func (s SandboxConfig) GetE2ECommand() string {
+	return strings.TrimSpace(s.E2E.Command)
 }

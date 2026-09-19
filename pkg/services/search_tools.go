@@ -39,8 +39,8 @@ func (t *FindFilesTool) Description() string {
 }
 func (t *FindFilesTool) Execute(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
 	pattern, ok := args["pattern"].(string)
-	if !ok || pattern == "" {
-		return "", errors.New("missing or invalid 'pattern' argument")
+	if !ok || strings.TrimSpace(pattern) == "" {
+		pattern = "*"
 	}
 
 	var matched []string
