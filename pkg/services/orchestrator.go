@@ -164,6 +164,7 @@ func NewOrchestratorWithRuntime(
 	}
 	var runner Sandbox
 	if eval != nil {
+		eval.SetE2EConfig(cfg.E2E)
 		runner = eval.Runner
 	}
 	auditor := runtime.AcceptanceAuditor

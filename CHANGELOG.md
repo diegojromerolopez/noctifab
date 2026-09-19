@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.93.0] - 2026-09-19
+
+### Added
+- **Layered Defense E2E Quality Architecture (`pkg/services/test_validator.go`, `pkg/services/test_validator_scope.go`, `docs/loop_orchestration.md`)**:
+  - Implemented defense-in-depth E2E testing architecture across the orchestrator pipeline:
+    - **Whole-Suite E2E Enforcement**: `StoryQAAuditor`, `RunFallbackAgent`, `start_sovereign_rescue`, `AcceptanceAuditor`, and QA remediation tasks (`qa-remediation-*`, `spec-remediation-*`) mandate complete, unfiltered E2E execution.
+    - **Feature-Scoped E2E in Generator-Tester Loop (`isE2EFailureInScope`)**: Evaluates detected E2E test suites during intra-task execution while scoping failure enforcement strictly to the active feature under development (matching story ID, target files, and feature keywords).
+    - Out-of-scope downstream failures (tests for future, unimplemented features) are logged and safely ignored in the task loop, preventing false-positive blocks while preserving early integration feedback.
+    - In-scope failures immediately fail task validation and trigger single-turn generator surgical repair with the exact failure traceback.
+- **E2E Configuration Wiring Across Evaluators (`pkg/services/orchestrator.go`, `cmd/noctifab/cli/start_runner.go`, `cmd/noctifab/cli/serve.go`)**:
+  - Wired `cfg.Sandbox.E2E` directly into `TestValidator` via `SetE2EConfig`, propagating custom E2E commands and execution modes across CLI runner, daemon server, and orchestrator execution loops.
+
 ## [0.92.1] - 2026-09-19
 
 ### Fixed

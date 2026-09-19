@@ -257,6 +257,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 	scheduler := services.NewScheduler(services.NewFileLockRegistry())
 	evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+	evaluator.SetE2EConfig(cfg.Sandbox.E2E)
 	evaluator.Formatter = services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
 	evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
 	evaluator.SyntaxChecker = services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)

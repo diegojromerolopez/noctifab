@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -42,6 +43,82 @@ type TestValidator struct {
 	// If Run 1 fails or flakes, remaining runs are executed for majority voting.
 	ShortCircuitConsensus bool
 	SyntaxChecker         SyntaxChecker
+	E2ECommand            string
+	E2EMode               string
+	EnforceE2E            bool
+}
+
+func (v *TestValidator) SetE2ECommand(cmd string) {
+	v.E2ECommand = cmd
+}
+
+func (v *TestValidator) SetE2EMode(mode string) {
+	v.E2EMode = mode
+}
+
+func (v *TestValidator) SetE2EConfig(cfg config.E2EConfig) {
+	v.E2ECommand = cfg.Command
+	v.E2EMode = cfg.Mode
+}
+
+func (v *TestValidator) SetEnforceE2E(enforce bool) {
+	v.EnforceE2E = enforce
+}
+
+func (v *TestValidator) detectE2ECommand(projectPath string) string {
+	return DetectE2ECommand(projectPath, v.E2EMode, v.E2ECommand)
+}
+
+func (v *TestValidator) shouldValidateE2E(state *domain.State, task domain.Task) bool {
+	if state == nil || strings.TrimSpace(state.ProjectPath) == "" {
+		return false
+	}
+	if v.EnforceE2E {
+		return true
+	}
+	// Always validate E2E for remediation and rescue tasks
+	if strings.HasPrefix(task.ID, "qa-remediation-") ||
+		strings.HasPrefix(task.ID, "spec-remediation-") ||
+		strings.HasPrefix(task.ID, "sovereign-rescue-") {
+		return true
+	}
+	// Check if task targets E2E or integration files
+	for _, tf := range task.TargetFiles {
+		lower := strings.ToLower(tf)
+		if strings.Contains(lower, "e2e") ||
+			strings.Contains(lower, "integration") ||
+			strings.HasSuffix(lower, "docker-compose.yml") ||
+			strings.HasSuffix(lower, "docker-compose.e2e.yml") ||
+			strings.Contains(lower, "test_server") ||
+			strings.Contains(lower, "test_client") {
+			return true
+		}
+	}
+	// Check if task title explicitly targets E2E or integration tests
+	lowerTitle := strings.ToLower(task.Title)
+	if strings.Contains(lowerTitle, "e2e") ||
+		strings.Contains(lowerTitle, "integration test") ||
+		strings.Contains(lowerTitle, "black-box") {
+		return true
+	}
+	// Check if this is the final task of a story
+	if task.StoryID != "" {
+		allOthersCompleted := true
+		storyTaskCount := 0
+		for _, t := range state.Tasks {
+			if t.StoryID == task.StoryID && t.ID != task.ID {
+				storyTaskCount++
+				if t.Status != domain.TaskSuccess {
+					allOthersCompleted = false
+					break
+				}
+			}
+		}
+		if storyTaskCount > 0 && allOthersCompleted {
+			return true
+		}
+	}
+	return false
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
@@ -174,6 +251,36 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	// Strict majority vote; with the default single run this reduces to
 	// requiring that one run to pass.
 	if passCount > runs/2 {
+		if v.shouldValidateE2E(state, task) {
+			e2eCmd := v.detectE2ECommand(state.ProjectPath)
+			if e2eCmd != "" && v.Runner != nil {
+				e2eTimeout := v.RunTimeout
+				if e2eTimeout <= 0 {
+					e2eTimeout = 5 * time.Minute
+				}
+				e2eCtx, e2eCancel := context.WithTimeout(ctx, e2eTimeout)
+				e2eOut, e2eErr := v.Runner.RunCommand(e2eCtx, state.ProjectPath, e2eCmd, "")
+				e2eCancel()
+
+				if e2eErr != nil {
+					if isMissingToolOutput(e2eOut + " " + e2eErr.Error()) {
+						fmt.Printf("⚠️  [Validation Degraded] Task %s: required E2E tool is absent on host (%s). Proceeding in degraded mode.\n", task.ID, e2eCmd)
+					} else if !isE2EFailureInScope(state, task, e2eOut+"\n"+e2eErr.Error()) {
+						fmt.Printf("⚠️  Orchestrator: Task %s E2E failure(s) are outside the scope of active feature; ignoring out-of-scope failure in generator-tester loop.\n", task.ID)
+					} else {
+						fmt.Printf("❌ Orchestrator: Task %s E2E test gate (%s) failed: %v\n", task.ID, e2eCmd, e2eErr)
+						return false, fmt.Sprintf("E2E test validation failed (%s):\n%s\n%v", e2eCmd, e2eOut, e2eErr), nil
+					}
+				} else {
+					noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, e2eOut)
+					if noTestsRan {
+						fmt.Printf("❌ Orchestrator: Task %s E2E test suite produced no tests: %s\n", task.ID, notice)
+						return false, fmt.Sprintf("E2E test validation failed (%s): %s", e2eCmd, notice), nil
+					}
+				}
+			}
+		}
+
 		if passCount == runs {
 			return true, "All validation runs passed successfully", nil
 		}

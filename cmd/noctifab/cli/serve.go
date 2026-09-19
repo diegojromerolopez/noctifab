@@ -145,6 +145,7 @@ var serveCmd = &cobra.Command{
 		validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
 		scheduler := services.NewScheduler(services.NewFileLockRegistry())
 		evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+		evaluator.SetE2EConfig(cfg.Sandbox.E2E)
 		evaluator.Formatter = formatter
 		evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
 		evaluator.SyntaxChecker = syntaxChecker

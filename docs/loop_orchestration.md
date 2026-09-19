@@ -20,6 +20,44 @@
 
 ---
 
+## Layered E2E Testing & Quality Architecture
+
+Noctifab enforces a **defense-in-depth ("layered fallback")** strategy for End-to-End (E2E) integration testing. This ensures that integration failures are detected and resolved as early as possible without prematurely blocking intermediate tasks on future, unimplemented features.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  1. Whole-Project Acceptance Audit Gate (AcceptanceAuditor)                             │ <- Runs FULL E2E against SPEC.md at project conclusion
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│  2. Post-Pipeline Sovereign Rescue Agent (start_sovereign_rescue)                       │ <- Runs FULL E2E on rescue turns if any story failed
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│  3. Story QA Completeness Gate (StoryQAAuditor)                                         │ <- Runs FULL E2E at the end of each completed user story
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│  4. In-Loop Fallback Agent (RunFallbackAgent)                                           │ <- Runs FULL E2E on task stalls, retries exhausted, or sovereign directives
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│  5. QA & Spec Remediation Tasks (qa-remediation-*, spec-remediation-*)                  │ <- Runs FULL E2E before declaring remediation task green
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│  6. Generator-Tester Loop (TestValidator.ValidateTask)                                  │ <- Runs FEATURE-SCOPED E2E: in-scope failures enforced;
+│                                                                                         │    out-of-scope downstream failures ignored
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Whole-Suite E2E Enforcement Points
+In the following gates, the **entire E2E test suite** (`make e2e`, `docker compose.e2e.yml`, or custom commands) is executed and strictly enforced:
+- **Story QA Auditor (`StoryQAAuditor`)**: Executed after all tasks of a user story achieve `TaskSuccess`. Verifies that the completed story integrates with the system and passes the full E2E suite.
+- **In-Loop Fallback Agent (`RunFallbackAgent`)**: Triggered when a task stalls, exhausts retries, or encounters QA deadlocks. Evaluates full E2E tests on each sovereign repair turn, rejecting turns where integration fails.
+- **Post-Pipeline Sovereign Rescue (`start_sovereign_rescue`)**: Activated if any story remains unfulfilled after pipeline completion. Mandates full E2E execution and anti-stub quality gating on every turn.
+- **Whole-Project Acceptance Gate (`AcceptanceAuditor`)**: Evaluated at the finale of the run against `SPEC.md`. Requires full E2E verification across all system commands.
+- **Remediation Tasks (`qa-remediation-*`, `spec-remediation-*`)**: Created specifically to resolve audit gaps; every failure is considered in-scope and must be fixed before the task passes.
+
+### 2. Feature-Scoped E2E in the Generator-Tester Loop
+During intra-task execution in the generator-tester loop (`TestValidator.ValidateTask`):
+- When unit tests pass, `TestValidator` evaluates detected E2E tests for tasks targeting integration files, final tasks in a story, or tasks with E2E directives.
+- **Scope Filtering (`isE2EFailureInScope`)**: Noctifab parses failure traces from test runners (Pytest, Go test, Cargo, generic runners) and checks failing test names/files against the **active feature scope** (story ID, target files, and feature keywords).
+- **In-Scope Failures**: If a failure corresponds to the active feature under development, `ValidateTask` returns `Passed: false` with the failure log, immediately triggering the generator's single-turn **surgical repair turn**.
+- **Out-of-Scope Failures**: If the E2E suite reports failures in downstream features that have not yet been developed (e.g. `Hashes` or `PubSub` failing while developing `US-001 Connection & Ping`), the failure is logged and safely ignored in the task loop (`⚠️ Orchestrator: Task ... E2E failure(s) are outside the scope of active feature; ignoring out-of-scope failure`). This guarantees forward momentum without masking errors in the current feature.
+
+---
+
 ## Configuration
 
 In `.noctifab/config.yaml`:

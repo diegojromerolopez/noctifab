@@ -195,7 +195,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 		// First-Class Generator Surgical Repair
 		initCategory := CategorizeFailureLog(logMsg)
-		if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic) {
+		if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic || strings.Contains(strings.ToLower(logMsg), "e2e")) {
 			fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, initCategory)
 			o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
 			passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
