@@ -506,6 +506,10 @@ def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = N
                     except Exception:
                         pass
 
+    # 4. Uninstall any host Python packages named after project to prevent host runtime contamination
+    proj_name = os.path.basename(os.path.abspath(project_dir))
+    subprocess.run(["python3", "-m", "pip", "uninstall", "-y", proj_name], capture_output=True)
+
     # Ensure empty logs and reports directories exist inside .noctifab
     os.makedirs(os.path.join(noctifab_dir, "logs"), exist_ok=True)
     os.makedirs(os.path.join(noctifab_dir, "reports"), exist_ok=True)

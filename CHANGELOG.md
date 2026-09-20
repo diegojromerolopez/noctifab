@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.1] - 2026-09-20
+
+### Added
+- **Worktree Task Concurrency Optimization (`pkg/infrastructure/prompts/defaults/planner/decompose.tmpl`)**:
+  - Added Rule 12 (`MAXIMUM TASK CONCURRENCY & INDEPENDENT VERTICAL SLICES`) to planner decompose prompts, instructing planner agents to avoid artificial linear task dependencies for tasks targeting disjoint files so the orchestrator can dispatch tasks concurrently across Git worktrees.
+- **Host Runtime Python Package Contamination Guard (`validation/bin/native_project_loop.py`)**:
+  - Added step 4 to `clean_project_workspace` in `native_project_loop.py` to automatically execute `python3 -m pip uninstall -y <project>` during workspace resets, guaranteeing zero host environment contamination from editable pip installs.
+
 ## [0.96.0] - 2026-09-20
 
 ### Added
