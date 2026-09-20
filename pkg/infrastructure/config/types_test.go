@@ -155,6 +155,13 @@ func TestContextConfig_GetMode(t *testing.T) {
 		}
 	})
 
+	t.Run("tree_sitter bool flag", func(t *testing.T) {
+		cc := ContextConfig{TreeSitter: true}
+		if cc.GetMode() != ContextModeTreeSitter {
+			t.Errorf("expected ContextModeTreeSitter via TreeSitter: true, got %v", cc.GetMode())
+		}
+	})
+
 	t.Run("invalid mode falls back to full", func(t *testing.T) {
 		cc := ContextConfig{Mode: "unknown_mode"}
 		if cc.GetMode() != ContextModeFull {

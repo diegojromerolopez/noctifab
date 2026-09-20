@@ -46,6 +46,26 @@ func TestInstallPackageTool(t *testing.T) {
 		assert.Contains(t, res, "installed successfully")
 	})
 
+	t.Run("when local .venv exists it uses .venv/bin/pip", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		venvPip := filepath.Join(tmpDir, ".venv", "bin", "pip")
+		err := os.MkdirAll(filepath.Dir(venvPip), 0755)
+		assert.NoError(t, err)
+		err = os.WriteFile(venvPip, []byte("#!/bin/sh\n"), 0755)
+		assert.NoError(t, err)
+
+		runner := &mockSandboxRunner{out: "Successfully installed coverage"}
+		tool := &InstallPackageTool{Runner: runner}
+
+		res, err := tool.Execute(context.Background(), &domain.State{ProjectPath: tmpDir}, map[string]any{
+			"package": "coverage",
+			"manager": "pip",
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, venvPip+" install coverage", runner.lastCmd)
+		assert.Contains(t, res, "installed successfully")
+	})
+
 	t.Run("when npm manager is specified it constructs npm command", func(t *testing.T) {
 		runner := &mockSandboxRunner{out: "added vitest"}
 		tool := &InstallPackageTool{Runner: runner}

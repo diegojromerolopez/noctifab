@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.2] - 2026-09-20
+
+### Added
+- **Explicit `context.tree_sitter` Boolean Configuration (`pkg/infrastructure/config/types.go`)**:
+  - Added dedicated `tree_sitter: true` boolean property to `ContextConfig`, allowing straightforward activation of Tree-Sitter AST symbol mapping in addition to `mode: tree_sitter`.
+- **Hermetic `uv` Virtualenv & Zero Host Pollution Mandate (`validation/bin/native_project_loop.py`, `pkg/services/dependency_tools.go`, `pkg/infrastructure/prompts/defaults/planner/decompose.tmpl`)**:
+  - Automatically initializes `.venv` via `uv venv` during project workspace cleaning in `native_project_loop.py` and injects `VIRTUAL_ENV` and `.venv/bin` into `PATH` for native execution runs, guaranteeing host runtime isolation.
+  - Updated `InstallPackageTool` to detect and use `.venv/bin/pip` when present, preventing global system package pollution.
+  - Updated Rule 8 in planner decompose prompt mandating isolated virtual environments for native Python testing and containerized runners when hermetic local package installation is not possible.
+
 ## [0.96.1] - 2026-09-20
 
 ### Added

@@ -528,6 +528,15 @@ def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = N
                 subprocess.run(["git", "clean", "-fdx", "-e", ".noctifab/secrets.yaml", "-e", ".noctifab/config.yaml"], cwd=project_dir, capture_output=True)
                 break
 
+    # 5. Ensure hermetic virtual environment exists for Python projects (using uv or python -m venv)
+    is_python = any(os.path.exists(os.path.join(project_dir, f)) for f in ["pyproject.toml", "requirements.txt", "setup.py", "Makefile"])
+    if is_python:
+        uv_path = shutil.which("uv")
+        if uv_path:
+            subprocess.run([uv_path, "venv", ".venv"], cwd=project_dir, capture_output=True)
+        else:
+            subprocess.run(["python3", "-m", "venv", ".venv"], cwd=project_dir, capture_output=True)
+
     log_success(f"Workspace '{project_dir}' cleanly reset to baseline.")
 
 
@@ -559,6 +568,13 @@ def run_filesystem_validation(project_dir: str, timeout_seconds: int, preserve_w
 
     start_time = time.time()
     env = os.environ.copy()
+
+    # Prepend isolated virtualenv bin to PATH to guarantee zero system package pollution
+    venv_dir = os.path.join(project_dir, ".venv")
+    if os.path.isdir(venv_dir):
+        venv_bin = os.path.join(venv_dir, "bin")
+        env["VIRTUAL_ENV"] = venv_dir
+        env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}"
 
     proc = subprocess.Popen(
         cmd,

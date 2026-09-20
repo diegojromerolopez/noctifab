@@ -399,6 +399,7 @@ const (
 
 type ContextConfig struct {
 	Mode              string `yaml:"mode"`
+	TreeSitter        bool   `yaml:"tree_sitter"`
 	DiffWindowLines   int    `yaml:"diff_window_lines"`
 	WindowSize        int    `yaml:"window_size"`
 	CavemanCompaction bool   `yaml:"caveman_compaction"`
@@ -427,6 +428,9 @@ func (c ContextConfig) GetWindowLines() int {
 }
 
 func (c ContextConfig) GetMode() ContextMode {
+	if c.TreeSitter {
+		return ContextModeTreeSitter
+	}
 	switch ContextMode(strings.ToLower(strings.TrimSpace(c.Mode))) {
 	case ContextModeDiffWindow:
 		return ContextModeDiffWindow
