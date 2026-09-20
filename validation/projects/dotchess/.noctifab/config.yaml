@@ -310,4 +310,4 @@ context:
   tree_sitter: true
   diff_window_lines: 40
   window_size: 40
-  compaction: caveman
+  compaction: none
