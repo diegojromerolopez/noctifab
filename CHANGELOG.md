@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.5] - 2026-09-20
+
+### Fixed
+- **Safe Local Workspace Baseline Reset (`validation/bin/native_project_loop.py`)**:
+  - Configured `target_ref` in `clean_project_workspace` to preserve local branch tip commits when `baseline_commit` is omitted, preventing inadvertent rollbacks of local unpushed specification refinements.
+
 ## [0.96.4] - 2026-09-20
 
 ### Changed

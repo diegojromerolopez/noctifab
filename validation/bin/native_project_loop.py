@@ -517,7 +517,7 @@ def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = N
     # Reset git working copy to baseline commit or upstream base branch
     if os.path.exists(os.path.join(project_dir, ".git")):
         for branch in ["main", "master"]:
-            target_ref = baseline_commit or f"origin/{branch}"
+            target_ref = baseline_commit or branch
             chk = subprocess.run(["git", "checkout", "-f", branch], cwd=project_dir, capture_output=True, text=True)
             if chk.returncode == 0:
                 res = subprocess.run(["git", "rev-parse", "--verify", target_ref], cwd=project_dir, capture_output=True)
