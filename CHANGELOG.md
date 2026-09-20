@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.3] - 2026-09-20
+
+### Added
+- **Tree-Sitter Mode Rollout Across Validation Projects & Pyedis (`validation/projects/**/.noctifab/config.yaml`)**:
+  - Configured `context.mode: tree_sitter` and `context.tree_sitter: true` across all 20 validation projects (`actodis`, `auth-vault`, `buffonstream`, `calculator`, `djanban`, `dotchess`, `echo`, `fortune`, `frontpunch`, `jpacioli`, `ninline`, `notebook`, `ocalogue`, `pyedis`, `searchthedocs`, `stricc`, `t4`, `thredis`, `todo-cli`, `wc`) and `/Users/diegoj/repos/pyedis/.noctifab/config.yaml`.
+  - Enables high-speed AST symbol outlining for auxiliary dependencies while preserving target files at full fidelity.
+
 ## [0.96.2] - 2026-09-20
 
 ### Added
