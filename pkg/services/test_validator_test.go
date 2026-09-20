@@ -382,3 +382,39 @@ type mockValidatorSyntaxChecker struct {
 func (m *mockValidatorSyntaxChecker) Check(ctx context.Context, path string) error {
 	return m.err
 }
+
+func TestIsMissingToolOutput(t *testing.T) {
+	t.Run("when host command is not found it reports true", func(t *testing.T) {
+		samples := []string{
+			"bash: docker: command not found",
+			"exec: \"cargo\": executable file not found in $PATH",
+			"exec: \"cargo\": executable file not found in %PATH%",
+			"'cargo' is not recognized as an internal or external command",
+			"fork/exec /usr/local/bin/nonexistent: no such file or directory",
+			"tool binary is evicted from cache",
+			"process exited with exit status 127",
+		}
+		for _, s := range samples {
+			if !isMissingToolOutput(s) {
+				t.Errorf("expected isMissingToolOutput(%q) to be true", s)
+			}
+		}
+	})
+
+	t.Run("when error is container build failure or missing in-container file it reports false", func(t *testing.T) {
+		samples := []string{
+			"Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+			"target e2e: failed to solve: process \"/bin/sh -c python -m compileall -q src && chmod +x /app/tests/e2e/run_tests.sh\" did not complete successfully: exit code: 1\nchmod: /app/tests/e2e/run_tests.sh: No such file or directory",
+			"executor failed running [/bin/sh -c chmod +x /app/tests/e2e/run_tests.sh]: exit code: 1",
+			"Dockerfile.e2e:5\nfailed to solve: process returned error",
+			"load build definition from Dockerfile.e2e\ntransferring dockerfile: 198B done",
+			"FileNotFoundError: [Errno 2] No such file or directory: 'data/dump.aof'\nTraceback (most recent call last):\n  File \"exec.py\", line 12",
+			"FAILED tests/unit/test_resp.py - AssertionError: 1 != 2",
+		}
+		for _, s := range samples {
+			if isMissingToolOutput(s) {
+				t.Errorf("expected isMissingToolOutput(%q) to be false", s)
+			}
+		}
+	})
+}

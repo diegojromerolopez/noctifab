@@ -168,7 +168,7 @@ func DefaultConfig() *Config {
 			ExcludePaths: []string{".noctifab"},
 			AllowedCommands: []string{
 				"docker",
-				"go", "git", "make", "cmake", "ninja", "gcc", "clang", "g++", "clang++",
+				"go", "goimports", "git", "make", "cmake", "ninja", "gcc", "clang", "g++", "clang++",
 				"python", "python3", "pytest", "pytest-cov", "coverage", "tox", "nox", "flake8", "black", "isort", "ruff", "mypy", "uv", "mise",
 				"npm", "npx", "node", "pnpm", "yarn", "vitest", "jest", "tsc", "eslint", "prettier",
 				"cargo", "rustc", "cargo-tarpaulin", "cargo-nextest", "rustfmt", "clippy-driver",

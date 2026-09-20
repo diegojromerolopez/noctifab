@@ -180,10 +180,9 @@ func (t *EditFileTool) Execute(ctx context.Context, state *domain.State, args ma
 			edits = append(edits, chunk)
 		}
 	} else {
-		target, ok1 := args["target_content"].(string)
-		replacement, ok2 := args["replacement_content"].(string)
-		if !ok1 || !ok2 {
-			return "", errors.New("missing or invalid 'edits' or direct 'target_content'/'replacement_content' arguments")
+		target, replacement, ok := ExtractEditStrings(args)
+		if !ok {
+			return "", errors.New("missing or invalid 'edits' or direct 'target_content'/'replacement_content' (or old_content/new_content) arguments")
 		}
 		edits = append(edits, ReplacementChunk{
 			StartLine:          1,

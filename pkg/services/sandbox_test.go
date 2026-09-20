@@ -248,3 +248,43 @@ func TestDetectDefaultFormatterCommand(t *testing.T) {
 		t.Errorf("expected 'npm run format', got %q", got)
 	}
 }
+
+func TestDetectAutoFixImportsCommand(t *testing.T) {
+	t.Run("when python project has src and tests directories it targets them with ruff", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(tmpDir, "pyproject.toml"), []byte("[project]"), 0644)
+		_ = os.MkdirAll(filepath.Join(tmpDir, "src"), 0755)
+		_ = os.MkdirAll(filepath.Join(tmpDir, "tests"), 0755)
+
+		got := DetectAutoFixImportsCommand(tmpDir)
+		if got != "ruff check --select F401 --fix src tests" {
+			t.Errorf("expected 'ruff check --select F401 --fix src tests', got %q", got)
+		}
+	})
+
+	t.Run("when python project has no standard subdirectories it falls back to dot", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(tmpDir, "requirements.txt"), []byte("requests\n"), 0644)
+
+		got := DetectAutoFixImportsCommand(tmpDir)
+		if got != "ruff check --select F401 --fix ." {
+			t.Errorf("expected 'ruff check --select F401 --fix .', got %q", got)
+		}
+	})
+
+	t.Run("when go project it returns goimports", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test"), 0644)
+
+		got := DetectAutoFixImportsCommand(tmpDir)
+		if got != "goimports -w ." {
+			t.Errorf("expected 'goimports -w .', got %q", got)
+		}
+	})
+
+	t.Run("when empty project path provided it returns empty string", func(t *testing.T) {
+		if got := DetectAutoFixImportsCommand(""); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+	})
+}

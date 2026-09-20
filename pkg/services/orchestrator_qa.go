@@ -180,7 +180,7 @@ func (o *Orchestrator) runQAGate(ctx context.Context, state *domain.State, task 
 		return "artifact_changed"
 	}
 	clean, err := taskGit.Run(ctx, false, "status", "--porcelain")
-	if err != nil || strings.TrimSpace(clean) != "" {
+	if err != nil || hasMaterialGitChanges(clean) {
 		return "artifact_changed"
 	}
 	result := o.runInitialQA(ctx, state, task, taskGit, strings.TrimSpace(commit), contract, fileContexts)
@@ -427,4 +427,30 @@ func relativeStoryPath(projectPath, sourcePath string) string {
 		return filepath.ToSlash(relative)
 	}
 	return filepath.Base(sourcePath)
+}
+
+func hasMaterialGitChanges(statusOutput string) bool {
+	lines := strings.Split(strings.TrimSpace(statusOutput), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		parts := strings.Fields(trimmed)
+		if len(parts) >= 2 {
+			path := parts[len(parts)-1]
+			lower := strings.ToLower(path)
+			if strings.Contains(lower, "__pycache__") ||
+				strings.HasSuffix(lower, ".pyc") ||
+				strings.Contains(lower, ".pytest_cache") ||
+				strings.Contains(lower, ".ruff_cache") ||
+				strings.Contains(lower, ".mypy_cache") ||
+				strings.Contains(lower, ".coverage") ||
+				strings.HasSuffix(lower, ".log") {
+				continue
+			}
+		}
+		return true
+	}
+	return false
 }

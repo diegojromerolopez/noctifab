@@ -5,18 +5,82 @@ import (
 	"strings"
 )
 
+// ExtractEditStrings extracts target and replacement strings from tool arguments,
+// supporting common LLM aliases (e.g. old_content/new_content, search/replace).
+func ExtractEditStrings(args map[string]any) (string, string, bool) {
+	var target, replacement string
+	targetKeys := []string{"target_content", "old_content", "old_str", "search", "target"}
+	for _, k := range targetKeys {
+		if s, ok := args[k].(string); ok && s != "" {
+			target = s
+			break
+		}
+	}
+	replacementKeys := []string{"replacement_content", "new_content", "new_str", "replace", "replacement"}
+	for _, k := range replacementKeys {
+		if s, ok := args[k].(string); ok {
+			replacement = s
+			break
+		}
+	}
+	if target != "" && replacement != "" {
+		return target, replacement, true
+	}
+	return "", "", false
+}
+
+// matchTrimmedLines finds a unique contiguous block of lines in fileLines matching targetLines ignoring leading/trailing whitespace.
+func matchTrimmedLines(fileLines []string, targetLines []string) (int, int, bool) {
+	if len(targetLines) == 0 || len(fileLines) < len(targetLines) {
+		return -1, -1, false
+	}
+	trimmedTarget := make([]string, len(targetLines))
+	for i, l := range targetLines {
+		trimmedTarget[i] = strings.TrimSpace(l)
+	}
+
+	matchStart := -1
+	matchEnd := -1
+	matchCount := 0
+
+	n := len(targetLines)
+	for i := 0; i <= len(fileLines)-n; i++ {
+		matched := true
+		for j := 0; j < n; j++ {
+			if strings.TrimSpace(fileLines[i+j]) != trimmedTarget[j] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			matchCount++
+			matchStart = i
+			matchEnd = i + n - 1
+		}
+	}
+
+	if matchCount == 1 {
+		return matchStart, matchEnd, true
+	}
+	return -1, -1, false
+}
+
 // ApplyFileEdits applies a list of replacement chunks to file content with resilient
 // fallback matching (e.g. single-occurrence file-wide search) and clear small-file write_file guidance.
 func ApplyFileEdits(content string, edits []ReplacementChunk, relPath string) (string, error) {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(content, "\n")
 
 	for _, edit := range edits {
+		edit.TargetContent = strings.ReplaceAll(edit.TargetContent, "\r\n", "\n")
+		edit.ReplacementContent = strings.ReplaceAll(edit.ReplacementContent, "\r\n", "\n")
+
 		start := edit.StartLine
 		end := edit.EndLine
 		if start < 1 {
 			start = 1
 		}
-		if end > len(lines) {
+		if end <= 0 || end > len(lines) {
 			end = len(lines)
 		}
 		if start > end {
@@ -51,6 +115,17 @@ func ApplyFileEdits(content string, edits []ReplacementChunk, relPath string) (s
 		if trimmedTarget != "" && strings.Count(currentJoined, trimmedTarget) == 1 {
 			currentJoined = strings.Replace(currentJoined, trimmedTarget, strings.TrimSpace(edit.ReplacementContent), 1)
 			lines = strings.Split(currentJoined, "\n")
+			continue
+		}
+
+		// Resilient Fallback 3: Indentation-tolerant contiguous line block match
+		targetLines := strings.Split(edit.TargetContent, "\n")
+		if startIdx, endIdx, ok := matchTrimmedLines(lines, targetLines); ok {
+			replLines := strings.Split(edit.ReplacementContent, "\n")
+			newLines := append([]string{}, lines[:startIdx]...)
+			newLines = append(newLines, replLines...)
+			newLines = append(newLines, lines[endIdx+1:]...)
+			lines = newLines
 			continue
 		}
 

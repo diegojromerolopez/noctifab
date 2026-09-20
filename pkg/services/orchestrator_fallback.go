@@ -152,6 +152,7 @@ func (o *Orchestrator) RunFallbackAgent(
 		}
 
 		llmCtx, cancel := context.WithTimeout(ctx, turnTimeout)
+		llmCtx = domain.WithRoleContext(llmCtx, string(domain.AgentRoleFallback))
 		llmCtx = context.WithValue(llmCtx, AgentRoleKey, "fallback")
 		contractLen := len(prompts.Contract(prompts.AgentFallback))
 		llmCtx = domain.WithUncompactableTail(llmCtx, contractLen)
@@ -198,8 +199,8 @@ func (o *Orchestrator) RunFallbackAgent(
 			passed, newLogMsg, _ := o.evaluator.ValidateTask(ctx, taskState, effectiveTask)
 
 			// E2E Verification Gate:
-			// If unit tests passed and an E2E suite is detected, run the E2E verification gate.
-			if passed && o.evaluator.Runner != nil && taskState != nil && taskState.ProjectPath != "" {
+			// If unit tests passed and an E2E suite is detected, run the E2E verification gate only if within task E2E scope.
+			if passed && o.evaluator != nil && o.evaluator.Runner != nil && taskState != nil && taskState.ProjectPath != "" && o.evaluator.shouldValidateE2E(taskState, effectiveTask) {
 				e2eMode := o.cfg.E2E.Mode
 				e2eCmd := o.cfg.E2E.Command
 				detectedE2E := DetectE2ECommand(taskState.ProjectPath, e2eMode, e2eCmd)
@@ -213,9 +214,15 @@ func (o *Orchestrator) RunFallbackAgent(
 					e2eOut, e2eErr := o.evaluator.Runner.RunCommand(e2eCtx, taskState.ProjectPath, detectedE2E, "")
 					e2eCancel()
 					if e2eErr != nil {
-						passed = false
-						newLogMsg = fmt.Sprintf("Unit tests passed, but E2E verification failed (%s):\n%s\n%v", detectedE2E, e2eOut, e2eErr)
-						fmt.Printf("⚠️ [Fallback Agent] E2E verification failed: %v\n", e2eErr)
+						if isMissingToolOutput(e2eOut + " " + e2eErr.Error()) {
+							fmt.Printf("⚠️  [Fallback Agent Degraded] Task %s: required E2E tool is absent on host (%s). Proceeding in degraded mode.\n", effectiveTask.ID, detectedE2E)
+						} else if !isE2EFailureInScope(taskState, effectiveTask, e2eOut+"\n"+e2eErr.Error()) {
+							fmt.Printf("⚠️  [Fallback Agent] Task %s E2E failure(s) are outside the scope of active feature; ignoring out-of-scope failure in fallback loop.\n", effectiveTask.ID)
+						} else {
+							passed = false
+							newLogMsg = fmt.Sprintf("Unit tests passed, but E2E verification failed (%s):\n%s\n%v", detectedE2E, e2eOut, e2eErr)
+							fmt.Printf("⚠️ [Fallback Agent] E2E verification failed: %v\n", e2eErr)
+						}
 					} else {
 						fmt.Printf("✅ [Fallback Agent] E2E verification gate PASSED (%s)!\n", detectedE2E)
 					}

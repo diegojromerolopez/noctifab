@@ -194,6 +194,13 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		}
 	}
 
+	if autoFixCmd := DetectAutoFixImportsCommand(state.ProjectPath); autoFixCmd != "" && v.Runner != nil {
+		// Deterministic Auto-Fix Pre-Pass:
+		// Automatically clean up unused imports safely before building and testing.
+		fmt.Printf("Orchestrator: Task %s running deterministic auto-fix imports %q...\n", task.ID, autoFixCmd)
+		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, autoFixCmd, "")
+	}
+
 	// Dual-Gate Build Verification:
 	// Verify that the whole project compiles cleanly before executing the test suite.
 	// Catches incomplete stubs, empty translation units, missing header files, and compiler errors.
@@ -297,11 +304,29 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 
 func isMissingToolOutput(output string) bool {
 	lower := strings.ToLower(output)
+
+	// If the failure occurred during a container build or containerized runtime execution
+	// (e.g., Dockerfile build step, BuildKit solve error, compose service exit, or missing file
+	// inside the container build context), Docker itself was present and executed.
+	// Container-internal build/script errors must NOT be classified as a missing host tool.
+	if strings.Contains(lower, "failed to solve") ||
+		strings.Contains(lower, "load build definition") ||
+		strings.Contains(lower, "transferring dockerfile") ||
+		strings.Contains(lower, "transferring context") ||
+		strings.Contains(lower, "executor failed running") ||
+		strings.Contains(lower, "dockerfile:") ||
+		strings.Contains(lower, "dockerfile.e2e:") {
+		return false
+	}
+
 	return strings.Contains(lower, "command not found") ||
 		strings.Contains(lower, "executable file not found") ||
+		strings.Contains(lower, "not found in $path") ||
+		strings.Contains(lower, "not found in %path%") ||
+		strings.Contains(lower, "is not recognized as an internal or external command") ||
 		strings.Contains(lower, "is evicted") ||
 		strings.Contains(lower, "exit status 127") ||
-		strings.Contains(lower, "no such file or directory") && strings.Contains(lower, "exec")
+		(strings.Contains(lower, "fork/exec") && strings.Contains(lower, "no such file or directory"))
 }
 
 func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n int) []TestRunResult {

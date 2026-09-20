@@ -410,3 +410,25 @@ func (m *mockCapturingRoadmapLLMClient) Complete(ctx context.Context, prompt str
 	}
 	return m.Response, m.Err
 }
+
+func TestResolveUserStoryCeiling(t *testing.T) {
+	// Standard small/medium spec with default (5)
+	assert.Equal(t, 5, services.ResolveUserStoryCeiling("short spec", 5))
+
+	// Unconfigured (0)
+	assert.Equal(t, 5, services.ResolveUserStoryCeiling("short spec", 0))
+
+	// Explicit user override (different from default 5)
+	assert.Equal(t, 7, services.ResolveUserStoryCeiling("short spec", 7))
+	assert.Equal(t, 3, services.ResolveUserStoryCeiling(strings.Repeat("a", 70000), 3))
+
+	// Large spec (>= 35000 bytes) with default (5)
+	largeSpec := strings.Repeat("a", 40000)
+	assert.Equal(t, 8, services.ResolveUserStoryCeiling(largeSpec, 5))
+	assert.Equal(t, 8, services.ResolveUserStoryCeiling(largeSpec, 0))
+
+	// Very large spec (>= 60000 bytes) like pyedis with default (5)
+	veryLargeSpec := strings.Repeat("a", 88000)
+	assert.Equal(t, 12, services.ResolveUserStoryCeiling(veryLargeSpec, 5))
+	assert.Equal(t, 12, services.ResolveUserStoryCeiling(veryLargeSpec, 0))
+}

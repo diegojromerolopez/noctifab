@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.0] - 2026-09-20
+
+### Added
+- **Deterministic `SPEC.md` Partitioning & Subsystem Manifest (`pkg/services/spec_partitioner.go`, `pkg/services/roadmap_generator.go`)**:
+  - Implemented `PartitionSpec` and `PartitionSpecIfNeeded` to deterministically slice large specifications into `.noctifab/specs/` (`00_core_invariants.md`, `01_<subsystem>.md`, ..., `manifest.json`) using pure Go markdown parsing with zero LLM loss.
+  - Automatically indexes command tables, headers, line ranges, and target files, computing SHA256 checksums for fast cached reuse.
+  - Preserves the original human-written `SPEC.md` in the project root 100% untouched while passing compact, high-density core invariants to the Product Manager.
+- **Spec Partitioning Cleanup in CLI & Validation Harness (`cmd/noctifab/cli/clean.go`, `validation/bin/native_project_loop.py`)**:
+  - Added `.noctifab/specs` to `noctifab clean` (`removeSpecs()`, dry-run reporting) and automated test suite cleanup.
+  - Included `.noctifab/specs` in `native_project_loop.py` project reset routine to ensure clean slate executions between validation runs.
+
+## [0.95.0] - 2026-09-20
+
+### Added
+- **Dynamic User Story Ceiling Scaling (`pkg/services/roadmap_generator.go`, `pkg/infrastructure/prompts/defaults/product_manager/`)**:
+  - Implemented `ResolveUserStoryCeiling` to dynamically scale the story ceiling for large specifications (8 stories for >= 35KB, 12 stories for >= 60KB) when using default configurations, ensuring extensive subsystems and commands are decomposed upfront.
+  - Reinforced Rule 6 in PM prompts (`generate.tmpl`, `audit.tmpl`) mandating dedicated vertical slice stories per domain subsystem.
+- **Resilient File Editing & Parameter Aliases (`pkg/services/edit_file_helper.go`, `pkg/services/production_tools.go`, `pkg/services/validator.go`)**:
+  - Added `ExtractEditStrings` supporting parameter aliases (`target_content`/`replacement_content`, `old_content`/`new_content`, `search`/`replace`), preventing tool call rejections.
+  - Added CRLF (`\r\n`) normalization and indentation-tolerant contiguous block matching (`matchTrimmedLines`) in `ApplyFileEdits`.
+- **Sovereign Rescue Regression Guard & State Extraction (`cmd/noctifab/cli/start_sovereign_rescue.go`, `cmd/noctifab/cli/start_sovereign_rescue_gates.go`)**:
+  - Added baseline commit tracking and automatic regression rollback when a sovereign rescue turn encounters tool errors and breaks unit tests.
+  - Restores the last verified green baseline commit at the conclusion of the rescue loop if unverified mutations broke the working tree.
+  - Refactored `updateRescueSuccessState` into `start_sovereign_rescue_gates.go` keeping all Go source files under 500 lines.
+- **Accurate SQLite Telemetry Harvester (`validation/bin/native_project_loop.py`)**:
+  - Aligned SQL queries with `noctifab.db` schema (`state`, `tasks`, `stories`, `token_usage`) and added task token fallback aggregation, ensuring accurate token counts and task completion metrics.
+
+## [0.94.0] - 2026-09-19
+
+### Added
+- **E2E Container Runner Script Preflighting (`pkg/services/test_discovery_preflight.go`, `pkg/services/test_discovery_preflight_test.go`)**:
+  - Implemented `PreflightE2EEnvironment` to automatically scan container definitions (`Dockerfile*`, `docker-compose*.yml`, `docker-compose*.yaml`, `*.dockerfile`) in the root workspace and `tests/` tree.
+  - Automatically identifies referenced shell scripts (`RUN chmod +x ...`, `COPY ...`, `ENTRYPOINT [...]`, `CMD [...]`) and scaffolds minimal executable runner stubs (`0755`) if absent, preventing container build failures caused by premature references to unwritten test scripts.
+  - Ensures existing runner scripts have required execution permissions (`0755`) without overwriting custom contents.
+  - Integrated into `PrepareTestEnvironment` so every test validation preflight checks and secures container script prerequisites.
+- **Deterministic Formatter Pre-Pass Auto-Fix for Unused Imports (`pkg/services/sandbox.go`, `pkg/services/test_validator.go`, `pkg/services/sandbox_test.go`)**:
+  - Added `DetectAutoFixImportsCommand` to detect language-specific safe import cleanup utilities (`ruff check --select F401 --fix` for Python, `goimports -w .` for Go).
+  - Expanded `DetectProjectLanguage` to recognize `pyproject.toml` manifests in Python workspaces.
+  - Integrated deterministic auto-fix pass into `TestValidator.ValidateTask` before compiler build verification and test runs, automatically eliminating dead imports introduced by LLM generation turns.
+  - Added `"goimports"` to sandbox default `AllowedCommands` in `pkg/infrastructure/config/defaults.go`.
+- **Roadmap Artifact Git Auto-Staging (`pkg/services/orchestrator_execute.go`, `cmd/noctifab/cli/start_story_executor.go`)**:
+  - Added automatic Git staging for `roadmap/` markdown artifacts in `orchestrator_execute.go` upon task validation success.
+  - Staged and committed pending `roadmap/` artifacts in `start_story_executor.go` upon fast exit on verified green stories, preventing dirty working copy states with untracked task files.
+
+### Fixed
+- **Fallback Agent Scoped E2E Verification (`pkg/services/orchestrator_fallback.go`, `pkg/services/orchestrator_fallback_test.go`)**:
+  - Aligned Fallback Agent verification with `TestValidator` scoping rules (`shouldValidateE2E` and `isE2EFailureInScope`).
+  - Restricts containerized E2E test execution in `RunFallbackAgent` strictly to tasks targeting E2E/integration files or final story verification tasks, preventing premature container test failures from deadlocking early walking skeleton tasks.
+  - Added unit test suite `TestOrchestrator_RunFallbackAgent_SkipsE2EForUnitTask`.
+- **Fast-Exit Green State Synchronization & QA Cache Filtering (`pkg/services/orchestrator_execute_turns.go`, `pkg/services/orchestrator_qa.go`)**:
+  - Automatically stages and commits pending workspace formatter modifications upon `FastExitOnVerifiedGreen` turn short-circuiting.
+  - Filtered ephemeral compiler and runtime test caches (`__pycache__`, `.pyc`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.coverage`) from `runQAGate` git status inspection, eliminating false `qa_gate_deadlock` escalations.
+- **Sovereign Rescue Headless Engine Prompt Reinforcement (`cmd/noctifab/cli/start_sovereign_rescue.go`)**:
+  - Explicitly clarified prompt instructions in `buildSovereignRescuePrompt` that Sovereign Rescue is an autonomous headless engine that must output file modifications directly in the `actions` array, preventing model hallucinations claiming lack of interactive write tools.
+- **Transparent Non-Retryable LLM Error Logging (`pkg/infrastructure/llm/client.go`)**:
+  - Enhanced non-retryable 4xx error log messages in `client.go` to print the underlying error payload (`%v`), exposing exact HTTP response diagnostics from providers.
+- **OpenAI StreamOptions Compatibility with Non-Streaming Endpoints (`pkg/infrastructure/llm/openai_adapt.go`, `pkg/infrastructure/llm/openai.go`, `pkg/infrastructure/llm/done_stream_test.go`)**:
+  - Fixed request serialization in OpenAI-compatible provider client to only include `stream_options` when `streaming: true`.
+  - Resolved HTTP 400 Bad Request rejections on third-party OpenAI-compatible providers (such as Alibaba DashScope/QwenCloud) that reject `stream_options` on non-streaming completions.
+- **Role Context Propagation & Router Harmonization (`pkg/services/orchestrator_fallback.go`, `pkg/services/validator.go`, `pkg/domain/llm_client.go`)**:
+  - Injected `domain.WithRoleContext(llmCtx, string(domain.AgentRoleFallback))` into `RunFallbackAgent`, enabling the LLM router to resolve role-specific fallback profiles rather than falling back to unassigned role ladder.
+  - Aligned `AgentRoleKey` in `pkg/services/validator.go` with canonical `domain.RoleContextKey{}`, ensuring both typed struct keys and string keys resolve properly across all layers without SA1029 lint warnings.
+- **OpenCode Session Header Routing (`pkg/infrastructure/llm/opencode.go`, `pkg/infrastructure/llm/openai.go`, `pkg/infrastructure/llm/opencode_test.go`)**:
+  - Attached `x-opencode-session` header with a session UUID in `OpenCodeClient` and `baseOpenAIClient` when targeting `opencode.ai`, resolving HTTP 400 `MissingSessionID` errors on OpenCode routers.
+- **Language-Agnostic Acyclic Modular Architecture Prompts (`pkg/infrastructure/prompts/defaults/product_manager/`, `pkg/infrastructure/prompts/defaults/generator/`)**:
+  - Added acyclic modular dependency invariants across Product Manager and Generator prompt templates, enforcing directed acyclic graph (DAG) dependencies where internal submodules/domain primitives never import from root facades or coordinator entrypoints.
+
+## [0.93.1] - 2026-09-19
+
+### Fixed
+- **Host Tool Missing Output Precision & Container Build Exclusion (`pkg/services/test_validator.go`, `pkg/services/test_validator_test.go`)**:
+  - Refined `isMissingToolOutput` in `TestValidator` to prevent false-positive detection of missing host tools when executing containerized E2E test suites (Docker Compose / Dockerfile).
+  - Explicitly excluded container build failures (`failed to solve`, `load build definition`, `transferring dockerfile`, `executor failed running`, `dockerfile:`) from missing tool classification.
+  - Replaced overly broad substring search `strings.Contains("no such file or directory") && strings.Contains("exec")` with exact Go `os/exec` error prefix `fork/exec` + `no such file or directory`, preventing Python tracebacks (`FileNotFoundError: No such file or directory`) and in-container script failures (`chmod: ... No such file or directory`) from falsely triggering degraded mode.
+  - Added unit test suite `TestIsMissingToolOutput` validating true positive missing host binaries and negative container build/runtime failure cases.
+
 ## [0.93.0] - 2026-09-19
 
 ### Added

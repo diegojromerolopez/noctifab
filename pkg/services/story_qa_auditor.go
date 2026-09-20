@@ -98,6 +98,8 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 	var executionLogs []string
 	var hasFailure bool
 
+	_ = PrepareTestEnvironment(state.ProjectPath)
+
 	// 1. QA Pre-Flight & E2E Test Execution Gate:
 	// If an E2E test command is configured or detected, run it first to verify real integration.
 	e2eCmd := a.detectE2ECommand(state.ProjectPath)

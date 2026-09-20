@@ -108,6 +108,9 @@ func DetectProjectLanguage(projectPath string) string {
 	if _, err := os.Stat(filepath.Join(projectPath, "setup.py")); err == nil {
 		return "python"
 	}
+	if _, err := os.Stat(filepath.Join(projectPath, "pyproject.toml")); err == nil {
+		return "python"
+	}
 	if _, err := os.Stat(filepath.Join(projectPath, "pom.xml")); err == nil {
 		return "java"
 	}
@@ -208,6 +211,32 @@ func DetectDefaultFormatterCommand(projectPath string) string {
 		}
 	}
 	return ""
+}
+
+// DetectAutoFixImportsCommand inspects the workspace directory and returns
+// safe, deterministic automatic import clean-up commands (e.g., removing unused imports).
+func DetectAutoFixImportsCommand(projectPath string) string {
+	if projectPath == "" {
+		return ""
+	}
+	lang := DetectProjectLanguage(projectPath)
+	switch lang {
+	case "python":
+		var targets []string
+		for _, dir := range []string{"src", "tests", "test", "app", "lib"} {
+			if info, err := os.Stat(filepath.Join(projectPath, dir)); err == nil && info.IsDir() {
+				targets = append(targets, dir)
+			}
+		}
+		if len(targets) > 0 {
+			return fmt.Sprintf("ruff check --select F401 --fix %s", strings.Join(targets, " "))
+		}
+		return "ruff check --select F401 --fix ."
+	case "go":
+		return "goimports -w ."
+	default:
+		return ""
+	}
 }
 
 func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Duration, depMgr *DependencyManager) *HostSandbox {

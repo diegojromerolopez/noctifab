@@ -1,14 +1,20 @@
 package llm
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type OpenCodeClient struct {
 	*baseOpenAIClient
 }
 
 func NewOpenCodeClient(url string, timeout, idleTimeout time.Duration, streaming bool) ProviderClient {
+	base := newBaseOpenAIClient("opencode", "https://opencode.ai/zen/go/v1", url, timeout, idleTimeout, streaming)
+	base.SetHeader("x-opencode-session", uuid.New().String())
 	return &OpenCodeClient{
-		baseOpenAIClient: newBaseOpenAIClient("opencode", "https://opencode.ai/zen/go/v1", url, timeout, idleTimeout, streaming),
+		baseOpenAIClient: base,
 	}
 }
 

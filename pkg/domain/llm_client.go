@@ -88,5 +88,15 @@ func GetRoleFromContext(ctx context.Context) string {
 			return strings.ToLower(roleStr)
 		}
 	}
+	if roleVal := ctx.Value("agent_role"); roleVal != nil {
+		if roleStr, ok := roleVal.(string); ok && roleStr != "" {
+			return strings.ToLower(roleStr)
+		}
+	}
+	if roleVal := ctx.Value("role"); roleVal != nil {
+		if roleStr, ok := roleVal.(string); ok && roleStr != "" {
+			return strings.ToLower(roleStr)
+		}
+	}
 	return ""
 }

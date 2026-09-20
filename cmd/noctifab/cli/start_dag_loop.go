@@ -61,12 +61,29 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 			fmt.Printf("\n🔁 [Loop %d/%d] Executing Noctifab iteration loop (concurrency: %d)...\n", loopIdx, opts.TotalLoops, storyConcurrency)
 		}
 
-		if storyConcurrency > 1 && len(opts.StoryFiles) > 1 {
+		var activeStoryFiles []string
+		for _, sf := range opts.StoryFiles {
+			if _, err := os.Stat(sf); err == nil {
+				activeStoryFiles = append(activeStoryFiles, sf)
+			} else {
+				fmt.Printf("ℹ [Loop %d] Story file %s not found on disk — skipping obsolete story\n", loopIdx, sf)
+			}
+		}
+
+		if len(activeStoryFiles) == 0 {
+			fmt.Printf("⚠️ [Loop %d] No active story files found on disk. Concluding loop pass.\n", loopIdx)
+			break
+		}
+
+		if storyConcurrency > 1 && len(activeStoryFiles) > 1 {
 			// Story-Level Parallel Execution via StoryDAGScheduler with strict dependency gating
 			dagScheduler := services.NewStoryDAGScheduler(storyConcurrency)
 			dagScheduler.SetPipelined(false)
-			for _, sf := range opts.StoryFiles {
-				specBytes, _ := os.ReadFile(sf)
+			for _, sf := range activeStoryFiles {
+				specBytes, err := os.ReadFile(sf)
+				if err != nil {
+					continue
+				}
 				dagScheduler.AddStory(services.StoryWorkItem{
 					Path: sf,
 					Spec: string(specBytes),
@@ -74,7 +91,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 			}
 
 			// Pre-mark already completed stories from prior loops or resume
-			for idx, currentStoryFile := range opts.StoryFiles {
+			for idx, currentStoryFile := range activeStoryFiles {
 				storyID := fmt.Sprintf("story-%04d", idx+1)
 				featName := strings.TrimSuffix(filepath.Base(currentStoryFile), filepath.Ext(currentStoryFile))
 				storyTitle := extractStoryTitle(currentStoryFile)
@@ -89,8 +106,12 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 			var outcomesMu sync.Mutex
 			_ = dagScheduler.Execute(ctx, func(storyCtx context.Context, item services.StoryWorkItem) error {
 				currentStoryFile := item.Path
+				if _, err := os.Stat(currentStoryFile); os.IsNotExist(err) {
+					fmt.Printf("ℹ [Loop %d] Story file %s no longer exists — skipping\n", loopIdx, currentStoryFile)
+					return nil
+				}
 				var idx int
-				for i, f := range opts.StoryFiles {
+				for i, f := range activeStoryFiles {
 					if f == currentStoryFile {
 						idx = i
 						break
@@ -123,7 +144,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 				}
 
 				if opts.SpeculativePlanner != nil {
-					opts.SpeculativePlanner.PrePlanQueuedStories(storyCtx, opts.StoryFiles, currentStoryFile)
+					opts.SpeculativePlanner.PrePlanQueuedStories(storyCtx, activeStoryFiles, currentStoryFile)
 				}
 
 				storyErr := opts.ExecuteStory(storyCtx, currentStoryFile)
@@ -177,7 +198,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 			})
 		} else {
 			// Sequential Execution Loop
-			for idx, currentStoryFile := range opts.StoryFiles {
+			for idx, currentStoryFile := range activeStoryFiles {
 				storyID := fmt.Sprintf("story-%04d", idx+1)
 				featName := strings.TrimSuffix(filepath.Base(currentStoryFile), filepath.Ext(currentStoryFile))
 				storyTitle := extractStoryTitle(currentStoryFile)
@@ -208,7 +229,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 				}
 
 				if opts.SpeculativePlanner != nil {
-					opts.SpeculativePlanner.PrePlanQueuedStories(ctx, opts.StoryFiles, currentStoryFile)
+					opts.SpeculativePlanner.PrePlanQueuedStories(ctx, activeStoryFiles, currentStoryFile)
 				}
 
 				storyErr := opts.ExecuteStory(ctx, currentStoryFile)
@@ -257,7 +278,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 		}
 
 		allSucceeded := true
-		for _, sf := range opts.StoryFiles {
+		for _, sf := range activeStoryFiles {
 			if storyOutcomes[sf] != nil {
 				allSucceeded = false
 				break
@@ -277,7 +298,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 
 		if allSucceeded {
 			if opts.TotalLoops > 1 && loopIdx < opts.TotalLoops {
-				fmt.Printf("\n✨ All %d user stories completed successfully in Loop %d. Completing run.\n", len(opts.StoryFiles), loopIdx)
+				fmt.Printf("\n✨ All %d user stories completed successfully in Loop %d. Completing run.\n", len(activeStoryFiles), loopIdx)
 			}
 			break
 		}

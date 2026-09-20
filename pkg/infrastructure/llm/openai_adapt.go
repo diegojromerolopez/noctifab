@@ -19,6 +19,7 @@ import (
 // exactly one option per failed attempt so compliant models stay on the
 // strict path while non-compliant gateways remain usable.
 type completionOptions struct {
+	streaming   bool
 	enforceJSON bool
 	// disableJSONMode overrides enforceJSON: when true, response_format is
 	// never set, even if enforceJSON is true. Used for providers/models that
@@ -128,9 +129,11 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(prompt),
 		},
-		StreamOptions: openai.ChatCompletionStreamOptionsParam{
+	}
+	if opts.streaming {
+		params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
 			IncludeUsage: openai.Bool(true),
-		},
+		}
 	}
 	if opts.temperature != nil && !isNoTemperatureModel(model) && !globalCapabilityCache.isTemperatureUnsupported(model) && !hasThinkingEnabled(opts.extraBody) {
 		params.Temperature = openai.Float(tempOrDefault(*opts.temperature))

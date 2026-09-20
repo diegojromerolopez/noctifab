@@ -11,10 +11,10 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
-type agentRoleContextKey string
+var AgentRoleKey = domain.RoleContextKey{}
+
 type taskIDContextKey string
 
-const AgentRoleKey agentRoleContextKey = "agent_role"
 const TaskIDKey taskIDContextKey = "task_id"
 
 // ValidationResult records the outcome of a security check or target validation check.
@@ -109,10 +109,9 @@ func compileForbiddenPatterns(patterns []string) []*regexp.Regexp {
 }
 
 func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, state *domain.State) (*ValidationResult, error) {
-	// 1. Role-based dynamic checks
-	role, _ := ctx.Value(AgentRoleKey).(string)
+	role := domain.GetRoleFromContext(ctx)
 	if role == "" {
-		role, _ = ctx.Value("agent_role").(string)
+		role, _ = ctx.Value(AgentRoleKey).(string)
 	}
 	if role != "" {
 		// Get default profile for this role
@@ -271,13 +270,22 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 		}
 		if action.Tool == "edit_file" {
 			path, _ := action.Args["path"].(string)
-			oldContent, hasOld := action.Args["old_content"].(string)
-			_, hasNew := action.Args["new_content"].(string)
-			_, hasReplacements := action.Args["replacements"].([]any)
-			if strings.TrimSpace(path) == "" || (!hasReplacements && (!hasOld || !hasNew || oldContent == "")) {
+			_, hasTarget := action.Args["old_content"].(string)
+			if !hasTarget {
+				_, hasTarget = action.Args["target_content"].(string)
+			}
+			_, hasReplacement := action.Args["new_content"].(string)
+			if !hasReplacement {
+				_, hasReplacement = action.Args["replacement_content"].(string)
+			}
+			_, hasEdits := action.Args["edits"].([]any)
+			if !hasEdits {
+				_, hasEdits = action.Args["replacements"].([]any)
+			}
+			if strings.TrimSpace(path) == "" || (!hasEdits && (!hasTarget || !hasReplacement)) {
 				return &ValidationResult{
 					Allowed: false,
-					Reason:  "Invalid tool call: 'edit_file' requires 'path', 'old_content' (non-empty string to replace), and 'new_content' (replacement string). Example: edit_file(path='src/module.py', old_content='old', new_content='new').",
+					Reason:  "Invalid tool call: 'edit_file' requires 'path', and either 'target_content'/'replacement_content' (or 'old_content'/'new_content') or 'edits'.",
 				}, nil
 			}
 		}

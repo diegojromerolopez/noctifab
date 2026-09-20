@@ -251,3 +251,61 @@ func TestOrchestrator_RunFallbackAgent_NilGuards(t *testing.T) {
 	assert.False(t, passed)
 	assert.Equal(t, "some failure", logOut)
 }
+
+func TestOrchestrator_RunFallbackAgent_SkipsE2EForUnitTask(t *testing.T) {
+	reg := NewToolRegistry()
+	reg.Register(&mockTool{name: "write_file"})
+
+	mockLLM := &testMockLLM{
+		responses: []*domain.LLMResponse{
+			{
+				Reasoning: "Fixing unit test issue",
+				Actions: []domain.LLMAction{
+					{
+						Tool: "write_file",
+						Args: map[string]interface{}{"path": "src/resp.py", "content": "# resp"},
+					},
+				},
+			},
+		},
+	}
+
+	sandbox := &mockLRASandbox{out: "FAIL: initial error"}
+	evaluator := NewTestValidator(sandbox, false, mockLLM, reg.Tools())
+
+	cfg := OrchestratorConfig{
+		Fallback: config.FallbackAgentConfig{
+			Enabled:  true,
+			MaxTurns: 2,
+		},
+		E2E: config.E2EConfig{
+			Command: "docker compose -f docker-compose.e2e.yml up",
+		},
+	}
+
+	orch := &Orchestrator{
+		cfg:            cfg,
+		llmClient:      mockLLM,
+		registry:       reg,
+		evaluator:      evaluator,
+		promptRenderer: prompts.NewDefaultRenderer(),
+	}
+
+	task := domain.Task{
+		ID:          "US-001-TASK-001",
+		StoryID:     "US-001",
+		Title:       "Unit Task Walking Skeleton",
+		TargetFiles: []string{"src/resp.py", "tests/unit/test_resp.py"},
+	}
+	taskState := domain.State{
+		ID:          "story-1",
+		ProjectPath: t.TempDir(),
+		Tasks: []domain.Task{
+			task,
+			{ID: "US-001-TASK-002", StoryID: "US-001", Status: domain.TaskPending},
+		},
+	}
+
+	passed, _ := orch.RunFallbackAgent(context.Background(), &task, &taskState, nil, "initial fail", "retries_exhausted")
+	assert.True(t, passed, "unit task should pass without running E2E gate")
+}

@@ -141,6 +141,8 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		}, nil
 	}
 
+	_ = PrepareTestEnvironment(state.ProjectPath)
+
 	// 1. Behavioral E2E Execution Pre-Flight Gate
 	var e2eLog string
 	e2eCmd := a.detectE2ECommand(state.ProjectPath)

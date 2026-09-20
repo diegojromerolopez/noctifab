@@ -78,3 +78,58 @@ func TestApplyFileEdits_LargeFileFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Call read_file first to get current content")
 }
+
+func TestExtractEditStrings_Aliases(t *testing.T) {
+	// Standard
+	t1, r1, ok1 := ExtractEditStrings(map[string]any{
+		"target_content":      "old code",
+		"replacement_content": "new code",
+	})
+	assert.True(t, ok1)
+	assert.Equal(t, "old code", t1)
+	assert.Equal(t, "new code", r1)
+
+	// old_content / new_content
+	t2, r2, ok2 := ExtractEditStrings(map[string]any{
+		"old_content": "old code",
+		"new_content": "new code",
+	})
+	assert.True(t, ok2)
+	assert.Equal(t, "old code", t2)
+	assert.Equal(t, "new code", r2)
+
+	// search / replace
+	t3, r3, ok3 := ExtractEditStrings(map[string]any{
+		"search":  "old code",
+		"replace": "new code",
+	})
+	assert.True(t, ok3)
+	assert.Equal(t, "old code", t3)
+	assert.Equal(t, "new code", r3)
+
+	// Missing
+	_, _, ok4 := ExtractEditStrings(map[string]any{"other": "val"})
+	assert.False(t, ok4)
+}
+
+func TestApplyFileEdits_IndentationTolerant(t *testing.T) {
+	orig := "def dispatch(cmd):\n    if cmd == 'PING':\n        return b'+PONG\\r\\n'\n    return b'-ERR\\r\\n'"
+	// Target content has different leading spaces and extra whitespace
+	target := "  if cmd == 'PING':\n      return b'+PONG\\r\\n'"
+	repl := "    if cmd == 'PING':\n        return b'+PONG\\r\\n'\n    if cmd == 'ECHO':\n        return b'+OK\\r\\n'"
+
+	res, err := ApplyFileEdits(orig, []ReplacementChunk{{TargetContent: target, ReplacementContent: repl}}, "cmd.py")
+	require.NoError(t, err)
+	assert.Contains(t, res, "ECHO")
+	assert.Contains(t, res, "PONG")
+}
+
+func TestApplyFileEdits_CRLFNormalization(t *testing.T) {
+	orig := "line 1\r\nline 2\r\nline 3\r\n"
+	target := "line 2\n"
+	repl := "modified 2\n"
+
+	res, err := ApplyFileEdits(orig, []ReplacementChunk{{TargetContent: target, ReplacementContent: repl}}, "crlf.py")
+	require.NoError(t, err)
+	assert.Contains(t, res, "modified 2")
+}

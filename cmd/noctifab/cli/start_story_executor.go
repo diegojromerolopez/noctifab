@@ -210,6 +210,12 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 					}
 				}
 				_ = deps.repo.Save(ctx, state)
+				if deps.gitClient != nil {
+					_, _ = deps.gitClient.Run(ctx, true, "add", "roadmap")
+					if statusOut, err := deps.gitClient.Run(ctx, false, "status", "--porcelain"); err == nil && strings.TrimSpace(statusOut) != "" {
+						_, _ = deps.gitClient.Run(ctx, true, "commit", "-m", fmt.Sprintf("chore: complete story %s", featName))
+					}
+				}
 				if deps.executionReporter != nil {
 					deps.executionReporter.Observe(ctx, domain.ExecutionEvent{
 						Kind:    domain.EventStoryFinished,

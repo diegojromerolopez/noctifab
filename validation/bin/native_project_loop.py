@@ -118,24 +118,24 @@ def harvest_sqlite_telemetry(project_dir: str) -> Dict[str, Any]:
 
         # 1. State Table
         try:
-            cur.execute("SELECT id, project_path, total_tokens, execution_status, current_phase FROM states ORDER BY updated_at DESC LIMIT 1")
+            cur.execute("SELECT id, project_path, total_tokens_used, build_status, story_status, total_input_tokens, total_output_tokens FROM state ORDER BY rowid DESC LIMIT 1")
             row = cur.fetchone()
             if row:
                 telemetry["state"] = dict(row)
-                telemetry["token_usage"]["total_tokens_state"] = row["total_tokens"] or 0
+                telemetry["token_usage"]["total_tokens_state"] = row["total_tokens_used"] or 0
         except sqlite3.OperationalError:
             pass
 
         # 2. Stories Table
         try:
-            cur.execute("SELECT id, title, status FROM stories")
+            cur.execute("SELECT id, title, status, tokens_used, input_tokens, output_tokens FROM stories")
             telemetry["stories"] = [dict(r) for r in cur.fetchall()]
         except sqlite3.OperationalError:
             pass
 
         # 3. Tasks Table
         try:
-            cur.execute("SELECT id, story_id, title, status, attempts, error_message FROM tasks")
+            cur.execute("SELECT id, story_id, title, status, retries, failure_log, tokens_used, input_tokens, output_tokens FROM tasks")
             telemetry["tasks"] = [dict(r) for r in cur.fetchall()]
         except sqlite3.OperationalError:
             pass
@@ -146,19 +146,32 @@ def harvest_sqlite_telemetry(project_dir: str) -> Dict[str, Any]:
             telemetry["failed_actions"] = [dict(r) for r in cur.fetchall()]
         except sqlite3.OperationalError:
             pass
+        try:
+            cur.execute("SELECT tool, COUNT(*) as cnt, SUM(CASE WHEN success=1 THEN 1 ELSE 0 END) as succ FROM actions GROUP BY tool")
+            telemetry["tool_summary"] = {r["tool"]: {"count": r["cnt"], "success": r["succ"]} for r in cur.fetchall()}
+        except sqlite3.OperationalError:
+            pass
 
         # 5. Token Usage Accounting
         try:
-            cur.execute("SELECT role, SUM(input_tokens + output_tokens) as total FROM token_usage GROUP BY role")
+            cur.execute("SELECT COALESCE(provider, agent_id, 'unknown') as provider_name, SUM(prompt_tokens + completion_tokens) as total FROM token_usage GROUP BY provider_name")
             for r in cur.fetchall():
-                telemetry["token_usage"]["agent_breakdown"][r["role"] or "unknown"] = r["total"]
+                telemetry["token_usage"]["agent_breakdown"][r["provider_name"] or "unknown"] = r["total"]
 
-            cur.execute("SELECT SUM(input_tokens + output_tokens) as grand_total FROM token_usage")
+            cur.execute("SELECT SUM(prompt_tokens + completion_tokens) as grand_total FROM token_usage")
             total_row = cur.fetchone()
             if total_row and total_row["grand_total"]:
                 telemetry["token_usage"]["total_tokens_table"] = total_row["grand_total"]
         except sqlite3.OperationalError:
             pass
+
+        # If token_usage table had no rows, sum from tasks or fall back to state.total_tokens_used
+        if telemetry["token_usage"]["total_tokens_table"] == 0:
+            task_tokens = sum(t.get("tokens_used", 0) for t in telemetry["tasks"] if isinstance(t.get("tokens_used"), int))
+            if task_tokens > 0:
+                telemetry["token_usage"]["total_tokens_table"] = task_tokens
+            elif telemetry["token_usage"]["total_tokens_state"] > 0:
+                telemetry["token_usage"]["total_tokens_table"] = telemetry["token_usage"]["total_tokens_state"]
 
         conn.close()
     except Exception as e:
@@ -440,7 +453,7 @@ def kill_existing_noctifab(project_dir: str):
             pass
 
 
-def clean_project_workspace(project_dir: str) -> None:
+def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = None) -> None:
     """Wipes generated files and caches while strictly preserving SPEC.md, config.yaml, secrets.yaml, and git repo."""
     log_step("CLEAN", f"Purging previous workspace state and caches in '{project_dir}'...")
     kill_existing_noctifab(project_dir)
@@ -448,7 +461,7 @@ def clean_project_workspace(project_dir: str) -> None:
     # 1. Clean .noctifab state (strictly preserving config.yaml and secrets.yaml)
     noctifab_dir = os.path.join(project_dir, ".noctifab")
     if os.path.exists(noctifab_dir):
-        for item in ["data", "logs", "worktrees", "reports", "report", "state.json", "run.lock", "noctifab.pid"]:
+        for item in ["data", "logs", "worktrees", "reports", "report", "specs", "state.json", "run.lock", "noctifab.pid"]:
             target = os.path.join(noctifab_dir, item)
             if os.path.exists(target):
                 try:
@@ -497,6 +510,20 @@ def clean_project_workspace(project_dir: str) -> None:
     os.makedirs(os.path.join(noctifab_dir, "logs"), exist_ok=True)
     os.makedirs(os.path.join(noctifab_dir, "reports"), exist_ok=True)
 
+    # Reset git working copy to baseline commit or upstream base branch
+    if os.path.exists(os.path.join(project_dir, ".git")):
+        for branch in ["main", "master"]:
+            target_ref = baseline_commit or f"origin/{branch}"
+            chk = subprocess.run(["git", "checkout", "-f", branch], cwd=project_dir, capture_output=True, text=True)
+            if chk.returncode == 0:
+                res = subprocess.run(["git", "rev-parse", "--verify", target_ref], cwd=project_dir, capture_output=True)
+                if res.returncode == 0:
+                    subprocess.run(["git", "reset", "--hard", target_ref], cwd=project_dir, capture_output=True)
+                else:
+                    subprocess.run(["git", "reset", "--hard", f"origin/{branch}"], cwd=project_dir, capture_output=True)
+                subprocess.run(["git", "clean", "-fdx", "-e", ".noctifab/secrets.yaml", "-e", ".noctifab/config.yaml"], cwd=project_dir, capture_output=True)
+                break
+
     log_success(f"Workspace '{project_dir}' cleanly reset to baseline.")
 
 
@@ -504,11 +531,11 @@ def clean_project_workspace(project_dir: str) -> None:
 # 4. Native Project Execution Runner
 # ==============================================================================
 
-def run_filesystem_validation(project_dir: str, timeout_seconds: int, preserve_workspace: bool = False) -> Dict[str, Any]:
+def run_filesystem_validation(project_dir: str, timeout_seconds: int, preserve_workspace: bool = False, baseline_commit: Optional[str] = None) -> Dict[str, Any]:
     """Executes target project natively on the host filesystem using Noctifab binary."""
     project_name = os.path.basename(os.path.abspath(project_dir))
     if not preserve_workspace:
-        clean_project_workspace(project_dir)
+        clean_project_workspace(project_dir, baseline_commit=baseline_commit)
 
     log_header(f"EXECUTING HOST VALIDATION: {project_name} at {project_dir} (Timeout: {timeout_seconds}s / {timeout_seconds/60:.0f}m)")
 
@@ -764,6 +791,14 @@ def main():
             log_error("Initial compilation failed. Aborting loop.")
             sys.exit(1)
 
+    baseline_commit = None
+    if os.path.exists(os.path.join(project_dir, ".git")):
+        try:
+            baseline_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=project_dir, text=True).strip()
+            log_step("BASELINE", f"Captured baseline Git commit: {baseline_commit[:8]}")
+        except Exception:
+            pass
+
     iterations_data = []
     loop_start_time = time.time()
     iteration_idx = 0
@@ -783,7 +818,7 @@ def main():
         time_status = f" | Elapsed: {elapsed_loop_time/3600:.2f}h | Remaining: {(target_duration_seconds - elapsed_loop_time)/3600:.2f}h" if target_duration_seconds else ""
         log_header(f"LOOP ITERATION {iteration_idx} (Max: {max_iterations}{time_status}): {project_name.upper()}")
 
-        result = run_filesystem_validation(project_dir, timeout_seconds=timeout, preserve_workspace=args.preserve_workspace)
+        result = run_filesystem_validation(project_dir, timeout_seconds=timeout, preserve_workspace=args.preserve_workspace, baseline_commit=baseline_commit)
         iterations_data.append(result)
 
         if result["exit_code"] == 0:

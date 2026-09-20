@@ -296,7 +296,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 				// auth, gateway router unable to serve the shape): retrying
 				// the identical request cannot succeed. Break out so the
 				// model/provider fallback ladder advances immediately.
-				fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s; skipping retries.\n", c.Provider, activeModel)
+				fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s (%v); skipping retries.\n", c.Provider, activeModel, err)
 				break
 			}
 			if isRateLimitOrQuota(err) || (creditExhausted && c.SkipOnCreditExhausted) {
@@ -390,7 +390,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			// cheaper model. 404 (model not found) is deliberately NOT
 			// skipped: falling back to another model in the catalog IS the
 			// correct reaction to an unknown model.
-			fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s cannot be fixed by a lower model; skipping fallback ladder.\n", c.Provider, activeModel)
+			fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s (%v) cannot be fixed by a lower model; skipping fallback ladder.\n", c.Provider, activeModel, err)
 			shouldFallback = false
 		}
 

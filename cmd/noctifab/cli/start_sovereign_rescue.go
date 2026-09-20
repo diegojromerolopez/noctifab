@@ -148,6 +148,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	diagnostics := CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog)
 
 	resolvedStrategy := ResolveToolchainStrategy(ctx, opts.ToolchainStrategy, nil)
+	bestCommit := captureSovereignBaselineCommit(ctx, opts.GitClient)
 
 	// 4. Multi-Turn Sovereign Rescue Loop
 	for turn := 1; turn <= maxTurns; turn++ {
@@ -240,7 +241,8 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		}
 
 		// Re-evaluate verification gate
-		passed, newLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
+		unitPassed, newLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
+		passed := unitPassed
 		if passed && opts.SandboxRunner != nil {
 			var e2eErrLog string
 			passed, e2eErrLog = verifySovereignE2E(ctx, opts.TargetDir, opts.SandboxRunner, opts.Cfg)
@@ -273,12 +275,39 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 			return nil
 		}
 
+		if unitPassed {
+			if curCommit := captureSovereignBaselineCommit(ctx, opts.GitClient); curCommit != "" {
+				bestCommit = curCommit
+			}
+		} else if bestCommit != "" && len(toolErrors) > 0 {
+			shortCommit := bestCommit
+			if len(shortCommit) > 8 {
+				shortCommit = shortCommit[:8]
+			}
+			fmt.Fprintf(os.Stderr, "⚠ [Sovereign Rescue] Turn %d broke unit tests with tool errors. Reverting partial mutations to baseline %s...\n", turn, shortCommit)
+			_ = rollbackSovereignTurn(ctx, opts.GitClient, bestCommit)
+		}
+
 		lastFailureLog = newLog
 		if len(toolErrors) > 0 {
 			lastFailureLog = fmt.Sprintf("WORKSPACE TOOL EXECUTION ERRORS IN TURN %d:\n- %s\n\nVALIDATION OUTPUT:\n%s", turn, strings.Join(toolErrors, "\n- "), newLog)
 		}
 		diagnostics = CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog)
 		fmt.Printf("⚠️ [Sovereign Rescue] Turn %d verification failed. Feeding diagnostics into turn %d...\n", turn, turn+1)
+	}
+
+	if bestCommit != "" && opts.GitClient != nil {
+		if curCommit := captureSovereignBaselineCommit(ctx, opts.GitClient); curCommit != bestCommit {
+			unitPassed, _, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
+			if !unitPassed {
+				shortCommit := bestCommit
+				if len(shortCommit) > 8 {
+					shortCommit = shortCommit[:8]
+				}
+				fmt.Fprintf(os.Stderr, "ℹ [Sovereign Rescue] Restoring last verified green baseline commit %s at conclusion of rescue loop.\n", shortCommit)
+				_ = rollbackSovereignTurn(ctx, opts.GitClient, bestCommit)
+			}
+		}
 	}
 
 	return fmt.Errorf("sovereign rescue exhausted %d turns without passing all validation gates. Last error:\n%s", maxTurns, lastFailureLog)
@@ -334,7 +363,7 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 	sb.WriteString("   - e2e: executes end-to-end black-box verification of compiled binaries (e2e is strictly validated; if e2e fails or is missing, the turn is rejected).\n")
 	sb.WriteString("4. Fix all compilation errors, missing translation units, or syntax issues reported above.\n")
 	sb.WriteString("5. Strictly avoid placeholder stubs, error-masking shell tricks, and tautological tests (e.g., 'TODO: implement', 'pass', empty main functions, '|| true', 'assert True'). The anti-stub validator and non-tautological test auditor strictly reject them.\n")
-	sb.WriteString("6. Return tool calls using write_file, write_files, edit_file, or install_package to apply changes to the workspace.\n\n")
+	sb.WriteString("6. You are an autonomous headless dark-factory repair engine. You DO NOT interact with a human user and do not require chat-based interactive tools. The host orchestrator reads your JSON response and executes all file write/edit actions directly onto the workspace filesystem. You MUST provide all source code, tests, Dockerfiles, and configurations directly inside the 'actions' array using 'write_file', 'write_files', 'edit_file', or 'install_package'. Do NOT emit apologies, refusals, or claims that you lack workspace write tools.\n\n")
 
 	sb.WriteString("=== REQUIRED RESPONSE FORMAT ===\n")
 	sb.WriteString("You MUST respond ONLY with a single JSON object matching this schema (do NOT wrap in markdown code fences):\n")
@@ -361,107 +390,4 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 	sb.WriteString("}\n")
 
 	return sb.String()
-}
-
-func updateRescueSuccessState(ctx context.Context, repo domain.StateRepository, storyFiles, failedStories, acceptanceGaps []string) error {
-	st, err := repo.Load(ctx)
-	if err != nil || st == nil {
-		return err
-	}
-
-	st.BuildStatus = domain.BuildPassing
-	st.StoryStatus = domain.StorySuccess
-	st.StoryError = ""
-
-	isWholeProjectAudit := len(acceptanceGaps) > 0
-	targetStoryKeys := make(map[string]bool)
-	for _, fs := range failedStories {
-		parts := strings.Fields(fs)
-		if len(parts) > 0 {
-			clean := strings.TrimSuffix(parts[0], filepath.Ext(parts[0]))
-			targetStoryKeys[clean] = true
-			if idx := strings.Index(clean, "-"); idx > 0 {
-				if secondIdx := strings.Index(clean[idx+1:], "-"); secondIdx > 0 {
-					targetStoryKeys[clean[:idx+1+secondIdx]] = true
-				}
-			}
-		}
-	}
-
-	matchesStory := func(story domain.Story) bool {
-		if isWholeProjectAudit || len(targetStoryKeys) == 0 {
-			return true
-		}
-		if targetStoryKeys[story.ID] || targetStoryKeys[story.Title] {
-			return true
-		}
-		for key := range targetStoryKeys {
-			if strings.Contains(story.ID, key) || strings.Contains(story.Title, key) || strings.Contains(story.FilePath, key) {
-				return true
-			}
-		}
-		return false
-	}
-
-	matchedStories := 0
-	matchedStoryIDs := make(map[string]bool)
-	for i := range st.Stories {
-		if matchesStory(st.Stories[i]) {
-			st.Stories[i].Status = domain.StorySuccess
-			matchedStories++
-			matchedStoryIDs[st.Stories[i].ID] = true
-			matchedStoryIDs[st.Stories[i].Title] = true
-		}
-	}
-
-	existingStoryIDs := make(map[string]bool)
-	for _, s := range st.Stories {
-		existingStoryIDs[s.ID] = true
-	}
-
-	for idx, sf := range storyFiles {
-		storyID := fmt.Sprintf("story-%04d", idx+1)
-		featName := strings.TrimSuffix(filepath.Base(sf), filepath.Ext(sf))
-		tempStory := domain.Story{ID: storyID, Title: featName, FilePath: sf}
-		if matchesStory(tempStory) && !existingStoryIDs[storyID] {
-			st.Stories = append(st.Stories, domain.Story{
-				ID:     storyID,
-				Title:  featName,
-				Status: domain.StorySuccess,
-			})
-			matchedStoryIDs[storyID] = true
-			matchedStoryIDs[featName] = true
-		}
-	}
-
-	allStoriesMatched := len(st.Stories) > 0 && matchedStories == len(st.Stories)
-	for i := range st.Tasks {
-		task := &st.Tasks[i]
-		belongs := isWholeProjectAudit || len(targetStoryKeys) == 0 || allStoriesMatched
-		if !belongs {
-			if matchedStoryIDs[task.StoryID] {
-				belongs = true
-			} else {
-				for key := range targetStoryKeys {
-					if strings.Contains(task.ID, key) || strings.Contains(task.StoryID, key) {
-						belongs = true
-						break
-					}
-				}
-			}
-		}
-		if belongs {
-			task.Status = domain.TaskSuccess
-		}
-	}
-
-	action := domain.Action{
-		Timestamp: time.Now().UTC(),
-		Tool:      "sovereign_rescue_success",
-		Reasoning: "Autonomous sovereign rescue completed requirements and passed validation gates",
-		Success:   true,
-	}
-	st.LastActions = append(st.LastActions, action)
-
-	return repo.Save(ctx, st)
 }

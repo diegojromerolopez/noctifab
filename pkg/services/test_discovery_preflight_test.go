@@ -166,3 +166,69 @@ func containsAny(s string, substrs ...string) bool {
 	}
 	return false
 }
+
+func TestPreflightE2EEnvironment(t *testing.T) {
+	t.Run("when Dockerfile references missing runner script it scaffolds executable stub", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dockerfileContent := `FROM python:3.11-slim
+WORKDIR /app
+COPY . /app
+RUN chmod +x tests/e2e/run_tests.sh
+ENTRYPOINT ["tests/e2e/run_tests.sh"]
+`
+		if err := os.WriteFile(filepath.Join(tmpDir, "Dockerfile.e2e"), []byte(dockerfileContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := PreflightE2EEnvironment(tmpDir); err != nil {
+			t.Fatalf("PreflightE2EEnvironment failed: %v", err)
+		}
+
+		scriptPath := filepath.Join(tmpDir, "tests", "e2e", "run_tests.sh")
+		info, err := os.Stat(scriptPath)
+		if err != nil {
+			t.Fatalf("expected scaffolded runner script at %s, got error: %v", scriptPath, err)
+		}
+		if info.Mode()&0111 == 0 {
+			t.Errorf("expected script to be executable (0755), got mode: %v", info.Mode())
+		}
+		data, _ := os.ReadFile(scriptPath)
+		if !strings.Contains(string(data), "#!/bin/sh") {
+			t.Errorf("expected shell stub, got: %s", string(data))
+		}
+	})
+
+	t.Run("when script exists with non-executable mode it ensures execute permissions without overwriting", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.MkdirAll(filepath.Join(tmpDir, "tests", "e2e"), 0755)
+		scriptPath := filepath.Join(tmpDir, "tests", "e2e", "run_tests.sh")
+		_ = os.WriteFile(scriptPath, []byte("#!/bin/sh\npytest -v\n"), 0644)
+
+		dockerfileContent := `FROM alpine
+ENTRYPOINT ["/app/tests/e2e/run_tests.sh"]
+`
+		_ = os.WriteFile(filepath.Join(tmpDir, "Dockerfile"), []byte(dockerfileContent), 0644)
+
+		if err := PreflightE2EEnvironment(tmpDir); err != nil {
+			t.Fatalf("PreflightE2EEnvironment failed: %v", err)
+		}
+
+		info, err := os.Stat(scriptPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&0111 == 0 {
+			t.Errorf("expected executable bit to be set, got mode: %v", info.Mode())
+		}
+		data, _ := os.ReadFile(scriptPath)
+		if string(data) != "#!/bin/sh\npytest -v\n" {
+			t.Errorf("expected existing script content preserved, got: %s", string(data))
+		}
+	})
+
+	t.Run("when empty project path provided it returns nil", func(t *testing.T) {
+		if err := PreflightE2EEnvironment(""); err != nil {
+			t.Errorf("expected nil, got %v", err)
+		}
+	})
+}

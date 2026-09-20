@@ -46,3 +46,25 @@ func TestOpenAIStream_TerminatesOnDoneMarker(t *testing.T) {
 		t.Errorf("stream hung %.0fs waiting after [DONE]; should return immediately", elapsed.Seconds())
 	}
 }
+
+func TestBuildChatParams_StreamOptions(t *testing.T) {
+	t.Run("when streaming is enabled StreamOptions is set with include_usage", func(t *testing.T) {
+		opts := completionOptions{
+			streaming: true,
+		}
+		params := buildChatParams("qwen-plus", "hello", opts)
+		if params.StreamOptions.IncludeUsage.Value != true {
+			t.Errorf("expected StreamOptions.IncludeUsage to be true when streaming, got: %+v", params.StreamOptions)
+		}
+	})
+
+	t.Run("when streaming is disabled StreamOptions is omitted", func(t *testing.T) {
+		opts := completionOptions{
+			streaming: false,
+		}
+		params := buildChatParams("qwen-plus", "hello", opts)
+		if params.StreamOptions.IncludeUsage.Value == true {
+			t.Errorf("expected StreamOptions.IncludeUsage to NOT be true when non-streaming, got: %+v", params.StreamOptions)
+		}
+	})
+}

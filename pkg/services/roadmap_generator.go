@@ -86,6 +86,16 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 		return fmt.Errorf("SPEC.md not found in project path %q: %w", projectPath, err)
 	}
 	specContent := string(specBytes)
+
+	// If specification has domain sections/tables, deterministically partition into .noctifab/specs/
+	if manifest, pErr := PartitionSpecIfNeeded(projectPath); pErr == nil && manifest != nil && len(manifest.Sections) > 0 {
+		fmt.Printf("ℹ [Product Manager] Deterministically partitioned SPEC.md into .noctifab/specs/ (%d domain slices, %s)\n", len(manifest.Sections), manifest.CoreFile)
+		corePath := filepath.Join(projectPath, ".noctifab", "specs", manifest.CoreFile)
+		if coreBytes, rErr := os.ReadFile(corePath); rErr == nil && len(coreBytes) > 0 {
+			specContent = string(coreBytes)
+		}
+	}
+
 	if mode := CompactionModeFromContext(ctx); mode != "" && mode != "none" {
 		specContent = llm.CompactMarkdownSpecWithMode(specContent, mode)
 	}
@@ -96,6 +106,11 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 	if len(legacyFiles) > 0 {
 		fmt.Printf("ℹ [Product Manager] Legacy codebase detected (%d files). Applying Legacy Stabilization Mandate.\n", len(legacyFiles))
 		legacyBlock = fmt.Sprintf("\n\nExisting Legacy Code Files Detected in Workspace:\n- %s\n\nLEGACY STABILIZATION MANDATE: Code already exists in the project workspace. Assume it is legacy code with existing functionality. The primary initial goal is to stabilize it by creating unit and integration characterization tests for existing parts in US-001, and leveraging those tests as safety rails when refactoring the code to match future user story requirements.", strings.Join(legacyFiles, "\n- "))
+	}
+
+	effectiveMaxStories := ResolveUserStoryCeiling(specContent, maxUserStories)
+	if effectiveMaxStories != maxUserStories && maxUserStories > 0 {
+		fmt.Printf("ℹ [Product Manager] Large specification detected (%d bytes). Dynamically scaled user story ceiling from %d to %d stories.\n", len(specContent), maxUserStories, effectiveMaxStories)
 	}
 
 	for p := 1; p <= passes; p++ {
@@ -117,7 +132,7 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 			Spec:            specContent,
 			ExistingStories: strings.Join(existingStories, "\n"),
 			LegacyFiles:     legacyBlock,
-			MaxUserStories:  maxUserStories,
+			MaxUserStories:  effectiveMaxStories,
 			MinComplexity:   minComplexity,
 			MaxComplexity:   maxComplexity,
 		})
@@ -301,4 +316,24 @@ func ToSlug(text string) string {
 // delegating to the centralized ScanLegacyFiles scanner.
 func scanLegacyFiles(projectPath string) ([]string, error) {
 	return ScanLegacyFiles(projectPath)
+}
+
+// ResolveUserStoryCeiling dynamically scales the maximum number of user stories based on
+// specification length and complexity, ensuring large multi-subsystem specifications (e.g. > 35KB)
+// are not artificially capped at an inadequate number of stories.
+func ResolveUserStoryCeiling(specContent string, configuredMax int) int {
+	if configuredMax > 0 && configuredMax != 5 {
+		return configuredMax
+	}
+	specLen := len(specContent)
+	if specLen >= 60000 {
+		return 12
+	}
+	if specLen >= 35000 {
+		return 8
+	}
+	if configuredMax > 0 {
+		return configuredMax
+	}
+	return 5
 }

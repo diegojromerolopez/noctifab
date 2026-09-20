@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/google/uuid"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )
@@ -54,6 +55,8 @@ type baseOpenAIClient struct {
 	// extraBody holds provider-specific parameters to be merged into the
 	// request's extra_body field (e.g. enable_thinking for QwenCloud).
 	extraBody map[string]interface{}
+	// headers holds custom HTTP request headers attached to outgoing requests.
+	headers map[string]string
 	// disableJSONMode disables response_format=json_object when set.
 	// Used for providers/models that cannot accept forced JSON mode.
 	disableJSONMode bool
@@ -74,6 +77,14 @@ func newBaseOpenAIClient(provider, baseURL, url string, timeout, idleTimeout tim
 // Parameters are merged into every outgoing completion request.
 func (o *baseOpenAIClient) SetExtraBody(params map[string]interface{}) {
 	o.extraBody = params
+}
+
+// SetHeader attaches a custom HTTP header to outbound requests.
+func (o *baseOpenAIClient) SetHeader(key, val string) {
+	if o.headers == nil {
+		o.headers = make(map[string]string)
+	}
+	o.headers[key] = val
 }
 
 // SetDisableJSONMode disables response_format=json_object for this client.
@@ -195,11 +206,18 @@ func (o *baseOpenAIClient) buildClientWithOptions(apiKey string, httpClient *htt
 	if apiKey != "" {
 		opts = append(opts, option.WithAPIKey(apiKey))
 	}
+	for k, v := range o.headers {
+		opts = append(opts, option.WithHeader(k, v))
+	}
 	if o.provider == "openrouter" {
 		opts = append(opts,
 			option.WithHeader("HTTP-Referer", "https://github.com/diegojromerolopez/noctifab"),
 			option.WithHeader("X-Title", "Noctifab"),
 		)
+	}
+	base := o.sdkBaseURL(apiKey)
+	if (o.provider == "opencode" || strings.Contains(base, "opencode.ai")) && (o.headers == nil || o.headers["x-opencode-session"] == "") {
+		opts = append(opts, option.WithHeader("x-opencode-session", uuid.New().String()))
 	}
 	return openai.NewClient(opts...)
 }
@@ -278,6 +296,7 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 		o.streaming = false
 	}
 
+	opts.streaming = false
 	client := o.sdkClient(apiKey)
 	params := buildChatParams(model, prompt, opts)
 
@@ -351,6 +370,7 @@ func tempOrDefault(t float64) float64 {
 // that keep streaming are never cut short — total duration remains capped by
 // the http.Client timeout (max_timeout).
 func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, apiKey, prompt string, opts completionOptions) (*ProviderCallResult, error) {
+	opts.streaming = true
 	client := o.sdkStreamingClient(apiKey)
 	params := buildChatParams(model, prompt, opts)
 

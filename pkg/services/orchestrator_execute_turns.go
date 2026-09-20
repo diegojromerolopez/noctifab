@@ -67,6 +67,7 @@ func (o *Orchestrator) executeTesterFirstTurn(
 	if o.evaluator != nil {
 		if passed, _, err := o.evaluator.ValidateTask(ctx, taskState, *task); passed && err == nil {
 			fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: tests are already 100%% green after implementation! Skipping refactor turn.\n", taskID)
+			_ = o.stageAndCommit(ctx, taskGit, taskID, "chore(core): sync workspace state after fast-exit green for task %s", task.Title)
 			return ""
 		}
 	}
@@ -132,6 +133,7 @@ func (o *Orchestrator) executeGeneratorFirstTurn(
 	if o.evaluator != nil {
 		if passed, _, err := o.evaluator.ValidateTask(ctx, taskState, *task); passed && err == nil {
 			fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: tests are already 100%% green after test authoring! Skipping refactor turn.\n", taskID)
+			_ = o.stageAndCommit(ctx, taskGit, taskID, "chore(core): sync workspace state after fast-exit green for task %s", task.Title)
 			return ""
 		}
 	}
