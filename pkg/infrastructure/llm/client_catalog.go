@@ -256,11 +256,37 @@ func (c *Client) availableCapabilitiesCached(ctx context.Context, pClient Provid
 	return caps
 }
 
+type nonStreamingContextKey struct{}
+
+// WithNonStreaming attaches a non-streaming directive to the context so provider clients execute direct HTTP POSTs without SSE.
+func WithNonStreaming(ctx context.Context) context.Context {
+	return context.WithValue(ctx, nonStreamingContextKey{}, true)
+}
+
+// IsNonStreamingContext reports whether the context requires non-streaming HTTP execution.
+func IsNonStreamingContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, ok := ctx.Value(nonStreamingContextKey{}).(bool)
+	return ok && v
+}
+
 // providerClientForContext builds the ProviderClient and applies routine task overrides
-// (such as dynamically disabling extended thinking when discovered via /models).
+// (such as dynamically disabling extended thinking when discovered via /models, or disabling streaming for batch/spike).
 func (c *Client) providerClientForContext(ctx context.Context, activeModel string) ProviderClient {
-	pc := c.providerClient()
+	streaming := c.Streaming
 	role := GetRoleFromContext(ctx)
+	if IsNonStreamingContext(ctx) || role == "spike" {
+		streaming = false
+	}
+	spec, _ := GetProviderSpec(strings.ToLower(c.Provider))
+	var pc ProviderClient
+	if spec != nil && spec.NewClientFunc != nil {
+		pc = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, streaming)
+	} else {
+		pc = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, streaming)
+	}
 	if isRoutineTask(role) {
 		extra, modified := c.adjustForRoutineTask(ctx, role, activeModel, nil)
 		if modified {

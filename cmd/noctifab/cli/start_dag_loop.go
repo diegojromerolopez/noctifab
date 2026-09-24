@@ -78,7 +78,11 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 		if storyConcurrency > 1 && len(activeStoryFiles) > 1 {
 			// Story-Level Parallel Execution via StoryDAGScheduler with strict dependency gating
 			dagScheduler := services.NewStoryDAGScheduler(storyConcurrency)
-			dagScheduler.SetPipelined(false)
+			isPipelined := true
+			if opts.Cfg != nil {
+				isPipelined = opts.Cfg.Agents.Orchestrator.IsPipelined()
+			}
+			dagScheduler.SetPipelined(isPipelined)
 			for _, sf := range activeStoryFiles {
 				specBytes, err := os.ReadFile(sf)
 				if err != nil {
@@ -230,6 +234,12 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 
 				if opts.SpeculativePlanner != nil {
 					opts.SpeculativePlanner.PrePlanQueuedStories(ctx, activeStoryFiles, currentStoryFile)
+				}
+
+				if _, err := os.Stat(currentStoryFile); os.IsNotExist(err) {
+					fmt.Printf("ℹ [Loop %d] Story file %s no longer exists on disk — skipping\n", loopIdx, currentStoryFile)
+					storyOutcomes[currentStoryFile] = nil
+					continue
 				}
 
 				storyErr := opts.ExecuteStory(ctx, currentStoryFile)

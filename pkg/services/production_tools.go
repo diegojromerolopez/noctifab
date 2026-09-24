@@ -336,6 +336,12 @@ func (t *RunTestsTool) Execute(ctx context.Context, state *domain.State, args ma
 		timeoutMsg := fmt.Sprintf("TIMEOUT: Test command timed out after %v (possible infinite loop, deadlock, or blocking I/O waiting for input/socket).\nLast output:\n%s", timeout, out)
 		return timeoutMsg, fmt.Errorf("test command timed out after %v", timeout)
 	}
+	if err == nil {
+		if violation := DetectFalseZeroExit(out, 0); violation.Detected {
+			diag := FormatFalseZeroDiagnostic(violation)
+			return out + diag, fmt.Errorf("fatal crash masked by zero exit code: %s", violation.Reason)
+		}
+	}
 	return out, err
 }
 

@@ -205,6 +205,18 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (bool, error) {
 
 			buildOK := o.allTasksSucceeded(state)
 			if buildOK {
+				// Work Verification for User Story:
+				// Ensure the story produced actual git commits or diffs relative to the base branch.
+				if o.git != nil && state.Metadata.BaseBranch != "" && len(state.Tasks) > 0 {
+					baseBranch := state.Metadata.BaseBranch
+					storyDiff, _ := o.git.Run(ctx, false, "diff", "--name-only", baseBranch)
+					storyLog, _ := o.git.Run(ctx, false, "log", baseBranch+"..HEAD", "--oneline")
+					if strings.TrimSpace(storyDiff) == "" && strings.TrimSpace(storyLog) == "" {
+						fmt.Printf("❌ Story %s produced zero file changes relative to base branch %s. Work verification failed.\n", state.Metadata.FeatureName, baseBranch)
+						buildOK = false
+					}
+				}
+
 				isFinalStory := true
 				for _, s := range state.Stories {
 					if s.ID != state.Metadata.FeatureName && s.Status != domain.StorySuccess && s.Status != domain.StoryDeferred {

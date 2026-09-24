@@ -350,17 +350,27 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 		out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
 		runCancel()
 
-		fmt.Printf("Orchestrator: Task test execution finished (passed=%t, out_len=%d)\n", err == nil, len(out))
-
+		exitCode := 0
+		if err != nil {
+			exitCode = 1
+		}
+		parsedReport := ParseTestOutput(out, exitCode)
 		noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, out)
 		outputMsg := out
 		if noTestsRan && (strings.TrimSpace(outputMsg) == "" || notice != "") {
 			outputMsg = notice
 		}
 
+		passed := err == nil && !noTestsRan
+		if !parsedReport.Success && len(parsedReport.Failures) > 0 {
+			passed = false
+			outputMsg = fmt.Sprintf("%s\n\n[Structured Test Parser] %s\nFailed Tests:\n - %s",
+				outputMsg, parsedReport.SummaryText, strings.Join(parsedReport.Failures, "\n - "))
+		}
+
 		results[0] = TestRunResult{
 			RunID:  1,
-			Passed: err == nil && !noTestsRan,
+			Passed: passed,
 			Output: outputMsg,
 		}
 		return results
@@ -379,15 +389,27 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 			out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
 			runCancel()
 
+			exitCode := 0
+			if err != nil {
+				exitCode = 1
+			}
+			parsedReport := ParseTestOutput(out, exitCode)
 			noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, out)
 			outputMsg := out
 			if noTestsRan && (strings.TrimSpace(outputMsg) == "" || notice != "") {
 				outputMsg = notice
 			}
 
+			passed := err == nil && !noTestsRan
+			if !parsedReport.Success && len(parsedReport.Failures) > 0 {
+				passed = false
+				outputMsg = fmt.Sprintf("%s\n\n[Structured Test Parser] %s\nFailed Tests:\n - %s",
+					outputMsg, parsedReport.SummaryText, strings.Join(parsedReport.Failures, "\n - "))
+			}
+
 			results[idx] = TestRunResult{
 				RunID:  idx + 1,
-				Passed: err == nil && !noTestsRan,
+				Passed: passed,
 				Output: outputMsg,
 			}
 		}(i)

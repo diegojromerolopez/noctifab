@@ -77,6 +77,50 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 	}
 	fmt.Printf("- Sandbox build tools available: %s\n", strings.Join(foundTools, ", "))
 
+	preflightSys := services.NewPreflightSystem()
+	var preflightLinterCmd string
+	if cfg.Sandbox.Linter.Command != nil {
+		preflightLinterCmd = *cfg.Sandbox.Linter.Command
+	} else if cfg.Sandbox.LinterCommand != nil {
+		preflightLinterCmd = *cfg.Sandbox.LinterCommand
+	}
+	report, _ := preflightSys.PreflightWorkspace(context.Background(), pDir, []string{
+		cfg.Sandbox.TestCommand,
+		cfg.Sandbox.FormatterCommand,
+		preflightLinterCmd,
+	})
+	if report != nil {
+		if len(report.DetectedRuntimes) > 0 {
+			fmt.Printf("- Detected project runtimes: %s\n", strings.Join(report.DetectedRuntimes, ", "))
+		}
+		if len(report.MissingBinaries) > 0 {
+			fmt.Printf("⚠️  Warning: missing required runtimes on host: %s (recommended sandbox: %s)\n",
+				strings.Join(report.MissingBinaries, ", "), report.RecommendedStrategy)
+			if report.RecommendedStrategy == "docker" && (cfg.Sandbox.Mode == "" || cfg.Sandbox.Mode == "host") {
+				fmt.Printf("⚡ [Pre-Flight Auto-Switch] Automatically switching sandbox mode to 'docker' because required toolchain is missing on host.\n")
+				cfg.Sandbox.Mode = "docker"
+			}
+		}
+		if report.IsDaemon {
+			if len(report.DetectedPorts) > 0 {
+				var portStrs []string
+				for _, p := range report.DetectedPorts {
+					portStrs = append(portStrs, fmt.Sprintf("%d", p))
+				}
+				fmt.Printf("- Daemon/server project ports detected: %s\n", strings.Join(portStrs, ", "))
+				if len(report.PreemptedPorts) > 0 {
+					fmt.Printf("⚡ [Port Pre-Flight] Preempted port(s) %v, reaped orphan PID(s): %v\n", report.PreemptedPorts, report.ReapedPIDs)
+				}
+				if report.PortPreflightError != "" {
+					return fmt.Errorf("pre-flight port check failed for daemon project: %s", report.PortPreflightError)
+				}
+				fmt.Printf("✓ [Port Pre-Flight] Daemon port(s) verified clean\n")
+			}
+		} else {
+			fmt.Printf("- Daemon/server port pre-emption: skipped (non-daemon CLI/library project)\n")
+		}
+	}
+
 	requiredBinaries := getRequiredSandboxBinaries(cfg)
 	if len(requiredBinaries) > 0 {
 		var missing []string

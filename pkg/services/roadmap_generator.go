@@ -186,8 +186,10 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 			}
 
 			sanitizedStories := SanitizeAndCapStories(projectPath, rawStories, specContent, maxUserStories)
+			writtenPaths := make(map[string]bool)
 			for _, st := range sanitizedStories {
 				targetPath := NormalizeStoryPath(projectPath, st.Filename, st.Content)
+				writtenPaths[filepath.Clean(targetPath)] = true
 				if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 					return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)
 				}
@@ -195,6 +197,17 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 					return fmt.Errorf("failed to write story file %q: %w", targetPath, err)
 				}
 				storiesCount++
+			}
+
+			// On the final pass, purge any obsolete user story files from prior passes
+			if p == passes && len(writtenPaths) > 0 {
+				if existingFiles, err := filepath.Glob(filepath.Join(storiesDir, "*.md")); err == nil {
+					for _, ef := range existingFiles {
+						if !writtenPaths[filepath.Clean(ef)] {
+							_ = os.Remove(ef)
+						}
+					}
+				}
 			}
 
 			if storiesCount > 0 || specRefined {

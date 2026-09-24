@@ -45,6 +45,15 @@ func DispatchSovereignRescue(ctx context.Context, opts SovereignRescueOptions) e
 		if opts.MaxTurns <= 0 {
 			opts.MaxTurns = rescueCfg.GetMaxTurns()
 		}
+		if len(opts.AcceptanceGaps) > 0 {
+			gapTurns := len(opts.AcceptanceGaps)
+			if gapTurns < 5 {
+				gapTurns = 5
+			}
+			if gapTurns > opts.MaxTurns {
+				opts.MaxTurns = gapTurns
+			}
+		}
 		if opts.TurnTimeout <= 0 {
 			opts.TurnTimeout = rescueCfg.GetTimeout()
 		}
@@ -54,6 +63,15 @@ func DispatchSovereignRescue(ctx context.Context, opts SovereignRescueOptions) e
 	} else {
 		if opts.MaxTurns <= 0 {
 			opts.MaxTurns = 10
+		}
+		if len(opts.AcceptanceGaps) > 0 {
+			gapTurns := len(opts.AcceptanceGaps)
+			if gapTurns < 5 {
+				gapTurns = 5
+			}
+			if gapTurns > opts.MaxTurns {
+				opts.MaxTurns = gapTurns
+			}
 		}
 		if opts.TurnTimeout <= 0 {
 			opts.TurnTimeout = 5 * time.Minute
@@ -120,6 +138,19 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		opts.GitClient.CleanStaleLocks(ctx)
 	}
 
+	// Register diagnostic tools if missing
+	if opts.ToolRegistry != nil {
+		if _, ok := opts.ToolRegistry.Get("check_socket"); !ok {
+			opts.ToolRegistry.Register(&services.CheckSocketTool{})
+		}
+		if _, ok := opts.ToolRegistry.Get("check_http"); !ok {
+			opts.ToolRegistry.Register(&services.CheckHTTPTool{})
+		}
+		if _, ok := opts.ToolRegistry.Get("validate_manifest"); !ok {
+			opts.ToolRegistry.Register(&services.ValidateManifestTool{})
+		}
+	}
+
 	// 2. Read SPEC.md ground-truth requirements
 	specBytes, _ := os.ReadFile(filepath.Join(opts.TargetDir, "SPEC.md"))
 	specContent := string(specBytes)
@@ -151,6 +182,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	bestCommit := captureSovereignBaselineCommit(ctx, opts.GitClient)
 
 	// 4. Multi-Turn Sovereign Rescue Loop
+	graceRefunds := 0
 	for turn := 1; turn <= maxTurns; turn++ {
 		fmt.Printf("🔧 [Sovereign Rescue] Turn %d/%d: Prompting direct sovereign LLM agent...\n", turn, maxTurns)
 
@@ -165,10 +197,17 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ [Sovereign Rescue] Turn %d LLM invocation error: %v\n", turn, err)
+			if graceRefunds < 3 {
+				graceRefunds++
+				fmt.Printf("🔄 [Sovereign Rescue] Granted grace refund (%d/3) for turn %d after transient error\n", graceRefunds, turn)
+				turn--
+				time.Sleep(1 * time.Second)
+			}
 			continue
 		}
 
 		var toolErrors []string
+		var toolOutputs []string
 		actionsExecuted := 0
 		if resp != nil && len(resp.Actions) > 0 {
 			for _, action := range resp.Actions {
@@ -182,9 +221,13 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 						errMsg := fmt.Sprintf("tool %s failed: %v", action.Tool, execErr)
 						fmt.Fprintf(os.Stderr, "⚠ [Sovereign Tool Failed] %s\n", errMsg)
 						toolErrors = append(toolErrors, errMsg)
+						toolOutputs = append(toolOutputs, fmt.Sprintf("Action %s failed: %v\nOutput: %s", action.Tool, execErr, strings.TrimSpace(out)))
 					} else {
 						actionsExecuted++
 						fmt.Printf("   ✓ Action %s succeeded\n", action.Tool)
+						if strings.TrimSpace(out) != "" {
+							toolOutputs = append(toolOutputs, fmt.Sprintf("Action %s succeeded:\n%s", action.Tool, strings.TrimSpace(out)))
+						}
 					}
 					if state != nil {
 						actionRecord := domain.Action{
@@ -215,7 +258,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 					fmt.Sprintf("fix(sovereign-rescue): direct unblock turn %d/%d", turn, maxTurns))
 			}
 		} else {
-			toolErrors = append(toolErrors, "response contained 0 actionable tool invocations; you must invoke write_file, write_files, edit_file, or install_package")
+			toolErrors = append(toolErrors, "response contained 0 actionable tool invocations; you must invoke write_file, write_files, edit_file, or diagnostic probe tools")
 		}
 
 		// Log and persist corrective step in database
@@ -289,8 +332,15 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		}
 
 		lastFailureLog = newLog
+		var feedbackParts []string
+		if len(toolOutputs) > 0 {
+			feedbackParts = append(feedbackParts, fmt.Sprintf("WORKSPACE TOOL EXECUTION RESULTS IN TURN %d:\n%s", turn, strings.Join(toolOutputs, "\n---\n")))
+		}
 		if len(toolErrors) > 0 {
-			lastFailureLog = fmt.Sprintf("WORKSPACE TOOL EXECUTION ERRORS IN TURN %d:\n- %s\n\nVALIDATION OUTPUT:\n%s", turn, strings.Join(toolErrors, "\n- "), newLog)
+			feedbackParts = append(feedbackParts, fmt.Sprintf("WORKSPACE TOOL EXECUTION ERRORS IN TURN %d:\n- %s", turn, strings.Join(toolErrors, "\n- ")))
+		}
+		if len(feedbackParts) > 0 {
+			lastFailureLog = fmt.Sprintf("%s\n\nVALIDATION OUTPUT:\n%s", strings.Join(feedbackParts, "\n\n"), newLog)
 		}
 		diagnostics = CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog)
 		fmt.Printf("⚠️ [Sovereign Rescue] Turn %d verification failed. Feeding diagnostics into turn %d...\n", turn, turn+1)
@@ -311,83 +361,4 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	}
 
 	return fmt.Errorf("sovereign rescue exhausted %d turns without passing all validation gates. Last error:\n%s", maxTurns, lastFailureLog)
-}
-
-func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGaps []string, failureLog string, turn, maxTurns int, resolvedStrategy string, detectedMissing bool) string {
-	var sb strings.Builder
-	sb.WriteString("You are Noctifab's Sovereign Omni-Agent.\n")
-	sb.WriteString("The standard multi-agent pipeline encountered an unresolvable bottleneck and could not finish.\n")
-	sb.WriteString("All role restrictions, story divisions, and architectural boundaries are DISSOLVED.\n")
-	sb.WriteString("You have sovereign, direct authority to inspect, create, and modify ANY file in the workspace.\n\n")
-
-	sb.WriteString("=== GROUND TRUTH SPECIFICATION (SPEC.md) ===\n")
-	sb.WriteString(specContent)
-	sb.WriteString("\n\n")
-
-	if len(acceptanceGaps) > 0 {
-		sb.WriteString("=== WHOLE-PROJECT ACCEPTANCE AUDIT GAPS (REQUIRED REMEDIATION) ===\n")
-		sb.WriteString("The project failed the Whole-Project Acceptance Audit with the following concrete specification gaps.\n")
-		sb.WriteString("You MUST implement all missing files, commands, schemas, and test scenarios enumerated below:\n")
-		for _, gap := range acceptanceGaps {
-			sb.WriteString("- ")
-			sb.WriteString(gap)
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\n")
-	}
-
-	if len(failedStories) > 0 {
-		sb.WriteString("=== UNRESOLVED / FAILED ROADMAP STORIES ===\n")
-		for _, s := range failedStories {
-			sb.WriteString("- ")
-			sb.WriteString(s)
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\n")
-	}
-
-	fmt.Fprintf(&sb, "=== CURRENT FAILURE DIAGNOSTICS (Turn %d of %d) ===\n", turn, maxTurns)
-	sb.WriteString(failureLog)
-	sb.WriteString("\n\n")
-
-	if directive := BuildToolchainFallbackDirective(resolvedStrategy, detectedMissing); directive != "" {
-		sb.WriteString(directive)
-	}
-
-	sb.WriteString("=== DIRECT MANDATE ===\n")
-	sb.WriteString("1. Directly write or modify all source code, headers, and configuration files needed to fulfill SPEC.md.\n")
-	sb.WriteString("2. Author genuine unit tests under tests/ directory with real assertions (0 tests or empty tests will FAIL).\n")
-	sb.WriteString("3. Ensure the project contains a Makefile with three standard recipes:\n")
-	sb.WriteString("   - build: compiles all source binaries cleanly without errors.\n")
-	sb.WriteString("   - test: executes unit tests and exits with code 1 if 0 tests are found.\n")
-	sb.WriteString("   - e2e: executes end-to-end black-box verification of compiled binaries (e2e is strictly validated; if e2e fails or is missing, the turn is rejected).\n")
-	sb.WriteString("4. Fix all compilation errors, missing translation units, or syntax issues reported above.\n")
-	sb.WriteString("5. Strictly avoid placeholder stubs, error-masking shell tricks, and tautological tests (e.g., 'TODO: implement', 'pass', empty main functions, '|| true', 'assert True'). The anti-stub validator and non-tautological test auditor strictly reject them.\n")
-	sb.WriteString("6. You are an autonomous headless dark-factory repair engine. You DO NOT interact with a human user and do not require chat-based interactive tools. The host orchestrator reads your JSON response and executes all file write/edit actions directly onto the workspace filesystem. You MUST provide all source code, tests, Dockerfiles, and configurations directly inside the 'actions' array using 'write_file', 'write_files', 'edit_file', or 'install_package'. Do NOT emit apologies, refusals, or claims that you lack workspace write tools.\n\n")
-
-	sb.WriteString("=== REQUIRED RESPONSE FORMAT ===\n")
-	sb.WriteString("You MUST respond ONLY with a single JSON object matching this schema (do NOT wrap in markdown code fences):\n")
-	sb.WriteString("{\n")
-	sb.WriteString("  \"reasoning\": \"Explanation of fixes applied to unblock the project\",\n")
-	sb.WriteString("  \"actions\": [\n")
-	sb.WriteString("    {\n")
-	sb.WriteString("      \"tool\": \"write_file\",\n")
-	sb.WriteString("      \"args\": {\n")
-	sb.WriteString("        \"path\": \"src/main.py\",\n")
-	sb.WriteString("        \"content\": \"...\"\n")
-	sb.WriteString("      }\n")
-	sb.WriteString("    },\n")
-	sb.WriteString("    {\n")
-	sb.WriteString("      \"tool\": \"write_files\",\n")
-	sb.WriteString("      \"args\": {\n")
-	sb.WriteString("        \"files\": [\n")
-	sb.WriteString("          {\"path\": \"tests/test_app.py\", \"content\": \"...\"},\n")
-	sb.WriteString("          {\"path\": \"Makefile\", \"content\": \"...\"}\n")
-	sb.WriteString("        ]\n")
-	sb.WriteString("      }\n")
-	sb.WriteString("    }\n")
-	sb.WriteString("  ]\n")
-	sb.WriteString("}\n")
-
-	return sb.String()
 }

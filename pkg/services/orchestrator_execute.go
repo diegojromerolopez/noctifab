@@ -192,13 +192,15 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
 		// Run test suite validation
 		passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
+		passed, logMsg = checkTaskMutations(ctx, task, taskGit, integrationBranch, passed, logMsg)
 
 		// First-Class Generator Surgical Repair
 		initCategory := CategorizeFailureLog(logMsg)
-		if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic || strings.Contains(strings.ToLower(logMsg), "e2e")) {
+		if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic || strings.Contains(strings.ToLower(logMsg), "e2e") || strings.Contains(logMsg, "zero file mutations")) {
 			fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, initCategory)
 			o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
 			passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
+			passed, logMsg = checkTaskMutations(ctx, task, taskGit, integrationBranch, passed, logMsg)
 		}
 
 		if passed && qaBlocked == "" {
@@ -366,4 +368,22 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	case o.taskCompletedChan <- struct{}{}:
 	default:
 	}
+}
+
+func checkTaskMutations(ctx context.Context, task *domain.Task, taskGit *GitClient, integrationBranch string, passed bool, logMsg string) (bool, string) {
+	if !passed || taskGit == nil {
+		return passed, logMsg
+	}
+	// Verify that tasks assigned to modify files or implement changes produce actual mutations
+	if len(task.TargetFiles) == 0 && task.ChangeType == "" {
+		return passed, logMsg
+	}
+	uncommitted, _ := taskGit.Run(ctx, false, "status", "--porcelain")
+	diffOut, _ := taskGit.Run(ctx, false, "diff", "--name-only", integrationBranch)
+	logOut, _ := taskGit.Run(ctx, false, "log", integrationBranch+"..HEAD", "--oneline")
+	if strings.TrimSpace(uncommitted) == "" && strings.TrimSpace(diffOut) == "" && strings.TrimSpace(logOut) == "" {
+		fmt.Printf("⚠️ Orchestrator: Task %s passed tests but produced zero file changes relative to %s. Rejecting false-positive pass.\n", task.ID, integrationBranch)
+		return false, fmt.Sprintf("Task %s produced zero file mutations or git changes relative to %s. Baseline tests passed, but no actual work was implemented.", task.ID, integrationBranch)
+	}
+	return passed, logMsg
 }

@@ -39,6 +39,7 @@ type Config struct {
 	MaxClarificationWait       Duration `yaml:"max_clarification_wait"`
 	ClarificationTimeoutAction string   `yaml:"clarification_timeout_action"`
 	ExecutionReport            string   `yaml:"execution_report,omitempty"`
+	SkipFolders                []string `yaml:"skip_folders,omitempty"`
 }
 
 // PromptOverride customizes the prompt template of one agent action.
@@ -131,6 +132,7 @@ type AgentRoleConfig struct {
 	Passes         int                `yaml:"passes,omitempty"`
 	MaxTokens      int64              `yaml:"max_tokens,omitempty"`
 	Ensemble       EnsembleConfig     `yaml:"ensemble,omitempty"`
+	Pipelined      *bool              `yaml:"pipelined,omitempty"`
 }
 
 func (a AgentRoleConfig) GetMaxUserStories() int {
@@ -396,50 +398,6 @@ const (
 	ContextModeDiffWindow ContextMode = "diff_window"
 	ContextModeTreeSitter ContextMode = "tree_sitter"
 )
-
-type ContextConfig struct {
-	Mode              string `yaml:"mode"`
-	TreeSitter        bool   `yaml:"tree_sitter"`
-	DiffWindowLines   int    `yaml:"diff_window_lines"`
-	WindowSize        int    `yaml:"window_size"`
-	CavemanCompaction bool   `yaml:"caveman_compaction"`
-	Compaction        string `yaml:"compaction"` // Options: "none" (default), "simple_english", "caveman"
-}
-
-func (c ContextConfig) GetCompactionMode() string {
-	mode := strings.ToLower(strings.TrimSpace(c.Compaction))
-	if mode != "" {
-		return mode
-	}
-	if c.CavemanCompaction {
-		return "caveman"
-	}
-	return "none"
-}
-
-func (c ContextConfig) GetWindowLines() int {
-	if c.WindowSize > 0 {
-		return c.WindowSize
-	}
-	if c.DiffWindowLines > 0 {
-		return c.DiffWindowLines
-	}
-	return 15
-}
-
-func (c ContextConfig) GetMode() ContextMode {
-	if c.TreeSitter {
-		return ContextModeTreeSitter
-	}
-	switch ContextMode(strings.ToLower(strings.TrimSpace(c.Mode))) {
-	case ContextModeDiffWindow:
-		return ContextModeDiffWindow
-	case ContextModeTreeSitter:
-		return ContextModeTreeSitter
-	default:
-		return ContextModeFull
-	}
-}
 
 type WorkspaceCacheConfig struct {
 	Enabled *bool `yaml:"enabled"`

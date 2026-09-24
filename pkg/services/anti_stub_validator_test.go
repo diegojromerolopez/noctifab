@@ -319,4 +319,16 @@ test:
 		violations := v.ValidateContent("Makefile", makefile)
 		assert.Empty(t, violations)
 	})
+
+	t.Run("when pyproject.toml omits source files to game coverage, it detects violation", func(t *testing.T) {
+		pyproject := `
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = ["src/main.py"]
+`
+		violations := v.ValidateContent("pyproject.toml", pyproject)
+		assert.NotEmpty(t, violations)
+		assert.Equal(t, "coverage_gaming_omission_filter", violations[0].Rule)
+	})
 }

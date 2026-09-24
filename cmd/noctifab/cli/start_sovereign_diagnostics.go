@@ -58,10 +58,12 @@ func CollectSovereignDiagnostics(targetDir string, state *domain.State, failedSt
 			}
 		}
 
-		// Collect recent failed actions from state
+		// Collect recent failed actions and diagnostic probe outputs from state
 		for _, act := range state.LastActions {
-			if !act.Success && strings.TrimSpace(act.Reasoning) != "" {
-				bundle.ActionErrors = append(bundle.ActionErrors, fmt.Sprintf("- [%s] Tool %s failed: %s", act.Timestamp.Format("15:04:05"), act.Tool, act.Reasoning))
+			if !act.Success {
+				bundle.ActionErrors = append(bundle.ActionErrors, fmt.Sprintf("- [%s] Tool %s failed: %s (Output: %s)", act.Timestamp.Format("15:04:05"), act.Tool, act.Reasoning, act.Result))
+			} else if act.Tool == "check_socket" || act.Tool == "check_http" || act.Tool == "validate_manifest" {
+				bundle.ActionErrors = append(bundle.ActionErrors, fmt.Sprintf("- [%s] Diagnostic Probe %s succeeded: %s", act.Timestamp.Format("15:04:05"), act.Tool, act.Result))
 			}
 		}
 	}

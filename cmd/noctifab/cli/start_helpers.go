@@ -51,9 +51,10 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox, llmCli
 	reg.Register(&services.DeleteFileTool{})
 	reg.Register(&services.EditFileTool{SyntaxChecker: syntaxChecker})
 	reg.Register(&services.ApplyPatchTool{SyntaxChecker: syntaxChecker})
-	reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-	reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-	reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+	excludedPaths := cfg.GetExcludedPaths()
+	reg.Register(&services.ListDirectoryTool{ExcludePaths: excludedPaths})
+	reg.Register(&services.FindFilesTool{ExcludePaths: excludedPaths})
+	reg.Register(&services.GrepSearchTool{ExcludePaths: excludedPaths})
 
 	runTimeout := 5 * time.Minute
 	if cfg.Sandbox.TimeoutSeconds > 0 {
@@ -84,6 +85,9 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox, llmCli
 	reg.Register(&services.RequestTestFixTool{})
 	depMgr := services.NewDependencyManager(cfg.Sandbox.PackageManagers)
 	reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})
+	reg.Register(&services.CheckSocketTool{})
+	reg.Register(&services.CheckHTTPTool{})
+	reg.Register(&services.ValidateManifestTool{})
 	return reg
 }
 
@@ -110,7 +114,7 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		MaxActions:             cfg.Runtime.MaxActions,
 		AutoCreatePR:           cfg.VCS.PullRequest.AutoCreate,
 		CreateBranch:           cfg.VCS.IsCreateBranchEnabled(),
-		ExcludePaths:           cfg.Sandbox.ExcludePaths,
+		ExcludePaths:           cfg.GetExcludedPaths(),
 		WorkspaceCache:         cfg.GetWorkspaceCache(),
 		QA:                     cfg.Agents.QA,
 		Fallback:               cfg.Agents.GetFallback(),

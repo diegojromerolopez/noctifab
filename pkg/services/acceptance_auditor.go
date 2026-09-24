@@ -163,7 +163,7 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 					}
 				}
 			} else {
-				e2eLog = fmt.Sprintf("✅ E2E test execution PASSED (%s):\n%s", e2eCmd, capText(e2eOut, 2000))
+				e2eLog = fmt.Sprintf("✅ [E2E Verification Confirmed: PASSED] (%s):\n%s\n[DETERMINISTIC VERIFICATION INVARIANT] The command %q executed and passed with exit code 0. Do NOT claim this target is missing or non-compliant.\n", e2eCmd, capText(e2eOut, 2000), e2eCmd)
 			}
 		}
 	} else if e2eCmd == "" {
@@ -232,12 +232,11 @@ func (a *AcceptanceAuditor) collectWorkspaceSnapshot(ctx context.Context, projec
 		lower := strings.ToLower(rel)
 		if strings.Contains(lower, "command") || strings.Contains(lower, "main") ||
 			strings.Contains(lower, "cli") || strings.Contains(lower, "server") ||
-			strings.Contains(lower, "app") || strings.HasSuffix(lower, "makefile") ||
+			strings.Contains(lower, "app") || strings.Contains(lower, "handler") ||
+			strings.Contains(lower, "core") || strings.HasSuffix(lower, "makefile") ||
 			strings.Contains(lower, "compose") || strings.Contains(lower, "dockerfile") || strings.HasSuffix(lower, ".sh") ||
 			strings.HasSuffix(lower, "pyproject.toml") || strings.HasSuffix(lower, "go.mod") ||
-			strings.HasSuffix(lower, "cargo.toml") || strings.Contains(lower, "test") ||
-			strings.Contains(lower, "spec") || strings.Contains(lower, "store") ||
-			strings.Contains(lower, "resp") || strings.Contains(lower, "persist") {
+			strings.HasSuffix(lower, "cargo.toml") || strings.Contains(lower, "test") {
 			fullPath := filepath.Join(projectPath, rel)
 			if content, readErr := os.ReadFile(fullPath); readErr == nil {
 				snippet := capText(string(content), 3000)

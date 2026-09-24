@@ -74,12 +74,13 @@ func ExecuteSpike(
 	}
 
 	spikeCtx := llm.WithRoleContext(ctx, "spike")
+	spikeCtx = llm.WithNonStreaming(spikeCtx)
 	spikeCtx = domain.WithUncompactableTail(spikeCtx, len(rendered.Contract))
 	spikeCtx = domain.WithCacheablePrefix(spikeCtx, len(rendered.Body))
 
 	timeoutSec := cfg.Agents.Spike.TimeoutSeconds
 	if timeoutSec <= 0 {
-		timeoutSec = 60
+		timeoutSec = 180
 	}
 	callCtx, cancel := context.WithTimeout(spikeCtx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()

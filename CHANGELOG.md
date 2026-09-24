@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.0] - 2026-09-24
+
+### Added
+- **Deterministic Preflight System & Quality Gate Preflight (`pkg/services/preflight_system.go`, `cmd/noctifab/cli/preflight.go`, `cmd/noctifab/cli/quality_gates_preflight.go`)**:
+  - Implemented environment preflight checks to deterministically inspect required toolchains, runtimes, build manifests, and package managers before task execution.
+- **Fast AST Syntax Validator Preflight Gate (`pkg/services/syntax_validator.go`)**:
+  - Added in-process AST and syntax parsing checks on modified code files before triggering full compiler pipelines or heavy integration test suites.
+- **Anti-False Zero Exit Code & Fatal Crash Scanner (`pkg/services/anti_false_zero.go`)**:
+  - Added deterministic scanning of stdout and stderr for fatal signals (`SIGSEGV`, `SIGBUS`, Go/Rust panics, `OOMKilled`) to prevent masked crashes from falsely passing quality gates.
+- **Story Definition of Done (DoD) Contract Validator (`pkg/services/story_dod_validator.go`, `cmd/noctifab/cli/start_story_executor.go`)**:
+  - Programmatically executed machine-readable public contracts (`allowed_executables`, `exit_codes`, `stdout_contains`, `stderr_prefixes`) against compiled binaries or scripts.
+- **Structured Test Output Parsing & Test Stream Isolator (`pkg/services/test_output_parser.go`, `pkg/services/test_stream_isolator.go`)**:
+  - Implemented language-agnostic structured test output parsers and streaming test output isolation, asserting `total_tests > 0` and `failed_tests == 0`.
+- **Diagnostic Network Probe Scaffolding & Port Reaper (`pkg/services/socket_tool.go`, `pkg/services/http_tool.go`, `pkg/services/port_reaper.go`)**:
+  - Scaffolding executable diagnostic probes for sockets, HTTP endpoints, and process port reaping.
+- **Worktree Sanitizer & Import Graph Walker (`pkg/services/worktree_sanitizer.go`, `pkg/services/import_graph_walker.go`)**:
+  - Enforced repository context hygiene via pre-flight exclusions, and implemented AST import dependency graph walking.
+
 ## [0.96.5] - 2026-09-20
 
 ### Fixed

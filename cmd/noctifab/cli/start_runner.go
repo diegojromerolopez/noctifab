@@ -194,7 +194,11 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		if cfg.Sandbox.AutoInstallDeps {
 			depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
 		}
-		sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
+		hostSandbox := services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
+		if cfg.Sandbox.PerTestTimeoutSeconds > 0 {
+			hostSandbox.PerTestTimeout = time.Duration(cfg.Sandbox.PerTestTimeoutSeconds) * time.Second
+		}
+		sandboxRunner = hostSandbox
 	}
 
 	llmClient := llm.BuildFailoverClient(cfg, budgetStore)
@@ -242,6 +246,10 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	sort.Strings(storyFiles)
 
 	gitClient := services.NewGitClient(".")
+	if !hasExistingStories && len(storyFiles) > 0 {
+		_, _ = gitClient.Run(cmdCtx, true, "add", "roadmap")
+		_, _ = gitClient.Run(cmdCtx, true, "commit", "-m", "docs(roadmap): generate user stories from SPEC.md")
+	}
 	rebaseQueue := services.NewRebaseQueue(gitClient)
 	go rebaseQueue.Start(cmdCtx)
 

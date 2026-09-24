@@ -51,6 +51,7 @@ type HostSandbox struct {
 	AllowedCommands []string
 	DefaultCommand  string
 	IdleTimeout     time.Duration
+	PerTestTimeout  time.Duration
 	DepMgr          *DependencyManager
 	evictedMu       sync.RWMutex
 	evictedTools    map[string]bool
@@ -244,6 +245,7 @@ func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Durati
 		AllowedCommands: allowed,
 		DefaultCommand:  defaultCmd,
 		IdleTimeout:     idleTimeout,
+		PerTestTimeout:  30 * time.Second,
 		DepMgr:          depMgr,
 		evictedTools:    make(map[string]bool),
 	}
@@ -360,9 +362,17 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		return fmt.Sprintf("Tool %s is evicted on host environment", binary), fmt.Errorf("tool %s is evicted", binary)
 	}
 
-	watchdog := Watchdog{IdleTimeout: s.IdleTimeout}
+	perTestTimeout := s.PerTestTimeout
+	if perTestTimeout <= 0 {
+		perTestTimeout = 30 * time.Second
+	}
+	isolator := NewTestStreamIsolator(StreamIsolatorConfig{
+		PerTestTimeout: perTestTimeout,
+		IdleTimeout:    s.IdleTimeout,
+		MaxDuration:    5 * time.Minute,
+	})
 	start := time.Now()
-	output, err := watchdog.Run(ctx, cmd)
+	output, err := isolator.Run(ctx, cmd)
 	if err != nil && s.DepMgr != nil {
 		tool, found := s.DepMgr.DetectMissingTool(string(output))
 		if !found && strings.Contains(strings.ToLower(string(output)), "not found") {
@@ -373,8 +383,7 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 			fmt.Printf("🔍 [Tool Auto-Install] Missing tool %q detected, attempting auto-installation...\n", tool)
 			if installErr := s.DepMgr.InstallTool(ctx, tool); installErr == nil {
 				fmt.Printf("✅ [Tool Auto-Install Success] Installed %q successfully. Re-running command...\n", tool)
-				watchdog2 := Watchdog{IdleTimeout: s.IdleTimeout}
-				output2, err2 := watchdog2.Run(ctx, cmd)
+				output2, err2 := isolator.Run(ctx, cmd)
 				if err2 == nil {
 					durMS := time.Since(start).Milliseconds()
 					if obs := domain.ObserverFromContext(ctx); obs != nil {

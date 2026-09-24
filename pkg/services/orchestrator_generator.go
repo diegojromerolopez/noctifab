@@ -322,6 +322,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				// Stage and commit test fixes
 				statusOut, _ := o.git.Run(ctx, false, "status", "--porcelain")
 				if strings.TrimSpace(statusOut) != "" {
+					_ = SanitizeWorkspace(o.git.Dir(), o.cfg.ExcludePaths...)
 					_, _ = o.git.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
 					stagedOut, _ := o.git.Run(ctx, false, "diff", "--cached", "--name-only")
 					if strings.TrimSpace(stagedOut) != "" {

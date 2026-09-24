@@ -185,7 +185,7 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 		if len(action.Args) == 0 {
 			return &ValidationResult{
 				Allowed: false,
-				Reason:  fmt.Sprintf("Invalid tool call: '%s' was invoked with empty arguments (map[]). Please provide the required arguments for this tool.", action.Tool),
+				Reason:  fmt.Sprintf("Invalid tool call: '%s' was invoked with empty arguments (map[]). Please provide the required arguments for this tool nested under the 'args' key. Example: {\"tool\": \"%s\", \"args\": {\"path\": \"...\"}}.", action.Tool, action.Tool),
 			}, nil
 		}
 	}

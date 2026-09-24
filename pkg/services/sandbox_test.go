@@ -4,7 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestDetectProjectLanguage_Go(t *testing.T) {
@@ -287,4 +289,23 @@ func TestDetectAutoFixImportsCommand(t *testing.T) {
 			t.Errorf("expected empty string, got %q", got)
 		}
 	})
+}
+
+func TestHostSandbox_PerTestTimeoutHangIsolation(t *testing.T) {
+	s := NewHostSandbox([]string{"sh", "sleep", "echo"}, "", 5*time.Second, nil)
+	s.PerTestTimeout = 100 * time.Millisecond
+	ctx := context.Background()
+
+	// A command where a test starts and hangs
+	out, err := s.RunCommand(ctx, t.TempDir(), "sh -c 'echo \"=== RUN   TestDeadlock\"; sleep 5'", "")
+	if err == nil {
+		t.Fatalf("expected error from hanging test, got nil (out: %s)", out)
+	}
+
+	if !strings.Contains(out, "Per-Test Timeout & Hang Isolated") {
+		t.Errorf("expected output to contain hang isolation banner, got: %s", out)
+	}
+	if !strings.Contains(out, "TestDeadlock") {
+		t.Errorf("expected output to mention hung test TestDeadlock, got: %s", out)
+	}
 }

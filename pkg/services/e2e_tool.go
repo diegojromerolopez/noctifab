@@ -60,6 +60,12 @@ func (t *RunE2ETestsTool) Execute(ctx context.Context, state *domain.State, args
 		timeoutMsg := fmt.Sprintf("TIMEOUT: E2E command %q timed out after %v (possible infinite loop or container hang).\nLast output:\n%s", command, timeout, out)
 		return timeoutMsg, fmt.Errorf("E2E command timed out after %v", timeout)
 	}
+	if err == nil {
+		if violation := DetectFalseZeroExit(out, 0); violation.Detected {
+			diag := FormatFalseZeroDiagnostic(violation)
+			return out + diag, fmt.Errorf("fatal crash in E2E execution: %s", violation.Reason)
+		}
+	}
 
 	return out, err
 }

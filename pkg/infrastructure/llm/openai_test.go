@@ -208,3 +208,26 @@ func TestStreamingIdleTimeoutEnforced(t *testing.T) {
 		t.Errorf("streaming call took %v; expected to fail fast near idle_timeout (%v), not near max_timeout (%v)", elapsed, idleTimeout, maxTimeout)
 	}
 }
+
+func TestSendCompletion_StreamingDeadlineExceededNoRetry(t *testing.T) {
+	var requestCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		time.Sleep(200 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	client := newBaseOpenAIClient("openai", server.URL, server.URL, 100*time.Millisecond, 50*time.Millisecond, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := client.sendCompletion(ctx, "gpt-4o", "test-key", "hello", completionOptions{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if count := requestCount.Load(); count > 1 {
+		t.Errorf("expected exactly 1 request (no retry), got %d", count)
+	}
+}

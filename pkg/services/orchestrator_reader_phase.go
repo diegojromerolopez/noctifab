@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"regexp"
+	"path/filepath"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -41,22 +41,53 @@ func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task dom
 
 	slicer := NewContextSlicer(o.cfg.Context)
 
+	var projectPath string
+	if state != nil {
+		projectPath = state.ProjectPath
+	}
+
+	// Purge ephemeral cache directories and temporary files before context packing
+	if projectPath != "" {
+		_ = SanitizeWorkspace(projectPath, o.cfg.ExcludePaths...)
+	}
+
 	// Always append workspace file tree and manifests to prevent file duplication and import mismatch
 	var availableFilesMsg string
+	var rawWorkspaceFiles []string
+
+	isGit := false
 	if files, err := o.git.Run(ctx, false, "ls-files"); err == nil {
+		isGit = true
 		lines := strings.Split(files, "\n")
-		var filtered []string
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, ".noctifab") || strings.HasPrefix(line, ".git") {
-				continue
+			if line != "" {
+				rawWorkspaceFiles = append(rawWorkspaceFiles, line)
 			}
-			filtered = append(filtered, line)
 		}
-		if len(filtered) > 0 {
-			availableFilesMsg = fmt.Sprintf("Workspace file structure:\n%s", strings.Join(filtered, "\n"))
-			gatheredContext = append(gatheredContext, availableFilesMsg)
-		}
+	} else if projectPath != "" {
+		// Fallback when git ls-files fails (e.g. non-git workspace or unit test sandbox)
+		_ = filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				if info != nil && info.IsDir() {
+					name := info.Name()
+					if name == ".git" || name == ".noctifab" || name == "node_modules" || name == "target" || name == ".venv" {
+						return filepath.SkipDir
+					}
+				}
+				return nil
+			}
+			if rel, rErr := filepath.Rel(projectPath, path); rErr == nil {
+				rawWorkspaceFiles = append(rawWorkspaceFiles, rel)
+			}
+			return nil
+		})
+	}
+
+	filteredWorkspaceFiles := FilterRelevantFiles(projectPath, rawWorkspaceFiles, o.cfg.ExcludePaths)
+	if isGit && len(filteredWorkspaceFiles) > 0 {
+		availableFilesMsg = fmt.Sprintf("Workspace file structure:\n%s", strings.Join(filteredWorkspaceFiles, "\n"))
+		gatheredContext = append(gatheredContext, availableFilesMsg)
 	}
 
 	// Read workspace project manifest if present
@@ -72,126 +103,13 @@ func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task dom
 		}
 	}
 
-	// Heuristic Context Loading: automatically read target files if they exist to save an LLM turn
-	if len(task.TargetFiles) > 0 && hasRf {
-		for _, tf := range task.TargetFiles {
-			if tf == "" {
-				continue
-			}
-			args := map[string]any{"path": tf}
-			out, err := rfTool.Execute(ctx, state, args)
-			if err == nil && out != "" {
-				slicedCtx := slicer.SliceFileContext(tf, out, "")
-				gatheredContext = append(gatheredContext, slicedCtx)
-			}
-		}
-		if len(gatheredContext) > 1 {
-			fmt.Printf("Orchestrator: [Reader] role %s using heuristically loaded context for %d target file(s), skipping LLM call\n", role, len(task.TargetFiles))
-			return gatheredContext
-		}
+	// Deterministic AST & Import Graph Walker: resolve target files, imported interfaces/types, and test callers
+	walker := NewImportGraphWalker()
+	graphCtx := walker.GatherContext(state.ProjectPath, task.TargetFiles, task.Title, task.Description, filteredWorkspaceFiles, slicer)
+	if len(graphCtx) > 0 {
+		fmt.Printf("Orchestrator: [Reader] deterministic AST import graph resolved %d file(s) for role %s\n", len(graphCtx), role)
+		gatheredContext = append(gatheredContext, graphCtx...)
 	}
 
-	// Fallback: Parse file paths directly from task.Description using regex before resorting to LLM
-	filePathRegex := regexp.MustCompile(`[a-zA-Z0-9_\-/\.]+\.[a-zA-Z0-9]+`)
-	matches := filePathRegex.FindAllString(task.Description, -1)
-	for _, file := range matches {
-		fullPath, err := resolveSandboxPath(state.ProjectPath, file)
-		if err == nil {
-			if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
-				summary := string(content)
-				if len(summary) > 2000 {
-					summary = summary[:2000] + "\n... [TRUNCATED] ..."
-				}
-				gatheredContext = append(gatheredContext, fmt.Sprintf("Heuristically read file %q from description:\n```\n%s\n```", file, summary))
-			}
-		}
-	}
-
-	if len(gatheredContext) > 1 {
-		fmt.Printf("Orchestrator: [Reader] role %s loaded file(s) from description heuristics, skipping LLM call\n", role)
-		return gatheredContext
-	}
-
-	if files, err := o.git.Run(ctx, false, "ls-files"); err == nil {
-		lines := strings.Split(files, "\n")
-		var filtered []string
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			parts := strings.Split(line, "/")
-			ignored := false
-			for _, part := range parts {
-				if part == ".noctifab" || part == ".git" {
-					ignored = true
-					break
-				}
-				for _, exp := range o.cfg.ExcludePaths {
-					cleanExp := strings.Trim(exp, "/")
-					if cleanExp != "" && part == cleanExp {
-						ignored = true
-						break
-					}
-				}
-				if ignored {
-					break
-				}
-			}
-			if !ignored {
-				filtered = append(filtered, line)
-			}
-		}
-		availableFilesMsg = fmt.Sprintf("\nBelow is a list of all existing files in the repository:\n%s\n", strings.Join(filtered, "\n"))
-	}
-
-	prompt := fmt.Sprintf(`You are a software factory automation agent operating in a restricted workspace sandbox.
-You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences (like `+"`"+`json or `+"`"+`) outside the JSON.
-
-You are acting as the %s Agent in the Context Gathering phase.
-Your objective is to inspect the workspace files and directories to gather necessary context before writing any code or tests.
-
-Task Details:
-Title: %s
-Description: %s
-
-Below is a list of target files for this task:
-%v
-%s
-`, role, task.Title, task.Description, task.TargetFiles, availableFilesMsg) + readerPromptTail
-
-	readerCtx := context.WithValue(ctx, AgentRoleKey, role)
-	// Compaction must never rewrite the tool-list/JSON-schema suffix.
-	readerCtx = domain.WithUncompactableTail(readerCtx, len(readerPromptTail))
-	resp, err := o.llmClient.Complete(readerCtx, prompt)
-	o.recordTokenUsage(ctx, prompt, resp)
-	if err != nil {
-		fmt.Printf("Orchestrator: Task [Reader] phase failed for role %s: %v. Continuing without extra context.\n", role, err)
-		return nil
-	}
-	fmt.Printf("Orchestrator: [Reader] phase ok for role %s: actions=%d\n", role, len(resp.Actions))
-
-	for _, action := range resp.Actions {
-		if action.Tool == "noop" {
-			continue
-		}
-		if action.Tool != "read_file" && action.Tool != "list_directory" && action.Tool != "find_files" && action.Tool != "grep_search" {
-			continue
-		}
-		tool, ok := o.registry.Get(action.Tool)
-		if ok {
-			fmt.Printf("Orchestrator: [Reader] role %s executing tool: %s with args: %+v\n", role, action.Tool, action.Args)
-			out, err := tool.Execute(ctx, state, action.Args)
-			if err != nil {
-				fmt.Printf("Orchestrator: [Reader] role %s tool %s failed: %v\n", role, action.Tool, err)
-			} else {
-				summary := out
-				if len(summary) > 2000 {
-					summary = summary[:2000] + "\n... [TRUNCATED] ..."
-				}
-				gatheredContext = append(gatheredContext, fmt.Sprintf("Inspection result of calling %s with args %+v:\n```\n%s\n```", action.Tool, action.Args, summary))
-			}
-		}
-	}
 	return gatheredContext
 }

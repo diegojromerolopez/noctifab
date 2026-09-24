@@ -283,3 +283,47 @@ func (m *mockFormatterSandboxRunner) RunCommand(ctx context.Context, projectPath
 	}
 	return "", nil
 }
+
+func TestCommandFormatter_MissingMakefileTargetSilentlySkipped(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Create Makefile without "format:" target
+	_ = os.WriteFile(filepath.Join(tmpDir, "Makefile"), []byte("test:\n\tpython3 -m unittest\n"), 0644)
+
+	runnerHit := false
+	mockRunner := &mockFormatterSandboxRunner{
+		runFunc: func(ctx context.Context, projectPath, command, pkg string) (string, error) {
+			runnerHit = true
+			return "", errors.New("should not be called")
+		},
+	}
+
+	formatter := NewCommandFormatterWithLLM("make format", mockRunner, nil)
+	out, err := formatter.Format(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatalf("expected nil error when target is absent, got: %v", err)
+	}
+	if out != "" {
+		t.Errorf("expected empty output, got: %q", out)
+	}
+	if runnerHit {
+		t.Error("expected runner NOT to be hit when target is absent from Makefile")
+	}
+}
+
+func TestCommandFormatter_SharedDisabledCommandAcrossWorktrees(t *testing.T) {
+	tmpDir := t.TempDir()
+	worktree1 := filepath.Join(tmpDir, ".noctifab", "worktrees", "task-1")
+	worktree2 := filepath.Join(tmpDir, ".noctifab", "worktrees", "task-2")
+	_ = os.MkdirAll(worktree1, 0755)
+	_ = os.MkdirAll(worktree2, 0755)
+
+	recordDisabledFormatCommand(worktree1, "bad-format", "")
+
+	rep, disabled := getSharedFormatCommand(worktree2, "bad-format")
+	if !disabled {
+		t.Fatal("expected bad-format to be recognized as disabled across sibling worktrees")
+	}
+	if rep != "" {
+		t.Errorf("expected empty replacement, got: %q", rep)
+	}
+}

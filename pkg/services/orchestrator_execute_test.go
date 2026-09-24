@@ -40,6 +40,17 @@ type mockTool struct {
 func (t *mockTool) Name() string        { return t.name }
 func (t *mockTool) Description() string { return "mock description" }
 func (t *mockTool) Execute(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
+	if t.name == "write_file" && state != nil && state.ProjectPath != "" {
+		if path, ok := args["path"].(string); ok && path != "" {
+			fullPath := filepath.Join(state.ProjectPath, path)
+			_ = os.MkdirAll(filepath.Dir(fullPath), 0755)
+			content := "package test\n"
+			if c, ok := args["content"].(string); ok {
+				content = c
+			}
+			_ = os.WriteFile(fullPath, []byte(content), 0644)
+		}
+	}
 	return "mock tool output", nil
 }
 
@@ -321,4 +332,65 @@ func TestOrchestrator_PreMergeGate_RejectsFailingTaskOnRetryExhaustion(t *testin
 	assert.Equal(t, domain.TaskFailed, updatedState.Tasks[0].Status)
 	assert.Equal(t, 0, updatedState.Tasks[0].Progress)
 	assert.Equal(t, domain.BuildFailing, updatedState.BuildStatus)
+}
+
+func TestOrchestrator_ZeroMutationRejection(t *testing.T) {
+	repoDir, _, cleanup := setupTestGitRepo(t)
+	defer cleanup()
+
+	state := &domain.State{
+		ID:          "state-zero-mutation",
+		ProjectPath: repoDir,
+		Tasks: []domain.Task{
+			{
+				ID:          "task-zero-mutations",
+				Title:       "Implement Store Engine",
+				TargetFiles: []string{"src/store.py"},
+				Status:      domain.TaskPending,
+				MaxRetries:  1,
+				Retries:     1, // retries exhausted
+			},
+		},
+		Metadata: domain.StateMetadata{
+			BaseBranch:        "main",
+			IntegrationBranch: "noctifab/feature-state-zero-mutation",
+		},
+	}
+
+	repo := &mockRepo{state: state}
+	reg := NewToolRegistry()
+	reg.Register(&mockTool{name: "read_file"})
+	reg.Register(&mockTool{name: "run_tests"})
+
+	llmClient := &testMockLLM{
+		responses: []*domain.LLMResponse{
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+		},
+	}
+	validator := NewPolicyValidator(nil, "main", nil)
+	scheduler := NewScheduler(NewFileLockRegistry())
+	git := NewGitClient(repoDir)
+	queue := NewRebaseQueue(git)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go queue.Start(ctx)
+
+	// Evaluator says tests pass (baseline tests pass)
+	evaluator := NewTestValidator(&mockSandbox{Out: "OK (15 tests passed)", Err: nil}, false, llmClient, nil)
+	vcsClient := &mockVCS{}
+	cfg := OrchestratorConfig{
+		Concurrency:  1,
+		UseWorktrees: true,
+	}
+
+	orch := NewOrchestrator(repo, reg, llmClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
+	orch.executeTask(context.Background(), "state-zero-mutation", "task-zero-mutations")
+
+	updatedState, err := repo.Load(context.Background())
+	require.NoError(t, err)
+
+	// Verify Zero-Mutation rejection: Even though tests passed, task did not mutate files and is rejected
+	assert.Equal(t, domain.TaskFailed, updatedState.Tasks[0].Status)
+	assert.Contains(t, updatedState.Tasks[0].FailureLog, "zero file mutations")
 }

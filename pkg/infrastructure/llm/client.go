@@ -177,9 +177,9 @@ func (c *Client) compactPrompt(ctx context.Context, prompt string) string {
 	case "simple_english":
 		prompt = CompactSimpleEnglish(head) + tail
 		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with simple_english: %d -> %d bytes\n", origPromptLen, len(prompt))
-	case "caveman":
+	case "caveman", "aggressive":
 		prompt = CompactCaveman(head) + tail
-		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with caveman: %d -> %d bytes\n", origPromptLen, len(prompt))
+		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with %s: %d -> %d bytes\n", strings.ToLower(strings.TrimSpace(c.Compaction)), origPromptLen, len(prompt))
 	default:
 		if c.CavemanCompaction {
 			prompt = CompactCaveman(head) + tail

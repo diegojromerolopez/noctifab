@@ -34,8 +34,9 @@ type trackingMockLLM struct {
 }
 
 func (m *trackingMockLLM) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
-	if strings.Contains(prompt, "Feedback from generator agent:") {
+	if ctx.Value(AgentRoleKey) == "tester" || strings.Contains(prompt, "Feedback from generator agent:") {
 		m.testerAgentInvokeCount++
+		return &domain.LLMResponse{Actions: []domain.LLMAction{{Tool: "noop"}}}, nil
 	}
 
 	if m.callCount >= len(m.responses) {

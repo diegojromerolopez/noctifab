@@ -87,6 +87,8 @@ CRITICAL:
 3. All code written/modified MUST compile cleanly and comply with the project's formatting and linter guidelines.
 4. Apply aggressive self-healing: fix any errors directly. Do not hesitate to overwrite or rewrite files to make them compile/validate correctly.
 5. If you modify or write code that introduces references to new library or package features, you MUST ensure that all corresponding imports, headers, namespaces, or dependencies are correctly declared or included in the source file to prevent compiler, linter, or interpreter errors.
+6. DIAGNOSTIC PROBE SCAFFOLDING & DEBUG LOOP: When diagnosing timeouts, socket/port connection drops, daemon liveness, or mysterious failures, DO NOT speculate in conversational text. Author an executable diagnostic probe script or test (e.g. under tests/) using write_file or invoke check_socket / check_http / validate_manifest. Run the probe to capture exact OS-level ground truth (ECONNREFUSED, ETIMEDOUT, exit codes) and iterate in a programmatic debug loop until the issue is fixed.
+7. STRUCTURED DATA & SCRIPT-FIRST REFLEX: When dealing with structured data (JSON, YAML, TOML, CSV, schemas, ASTs, SQL, or tabular records), ASK YOURSELF if writing and executing an automated script (e.g. in Python or standard scripting tools) is better and more reliable than manual line-by-line editing. If so, write the script with write_file, execute it, and debug it iteratively.
 
 You may use the following tools:
 - read_file: read the contents of a file. Args: {"path": "relative/path/to/file"}
@@ -95,6 +97,9 @@ You may use the following tools:
 - list_directory: list directory contents. Args: {"path": "relative/path/to/dir"}
 - find_files: search for files. Args: {"pattern": "*"}
 - grep_search: search for a pattern in files. Args: {"query": "search_term"}
+- check_socket: test TCP/UDP connection, port ping/pong matching, and latency. Args: {"host": "localhost", "port": 6379, "timeout_seconds": 2}
+- check_http: test HTTP endpoint status code, headers, and body response. Args: {"url": "http://localhost:8080/health", "method": "GET", "expected_status": 200}
+- validate_manifest: validate package manifest dependencies (Cargo.toml, pyproject.toml, go.mod, package.json). Args: {"manifest_path": "Cargo.toml"}
 - run_tests: run the project's tests to verify correctness. Args: {}
 - run_linter: run the project's linter check in the sandbox workspace to verify syntax and style. Args: {}
 - noop: call this when the failure is resolved. Args: {}
@@ -138,9 +143,13 @@ This usually indicates:
 - An unjoined non-daemon thread
 - A blocking operation (wait/sleep) that is never unblocked
 - A resource leak exhausting file descriptors
+- A daemon or socket connection blocking indefinitely
 
-Analyze the output above and fix the issue. Rewrite any files that need changes.
-Focus on making the code terminate correctly.
+DIAGNOSTIC PROBE SCAFFOLDING DIRECTIVE:
+DO NOT speculate why the system timed out.
+1. If this is a daemon, socket, or network liveness failure, author an executable diagnostic probe script (e.g. under tests/) or invoke check_socket / check_http to verify port connectivity and responses.
+2. If this is a deadlock or blocking wait, add targeted timeout assertions or isolate the hanging routine.
+3. Focus on making the code terminate cleanly and deterministically.
 `, title, description, watchdogErr, output)
 
 	case FailureCompile:
@@ -206,7 +215,9 @@ Output:
 
 Error: %v
 
-Please try a different approach to %s. MANDATE: In case of any persistent or unresolvable error, force a solution (even if simplified or fallback) to ensure the code compiles cleanly and passes all tests. Leaving a broken or non-compiling build is unacceptable.
+Please try a different approach to %s.
+DIAGNOSTIC MANDATE: If the failure persists or the cause is unclear, author an executable diagnostic probe script (e.g. under tests/) or call check_socket / check_http / validate_manifest to isolate empirical OS-level ground truth.
+In case of any persistent or unresolvable error, force a solution (even if simplified or fallback) to ensure the code compiles cleanly and passes all tests. Leaving a broken or non-compiling build is unacceptable.
 `, prevPrompt, toolOutputsBlock, testOutput, testErr, msg)
 }
 
@@ -228,11 +239,24 @@ type RepairResult struct {
 
 func NewWatchdogRepair(llmClient domain.LLMClient, sandbox Sandbox, tools map[string]Tool, evaluator *TestValidator) *WatchdogRepair {
 	maxRetries := 10
+	mergedTools := make(map[string]Tool)
+	for k, v := range tools {
+		mergedTools[k] = v
+	}
+	if _, ok := mergedTools["check_socket"]; !ok {
+		mergedTools["check_socket"] = &CheckSocketTool{}
+	}
+	if _, ok := mergedTools["check_http"]; !ok {
+		mergedTools["check_http"] = &CheckHTTPTool{}
+	}
+	if _, ok := mergedTools["validate_manifest"]; !ok {
+		mergedTools["validate_manifest"] = &ValidateManifestTool{}
+	}
 	return &WatchdogRepair{
 		llmClient:  llmClient,
 		maxRetries: maxRetries,
 		sandbox:    sandbox,
-		tools:      tools,
+		tools:      mergedTools,
 		evaluator:  evaluator,
 	}
 }

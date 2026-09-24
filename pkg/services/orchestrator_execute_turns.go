@@ -293,6 +293,7 @@ func (o *Orchestrator) stageAndCommit(ctx context.Context, taskGit *GitClient, t
 		}
 	}
 
+	_ = SanitizeWorkspace(taskGit.Dir(), o.cfg.ExcludePaths...)
 	_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
 	stagedOut, _ := taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
 	if strings.TrimSpace(stagedOut) == "" {

@@ -154,6 +154,36 @@ func parseUnifiedDiff(patch string, fallbackPath string) ([]fileDiff, error) {
 
 	for i := 0; i < len(rawLines); i++ {
 		line := rawLines[i]
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "*** Begin Patch") || strings.HasPrefix(trimmed, "*** End Patch") {
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "*** Update File:") || strings.HasPrefix(trimmed, "*** Add File:") || strings.HasPrefix(trimmed, "*** File:") || strings.HasPrefix(trimmed, "Index: ") {
+			if currentFile != nil {
+				if currentHunk != nil {
+					currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
+					currentHunk = nil
+				}
+				diffs = append(diffs, *currentFile)
+			}
+			fPath := trimmed
+			for _, prefix := range []string{"*** Update File:", "*** Add File:", "*** File:", "Index:"} {
+				if strings.HasPrefix(fPath, prefix) {
+					fPath = strings.TrimSpace(strings.TrimPrefix(fPath, prefix))
+					break
+				}
+			}
+			fPath = cleanDiffPath(fPath)
+			currentFile = &fileDiff{
+				Header: diffFileHeader{
+					OldPath: fPath,
+					NewPath: fPath,
+				},
+			}
+			continue
+		}
 
 		if strings.HasPrefix(line, "diff --git ") {
 			if currentFile != nil {
@@ -223,6 +253,27 @@ func parseUnifiedDiff(patch string, fallbackPath string) ([]fileDiff, error) {
 			continue
 		}
 
+		if strings.HasPrefix(trimmed, "@@") {
+			if currentFile == nil {
+				currentFile = &fileDiff{
+					Header: diffFileHeader{
+						OldPath: fallbackPath,
+						NewPath: fallbackPath,
+					},
+				}
+			}
+			if currentHunk != nil {
+				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
+			}
+			currentHunk = &diffHunk{
+				OldStart: 0,
+				OldCount: 0,
+				NewStart: 0,
+				NewCount: 0,
+			}
+			continue
+		}
+
 		if currentHunk != nil {
 			if strings.HasPrefix(line, "\\ ") {
 				// Skip "\ No newline at end of file"
@@ -232,6 +283,12 @@ func parseUnifiedDiff(patch string, fallbackPath string) ([]fileDiff, error) {
 				currentHunk.Lines = append(currentHunk.Lines, diffHunkLine{
 					Kind: line[0],
 					Text: line[1:],
+				})
+			} else if len(line) > 0 {
+				// Treat lines without prefix as context line
+				currentHunk.Lines = append(currentHunk.Lines, diffHunkLine{
+					Kind: ' ',
+					Text: line,
 				})
 			} else if line == "" && i == len(rawLines)-1 {
 				// Ignore trailing empty line
@@ -265,9 +322,8 @@ func applyFileDiff(existingLines []string, diff fileDiff) ([]string, error) {
 		// Find target index in lines
 		matchIdx := findHunkOffset(lines, expectedOld, hunk.OldStart-1)
 		if matchIdx == -1 {
-			// If file was empty and old count is 0, start at line 0
-			if len(lines) == 0 && hunk.OldStart <= 1 {
-				matchIdx = 0
+			if len(lines) == 0 || len(expectedOld) == 0 {
+				matchIdx = len(lines)
 			} else {
 				return nil, fmt.Errorf("hunk target context at old line %d not found in file", hunk.OldStart)
 			}
@@ -313,19 +369,28 @@ func findHunkOffset(lines []string, expectedOld []string, targetIdx int) int {
 		return targetIdx
 	}
 
-	// 1. Try exact target index
-	if matchAt(lines, expectedOld, targetIdx) {
+	// 1. Try exact target index if non-negative
+	if targetIdx >= 0 && matchAt(lines, expectedOld, targetIdx) {
 		return targetIdx
 	}
 
-	// 2. Fuzzy search within window +/- 15 lines
-	window := 15
-	for offset := 1; offset <= window; offset++ {
-		if targetIdx-offset >= 0 && matchAt(lines, expectedOld, targetIdx-offset) {
-			return targetIdx - offset
+	// 2. Fuzzy search within window +/- 15 lines if target index > 0
+	if targetIdx > 0 {
+		window := 15
+		for offset := 1; offset <= window; offset++ {
+			if targetIdx-offset >= 0 && matchAt(lines, expectedOld, targetIdx-offset) {
+				return targetIdx - offset
+			}
+			if targetIdx+offset <= len(lines)-len(expectedOld) && matchAt(lines, expectedOld, targetIdx+offset) {
+				return targetIdx + offset
+			}
 		}
-		if targetIdx+offset <= len(lines)-len(expectedOld) && matchAt(lines, expectedOld, targetIdx+offset) {
-			return targetIdx + offset
+	}
+
+	// 3. Whole-file scan fallback
+	for i := 0; i <= len(lines)-len(expectedOld); i++ {
+		if matchAt(lines, expectedOld, i) {
+			return i
 		}
 	}
 

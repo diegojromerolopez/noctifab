@@ -87,6 +87,38 @@ func (f *CommandFormatter) SetCommand(cmd string) {
 	f.Command = strings.TrimSpace(cmd)
 }
 
+var (
+	disabledFormatCommands   = make(map[string]string)
+	disabledFormatCommandsMu sync.RWMutex
+)
+
+func recordDisabledFormatCommand(projectPath, cmd, replacement string) {
+	disabledFormatCommandsMu.Lock()
+	defer disabledFormatCommandsMu.Unlock()
+	key := filepath.Clean(projectPath) + ":" + cmd
+	disabledFormatCommands[key] = replacement
+	if idx := strings.Index(projectPath, "/.noctifab/worktrees/"); idx != -1 {
+		root := projectPath[:idx]
+		disabledFormatCommands[root+":"+cmd] = replacement
+	}
+}
+
+func getSharedFormatCommand(projectPath, cmd string) (string, bool) {
+	disabledFormatCommandsMu.RLock()
+	defer disabledFormatCommandsMu.RUnlock()
+	key := filepath.Clean(projectPath) + ":" + cmd
+	if rep, ok := disabledFormatCommands[key]; ok {
+		return rep, true
+	}
+	if idx := strings.Index(projectPath, "/.noctifab/worktrees/"); idx != -1 {
+		root := projectPath[:idx]
+		if rep, ok := disabledFormatCommands[root+":"+cmd]; ok {
+			return rep, true
+		}
+	}
+	return "", false
+}
+
 // Format runs the formatter command in projectPath. If execution fails and an
 // LLMClient is present, it self-heals by diagnosing the command and repairing
 // any broken files.
@@ -94,6 +126,29 @@ func (f *CommandFormatter) Format(ctx context.Context, projectPath string) (stri
 	cmdTemplate := f.GetCommand()
 	if strings.TrimSpace(cmdTemplate) == "" || f.Runner == nil {
 		return "", nil
+	}
+
+	// Check if this command was previously invalidated for this workspace/worktree
+	if rep, disabled := getSharedFormatCommand(projectPath, cmdTemplate); disabled {
+		f.SetCommand(rep)
+		if rep == "" {
+			return "", nil
+		}
+		cmdTemplate = rep
+	}
+
+	// Preflight: if command targets a Makefile and Makefile exists, verify target exists
+	if strings.HasPrefix(strings.TrimSpace(cmdTemplate), "make ") {
+		target := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(cmdTemplate), "make "))
+		makefilePath := filepath.Join(projectPath, "Makefile")
+		if content, rErr := os.ReadFile(makefilePath); rErr == nil {
+			if !strings.Contains(string(content), target+":") && !strings.Contains(string(content), target+" :") {
+				// Target is absent from Makefile; record as disabled and skip silently without error or LLM call
+				recordDisabledFormatCommand(projectPath, cmdTemplate, "")
+				f.SetCommand("")
+				return "", nil
+			}
+		}
 	}
 
 	out, err := f.Runner.RunCommand(ctx, projectPath, cmdTemplate, "")
@@ -109,6 +164,7 @@ func (f *CommandFormatter) Format(ctx context.Context, projectPath string) (stri
 	// Step 1: Analyze with the LLM if the format command itself is wrong or inapplicable.
 	diag, diagErr := f.diagnoseCommand(ctx, projectPath, cmdTemplate, out)
 	if diagErr == nil && (diag.CommandIsWrong || !diag.AppliesToProject) {
+		recordDisabledFormatCommand(projectPath, cmdTemplate, diag.SuggestedCommand)
 		fmt.Fprintf(os.Stderr, "⚠ [Formatter] Format command %q is inapplicable/wrong for %s: %s. Updating command to %q.\n",
 			cmdTemplate, projectPath, diag.Explanation, diag.SuggestedCommand)
 		f.SetCommand(diag.SuggestedCommand)
@@ -124,6 +180,7 @@ func (f *CommandFormatter) Format(ctx context.Context, projectPath string) (stri
 		}
 		fmt.Fprintf(os.Stderr, "⚠ [Formatter] Corrected format command %q failed for %s: %v. Disabling formatter command.\n", f.GetCommand(), projectPath, newErr)
 		f.SetCommand("")
+		recordDisabledFormatCommand(projectPath, cmdTemplate, "")
 		return newOut, nil
 	}
 

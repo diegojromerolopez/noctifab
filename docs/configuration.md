@@ -381,9 +381,13 @@ sandbox:
   e2e:
     mode: docker # "docker" (default) or "native"
     command: ""  # optional explicit command override
+  per_test_timeout_seconds: 30
   exclude_paths:
     - "node_modules/"
     - "vendor/"
+  skip_folders:
+    - "fixtures/"
+    - "third_party/"
   allowed_commands:
     - "go"
     - "git"
@@ -412,8 +416,9 @@ sandbox:
     - JavaScript/TypeScript: `node --check {file}`
     - Shell: `bash -n {file}`
 - **`linter_command`** (String): Command executed to run project static analysis linter tasks.
-- **`max_linter_retries`** (Integer): Maximum linter fix retry turns per task (default: `3`). Prevents infinite agent loops on unfixable linter offenses.
+- **`per_test_timeout_seconds`** (Integer): Real-time streaming timeout for individual tests (default: `30`). Monitors test transition boundaries (`=== RUN`, `pytest`, `cargo test`) in real-time, resets the timer upon test progress, and isolates hanging tests via `SIGQUIT` stack traces and `SIGKILL` without waiting for the full process timeout.
 - **`exclude_paths`** (List of Strings): Directory trees, prefixes, or wildcard patterns ignored by the workspace discovery engine, Story QA auditor, anti-stub validator, and churn calculator (e.g. `node_modules/`, `vendor/`, `target/`, `target_container/`, `build/`, `_build/`, `*.tmp`). Works seamlessly with Git's `.gitignore` rules and automated binary detection (`IsTextFile`).
+- **`skip_folders`** (List of Strings): Explicit list of custom folders to skip and exclude from workspace scanning, LLM context packing, worktree sanitization, and inspection tools (e.g. `fixtures/`, `mock_data/`, `legacy/`). Can be specified under `sandbox.skip_folders`, `context.skip_folders`, or top-level `skip_folders:`.
 - **`allowed_commands`** (List of Strings): Whitelist of executable binaries permitted inside the sandbox process runner.
 - **`auto_install_deps`** (Boolean): Allow sandbox to auto-detect and attempt to install missing build dependencies.
 - **`package_managers`** (List of Strings): Authorized tool package managers (e.g. `pip`, `go`, `npm`, `brew`).

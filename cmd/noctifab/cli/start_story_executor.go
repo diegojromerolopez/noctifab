@@ -185,6 +185,32 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 		if len(storyTasks) > 0 && deps.evaluator != nil {
 			allTasksGreen := true
 			for _, t := range storyTasks {
+				// A task cannot be considered already green if it has no declared target files,
+				// or if any of its target files do not exist or are empty on disk.
+				if len(t.TargetFiles) == 0 {
+					allTasksGreen = false
+					break
+				}
+				filesExist := true
+				for _, tf := range t.TargetFiles {
+					if tf == "" {
+						continue
+					}
+					fullPath := tf
+					if !filepath.IsAbs(fullPath) {
+						fullPath = filepath.Join(state.ProjectPath, tf)
+					}
+					fi, err := os.Stat(fullPath)
+					if err != nil || fi.Size() == 0 {
+						filesExist = false
+						break
+					}
+				}
+				if !filesExist {
+					allTasksGreen = false
+					break
+				}
+
 				passed, _, valErr := deps.evaluator.ValidateTask(ctx, state, t)
 				if !passed || valErr != nil {
 					allTasksGreen = false

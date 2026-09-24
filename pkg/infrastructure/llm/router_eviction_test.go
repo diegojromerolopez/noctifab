@@ -69,3 +69,13 @@ func TestGetRoleFromContext(t *testing.T) {
 		t.Errorf("expected 'tester', got '%s'", role2)
 	}
 }
+
+func TestResilientLLMRouter_ArrearageEviction(t *testing.T) {
+	arrearageErr := &httpError{
+		StatusCode: http.StatusBadRequest,
+		Body:       `{"message":"Access denied, please make sure your account is in good standing. For details, see: https://www.alibabacloud.com/help/en/model-studio/error-code#overdue-payment","type":"Arrearage"}`,
+	}
+	if !isEvictionError(arrearageErr) {
+		t.Errorf("expected Arrearage HTTP 400 error to be classified as eviction error")
+	}
+}

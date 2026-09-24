@@ -33,7 +33,7 @@ func TestOrchestrator_SinglePassExecutionMode(t *testing.T) {
 
 	llmClient := &testMockLLM{
 		responses: []*domain.LLMResponse{
-			{Actions: []domain.LLMAction{{Tool: "noop"}}}, // Single Generator action in single_pass_execution
+			{Actions: []domain.LLMAction{{Tool: "write_file", Args: map[string]any{"path": "sp.go", "content": "package sp\n"}}}}, // Single Generator action in single_pass_execution
 		},
 	}
 
@@ -90,7 +90,7 @@ func TestOrchestrator_SinglePassCoSynthesisMode(t *testing.T) {
 
 			llmClient := &testMockLLM{
 				responses: []*domain.LLMResponse{
-					{Actions: []domain.LLMAction{{Tool: "noop"}}},
+					{Actions: []domain.LLMAction{{Tool: "write_file", Args: map[string]any{"path": "main.go", "content": "package main\n"}}}},
 				},
 			}
 

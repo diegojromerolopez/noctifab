@@ -25,23 +25,45 @@ var defaultExcludedDirs = map[string]bool{
 	".gradle":       true,
 	".cargo":        true,
 	".pytest_cache": true,
+	".ruff_cache":   true,
+	".mypy_cache":   true,
+	".tox":          true,
+	".nox":          true,
 	".coverage":     true,
+	"coverage":      true,
+	"htmlcov":       true,
+	".parcel-cache": true,
+	".next":         true,
+	".nuxt":         true,
+	".turbo":        true,
 	".idea":         true,
 	".vscode":       true,
 }
 
+var defaultExcludedFiles = map[string]bool{
+	".ds_store": true,
+	"thumbs.db": true,
+}
+
 var defaultExcludedExts = map[string]bool{
-	".pyc":   true,
-	".pyo":   true,
-	".pyd":   true,
-	".class": true,
-	".o":     true,
-	".a":     true,
-	".so":    true,
-	".dylib": true,
-	".dll":   true,
-	".exe":   true,
-	".log":   true,
+	".pyc":         true,
+	".pyo":         true,
+	".pyd":         true,
+	".class":       true,
+	".o":           true,
+	".a":           true,
+	".so":          true,
+	".dylib":       true,
+	".dll":         true,
+	".exe":         true,
+	".log":         true,
+	".tmp":         true,
+	".swp":         true,
+	".swo":         true,
+	".bak":         true,
+	".pid":         true,
+	".prof":        true,
+	".tsbuildinfo": true,
 }
 
 // IsPathExcluded evaluates whether a relative path is excluded by system rules or configured patterns.
@@ -56,6 +78,11 @@ func IsPathExcluded(relPath string, excludePaths []string) bool {
 		if defaultExcludedDirs[p] {
 			return true
 		}
+	}
+
+	base := strings.ToLower(filepath.Base(slashRel))
+	if defaultExcludedFiles[base] {
+		return true
 	}
 
 	ext := strings.ToLower(filepath.Ext(slashRel))

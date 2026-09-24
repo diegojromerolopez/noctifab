@@ -83,7 +83,11 @@ var serveCmd = &cobra.Command{
 		if cfg.Sandbox.Mode == "docker" {
 			sandboxRunner = services.NewDockerSandbox("noctifab-sandbox")
 		} else {
-			sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
+			hostSandbox := services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
+			if cfg.Sandbox.PerTestTimeoutSeconds > 0 {
+				hostSandbox.PerTestTimeout = time.Duration(cfg.Sandbox.PerTestTimeoutSeconds) * time.Second
+			}
+			sandboxRunner = hostSandbox
 		}
 
 		// Initialize LLM client with database budget store.
@@ -108,9 +112,10 @@ var serveCmd = &cobra.Command{
 		reg.Register(&services.DeleteFileTool{})
 		reg.Register(&services.EditFileTool{SyntaxChecker: syntaxChecker})
 		reg.Register(&services.ApplyPatchTool{SyntaxChecker: syntaxChecker})
-		reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-		reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-		reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+		excludedPaths := cfg.GetExcludedPaths()
+		reg.Register(&services.ListDirectoryTool{ExcludePaths: excludedPaths})
+		reg.Register(&services.FindFilesTool{ExcludePaths: excludedPaths})
+		reg.Register(&services.GrepSearchTool{ExcludePaths: excludedPaths})
 		runTimeout := 5 * time.Minute
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
@@ -181,7 +186,7 @@ var serveCmd = &cobra.Command{
 			MaxDuration:          time.Duration(cfg.Runtime.MaxDuration),
 			MaxActions:           cfg.Runtime.MaxActions,
 			AutoCreatePR:         cfg.VCS.PullRequest.AutoCreate,
-			ExcludePaths:         cfg.Sandbox.ExcludePaths,
+			ExcludePaths:         cfg.GetExcludedPaths(),
 			WorkspaceCache:       cfg.GetWorkspaceCache(),
 			QA:                   cfg.Agents.QA,
 			Fallback:             cfg.Agents.GetFallback(),

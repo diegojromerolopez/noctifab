@@ -131,6 +131,19 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 			})
 		}
 
+		// Coverage configuration anti-gaming check
+		baseName := filepath.Base(path)
+		if baseName == "pyproject.toml" || baseName == ".coveragerc" || baseName == "setup.cfg" {
+			if strings.HasPrefix(trimmed, "omit") && strings.Contains(trimmed, "=") {
+				violations = append(violations, AntiStubViolation{
+					Path:    path,
+					Line:    lineNum,
+					Rule:    "coverage_gaming_omission_filter",
+					Snippet: trimmed,
+				})
+			}
+		}
+
 		// Shell script checks
 		if ext == ".sh" || strings.HasPrefix(trimmed, "#!/bin/") || strings.HasPrefix(trimmed, "#!/usr/bin/env bash") || strings.HasPrefix(trimmed, "#!/usr/bin/env sh") {
 			if shellMaskTrueRE.MatchString(trimmed) {
@@ -321,8 +334,8 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 		}
 
 		// Makefile stub checks
-		baseName := strings.ToLower(filepath.Base(path))
-		if baseName == "makefile" || baseName == "gnumakefile" || ext == ".mk" {
+		baseNameLower := strings.ToLower(baseName)
+		if baseNameLower == "makefile" || baseNameLower == "gnumakefile" || ext == ".mk" {
 			if strings.HasPrefix(trimmed, "test:") || strings.HasPrefix(trimmed, "build:") || strings.HasPrefix(trimmed, "e2e:") || strings.HasPrefix(trimmed, "check:") {
 				hasRealRecipe := false
 				hasEchoStub := false

@@ -287,6 +287,12 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 		if errors.As(err, &he) {
 			return nil, err
 		}
+		if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+			strings.Contains(fmt.Sprintf("%v", err), "context deadline exceeded") ||
+			strings.Contains(fmt.Sprintf("%v", err), "context canceled") ||
+			strings.Contains(fmt.Sprintf("%v", err), "Client.Timeout") {
+			return nil, err
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Streaming call failed (%v); retrying with non-streaming POST.\n", err)
 		} else {
@@ -294,6 +300,10 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 		}
 		// Disable streaming for this client session to avoid repeated 30-60s streaming hangs
 		o.streaming = false
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	opts.streaming = false
@@ -307,15 +317,6 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 	}
 
 	postCtx := ctx
-	if ctx.Err() != nil {
-		postTimeout := o.timeout
-		if postTimeout <= 0 {
-			postTimeout = 60 * time.Second
-		}
-		var cancel context.CancelFunc
-		postCtx, cancel = context.WithTimeout(context.Background(), postTimeout)
-		defer cancel()
-	}
 
 	start := time.Now()
 	completion, err := client.Chat.Completions.New(postCtx, params, reqOpts...)
@@ -380,19 +381,23 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 		reqOpts = append(reqOpts, option.WithJSONSet(k, v))
 	}
 
-	streamCtx := ctx
-	var idleTimer *time.Timer
-	var idleFired atomic.Bool
-	if o.idleTimeout > 0 {
-		var cancel context.CancelFunc
-		streamCtx, cancel = context.WithCancel(ctx)
-		defer cancel()
-		idleTimer = time.AfterFunc(o.idleTimeout, func() {
-			idleFired.Store(true)
-			cancel()
-		})
-		defer idleTimer.Stop()
+	streamTimeout := o.timeout
+	if streamTimeout <= 0 || streamTimeout > 90*time.Second {
+		streamTimeout = 90 * time.Second
 	}
+	streamCtx, cancelStream := context.WithTimeout(ctx, streamTimeout)
+	defer cancelStream()
+
+	idleTimeout := o.idleTimeout
+	if idleTimeout <= 0 {
+		idleTimeout = 20 * time.Second
+	}
+	var idleFired atomic.Bool
+	idleTimer := time.AfterFunc(idleTimeout, func() {
+		idleFired.Store(true)
+		cancelStream()
+	})
+	defer idleTimer.Stop()
 
 	stream := client.Chat.Completions.NewStreaming(streamCtx, params, reqOpts...)
 
@@ -402,7 +407,7 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 	streamStart := time.Now()
 	for stream.Next() {
 		if idleTimer != nil {
-			idleTimer.Reset(o.idleTimeout)
+			idleTimer.Reset(idleTimeout)
 		}
 		chunk := stream.Current()
 		acc.AddChunk(chunk)
@@ -415,7 +420,7 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 	}
 	if err := stream.Err(); err != nil {
 		if idleFired.Load() && ctx.Err() == nil {
-			return nil, fmt.Errorf("stream idle timeout: no data received for %v: %w", o.idleTimeout, err)
+			return nil, fmt.Errorf("stream idle timeout: no data received for %v: %w", idleTimeout, err)
 		}
 		return nil, o.sdkError(err)
 	}

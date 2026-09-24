@@ -157,15 +157,17 @@ func DefaultConfig() *Config {
 			},
 		},
 		Sandbox: SandboxConfig{
-			Mode:               "host",
-			TimeoutSeconds:     300,
-			IdleTimeoutSeconds: 30,
-			TestCommand:        "go test -v ./...",
-			FormatterCommand:   "go fmt ./...",
+			Mode:                  "host",
+			TimeoutSeconds:        300,
+			IdleTimeoutSeconds:    30,
+			PerTestTimeoutSeconds: 30,
+			TestCommand:           "go test -v ./...",
+			FormatterCommand:      "go fmt ./...",
 			E2E: E2EConfig{
 				Mode: "docker",
 			},
 			ExcludePaths: []string{".noctifab"},
+			SkipFolders:  []string{},
 			AllowedCommands: []string{
 				"docker",
 				"go", "goimports", "git", "make", "cmake", "ninja", "gcc", "clang", "g++", "clang++",
@@ -257,6 +259,7 @@ func DefaultConfig() *Config {
 			Mode:            "full",
 			DiffWindowLines: 15,
 			Compaction:      "none",
+			SkipFolders:     []string{},
 		},
 	}
 }

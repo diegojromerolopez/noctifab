@@ -441,3 +441,27 @@ func TestLLMResponseIsExpectedShape(t *testing.T) {
 	var r domain.LLMResponse
 	_ = r
 }
+
+func TestLenientUnmarshalFlatToolCall(t *testing.T) {
+	input := `{"reasoning": "fix test", "actions": [{"tool": "edit_file", "path": "src/resp.py", "target_content": "old", "replacement_content": "new"}]}`
+	resp, err := LenientUnmarshal(input)
+	if err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+	if len(resp.Actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(resp.Actions))
+	}
+	act := resp.Actions[0]
+	if act.Tool != "edit_file" {
+		t.Fatalf("expected tool edit_file, got %q", act.Tool)
+	}
+	if act.Args["path"] != "src/resp.py" {
+		t.Errorf("expected path src/resp.py, got %v", act.Args["path"])
+	}
+	if act.Args["target_content"] != "old" {
+		t.Errorf("expected target_content old, got %v", act.Args["target_content"])
+	}
+	if act.Args["replacement_content"] != "new" {
+		t.Errorf("expected replacement_content new, got %v", act.Args["replacement_content"])
+	}
+}

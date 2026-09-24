@@ -389,6 +389,15 @@ func LenientUnmarshal(jsonStr string) (*domain.LLMResponse, error) {
 			argsMap = make(map[string]any)
 		}
 
+		// Coerce flat tool call arguments if args was omitted or empty
+		if len(argsMap) == 0 {
+			for k, v := range actMap {
+				if k != "tool" && k != "action" && k != "reasoning" && k != "args" {
+					argsMap[k] = v
+				}
+			}
+		}
+
 		// Coerce "depends_on" parameter
 		if depRaw, exists := argsMap["depends_on"]; exists {
 			if s, ok := depRaw.(string); ok {

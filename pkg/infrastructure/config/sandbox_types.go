@@ -16,26 +16,22 @@ type LinterConfig struct {
 }
 
 type SandboxConfig struct {
-	Mode               string `yaml:"mode"`
-	TimeoutSeconds     int    `yaml:"timeout_seconds"`
-	IdleTimeoutSeconds int    `yaml:"idle_timeout_seconds"`
-	TestCommand        string `yaml:"test_command"`
-	FormatterCommand   string `yaml:"formatter_command"`
-	// SyntaxCheckCommand is an optional shell command template executed after
-	// every file write/edit to perform a lightweight syntax validation.
-	// Use {file} as a placeholder for the absolute path of the written file.
-	// Example: "python3 -m py_compile {file}" or "ruby -c {file}".
-	// When empty (default), no syntax check is performed — the tool is a pure
-	// I/O operation with zero external binary dependencies.
-	SyntaxCheckCommand string       `yaml:"syntax_check_command"`
-	Linter             LinterConfig `yaml:"linter"`
-	E2E                E2EConfig    `yaml:"e2e"`
+	Mode                  string       `yaml:"mode"`
+	TimeoutSeconds        int          `yaml:"timeout_seconds"`
+	IdleTimeoutSeconds    int          `yaml:"idle_timeout_seconds"`
+	PerTestTimeoutSeconds int          `yaml:"per_test_timeout_seconds"`
+	TestCommand           string       `yaml:"test_command"`
+	FormatterCommand      string       `yaml:"formatter_command"`
+	SyntaxCheckCommand    string       `yaml:"syntax_check_command"`
+	Linter                LinterConfig `yaml:"linter"`
+	E2E                   E2EConfig    `yaml:"e2e"`
 	// Legacy flat fields for backward compatibility
 	LinterCommand                *string  `yaml:"linter_command,omitempty"`
 	MaxLinterRetries             *int     `yaml:"max_linter_retries,omitempty"`
 	MaxLinterIssues              *int     `yaml:"max_linter_issues,omitempty"`
 	MaxLinterConsecutiveFailures *int     `yaml:"max_linter_consecutive_failures,omitempty"`
 	ExcludePaths                 []string `yaml:"exclude_paths"`
+	SkipFolders                  []string `yaml:"skip_folders"`
 	AllowedCommands              []string `yaml:"allowed_commands"`
 	AutoInstallDeps              bool     `yaml:"auto_install_deps"`
 	PackageManagers              []string `yaml:"package_managers"`

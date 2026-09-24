@@ -679,7 +679,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 #### 3.1.2. Workspace File System Metadata Sync & Prompt Optimization
 To ensure that the orchestrator has an accurate representation of the sandbox filesystem, the `workspace_files` table is updated dynamically:
 *   **Git-Aware & Language-Agnostic Workspace Discovery:** The orchestrator utilizes a centralized, git-aware discovery engine (`WorkspaceScanner`, `ListWorkspaceSourceFiles`) that honors repository `.gitignore` configurations via `git ls-files` and `git check-ignore`. This guarantees that language-specific build directories, container outputs, and compiler caches (e.g. `target/`, `target_container/`, `_build/`, `build/`, `dist/`, `.venv/`, `__pycache__/`, `.gradle/`, `vendor/`, `node_modules/`) are automatically excluded regardless of programming language.
-*   **FileInfo Mapping & Exclusion Filters:** In addition to internal system directory exclusions (`.git/`, `.noctifab/`), the scan checks configured patterns in `sandbox.exclude_paths` in `.noctifab/config.yaml` supporting exact directory names, path prefixes, and wildcard patterns (e.g. `*.tmp`, `target*`).
+*   **FileInfo Mapping & Exclusion Filters:** In addition to internal system directory exclusions (`.git/`, `.noctifab/`), the scan checks configured patterns in `sandbox.exclude_paths` and custom folders in `skip_folders` in `.noctifab/config.yaml` supporting exact directory names, path prefixes, and wildcard patterns (e.g. `*.tmp`, `target*`, custom asset/doc folders).
 *   **Binary Content Detection (`IsTextFile`):** Scans inspect initial byte headers (checking for 0x00 null bytes) and file sizes (capped at 1MB) to automatically filter out compiled binaries, object files (`.o`), dynamic libraries (`.so`, `.dylib`), and compiler caches from LLM prompt contexts and source churn summaries.
 *   **Hard Scan Ceiling Guard:** To prevent database bloat and serialization delays in large codebases (e.g., those containing thousands of asset files), a hard ceiling is enforced at a maximum of **1,000 files**. If the walk detects more than 1,000 files, it truncates the list at 1,000, logs a warning message to `stderr`, and saves the truncated set, avoiding process crashes.
 *   **Prompt Optimization:** To prevent context token bloat, the complete list of filesystem files (`FileInfo`) is NOT injected in full into the LLM system prompt. Instead, the orchestrator only includes a high-level summary of the workspace filesystem (or modified files) in the prompt, and the agent uses dynamic filesystem query tools (`list_directory`, `find_files`, `grep_search`) to query the environment as needed.
@@ -2013,12 +2013,15 @@ sandbox:
   e2e:
     mode: "docker"              # E2E acceptance test strategy: docker (default) or native
     command: ""                 # Optional explicit E2E command override
+  per_test_timeout_seconds: 30  # Per-test streaming timeout & hang isolation
   exclude_paths:                # Scanned path exclusions
     - "node_modules/"
     - "vendor/"
     - "bin/"
     - "dist/"
     - ".noctifab/"
+  skip_folders:                 # Custom folders to skip from context & scans
+    - "fixtures/"
   allowed_commands:              # Whitelisted utility binaries allowed to run in host sandbox
     - "go"
     - "git"

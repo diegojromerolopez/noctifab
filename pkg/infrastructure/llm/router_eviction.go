@@ -80,6 +80,10 @@ func isEvictionError(err error) bool {
 		strings.Contains(msg, "401 unauthorized") ||
 		strings.Contains(msg, "402 payment required") ||
 		strings.Contains(msg, "model not found") ||
+		strings.Contains(msg, "arrearage") ||
+		strings.Contains(msg, "overdue-payment") ||
+		strings.Contains(msg, "insufficient_quota") ||
+		strings.Contains(msg, "account is in good standing") ||
 		(strings.Contains(msg, "model") && (strings.Contains(msg, "is not found") || strings.Contains(msg, "does not exist")))
 }
 

@@ -19,10 +19,11 @@ E2E & BLACK-BOX INTEGRATION TEST STATUS:
 AUDIT INSTRUCTIONS:
 1. SPECIFICATION FEATURE ENUMERATION & MATRIX CHECK:
    - Systematically list and inspect ALL functional features, commands, endpoints, flags, and data capabilities declared in SPEC.md.
-     (e.g., for Redis/pyedis: PING, ECHO, GET, SET, DEL, EXISTS, EXPIRE, TTL, KEYS, INCR, DECR, FLUSHALL, persistence, etc.)
+     (e.g., all commands, CLI subcommands/flags, API endpoints, protocol frames, and lifecycle states declared in SPEC.md)
    - FOR EACH INDIVIDUAL FEATURE/COMMAND, verify that the workspace contains AT LEAST ONE specific, dedicated, non-tautological E2E test scenario exercising that exact feature/command against the running system and asserting its returned payload and state change.
 2. REJECT GENERIC SMOKE TESTS & TAUTOLOGICAL E2E RECIPES:
-   - A generic walking skeleton test (e.g. 'python3 -c "import src.main; print(\"ok\")"'), a test that only connects/disconnects, or a test that only checks process start/SIGTERM without exercising domain commands is STRICTLY TAUTOLOGICAL and FAILS this audit.
+   - A test that only checks process start or exit code without exercising domain commands or asserting protocol outputs is considered tautological.
+   - If E2E test execution PASSED (indicated by [E2E Verification Confirmed: PASSED] in the E2E status below), verify the actual harness and Makefile scripts present in the snapshot. You MUST NOT claim a target or command is missing or tautological if its execution succeeded with exit code 0 and verified assertions.
    - If an 'e2e' recipe or integration test suite does not exercise explicit scenarios per feature/command, set "passed": false.
 3. GRANULAR GAP REPORTING & ACTIONABLE PROPOSED FIXES:
    - For every feature, command, or capability in SPEC.md that lacks an explicit, dedicated E2E test scenario, is missing from the dispatcher/wire surface, or fails verification, you MUST add:
