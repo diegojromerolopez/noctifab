@@ -129,7 +129,11 @@ func (o *Orchestrator) RunFallbackAgent(
 		}
 
 		// Assemble multi-file context block with secret sanitization
-		contextBlock := buildFallbackContext(currentLog, diffContext, triggerReason, turn, maxTurns)
+		projectPath := ""
+		if taskState != nil {
+			projectPath = taskState.ProjectPath
+		}
+		contextBlock := buildFallbackContext(currentLog, diffContext, triggerReason, turn, maxTurns, projectPath, o.cfg.SandboxTelemetry.Inject)
 
 		data := prompts.TaskPromptData{
 			Title:       effectiveTask.Title,
@@ -214,7 +218,7 @@ func (o *Orchestrator) RunFallbackAgent(
 					e2eOut, e2eErr := o.evaluator.Runner.RunCommand(e2eCtx, taskState.ProjectPath, detectedE2E, "")
 					e2eCancel()
 					if e2eErr != nil {
-						if isMissingToolOutput(e2eOut + " " + e2eErr.Error()) {
+						if isCommandToolMissing(o.evaluator.Runner, detectedE2E, e2eOut+" "+e2eErr.Error()) {
 							fmt.Printf("⚠️  [Fallback Agent Degraded] Task %s: required E2E tool is absent on host (%s). Proceeding in degraded mode.\n", effectiveTask.ID, detectedE2E)
 						} else if !isE2EFailureInScope(taskState, effectiveTask, e2eOut+"\n"+e2eErr.Error()) {
 							fmt.Printf("⚠️  [Fallback Agent] Task %s E2E failure(s) are outside the scope of active feature; ignoring out-of-scope failure in fallback loop.\n", effectiveTask.ID)
@@ -313,7 +317,7 @@ func (o *Orchestrator) RunLastResortAgent(
 	return o.RunFallbackAgent(ctx, task, taskState, taskGit, failureLog, triggerReason)
 }
 
-func buildFallbackContext(failureLog, diffContext, triggerReason string, turn, maxTurns int) string {
+func buildFallbackContext(failureLog, diffContext, triggerReason string, turn, maxTurns int, projectPath string, telemetryInject bool) string {
 	var sb strings.Builder
 	sb.WriteString("\n### 🎯 FALLBACK SOVEREIGN DIAGNOSTIC CONTEXT:\n")
 	fmt.Fprintf(&sb, "* **Trigger Reason:** %s\n", triggerReason)
@@ -323,6 +327,13 @@ func buildFallbackContext(failureLog, diffContext, triggerReason string, turn, m
 	sanitizedLog := SanitizeLog(failureLog)
 	sb.WriteString(summarizeFailureLog(sanitizedLog))
 	sb.WriteString("\n```\n\n")
+
+	if telemetryInject && projectPath != "" {
+		if spans, err := telemetry.ReadRecentSpans(projectPath, 15); err == nil && len(spans) > 0 {
+			sb.WriteString(telemetry.FormatSpansForPrompt(spans))
+			sb.WriteString("\n\n")
+		}
+	}
 
 	if strings.TrimSpace(diffContext) != "" {
 		sanitizedDiff := SanitizeLog(diffContext)

@@ -28,6 +28,54 @@ func NewSyntaxValidator() *SyntaxValidator {
 	return &SyntaxValidator{}
 }
 
+// Check implements the SyntaxChecker interface for immediate in-tool validation.
+func (v *SyntaxValidator) Check(ctx context.Context, fullPath string) error {
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.IsDir() {
+		return v.validateDirectory(ctx, fullPath)
+	}
+	violation, err := v.ValidateFile(ctx, fullPath)
+	if err != nil {
+		return err
+	}
+	if violation != nil {
+		return fmt.Errorf("syntax validation failed on %s: %s", violation.FilePath, violation.Message)
+	}
+	return nil
+}
+
+func (v *SyntaxValidator) validateDirectory(ctx context.Context, dir string) error {
+	return filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		rel, rErr := filepath.Rel(dir, p)
+		if rErr == nil && IsPathExcluded(rel, nil) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		violation, vErr := v.ValidateFile(ctx, p)
+		if vErr != nil {
+			return vErr
+		}
+		if violation != nil {
+			return fmt.Errorf("syntax validation failed on %s: %s", violation.FilePath, violation.Message)
+		}
+		return nil
+	})
+}
+
 // ValidateFile performs deterministic syntax validation on a single file based on its extension.
 func (v *SyntaxValidator) ValidateFile(ctx context.Context, fullPath string) (*SyntaxViolation, error) {
 	info, err := os.Stat(fullPath)

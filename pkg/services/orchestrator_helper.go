@@ -8,6 +8,9 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RunTesterAgent runs the test writer agent for the task. action selects the
@@ -15,6 +18,13 @@ import (
 // refactor, write_breadth_first); feedback carries the generator's test-fix
 // feedback for the fix action (empty otherwise).
 func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, action string, feedback string) {
+	ctx, span := telemetry.Tracer().Start(ctx, "RunTesterAgent",
+		trace.WithAttributes(
+			attribute.String("task.id", task.ID),
+			attribute.String("action", action),
+		))
+	defer span.End()
+
 	// Fail fast on unknown actions before doing any reader-phase work.
 	if err := prompts.ValidateKey(prompts.AgentTester, action); err != nil {
 		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] invalid prompt action: %v\n", task.ID, err)

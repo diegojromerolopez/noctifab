@@ -11,7 +11,10 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // SovereignRescueOptions parameters for autonomous whole-project sovereign recovery.
@@ -36,6 +39,13 @@ type SovereignRescueOptions struct {
 // DispatchSovereignRescue prepares execution parameters, ensures a viable context runway
 // (decoupling from expired iteration loop timeouts), and triggers sovereign project rescue.
 func DispatchSovereignRescue(ctx context.Context, opts SovereignRescueOptions) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "DispatchSovereignRescue",
+		trace.WithAttributes(
+			attribute.Int("failed_stories_count", len(opts.FailedStories)),
+			attribute.Int("acceptance_gaps_count", len(opts.AcceptanceGaps)),
+		))
+	defer span.End()
+
 	if opts.Cfg != nil {
 		rescueCfg := opts.Cfg.GetSovereignRescue()
 		if !rescueCfg.IsEnabled() {
@@ -176,7 +186,8 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	}
 
 	_, lastFailureLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
-	diagnostics := CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog)
+	telemetryInject := opts.Cfg != nil && opts.Cfg.Sandbox.Telemetry.Inject
+	diagnostics := CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, telemetryInject)
 
 	resolvedStrategy := ResolveToolchainStrategy(ctx, opts.ToolchainStrategy, nil)
 	bestCommit := captureSovereignBaselineCommit(ctx, opts.GitClient)
@@ -342,7 +353,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		if len(feedbackParts) > 0 {
 			lastFailureLog = fmt.Sprintf("%s\n\nVALIDATION OUTPUT:\n%s", strings.Join(feedbackParts, "\n\n"), newLog)
 		}
-		diagnostics = CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog)
+		diagnostics = CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, telemetryInject)
 		fmt.Printf("⚠️ [Sovereign Rescue] Turn %d verification failed. Feeding diagnostics into turn %d...\n", turn, turn+1)
 	}
 

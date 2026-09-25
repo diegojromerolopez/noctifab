@@ -2,12 +2,17 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 )
 
@@ -46,6 +51,9 @@ func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox, llmCli
 	reg.Register(&services.NoopTool{})
 	reg.Register(&services.ReadFileTool{})
 	syntaxChecker := services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)
+	if _, ok := syntaxChecker.(*services.NoopSyntaxChecker); ok {
+		syntaxChecker = services.NewSyntaxValidator()
+	}
 	reg.Register(&services.WriteFileTool{SyntaxChecker: syntaxChecker})
 	reg.Register(&services.WriteFilesTool{SyntaxChecker: syntaxChecker})
 	reg.Register(&services.DeleteFileTool{})
@@ -122,5 +130,51 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		DefaultTestCommand:     cfg.Sandbox.TestCommand,
 		AllowedCommands:        cfg.Sandbox.AllowedCommands,
 		E2E:                    cfg.Sandbox.E2E,
+		SandboxTelemetry:       cfg.Sandbox.Telemetry,
 	}
+}
+
+func initTelemetry(cfg *config.Config, targetDir string) func() {
+	if cfg == nil || (!cfg.Telemetry.Enabled && !cfg.Sandbox.Telemetry.Inject) {
+		return func() {}
+	}
+	serviceName := cfg.Telemetry.ServiceName
+	if serviceName == "" {
+		serviceName = "noctifab"
+	}
+	endpoint := cfg.Telemetry.Endpoint
+	if endpoint == "" && cfg.Sandbox.Telemetry.Inject {
+		endpoint = telemetry.DefaultCollectorEndpoint
+	}
+	if cfg.Sandbox.Telemetry.Inject && endpoint != "" {
+		activeEndpoint, err := telemetry.EnsureCollectorOnline(context.Background(), endpoint)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Notice: collector auto-start skipped/unavailable: %v (falling back to local traces)\n", err)
+		} else {
+			endpoint = activeEndpoint
+		}
+	}
+	traceFile := ""
+	if cfg.Sandbox.Telemetry.Inject || cfg.Sandbox.Telemetry.TraceFormat == "jsonl" || cfg.Telemetry.Exporter == "jsonl" || cfg.Telemetry.Exporter == "file" || (endpoint == "" && cfg.Telemetry.Exporter != "stdout") {
+		traceFile = filepath.Join(targetDir, ".noctifab", "traces.jsonl")
+	}
+	tp, tpErr := telemetry.InitTracerWithFile(serviceName, endpoint, traceFile)
+	if tpErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: telemetry init failed: %v\n", tpErr)
+		return func() {}
+	}
+	return func() {
+		_ = tp.Shutdown(context.Background())
+	}
+}
+
+func computeFailureSignature(outcomes map[string]error) string {
+	var entries []string
+	for k, v := range outcomes {
+		if v != nil {
+			entries = append(entries, fmt.Sprintf("%s:%v", filepath.Base(k), v))
+		}
+	}
+	sort.Strings(entries)
+	return strings.Join(entries, ";")
 }

@@ -381,6 +381,9 @@ sandbox:
   e2e:
     mode: docker # "docker" (default) or "native"
     command: ""  # optional explicit command override
+  telemetry:
+    inject: true        # inject lightweight runtime tracing into generated code
+    trace_format: jsonl # "jsonl" (default) or "otlp"
   per_test_timeout_seconds: 30
   exclude_paths:
     - "node_modules/"
@@ -396,7 +399,8 @@ sandbox:
 
 - **`mode`** (String): Isolation strategy environment. Values: `host` (jail checks on the developer machine) or `docker` (complete container sandbox isolation).
 - **`e2e.mode`** (String): End-to-end acceptance testing execution strategy. Values: `docker` (default, discovers `docker-compose.e2e.yml` or `docker-compose.yml`) or `native` (local test execution via `make e2e`, `npm run test:e2e`, or language-specific runners such as `pytest tests/e2e`, `cargo test --test e2e`, `go test -v ./tests/e2e/...`). When executing in Docker mode, Noctifab parses the compose configuration to dynamically resolve the runner service (`test-runner-e2e`, `test-runner`, `test-client`, or `e2e`) and passes `--exit-code-from <service>`.
-- **`e2e.command`** (String): Optional explicit shell command override for E2E testing (e.g. `make e2e` or `pytest tests/e2e`). When specified, takes precedence over auto-detection in all modes.
+- **`telemetry.inject`** (Boolean): When `true` (default: `true`), activates OpenTelemetry distributed tracing across all core workflow functions (`GenerateRoadmap`, `ExecuteSpike`, `executeStory`, `PlanStory`, `RunReaderPhase`, `RunTesterAgent`, `RunGeneratorAgent`, `ValidateTask`, `runQAGate`, `FinalizeUserStory`, `DispatchSovereignRescue`, and `RunCommand`). In addition, automatically injects standard W3C TraceContext headers (`TRACEPARENT` and `TRACESTATE`) into the sandbox subprocess execution environment (`RunCommand`), enabling child test runners and application processes to link directly to Noctifab's active trace span. Also instructs code generation and test authoring agents to inject lightweight structured telemetry into generated entrypoints and test fixtures.
+- **`telemetry.trace_format`** (String): Serialization format for telemetry traces. Options: `jsonl` (default, writes streaming JSON Lines directly to `.noctifab/traces.jsonl` for zero-dependency inspection via `jq` or `tail`) or `otlp` (exports standard OpenTelemetry Protocol traces to the configured collector endpoint).
 - **Autonomous Tooling (`run_e2e_tests`)**: The resolved E2E command is also accessible autonomously to the `generator`, `tester`, and `auditor` agents via the `run_e2e_tests` tool, allowing in-turn verification of containerized and native integration suites.
 - **`timeout_seconds`** (Integer): Absolute execution wall-clock time limit in seconds for test and script execution processes.
 - **`idle_timeout_seconds`** (Integer): Active watchdog timeout. Kills processes immediately if they output no bytes on stdout/stderr for this duration.
@@ -510,12 +514,49 @@ telemetry:
     enabled: true
 ```
 
-- **`enabled`** (Boolean): Enable OTel collection.
-- **`exporter`** (String): Connection format protocols (e.g. `otlp`, `stdout`).
-- **`endpoint`** (String): Host URL of the OpenTelemetry collector or Jaeger endpoint.
-- **`service_name`** (String): Service metadata name tag.
+- **`enabled`** (Boolean): Enable OpenTelemetry trace collection across Noctifab. (Tracing is also automatically active if `sandbox.telemetry.inject` is `true`).
+- **`exporter`** (String): Exporter transport type. Values: `otlp` (exports standard OpenTelemetry Protocol traces to the configured collector endpoint), `stdout` (writes JSON traces to console stdout), or `jsonl` / `file` (writes formatted JSON Lines traces directly to `.noctifab/traces.jsonl`).
+- **`endpoint`** (String): Host URL of the OpenTelemetry collector or Jaeger endpoint (e.g. `localhost:4318` for HTTP OTLP or `localhost:4317` for gRPC). Also configurable via the standard `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable.
+- **`service_name`** (String): Service metadata identification tag (default: `noctifab`).
 - **`metrics`**:
   - **`enabled`** (Boolean): Enable or disable performance & speed metrics instrumentation (tracking Time To First Commit, phase latencies, LLM wait duration, tokens/sec, and sandbox build times). Default: `true`.
+
+### Viewing Traces and OpenTelemetry Spans
+
+Noctifab acts as an **OpenTelemetry trace producer**. It does not run an embedded collector daemon inside the process, but provides two convenient methods to visualize or inspect traces:
+
+#### 1. Visualizing in Jaeger UI (via OTLP Collector)
+Run an all-in-one Jaeger instance locally using Docker:
+```bash
+docker run -d --name jaeger \
+  -p 16686:16686 \
+  -p 4318:4318 \
+  jaegertracing/all-in-one:latest
+```
+Set the endpoint in your `.noctifab/config.yaml`:
+```yaml
+telemetry:
+  enabled: true
+  endpoint: "localhost:4318"
+```
+Run `noctifab start`, then open **`http://localhost:16686`** in your browser and select service `noctifab` to inspect the flame graph and timing breakdowns of all workflow functions (`GenerateRoadmap`, `PlanStory`, `executeStory`, `executeTask`, `RunReaderPhase`, `RunTesterAgent`, `RunGeneratorAgent`, `ValidateTask`, `runQAGate`, `FinalizeUserStory`, `DispatchSovereignRescue`, and `RunCommand`).
+
+#### 2. Local JSONL Streaming (Zero External Dependencies)
+When `sandbox.telemetry.trace_format: jsonl` is set (the default):
+```yaml
+sandbox:
+  telemetry:
+    inject: true
+    trace_format: "jsonl"
+```
+Every span is appended directly to `.noctifab/traces.jsonl`. You can stream and inspect spans in real time without running any external collector:
+```bash
+# Stream spans live as they complete
+tail -f .noctifab/traces.jsonl | jq '{name, duration_ms, status, attributes}'
+
+# Filter spans for sandbox commands
+cat .noctifab/traces.jsonl | jq 'select(.name=="RunCommand")'
+```
 
 ---
 
@@ -779,6 +820,9 @@ sandbox:
   test_command: "cargo test"
   linter_command: "cargo clippy -- -D warnings"
   formatter_command: "cargo fmt --check"
+  telemetry:
+    inject: true
+    trace_format: "jsonl"
   exclude_paths:
     - "target/"
     - ".noctifab/"

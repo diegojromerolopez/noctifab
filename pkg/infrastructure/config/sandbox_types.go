@@ -15,16 +15,23 @@ type LinterConfig struct {
 	MaxRetries          *int    `yaml:"max_retries,omitempty"`
 }
 
+// SandboxTelemetryConfig defines configuration for injecting structured telemetry into generated code.
+type SandboxTelemetryConfig struct {
+	Inject      bool   `yaml:"inject"`
+	TraceFormat string `yaml:"trace_format"` // "jsonl" (default) or "otlp"
+}
+
 type SandboxConfig struct {
-	Mode                  string       `yaml:"mode"`
-	TimeoutSeconds        int          `yaml:"timeout_seconds"`
-	IdleTimeoutSeconds    int          `yaml:"idle_timeout_seconds"`
-	PerTestTimeoutSeconds int          `yaml:"per_test_timeout_seconds"`
-	TestCommand           string       `yaml:"test_command"`
-	FormatterCommand      string       `yaml:"formatter_command"`
-	SyntaxCheckCommand    string       `yaml:"syntax_check_command"`
-	Linter                LinterConfig `yaml:"linter"`
-	E2E                   E2EConfig    `yaml:"e2e"`
+	Mode                  string                 `yaml:"mode"`
+	TimeoutSeconds        int                    `yaml:"timeout_seconds"`
+	IdleTimeoutSeconds    int                    `yaml:"idle_timeout_seconds"`
+	PerTestTimeoutSeconds int                    `yaml:"per_test_timeout_seconds"`
+	TestCommand           string                 `yaml:"test_command"`
+	FormatterCommand      string                 `yaml:"formatter_command"`
+	SyntaxCheckCommand    string                 `yaml:"syntax_check_command"`
+	Linter                LinterConfig           `yaml:"linter"`
+	E2E                   E2EConfig              `yaml:"e2e"`
+	Telemetry             SandboxTelemetryConfig `yaml:"telemetry"`
 	// Legacy flat fields for backward compatibility
 	LinterCommand                *string  `yaml:"linter_command,omitempty"`
 	MaxLinterRetries             *int     `yaml:"max_linter_retries,omitempty"`

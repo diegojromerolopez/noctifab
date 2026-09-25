@@ -8,6 +8,9 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RunGeneratorAgent runs the generator agent to implement task functionality.
@@ -15,6 +18,13 @@ import (
 // catalog: implement, refactor, fix, single_pass, single_pass_fix,
 // implement_breadth_first, implement_breadth_first_fix, surgical_repair).
 func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, state *domain.State, fileContexts []string, recentTestsContext string, action string) {
+	ctx, span := telemetry.Tracer().Start(ctx, "RunGeneratorAgent",
+		trace.WithAttributes(
+			attribute.String("task.id", task.ID),
+			attribute.String("action", action),
+		))
+	defer span.End()
+
 	// Fail fast on unknown actions before doing any reader-phase work.
 	if err := prompts.ValidateKey(prompts.AgentGenerator, action); err != nil {
 		fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] invalid prompt action: %v\n", task.ID, err)

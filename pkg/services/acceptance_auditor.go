@@ -145,6 +145,7 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 
 	// 1. Behavioral E2E Execution Pre-Flight Gate
 	var e2eLog string
+	e2eFailed := false
 	e2eCmd := a.detectE2ECommand(state.ProjectPath)
 	if e2eCmd != "" && a.runner != nil {
 		if !a.isCommandAllowed(e2eCmd) {
@@ -156,6 +157,7 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 				if isSandboxViolation(e2eErr, e2eOut) {
 					e2eLog = fmt.Sprintf("⚠️  Sandbox policy restriction on E2E command %q (%v); skipped.", e2eCmd, e2eErr)
 				} else {
+					e2eFailed = true
 					e2eLog = fmt.Sprintf("❌ E2E test execution FAILED (%s):\n%s\nError: %v", e2eCmd, capText(e2eOut, 2000), e2eErr)
 					_, containerContext := collectE2EContainerFiles(state.ProjectPath)
 					if containerContext != "" {
@@ -196,7 +198,12 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		return nil, fmt.Errorf("acceptance audit LLM call failed: %w", err)
 	}
 
-	return a.parseAuditResponse(resp), nil
+	result := a.parseAuditResponse(resp)
+	if e2eFailed {
+		result.Passed = false
+		result.Gaps = append(result.Gaps, "E2E behavioral test execution failed")
+	}
+	return result, nil
 }
 
 func (a *AcceptanceAuditor) detectE2ECommand(projectPath string) string {
@@ -370,7 +377,7 @@ func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *Accept
 		summary = "Acceptance audit evaluated"
 	}
 	return &AcceptanceAuditResult{
-		Passed:  true,
-		Summary: summary,
+		Passed:  false,
+		Summary: "Acceptance audit response could not be parsed: " + summary,
 	}
 }

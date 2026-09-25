@@ -350,6 +350,18 @@ func (o *Orchestrator) formatAntiStubViolations(violations []AntiStubViolation) 
 func (o *Orchestrator) auditTesterTestOutput(projectPath string) []AntiStubViolation {
 	antiStub := NewAntiStubValidator()
 	violations, _ := antiStub.ValidateWorkspace(projectPath, nil)
+
+	testAST := NewTestASTAnalyzer()
+	if astViolations, err := testAST.AnalyzeWorkspace(context.Background(), projectPath); err == nil {
+		for _, av := range astViolations {
+			violations = append(violations, AntiStubViolation{
+				Path:    av.FilePath,
+				Line:    av.Line,
+				Rule:    av.Rule,
+				Snippet: av.Message,
+			})
+		}
+	}
 	return violations
 }
 

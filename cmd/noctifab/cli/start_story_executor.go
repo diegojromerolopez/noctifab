@@ -14,7 +14,10 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type storyExecutorDeps struct {
@@ -48,6 +51,13 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 		if storyID == "" {
 			storyID = featName
 		}
+
+		ctx, span := telemetry.Tracer().Start(ctx, "executeStory",
+			trace.WithAttributes(
+				attribute.String("story.id", storyID),
+				attribute.String("story.file", currentStoryFile),
+			))
+		defer span.End()
 		configuredBranch := deps.cfg.VCS.GetIntegrationBranch()
 		if strings.ToLower(deps.cfg.VCS.BranchStrategy) == "per_story_isolated" {
 			configuredBranch = ""

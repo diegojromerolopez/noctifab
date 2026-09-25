@@ -69,6 +69,7 @@ func TestAntiStubValidator_ShellMasks(t *testing.T) {
 
 	t.Run("when shell script masks errors with || true, it detects violation", func(t *testing.T) {
 		script := `#!/bin/bash
+set -e
 redis-cli -p 6379 PING || true
 `
 		violations := v.ValidateContent("tests/e2e/run_tests.sh", script)
@@ -78,11 +79,21 @@ redis-cli -p 6379 PING || true
 
 	t.Run("when shell script masks with || exit 0, it detects violation", func(t *testing.T) {
 		script := `#!/bin/bash
+set -e
 pytest tests/ || exit 0
 `
 		violations := v.ValidateContent("tests/run.sh", script)
 		assert.Len(t, violations, 1)
 		assert.Equal(t, "shell_error_exit_mask", violations[0].Rule)
+	})
+
+	t.Run("when shell script is missing set -e, it detects violation", func(t *testing.T) {
+		script := `#!/bin/bash
+echo "Hello"
+`
+		violations := v.ValidateContent("tests/run.sh", script)
+		assert.Len(t, violations, 1)
+		assert.Equal(t, "shell_missing_errexit", violations[0].Rule)
 	})
 }
 

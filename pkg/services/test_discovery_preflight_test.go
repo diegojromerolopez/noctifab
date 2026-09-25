@@ -156,6 +156,29 @@ func TestEvaluateTestExecution(t *testing.T) {
 			t.Errorf("expected zero=false for valid multi-test run")
 		}
 	})
+
+	t.Run("when executed test count is lower than AST discovered tests it reports failure", func(t *testing.T) {
+		projDir := t.TempDir()
+		_ = os.MkdirAll(filepath.Join(projDir, "tests"), 0755)
+		content := `
+def test_one():
+    pass
+def test_two():
+    pass
+def test_three():
+    pass
+`
+		_ = os.WriteFile(filepath.Join(projDir, "tests", "test_core.py"), []byte(content), 0644)
+
+		runnerOut := "test_core.py ... ok\nRan 1 test in 0.005s\nOK\n"
+		zero, msg := EvaluateTestExecution(projDir, runnerOut)
+		if !zero {
+			t.Errorf("expected zero=true when executed count is lower than AST discovered count")
+		}
+		if !strings.Contains(msg, "Expected at least 3 tests based on AST analysis") {
+			t.Errorf("unexpected message: %s", msg)
+		}
+	})
 }
 
 func containsAny(s string, substrs ...string) bool {

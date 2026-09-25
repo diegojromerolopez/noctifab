@@ -74,6 +74,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer initTelemetry(cfg, targetDir)()
 
 	// Reporter activation point (§2.7)
 	var executionReporter domain.ExecutionReporter = &services.NoopExecutionReporter{}
@@ -472,15 +473,4 @@ func isStoryCompletedSuccessfully(ctx context.Context, repo domain.StateReposito
 	}
 
 	return false
-}
-
-func computeFailureSignature(outcomes map[string]error) string {
-	var entries []string
-	for k, v := range outcomes {
-		if v != nil {
-			entries = append(entries, fmt.Sprintf("%s:%v", filepath.Base(k), v))
-		}
-	}
-	sort.Strings(entries)
-	return strings.Join(entries, ";")
 }

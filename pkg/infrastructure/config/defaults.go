@@ -166,6 +166,10 @@ func DefaultConfig() *Config {
 			E2E: E2EConfig{
 				Mode: "docker",
 			},
+			Telemetry: SandboxTelemetryConfig{
+				Inject:      false,
+				TraceFormat: "jsonl",
+			},
 			ExcludePaths: []string{".noctifab"},
 			SkipFolders:  []string{},
 			AllowedCommands: []string{

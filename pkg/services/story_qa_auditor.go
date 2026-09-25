@@ -186,16 +186,27 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 
 	// Deterministic Machine-Readable Public Contract & Definition of Done Gate
 	if storyContent != "" && a.runner != nil {
-		if contract, cErr := ParseStoryContract(targetStoryPath, storyContent); cErr == nil && len(contract.PublicContracts) > 0 {
-			dodValidator := NewStoryDoDValidator(a.runner, 30*time.Second)
-			dodReport, dodErr := dodValidator.ValidateStoryContracts(ctx, state.ProjectPath, contract)
-			if dodErr == nil && dodReport != nil && !dodReport.Passed && len(dodReport.Failures) > 0 {
-				fmt.Printf("❌ [Story QA] Deterministic Public Contract / DoD Verification Failed (%d failure(s))\n", len(dodReport.Failures))
+		if strings.Contains(storyContent, "```noctifab-contract") {
+			contract, cErr := ParseStoryContract(targetStoryPath, storyContent)
+			if cErr != nil || len(contract.PublicContracts) == 0 {
+				errDesc := "malformed ```noctifab-contract block"
+				if cErr != nil {
+					errDesc = cErr.Error()
+				}
+				fmt.Printf("❌ [Story QA] Deterministic Public Contract parse error: %s\n", errDesc)
 				hasFailure = true
-				executionLogs = append(executionLogs, fmt.Sprintf("Public Contract / DoD Verification Failed (%d contract(s) executed):\n - %s",
-					dodReport.ExecutedContracts, strings.Join(dodReport.Failures, "\n - ")))
-			} else if dodErr == nil && dodReport != nil && dodReport.Passed && dodReport.ExecutedContracts > 0 {
-				fmt.Printf("✅ [Story QA] Deterministic Public Contract / DoD Verification Passed (%d contract(s) verified)\n", dodReport.ExecutedContracts)
+				executionLogs = append(executionLogs, fmt.Sprintf("Public Contract Parse Error: %s", errDesc))
+			} else {
+				dodValidator := NewStoryDoDValidator(a.runner, 30*time.Second)
+				dodReport, dodErr := dodValidator.ValidateStoryContracts(ctx, state.ProjectPath, contract)
+				if dodErr == nil && dodReport != nil && !dodReport.Passed && len(dodReport.Failures) > 0 {
+					fmt.Printf("❌ [Story QA] Deterministic Public Contract / DoD Verification Failed (%d failure(s))\n", len(dodReport.Failures))
+					hasFailure = true
+					executionLogs = append(executionLogs, fmt.Sprintf("Public Contract / DoD Verification Failed (%d contract(s) executed):\n - %s",
+						dodReport.ExecutedContracts, strings.Join(dodReport.Failures, "\n - ")))
+				} else if dodErr == nil && dodReport != nil && dodReport.Passed && dodReport.ExecutedContracts > 0 {
+					fmt.Printf("✅ [Story QA] Deterministic Public Contract / DoD Verification Passed (%d contract(s) verified)\n", dodReport.ExecutedContracts)
+				}
 			}
 		}
 	}

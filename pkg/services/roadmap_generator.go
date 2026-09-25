@@ -11,6 +11,9 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type compactionModeKey struct{}
@@ -49,6 +52,14 @@ func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClien
 
 // GenerateRoadmapWithFullConfig executes a multi-pass Product Manager roadmap generation with user story limits and complexity bounds.
 func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int, maxUserStories int, minComplexity int, maxComplexity int) (lastErr error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "GenerateRoadmap",
+		trace.WithAttributes(
+			attribute.String("project_path", projectPath),
+			attribute.Int("passes", passes),
+			attribute.Int("max_stories", maxUserStories),
+		))
+	defer span.End()
+
 	if passes <= 0 {
 		passes = 1
 	}
@@ -189,6 +200,13 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 			writtenPaths := make(map[string]bool)
 			for _, st := range sanitizedStories {
 				targetPath := NormalizeStoryPath(projectPath, st.Filename, st.Content)
+				relStory := targetPath
+				if r, rErr := filepath.Rel(projectPath, targetPath); rErr == nil {
+					relStory = r
+				}
+				if cErr := ValidateStoryContract(relStory, st.Content); cErr != nil {
+					fmt.Printf("⚠️  [Product Manager] Story %s failed contract validation: %v\n", st.Filename, cErr)
+				}
 				writtenPaths[filepath.Clean(targetPath)] = true
 				if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 					return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)

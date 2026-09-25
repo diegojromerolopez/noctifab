@@ -111,6 +111,17 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 	ext := strings.ToLower(filepath.Ext(path))
 	isTestFile := strings.Contains(path, "test") || strings.HasPrefix(filepath.Base(path), "test_") || strings.HasSuffix(filepath.Base(path), "_test.go")
 
+	if (ext == ".sh" || strings.HasPrefix(content, "#!/bin/sh") || strings.HasPrefix(content, "#!/bin/bash")) && len(strings.TrimSpace(content)) > 0 {
+		if !regexp.MustCompile(`(?m)^\s*set\s+-[a-z]*e`).MatchString(content) {
+			violations = append(violations, AntiStubViolation{
+				Path:    path,
+				Line:    1,
+				Rule:    "shell_missing_errexit",
+				Snippet: "Shell script must mandate set -e or set -eo pipefail",
+			})
+		}
+	}
+
 	lines := strings.Split(content, "\n")
 	numLines := len(lines)
 

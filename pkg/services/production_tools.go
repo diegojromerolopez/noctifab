@@ -135,7 +135,7 @@ type ReplacementChunk struct {
 // without explicit injection (e.g. in unit tests) work correctly.
 func syntaxCheckerOrNoop(sc SyntaxChecker) SyntaxChecker {
 	if sc == nil {
-		return &NoopSyntaxChecker{}
+		return NewSyntaxValidator()
 	}
 	return sc
 }

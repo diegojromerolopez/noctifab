@@ -59,6 +59,7 @@ type OrchestratorConfig struct {
 	DefaultTestCommand     string
 	AllowedCommands        []string
 	E2E                    config.E2EConfig
+	SandboxTelemetry       config.SandboxTelemetryConfig
 }
 
 // QADependencies contains the optional infrastructure used only when QA is enabled.

@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (o *Orchestrator) prepareQA(ctx context.Context, state *domain.State, task domain.Task) (domain.StoryContract, *QAReviewResult) {
@@ -165,6 +168,13 @@ func (o *Orchestrator) rerunQAAfterFix(ctx context.Context, state *domain.State,
 func (o *Orchestrator) runQAGate(ctx context.Context, state *domain.State, task domain.Task,
 	taskGit *GitClient, fileContexts []string,
 ) string {
+	ctx, span := telemetry.Tracer().Start(ctx, "runQAGate",
+		trace.WithAttributes(
+			attribute.String("task.id", task.ID),
+			attribute.String("story.id", task.StoryID),
+		))
+	defer span.End()
+
 	contract, precomputed := o.prepareQA(ctx, state, task)
 	if precomputed != nil {
 		if err := o.persistQAResult(ctx, contract, *precomputed); err != nil {

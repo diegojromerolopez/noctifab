@@ -277,6 +277,7 @@ var (
 	cargoTestsRegex = regexp.MustCompile(`(?i)test\s+result:\s+ok\.\s+(\d+)\s+passed`)
 	jestTestsRegex  = regexp.MustCompile(`(?i)tests:\s+(\d+)\s+passed`)
 	tapTestsRegex   = regexp.MustCompile(`(?i)(?:# tests|# pass)\s+(\d+)`)
+	goRanTestsRegex = regexp.MustCompile(`(?m)^---\s+(?:PASS|FAIL):\s+\S+`)
 )
 
 // EvaluateTestExecution inspects runner output and discovered test files to
@@ -339,6 +340,15 @@ func EvaluateTestExecution(projectPath string, out string) (bool, string) {
 		}
 	}
 
+	executedCount := extractExecutedTestCount(out)
+	discoveredCount := CountDiscoveredTests(projectPath)
+	if discoveredCount > 0 && executedCount >= 0 && executedCount < discoveredCount {
+		return true, fmt.Sprintf(
+			"Test execution discrepancy: Expected at least %d tests based on AST analysis, but runner executed only %d test(s). Check test runner discovery path or package markers.",
+			discoveredCount, executedCount,
+		)
+	}
+
 	return false, ""
 }
 
@@ -362,6 +372,9 @@ func extractExecutedTestCount(out string) int {
 		if c, err := strconv.Atoi(m[1]); err == nil {
 			return c
 		}
+	}
+	if goMatches := goRanTestsRegex.FindAllString(out, -1); len(goMatches) > 0 {
+		return len(goMatches)
 	}
 	return -1
 }

@@ -13,6 +13,9 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ExecuteSpike executes the greenfield spike prototyping phase.
@@ -27,6 +30,10 @@ func ExecuteSpike(
 	renderer PromptRenderer,
 	reporter domain.ExecutionReporter,
 ) (bool, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "ExecuteSpike",
+		trace.WithAttributes(attribute.String("project_path", projectPath)))
+	defer span.End()
+
 	if cfg == nil || !cfg.Agents.Spike.IsEnabled() {
 		return false, nil
 	}

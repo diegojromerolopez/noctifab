@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -165,7 +167,7 @@ func TestBuildFallbackContext_SanitizesSecrets(t *testing.T) {
 	rawLog := "Error: connection failed with api_key=sk-secretkey123456789012345678901234 and ghp_111122223333444455556666777788889999"
 	rawDiff := "+ token: \"sk-anothersecret999888777666555444333222\"\n- token: \"old\""
 
-	contextBlock := buildFallbackContext(rawLog, rawDiff, "fallback_stall_escalation", 1, 2)
+	contextBlock := buildFallbackContext(rawLog, rawDiff, "fallback_stall_escalation", 1, 2, "", false)
 
 	if strings.Contains(contextBlock, "sk-secretkey123456789012345678901234") {
 		t.Errorf("expected failure log secret to be redacted from context block")
@@ -178,6 +180,30 @@ func TestBuildFallbackContext_SanitizesSecrets(t *testing.T) {
 	}
 	if !strings.Contains(contextBlock, "[REDACTED_SECRET]") {
 		t.Errorf("expected [REDACTED_SECRET] placeholder in sanitized context block")
+	}
+}
+
+func TestBuildFallbackContext_IncludesTelemetrySpans(t *testing.T) {
+	tmpDir := t.TempDir()
+	noctiDir := filepath.Join(tmpDir, ".noctifab")
+	_ = os.MkdirAll(noctiDir, 0755)
+	tracePath := filepath.Join(noctiDir, "traces.jsonl")
+	data := `{"name":"RunCommand","duration_ms":3500,"status":"Error","attributes":{"command":"go test -v ./..."}}` + "\n"
+	_ = os.WriteFile(tracePath, []byte(data), 0644)
+
+	// When sandbox.telemetry.inject is true:
+	block := buildFallbackContext("test failure", "", "test_escalation", 1, 2, tmpDir, true)
+	if !strings.Contains(block, "Recent OpenTelemetry") {
+		t.Errorf("expected telemetry spans table in fallback context block when inject=true")
+	}
+	if !strings.Contains(block, "RunCommand") {
+		t.Errorf("expected RunCommand span in fallback context block when inject=true")
+	}
+
+	// When sandbox.telemetry.inject is false:
+	blockDisabled := buildFallbackContext("test failure", "", "test_escalation", 1, 2, tmpDir, false)
+	if strings.Contains(blockDisabled, "Recent OpenTelemetry") {
+		t.Errorf("expected NO telemetry spans in fallback context block when inject=false")
 	}
 }
 

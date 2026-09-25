@@ -8,6 +8,9 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // readerPromptTail is the static suffix of the Reader (context gathering)
@@ -37,6 +40,13 @@ Return format:
 
 // RunReaderPhase runs the pre-step to collect workspace context before execution
 func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task domain.Task, state *domain.State) []string {
+	ctx, span := telemetry.Tracer().Start(ctx, "RunReaderPhase",
+		trace.WithAttributes(
+			attribute.String("task.id", task.ID),
+			attribute.String("role", role),
+		))
+	defer span.End()
+
 	var gatheredContext []string
 
 	slicer := NewContextSlicer(o.cfg.Context)

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.0] - 2026-09-25
+
+### Added
+- **OpenTelemetry Workflow Spans & W3C TraceContext Propagation (`pkg/infrastructure/telemetry/`, `pkg/services/sandbox.go`)**:
+  - Instrumented core workflow phases (`GenerateRoadmap`, `ExecuteSpike`, `executeStory`, `RunReaderPhase`, `RunGeneratorAgent`, `RunTesterAgent`, `runQAGate`, `DispatchSovereignRescue`) with OpenTelemetry spans when `sandbox.telemetry.inject` is `true`.
+  - Injected W3C `TRACEPARENT` and `TRACESTATE` environment variables into subprocess execution environments, enabling end-to-end tracing across sub-commands.
+- **Append-Only JSON Lines Trace Streaming (`pkg/infrastructure/telemetry/file_exporter.go`)**:
+  - Added thread-safe `FileExporter` opening `.noctifab/traces.jsonl` with `os.O_APPEND`, ensuring historical span preservation across process restarts without truncation.
+- **Auto-Provisioned OpenTelemetry Collector & Jaeger Integration (`pkg/infrastructure/telemetry/collector_manager.go`, `cmd/noctifab/cli/start_helpers.go`)**:
+  - Added `EnsureCollectorOnline` checking TCP reachability at `localhost:4318`; automatically starts or runs `jaegertracing/all-in-one:latest` via Docker with UI at `http://localhost:16686`.
+  - Gracefully falls back to local JSONL streaming if Docker is absent or offline.
+- **Telemetry-Enriched Sovereign Rescue & Fallback Agent Prompts (`pkg/infrastructure/telemetry/reader.go`, `pkg/services/orchestrator_fallback.go`, `cmd/noctifab/cli/start_sovereign_diagnostics.go`)**:
+  - Gated span log harvesting strictly behind `sandbox.telemetry.inject: true`, feeding recent span summaries into Fallback Agent and Sovereign Rescue LLM diagnostics.
+- **Deterministic AST Test Quality Analyzer & Fast-Path Syntax Checker (`pkg/services/test_ast_analyzer.go`, `pkg/services/syntax_validator.go`, `pkg/services/story_contract.go`)**:
+  - Implemented AST-based test quality analyzer inspecting assertion counts, mock definitions, and tautological patterns.
+  - Activated in-process `SyntaxValidator.Check` and machine-readable story contract validation.
+
 ## [0.97.0] - 2026-09-24
 
 ### Added

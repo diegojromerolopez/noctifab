@@ -345,9 +345,11 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 
 	var cmd *exec.Cmd
 	if useShell {
-		// `sh -c` runs the entire command string as a shell script, so
-		// operators like &&, ||, ;, | work correctly.
-		cmd = exec.CommandContext(ctx, "sh", "-c", cmdStr)
+		shellCmd := cmdStr
+		if !strings.HasPrefix(strings.TrimSpace(cmdStr), "set -") {
+			shellCmd = "set -e; " + cmdStr
+		}
+		cmd = exec.CommandContext(ctx, "sh", "-c", shellCmd)
 	} else if len(parts) > 1 {
 		cmd = exec.CommandContext(ctx, binary, parts[1:]...)
 	} else {
@@ -356,6 +358,7 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 	cmd.Dir = targetDir
 	rootProjectDir := ResolveRootProjectDir(projectPath)
 	cmd.Env = append(os.Environ(), BuildSharedCacheEnv(rootProjectDir)...)
+	cmd.Env = telemetry.InjectTraceparent(ctx, cmd.Env)
 
 	if s.IsToolEvicted(binary) {
 		fmt.Printf("⚠️  [Sandbox Degraded] Tool %q was evicted. Skipping execution in degraded mode.\n", binary)

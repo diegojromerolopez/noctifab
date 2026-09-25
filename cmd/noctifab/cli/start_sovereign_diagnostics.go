@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 )
 
 var (
@@ -26,12 +27,14 @@ type SovereignDiagnosticBundle struct {
 	FailedStories    []string
 	OffendingFiles   map[string]string
 	ActionErrors     []string
+	TelemetrySpans   string
 }
 
 // CollectSovereignDiagnostics inspects the workspace, state tasks, validation
 // traces, and error logs to extract all concrete diagnostic data and offending
 // source code snippets into a unified diagnostic report.
-func CollectSovereignDiagnostics(targetDir string, state *domain.State, failedStories, acceptanceGaps []string, validationOutput string) string {
+func CollectSovereignDiagnostics(targetDir string, state *domain.State, failedStories, acceptanceGaps []string, validationOutput string, telemetryInject ...bool) string {
+	inject := len(telemetryInject) > 0 && telemetryInject[0]
 	var bundle SovereignDiagnosticBundle
 	bundle.ValidationOutput = strings.TrimSpace(validationOutput)
 	bundle.AcceptanceGaps = acceptanceGaps
@@ -70,7 +73,7 @@ func CollectSovereignDiagnostics(targetDir string, state *domain.State, failedSt
 
 	combinedLogs := allLogsBuilder.String()
 
-	// 2. Discover offending source code files mentioned in error traces
+	// 3. Discover offending source code files mentioned in error traces
 	discoveredFiles := extractOffendingFilePaths(targetDir, combinedLogs, allTargetFiles)
 	for filePath, targetLine := range discoveredFiles {
 		snippet := extractFileSnippet(filePath, targetLine)
@@ -80,6 +83,13 @@ func CollectSovereignDiagnostics(targetDir string, state *domain.State, failedSt
 				rel = filePath
 			}
 			bundle.OffendingFiles[rel] = snippet
+		}
+	}
+
+	// 4. Collect recent OpenTelemetry workflow and subprocess spans only when sandbox.telemetry.inject is true
+	if inject && targetDir != "" {
+		if spans, err := telemetry.ReadRecentSpans(targetDir, 15); err == nil && len(spans) > 0 {
+			bundle.TelemetrySpans = telemetry.FormatSpansForPrompt(spans)
 		}
 	}
 
@@ -255,6 +265,12 @@ func formatDiagnosticBundle(b *SovereignDiagnosticBundle) string {
 			sb.WriteString(err)
 			sb.WriteString("\n")
 		}
+		sb.WriteString("\n")
+	}
+
+	if b.TelemetrySpans != "" {
+		sb.WriteString("### 7. RECENT OPENTELEMETRY WORKFLOW & SUBPROCESS SPANS\n")
+		sb.WriteString(b.TelemetrySpans)
 		sb.WriteString("\n")
 	}
 

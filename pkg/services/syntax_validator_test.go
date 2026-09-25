@@ -77,4 +77,28 @@ func TestSyntaxValidator(t *testing.T) {
 			assert.Contains(t, violation.Message, "Python syntax error")
 		}
 	})
+
+	t.Run("Check on valid and invalid files", func(t *testing.T) {
+		validP := filepath.Join(tmpDir, "check_valid.go")
+		err := os.WriteFile(validP, []byte("package main\n"), 0600)
+		require.NoError(t, err)
+		assert.NoError(t, v.Check(context.Background(), validP))
+
+		invalidP := filepath.Join(tmpDir, "check_invalid.go")
+		err = os.WriteFile(invalidP, []byte("package main\nfunc {"), 0600)
+		require.NoError(t, err)
+		assert.Error(t, v.Check(context.Background(), invalidP))
+	})
+
+	t.Run("Check on directory walks and flags invalid files", func(t *testing.T) {
+		subDir := filepath.Join(tmpDir, "subdir")
+		require.NoError(t, os.MkdirAll(subDir, 0755))
+		validFile := filepath.Join(subDir, "ok.json")
+		require.NoError(t, os.WriteFile(validFile, []byte(`{"a": 1}`), 0600))
+		assert.NoError(t, v.Check(context.Background(), subDir))
+
+		badFile := filepath.Join(subDir, "broken.json")
+		require.NoError(t, os.WriteFile(badFile, []byte(`{"a": `), 0600))
+		assert.Error(t, v.Check(context.Background(), subDir))
+	})
 }

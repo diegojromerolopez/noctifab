@@ -113,3 +113,33 @@ main.py:1: syntax error`
 		}
 	}
 }
+
+func TestCollectSovereignDiagnostics_IncludesTelemetrySpans(t *testing.T) {
+	tmpDir := t.TempDir()
+	noctiDir := filepath.Join(tmpDir, ".noctifab")
+	_ = os.MkdirAll(noctiDir, 0755)
+	tracePath := filepath.Join(noctiDir, "traces.jsonl")
+	data := `{"name":"RunCommand","duration_ms":2100,"status":"Error","attributes":{"command":"cargo test"}}` + "\n"
+	_ = os.WriteFile(tracePath, []byte(data), 0644)
+
+	// When sandbox.telemetry.inject is true:
+	diagnostics := CollectSovereignDiagnostics(tmpDir, nil, []string{"US-001"}, nil, "cargo test failed", true)
+	if !strings.Contains(diagnostics, "RECENT OPENTELEMETRY WORKFLOW & SUBPROCESS SPANS") {
+		t.Errorf("expected telemetry spans section in sovereign diagnostics when inject=true")
+	}
+	if !strings.Contains(diagnostics, "cargo test") {
+		t.Errorf("expected command attribute from span in sovereign diagnostics when inject=true")
+	}
+
+	// When sandbox.telemetry.inject is false:
+	diagnosticsDisabled := CollectSovereignDiagnostics(tmpDir, nil, []string{"US-001"}, nil, "cargo test failed", false)
+	if strings.Contains(diagnosticsDisabled, "RECENT OPENTELEMETRY WORKFLOW & SUBPROCESS SPANS") {
+		t.Errorf("expected NO telemetry spans section in sovereign diagnostics when inject=false")
+	}
+
+	// When default (no flag passed):
+	diagnosticsDefault := CollectSovereignDiagnostics(tmpDir, nil, []string{"US-001"}, nil, "cargo test failed")
+	if strings.Contains(diagnosticsDefault, "RECENT OPENTELEMETRY WORKFLOW & SUBPROCESS SPANS") {
+		t.Errorf("expected NO telemetry spans section in sovereign diagnostics by default")
+	}
+}

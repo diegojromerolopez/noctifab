@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -166,7 +168,6 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	}
 
 	// Fast-Path Syntax Pre-Gating:
-	// Verify workspace syntax before spinning up the heavy test runner or consensus voting.
 	if v.SyntaxChecker != nil {
 		if syntaxErr := v.SyntaxChecker.Check(ctx, state.ProjectPath); syntaxErr != nil {
 			fmt.Printf("⚠️ Orchestrator: Task %s fast-path syntax check failed: %v\n", task.ID, syntaxErr)
@@ -174,8 +175,6 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		}
 	}
 
-	// Pre-Flight Test Environment & Structural Hygiene:
-	// Verify and prepare test structure across supported languages so test runners discover nested test suites.
 	_ = PrepareTestEnvironment(state.ProjectPath)
 
 	if v.Formatter != nil {
@@ -187,23 +186,17 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 			formatCmd = DetectDefaultFormatterCommand(state.ProjectPath)
 		}
 		if formatCmd != "" && v.Runner != nil {
-			// Deterministic Auto-Formatter Pre-Pass:
-			// Automatically run local formatter before test execution (never linters).
 			fmt.Printf("Orchestrator: Task %s running deterministic local formatter %q...\n", task.ID, formatCmd)
 			_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, formatCmd, "")
 		}
 	}
 
 	if autoFixCmd := DetectAutoFixImportsCommand(state.ProjectPath); autoFixCmd != "" && v.Runner != nil {
-		// Deterministic Auto-Fix Pre-Pass:
-		// Automatically clean up unused imports safely before building and testing.
 		fmt.Printf("Orchestrator: Task %s running deterministic auto-fix imports %q...\n", task.ID, autoFixCmd)
 		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, autoFixCmd, "")
 	}
 
 	// Dual-Gate Build Verification:
-	// Verify that the whole project compiles cleanly before executing the test suite.
-	// Catches incomplete stubs, empty translation units, missing header files, and compiler errors.
 	if buildCmd := DetectDefaultBuildCommand(state.ProjectPath); buildCmd != "" && v.Runner != nil {
 		buildTimeout := v.RunTimeout
 		if buildTimeout <= 0 {
@@ -213,7 +206,7 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		buildOut, buildErr := v.Runner.RunCommand(buildCtx, state.ProjectPath, buildCmd, "")
 		buildCancel()
 		if buildErr != nil {
-			if isMissingToolOutput(buildOut + " " + buildErr.Error()) {
+			if isCommandToolMissing(v.Runner, buildCmd, buildOut+" "+buildErr.Error()) {
 				fmt.Printf("⚠️  [Validation Degraded] Task %s: required build tool is absent on host (%s). Proceeding in degraded mode.\n", task.ID, buildCmd)
 			} else {
 				fmt.Printf("❌ Orchestrator: Task %s project build gate (%s) failed: %v\n", task.ID, buildCmd, buildErr)
@@ -270,10 +263,10 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 				e2eCancel()
 
 				if e2eErr != nil {
-					if isMissingToolOutput(e2eOut + " " + e2eErr.Error()) {
+					if isCommandToolMissing(v.Runner, e2eCmd, e2eOut+" "+e2eErr.Error()) {
 						fmt.Printf("⚠️  [Validation Degraded] Task %s: required E2E tool is absent on host (%s). Proceeding in degraded mode.\n", task.ID, e2eCmd)
 					} else if !isE2EFailureInScope(state, task, e2eOut+"\n"+e2eErr.Error()) {
-						fmt.Printf("⚠️  Orchestrator: Task %s E2E failure(s) are outside the scope of active feature; ignoring out-of-scope failure in generator-tester loop.\n", task.ID)
+						fmt.Printf("⚠️  Orchestrator: Task %s E2E failure(s) outside scope; ignoring in loop.\n", task.ID)
 					} else {
 						fmt.Printf("❌ Orchestrator: Task %s E2E test gate (%s) failed: %v\n", task.ID, e2eCmd, e2eErr)
 						return false, fmt.Sprintf("E2E test validation failed (%s):\n%s\n%v", e2eCmd, e2eOut, e2eErr), nil
@@ -295,15 +288,54 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	}
 
 	lastErr := lastFailureOutput(results)
-	if isMissingToolOutput(lastErr) {
+	testCmd := DetectDefaultTestCommand(state.ProjectPath)
+	if isCommandToolMissing(v.Runner, testCmd, lastErr) {
 		fmt.Printf("⚠️  [Validation Degraded] Task %s: required test runner or tool is absent on host. Proceeding in degraded mode without test gating.\n", task.ID)
 		return true, fmt.Sprintf("Validation passed in degraded mode (tool absent on host).\nLast output:\n%s", lastErr), nil
 	}
 	return false, fmt.Sprintf("Test validation failed (%d/%d runs passed). Last error log:\n%s", passCount, runs, lastErr), nil
 }
 
+func isCommandToolMissing(runner Sandbox, cmd, output string) bool {
+	if _, isHost := runner.(*HostSandbox); isHost {
+		bin := extractCommandBinary(cmd)
+		if bin != "" {
+			if _, err := exec.LookPath(bin); err == nil {
+				return false // Tool binary is verified installed on host PATH.
+			}
+			return true // Tool binary is not found on host PATH.
+		}
+	}
+	return isMissingToolOutput(output)
+}
+
+func extractCommandBinary(cmd string) string {
+	fields := strings.Fields(cmd)
+	for _, f := range fields {
+		if strings.Contains(f, "=") {
+			continue
+		}
+		base := filepath.Base(f)
+		if base != "sudo" && base != "env" && base != "sh" && base != "bash" {
+			return base
+		}
+	}
+	if len(fields) > 0 {
+		return filepath.Base(fields[0])
+	}
+	return ""
+}
+
 func isMissingToolOutput(output string) bool {
 	lower := strings.ToLower(output)
+
+	// If the failure occurred during test assertions or code panic, it is not a missing host tool.
+	if strings.Contains(lower, "assertionerror") ||
+		strings.Contains(lower, "failed tests") ||
+		strings.Contains(lower, "--- fail") ||
+		strings.Contains(lower, "panic:") {
+		return false
+	}
 
 	// If the failure occurred during a container build or containerized runtime execution
 	// (e.g., Dockerfile build step, BuildKit solve error, compose service exit, or missing file

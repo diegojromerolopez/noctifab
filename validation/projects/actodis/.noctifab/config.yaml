@@ -271,6 +271,9 @@ sandbox:
     max_retries: 3
   e2e:
     mode: docker
+  telemetry:
+    inject: true
+    trace_format: jsonl
   exclude_paths:
   - _build/
   - .rebar3/
