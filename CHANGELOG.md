@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Test Assertion & Monotonicity Guard (`pkg/services/test_assertion_guard.go`)**: Enforces non-zero assertion density across test functions and verifies assertion monotonicity, deterministically rejecting attempts to "fix" failing tests by deleting assertions.
   - **Error Fingerprinting & Loop Detector (`pkg/services/error_fingerprinter.go`)**: Normalizes compiler and runtime errors (stripping ephemeral timestamps, memory pointers, line numbers, and temp paths) to generate SHA256 signatures, detecting and breaking sycophantic retry loops.
   - **Zero-Mutation & DoD Acceptance Guard (`pkg/services/zero_mutation_guard.go`)**: Rejects false-positive completion declarations with 0 git mutations, asserts `total_tests > 0` and `failed_tests == 0`, and guarantees public contract execution compliance.
+  - **Active Runtime Wiring for Top 3 Hallucination Modes (`pkg/services/orchestrator_generator.go`, `pkg/services/watchdog_repair.go`, `pkg/services/syntax_validator.go`)**:
+    - **Sycophantic Repair Loop Gate**: Integrated `ErrorFingerprinter` directly into Generator turn loop and Watchdog Repair loop to detect identical error hashes and inject mandatory strategy shift directives.
+    - **Anti-Stub AST Gate**: Wired AST function body validation into `SyntaxValidator` to immediately reject and rollback file writes containing empty stubs or placeholder returns.
+    - **Undeclared Import Gate**: Wired `ManifestIntegrityGuard` into `SyntaxValidator` to automatically cross-reference imports against `go.mod` and `pyproject.toml` / `requirements.txt` on every file modification.
 
 ## [0.98.0] - 2026-09-25
 

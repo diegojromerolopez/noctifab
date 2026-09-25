@@ -221,13 +221,6 @@ In case of any persistent or unresolvable error, force a solution (even if simpl
 `, prevPrompt, toolOutputsBlock, testOutput, testErr, msg)
 }
 
-type WatchdogRepair struct {
-	llmClient  domain.LLMClient
-	maxRetries int
-	sandbox    Sandbox
-	tools      map[string]Tool
-	evaluator  *TestValidator
-}
 
 type RepairResult struct {
 	Success    bool
@@ -237,6 +230,16 @@ type RepairResult struct {
 	FailureLog string
 }
 
+type WatchdogRepair struct {
+	llmClient     domain.LLMClient
+	maxRetries    int
+	sandbox       Sandbox
+	tools         map[string]Tool
+	evaluator     *TestValidator
+	fingerprinter *ErrorFingerprinter
+}
+
+// NewWatchdogRepair initializes a new WatchdogRepair service.
 func NewWatchdogRepair(llmClient domain.LLMClient, sandbox Sandbox, tools map[string]Tool, evaluator *TestValidator) *WatchdogRepair {
 	maxRetries := 10
 	mergedTools := make(map[string]Tool)
@@ -253,11 +256,12 @@ func NewWatchdogRepair(llmClient domain.LLMClient, sandbox Sandbox, tools map[st
 		mergedTools["validate_manifest"] = &ValidateManifestTool{}
 	}
 	return &WatchdogRepair{
-		llmClient:  llmClient,
-		maxRetries: maxRetries,
-		sandbox:    sandbox,
-		tools:      mergedTools,
-		evaluator:  evaluator,
+		llmClient:     llmClient,
+		maxRetries:    maxRetries,
+		sandbox:       sandbox,
+		tools:         mergedTools,
+		evaluator:     evaluator,
+		fingerprinter: NewErrorFingerprinter(1),
 	}
 }
 
@@ -335,6 +339,13 @@ func (wr *WatchdogRepair) AttemptRepair(
 				FixedCode: true,
 				Attempts:  attempt + 1,
 			}, nil
+		}
+
+		if wr.fingerprinter != nil && testOutput != "" {
+			if isLoop, _, diag := wr.fingerprinter.RecordAndCheckLoop(testOutput); isLoop {
+				fmt.Printf("⚠️  [Deterministic Anti-Loop Gate] Repair attempt produced identical failure signature\n")
+				diagPrompt += fmt.Sprintf("\n\n⚠️ [DETERMINISTIC ANTI-LOOP GATE] %s. Modifying code in this manner reproduces the exact same failure. Repeating this edit is forbidden; you MUST try an entirely different fix.", diag)
+			}
 		}
 
 		diagPrompt = buildRetryPrompt(diagPrompt, testOutput, testErr, category, toolOutputs)

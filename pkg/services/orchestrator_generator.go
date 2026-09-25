@@ -144,6 +144,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	circuitBreaker := NewTaskCircuitBreaker()
 	failedIncrementalEdits := make(map[string]int)
 	anyFileMutated := false
+	errorFingerprinter := NewErrorFingerprinter(1)
 
 	for turn := 0; turn < maxTurns; turn++ {
 		circuitBreaker.ResetTurn()
@@ -283,7 +284,12 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 						}
 					}
 					if action.Tool == "run_tests" || action.Tool == "run_e2e_tests" || action.Tool == "run_linter" {
-						turnToolOutputs = append(turnToolOutputs, formatTurnDiagnosticFeedback(action.Tool, execErr, out))
+						feedback := formatTurnDiagnosticFeedback(action.Tool, execErr, out)
+						if isLoop, _, diag := errorFingerprinter.RecordAndCheckLoop(out); isLoop {
+							fmt.Printf("⚠️  [Deterministic Anti-Loop Gate] Task %s: %s\n", task.ID, diag)
+							feedback += fmt.Sprintf("\n\n⚠️ [DETERMINISTIC ANTI-LOOP GATE] %s. Your last modification reproduced the exact same failure. Repeating this edit or tweaking comments/whitespace is strictly forbidden. You MUST alter your implementation approach or write an executable diagnostic probe.", diag)
+						}
+						turnToolOutputs = append(turnToolOutputs, feedback)
 					} else {
 						turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s failed: %v\nOutput: %s", action.Tool, execErr, capText(out, 3000)))
 					}
@@ -362,7 +368,12 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					hasNoop = true
 				} else {
 					fmt.Printf("ℹ [Speculative Fast Validation] Task %s: tests failing after mutation: %v\n", task.ID, execErr)
-					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[Speculative Fast Validation] Tests failed after file mutation:\n%s", capText(summarizeFailureLog(out), 3000)))
+					failMsg := fmt.Sprintf("[Speculative Fast Validation] Tests failed after file mutation:\n%s", capText(summarizeFailureLog(out), 3000))
+					if isLoop, _, diag := errorFingerprinter.RecordAndCheckLoop(out); isLoop {
+						fmt.Printf("⚠️  [Deterministic Anti-Loop Gate] Task %s: %s\n", task.ID, diag)
+						failMsg += fmt.Sprintf("\n\n⚠️ [DETERMINISTIC ANTI-LOOP GATE] %s. Your last modification reproduced the exact same failure. Repeating this edit or tweaking comments/whitespace is strictly forbidden. You MUST alter your implementation approach or write an executable diagnostic probe.", diag)
+					}
+					turnToolOutputs = append(turnToolOutputs, failMsg)
 					circuitBreaker.RecordTestResult(false)
 				}
 			}

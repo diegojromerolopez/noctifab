@@ -19,13 +19,19 @@ type SyntaxViolation struct {
 	Message  string
 }
 
-// SyntaxValidator provides fast, in-process and deterministic syntax verification
-// across supported source code and structured configuration formats.
-type SyntaxValidator struct{}
+// SyntaxValidator provides fast, in-process and deterministic verification across
+// source code, catching syntax errors, empty stub placeholders, and undeclared imports.
+type SyntaxValidator struct {
+	diffValidator *DiffMutationValidator
+	manifestGuard *ManifestIntegrityGuard
+}
 
 // NewSyntaxValidator creates a new SyntaxValidator instance.
 func NewSyntaxValidator() *SyntaxValidator {
-	return &SyntaxValidator{}
+	return &SyntaxValidator{
+		diffValidator: NewDiffMutationValidator(),
+		manifestGuard: NewManifestIntegrityGuard(),
+	}
 }
 
 // Check implements the SyntaxChecker interface for immediate in-tool validation.
@@ -45,7 +51,7 @@ func (v *SyntaxValidator) Check(ctx context.Context, fullPath string) error {
 		return err
 	}
 	if violation != nil {
-		return fmt.Errorf("syntax validation failed on %s: %s", violation.FilePath, violation.Message)
+		return fmt.Errorf("validation failed on %s: %s", violation.FilePath, violation.Message)
 	}
 	return nil
 }
@@ -70,13 +76,13 @@ func (v *SyntaxValidator) validateDirectory(ctx context.Context, dir string) err
 			return vErr
 		}
 		if violation != nil {
-			return fmt.Errorf("syntax validation failed on %s: %s", violation.FilePath, violation.Message)
+			return fmt.Errorf("validation failed on %s: %s", violation.FilePath, violation.Message)
 		}
 		return nil
 	})
 }
 
-// ValidateFile performs deterministic syntax validation on a single file based on its extension.
+// ValidateFile performs deterministic validation on a single file based on its extension.
 func (v *SyntaxValidator) ValidateFile(ctx context.Context, fullPath string) (*SyntaxViolation, error) {
 	info, err := os.Stat(fullPath)
 	if err != nil {
@@ -122,14 +128,52 @@ func (v *SyntaxValidator) ValidateFiles(ctx context.Context, baseDir string, fil
 }
 
 func (v *SyntaxValidator) validateGo(path string) (*SyntaxViolation, error) {
+	content, rErr := os.ReadFile(path)
+	if rErr != nil {
+		return nil, rErr
+	}
+
 	fset := token.NewFileSet()
-	_, err := parser.ParseFile(fset, path, nil, parser.AllErrors)
+	_, err := parser.ParseFile(fset, path, content, parser.AllErrors)
 	if err != nil {
 		return &SyntaxViolation{
 			FilePath: path,
 			Message:  fmt.Sprintf("Go syntax error: %v", err),
 		}, nil
 	}
+
+	// Anti-stub check on non-test files
+	if !isTestPath(path) && v.diffValidator != nil {
+		if stubErr := v.diffValidator.ValidateASTBody(path, string(content)); stubErr != nil {
+			return &SyntaxViolation{
+				FilePath: path,
+				Message:  stubErr.Error(),
+			}, nil
+		}
+	}
+
+	// Manifest import check if go.mod exists in project hierarchy
+	if v.manifestGuard != nil {
+		if root := findProjectRoot(path); root != "" {
+			goModPath := filepath.Join(root, "go.mod")
+			if goModBytes, mErr := os.ReadFile(goModPath); mErr == nil {
+				modName, declaredDeps, pErr := ParseGoMod(string(goModBytes))
+				if pErr == nil {
+					var declaredKeys []string
+					for k := range declaredDeps {
+						declaredKeys = append(declaredKeys, k)
+					}
+					if impErr := v.manifestGuard.ValidateImports(path, string(content), declaredKeys, modName); impErr != nil {
+						return &SyntaxViolation{
+							FilePath: path,
+							Message:  impErr.Error(),
+						}, nil
+					}
+				}
+			}
+		}
+	}
+
 	return nil, nil
 }
 
@@ -152,10 +196,54 @@ func (v *SyntaxValidator) validateJSON(path string) (*SyntaxViolation, error) {
 }
 
 func (v *SyntaxValidator) validatePython(ctx context.Context, path string) (*SyntaxViolation, error) {
-	// Attempt fast Python compilation via python3 -m py_compile if python3 is available
+	content, rErr := os.ReadFile(path)
+	if rErr != nil {
+		return nil, rErr
+	}
+
+	// Anti-stub check on non-test files
+	if !isTestPath(path) && v.diffValidator != nil {
+		if stubErr := v.diffValidator.ValidateASTBody(path, string(content)); stubErr != nil {
+			return &SyntaxViolation{
+				FilePath: path,
+				Message:  stubErr.Error(),
+			}, nil
+		}
+	}
+
+	// Manifest import check if pyproject.toml / requirements.txt exists in project hierarchy
+	if v.manifestGuard != nil {
+		if root := findProjectRoot(path); root != "" {
+			var declaredKeys []string
+			if pyproj, pErr := os.ReadFile(filepath.Join(root, "pyproject.toml")); pErr == nil {
+				if deps, dErr := ParsePyprojectToml(string(pyproj)); dErr == nil {
+					for k := range deps {
+						declaredKeys = append(declaredKeys, k)
+					}
+				}
+			}
+			if reqs, qErr := os.ReadFile(filepath.Join(root, "requirements.txt")); qErr == nil {
+				if deps, dErr := ParseRequirementsTxt(string(reqs)); dErr == nil {
+					for k := range deps {
+						declaredKeys = append(declaredKeys, k)
+					}
+				}
+			}
+			if len(declaredKeys) > 0 {
+				if impErr := v.manifestGuard.ValidateImports(path, string(content), declaredKeys, ""); impErr != nil {
+					return &SyntaxViolation{
+						FilePath: path,
+						Message:  impErr.Error(),
+					}, nil
+				}
+			}
+		}
+	}
+
+	// Fast Python compilation via python3 -m py_compile if python3 is available
 	pythonPath, err := exec.LookPath("python3")
 	if err != nil {
-		return nil, nil // python3 not on host path, skip pre-check
+		return nil, nil
 	}
 
 	cmd := exec.CommandContext(ctx, pythonPath, "-m", "py_compile", path)
@@ -171,4 +259,38 @@ func (v *SyntaxValidator) validatePython(ctx context.Context, path string) (*Syn
 		}, nil
 	}
 	return nil, nil
+}
+
+func isTestPath(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	cleanPath := filepath.ToSlash(path)
+	return strings.HasSuffix(base, "_test.go") ||
+		strings.HasPrefix(base, "test_") ||
+		strings.HasSuffix(base, "_test.py") ||
+		strings.Contains(cleanPath, "/test/") ||
+		strings.Contains(cleanPath, "/tests/")
+}
+
+func findProjectRoot(startPath string) string {
+	dir := filepath.Dir(startPath)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, "pyproject.toml")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, "requirements.txt")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir || parent == "." || parent == "/" {
+			break
+		}
+		dir = parent
+	}
+	return ""
 }
