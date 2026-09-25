@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/spf13/cobra"
@@ -181,6 +182,44 @@ GITHUB_TOKEN: ""
 		ignoreContent := "data/\nlogs/\nworktrees/\nnoctifab.pid\nsecrets.yaml\n"
 		if err := os.WriteFile(gitIgnorePath, []byte(ignoreContent), 0644); err != nil {
 			return false, fmt.Errorf("failed to create .gitignore: %w", err)
+		}
+	}
+
+	// 6b. Ensure root .git/info/exclude ignores .noctifab paths to prevent Git state corruption
+	gitDir := filepath.Join(targetDir, ".git")
+	if fi, err := os.Stat(gitDir); err == nil && fi.IsDir() {
+		excludeDir := filepath.Join(gitDir, "info")
+		_ = os.MkdirAll(excludeDir, 0755)
+		excludePath := filepath.Join(excludeDir, "exclude")
+		currentExclude, _ := os.ReadFile(excludePath)
+		excludeContent := string(currentExclude)
+		requiredExcludes := []string{
+			".noctifab/data/",
+			".noctifab/logs/",
+			".noctifab/worktrees/",
+			".noctifab/secrets.yaml",
+			".noctifab/noctifab.pid",
+			"*.db",
+			"*.db-shm",
+			"*.db-wal",
+		}
+		var toAppend []string
+		for _, req := range requiredExcludes {
+			if !strings.Contains(excludeContent, req) {
+				toAppend = append(toAppend, req)
+			}
+		}
+		if len(toAppend) > 0 {
+			var sb strings.Builder
+			sb.WriteString(excludeContent)
+			if len(excludeContent) > 0 && !strings.HasSuffix(excludeContent, "\n") {
+				sb.WriteString("\n")
+			}
+			for _, item := range toAppend {
+				sb.WriteString(item)
+				sb.WriteString("\n")
+			}
+			_ = os.WriteFile(excludePath, []byte(sb.String()), 0644)
 		}
 	}
 

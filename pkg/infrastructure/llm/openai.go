@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/google/uuid"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )
@@ -54,6 +55,8 @@ type baseOpenAIClient struct {
 	// extraBody holds provider-specific parameters to be merged into the
 	// request's extra_body field (e.g. enable_thinking for QwenCloud).
 	extraBody map[string]interface{}
+	// headers holds custom HTTP request headers attached to outgoing requests.
+	headers map[string]string
 	// disableJSONMode disables response_format=json_object when set.
 	// Used for providers/models that cannot accept forced JSON mode.
 	disableJSONMode bool
@@ -74,6 +77,14 @@ func newBaseOpenAIClient(provider, baseURL, url string, timeout, idleTimeout tim
 // Parameters are merged into every outgoing completion request.
 func (o *baseOpenAIClient) SetExtraBody(params map[string]interface{}) {
 	o.extraBody = params
+}
+
+// SetHeader attaches a custom HTTP header to outbound requests.
+func (o *baseOpenAIClient) SetHeader(key, val string) {
+	if o.headers == nil {
+		o.headers = make(map[string]string)
+	}
+	o.headers[key] = val
 }
 
 // SetDisableJSONMode disables response_format=json_object for this client.
@@ -165,19 +176,48 @@ func (o *baseOpenAIClient) sdkHTTPClient() *http.Client {
 	return &http.Client{Timeout: timeout}
 }
 
+// sdkStreamingHTTPClient builds an *http.Client for streaming where connection/idle
+// liveness is governed by sliding inter-chunk timers and request context, avoiding
+// premature termination of active token streams by Go's http.Client.Timeout.
+func (o *baseOpenAIClient) sdkStreamingHTTPClient() *http.Client {
+	return &http.Client{Timeout: 0}
+}
+
 // sdkClient builds an SDK client bound to this provider's base URL and key.
 // SDK-level retries are disabled (WithMaxRetries(0)) so that only client.go's
 // explicit retry loop controls retry cadence. Without this, the SDK adds 2
 // implicit retries on top of client.go's own loop, multiplying a single hung
 // call into up to 9 total attempts (3 SDK × 3 client.go).
 func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
+	return o.buildClientWithOptions(apiKey, o.sdkHTTPClient())
+}
+
+// sdkStreamingClient builds an SDK client configured for streaming requests.
+func (o *baseOpenAIClient) sdkStreamingClient(apiKey string) openai.Client {
+	return o.buildClientWithOptions(apiKey, o.sdkStreamingHTTPClient())
+}
+
+func (o *baseOpenAIClient) buildClientWithOptions(apiKey string, httpClient *http.Client) openai.Client {
 	opts := []option.RequestOption{
 		option.WithBaseURL(o.sdkBaseURL(apiKey)),
-		option.WithHTTPClient(o.sdkHTTPClient()),
+		option.WithHTTPClient(httpClient),
 		option.WithMaxRetries(0),
 	}
 	if apiKey != "" {
 		opts = append(opts, option.WithAPIKey(apiKey))
+	}
+	for k, v := range o.headers {
+		opts = append(opts, option.WithHeader(k, v))
+	}
+	if o.provider == "openrouter" {
+		opts = append(opts,
+			option.WithHeader("HTTP-Referer", "https://github.com/diegojromerolopez/noctifab"),
+			option.WithHeader("X-Title", "Noctifab"),
+		)
+	}
+	base := o.sdkBaseURL(apiKey)
+	if (o.provider == "opencode" || strings.Contains(base, "opencode.ai")) && (o.headers == nil || o.headers["x-opencode-session"] == "") {
+		opts = append(opts, option.WithHeader("x-opencode-session", uuid.New().String()))
 	}
 	return openai.NewClient(opts...)
 }
@@ -189,14 +229,21 @@ func (o *baseOpenAIClient) sdkClient(apiKey string) openai.Client {
 // Unrecognised errors are returned immediately so the caller's retry/fallback
 // ladder can classify them.
 func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) (*ProviderCallResult, error) {
+	filteredExtra := make(map[string]interface{})
+	for k, v := range o.extraBody {
+		if !globalCapabilityCache.isExtraParamUnsupported(model, k) {
+			filteredExtra[k] = v
+		}
+	}
+
 	opts := completionOptions{
 		enforceJSON:     !globalCapabilityCache.isJSONModeUnsupported(model),
 		disableJSONMode: o.disableJSONMode || globalCapabilityCache.isJSONModeUnsupported(model),
 		maxTokens:       maxTokens,
 		temperature:     &temperature,
-		extraBody:       o.extraBody,
+		extraBody:       filteredExtra,
 	}
-	if globalCapabilityCache.isTemperatureUnsupported(model) {
+	if isNoTemperatureModel(model) || globalCapabilityCache.isTemperatureUnsupported(model) || hasThinkingEnabled(opts.extraBody) {
 		opts.temperature = nil
 	}
 	if globalCapabilityCache.isMaxTokensUnsupported(model) {
@@ -240,13 +287,26 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 		if errors.As(err, &he) {
 			return nil, err
 		}
+		if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+			strings.Contains(fmt.Sprintf("%v", err), "context deadline exceeded") ||
+			strings.Contains(fmt.Sprintf("%v", err), "context canceled") ||
+			strings.Contains(fmt.Sprintf("%v", err), "Client.Timeout") {
+			return nil, err
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "⚠ Streaming call failed (%v); retrying with non-streaming POST.\n", err)
 		} else {
 			fmt.Fprintf(os.Stderr, "⚠ Streaming call returned empty content; retrying with non-streaming POST.\n")
 		}
+		// Disable streaming for this client session to avoid repeated 30-60s streaming hangs
+		o.streaming = false
 	}
 
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	opts.streaming = false
 	client := o.sdkClient(apiKey)
 	params := buildChatParams(model, prompt, opts)
 
@@ -256,8 +316,10 @@ func (o *baseOpenAIClient) sendCompletion(ctx context.Context, model, apiKey, pr
 		reqOpts = append(reqOpts, option.WithJSONSet(k, v))
 	}
 
+	postCtx := ctx
+
 	start := time.Now()
-	completion, err := client.Chat.Completions.New(ctx, params, reqOpts...)
+	completion, err := client.Chat.Completions.New(postCtx, params, reqOpts...)
 	if err != nil {
 		return nil, o.sdkError(err)
 	}
@@ -309,7 +371,8 @@ func tempOrDefault(t float64) float64 {
 // that keep streaming are never cut short — total duration remains capped by
 // the http.Client timeout (max_timeout).
 func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, apiKey, prompt string, opts completionOptions) (*ProviderCallResult, error) {
-	client := o.sdkClient(apiKey)
+	opts.streaming = true
+	client := o.sdkStreamingClient(apiKey)
 	params := buildChatParams(model, prompt, opts)
 
 	// Build extra request options for provider-specific body params (e.g. enable_thinking).
@@ -318,19 +381,23 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 		reqOpts = append(reqOpts, option.WithJSONSet(k, v))
 	}
 
-	streamCtx := ctx
-	var idleTimer *time.Timer
-	var idleFired atomic.Bool
-	if o.idleTimeout > 0 {
-		var cancel context.CancelFunc
-		streamCtx, cancel = context.WithCancel(ctx)
-		defer cancel()
-		idleTimer = time.AfterFunc(o.idleTimeout, func() {
-			idleFired.Store(true)
-			cancel()
-		})
-		defer idleTimer.Stop()
+	streamTimeout := o.timeout
+	if streamTimeout <= 0 || streamTimeout > 90*time.Second {
+		streamTimeout = 90 * time.Second
 	}
+	streamCtx, cancelStream := context.WithTimeout(ctx, streamTimeout)
+	defer cancelStream()
+
+	idleTimeout := o.idleTimeout
+	if idleTimeout <= 0 {
+		idleTimeout = 20 * time.Second
+	}
+	var idleFired atomic.Bool
+	idleTimer := time.AfterFunc(idleTimeout, func() {
+		idleFired.Store(true)
+		cancelStream()
+	})
+	defer idleTimer.Stop()
 
 	stream := client.Chat.Completions.NewStreaming(streamCtx, params, reqOpts...)
 
@@ -340,7 +407,7 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 	streamStart := time.Now()
 	for stream.Next() {
 		if idleTimer != nil {
-			idleTimer.Reset(o.idleTimeout)
+			idleTimer.Reset(idleTimeout)
 		}
 		chunk := stream.Current()
 		acc.AddChunk(chunk)
@@ -353,7 +420,7 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 	}
 	if err := stream.Err(); err != nil {
 		if idleFired.Load() && ctx.Err() == nil {
-			return nil, fmt.Errorf("stream idle timeout: no data received for %v: %w", o.idleTimeout, err)
+			return nil, fmt.Errorf("stream idle timeout: no data received for %v: %w", idleTimeout, err)
 		}
 		return nil, o.sdkError(err)
 	}

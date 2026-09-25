@@ -62,10 +62,7 @@ func (w *AtomicWriter) WriteAtomic(ctx context.Context, path string, content []b
 		return fmt.Errorf("failed to sync temporary report file: %w", err)
 	}
 
-	if err := tempFile.Chmod(0600); err != nil {
-		_ = tempFile.Close()
-		return fmt.Errorf("failed to set 0600 permissions on temporary report file: %w", err)
-	}
+	_ = tempFile.Chmod(0600)
 
 	if err := tempFile.Close(); err != nil {
 		return fmt.Errorf("failed to close temporary report file: %w", err)

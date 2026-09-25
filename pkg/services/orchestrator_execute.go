@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -44,8 +45,6 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	if task == nil {
 		return
 	}
-
-	task.TargetFiles = collectTargetFilesRecursively(*task, state.Tasks)
 
 	fmt.Printf("Orchestrator: Task %s (%s) is starting...\n", taskID, task.Title)
 
@@ -94,7 +93,12 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 				return nil
 			}
 		}
-		return fmt.Errorf("task %s not found in state", taskID)
+		t := *task
+		t.Status = domain.TaskInProgress
+		t.Progress = 10
+		t.UpdatedAt = time.Now()
+		st.Tasks = append(st.Tasks, t)
+		return nil
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Orchestrator: Failed to update task status to IN_PROGRESS for task %s: %v\n", taskID, err)
@@ -115,12 +119,37 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		taskState.ProjectPath = worktreeDir
 	}
 
+	// Strict Target File Prompt Slicing:
+	// Slice turn context strictly to direct task.TargetFiles for implementation.
 	var fileContexts []string
+	slicer := NewContextSlicer(o.cfg.Context)
+	targetSet := make(map[string]bool)
 	for _, file := range task.TargetFiles {
+		if file == "" {
+			continue
+		}
+		targetSet[file] = true
 		fullPath, err := resolveSandboxPath(taskState.ProjectPath, file)
 		if err == nil {
 			if content, err := os.ReadFile(fullPath); err == nil {
-				fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", file, capText(string(content), fileContextCapChars)))
+				sliced := slicer.SliceFileContext(file, string(content), "")
+				fileContexts = append(fileContexts, capText(sliced, fileContextCapChars))
+			}
+		}
+	}
+
+	// For ancestor dependencies, supply only immediate symbol outlines rather than dumping entire files
+	depFiles := collectTargetFilesRecursively(*task, state.Tasks)
+	symbolSlicer := &ContextSlicer{mode: config.ContextModeTreeSitter}
+	for _, df := range depFiles {
+		if targetSet[df] || df == "" {
+			continue
+		}
+		fullPath, err := resolveSandboxPath(taskState.ProjectPath, df)
+		if err == nil {
+			if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
+				outline := symbolSlicer.SliceFileContext(df, string(content), "")
+				fileContexts = append(fileContexts, capText(outline, 1500))
 			}
 		}
 	}
@@ -146,12 +175,13 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	var passed bool
 	var logMsg string
 
-	if o.cfg.LastResort.Enabled && (task.StallCount >= 4 || strings.Contains(task.RecoveryDirective, "SOVEREIGN REPAIR DIRECTIVE")) {
-		fmt.Printf("⚡ [Orchestrator] Task %s reached stall count %d with sovereign repair directive; directly invoking Last-Resort Agent...\n", taskID, task.StallCount)
-		passed, logMsg = o.RunLastResortAgent(ctx, task, &taskState, taskGit, task.RecoveryDirective, "unblocker_stall_escalation")
+	fbCfg := o.cfg.GetFallback()
+	if fbCfg.Enabled && (task.StallCount >= 2 || task.FallbackUsed || task.LastResortUsed || strings.Contains(task.RecoveryDirective, "SOVEREIGN REPAIR DIRECTIVE")) {
+		fmt.Printf("⚡ [Orchestrator] Task %s flagged for direct Fallback Agent sovereign execution (StallCount: %d, FallbackUsed: %v)...\n", taskID, task.StallCount, task.FallbackUsed)
+		passed, logMsg = o.RunFallbackAgent(ctx, task, &taskState, taskGit, task.RecoveryDirective, "fallback_stall_escalation")
 	} else {
 		switch arch {
-		case "single_pass", "single_pass_execution", "spe":
+		case "single_pass", "single_pass_execution", "spe", "single_pass_co_synthesis", "co_synthesis", "single_pass_synthesis", "spcs":
 			o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
 		case "breadth_first", "breadth_first_generation", "bfg", "big":
 			o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
@@ -162,13 +192,15 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
 		// Run test suite validation
 		passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
+		passed, logMsg = checkTaskMutations(ctx, task, taskGit, integrationBranch, passed, logMsg)
 
 		// First-Class Generator Surgical Repair
 		initCategory := CategorizeFailureLog(logMsg)
-		if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic) {
+		if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic || strings.Contains(strings.ToLower(logMsg), "e2e") || strings.Contains(logMsg, "zero file mutations")) {
 			fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, initCategory)
 			o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
 			passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
+			passed, logMsg = checkTaskMutations(ctx, task, taskGit, integrationBranch, passed, logMsg)
 		}
 
 		if passed && qaBlocked == "" {
@@ -186,24 +218,24 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			effectiveMaxRetries = 3
 		}
 
-		// Last-Resort Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, QA deadlock, or stall count >= 4)
+		// Fallback Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, QA deadlock, stall count >= 2, or FallbackUsed)
 		category := CategorizeFailureLog(logMsg)
 		isSandbox := !passed && category == FailureSandbox
 		canRetry := !passed && !isSandbox && task.Retries < effectiveMaxRetries
 
-		if !passed && o.cfg.LastResort.Enabled && (!canRetry || isSandbox || qaBlocked != "" || task.StallCount >= 4) {
+		if !passed && fbCfg.Enabled && (!canRetry || isSandbox || qaBlocked != "" || task.StallCount >= 2 || task.FallbackUsed || task.LastResortUsed) {
 			triggerReason := "retries_exhausted"
 			if isSandbox {
 				triggerReason = "missing_toolchain_or_sandbox_error"
 			} else if qaBlocked != "" {
 				triggerReason = "qa_gate_deadlock"
-			} else if task.StallCount >= 4 {
-				triggerReason = "unblocker_stall_escalation"
+			} else if task.StallCount >= 2 || task.FallbackUsed || task.LastResortUsed {
+				triggerReason = "fallback_stall_escalation"
 			}
-			lraPassed, lraLog := o.RunLastResortAgent(ctx, task, &taskState, taskGit, logMsg, triggerReason)
-			if lraPassed {
+			fbPassed, fbLog := o.RunFallbackAgent(ctx, task, &taskState, taskGit, logMsg, triggerReason)
+			if fbPassed {
 				passed = true
-				logMsg = lraLog
+				logMsg = fbLog
 			}
 		}
 	}
@@ -255,7 +287,8 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			}
 		}
 		if targetTask == nil {
-			return fmt.Errorf("task %s not found in state", taskID)
+			st.Tasks = append(st.Tasks, *task)
+			targetTask = &st.Tasks[len(st.Tasks)-1]
 		}
 
 		if targetTask.MaxRetries <= 0 {
@@ -267,6 +300,10 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 			targetTask.Progress = 100
 			targetTask.FailureLog = ""
 			fmt.Printf("✅ [Validation Passed] Task %s (%s) passed test validation and merged into %s\n", taskID, task.Title, integrationBranch)
+			_ = WriteTaskMarkdown(st.ProjectPath, st.Metadata.InputPath, *targetTask)
+			if o.git != nil {
+				_, _ = o.git.Run(ctx, true, "add", "roadmap")
+			}
 		} else if isSandboxFailure {
 			fmt.Printf("❌ [Unrecoverable Environment Failure] Task %s fast aborting: %s\n", taskID, logMsg)
 			targetTask.Status = domain.TaskFailed
@@ -331,4 +368,22 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	case o.taskCompletedChan <- struct{}{}:
 	default:
 	}
+}
+
+func checkTaskMutations(ctx context.Context, task *domain.Task, taskGit *GitClient, integrationBranch string, passed bool, logMsg string) (bool, string) {
+	if !passed || taskGit == nil {
+		return passed, logMsg
+	}
+	// Verify that tasks assigned to modify files or implement changes produce actual mutations
+	if len(task.TargetFiles) == 0 && task.ChangeType == "" {
+		return passed, logMsg
+	}
+	uncommitted, _ := taskGit.Run(ctx, false, "status", "--porcelain")
+	diffOut, _ := taskGit.Run(ctx, false, "diff", "--name-only", integrationBranch)
+	logOut, _ := taskGit.Run(ctx, false, "log", integrationBranch+"..HEAD", "--oneline")
+	if strings.TrimSpace(uncommitted) == "" && strings.TrimSpace(diffOut) == "" && strings.TrimSpace(logOut) == "" {
+		fmt.Printf("⚠️ Orchestrator: Task %s passed tests but produced zero file changes relative to %s. Rejecting false-positive pass.\n", task.ID, integrationBranch)
+		return false, fmt.Sprintf("Task %s produced zero file mutations or git changes relative to %s. Baseline tests passed, but no actual work was implemented.", task.ID, integrationBranch)
+	}
+	return passed, logMsg
 }

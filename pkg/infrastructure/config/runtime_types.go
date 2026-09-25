@@ -69,3 +69,11 @@ type LoggingConfig struct {
 	Level string `yaml:"level"`
 	File  string `yaml:"file"`
 }
+
+// IsPipelined returns whether pipelined scheduling is enabled (defaults to true).
+func (a AgentRoleConfig) IsPipelined() bool {
+	if a.Pipelined != nil {
+		return *a.Pipelined
+	}
+	return true
+}

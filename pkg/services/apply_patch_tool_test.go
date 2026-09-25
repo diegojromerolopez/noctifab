@@ -226,4 +226,49 @@ func TestApplyPatchTool_Execute(t *testing.T) {
 			t.Fatal("expected error on missing patch argument, got nil")
 		}
 	})
+
+	t.Run("when_applying_patch_with_update_file_header_and_bare_hunks_it_succeeds", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		filePath := filepath.Join(tmpDir, "src", "store.py")
+		_ = os.MkdirAll(filepath.Dir(filePath), 0755)
+		initialContent := "import asyncio\nimport time\n\nclass Store:\n    def __init__(self):\n        pass\n"
+		if err := os.WriteFile(filePath, []byte(initialContent), 0644); err != nil {
+			t.Fatalf("failed to write initial file: %v", err)
+		}
+
+		state := &domain.State{ProjectPath: tmpDir}
+		tool := &ApplyPatchTool{}
+
+		patch := `*** Begin Patch
+*** Update File: src/store.py
+@@
+ import asyncio
++import fnmatch
+ import time
+@@
+ class Store:
+-    def __init__(self):
+-        pass
++    def __init__(self):
++        self.data = {}
+*** End Patch`
+
+		res, err := tool.Execute(context.Background(), state, map[string]any{
+			"patch": patch,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(res, "Patch applied successfully") {
+			t.Errorf("expected success message, got: %s", res)
+		}
+
+		updated, err := os.ReadFile(filePath)
+		if err != nil {
+			t.Fatalf("failed to read updated file: %v", err)
+		}
+		if !strings.Contains(string(updated), "import fnmatch") || !strings.Contains(string(updated), "self.data = {}") {
+			t.Errorf("patch content not applied correctly, got:\n%s", string(updated))
+		}
+	})
 }

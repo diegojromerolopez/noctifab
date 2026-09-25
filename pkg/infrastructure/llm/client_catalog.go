@@ -14,8 +14,9 @@ const defaultCatalogTTL = 5 * time.Minute
 
 // catalogEntry is a cached model catalog with its expiry deadline.
 type catalogEntry struct {
-	models  []string
-	expires time.Time
+	models       []string
+	capabilities map[string]ModelCapability
+	expires      time.Time
 }
 
 // extraBodySetter is an optional interface that provider clients can implement
@@ -45,6 +46,22 @@ func (c *Client) providerClient() ProviderClient {
 	extra := make(map[string]interface{})
 	if c.EnableThinking != nil {
 		extra["enable_thinking"] = *c.EnableThinking
+		if strings.EqualFold(c.Provider, "claude") || strings.EqualFold(c.Provider, "anthropic") {
+			if *c.EnableThinking {
+				budget := 2048
+				if c.ThinkingBudget != nil && *c.ThinkingBudget > 0 {
+					budget = *c.ThinkingBudget
+				}
+				extra["thinking"] = map[string]interface{}{
+					"type":          "enabled",
+					"budget_tokens": budget,
+				}
+			} else {
+				extra["thinking"] = map[string]interface{}{
+					"type": "disabled",
+				}
+			}
+		}
 	}
 	if c.ThinkingBudget != nil {
 		extra["thinking_budget"] = *c.ThinkingBudget
@@ -192,4 +209,91 @@ func (c *Client) resolveLatestModel(ctx context.Context, apiKey string) string {
 
 	sortProviderModels(parsedModels)
 	return parsedModels[0].Name
+}
+
+// availableCapabilitiesCached returns dynamic model capability metadata discovered from the /models endpoint.
+func (c *Client) availableCapabilitiesCached(ctx context.Context, pClient ProviderClient, apiKey string) map[string]ModelCapability {
+	key := c.catalogCacheKey()
+	ttl := c.catalogTTL
+	if ttl <= 0 {
+		ttl = defaultCatalogTTL
+	}
+
+	c.catalogMu.Lock()
+	entry, ok := c.catalogCache[key]
+	if ok && entry.capabilities != nil {
+		c.catalogMu.Unlock()
+		return entry.capabilities
+	}
+	c.catalogMu.Unlock()
+
+	disc, ok := pClient.(ModelCapabilityDiscoverer)
+	if !ok {
+		return nil
+	}
+
+	caps, err := disc.GetModelCapabilities(ctx, apiKey)
+
+	c.catalogMu.Lock()
+	if c.catalogCache == nil {
+		c.catalogCache = make(map[string]catalogEntry)
+	}
+	e := c.catalogCache[key]
+	if err != nil || len(caps) == 0 {
+		e.capabilities = make(map[string]ModelCapability)
+	} else {
+		e.capabilities = caps
+	}
+	if e.expires.IsZero() {
+		e.expires = time.Now().Add(ttl)
+	}
+	c.catalogCache[key] = e
+	c.catalogMu.Unlock()
+
+	if err != nil || len(caps) == 0 {
+		return nil
+	}
+	return caps
+}
+
+type nonStreamingContextKey struct{}
+
+// WithNonStreaming attaches a non-streaming directive to the context so provider clients execute direct HTTP POSTs without SSE.
+func WithNonStreaming(ctx context.Context) context.Context {
+	return context.WithValue(ctx, nonStreamingContextKey{}, true)
+}
+
+// IsNonStreamingContext reports whether the context requires non-streaming HTTP execution.
+func IsNonStreamingContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, ok := ctx.Value(nonStreamingContextKey{}).(bool)
+	return ok && v
+}
+
+// providerClientForContext builds the ProviderClient and applies routine task overrides
+// (such as dynamically disabling extended thinking when discovered via /models, or disabling streaming for batch/spike).
+func (c *Client) providerClientForContext(ctx context.Context, activeModel string) ProviderClient {
+	streaming := c.Streaming
+	role := GetRoleFromContext(ctx)
+	if IsNonStreamingContext(ctx) || role == "spike" {
+		streaming = false
+	}
+	spec, _ := GetProviderSpec(strings.ToLower(c.Provider))
+	var pc ProviderClient
+	if spec != nil && spec.NewClientFunc != nil {
+		pc = spec.NewClientFunc(c.URL, c.Timeout, c.IdleTimeout, streaming)
+	} else {
+		pc = NewOpenAIProviderClient(c.Provider, c.URL, c.Timeout, c.IdleTimeout, streaming)
+	}
+	if isRoutineTask(role) {
+		extra, modified := c.adjustForRoutineTask(ctx, role, activeModel, nil)
+		if modified {
+			if setter, ok := pc.(extraBodySetter); ok {
+				setter.SetExtraBody(extra)
+			}
+		}
+	}
+	return pc
 }

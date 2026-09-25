@@ -150,9 +150,25 @@ func (o *Orchestrator) allTasksFinished(state *domain.State) bool {
 	if len(state.Tasks) == 0 {
 		return false
 	}
+	storyID := ExtractStoryID(state.Metadata.InputPath)
+	if storyID == "" {
+		storyID = state.Metadata.FeatureName
+	}
+	hasStoryTasks := false
 	for _, t := range state.Tasks {
+		if storyID != "" && t.StoryID != "" && t.StoryID != storyID && !strings.HasPrefix(strings.ToLower(t.ID), strings.ToLower(storyID)) {
+			continue
+		}
+		hasStoryTasks = true
 		if t.Status != domain.TaskSuccess && t.Status != domain.TaskFailed {
 			return false
+		}
+	}
+	if !hasStoryTasks {
+		for _, t := range state.Tasks {
+			if t.Status != domain.TaskSuccess && t.Status != domain.TaskFailed {
+				return false
+			}
 		}
 	}
 	return true
@@ -166,9 +182,25 @@ func (o *Orchestrator) allTasksSucceeded(state *domain.State) bool {
 	if len(state.Tasks) == 0 {
 		return false
 	}
+	storyID := ExtractStoryID(state.Metadata.InputPath)
+	if storyID == "" {
+		storyID = state.Metadata.FeatureName
+	}
+	hasStoryTasks := false
 	for _, t := range state.Tasks {
+		if storyID != "" && t.StoryID != "" && t.StoryID != storyID && !strings.HasPrefix(strings.ToLower(t.ID), strings.ToLower(storyID)) {
+			continue
+		}
+		hasStoryTasks = true
 		if t.Status != domain.TaskSuccess {
 			return false
+		}
+	}
+	if !hasStoryTasks {
+		for _, t := range state.Tasks {
+			if t.Status != domain.TaskSuccess {
+				return false
+			}
 		}
 	}
 	return true

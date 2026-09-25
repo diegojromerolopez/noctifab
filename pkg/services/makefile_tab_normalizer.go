@@ -36,6 +36,14 @@ func normalizeMakefileTabs(path string, content string) string {
 			continue
 		}
 
+		// If a line is indented with spaces/tabs but is clearly a target definition (e.g. "  e2e:" or "  test:"),
+		// unindent it to column 0 so it becomes a valid top-level Makefile rule rather than being absorbed into the previous recipe.
+		if hasLeadingSpace && isTargetDefinition(trimmed) && isLikelyTargetName(trimmed) {
+			lines[i] = trimmed
+			inRule = true
+			continue
+		}
+
 		if inRule && hasLeadingSpace {
 			// Convert leading spaces/tabs into a single standard Makefile tab prefix
 			lines[i] = "\t" + strings.TrimLeft(line, " \t")
@@ -46,6 +54,22 @@ func normalizeMakefileTabs(path string, content string) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func isLikelyTargetName(trimmed string) bool {
+	idx := strings.Index(trimmed, ":")
+	if idx <= 0 {
+		return false
+	}
+	targetName := strings.TrimSpace(trimmed[:idx])
+	if strings.ContainsAny(targetName, " \"'<>|;$") {
+		return false
+	}
+	lower := strings.ToLower(targetName)
+	if lower == "docker" || lower == "echo" || lower == "printf" || lower == "python" || lower == "python3" || lower == "sh" || lower == "bash" {
+		return false
+	}
+	return true
 }
 
 // isTargetDefinition reports whether a top-level line defines a Makefile rule target.
@@ -69,4 +93,100 @@ func isTargetDefinition(line string) bool {
 		return false
 	}
 	return true
+}
+
+// StandardizeMakefile ensures that a Makefile contains standard GNU Make targets:
+// .PHONY: all build test clean run
+// If targets like 'all', 'build', 'test', 'clean', or 'run' are missing, it supplements them
+// with appropriate aliases and defaults, and normalizes tabs.
+func StandardizeMakefile(content string) string {
+	content = normalizeMakefileTabs("Makefile", content)
+	lines := strings.Split(content, "\n")
+	targets := make(map[string]bool)
+	hasPhony := false
+	var existingPhonies []string
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, ".PHONY:") {
+			hasPhony = true
+			fields := strings.Fields(strings.TrimPrefix(trimmed, ".PHONY:"))
+			existingPhonies = append(existingPhonies, fields...)
+			continue
+		}
+		if isTargetDefinition(line) {
+			idx := strings.Index(line, ":")
+			targetName := strings.TrimSpace(line[:idx])
+			for _, t := range strings.Fields(targetName) {
+				targets[t] = true
+			}
+		}
+	}
+
+	var appends []string
+	if !targets["all"] && targets["build"] {
+		appends = append(appends, "all: build")
+		targets["all"] = true
+	} else if targets["all"] && !targets["build"] {
+		appends = append(appends, "build: all")
+		targets["build"] = true
+	} else if !targets["all"] && !targets["build"] {
+		if targets["test"] {
+			appends = append(appends, "all: build\n\nbuild: test")
+		} else {
+			appends = append(appends, "all: build\n\nbuild:\n\t@echo \"Build complete.\"")
+		}
+		targets["all"] = true
+		targets["build"] = true
+	}
+
+	if !targets["test"] {
+		appends = append(appends, "test:\n\t@echo \"No test target defined.\"")
+		targets["test"] = true
+	}
+
+	if !targets["clean"] {
+		appends = append(appends, "clean:\n\t@rm -rf build dist *.pyc __pycache__ .pytest_cache 2>/dev/null || true")
+		targets["clean"] = true
+	}
+
+	if !targets["run"] {
+		appends = append(appends, "run:\n\t@echo \"No run target specified.\"")
+		targets["run"] = true
+	}
+
+	standardPhonies := []string{"all", "build", "test", "clean", "run"}
+	phonySet := make(map[string]bool)
+	for _, p := range existingPhonies {
+		phonySet[p] = true
+	}
+	var newPhonies []string
+	for _, p := range standardPhonies {
+		if !phonySet[p] {
+			newPhonies = append(newPhonies, p)
+			phonySet[p] = true
+		}
+	}
+
+	var result strings.Builder
+	if !hasPhony {
+		result.WriteString(".PHONY: " + strings.Join(standardPhonies, " ") + "\n\n")
+	} else if len(newPhonies) > 0 {
+		result.WriteString(".PHONY: " + strings.Join(newPhonies, " ") + "\n")
+	}
+
+	result.WriteString(content)
+	if len(appends) > 0 {
+		if !strings.HasSuffix(content, "\n") {
+			result.WriteString("\n")
+		}
+		result.WriteString("\n# Standardized Makefile targets added by Noctifab\n")
+		result.WriteString(strings.Join(appends, "\n\n"))
+		result.WriteString("\n")
+	}
+
+	return normalizeMakefileTabs("Makefile", result.String())
 }

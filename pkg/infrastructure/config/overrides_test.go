@@ -68,6 +68,7 @@ func TestLoad_AndOverrides(t *testing.T) {
 		"NOCTIFAB_PR_DRAFT":            "true",
 		"NOCTIFAB_PR_ASSIGNEES":        "user1, user2",
 		"NOCTIFAB_PR_LABELS":           "auto,bot",
+		"NOCTIFAB_RESCUE_MAX_TURNS":    "4",
 	}
 
 	for k, v := range envVars {
@@ -159,6 +160,9 @@ func TestLoad_AndOverrides(t *testing.T) {
 	}
 	if time.Duration(cfg.Runtime.MaxDuration) != 3*time.Hour {
 		t.Errorf("expected 3h, got %v", time.Duration(cfg.Runtime.MaxDuration))
+	}
+	if cfg.Fallback.SovereignRescue.MaxTurns != 4 {
+		t.Errorf("expected rescue max turns 4, got %d", cfg.Fallback.SovereignRescue.MaxTurns)
 	}
 	if cfg.Sandbox.Mode != "docker" {
 		t.Errorf("expected docker, got %s", cfg.Sandbox.Mode)

@@ -4,7 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestDetectProjectLanguage_Go(t *testing.T) {
@@ -208,5 +210,102 @@ func TestDetectDefaultTestCommand(t *testing.T) {
 	}
 	if got := DetectDefaultTestCommand(tmpGo); got != "go test -v ./..." {
 		t.Errorf("expected 'go test -v ./...', got %q", got)
+	}
+}
+
+func TestDetectDefaultFormatterCommand(t *testing.T) {
+	// 1. Makefile with format target
+	tmpMake := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpMake, "Makefile"), []byte("all:\n\nformat:\n\t@echo fmt\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultFormatterCommand(tmpMake); got != "make format" {
+		t.Errorf("expected 'make format', got %q", got)
+	}
+
+	// 2. Go
+	tmpGo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpGo, "go.mod"), []byte("module test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultFormatterCommand(tmpGo); got != "go fmt ./..." {
+		t.Errorf("expected 'go fmt ./...', got %q", got)
+	}
+
+	// 3. Cargo.toml
+	tmpRust := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpRust, "Cargo.toml"), []byte("[package]"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultFormatterCommand(tmpRust); got != "cargo fmt" {
+		t.Errorf("expected 'cargo fmt', got %q", got)
+	}
+
+	// 4. package.json
+	tmpJS := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpJS, "package.json"), []byte(`{"scripts":{"format":"prettier -w ."}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectDefaultFormatterCommand(tmpJS); got != "npm run format" {
+		t.Errorf("expected 'npm run format', got %q", got)
+	}
+}
+
+func TestDetectAutoFixImportsCommand(t *testing.T) {
+	t.Run("when python project has src and tests directories it targets them with ruff", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(tmpDir, "pyproject.toml"), []byte("[project]"), 0644)
+		_ = os.MkdirAll(filepath.Join(tmpDir, "src"), 0755)
+		_ = os.MkdirAll(filepath.Join(tmpDir, "tests"), 0755)
+
+		got := DetectAutoFixImportsCommand(tmpDir)
+		if got != "ruff check --select F401 --fix src tests" {
+			t.Errorf("expected 'ruff check --select F401 --fix src tests', got %q", got)
+		}
+	})
+
+	t.Run("when python project has no standard subdirectories it falls back to dot", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(tmpDir, "requirements.txt"), []byte("requests\n"), 0644)
+
+		got := DetectAutoFixImportsCommand(tmpDir)
+		if got != "ruff check --select F401 --fix ." {
+			t.Errorf("expected 'ruff check --select F401 --fix .', got %q", got)
+		}
+	})
+
+	t.Run("when go project it returns goimports", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test"), 0644)
+
+		got := DetectAutoFixImportsCommand(tmpDir)
+		if got != "goimports -w ." {
+			t.Errorf("expected 'goimports -w .', got %q", got)
+		}
+	})
+
+	t.Run("when empty project path provided it returns empty string", func(t *testing.T) {
+		if got := DetectAutoFixImportsCommand(""); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+	})
+}
+
+func TestHostSandbox_PerTestTimeoutHangIsolation(t *testing.T) {
+	s := NewHostSandbox([]string{"sh", "sleep", "echo"}, "", 5*time.Second, nil)
+	s.PerTestTimeout = 100 * time.Millisecond
+	ctx := context.Background()
+
+	// A command where a test starts and hangs
+	out, err := s.RunCommand(ctx, t.TempDir(), "sh -c 'echo \"=== RUN   TestDeadlock\"; sleep 5'", "")
+	if err == nil {
+		t.Fatalf("expected error from hanging test, got nil (out: %s)", out)
+	}
+
+	if !strings.Contains(out, "Per-Test Timeout & Hang Isolated") {
+		t.Errorf("expected output to contain hang isolation banner, got: %s", out)
+	}
+	if !strings.Contains(out, "TestDeadlock") {
+		t.Errorf("expected output to mention hung test TestDeadlock, got: %s", out)
 	}
 }

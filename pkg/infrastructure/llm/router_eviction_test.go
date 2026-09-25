@@ -55,3 +55,27 @@ func TestResilientLLMRouter_ProviderEviction30Minutes(t *testing.T) {
 		t.Errorf("expected non-empty eviction reason details")
 	}
 }
+
+func TestGetRoleFromContext(t *testing.T) {
+	//nolint:staticcheck // SA1029: tests backward compatibility for string context keys
+	ctx := context.WithValue(context.Background(), "agent_role", "Generator")
+	role := GetRoleFromContext(ctx)
+	if role != "generator" {
+		t.Errorf("expected 'generator', got '%s'", role)
+	}
+
+	ctx2 := WithRoleContext(context.Background(), "Tester")
+	if role2 := GetRoleFromContext(ctx2); role2 != "tester" {
+		t.Errorf("expected 'tester', got '%s'", role2)
+	}
+}
+
+func TestResilientLLMRouter_ArrearageEviction(t *testing.T) {
+	arrearageErr := &httpError{
+		StatusCode: http.StatusBadRequest,
+		Body:       `{"message":"Access denied, please make sure your account is in good standing. For details, see: https://www.alibabacloud.com/help/en/model-studio/error-code#overdue-payment","type":"Arrearage"}`,
+	}
+	if !isEvictionError(arrearageErr) {
+		t.Errorf("expected Arrearage HTTP 400 error to be classified as eviction error")
+	}
+}

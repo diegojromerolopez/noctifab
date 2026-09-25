@@ -9,34 +9,98 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
+// ProposedFix describes a concrete remedial action suggested by the auditor.
+type ProposedFix struct {
+	File        string `json:"file"`
+	Description string `json:"description"`
+	Action      string `json:"action"`
+}
+
 // AcceptanceAuditResult encapsulates the whole-project audit against SPEC.md.
 type AcceptanceAuditResult struct {
-	Passed  bool     `json:"passed"`
-	Summary string   `json:"summary"`
-	Gaps    []string `json:"gaps,omitempty"`
+	Passed  bool          `json:"passed"`
+	Summary string        `json:"summary"`
+	Gaps    []string      `json:"gaps,omitempty"`
+	Fixes   []ProposedFix `json:"fixes,omitempty"`
 }
 
 // AcceptanceAuditor compares the implemented codebase against the root SPEC.md.
 type AcceptanceAuditor struct {
-	llmClient domain.LLMClient
-	renderer  PromptRenderer
+	llmClient       domain.LLMClient
+	renderer        PromptRenderer
+	runner          Sandbox
+	e2eCmd          string
+	e2eMode         string
+	defaultTestCmd  string
+	allowedCommands []string
 }
 
 // NewAcceptanceAuditor instantiates an AcceptanceAuditor service.
-func NewAcceptanceAuditor(client domain.LLMClient, renderer PromptRenderer) *AcceptanceAuditor {
+func NewAcceptanceAuditor(client domain.LLMClient, renderer PromptRenderer, runner ...Sandbox) *AcceptanceAuditor {
 	if renderer == nil {
 		renderer = prompts.NewDefaultRenderer()
+	}
+	var r Sandbox
+	if len(runner) > 0 {
+		r = runner[0]
 	}
 	return &AcceptanceAuditor{
 		llmClient: client,
 		renderer:  renderer,
+		runner:    r,
 	}
+}
+
+// ConfigureFromConfig attaches sandbox policies and configured test commands.
+func (a *AcceptanceAuditor) ConfigureFromConfig(cfg *config.Config) {
+	if cfg != nil {
+		a.defaultTestCmd = cfg.Sandbox.TestCommand
+		a.allowedCommands = cfg.Sandbox.AllowedCommands
+		a.e2eMode = cfg.Sandbox.GetE2EMode()
+		if cmd := cfg.Sandbox.GetE2ECommand(); cmd != "" {
+			a.e2eCmd = cmd
+		}
+	}
+}
+
+// SetRunner sets the sandbox runner.
+func (a *AcceptanceAuditor) SetRunner(runner Sandbox) {
+	a.runner = runner
+}
+
+// SetE2ECommand sets the custom E2E command.
+func (a *AcceptanceAuditor) SetE2ECommand(cmd string) {
+	a.e2eCmd = cmd
+}
+
+// SetE2EMode sets the E2E mode ("docker" or "native").
+func (a *AcceptanceAuditor) SetE2EMode(mode string) {
+	a.e2eMode = mode
+}
+
+// SetE2EConfig sets the E2E configuration mode and command.
+func (a *AcceptanceAuditor) SetE2EConfig(e2e config.E2EConfig) {
+	a.e2eMode = e2e.Mode
+	if e2e.Command != "" {
+		a.e2eCmd = e2e.Command
+	}
+}
+
+// SetDefaultTestCommand sets the default test command.
+func (a *AcceptanceAuditor) SetDefaultTestCommand(cmd string) {
+	a.defaultTestCmd = cmd
+}
+
+// SetAllowedCommands sets the whitelisted binaries allowed by the sandbox policy.
+func (a *AcceptanceAuditor) SetAllowedCommands(cmds []string) {
+	a.allowedCommands = cmds
 }
 
 // AuditProjectAcceptance verifies whether the implemented codebase satisfies SPEC.md.
@@ -77,6 +141,37 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		}, nil
 	}
 
+	_ = PrepareTestEnvironment(state.ProjectPath)
+
+	// 1. Behavioral E2E Execution Pre-Flight Gate
+	var e2eLog string
+	e2eFailed := false
+	e2eCmd := a.detectE2ECommand(state.ProjectPath)
+	if e2eCmd != "" && a.runner != nil {
+		if !a.isCommandAllowed(e2eCmd) {
+			e2eLog = fmt.Sprintf("⚠️  E2E command %q skipped: binary not in sandbox allowed_commands", e2eCmd)
+		} else {
+			fmt.Printf("🔍 [Acceptance Gate] Running E2E verification command: %q...\n", e2eCmd)
+			e2eOut, e2eErr := a.runner.RunCommand(ctx, state.ProjectPath, e2eCmd, "")
+			if e2eErr != nil {
+				if isSandboxViolation(e2eErr, e2eOut) {
+					e2eLog = fmt.Sprintf("⚠️  Sandbox policy restriction on E2E command %q (%v); skipped.", e2eCmd, e2eErr)
+				} else {
+					e2eFailed = true
+					e2eLog = fmt.Sprintf("❌ E2E test execution FAILED (%s):\n%s\nError: %v", e2eCmd, capText(e2eOut, 2000), e2eErr)
+					_, containerContext := collectE2EContainerFiles(state.ProjectPath)
+					if containerContext != "" {
+						e2eLog += "\nCONTAINER & HARNESS CONFIGURATION FILES:\n" + containerContext
+					}
+				}
+			} else {
+				e2eLog = fmt.Sprintf("✅ [E2E Verification Confirmed: PASSED] (%s):\n%s\n[DETERMINISTIC VERIFICATION INVARIANT] The command %q executed and passed with exit code 0. Do NOT claim this target is missing or non-compliant.\n", e2eCmd, capText(e2eOut, 2000), e2eCmd)
+			}
+		}
+	} else if e2eCmd == "" {
+		e2eLog = "⚠️  No E2E test target detected (no 'e2e:' in Makefile or docker-compose.yml)."
+	}
+
 	workspaceFiles := a.collectWorkspaceSnapshot(ctx, state.ProjectPath)
 	storyContracts := a.formatStoryContracts(state)
 	taskSummaries := a.formatTaskSummaries(state)
@@ -87,6 +182,7 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		StoryContracts:  storyContracts,
 		PublicContracts: a.formatPublicContracts(state),
 		TaskSummaries:   taskSummaries,
+		E2ELog:          e2eLog,
 	}
 
 	rendered, err := a.renderer.Render(prompts.AgentAuditor, "acceptance_audit", promptData)
@@ -102,7 +198,34 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		return nil, fmt.Errorf("acceptance audit LLM call failed: %w", err)
 	}
 
-	return a.parseAuditResponse(resp), nil
+	result := a.parseAuditResponse(resp)
+	if e2eFailed {
+		result.Passed = false
+		result.Gaps = append(result.Gaps, "E2E behavioral test execution failed")
+	}
+	return result, nil
+}
+
+func (a *AcceptanceAuditor) detectE2ECommand(projectPath string) string {
+	return DetectE2ECommand(projectPath, a.e2eMode, a.e2eCmd)
+}
+
+func (a *AcceptanceAuditor) isCommandAllowed(cmdStr string) bool {
+	allowed := a.allowedCommands
+	if len(allowed) == 0 {
+		return true
+	}
+	parts := strings.Fields(cmdStr)
+	if len(parts) == 0 {
+		return false
+	}
+	base := filepath.Base(parts[0])
+	for _, a := range allowed {
+		if a == parts[0] || a == base {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *AcceptanceAuditor) collectWorkspaceSnapshot(ctx context.Context, projectPath string) string {
@@ -116,10 +239,11 @@ func (a *AcceptanceAuditor) collectWorkspaceSnapshot(ctx context.Context, projec
 		lower := strings.ToLower(rel)
 		if strings.Contains(lower, "command") || strings.Contains(lower, "main") ||
 			strings.Contains(lower, "cli") || strings.Contains(lower, "server") ||
-			strings.Contains(lower, "app") || strings.HasSuffix(lower, "makefile") ||
-			strings.Contains(lower, "compose") || strings.HasSuffix(lower, ".sh") ||
+			strings.Contains(lower, "app") || strings.Contains(lower, "handler") ||
+			strings.Contains(lower, "core") || strings.HasSuffix(lower, "makefile") ||
+			strings.Contains(lower, "compose") || strings.Contains(lower, "dockerfile") || strings.HasSuffix(lower, ".sh") ||
 			strings.HasSuffix(lower, "pyproject.toml") || strings.HasSuffix(lower, "go.mod") ||
-			strings.HasSuffix(lower, "cargo.toml") {
+			strings.HasSuffix(lower, "cargo.toml") || strings.Contains(lower, "test") {
 			fullPath := filepath.Join(projectPath, rel)
 			if content, readErr := os.ReadFile(fullPath); readErr == nil {
 				snippet := capText(string(content), 3000)
@@ -136,14 +260,7 @@ func (a *AcceptanceAuditor) collectWorkspaceSnapshot(ctx context.Context, projec
 		sb.WriteString("\n")
 	}
 	if len(codeSnippets) > 0 {
-		sb.WriteString("\nKey Source Implementations:\n")
-		for _, s := range codeSnippets {
-			sb.WriteString(s)
-			sb.WriteString("\n")
-		}
-	}
-	if len(codeSnippets) > 0 {
-		sb.WriteString("\nKey Source Implementations:\n")
+		sb.WriteString("\nKey Source & Test Implementations:\n")
 		for _, s := range codeSnippets {
 			sb.WriteString(s)
 			sb.WriteString("\n")
@@ -207,10 +324,28 @@ func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *Accept
 					}
 				}
 			}
+			var fixes []ProposedFix
+			if rawFixes, ok := act.Args["fixes"].([]any); ok {
+				for _, f := range rawFixes {
+					if fm, ok := f.(map[string]any); ok {
+						file, _ := fm["file"].(string)
+						desc, _ := fm["description"].(string)
+						action, _ := fm["action"].(string)
+						if file != "" || desc != "" {
+							fixes = append(fixes, ProposedFix{
+								File:        file,
+								Description: desc,
+								Action:      action,
+							})
+						}
+					}
+				}
+			}
 			return &AcceptanceAuditResult{
 				Passed:  passed && len(gaps) == 0,
 				Summary: summary,
 				Gaps:    gaps,
+				Fixes:   fixes,
 			}
 		}
 	}
@@ -218,9 +353,10 @@ func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *Accept
 	// Fallback JSON parsing from reasoning or content
 	if strings.Contains(resp.Reasoning, "submit_acceptance_audit") || strings.Contains(resp.Reasoning, "\"passed\"") {
 		var parsed struct {
-			Passed  bool     `json:"passed"`
-			Summary string   `json:"summary"`
-			Gaps    []string `json:"gaps"`
+			Passed  bool          `json:"passed"`
+			Summary string        `json:"summary"`
+			Gaps    []string      `json:"gaps"`
+			Fixes   []ProposedFix `json:"fixes"`
 		}
 		start := strings.Index(resp.Reasoning, "{")
 		end := strings.LastIndex(resp.Reasoning, "}")
@@ -230,6 +366,7 @@ func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *Accept
 					Passed:  parsed.Passed && len(parsed.Gaps) == 0,
 					Summary: parsed.Summary,
 					Gaps:    parsed.Gaps,
+					Fixes:   parsed.Fixes,
 				}
 			}
 		}
@@ -240,7 +377,7 @@ func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *Accept
 		summary = "Acceptance audit evaluated"
 	}
 	return &AcceptanceAuditResult{
-		Passed:  true,
-		Summary: summary,
+		Passed:  false,
+		Summary: "Acceptance audit response could not be parsed: " + summary,
 	}
 }

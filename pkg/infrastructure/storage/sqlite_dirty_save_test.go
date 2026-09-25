@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -129,7 +130,11 @@ func TestSQLiteRepositoryDirtyGroupSaves(t *testing.T) {
 		state := newDirtyTestState("state-conflict")
 		require.NoError(t, repo.Save(ctx, state))
 		saveShieldState(t, repo)
-		before := taskRowID(t, repo, "state-conflict-t1")
+		taskRowBefore := taskRowID(t, repo, "state-conflict-t1")
+		var clarRowBefore int64
+		require.NoError(t, repo.DB().QueryRow("SELECT rowid FROM clarifications WHERE state_id = 'state-conflict'").Scan(&clarRowBefore))
+		var actionIDBefore int64
+		require.NoError(t, repo.DB().QueryRow("SELECT id FROM actions WHERE state_id = 'state-conflict'").Scan(&actionIDBefore))
 
 		// Simulate a concurrent writer bumping the version behind our back.
 		_, err := repo.DB().Exec("UPDATE state SET version = version + 1 WHERE id = 'state-conflict'")
@@ -141,14 +146,70 @@ func TestSQLiteRepositoryDirtyGroupSaves(t *testing.T) {
 		require.ErrorIs(t, err, domain.ErrVersionConflict)
 
 		// Reload the authoritative state and save again with NO group changes:
-		// because the cache was invalidated, every group must be rewritten.
+		// because the cache was invalidated, every group is re-saved.
 		fresh, err := repo.LoadByID(ctx, "state-conflict")
 		require.NoError(t, err)
 		require.NoError(t, repo.Save(ctx, fresh))
 
-		after := taskRowID(t, repo, "state-conflict-t1")
-		assert.NotEqual(t, before, after,
-			"expected tasks to be rewritten after cache invalidation (rowid should change)")
+		taskRowAfter := taskRowID(t, repo, "state-conflict-t1")
+		assert.Equal(t, taskRowBefore, taskRowAfter,
+			"in-place upsert preserves stable task rowid even when re-persisted")
+
+		var clarRowAfter int64
+		require.NoError(t, repo.DB().QueryRow("SELECT rowid FROM clarifications WHERE state_id = 'state-conflict'").Scan(&clarRowAfter))
+		assert.NotEqual(t, clarRowBefore, clarRowAfter,
+			"clarifications group must be rewritten after cache invalidation (rowid should change)")
+
+		var actionIDAfter int64
+		require.NoError(t, repo.DB().QueryRow("SELECT id FROM actions WHERE state_id = 'state-conflict'").Scan(&actionIDAfter))
+		assert.Equal(t, actionIDBefore, actionIDAfter,
+			"append-only actions preserve stable rowid even after cache invalidation")
+	})
+
+	t.Run("when tasks are mutated, upsert updates fields in-place and preserves stable rowid", func(t *testing.T) {
+		repo := newDirtyTestRepo(t)
+		state := newDirtyTestState("state-upsert")
+		require.NoError(t, repo.Save(ctx, state))
+		saveShieldState(t, repo)
+
+		rowBefore := taskRowID(t, repo, "state-upsert-t1")
+
+		// Update progress and title on task 1
+		state.Tasks[0].Progress = 75
+		state.Tasks[0].Title = "Task 1 Updated"
+		require.NoError(t, repo.Save(ctx, state))
+
+		rowAfter := taskRowID(t, repo, "state-upsert-t1")
+		assert.Equal(t, rowBefore, rowAfter, "in-place upsert must keep stable rowid")
+
+		loaded, err := repo.LoadByID(ctx, "state-upsert")
+		require.NoError(t, err)
+		assert.Equal(t, 75, loaded.Tasks[0].Progress)
+		assert.Equal(t, "Task 1 Updated", loaded.Tasks[0].Title)
+	})
+
+	t.Run("when a task is added or removed, upsert inserts and selective delete prunes", func(t *testing.T) {
+		repo := newDirtyTestRepo(t)
+		state := newDirtyTestState("state-add-del")
+		require.NoError(t, repo.Save(ctx, state))
+
+		// Add task 3, remove task 2
+		state.Tasks = []domain.Task{
+			state.Tasks[0],
+			{ID: "state-add-del-t3", Title: "Task 3", Description: "d3", Status: domain.TaskPending, ChangeType: domain.ChangeTypeFeature, CreatedAt: time.Now(), UpdatedAt: time.Now()},
+		}
+		require.NoError(t, repo.Save(ctx, state))
+
+		loaded, err := repo.LoadByID(ctx, "state-add-del")
+		require.NoError(t, err)
+		require.Len(t, loaded.Tasks, 2)
+		assert.Equal(t, "state-add-del-t1", loaded.Tasks[0].ID)
+		assert.Equal(t, "state-add-del-t3", loaded.Tasks[1].ID)
+
+		// Verify task 2 was deleted from database
+		var count int
+		require.NoError(t, repo.DB().QueryRow("SELECT COUNT(*) FROM tasks WHERE id = 'state-add-del-t2'").Scan(&count))
+		assert.Equal(t, 0, count, "pruned task must be deleted from DB")
 	})
 
 	t.Run("when the state has unserializable actions, save fails before touching the database", func(t *testing.T) {
@@ -157,5 +218,65 @@ func TestSQLiteRepositoryDirtyGroupSaves(t *testing.T) {
 		state.LastActions[0].Args = map[string]any{"bad": make(chan int)}
 		err := repo.Save(ctx, state)
 		assert.Error(t, err)
+	})
+
+	t.Run("when actions are appended across saves, existing actions retain stable rowids and only new actions are inserted", func(t *testing.T) {
+		repo := newDirtyTestRepo(t)
+		state := newDirtyTestState("state-append-only")
+		require.NoError(t, repo.Save(ctx, state))
+
+		var firstActionID int64
+		require.NoError(t, repo.DB().QueryRow("SELECT id FROM actions WHERE state_id = 'state-append-only'").Scan(&firstActionID))
+
+		// Append a second action and save
+		domain.AppendAction(state, domain.Action{
+			Timestamp: time.Now(),
+			Tool:      "evaluate",
+			Args:      map[string]any{"cmd": "go test"},
+			Reasoning: "running unit test",
+			Result:    "PASS",
+			Success:   true,
+		})
+		require.NoError(t, repo.Save(ctx, state))
+
+		var firstActionIDAfter int64
+		require.NoError(t, repo.DB().QueryRow("SELECT id FROM actions WHERE state_id = 'state-append-only' ORDER BY id ASC LIMIT 1").Scan(&firstActionIDAfter))
+		assert.Equal(t, firstActionID, firstActionIDAfter, "existing action must retain stable ID without being rewritten")
+
+		var totalCount int
+		require.NoError(t, repo.DB().QueryRow("SELECT COUNT(*) FROM actions WHERE state_id = 'state-append-only'").Scan(&totalCount))
+		assert.Equal(t, 2, totalCount, "database must have both actions preserved")
+	})
+
+	t.Run("when actions exceed MaxLastActions, the database retains full append-only history while Load bounds to most recent 200", func(t *testing.T) {
+		repo := newDirtyTestRepo(t)
+		state := newDirtyTestState("state-bounded-load")
+		require.NoError(t, repo.Save(ctx, state))
+
+		// Append 205 actions across saves
+		baseTime := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+		for i := 2; i <= 205; i++ {
+			domain.AppendAction(state, domain.Action{
+				Timestamp: baseTime.Add(time.Duration(i) * time.Minute),
+				Tool:      fmt.Sprintf("tool-%d", i),
+				Args:      map[string]any{"step": i},
+				Reasoning: fmt.Sprintf("step %d", i),
+				Result:    fmt.Sprintf("result %d", i),
+				Success:   true,
+			})
+			if i%25 == 0 || i == 205 {
+				require.NoError(t, repo.Save(ctx, state))
+			}
+		}
+
+		var dbCount int
+		require.NoError(t, repo.DB().QueryRow("SELECT COUNT(*) FROM actions WHERE state_id = 'state-bounded-load'").Scan(&dbCount))
+		assert.Equal(t, 205, dbCount, "database must retain all 205 actions in append-only table")
+
+		loaded, err := repo.LoadByID(ctx, "state-bounded-load")
+		require.NoError(t, err)
+		assert.Len(t, loaded.LastActions, domain.MaxLastActions, "loaded LastActions must be bounded to MaxLastActions")
+		assert.Equal(t, "tool-205", loaded.LastActions[len(loaded.LastActions)-1].Tool, "last action must be the most recent one")
+		assert.Equal(t, "tool-6", loaded.LastActions[0].Tool, "first loaded action must be the start of the 200-item tail window")
 	})
 }

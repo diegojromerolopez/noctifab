@@ -5,13 +5,31 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+type compactionModeKey struct{}
+
+// WithCompactionMode sets the prompt compaction mode into the context.
+func WithCompactionMode(ctx context.Context, mode string) context.Context {
+	return context.WithValue(ctx, compactionModeKey{}, mode)
+}
+
+// CompactionModeFromContext retrieves the prompt compaction mode from context, or empty string.
+func CompactionModeFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(compactionModeKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
 
 // GenerateRoadmap reads SPEC.md from projectPath and any existing user stories under roadmap/,
 // invokes the Product Manager Agent to generate or audit/refine user stories with explicit Definitions of Done,
@@ -29,6 +47,19 @@ func GenerateRoadmapWithPasses(ctx context.Context, projectPath string, llmClien
 
 // GenerateRoadmapWithConfig executes a multi-pass Product Manager roadmap generation with an optional max user stories ceiling.
 func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int, maxUserStories int) (lastErr error) {
+	return GenerateRoadmapWithFullConfig(ctx, projectPath, llmClient, renderer, passes, maxUserStories, 0, 0)
+}
+
+// GenerateRoadmapWithFullConfig executes a multi-pass Product Manager roadmap generation with user story limits and complexity bounds.
+func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int, maxUserStories int, minComplexity int, maxComplexity int) (lastErr error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "GenerateRoadmap",
+		trace.WithAttributes(
+			attribute.String("project_path", projectPath),
+			attribute.Int("passes", passes),
+			attribute.Int("max_stories", maxUserStories),
+		))
+	defer span.End()
+
 	if passes <= 0 {
 		passes = 1
 	}
@@ -65,11 +96,32 @@ func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClien
 	if err != nil {
 		return fmt.Errorf("SPEC.md not found in project path %q: %w", projectPath, err)
 	}
+	specContent := string(specBytes)
+
+	// If specification has domain sections/tables, deterministically partition into .noctifab/specs/
+	if manifest, pErr := PartitionSpecIfNeeded(projectPath); pErr == nil && manifest != nil && len(manifest.Sections) > 0 {
+		fmt.Printf("ℹ [Product Manager] Deterministically partitioned SPEC.md into .noctifab/specs/ (%d domain slices, %s)\n", len(manifest.Sections), manifest.CoreFile)
+		corePath := filepath.Join(projectPath, ".noctifab", "specs", manifest.CoreFile)
+		if coreBytes, rErr := os.ReadFile(corePath); rErr == nil && len(coreBytes) > 0 {
+			specContent = string(coreBytes)
+		}
+	}
+
+	if mode := CompactionModeFromContext(ctx); mode != "" && mode != "none" {
+		specContent = llm.CompactMarkdownSpecWithMode(specContent, mode)
+	}
+	specContent = SliceSpecForRoadmap(specContent)
 
 	legacyFiles, _ := scanLegacyFiles(projectPath)
 	legacyBlock := ""
 	if len(legacyFiles) > 0 {
+		fmt.Printf("ℹ [Product Manager] Legacy codebase detected (%d files). Applying Legacy Stabilization Mandate.\n", len(legacyFiles))
 		legacyBlock = fmt.Sprintf("\n\nExisting Legacy Code Files Detected in Workspace:\n- %s\n\nLEGACY STABILIZATION MANDATE: Code already exists in the project workspace. Assume it is legacy code with existing functionality. The primary initial goal is to stabilize it by creating unit and integration characterization tests for existing parts in US-001, and leveraging those tests as safety rails when refactoring the code to match future user story requirements.", strings.Join(legacyFiles, "\n- "))
+	}
+
+	effectiveMaxStories := ResolveUserStoryCeiling(specContent, maxUserStories)
+	if effectiveMaxStories != maxUserStories && maxUserStories > 0 {
+		fmt.Printf("ℹ [Product Manager] Large specification detected (%d bytes). Dynamically scaled user story ceiling from %d to %d stories.\n", len(specContent), maxUserStories, effectiveMaxStories)
 	}
 
 	for p := 1; p <= passes; p++ {
@@ -88,10 +140,12 @@ func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClien
 			action = "audit"
 		}
 		rendered, err := renderer.Render(prompts.AgentProductManager, action, prompts.ProductManagerPromptData{
-			Spec:            string(specBytes),
+			Spec:            specContent,
 			ExistingStories: strings.Join(existingStories, "\n"),
 			LegacyFiles:     legacyBlock,
-			MaxUserStories:  maxUserStories,
+			MaxUserStories:  effectiveMaxStories,
+			MinComplexity:   minComplexity,
+			MaxComplexity:   maxComplexity,
 		})
 		if err != nil {
 			return fmt.Errorf("product manager prompt rendering failed (pass %d/%d): %w", p, passes, err)
@@ -115,6 +169,7 @@ func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClien
 
 			storiesCount := 0
 			specRefined := false
+			var rawStories []RawStoryItem
 			for _, act := range resp.Actions {
 				if act.Tool == "refine_spec" {
 					content, _ := act.Args["content"].(string)
@@ -132,20 +187,44 @@ func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClien
 				if act.Tool == "create_story" {
 					filename, _ := act.Args["filename"].(string)
 					content, _ := act.Args["content"].(string)
-					if filename == "" || content == "" {
-						continue
+					if filename != "" && content != "" {
+						rawStories = append(rawStories, RawStoryItem{
+							Filename: filename,
+							Content:  content,
+						})
 					}
+				}
+			}
 
-					targetPath := NormalizeStoryPath(projectPath, filename, content)
+			sanitizedStories := SanitizeAndCapStories(projectPath, rawStories, specContent, maxUserStories)
+			writtenPaths := make(map[string]bool)
+			for _, st := range sanitizedStories {
+				targetPath := NormalizeStoryPath(projectPath, st.Filename, st.Content)
+				relStory := targetPath
+				if r, rErr := filepath.Rel(projectPath, targetPath); rErr == nil {
+					relStory = r
+				}
+				if cErr := ValidateStoryContract(relStory, st.Content); cErr != nil {
+					fmt.Printf("⚠️  [Product Manager] Story %s failed contract validation: %v\n", st.Filename, cErr)
+				}
+				writtenPaths[filepath.Clean(targetPath)] = true
+				if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+					return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)
+				}
+				if err := os.WriteFile(targetPath, []byte(st.Content), 0644); err != nil {
+					return fmt.Errorf("failed to write story file %q: %w", targetPath, err)
+				}
+				storiesCount++
+			}
 
-					if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-						return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)
+			// On the final pass, purge any obsolete user story files from prior passes
+			if p == passes && len(writtenPaths) > 0 {
+				if existingFiles, err := filepath.Glob(filepath.Join(storiesDir, "*.md")); err == nil {
+					for _, ef := range existingFiles {
+						if !writtenPaths[filepath.Clean(ef)] {
+							_ = os.Remove(ef)
+						}
 					}
-
-					if err := os.WriteFile(targetPath, []byte(content), 0644); err != nil {
-						return fmt.Errorf("failed to write story file %q: %w", targetPath, err)
-					}
-					storiesCount++
 				}
 			}
 
@@ -265,29 +344,27 @@ func ToSlug(text string) string {
 }
 
 // scanLegacyFiles walks projectPath and returns relative paths of existing legacy source files,
-// ignoring metadata directories, documentation, binary artifacts, and generated roadmap files.
+// delegating to the centralized ScanLegacyFiles scanner.
 func scanLegacyFiles(projectPath string) ([]string, error) {
-	ignoredFiles := map[string]bool{
-		"spec.md": true, "readme.md": true, "changelog.md": true,
-		"license": true, "version": true, ".gitignore": true,
-		"noctifab_evaluation_report.md": true,
-	}
+	return ScanLegacyFiles(projectPath)
+}
 
-	exclude := []string{"roadmap", "user-stories", "tasks", "output", "dist"}
-	files, err := ListWorkspaceSourceFiles(context.Background(), projectPath, exclude)
-	if err != nil {
-		return nil, err
+// ResolveUserStoryCeiling dynamically scales the maximum number of user stories based on
+// specification length and complexity, ensuring large multi-subsystem specifications (e.g. > 35KB)
+// are not artificially capped at an inadequate number of stories.
+func ResolveUserStoryCeiling(specContent string, configuredMax int) int {
+	if configuredMax > 0 && configuredMax != 5 {
+		return configuredMax
 	}
-
-	var legacyFiles []string
-	for _, rel := range files {
-		baseLower := strings.ToLower(filepath.Base(rel))
-		if ignoredFiles[baseLower] {
-			continue
-		}
-		legacyFiles = append(legacyFiles, rel)
+	specLen := len(specContent)
+	if specLen >= 60000 {
+		return 12
 	}
-
-	sort.Strings(legacyFiles)
-	return legacyFiles, nil
+	if specLen >= 35000 {
+		return 8
+	}
+	if configuredMax > 0 {
+		return configuredMax
+	}
+	return 5
 }

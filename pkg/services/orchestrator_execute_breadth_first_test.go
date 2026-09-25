@@ -33,7 +33,7 @@ func TestOrchestrator_BreadthFirstExecutionMode(t *testing.T) {
 
 	llmClient := &testMockLLM{
 		responses: []*domain.LLMResponse{
-			{Actions: []domain.LLMAction{{Tool: "noop"}}}, // Generator action
+			{Actions: []domain.LLMAction{{Tool: "write_file", Args: map[string]any{"path": "bfg.go", "content": "package bfg\n"}}}}, // Generator action
 			{Actions: []domain.LLMAction{{Tool: "noop"}}}, // Tester action
 		},
 	}

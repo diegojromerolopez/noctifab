@@ -14,5 +14,6 @@ Draft Section 1 (Executive Summary & Domain Scope) and Section 3 (Core Domain Mo
 2. Explicitly outline In-Scope features vs Out-of-Scope non-goals.
 3. Define core domain entities, data models, fields, types, relationships, and lifecycle states.
 4. Ensure language agnosticism while maintaining unambiguous technical domain models.
+5. Modular File Decomposition & Anti-Monolith Structure: Enforce strict separation of concerns and single responsibility. Decompose domain models, commands, and interfaces into modular components and per-responsibility files rather than a lone gigantic file, ensuring parallel implementation, atomic tasks, and zero merge conflicts.
 
 Use the 'update_spec' tool with argument section: "overview_and_domain" and content containing the drafted markdown sections.

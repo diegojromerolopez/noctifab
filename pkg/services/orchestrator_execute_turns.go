@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -61,6 +62,16 @@ func (o *Orchestrator) executeTesterFirstTurn(
 	o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "implement")
 	_ = o.stageAndCommit(ctx, taskGit, taskID, "feat(core): implement minimal functionality for task %s - %s", task.Title)
 
+	// Fast Exit on Verified Green: If tests are already 100% passing after implementation,
+	// skip the redundant Generator Refactor turn!
+	if o.evaluator != nil {
+		if passed, _, err := o.evaluator.ValidateTask(ctx, taskState, *task); passed && err == nil {
+			fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: tests are already 100%% green after implementation! Skipping refactor turn.\n", taskID)
+			_ = o.stageAndCommit(ctx, taskGit, taskID, "chore(core): sync workspace state after fast-exit green for task %s", task.Title)
+			return ""
+		}
+	}
+
 	// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
 	recentTestsContext := o.collectRecentTestsContext(ctx, taskGit, taskState.ProjectPath)
 
@@ -115,6 +126,16 @@ func (o *Orchestrator) executeGeneratorFirstTurn(
 		remediationCtx := append(fileContexts, o.formatTesterAntiStubViolations(testViolations))
 		o.RunTesterAgent(ctx, *task, taskState, remediationCtx, "fix", "")
 		_ = o.stageAndCommit(ctx, taskGit, taskID, "test(core): remediate vacuous tests for task %s - %s", task.Title)
+	}
+
+	// Fast Exit on Verified Green: If tests are already 100% passing after test authoring,
+	// skip the redundant Generator Refactor turn to save time and prevent regressions!
+	if o.evaluator != nil {
+		if passed, _, err := o.evaluator.ValidateTask(ctx, taskState, *task); passed && err == nil {
+			fmt.Printf("🚀 [Fast Exit on Verified Green] Task %s: tests are already 100%% green after test authoring! Skipping refactor turn.\n", taskID)
+			_ = o.stageAndCommit(ctx, taskGit, taskID, "chore(core): sync workspace state after fast-exit green for task %s", task.Title)
+			return ""
+		}
 	}
 
 	// Read recently written tests from git to pass to the Generator Agent for the Refactor phase
@@ -216,7 +237,38 @@ func (o *Orchestrator) executeSurgicalRepairTurn(
 	o.updateTaskProgress(ctx, task.ID, 85)
 	summary := summarizeFailureLog(failureLog)
 	errorContext := fmt.Sprintf("### 🎯 TARGET FAILURE LOG TRACE FOR SURGICAL REPAIR:\n```\n%s\n```\nFix this specific error using minimal edits in 'edit_file'. Do not rewrite working code.", summary)
-	o.RunGeneratorAgent(ctx, *task, taskState, nil, errorContext, "surgical_repair")
+
+	var fileContexts []string
+	seenFiles := make(map[string]bool)
+
+	// Pre-read failing files from diagnostic log
+	diagnostics := extractDiagnostics(failureLog)
+	for _, d := range diagnostics {
+		if d.FilePath != "" && !seenFiles[d.FilePath] {
+			seenFiles[d.FilePath] = true
+			if taskGit != nil && taskGit.Dir() != "" {
+				fullPath := filepath.Join(taskGit.Dir(), d.FilePath)
+				if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
+					fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", d.FilePath, string(content)))
+				}
+			}
+		}
+	}
+
+	// Pre-read target files if not already read
+	for _, target := range task.TargetFiles {
+		if target != "" && !seenFiles[target] {
+			seenFiles[target] = true
+			if taskGit != nil && taskGit.Dir() != "" {
+				fullPath := filepath.Join(taskGit.Dir(), target)
+				if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
+					fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", target, string(content)))
+				}
+			}
+		}
+	}
+
+	o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, errorContext, "surgical_repair")
 	_ = o.stageAndCommit(ctx, taskGit, task.ID, "fix(core): surgical repair for task %s - %s", task.Title)
 }
 
@@ -226,11 +278,22 @@ func (o *Orchestrator) stageAndCommit(ctx context.Context, taskGit *GitClient, t
 		return nil
 	}
 
-	// Issue 6: Zero-token auto-formatting before git commit
-	if o.evaluator != nil && o.evaluator.FormatterCommand != "" && o.evaluator.Runner != nil && taskGit != nil && taskGit.Dir() != "" {
-		_, _ = o.evaluator.Runner.RunCommand(ctx, taskGit.Dir(), o.evaluator.FormatterCommand, "")
+	// Deterministic local formatter pre-pass before git commit (never linters)
+	if o.evaluator != nil && taskGit != nil && taskGit.Dir() != "" {
+		if o.evaluator.Formatter != nil {
+			_, _ = o.evaluator.Formatter.Format(ctx, taskGit.Dir())
+		} else {
+			formatCmd := o.evaluator.FormatterCommand
+			if formatCmd == "" {
+				formatCmd = DetectDefaultFormatterCommand(taskGit.Dir())
+			}
+			if formatCmd != "" && o.evaluator.Runner != nil {
+				_, _ = o.evaluator.Runner.RunCommand(ctx, taskGit.Dir(), formatCmd, "")
+			}
+		}
 	}
 
+	_ = SanitizeWorkspace(taskGit.Dir(), o.cfg.ExcludePaths...)
 	_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
 	stagedOut, _ := taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
 	if strings.TrimSpace(stagedOut) == "" {
@@ -287,6 +350,18 @@ func (o *Orchestrator) formatAntiStubViolations(violations []AntiStubViolation) 
 func (o *Orchestrator) auditTesterTestOutput(projectPath string) []AntiStubViolation {
 	antiStub := NewAntiStubValidator()
 	violations, _ := antiStub.ValidateWorkspace(projectPath, nil)
+
+	testAST := NewTestASTAnalyzer()
+	if astViolations, err := testAST.AnalyzeWorkspace(context.Background(), projectPath); err == nil {
+		for _, av := range astViolations {
+			violations = append(violations, AntiStubViolation{
+				Path:    av.FilePath,
+				Line:    av.Line,
+				Rule:    av.Rule,
+				Snippet: av.Message,
+			})
+		}
+	}
 	return violations
 }
 

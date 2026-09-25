@@ -12,13 +12,30 @@ USER STORY CONTRACTS:
 
 TASK EXECUTION SUMMARIES:
 {{.TaskSummaries}}
-
+{{if .E2ELog}}
+E2E & BLACK-BOX INTEGRATION TEST STATUS:
+{{.E2ELog}}
+{{end}}
 AUDIT INSTRUCTIONS:
-1. Verify whether ALL commands, public API signatures, CLI flags, wire protocol envelopes, and core data types described in SPEC.md have been implemented.
-2. Check for critical omissions (e.g. missing CLI subcommands, missing protocol commands like PING/EXPIRE/KEYS/FLUSHALL, missing required files like Dockerfile or Makefile targets).
-3. Deprecated & Broken Tooling Audit: Inspect all Makefiles, shell scripts, and CI workflows for deprecated or invalid tooling invocations. Specifically:
+1. SPECIFICATION FEATURE ENUMERATION & MATRIX CHECK:
+   - Systematically list and inspect ALL functional features, commands, endpoints, flags, and data capabilities declared in SPEC.md.
+     (e.g., all commands, CLI subcommands/flags, API endpoints, protocol frames, and lifecycle states declared in SPEC.md)
+   - FOR EACH INDIVIDUAL FEATURE/COMMAND, verify that the workspace contains AT LEAST ONE specific, dedicated, non-tautological E2E test scenario exercising that exact feature/command against the running system and asserting its returned payload and state change.
+2. REJECT GENERIC SMOKE TESTS & TAUTOLOGICAL E2E RECIPES:
+   - A test that only checks process start or exit code without exercising domain commands or asserting protocol outputs is considered tautological.
+   - If E2E test execution PASSED (indicated by [E2E Verification Confirmed: PASSED] in the E2E status below), verify the actual harness and Makefile scripts present in the snapshot. You MUST NOT claim a target or command is missing or tautological if its execution succeeded with exit code 0 and verified assertions.
+   - If an 'e2e' recipe or integration test suite does not exercise explicit scenarios per feature/command, set "passed": false.
+3. GRANULAR GAP REPORTING & ACTIONABLE PROPOSED FIXES:
+   - For every feature, command, or capability in SPEC.md that lacks an explicit, dedicated E2E test scenario, is missing from the dispatcher/wire surface, or fails verification, you MUST add:
+     a) A specific entry to the "gaps" array: "Missing E2E test scenario for feature/command: <NAME>" or "Missing implementation/dispatch for: <NAME>"
+     b) A concrete, actionable entry to the "fixes" array containing:
+        - "file": exact relative path to create or modify (e.g. "src/server.py", "src/lifecycle.py", "tests/integration/test_server.py")
+        - "action": one of "create", "modify", "wire_into_dispatcher", "export_symbol", or "add_e2e_test"
+        - "description": precise instructions detailing what code, function signatures, symbol exports, or test cases must be added or repaired.
+   - If E2E test execution failed, set "passed": false, report the failure in "gaps", and provide corresponding remediation entries in "fixes".
+4. Deprecated & Broken Tooling Audit: Inspect all Makefiles, shell scripts, and CI workflows for deprecated or invalid tooling invocations. Specifically:
    - Forbid 'docker-compose' (hyphenated); enforce modern 'docker compose' (space).
    - Forbid uninstalled package managers (e.g. 'pipenv' or 'poetry' when missing from workspace manifests) and obsolete Python 2 idioms.
-   - If any script or Makefile contains 'docker-compose' or deprecated tooling, set "passed": false and list the offending file/command in "gaps".
-4. If ANY required command, public contract, or valid tooling invariant from SPEC.md is missing or violated, you MUST set "passed": false and list each specific missing item or violation in the "gaps" array.
-5. If all required functionality from SPEC.md is implemented and tooling is modern and clean, set "passed": true and provide a concise summary.
+   - If any script or Makefile contains 'docker-compose' or deprecated tooling, set "passed": false, list the offending file/command in "gaps", and propose fixes.
+5. If ANY required command or feature from SPEC.md lacks an explicit E2E scenario, is unimplemented, or violates valid tooling invariants, you MUST set "passed": false, list each specific missing item in the "gaps" array, and provide actionable remediation items in the "fixes" array.
+6. If all required features from SPEC.md are implemented, EACH feature has at least one dedicated behavioral E2E test scenario with verified outputs, and tooling is clean, set "passed": true and provide a concise summary.

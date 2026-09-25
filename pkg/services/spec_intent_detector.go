@@ -82,10 +82,21 @@ func (d *SpecIntentDetector) IsTerminationIntent(ctx context.Context, input stri
 
 	// Also check if text contains clear stop/approval clauses
 	lower := strings.ToLower(trimmed)
-	if strings.Contains(lower, "looks good to me") ||
+	if strings.Contains(lower, "looks good") ||
+		strings.Contains(lower, "looks great") ||
 		strings.Contains(lower, "all right, it's enough") ||
-		strings.Contains(lower, "i like the spec") && strings.Contains(lower, "stop") {
-		return true, "Matched multi-clause approval phrase"
+		strings.Contains(lower, "i like the spec") && strings.Contains(lower, "stop") ||
+		strings.Contains(lower, "no changes needed") ||
+		strings.Contains(lower, "no more changes") ||
+		strings.Contains(lower, "ready to implement") ||
+		strings.Contains(lower, "start implementation") ||
+		strings.Contains(lower, "start coding") ||
+		strings.Contains(lower, "generate code") ||
+		strings.Contains(lower, "let's build") ||
+		strings.Contains(lower, "proceed with implementation") ||
+		strings.Contains(lower, "create the roadmap") ||
+		strings.Contains(lower, "perfect as is") {
+		return true, "Matched deterministic approval phrase"
 	}
 
 	// 2. Fallback to LLM classifier if available and input is conversational (> 15 chars)

@@ -51,6 +51,7 @@ type HostSandbox struct {
 	AllowedCommands []string
 	DefaultCommand  string
 	IdleTimeout     time.Duration
+	PerTestTimeout  time.Duration
 	DepMgr          *DependencyManager
 	evictedMu       sync.RWMutex
 	evictedTools    map[string]bool
@@ -108,6 +109,9 @@ func DetectProjectLanguage(projectPath string) string {
 	if _, err := os.Stat(filepath.Join(projectPath, "setup.py")); err == nil {
 		return "python"
 	}
+	if _, err := os.Stat(filepath.Join(projectPath, "pyproject.toml")); err == nil {
+		return "python"
+	}
 	if _, err := os.Stat(filepath.Join(projectPath, "pom.xml")); err == nil {
 		return "java"
 	}
@@ -150,11 +154,98 @@ func DetectDefaultTestCommand(projectPath string) string {
 	return "go test -v ./..."
 }
 
+// DetectDefaultBuildCommand inspects the workspace directory for manifest or build files
+// and returns the appropriate compilation/build target for the project, if applicable.
+func DetectDefaultBuildCommand(projectPath string) string {
+	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
+		content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile"))
+		if rErr == nil {
+			s := string(content)
+			if strings.Contains(s, "build:") || strings.Contains(s, "build :") {
+				return "make build"
+			}
+			if strings.Contains(s, "all:") || strings.Contains(s, "all :") {
+				return "make all"
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
+		return "cargo check"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
+		content, rErr := os.ReadFile(filepath.Join(projectPath, "package.json"))
+		if rErr == nil && strings.Contains(string(content), "\"build\"") {
+			return "npm run build"
+		}
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+		return "go build ./..."
+	}
+	return ""
+}
+
+// DetectDefaultFormatterCommand inspects the workspace directory for manifest or format tool configurations
+// and returns the appropriate deterministic local code formatting command (never linters).
+func DetectDefaultFormatterCommand(projectPath string) string {
+	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
+		content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile"))
+		if rErr == nil {
+			s := string(content)
+			if strings.Contains(s, "format:") || strings.Contains(s, "format :") {
+				return "make format"
+			}
+			if strings.Contains(s, "fmt:") || strings.Contains(s, "fmt :") {
+				return "make fmt"
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
+		return "go fmt ./..."
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
+		return "cargo fmt"
+	}
+	if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
+		content, rErr := os.ReadFile(filepath.Join(projectPath, "package.json"))
+		if rErr == nil && strings.Contains(string(content), "\"format\"") {
+			return "npm run format"
+		}
+	}
+	return ""
+}
+
+// DetectAutoFixImportsCommand inspects the workspace directory and returns
+// safe, deterministic automatic import clean-up commands (e.g., removing unused imports).
+func DetectAutoFixImportsCommand(projectPath string) string {
+	if projectPath == "" {
+		return ""
+	}
+	lang := DetectProjectLanguage(projectPath)
+	switch lang {
+	case "python":
+		var targets []string
+		for _, dir := range []string{"src", "tests", "test", "app", "lib"} {
+			if info, err := os.Stat(filepath.Join(projectPath, dir)); err == nil && info.IsDir() {
+				targets = append(targets, dir)
+			}
+		}
+		if len(targets) > 0 {
+			return fmt.Sprintf("ruff check --select F401 --fix %s", strings.Join(targets, " "))
+		}
+		return "ruff check --select F401 --fix ."
+	case "go":
+		return "goimports -w ."
+	default:
+		return ""
+	}
+}
+
 func NewHostSandbox(allowed []string, defaultCmd string, idleTimeout time.Duration, depMgr *DependencyManager) *HostSandbox {
 	return &HostSandbox{
 		AllowedCommands: allowed,
 		DefaultCommand:  defaultCmd,
 		IdleTimeout:     idleTimeout,
+		PerTestTimeout:  30 * time.Second,
 		DepMgr:          depMgr,
 		evictedTools:    make(map[string]bool),
 	}
@@ -254,24 +345,37 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 
 	var cmd *exec.Cmd
 	if useShell {
-		// `sh -c` runs the entire command string as a shell script, so
-		// operators like &&, ||, ;, | work correctly.
-		cmd = exec.CommandContext(ctx, "sh", "-c", cmdStr)
+		shellCmd := cmdStr
+		if !strings.HasPrefix(strings.TrimSpace(cmdStr), "set -") {
+			shellCmd = "set -e; " + cmdStr
+		}
+		cmd = exec.CommandContext(ctx, "sh", "-c", shellCmd)
 	} else if len(parts) > 1 {
 		cmd = exec.CommandContext(ctx, binary, parts[1:]...)
 	} else {
 		cmd = exec.CommandContext(ctx, binary)
 	}
 	cmd.Dir = targetDir
+	rootProjectDir := ResolveRootProjectDir(projectPath)
+	cmd.Env = append(os.Environ(), BuildSharedCacheEnv(rootProjectDir)...)
+	cmd.Env = telemetry.InjectTraceparent(ctx, cmd.Env)
 
 	if s.IsToolEvicted(binary) {
 		fmt.Printf("⚠️  [Sandbox Degraded] Tool %q was evicted. Skipping execution in degraded mode.\n", binary)
 		return fmt.Sprintf("Tool %s is evicted on host environment", binary), fmt.Errorf("tool %s is evicted", binary)
 	}
 
-	watchdog := Watchdog{IdleTimeout: s.IdleTimeout}
+	perTestTimeout := s.PerTestTimeout
+	if perTestTimeout <= 0 {
+		perTestTimeout = 30 * time.Second
+	}
+	isolator := NewTestStreamIsolator(StreamIsolatorConfig{
+		PerTestTimeout: perTestTimeout,
+		IdleTimeout:    s.IdleTimeout,
+		MaxDuration:    5 * time.Minute,
+	})
 	start := time.Now()
-	output, err := watchdog.Run(ctx, cmd)
+	output, err := isolator.Run(ctx, cmd)
 	if err != nil && s.DepMgr != nil {
 		tool, found := s.DepMgr.DetectMissingTool(string(output))
 		if !found && strings.Contains(strings.ToLower(string(output)), "not found") {
@@ -282,8 +386,7 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 			fmt.Printf("🔍 [Tool Auto-Install] Missing tool %q detected, attempting auto-installation...\n", tool)
 			if installErr := s.DepMgr.InstallTool(ctx, tool); installErr == nil {
 				fmt.Printf("✅ [Tool Auto-Install Success] Installed %q successfully. Re-running command...\n", tool)
-				watchdog2 := Watchdog{IdleTimeout: s.IdleTimeout}
-				output2, err2 := watchdog2.Run(ctx, cmd)
+				output2, err2 := isolator.Run(ctx, cmd)
 				if err2 == nil {
 					durMS := time.Since(start).Milliseconds()
 					if obs := domain.ObserverFromContext(ctx); obs != nil {

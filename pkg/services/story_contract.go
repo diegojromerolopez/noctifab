@@ -17,6 +17,7 @@ var (
 	storyContractBlockRE = regexp.MustCompile("(?s)```noctifab-contract[ \\t]*\\r?\\n(.*?)\\r?\\n```")
 	contractIDRE         = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 	windowsAbsoluteRE    = regexp.MustCompile(`^[A-Za-z]:[/\\]`)
+	brunoBlockRE         = regexp.MustCompile("(?s)```(?:bru|bruno)[ \\t]*\\r?\\n(.*?)\\r?\\n```")
 )
 
 type storyContractPayload struct {
@@ -69,15 +70,34 @@ func ParseStoryContract(sourcePath, markdown string) (domain.StoryContract, erro
 		if err != nil {
 			return domain.StoryContract{}, storyContractError("public contract %q applicable_path_prefixes: %v", publicContract.ID, err)
 		}
-		publicContract.AllowedExecutables, err = normalizeRelativePaths(publicContract.AllowedExecutables, true)
-		if err != nil {
-			return domain.StoryContract{}, storyContractError("public contract %q allowed_executables: %v", publicContract.ID, err)
+		if len(publicContract.AllowedExecutables) > 0 {
+			publicContract.AllowedExecutables, err = normalizeRelativePaths(publicContract.AllowedExecutables, true)
+			if err != nil {
+				return domain.StoryContract{}, storyContractError("public contract %q allowed_executables: %v", publicContract.ID, err)
+			}
 		}
-		if len(publicContract.AllowedExecutables) == 0 {
-			return domain.StoryContract{}, storyContractError("public contract %q requires an allowed executable", publicContract.ID)
+
+		isHTTP := strings.EqualFold(publicContract.Interface, "http") || publicContract.HTTPMethod != "" || publicContract.HTTPPath != "" || publicContract.BrunoBru != ""
+		if !isHTTP && len(publicContract.AllowedExecutables) == 0 {
+			return domain.StoryContract{}, storyContractError("public contract %q requires an allowed executable or HTTP/Bruno definition", publicContract.ID)
 		}
-		if len(publicContract.ExitCodes) == 0 && len(publicContract.StdoutContains) == 0 && len(publicContract.StderrPrefixes) == 0 {
+
+		hasCLIExpectation := len(publicContract.ExitCodes) > 0 || len(publicContract.StdoutContains) > 0 || len(publicContract.StderrPrefixes) > 0
+		hasHTTPExpectation := publicContract.ExpectedStatus > 0 || publicContract.ExpectedResponseBody != "" || publicContract.BrunoBru != ""
+		if !hasCLIExpectation && !hasHTTPExpectation {
 			return domain.StoryContract{}, storyContractError("public contract %q has no observable expectation", publicContract.ID)
+		}
+	}
+
+	// Extract any embedded Bruno .bru code blocks from story markdown
+	brunoMatches := brunoBlockRE.FindAllStringSubmatch(markdown, -1)
+	if len(brunoMatches) > 0 {
+		for i := range contract.PublicContracts {
+			pc := &contract.PublicContracts[i]
+			if (strings.EqualFold(pc.Interface, "http") || pc.HTTPPath != "") && pc.BrunoBru == "" {
+				pc.BrunoBru = strings.TrimSpace(brunoMatches[0][1])
+				break
+			}
 		}
 	}
 
@@ -89,6 +109,12 @@ func ParseStoryContract(sourcePath, markdown string) (domain.StoryContract, erro
 	contract.SourcePath = cleanSource
 	contract.SourceSHA256 = hex.EncodeToString(sum[:])
 	return contract, nil
+}
+
+// ValidateStoryContract validates that a markdown story contains a valid, well-formed story contract.
+func ValidateStoryContract(sourcePath, markdown string) error {
+	_, err := ParseStoryContract(sourcePath, markdown)
+	return err
 }
 
 func normalizeRelativePaths(values []string, executable bool) ([]string, error) {

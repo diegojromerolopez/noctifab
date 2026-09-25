@@ -2,6 +2,9 @@
 
 `noctifab` is configured via a YAML file located at `.noctifab/config.yaml` in your project workspace. This document provides a complete reference for all available configuration sections and settings.
 
+> [!TIP]
+> For best practices, concurrency tuning (OCC), rate-limit resilience, and language-specific templates, see the [Configuration Guidelines & Best Practices](configuration_guidelines.md).
+
 ---
 
 ## Root Configurations
@@ -77,6 +80,12 @@ agents:
   product_manager:
     number: 1
     iterations: 2
+    passes: 2
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
 
   planner:
     number: 1
@@ -98,11 +107,7 @@ agents:
     number: 1
     iterations: 2
 
-  unblocker:
-    number: 1
-    iterations: 2
-
-  last_resort:
+  fallback:
     enabled: true
     temperature: 0.1
     max_turns: 2
@@ -122,15 +127,15 @@ clarification_timeout_action: abort
 - **`architecture`** (String): Execution loop architecture mode. Options: `code_first` (default: Generator implements code first, followed by independent Tester verification turns), `single_pass` (Fast-path single pass co-generating code and tests in 1 turn), or `breadth_first` (Iterative ~80% happy-path generation across all stories first, followed by benevolent judges refining edge cases). Legacy aliases (`code_first_verification_loop`, `single_pass_execution`, `breadth_first_generation`, `cfv`, `spe`, `bfg`) are fully supported.
 - **`task_execution_order`** (String): Task verification sequence mode. Options: `generator_first` (default: Generator implements code first, followed by Tester verification), or `tester_first` (TDD mode: Tester Agent generates unit/integration tests first, followed by Generator implementation). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
 - **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls allowed per agent response turn.
-- **`orchestrator`**: Configures Orchestrator agents managing task lifecycle and state synchronization (`number: 1`, `iterations: 2`).
-- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `max_user_stories: 5`, `passes: 2`). Supports an optional `max_user_stories` setting (e.g. `5`) to hard-cap story generation, and a `passes` setting (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit).
+- **`orchestrator`**: Configures Orchestrator agents managing task lifecycle, global task DAG scheduling, cross-story pipelining, and state synchronization (`number: 1` = sequential story dispatch, `number: > 1` = concurrent multi-story execution via `StoryDAGScheduler` with pipelined task scheduling, `iterations: 2`).
+- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `passes: 2`). Supports `user_stories.max_count` (e.g. `5`) to hard-cap story generation, `user_stories.complexity: {min: 15, max: 35}` to enforce target functional Complexity Units per story, and `passes` (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit). (Legacy `max_user_stories` is also backward-compatible).
 - **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs, automatically serializing task models into `roadmap/tasks/` (`number: 1`, `iterations: 5`).
 - **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 20`).
 - **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 15`).
 - **`qa`**: Reserves the experimental QA capability. It defaults to `enabled: false`; Phase 0 reports its capability but does not run QA.
 - **`auditor`**: Configures the Acceptance Auditor Agent (`number: 1`, `iterations: 2`) verifying whole-project compliance against `SPEC.md` prior to Pull Request creation.
-- **`unblocker`**: Configures Unblocker agents monitoring pipelines for stalls and re-dispatching tasks (`number: 1`, `iterations: 2`).
-- **`last_resort`**: Configures the sovereign Last-Resort Agent (*Omni-Unblocker* / *Chief Surgeon*) invoked when tasks reach critical stall thresholds, retry budget exhaustion, or toolchain deadlocks (`enabled: true`, `model: ""`, `temperature: 0.1`, `max_turns: 2`, `timeout: 180s`, `allow_spec_mutation: true`, `allow_scope_reduction: true`, `enforce_spec_quality: true`). Operates with cross-domain authority to refactor code, tests, and specifications under the 4-Tier Compromise Hierarchy while strictly preserving SOLID, DI, and security quality gates.
+- **`fallback`**: Configures the unified Fallback Agent (Omni-Agent / Chief Surgeon) operating in dual modes: Passive Watchdog (monitoring pipelines for stalls, 0-token fast-paths, scope triage) and Active Sovereign Omni-Builder (cross-domain repair under 4-Tier Compromise Hierarchy) (`enabled: true`, `model: ""`, `temperature: 0.1`, `max_turns: 2`, `timeout: 180s`, `allow_spec_mutation: true`, `allow_scope_reduction: true`, `enforce_spec_quality: true`). Legacy configuration blocks (`unblocker:`, `agents.last_resort:`, `roles.last_resort`) remain fully backwards-compatible.
+- **`spike`**: Configures the Greenfield Spike Prototyping phase (`enabled: true`, `max_turns: 1`, `timeout_seconds: 60`, `providers: []`). When enabled on greenfield repositories (zero pre-existing user stories or substantial source code), a single prioritized model consumes `SPEC.md` and generates an initial minimal compiling walking skeleton in one batch turn, commits it to git (`feat: initial spike solution walking skeleton`), and hands off to the Product Manager which activates the Legacy Stabilization Mandate to characterize, test, and refactor. If the walking skeleton already compiles cleanly, satisfies anti-stub invariants, and passes all sandbox tests for the initial scaffold story (`US-001`), the **Fast Exit on Green** optimization immediately marks `US-001` tasks as `SUCCESS` and advances straight to `US-002`, eliminating 2–4 redundant LLM iterations.
 - **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.
 - **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve a task clarification.
 - **`clarification_timeout_action`** (String): Action to take if a clarification times out (`abort` or `continue`).
@@ -237,12 +242,39 @@ agents:
   - **`api_key`** / **`api_keys`** (String or List of Strings): API authentication key value, secret reference, or secret name(s) in `secrets.yaml` / environment variables.
   - **`url`** (String): Endpoint URL override (required for self-hosted models or `ollama`).
   - **`max_retries`** / **`retry_backoff`** / **`max_timeout`**: Resilient retries and timeout constraints.
-  - **`enable_thinking`** (Boolean): Enable chain-of-thought reasoning mode (e.g. `enable_thinking: true` for QwenCloud `qwen3.8-max` models). When enabled, `noctifab` automatically bypasses `response_format: json_object` and parses JSON envelopes directly from reasoning trace outputs.
-  - **`thinking_budget`** (Integer): Token budget cap for reasoning output when `enable_thinking` is enabled (e.g. `8192`).
-  - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when `enable_thinking: true`, but can be explicitly set for third-party gateways that reject forced JSON schemas.
+  - **`thinking`** (Map): Structured chain-of-thought reasoning configuration:
+    - **`enabled`** (Boolean): Enable reasoning mode (`true` or `false`). Defaults to `false` (disabled by default).
+    - **`budget`** (Integer): Token budget cap for reasoning output (e.g. `8192`).
+  - **`enable_thinking`** / **`thinking_budget`**: Backward-compatible flat flags for reasoning mode and budget.
+  - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when thinking is enabled, but can be explicitly set for third-party gateways that reject forced JSON schemas.
   - **`extra_params`** (Map of Strings): Custom key-value pairs merged verbatim into the provider request body for provider-specific extensions.
-- **`roles.<agent>.providers`** (List of Agent Provider Refs): Role-specific provider priority list. Allows configuring different model priorities per agent role (`architect`, `planner`, `generator`, `tester`, `qa`, `security`, `performance`, `docs`, `devops`, `unblocker`).
+- **`roles.<agent>.providers`** / **`agents.<role>.providers`** (List of Agent Provider Refs): Role-specific provider or ensemble model references:
+  - **`name`** (String): References a provider declared in `llm.providers`.
+  - **`count`** (Integer): Number of independent model instances/samples to spawn for this provider spec (default: `1`).
+  - **`model`** (String): Optional model override.
+  - **`temperature`** (Float): Optional temperature override.
+  - **`max_tokens`** (Integer): Optional max token override (`-1` for unlimited).
+  - **`thinking`** (Map): Per-provider thinking configuration overrides (`enabled: true|false`, `budget: <tokens>`). For example:
+    ```yaml
+    agents:
+      product_manager:
+        number: 1
+        iterations: 2
+        max_user_stories: 5
+        passes: 3
+        providers:
+          - name: claude
+            thinking:
+              enabled: true
+              budget: 8192
+          - name: gemini
+          - name: openai
+    ```
+    In this setup, thinking is enabled solely for `claude`, while remaining disabled by default for `gemini` and `openai`.
+  - **`enable_thinking`** / **`thinking_budget`**: Optional backward-compatible flat reasoning toggles.
+  - **`extra_params`** (Map of Strings): Optional request body overrides.
 - **`max_timeout`** (Duration): Maximum overall completion timeout allowed for LLM API calls (e.g. `60s`). Defaults to `60s` to allow complex planning/generation tasks without context deadlines.
+
 - **`idle_timeout`** (Duration): Maximum stream/socket inactivity timeout allowed for LLM API calls (e.g. `15s`). Defaults to `15s` to cancel and fail over stalled stream connections without truncating active long responses.
 - **`streaming`** (Boolean): Enable or disable HTTP Server-Sent Events (SSE) token streaming (e.g. `true`). Defaults to `true` to stream completion tokens in real time and enforce sliding socket idle timeouts.
 - **`skip_on_credit_exhausted`** (Boolean): When `true` (default), an HTTP 402 (or a credit/quota-limited 429) is treated as a hard "skip this provider chain" signal: `noctifab` stops retrying and skips lower-model fallback immediately, so the router moves straight to the next provider in `llm.priority`. When `false`, the client rotates to the next `api_keys` pool entry and keeps retrying as usual. Set this to `false` only if you use key pools where a spend-limited key is expected to be superseded by a funded sibling key.
@@ -279,6 +311,15 @@ One of `noctifab`'s core resilience features is its **Dynamic Model Fallback Eng
 | **xAI (Grok)** | `parseXAIModel` | `TierScore + int(Version * 5)`<br>`grok-3` (60) > `grok-2` (40) > `grok-3-mini` (30) > `mini`/`beta` (20). |
 | **Perplexity AI** | `parsePerplexityModel` | `sonar-deep-research` (50) > `sonar-reasoning-pro` (40) > `sonar-reasoning` (30) > `sonar-pro` (20) > `sonar` (10). |
 | **Cohere** | `parseCohereModel` | `command-r-plus` (40) > `command-r` (30) > `command-light` (20). |
+
+---
+
+### Dynamic Model Capability Discovery & Routine Task Extended Thinking Suppression
+
+To avoid hardcoding model names while maximizing turn speed across the development lifecycle:
+1. **Dynamic Capability Discovery**: Noctifab queries the provider `/models` endpoint live and parses dynamic feature descriptors (such as `supported_parameters`, `capabilities`, `thinkingConfig`, and `architecture`). Zero model identifiers are hardcoded in the codebase.
+2. **Routine Task Thinking Suppression**: For routine, high-frequency task roles (`generator`, `tester`, `spike`), extended reasoning and thinking token generation (which can introduce 20–60s latencies per turn) are automatically suppressed (`enable_thinking: false`, `thinking_budget: 0`, `reasoning_effort: "low"`).
+3. **Non-Routine Reasoning Preservation**: Non-routine strategic roles (`planner`, `auditor`, `product_manager`, `fallback`) retain full reasoning and thinking capabilities for high-depth architectural decision-making.
 
 ---
 
@@ -334,11 +375,22 @@ sandbox:
   timeout_seconds: 300
   idle_timeout_seconds: 30
   test_command: "go test -v ./..."
-  linter_command: "golangci-lint run"
   formatter_command: "go fmt ./..."
+  syntax_check_command: "gofmt -e {file}"
+  linter_command: "golangci-lint run"
+  e2e:
+    mode: docker # "docker" (default) or "native"
+    command: ""  # optional explicit command override
+  telemetry:
+    inject: true        # inject lightweight runtime tracing into generated code
+    trace_format: jsonl # "jsonl" (default) or "otlp"
+  per_test_timeout_seconds: 30
   exclude_paths:
     - "node_modules/"
     - "vendor/"
+  skip_folders:
+    - "fixtures/"
+    - "third_party/"
   allowed_commands:
     - "go"
     - "git"
@@ -346,13 +398,31 @@ sandbox:
 ```
 
 - **`mode`** (String): Isolation strategy environment. Values: `host` (jail checks on the developer machine) or `docker` (complete container sandbox isolation).
+- **`e2e.mode`** (String): End-to-end acceptance testing execution strategy. Values: `docker` (default, discovers `docker-compose.e2e.yml` or `docker-compose.yml`) or `native` (local test execution via `make e2e`, `npm run test:e2e`, or language-specific runners such as `pytest tests/e2e`, `cargo test --test e2e`, `go test -v ./tests/e2e/...`). When executing in Docker mode, Noctifab parses the compose configuration to dynamically resolve the runner service (`test-runner-e2e`, `test-runner`, `test-client`, or `e2e`) and passes `--exit-code-from <service>`.
+- **`telemetry.inject`** (Boolean): When `true` (default: `true`), activates OpenTelemetry distributed tracing across all core workflow functions (`GenerateRoadmap`, `ExecuteSpike`, `executeStory`, `PlanStory`, `RunReaderPhase`, `RunTesterAgent`, `RunGeneratorAgent`, `ValidateTask`, `runQAGate`, `FinalizeUserStory`, `DispatchSovereignRescue`, and `RunCommand`). In addition, automatically injects standard W3C TraceContext headers (`TRACEPARENT` and `TRACESTATE`) into the sandbox subprocess execution environment (`RunCommand`), enabling child test runners and application processes to link directly to Noctifab's active trace span. Also instructs code generation and test authoring agents to inject lightweight structured telemetry into generated entrypoints and test fixtures.
+- **`telemetry.trace_format`** (String): Serialization format for telemetry traces. Options: `jsonl` (default, writes streaming JSON Lines directly to `.noctifab/traces.jsonl` for zero-dependency inspection via `jq` or `tail`) or `otlp` (exports standard OpenTelemetry Protocol traces to the configured collector endpoint).
+- **Autonomous Tooling (`run_e2e_tests`)**: The resolved E2E command is also accessible autonomously to the `generator`, `tester`, and `auditor` agents via the `run_e2e_tests` tool, allowing in-turn verification of containerized and native integration suites.
 - **`timeout_seconds`** (Integer): Absolute execution wall-clock time limit in seconds for test and script execution processes.
 - **`idle_timeout_seconds`** (Integer): Active watchdog timeout. Kills processes immediately if they output no bytes on stdout/stderr for this duration.
 - **`test_command`** (String): Command executed by the Test Validator to run the unit/integration test suites (e.g. `npm test`, `pytest`).
+- **`formatter_command`** (String): Command executed to run code format checks and auto-formatting (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_tests` and `run_linter` run this pre-step auto-fixer first.
+  - **Self-Healing LLM Integration**: When configured with an LLM client, if the formatter command fails:
+    1. Noctifab consults the LLM to diagnose whether the command itself is wrong or inapplicable for this project (e.g. `make format` when Makefile has no `format` target, wrong tool/flags, unconfigured RuboCop cops, or missing toolchain). If wrong or inapplicable, the LLM provides an updated command (or disables it), and Noctifab overrides the command in-memory, permanently ignoring the static configuration.
+    2. If the command is valid but fails due to code or configuration syntax errors, the LLM auto-repairs the broken files, writes them back to disk, and re-runs formatting.
+- **`syntax_check_command`** (String): Optional command template executed after every `write_file`, `edit_file`, `write_files`, and `apply_patch` tool call to perform a lightweight syntax validation of the written file. Use `{file}` as a placeholder for the absolute path of the written file. **When empty (default), no syntax check is performed** and file tools remain pure I/O operations with zero external binary dependencies, which is the correct behavior for languages where single-file syntax checks are not feasible (e.g. Rust, OCaml).
+  - **Self-Healing LLM Integration**: When configured with an LLM client, if the syntax check command fails:
+    1. Noctifab consults the LLM to diagnose whether the command is inappropriate/wrong for this file type (e.g. `.gitignore`, `Makefile`, or language mismatch). If wrong or inapplicable, the LLM provides an updated command (or disables it), and Noctifab overrides the command in-memory, permanently ignoring the static configuration.
+    2. If the command is valid but code syntax is broken, the LLM auto-repairs the syntax errors, rewrites the file, and re-validates.
+  - Examples by language:
+    - Ruby: `ruby -c {file}`
+    - Python: `python3 -m py_compile {file}`
+    - Go: `gofmt -e {file}`
+    - JavaScript/TypeScript: `node --check {file}`
+    - Shell: `bash -n {file}`
 - **`linter_command`** (String): Command executed to run project static analysis linter tasks.
-- **`formatter_command`** (String): Command executed to run code format checks (e.g. `rubocop -A`, `go fmt ./...`, `prettier --write .`). When present, `run_linter` runs this pre-step auto-fixer first before linter diagnostics.
-- **`max_linter_retries`** (Integer): Maximum linter fix retry turns per task (default: `3`). Prevents infinite agent loops on unfixable linter offenses.
+- **`per_test_timeout_seconds`** (Integer): Real-time streaming timeout for individual tests (default: `30`). Monitors test transition boundaries (`=== RUN`, `pytest`, `cargo test`) in real-time, resets the timer upon test progress, and isolates hanging tests via `SIGQUIT` stack traces and `SIGKILL` without waiting for the full process timeout.
 - **`exclude_paths`** (List of Strings): Directory trees, prefixes, or wildcard patterns ignored by the workspace discovery engine, Story QA auditor, anti-stub validator, and churn calculator (e.g. `node_modules/`, `vendor/`, `target/`, `target_container/`, `build/`, `_build/`, `*.tmp`). Works seamlessly with Git's `.gitignore` rules and automated binary detection (`IsTextFile`).
+- **`skip_folders`** (List of Strings): Explicit list of custom folders to skip and exclude from workspace scanning, LLM context packing, worktree sanitization, and inspection tools (e.g. `fixtures/`, `mock_data/`, `legacy/`). Can be specified under `sandbox.skip_folders`, `context.skip_folders`, or top-level `skip_folders:`.
 - **`allowed_commands`** (List of Strings): Whitelist of executable binaries permitted inside the sandbox process runner.
 - **`auto_install_deps`** (Boolean): Allow sandbox to auto-detect and attempt to install missing build dependencies.
 - **`package_managers`** (List of Strings): Authorized tool package managers (e.g. `pip`, `go`, `npm`, `brew`).
@@ -379,8 +449,8 @@ roles:
   tester:
     profile: tester
     temperature: 0.0
-  last_resort:
-    profile: last_resort
+  fallback:
+    profile: fallback
     temperature: 0.1
 
 profiles:
@@ -393,7 +463,7 @@ profiles:
     allowed_commands:
       - "go"
       - "git"
-  last_resort:
+  fallback:
     allowed_tools:
       - "read_file"
       - "write_file"
@@ -421,7 +491,7 @@ Assigns model override configurations, temperature boundaries, and security prof
 - **`planner`**: Parses feature specs into the DAG roadmap.
 - **`generator`**: Writes feature implementation files in the sandbox.
 - **`tester`**: Writes and aligns validation tests.
-- **`last_resort`**: Sovereign emergency solver for resolving deadlocked tasks across code, tests, and specs.
+- **`fallback`**: Sovereign emergency solver for resolving deadlocked tasks across code, tests, and specs (legacy: `roles.last_resort`, `roles.unblocker`).
 
 ### Profiles Config (`profiles`)
 Creates permission groups matching agent roles to whitelisted resources:
@@ -444,12 +514,53 @@ telemetry:
     enabled: true
 ```
 
-- **`enabled`** (Boolean): Enable OTel collection.
-- **`exporter`** (String): Connection format protocols (e.g. `otlp`, `stdout`).
-- **`endpoint`** (String): Host URL of the OpenTelemetry collector or Jaeger endpoint.
-- **`service_name`** (String): Service metadata name tag.
+- **`enabled`** (Boolean): Enable OpenTelemetry trace collection across Noctifab. (Tracing is also automatically active if `sandbox.telemetry.inject` is `true`).
+- **`exporter`** (String): Exporter transport type. Values: `otlp` (exports standard OpenTelemetry Protocol traces to the configured collector endpoint), `stdout` (writes JSON traces to console stdout), or `jsonl` / `file` (writes formatted JSON Lines traces directly to `.noctifab/traces.jsonl`).
+- **`endpoint`** (String): Host URL of the OpenTelemetry collector or Jaeger endpoint (e.g. `localhost:4318` for HTTP OTLP or `localhost:4317` for gRPC). Also configurable via the standard `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable.
+- **`service_name`** (String): Service metadata identification tag (default: `noctifab`).
 - **`metrics`**:
   - **`enabled`** (Boolean): Enable or disable performance & speed metrics instrumentation (tracking Time To First Commit, phase latencies, LLM wait duration, tokens/sec, and sandbox build times). Default: `true`.
+
+### Viewing Traces and OpenTelemetry Spans
+
+Noctifab acts as an **OpenTelemetry trace producer** and supports both local file streaming and automated OTLP collector provisioning:
+
+#### 1. Automated Collector Provisioning & Jaeger UI
+When `sandbox.telemetry.inject: true` is configured, Noctifab automatically verifies whether an OpenTelemetry collector is reachable at `localhost:4318` (or your configured `telemetry.endpoint`):
+- **Automatic Docker Provisioning**: If the collector is offline and Docker is installed, Noctifab automatically starts or spins up a container named `noctifab-jaeger` using `jaegertracing/all-in-one:latest`.
+- **Jaeger Web UI**: Open **`http://localhost:16686`** in your browser to view interactive flame graphs, waterfall timing breakdowns, and child command spans (`GenerateRoadmap`, `ExecuteSpike`, `executeStory`, `RunReaderPhase`, `RunGeneratorAgent`, `RunTesterAgent`, `runQAGate`, `FinalizeUserStory`, `DispatchSovereignRescue`, and `RunCommand`).
+- **Resilient Fallback**: If Docker is offline or not installed, Noctifab logs a notice and non-blockingly falls back to local `.noctifab/traces.jsonl` without disrupting execution.
+
+To configure an external collector manually instead:
+```yaml
+telemetry:
+  enabled: true
+  endpoint: "localhost:4318"
+```
+
+#### 2. Local Append-Only JSONL Streaming (Zero External Dependencies)
+When `sandbox.telemetry.trace_format: jsonl` is set (the default):
+```yaml
+sandbox:
+  telemetry:
+    inject: true
+    trace_format: "jsonl"
+```
+Every span is streamed and appended directly to `.noctifab/traces.jsonl`:
+- **Strictly Append-Only**: Files are opened with `os.O_APPEND`, ensuring historical runs are never overwritten or truncated across process restarts.
+- **Real-Time Shell Inspection**:
+  ```bash
+  # Stream spans live as they complete
+  tail -f .noctifab/traces.jsonl | jq '{name, duration_ms, status, attributes}'
+
+  # Filter spans for sandbox commands
+  cat .noctifab/traces.jsonl | jq 'select(.name=="RunCommand")'
+  ```
+
+#### 3. Agent Diagnostic Prompt Injection
+When `sandbox.telemetry.inject: true`, recent workflow and subprocess spans from `.noctifab/traces.jsonl` are automatically summarized and injected into the prompt context for:
+- **Fallback Agent (`RunFallbackAgent`)**: Injects recent spans directly into section 5 of the diagnostic context to pinpoint command timeouts and failing steps.
+- **Sovereign Rescue (`DispatchSovereignRescue`)**: Injects recent spans directly into Section 7 (`RECENT OPENTELEMETRY WORKFLOW & SUBPROCESS SPANS`), helping the autonomous rescue engine diagnose execution stalls.
 
 ---
 
@@ -471,66 +582,91 @@ sast:
 
 ---
 
-## Unblocker Agent Settings (`unblocker`)
+## Fallback Agent Settings (`fallback`)
 
-Controls the autonomous **Unblocker Agent** — a background goroutine that periodically scans the pipeline for stalled or blocked tasks and injects corrective interventions.
+Controls the autonomous **Fallback Agent** — a background goroutine that periodically scans the pipeline for stalled or blocked tasks, manages budget cliffs, and escalates to sovereign repair. (Legacy `unblocker:` configuration blocks remain fully supported).
 
 ```yaml
-unblocker:
+fallback:
   enabled: true
   poll_interval: "30s"
   max_retries: 3
   stall_threshold: "5m"
   conflict_threshold: "15m"
   llm_assessment: true
-  last_resort_triggers:
+  triggers:
     retries_exhaustion: true
     cyclic_loop_detection: true
     missing_toolchain_fast_abort: true
     qa_deadlock_turns: 2
     watchdog_timeout_turns: 2
     stall_count_threshold: 4
+  sovereign_rescue:
+    enabled: true
+    max_turns: 10
+    timeout: "5m"
+    missing_toolchain_strategy: "auto"
+    providers:
+      - name: gemini
+        temperature: 0.3
 ```
 
-- **`enabled`** (Boolean): Activate the unblocker goroutine (default: `true`). When `false`, no stall scanning is performed.
-- **`poll_interval`** (Duration): How often the unblocker wakes up to scan the pipeline for stalls (default: `30s`). Configurable via `--unblocker-poll-interval` or `NOCTIFAB_UNBLOCKER_POLL_INTERVAL`.
-- **`max_retries`** (Integer): Maximum number of unblock/reset attempts allowed for a single task before the unblocker permanently marks it as `FAILED` (default: `3`). Configurable via `--unblocker-max-retries` or `NOCTIFAB_UNBLOCKER_MAX_RETRIES`.
+- **`enabled`** (Boolean): Activate the fallback watchdog goroutine (default: `true`). When `false`, no stall scanning is performed.
+- **`poll_interval`** (Duration): How often the fallback agent wakes up to scan the pipeline for stalls (default: `30s`). Configurable via `--fallback-poll-interval` or `NOCTIFAB_FALLBACK_POLL_INTERVAL`.
+- **`max_retries`** (Integer): Maximum number of unblock/reset attempts allowed for a single task before the fallback agent permanently marks it as `FAILED` (default: `3`). Configurable via `--fallback-max-retries` or `NOCTIFAB_FALLBACK_MAX_RETRIES`.
 - **`stall_threshold`** (Duration): How long a task must be frozen `IN_PROGRESS` with no progress update before it is classified as stalled (default: `5m`).
-- **`conflict_threshold`** (Duration): How long a `CONFLICT_BLOCKED` task waits before the unblocker intervenes (default: `15m`).
-- **`llm_assessment`** (Boolean): When `true` (default), the unblocker calls the LLM to diagnose each stall and choose the corrective action. When `false`, deterministic heuristics are applied instead (no LLM call, lower token consumption).
-- **`last_resort_triggers`**: Configures automatic escalation conditions that summon the sovereign Last-Resort Agent:
-  - **`retries_exhaustion`** (Boolean): Trigger Last-Resort Agent when task retries are exhausted (default: `true`).
+- **`conflict_threshold`** (Duration): How long a `CONFLICT_BLOCKED` task waits before the fallback agent intervenes (default: `15m`).
+- **`llm_assessment`** (Boolean): When `true` (default), the fallback agent calls the LLM to diagnose each stall and choose the corrective action. When `false`, deterministic heuristics are applied instead (no LLM call, lower token consumption).
+- **`triggers`** (or legacy `last_resort_triggers`): Configures automatic escalation conditions that summon sovereign repair:
+  - **`retries_exhaustion`** (Boolean): Trigger sovereign repair when task retries are exhausted (default: `true`).
   - **`cyclic_loop_detection`** (Boolean): Trigger on detected repetitive compiler or test error cycles (default: `true`).
-  - **`missing_toolchain_fast_abort`** (Boolean): Fast-abort retry loops and summon Last-Resort Agent when build tools or packages are missing from the sandbox (default: `true`).
+  - **`missing_toolchain_fast_abort`** (Boolean): Fast-abort retry loops and summon sovereign repair when build tools or packages are missing from the sandbox (default: `true`).
   - **`qa_deadlock_turns`** (Integer): Number of consecutive QA deadlock turns before escalating (default: `2`).
   - **`watchdog_timeout_turns`** (Integer): Number of watchdog timeout failures before escalating (default: `2`).
-  - **`stall_count_threshold`** (Integer): Number of cumulative Unblocker stall cycles before summoning Last-Resort Agent (default: `4`).
+  - **`stall_count_threshold`** (Integer): Number of cumulative stall cycles before summoning sovereign repair (default: `4`).
+- **`sovereign_rescue`**: Configures the whole-project emergency sovereign takeover engine (TR-16):
+  - **`enabled`** (Boolean): Enable autonomous sovereign rescue takeover upon loop exhaustion (default: `true`).
+  - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `10`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
+  - **`timeout`** (Duration): Per-turn execution timeout limit for sovereign LLM completions (default: `5m`).
+  - **`missing_toolchain_strategy`** (String): Strategy for handling missing host toolchains or compilers during sovereign recovery (default: `"auto"`). Configurable via environment variable `NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY`. Options:
+    - `"auto"`: Probes for Docker daemon availability. If Docker is running, uses `"docker"`; otherwise falls back to `"local"`.
+    - `"docker"`: Instructs the agent to create a `Dockerfile` with the missing compiler/runtime and wire `Makefile` (`build`, `test`, `e2e`) to execute containerized via `docker run --rm -v $(PWD):/app -w /app ...`.
+    - `"local"`: Instructs the agent to install missing tools onto the host machine via `install_package` (pip, brew, apt, npm, cargo, etc.).
+    - `"off"`: Disables fallback recovery for missing toolchains.
+  - **`providers`** (List of `AgentProviderRef`): Explicit prioritized LLM providers for Sovereign Rescue. Uses the identical schema as `agents.<role>.providers` (`name`, `model`, `temperature`, `max_tokens`, etc.), overriding `roles.fallback.profile`. Every corrective turn is logged to console/stderr and persisted directly to `state.LastActions` in the database.
 
-See [unblocker_agent.md](unblocker_agent.md) and [last_resort_agent.md](last_resort_agent.md) for full references on the two-tier deadlock defense and compromise hierarchy.
+See [fallback_agent.md](fallback_agent.md) for full references on the unified self-healing architecture, triggers, and compromise hierarchy.
 
 ---
 
-## Context Slicing Settings (`context`)
+## Context Slicing & Compaction Settings (`context`)
 
-Controls how target workspace source files are formatted and sliced for agent prompts.
+Controls how target workspace source files are formatted, sliced, and compacted for agent prompts.
 
 ```yaml
 context:
   mode: full
   diff_window_lines: 15
+  compaction: "none" # "none" (default), "caveman", "simple_english"
+  caveman_compaction: false # legacy boolean alias for compaction: "caveman"
 ```
 
-- **`mode`** (String): Context formatting strategy. Options:
+- **`mode`** (String): Context formatting strategy for task target files. Options:
   - `full`: Sends complete source file contents (default).
   - `diff_window`: Extracts modified git diff lines and error stack traces (+/- context lines).
   - `tree_sitter`: Universal AST parsing extracting class/struct definitions and function signatures.
 - **`diff_window_lines`** (Integer): Number of context lines surrounding diff modifications in `diff_window` mode (default: `15`).
+- **`compaction`** (String): Prompt compaction strategy applied to prompt bodies, specification payloads (`SPEC.md`), and historical turn contexts. Options:
+  - `none`: Sends full uncompacted prompt text (default).
+  - `caveman`: Telegraphic compaction that strips polite filler, redundant conversational preambles, decorative dividers, HTML comments (`<!-- ... -->`), and markdown images while strictly preserving code blocks (` ``` `), JSON contracts, file paths, and CLI flags.
+  - `simple_english`: Simplifies complex vocabulary and passive voice into active, direct directives without modifying technical symbols or code syntax.
+- **`caveman_compaction`** (Boolean): Backward-compatible boolean toggle; equivalent to setting `compaction: "caveman"` when true.
 
 ---
 
 ## Workspace Inspection Caching Settings (`agents.workspace_cache`)
 
-Controls in-memory deduplication of read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent task execution loop. The cache is automatically invalidated when any file mutation (`write_file`, `edit_file`, `delete_file`) occurs.
+Controls in-memory deduplication of read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent task execution loop. The cache is automatically invalidated when any file mutation (`write_file`, `write_files`, `edit_file`, `delete_file`, `apply_patch`) occurs.
 
 ```yaml
 agents:
@@ -539,6 +675,22 @@ agents:
 ```
 
 - **`enabled`** (Boolean): Enable in-memory workspace inspection and diagnostic tool caching (default: `true`).
+
+---
+
+## Multi-Story Concurrency Settings (`agents.orchestrator.number`)
+
+Controls how many concurrent orchestrator worker loops run in parallel to process user stories:
+
+```yaml
+agents:
+  orchestrator:
+    number: 3
+    iterations: 2
+```
+
+- **`number`** (Integer): Number of parallel story orchestrator workers (default: `1`). When set to `2` or `3`, Noctifab orchestrates multiple ready user stories concurrently using isolated Git worktrees and optimistic concurrency control (OCC), drastically accelerating multi-story execution across large roadmaps.
+- **`iterations`** (Integer): Maximum orchestrator pass iterations.
 
 ---
 
@@ -594,8 +746,7 @@ agents:
     iterations: 1
   unblocker:
     number: 1
-    iterations: 2
-  last_resort:
+  fallback:
     enabled: true
     temperature: 0.1
     max_turns: 2
@@ -604,20 +755,24 @@ agents:
     allow_scope_reduction: true
     enforce_spec_quality: true
 
-unblocker:
+fallback:
   enabled: true
   poll_interval: "30s"
   max_retries: 3
   stall_threshold: "5m"
   conflict_threshold: "15m"
   llm_assessment: true
-  last_resort_triggers:
+  triggers:
     retries_exhaustion: true
     cyclic_loop_detection: true
     missing_toolchain_fast_abort: true
     qa_deadlock_turns: 2
     watchdog_timeout_turns: 2
     stall_count_threshold: 4
+  sovereign_rescue:
+    enabled: true
+    max_turns: 10
+    timeout: "5m"
 
 storage:
   provider: "sqlite"
@@ -669,6 +824,9 @@ sandbox:
   test_command: "cargo test"
   linter_command: "cargo clippy -- -D warnings"
   formatter_command: "cargo fmt --check"
+  telemetry:
+    inject: true
+    trace_format: "jsonl"
   exclude_paths:
     - "target/"
     - ".noctifab/"
@@ -690,8 +848,8 @@ roles:
   tester:
     profile: "tester"
     temperature: 0.0
-  last_resort:
-    profile: "last_resort"
+  fallback:
+    profile: "fallback"
     temperature: 0.1
 
 profiles:
@@ -718,7 +876,7 @@ profiles:
       - "run_tests"
       - "run_linter"
       - "noop"
-  last_resort:
+  fallback:
     allowed_tools:
       - "read_file"
       - "write_file"

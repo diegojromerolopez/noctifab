@@ -310,6 +310,115 @@ func TestAnthropicProviderClient_Call(t *testing.T) {
 			t.Errorf("expected 2 calls, got %d", callCount)
 		}
 	})
+
+	t.Run("thinking token exhaustion retries with doubled max_tokens", func(t *testing.T) {
+		callCount := 0
+		var maxTokensReceived []float64
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			var req map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			if mt, ok := req["max_tokens"].(float64); ok {
+				maxTokensReceived = append(maxTokensReceived, mt)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+
+			if callCount == 1 {
+				// First response: thinking consumed all tokens, no text block
+				resp := map[string]any{
+					"stop_reason": "max_tokens",
+					"content": []map[string]any{
+						{
+							"type":     "thinking",
+							"thinking": "analyzing endlessly...",
+						},
+					},
+					"usage": map[string]any{
+						"input_tokens":  100,
+						"output_tokens": 4096,
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+
+			// Second response: completed successfully
+			resp := map[string]any{
+				"stop_reason": "end_turn",
+				"content": []map[string]any{
+					{
+						"type":     "thinking",
+						"thinking": "done thinking",
+					},
+					{
+						"type": "text",
+						"text": `{"result": "recovered"}`,
+					},
+				},
+				"usage": map[string]any{
+					"input_tokens":  100,
+					"output_tokens": 500,
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		client := NewAnthropicProviderClient(server.URL, 0, 0, false)
+		res, err := client.Call(context.Background(), "claude-sonnet-5", "test-key", "hello", 4096, 0.0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(res.Body) != `{"result": "recovered"}` {
+			t.Errorf("expected recovered payload, got %s", string(res.Body))
+		}
+		if callCount != 2 {
+			t.Fatalf("expected 2 calls, got %d", callCount)
+		}
+		if len(maxTokensReceived) == 2 && maxTokensReceived[1] != maxTokensReceived[0]*2 {
+			t.Errorf("expected max_tokens to double from %v to %v", maxTokensReceived[0], maxTokensReceived[1])
+		}
+	})
+
+	t.Run("thinking budget tokens in extraBody automatically raises max_tokens", func(t *testing.T) {
+		var receivedMaxTokens float64
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var req map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			receivedMaxTokens, _ = req["max_tokens"].(float64)
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			resp := map[string]any{
+				"stop_reason": "end_turn",
+				"content": []map[string]any{
+					{"type": "text", "text": "ok"},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		client := NewAnthropicProviderClient(server.URL, 0, 0, false)
+		if ec, ok := client.(interface{ SetExtraBody(map[string]interface{}) }); ok {
+			ec.SetExtraBody(map[string]interface{}{
+				"thinking": map[string]interface{}{
+					"type":          "enabled",
+					"budget_tokens": 10000,
+				},
+			})
+		}
+		_, err := client.Call(context.Background(), "claude-sonnet-5", "test-key", "hello", 4096, 0.0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Budget is 10000, so needed is 10000 + 4096 = 14096
+		if receivedMaxTokens < 14096 {
+			t.Errorf("expected max_tokens >= 14096, got %v", receivedMaxTokens)
+		}
+	})
 }
 
 func TestAnthropicProviderClient_GetAvailableModels(t *testing.T) {

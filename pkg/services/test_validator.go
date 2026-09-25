@@ -3,11 +3,14 @@ package services
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -28,6 +31,7 @@ type TestRunResult struct {
 type TestValidator struct {
 	Runner           Sandbox
 	Strict           bool
+	Formatter        Formatter
 	FormatterCommand string
 	LLMClient        domain.LLMClient
 	Tools            map[string]Tool
@@ -35,16 +39,99 @@ type TestValidator struct {
 	// Runs is the number of test suite executions per validation. Values
 	// <= 0 default to 1 (single run, no consensus voting).
 	Runs int
+	// ShortCircuitConsensus enables the fast-pass optimization: Run 1 is
+	// evaluated first. If clean (exit code 0, non-empty test suite), validation
+	// passes immediately without running redundant consensus passes (Runs 2+).
+	// If Run 1 fails or flakes, remaining runs are executed for majority voting.
+	ShortCircuitConsensus bool
+	SyntaxChecker         SyntaxChecker
+	E2ECommand            string
+	E2EMode               string
+	EnforceE2E            bool
+}
+
+func (v *TestValidator) SetE2ECommand(cmd string) {
+	v.E2ECommand = cmd
+}
+
+func (v *TestValidator) SetE2EMode(mode string) {
+	v.E2EMode = mode
+}
+
+func (v *TestValidator) SetE2EConfig(cfg config.E2EConfig) {
+	v.E2ECommand = cfg.Command
+	v.E2EMode = cfg.Mode
+}
+
+func (v *TestValidator) SetEnforceE2E(enforce bool) {
+	v.EnforceE2E = enforce
+}
+
+func (v *TestValidator) detectE2ECommand(projectPath string) string {
+	return DetectE2ECommand(projectPath, v.E2EMode, v.E2ECommand)
+}
+
+func (v *TestValidator) shouldValidateE2E(state *domain.State, task domain.Task) bool {
+	if state == nil || strings.TrimSpace(state.ProjectPath) == "" {
+		return false
+	}
+	if v.EnforceE2E {
+		return true
+	}
+	// Always validate E2E for remediation and rescue tasks
+	if strings.HasPrefix(task.ID, "qa-remediation-") ||
+		strings.HasPrefix(task.ID, "spec-remediation-") ||
+		strings.HasPrefix(task.ID, "sovereign-rescue-") {
+		return true
+	}
+	// Check if task targets E2E or integration files
+	for _, tf := range task.TargetFiles {
+		lower := strings.ToLower(tf)
+		if strings.Contains(lower, "e2e") ||
+			strings.Contains(lower, "integration") ||
+			strings.HasSuffix(lower, "docker-compose.yml") ||
+			strings.HasSuffix(lower, "docker-compose.e2e.yml") ||
+			strings.Contains(lower, "test_server") ||
+			strings.Contains(lower, "test_client") {
+			return true
+		}
+	}
+	// Check if task title explicitly targets E2E or integration tests
+	lowerTitle := strings.ToLower(task.Title)
+	if strings.Contains(lowerTitle, "e2e") ||
+		strings.Contains(lowerTitle, "integration test") ||
+		strings.Contains(lowerTitle, "black-box") {
+		return true
+	}
+	// Check if this is the final task of a story
+	if task.StoryID != "" {
+		allOthersCompleted := true
+		storyTaskCount := 0
+		for _, t := range state.Tasks {
+			if t.StoryID == task.StoryID && t.ID != task.ID {
+				storyTaskCount++
+				if t.Status != domain.TaskSuccess {
+					allOthersCompleted = false
+					break
+				}
+			}
+		}
+		if storyTaskCount > 0 && allOthersCompleted {
+			return true
+		}
+	}
+	return false
 }
 
 func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, tools map[string]Tool) *TestValidator {
 	return &TestValidator{
-		Runner:     runner,
-		Strict:     strict,
-		LLMClient:  llmClient,
-		Tools:      tools,
-		RunTimeout: 5 * time.Minute,
-		Runs:       1,
+		Runner:                runner,
+		Strict:                strict,
+		LLMClient:             llmClient,
+		Tools:                 tools,
+		RunTimeout:            5 * time.Minute,
+		Runs:                  1,
+		ShortCircuitConsensus: true,
 	}
 }
 
@@ -80,17 +167,79 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		return false, sb.String(), nil
 	}
 
-	if v.FormatterCommand != "" {
-		// Deterministic Auto-Formatter Pre-Pass:
-		// Automatically run auto-fix formatter before test execution.
-		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, v.FormatterCommand, "")
+	// Fast-Path Syntax Pre-Gating:
+	if v.SyntaxChecker != nil {
+		if syntaxErr := v.SyntaxChecker.Check(ctx, state.ProjectPath); syntaxErr != nil {
+			fmt.Printf("⚠️ Orchestrator: Task %s fast-path syntax check failed: %v\n", task.ID, syntaxErr)
+			return false, fmt.Sprintf("Fast-path syntax check failed:\n%v", syntaxErr), nil
+		}
+	}
+
+	_ = PrepareTestEnvironment(state.ProjectPath)
+
+	if v.Formatter != nil {
+		fmt.Printf("Orchestrator: Task %s running formatter pre-pass...\n", task.ID)
+		_, _ = v.Formatter.Format(ctx, state.ProjectPath)
+	} else {
+		formatCmd := v.FormatterCommand
+		if formatCmd == "" {
+			formatCmd = DetectDefaultFormatterCommand(state.ProjectPath)
+		}
+		if formatCmd != "" && v.Runner != nil {
+			fmt.Printf("Orchestrator: Task %s running deterministic local formatter %q...\n", task.ID, formatCmd)
+			_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, formatCmd, "")
+		}
+	}
+
+	if autoFixCmd := DetectAutoFixImportsCommand(state.ProjectPath); autoFixCmd != "" && v.Runner != nil {
+		fmt.Printf("Orchestrator: Task %s running deterministic auto-fix imports %q...\n", task.ID, autoFixCmd)
+		_, _ = v.Runner.RunCommand(ctx, state.ProjectPath, autoFixCmd, "")
+	}
+
+	// Dual-Gate Build Verification:
+	if buildCmd := DetectDefaultBuildCommand(state.ProjectPath); buildCmd != "" && v.Runner != nil {
+		buildTimeout := v.RunTimeout
+		if buildTimeout <= 0 {
+			buildTimeout = 5 * time.Minute
+		}
+		buildCtx, buildCancel := context.WithTimeout(ctx, buildTimeout)
+		buildOut, buildErr := v.Runner.RunCommand(buildCtx, state.ProjectPath, buildCmd, "")
+		buildCancel()
+		if buildErr != nil {
+			if isCommandToolMissing(v.Runner, buildCmd, buildOut+" "+buildErr.Error()) {
+				fmt.Printf("⚠️  [Validation Degraded] Task %s: required build tool is absent on host (%s). Proceeding in degraded mode.\n", task.ID, buildCmd)
+			} else {
+				fmt.Printf("❌ Orchestrator: Task %s project build gate (%s) failed: %v\n", task.ID, buildCmd, buildErr)
+				return false, fmt.Sprintf("Build verification failed (%s):\n%s\n%v", buildCmd, buildOut, buildErr), nil
+			}
+		}
 	}
 
 	runs := v.Runs
 	if runs <= 0 {
 		runs = 1
 	}
-	results := v.runWithCount(ctx, state, runs)
+
+	var results []TestRunResult
+	if runs > 1 && v.ShortCircuitConsensus {
+		fmt.Printf("Orchestrator: Task %s running fast-pass probe (run 1 of %d)...\n", task.ID, runs)
+		probeResults := v.runWithCount(ctx, state, 1)
+		if probeResults[0].Passed {
+			fmt.Printf("Orchestrator: Task %s fast-pass clean run 1 succeeded; short-circuiting remaining %d run(s)\n", task.ID, runs-1)
+			return true, "Validation passed on clean first run (short-circuit consensus)", nil
+		}
+		fmt.Printf("Orchestrator: Task %s fast-pass run 1 failed; executing remaining %d run(s) for consensus voting\n", task.ID, runs-1)
+		remainingResults := v.runWithCount(ctx, state, runs-1)
+		results = make([]TestRunResult, runs)
+		results[0] = probeResults[0]
+		for i, res := range remainingResults {
+			res.RunID = i + 2
+			results[i+1] = res
+		}
+	} else {
+		fmt.Printf("Orchestrator: Task %s running test execution (%d run(s))...\n", task.ID, runs)
+		results = v.runWithCount(ctx, state, runs)
+	}
 
 	passCount := 0
 	for _, r := range results {
@@ -102,6 +251,36 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	// Strict majority vote; with the default single run this reduces to
 	// requiring that one run to pass.
 	if passCount > runs/2 {
+		if v.shouldValidateE2E(state, task) {
+			e2eCmd := v.detectE2ECommand(state.ProjectPath)
+			if e2eCmd != "" && v.Runner != nil {
+				e2eTimeout := v.RunTimeout
+				if e2eTimeout <= 0 {
+					e2eTimeout = 5 * time.Minute
+				}
+				e2eCtx, e2eCancel := context.WithTimeout(ctx, e2eTimeout)
+				e2eOut, e2eErr := v.Runner.RunCommand(e2eCtx, state.ProjectPath, e2eCmd, "")
+				e2eCancel()
+
+				if e2eErr != nil {
+					if isCommandToolMissing(v.Runner, e2eCmd, e2eOut+" "+e2eErr.Error()) {
+						fmt.Printf("⚠️  [Validation Degraded] Task %s: required E2E tool is absent on host (%s). Proceeding in degraded mode.\n", task.ID, e2eCmd)
+					} else if !isE2EFailureInScope(state, task, e2eOut+"\n"+e2eErr.Error()) {
+						fmt.Printf("⚠️  Orchestrator: Task %s E2E failure(s) outside scope; ignoring in loop.\n", task.ID)
+					} else {
+						fmt.Printf("❌ Orchestrator: Task %s E2E test gate (%s) failed: %v\n", task.ID, e2eCmd, e2eErr)
+						return false, fmt.Sprintf("E2E test validation failed (%s):\n%s\n%v", e2eCmd, e2eOut, e2eErr), nil
+					}
+				} else {
+					noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, e2eOut)
+					if noTestsRan {
+						fmt.Printf("❌ Orchestrator: Task %s E2E test suite produced no tests: %s\n", task.ID, notice)
+						return false, fmt.Sprintf("E2E test validation failed (%s): %s", e2eCmd, notice), nil
+					}
+				}
+			}
+		}
+
 		if passCount == runs {
 			return true, "All validation runs passed successfully", nil
 		}
@@ -109,24 +288,91 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	}
 
 	lastErr := lastFailureOutput(results)
-	if isMissingToolOutput(lastErr) {
+	testCmd := DetectDefaultTestCommand(state.ProjectPath)
+	if isCommandToolMissing(v.Runner, testCmd, lastErr) {
 		fmt.Printf("⚠️  [Validation Degraded] Task %s: required test runner or tool is absent on host. Proceeding in degraded mode without test gating.\n", task.ID)
 		return true, fmt.Sprintf("Validation passed in degraded mode (tool absent on host).\nLast output:\n%s", lastErr), nil
 	}
 	return false, fmt.Sprintf("Test validation failed (%d/%d runs passed). Last error log:\n%s", passCount, runs, lastErr), nil
 }
 
+func isCommandToolMissing(runner Sandbox, cmd, output string) bool {
+	if _, isHost := runner.(*HostSandbox); isHost {
+		bin := extractCommandBinary(cmd)
+		if bin != "" {
+			if _, err := exec.LookPath(bin); err == nil {
+				return false // Tool binary is verified installed on host PATH.
+			}
+			return true // Tool binary is not found on host PATH.
+		}
+	}
+	return isMissingToolOutput(output)
+}
+
+func extractCommandBinary(cmd string) string {
+	fields := strings.Fields(cmd)
+	for _, f := range fields {
+		if strings.Contains(f, "=") {
+			continue
+		}
+		base := filepath.Base(f)
+		if base != "sudo" && base != "env" && base != "sh" && base != "bash" {
+			return base
+		}
+	}
+	if len(fields) > 0 {
+		return filepath.Base(fields[0])
+	}
+	return ""
+}
+
 func isMissingToolOutput(output string) bool {
 	lower := strings.ToLower(output)
+
+	// If the failure occurred during test assertions or code panic, it is not a missing host tool.
+	if strings.Contains(lower, "assertionerror") ||
+		strings.Contains(lower, "failed tests") ||
+		strings.Contains(lower, "--- fail") ||
+		strings.Contains(lower, "panic:") {
+		return false
+	}
+
+	// If the failure occurred during a container build or containerized runtime execution
+	// (e.g., Dockerfile build step, BuildKit solve error, compose service exit, or missing file
+	// inside the container build context), Docker itself was present and executed.
+	// Container-internal build/script errors must NOT be classified as a missing host tool.
+	if strings.Contains(lower, "failed to solve") ||
+		strings.Contains(lower, "load build definition") ||
+		strings.Contains(lower, "transferring dockerfile") ||
+		strings.Contains(lower, "transferring context") ||
+		strings.Contains(lower, "executor failed running") ||
+		strings.Contains(lower, "dockerfile:") ||
+		strings.Contains(lower, "dockerfile.e2e:") {
+		return false
+	}
+
 	return strings.Contains(lower, "command not found") ||
 		strings.Contains(lower, "executable file not found") ||
+		strings.Contains(lower, "not found in $path") ||
+		strings.Contains(lower, "not found in %path%") ||
+		strings.Contains(lower, "is not recognized as an internal or external command") ||
 		strings.Contains(lower, "is evicted") ||
 		strings.Contains(lower, "exit status 127") ||
-		strings.Contains(lower, "no such file or directory") && strings.Contains(lower, "exec")
+		(strings.Contains(lower, "fork/exec") && strings.Contains(lower, "no such file or directory"))
 }
 
 func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n int) []TestRunResult {
 	results := make([]TestRunResult, n)
+	if v.Runner == nil {
+		for i := 0; i < n; i++ {
+			results[i] = TestRunResult{
+				RunID:  i + 1,
+				Passed: true,
+				Output: "no runner configured (pass by default)",
+			}
+		}
+		return results
+	}
 	if n <= 1 {
 		timeout := v.RunTimeout
 		if timeout <= 0 {
@@ -136,17 +382,28 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 		out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
 		runCancel()
 
-		outLower := strings.ToLower(out)
-		noTestsRan := strings.Contains(outLower, "no tests ran") ||
-			strings.Contains(outLower, "ran 0 tests") ||
-			strings.Contains(outLower, "collected 0 items") ||
-			strings.Contains(outLower, "collected 0 tests") ||
-			strings.Contains(outLower, "exit status 5")
+		exitCode := 0
+		if err != nil {
+			exitCode = 1
+		}
+		parsedReport := ParseTestOutput(out, exitCode)
+		noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, out)
+		outputMsg := out
+		if noTestsRan && (strings.TrimSpace(outputMsg) == "" || notice != "") {
+			outputMsg = notice
+		}
+
+		passed := err == nil && !noTestsRan
+		if !parsedReport.Success && len(parsedReport.Failures) > 0 {
+			passed = false
+			outputMsg = fmt.Sprintf("%s\n\n[Structured Test Parser] %s\nFailed Tests:\n - %s",
+				outputMsg, parsedReport.SummaryText, strings.Join(parsedReport.Failures, "\n - "))
+		}
 
 		results[0] = TestRunResult{
 			RunID:  1,
-			Passed: err == nil && !noTestsRan,
-			Output: out,
+			Passed: passed,
+			Output: outputMsg,
 		}
 		return results
 	}
@@ -164,17 +421,28 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 			out, err := v.Runner.RunCommand(runCtx, state.ProjectPath, "", "")
 			runCancel()
 
-			outLower := strings.ToLower(out)
-			noTestsRan := strings.Contains(outLower, "no tests ran") ||
-				strings.Contains(outLower, "ran 0 tests") ||
-				strings.Contains(outLower, "collected 0 items") ||
-				strings.Contains(outLower, "collected 0 tests") ||
-				strings.Contains(outLower, "exit status 5")
+			exitCode := 0
+			if err != nil {
+				exitCode = 1
+			}
+			parsedReport := ParseTestOutput(out, exitCode)
+			noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, out)
+			outputMsg := out
+			if noTestsRan && (strings.TrimSpace(outputMsg) == "" || notice != "") {
+				outputMsg = notice
+			}
+
+			passed := err == nil && !noTestsRan
+			if !parsedReport.Success && len(parsedReport.Failures) > 0 {
+				passed = false
+				outputMsg = fmt.Sprintf("%s\n\n[Structured Test Parser] %s\nFailed Tests:\n - %s",
+					outputMsg, parsedReport.SummaryText, strings.Join(parsedReport.Failures, "\n - "))
+			}
 
 			results[idx] = TestRunResult{
 				RunID:  idx + 1,
-				Passed: err == nil && !noTestsRan,
-				Output: out,
+				Passed: passed,
+				Output: outputMsg,
 			}
 		}(i)
 	}

@@ -177,9 +177,9 @@ func (c *Client) compactPrompt(ctx context.Context, prompt string) string {
 	case "simple_english":
 		prompt = CompactSimpleEnglish(head) + tail
 		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with simple_english: %d -> %d bytes\n", origPromptLen, len(prompt))
-	case "caveman":
+	case "caveman", "aggressive":
 		prompt = CompactCaveman(head) + tail
-		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with caveman: %d -> %d bytes\n", origPromptLen, len(prompt))
+		fmt.Fprintf(os.Stderr, "ℹ [llm] compacted prompt with %s: %d -> %d bytes\n", strings.ToLower(strings.TrimSpace(c.Compaction)), origPromptLen, len(prompt))
 	default:
 		if c.CavemanCompaction {
 			prompt = CompactCaveman(head) + tail
@@ -244,6 +244,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 		}
 	}
 
+	modelFallbacks := 0
 	for {
 		var callRes *ProviderCallResult
 		var responseBody []byte
@@ -258,7 +259,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			backoff = 100 * time.Millisecond
 		}
 
-		pClient := c.providerClient()
+		pClient := c.providerClientForContext(ctx, activeModel)
 
 		activeKey := apiKey
 		creditExhausted := false
@@ -295,32 +296,26 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 				// auth, gateway router unable to serve the shape): retrying
 				// the identical request cannot succeed. Break out so the
 				// model/provider fallback ladder advances immediately.
-				fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s; skipping retries.\n", c.Provider, activeModel)
+				fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s (%v); skipping retries.\n", c.Provider, activeModel, err)
 				break
 			}
-			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED") || strings.Contains(err.Error(), "Quota exceeded") || strings.Contains(err.Error(), "quota") || creditExhausted {
-				fmt.Fprintln(os.Stderr, "⚠ Warning: You have exceeded your LLM API quota (HTTP 429). Please check your plan and billing details.")
-				if len(c.APIKeys) > 1 {
+			if isRateLimitOrQuota(err) || (creditExhausted && c.SkipOnCreditExhausted) {
+				fmt.Fprintf(os.Stderr, "⚠ Warning: Hit rate limit or quota exceeded (HTTP 429) for %s/%s. Skipping retry ladder for immediate failover.\n", c.Provider, activeModel)
+				if len(c.APIKeys) > 1 && attempt < len(c.APIKeys)-1 {
 					activeKey = c.getNextAPIKey()
 					fmt.Fprintf(os.Stderr, "ℹ Switching to next API key in pool for provider %s...\n", c.Provider)
-				} else if c.SkipOnCreditExhausted {
-					if delay, ok := parseRetryDelay(err); !ok || delay > 5*time.Second {
-						fmt.Fprintf(os.Stderr, "⚠ Circuit-breaker: HTTP 429 quota exhausted for %s/%s; skipping retries to trigger model/provider fallback immediately.\n", c.Provider, activeModel)
-						break
-					}
+					continue
 				}
+				// Fast-fail: break immediately without waiting on exponential backoff ladder
+				break
 			}
 
 			if attempt == maxRetries {
 				break
 			}
 
-			// Exponential backoff with jitter
+			// Exponential backoff with jitter for other transient errors
 			jitter := time.Duration(float64(backoff) * (1.0 + rand.Float64()))
-			if delay, ok := parseRetryDelay(err); ok {
-				jitter = delay
-				fmt.Fprintf(os.Stderr, "⚠ Rate limited. Backing off for %v as requested by the API.\n", delay)
-			}
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -395,14 +390,15 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			// cheaper model. 404 (model not found) is deliberately NOT
 			// skipped: falling back to another model in the catalog IS the
 			// correct reaction to an unknown model.
-			fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s cannot be fixed by a lower model; skipping fallback ladder.\n", c.Provider, activeModel)
+			fmt.Fprintf(os.Stderr, "⚠ Non-retryable LLM API error for %s/%s (%v) cannot be fixed by a lower model; skipping fallback ladder.\n", c.Provider, activeModel, err)
 			shouldFallback = false
 		}
 
-		if shouldFallback {
+		if shouldFallback && modelFallbacks < 1 {
 			nextModel := c.getNextLowerModel(ctx, apiKey, activeModel)
 			if nextModel != "" {
-				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to model: %s...\n", activeModel, err, nextModel)
+				modelFallbacks++
+				fmt.Fprintf(os.Stderr, "⚠ Model %s returned error: %v. Falling back to model: %s (attempt %d/1)...\n", activeModel, err, nextModel, modelFallbacks)
 				activeModel = nextModel
 				continue
 			}
@@ -414,7 +410,12 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			return nil, errResult
 		}
 
-		errResult := fmt.Errorf("LLM completion failed after %d retries: %w", maxRetries, err)
+		var errResult error
+		if isRateLimitOrQuota(err) {
+			errResult = fmt.Errorf("LLM rate limit / quota exceeded (HTTP 429): %w", err)
+		} else {
+			errResult = fmt.Errorf("LLM completion failed: %w", err)
+		}
 		emitLLMEvent(ctx, c.Provider, activeModel, time.Since(attemptStart), prompt, nil, domain.TokenUsage{}, errResult)
 		return nil, errResult
 	}

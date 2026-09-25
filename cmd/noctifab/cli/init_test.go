@@ -115,3 +115,18 @@ func TestInitCmd_WithProfile(t *testing.T) {
 	assert.Contains(t, string(cfgContent), "ollama")
 	assert.Contains(t, string(cfgContent), "qwen2.5-coder:32b")
 }
+
+func TestInitCmd_ProtectsGitInfoExclude(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "git_project")
+	require.NoError(t, os.MkdirAll(filepath.Join(targetDir, ".git", "info"), 0755))
+
+	_, err := EnsureWorkspaceInitialized(targetDir)
+	require.NoError(t, err)
+
+	excludeContent, err := os.ReadFile(filepath.Join(targetDir, ".git", "info", "exclude"))
+	require.NoError(t, err)
+	assert.Contains(t, string(excludeContent), ".noctifab/data/")
+	assert.Contains(t, string(excludeContent), ".noctifab/logs/")
+	assert.Contains(t, string(excludeContent), ".noctifab/worktrees/")
+}

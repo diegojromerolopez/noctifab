@@ -366,6 +366,25 @@ func VerifyQualityAndReleaseGates(cfg *config.Config, projectDir string) error {
 				}
 			}
 		}
+
+		// Preflight optional formatter target
+		if strings.HasPrefix(strings.TrimSpace(cfg.Sandbox.FormatterCommand), "make ") {
+			target := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(cfg.Sandbox.FormatterCommand), "make "))
+			if _, exists := targets[target]; !exists {
+				fmt.Printf("ℹ Pre-flight: Makefile missing optional formatter target %q; disabling formatter command.\n", target)
+				cfg.Sandbox.FormatterCommand = ""
+			}
+		}
+
+		// Preflight optional linter target
+		if linterCmd != "" && strings.HasPrefix(strings.TrimSpace(linterCmd), "make ") {
+			target := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(linterCmd), "make "))
+			if _, exists := targets[target]; !exists {
+				fmt.Printf("ℹ Pre-flight: Makefile missing optional linter target %q; disabling linter command.\n", target)
+				cfg.Sandbox.Linter.Command = nil
+				cfg.Sandbox.LinterCommand = nil
+			}
+		}
 	}
 
 	var langList []string
