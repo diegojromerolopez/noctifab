@@ -523,25 +523,22 @@ telemetry:
 
 ### Viewing Traces and OpenTelemetry Spans
 
-Noctifab acts as an **OpenTelemetry trace producer**. It does not run an embedded collector daemon inside the process, but provides two convenient methods to visualize or inspect traces:
+Noctifab acts as an **OpenTelemetry trace producer** and supports both local file streaming and automated OTLP collector provisioning:
 
-#### 1. Visualizing in Jaeger UI (via OTLP Collector)
-Run an all-in-one Jaeger instance locally using Docker:
-```bash
-docker run -d --name jaeger \
-  -p 16686:16686 \
-  -p 4318:4318 \
-  jaegertracing/all-in-one:latest
-```
-Set the endpoint in your `.noctifab/config.yaml`:
+#### 1. Automated Collector Provisioning & Jaeger UI
+When `sandbox.telemetry.inject: true` is configured, Noctifab automatically verifies whether an OpenTelemetry collector is reachable at `localhost:4318` (or your configured `telemetry.endpoint`):
+- **Automatic Docker Provisioning**: If the collector is offline and Docker is installed, Noctifab automatically starts or spins up a container named `noctifab-jaeger` using `jaegertracing/all-in-one:latest`.
+- **Jaeger Web UI**: Open **`http://localhost:16686`** in your browser to view interactive flame graphs, waterfall timing breakdowns, and child command spans (`GenerateRoadmap`, `ExecuteSpike`, `executeStory`, `RunReaderPhase`, `RunGeneratorAgent`, `RunTesterAgent`, `runQAGate`, `FinalizeUserStory`, `DispatchSovereignRescue`, and `RunCommand`).
+- **Resilient Fallback**: If Docker is offline or not installed, Noctifab logs a notice and non-blockingly falls back to local `.noctifab/traces.jsonl` without disrupting execution.
+
+To configure an external collector manually instead:
 ```yaml
 telemetry:
   enabled: true
   endpoint: "localhost:4318"
 ```
-Run `noctifab start`, then open **`http://localhost:16686`** in your browser and select service `noctifab` to inspect the flame graph and timing breakdowns of all workflow functions (`GenerateRoadmap`, `PlanStory`, `executeStory`, `executeTask`, `RunReaderPhase`, `RunTesterAgent`, `RunGeneratorAgent`, `ValidateTask`, `runQAGate`, `FinalizeUserStory`, `DispatchSovereignRescue`, and `RunCommand`).
 
-#### 2. Local JSONL Streaming (Zero External Dependencies)
+#### 2. Local Append-Only JSONL Streaming (Zero External Dependencies)
 When `sandbox.telemetry.trace_format: jsonl` is set (the default):
 ```yaml
 sandbox:
@@ -549,14 +546,21 @@ sandbox:
     inject: true
     trace_format: "jsonl"
 ```
-Every span is appended directly to `.noctifab/traces.jsonl`. You can stream and inspect spans in real time without running any external collector:
-```bash
-# Stream spans live as they complete
-tail -f .noctifab/traces.jsonl | jq '{name, duration_ms, status, attributes}'
+Every span is streamed and appended directly to `.noctifab/traces.jsonl`:
+- **Strictly Append-Only**: Files are opened with `os.O_APPEND`, ensuring historical runs are never overwritten or truncated across process restarts.
+- **Real-Time Shell Inspection**:
+  ```bash
+  # Stream spans live as they complete
+  tail -f .noctifab/traces.jsonl | jq '{name, duration_ms, status, attributes}'
 
-# Filter spans for sandbox commands
-cat .noctifab/traces.jsonl | jq 'select(.name=="RunCommand")'
-```
+  # Filter spans for sandbox commands
+  cat .noctifab/traces.jsonl | jq 'select(.name=="RunCommand")'
+  ```
+
+#### 3. Agent Diagnostic Prompt Injection
+When `sandbox.telemetry.inject: true`, recent workflow and subprocess spans from `.noctifab/traces.jsonl` are automatically summarized and injected into the prompt context for:
+- **Fallback Agent (`RunFallbackAgent`)**: Injects recent spans directly into section 5 of the diagnostic context to pinpoint command timeouts and failing steps.
+- **Sovereign Rescue (`DispatchSovereignRescue`)**: Injects recent spans directly into Section 7 (`RECENT OPENTELEMETRY WORKFLOW & SUBPROCESS SPANS`), helping the autonomous rescue engine diagnose execution stalls.
 
 ---
 
