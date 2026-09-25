@@ -115,8 +115,16 @@ When explicit `run_tests` passes cleanly (`execErr == nil`) or when tool mutatio
 #### Fast-Path Syntax Pre-Gating (`pkg/services/test_validator.go`, `pkg/services/production_tools.go`)
 Before running expensive test runner processes or multi-run consensus suites, code changes pass through `SyntaxChecker` in $< 20\text{ms}$. Syntax errors fail fast and immediately return actionable compiler diagnostics to the agent.
 
-#### Deterministic KV-Cache Prompt Prefix Stabilization (`pkg/infrastructure/prompts/defaults/generator/*.tmpl`)
-All Generator prompt templates hoist static system guidelines, constraints, and tool documentation to lines 1–78 at the head of the prompt, placing dynamic fields (`Title`, `Description`, `Context`) at the bottom. This ensures a consistent prefix across all tasks, maximizing LLM KV-cache reuse and slashing TTFT from ~3s to ~200ms.
+#### Deterministic Anti-Hallucination Gate Architecture (`pkg/services/`)
+To eliminate LLM hallucinations across every phase of the development lifecycle, Noctifab enforces seven deterministic validation gates:
+1. **Plan Integrity Validator (`pkg/services/plan_integrity_validator.go`)**: Validates roadmap user story dependency acyclicity via topological sort (Kahn's algorithm), referential integrity against phantom task IDs, acceptance criteria regex pre-compilation, and spec requirement tag traceability.
+2. **Manifest Integrity & Path Isolation Guard (`pkg/services/manifest_integrity_guard.go`)**: Enforces workspace boundary containment (rejecting directory traversal attacks and `.git` / `.noctifab` modifications) and checks third-party language imports against declared project manifests (`go.mod`, `pyproject.toml`, `requirements.txt`).
+3. **Shell Command Safety Validator (`pkg/services/shell_safety_validator.go`)**: Lexically tokenizes shell commands to reject directory changes (`cd`, `pushd`), interactive utility hangs (`vim`, `less`, `man`), fatal crash masking (`|| true`, `set +e`), and destructive filesystem commands while checking binary availability via `exec.LookPath`.
+4. **Diff Mutation & AST Anti-Stub Validator (`pkg/services/diff_mutation_validator.go`)**: Rejects vacuous diffs that only modify whitespace or comments, and performs AST inspection to disallow empty stub function implementations (`pass`, `return nil`, placeholder `panic`).
+5. **Test Assertion & Monotonicity Guard (`pkg/services/test_assertion_guard.go`)**: Analyzes test ASTs to ensure non-zero assertion density and verifies assertion monotonicity, deterministically rejecting attempts to "fix" failing tests by deleting or weakening assertions.
+6. **Error Fingerprinting & Loop Detector (`pkg/services/error_fingerprinter.go`)**: Normalizes compiler, linter, and runtime error outputs (stripping variable timestamps, line numbers, memory pointers, and temp paths) to produce stable SHA256 signatures, catching and halting sycophantic retry loops.
+7. **Zero-Mutation & DoD Acceptance Guard (`pkg/services/zero_mutation_guard.go`)**: Rejects false-positive completion declarations with 0 git mutations, verifies test runner execution metrics (`total_tests > 0` and `failed_tests == 0`), and asserts public contract execution compliance.
+
 
 #### Speculative Macro-Planning Overlap (`cmd/noctifab/cli/start_planner_overlap.go`)
 `SpeculativePlanner` asynchronously decomposes queued user stories into task DAGs in the background while the active user story executes its assigned tasks. By the time the active story concludes, downstream tasks are already synthesized and persisted on disk and memory, eliminating inter-story planning pauses.

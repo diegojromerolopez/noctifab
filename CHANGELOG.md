@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.99.0] - 2026-09-25
+
+### Added
+- **Deterministic Anti-Hallucination Gates Across Agent Decision Lifecycle (`pkg/services/`)**:
+  - **Plan Integrity Validator (`pkg/services/plan_integrity_validator.go`)**: Enforces Kahn's topological sort for story dependency acyclicity, referential integrity against hallucinated story IDs, regular expression pre-compilation for acceptance criteria contracts, and `SPEC.md` requirement tag coverage traceability.
+  - **Manifest Integrity & Path Guard (`pkg/services/manifest_integrity_guard.go`)**: Verifies filesystem path isolation (preventing workspace directory traversal or `.git`/`.noctifab` corruption) and checks language imports against declared project manifests (`go.mod`, `pyproject.toml`, `requirements.txt`).
+  - **Shell Command Safety Validator (`pkg/services/shell_safety_validator.go`)**: Lexically tokenizes shell commands to deterministically reject directory mutations (`cd`, `pushd`), interactive command hangs (`vim`, `less`, `man`), fatal crash signal masking (`|| true`, `set +e`), and destructive deletions. Verifies binary presence via `exec.LookPath`.
+  - **Diff Mutation & AST Anti-Stub Validator (`pkg/services/diff_mutation_validator.go`)**: Rejects vacuous diffs that only alter comments or whitespace, and performs AST inspection to disallow empty stub implementations (`pass`, `return nil`, placeholder `panic`).
+  - **Test Assertion & Monotonicity Guard (`pkg/services/test_assertion_guard.go`)**: Enforces non-zero assertion density across test functions and verifies assertion monotonicity, deterministically rejecting attempts to "fix" failing tests by deleting assertions.
+  - **Error Fingerprinting & Loop Detector (`pkg/services/error_fingerprinter.go`)**: Normalizes compiler and runtime errors (stripping ephemeral timestamps, memory pointers, line numbers, and temp paths) to generate SHA256 signatures, detecting and breaking sycophantic retry loops.
+  - **Zero-Mutation & DoD Acceptance Guard (`pkg/services/zero_mutation_guard.go`)**: Rejects false-positive completion declarations with 0 git mutations, asserts `total_tests > 0` and `failed_tests == 0`, and guarantees public contract execution compliance.
+
 ## [0.98.0] - 2026-09-25
 
 ### Added

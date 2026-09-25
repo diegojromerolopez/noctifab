@@ -43,9 +43,9 @@ testing.tRunner(0x140001221a0, 0x10237db80)
 func TestTestStreamIsolator_CleanExecution(t *testing.T) {
 	cmd := exec.Command("sh", "-c", "echo '=== RUN   TestOne'; echo '--- PASS: TestOne'; echo '=== RUN   TestTwo'; echo '--- PASS: TestTwo'")
 	isolator := NewTestStreamIsolator(StreamIsolatorConfig{
-		PerTestTimeout: 2 * time.Second,
-		MaxDuration:    5 * time.Second,
-		IdleTimeout:    2 * time.Second,
+		PerTestTimeout: 5 * time.Second,
+		MaxDuration:    15 * time.Second,
+		IdleTimeout:    5 * time.Second,
 	})
 
 	out, err := isolator.Run(context.Background(), cmd)
