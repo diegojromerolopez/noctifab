@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.101.0] - 2026-09-26
+
+### Added
+- **Traceback-to-Diff Alignment Guard (`pkg/services/repair_alignment_guard.go`)**:
+  - Deterministically parses error tracebacks and compiler logs across Python, Go, Rust, and Node.js to extract offending source file paths.
+  - Intersects surgical repair diffs against traceback and task target files, rejecting sycophantic repair mutations that touch unrelated files.
+  - Calculates SHA-256 diff hashes to reject repeated identical failing edits, breaking circular hallucinated repair loops.
+- **Isolated Task-Level Sovereign Rescue (`pkg/services/orchestrator_dispatch_deadlock.go`)**:
+  - Intercepts stalled DAG dispatch states when 0 tasks are ready due to failed predecessor dependencies.
+  - Automatically activates a scoped, single-task Sovereign Fallback rescue for the blocking failed task in its isolated workspace.
+  - Prevents premature story aborts and avoids polluting the global project scope with whole-project rescue takeovers.
+- **Deterministic Container & Socket Teardown Guard (`pkg/services/container_teardown_guard.go`)**:
+  - Automatically discovers Docker Compose configurations (`docker-compose.yml`, `docker-compose.e2e.yml`) and project ports (`DetectProjectPorts`).
+  - Executes hermetic container and volume teardown (`docker compose down -v --remove-orphans`) and reaps orphan TCP port listeners prior to pre-flight and after test evaluations.
+
 ## [0.100.0] - 2026-09-26
 
 ### Added

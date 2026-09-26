@@ -269,6 +269,28 @@ func (o *Orchestrator) executeSurgicalRepairTurn(
 	}
 
 	o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, errorContext, "surgical_repair")
+
+	// Traceback-to-Diff Alignment Guard: Prevent sycophantic repairs that touch unrelated files
+	if taskGit != nil {
+		modifiedFilesOut, _ := taskGit.Run(ctx, false, "diff", "--name-only")
+		var modifiedFiles []string
+		for _, f := range strings.Split(modifiedFilesOut, "\n") {
+			if trimmed := strings.TrimSpace(f); trimmed != "" {
+				modifiedFiles = append(modifiedFiles, trimmed)
+			}
+		}
+		if len(modifiedFiles) > 0 {
+			guard := NewRepairAlignmentGuard()
+			tracebackFiles := guard.ExtractTracebackFiles(taskState.ProjectPath, failureLog)
+			alignment := guard.ValidateRepairAlignment(modifiedFiles, tracebackFiles, task.TargetFiles, "", nil)
+			if !alignment.Allowed {
+				fmt.Fprintf(os.Stderr, "⚠️ [Repair Alignment Guard Rejected] %s\n", alignment.Reason)
+				_, _ = taskGit.Run(ctx, true, "checkout", "--", ".")
+				return
+			}
+		}
+	}
+
 	_ = o.stageAndCommit(ctx, taskGit, task.ID, "fix(core): surgical repair for task %s - %s", task.Title)
 }
 

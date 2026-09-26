@@ -27,15 +27,18 @@ type PreflightReport struct {
 // PreflightSystem performs deterministic environment, toolchain, and command verification
 // before passing execution or prompts to LLMs.
 type PreflightSystem struct {
-	lookPath   func(file string) (string, error)
-	portReaper *PortReaper
+	lookPath       func(file string) (string, error)
+	portReaper     *PortReaper
+	containerGuard *ContainerTeardownGuard
 }
 
 // NewPreflightSystem initializes a new PreflightSystem.
 func NewPreflightSystem() *PreflightSystem {
+	reaper := NewPortReaper()
 	return &PreflightSystem{
-		lookPath:   exec.LookPath,
-		portReaper: NewPortReaper(),
+		lookPath:       exec.LookPath,
+		portReaper:     reaper,
+		containerGuard: NewContainerTeardownGuard(nil, reaper),
 	}
 }
 
@@ -47,9 +50,14 @@ func (p *PreflightSystem) PreflightWorkspace(ctx context.Context, projectPath st
 		RecommendedStrategy:   "local",
 	}
 
-	// For projects that run servers/daemons on a port, port pre-emption is a MUST. For the rest cleanly skip.
-	if IsDaemonProject(projectPath) {
-		report.IsDaemon = true
+	// For projects that run servers/daemons or have container definitions, container & port teardown is a MUST.
+	if p.containerGuard == nil {
+		p.containerGuard = NewContainerTeardownGuard(nil, p.portReaper)
+	}
+	composeFiles := p.containerGuard.DiscoverComposeFiles(projectPath)
+	if IsDaemonProject(projectPath) || len(composeFiles) > 0 {
+		report.IsDaemon = IsDaemonProject(projectPath)
+		_ = p.containerGuard.PreFlightClean(ctx, projectPath)
 		ports, _ := DetectProjectPorts(projectPath)
 		if len(ports) > 0 {
 			report.DetectedPorts = ports
