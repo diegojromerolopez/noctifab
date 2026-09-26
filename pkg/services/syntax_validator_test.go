@@ -118,4 +118,40 @@ func Run() {
 		require.NoError(t, err)
 		assert.Error(t, v.Check(context.Background(), invalidP))
 	})
+
+	t.Run("test file calling missing facade method fails validation", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		srcDir := filepath.Join(tmpDir, "src")
+		testDir := filepath.Join(tmpDir, "tests")
+		require.NoError(t, os.MkdirAll(srcDir, 0755))
+		require.NoError(t, os.MkdirAll(testDir, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "pyproject.toml"), []byte("[project]\n"), 0644))
+
+		srcFile := filepath.Join(srcDir, "store.py")
+		require.NoError(t, os.WriteFile(srcFile, []byte("class Store:\n    def get(self, k):\n        pass\n"), 0644))
+
+		testFile := filepath.Join(testDir, "test_store.py")
+		testContent := "class TestStore:\n    def test_run(self):\n        s = Store()\n        s.get_hash('x')\n"
+		require.NoError(t, os.WriteFile(testFile, []byte(testContent), 0644))
+
+		v := NewSyntaxValidator()
+		violation, err := v.ValidateFile(context.Background(), testFile)
+		require.NoError(t, err)
+		require.NotNil(t, violation)
+		assert.Contains(t, violation.Message, "missing method 'get_hash'")
+	})
+
+	t.Run("test file with bare dispatch assertion fails diagnostic richness check", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "test_bare.py")
+		testContent := "class TestBare:\n    def test_run(self):\n        self.assertEqual(b'+OK', self.dispatch('PING'))\n"
+		require.NoError(t, os.WriteFile(testFile, []byte(testContent), 0644))
+
+		v := NewSyntaxValidator()
+		violation, err := v.ValidateFile(context.Background(), testFile)
+		require.NoError(t, err)
+		require.NotNil(t, violation)
+		assert.Contains(t, violation.Message, "lacks descriptive msg=")
+	})
 }
+

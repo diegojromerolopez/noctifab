@@ -5,7 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.100.0] - 2026-09-26
+
+### Added
+- **Facade Integrity Validator (`pkg/services/facade_integrity_validator.go`)**:
+  - Deterministically extracts classes and declared methods across Python and Go source modules.
+  - Cross-references method calls in test suites against declared facade methods, immediately rejecting missing method/attribute invocations (e.g. `store.get_hash()`) pre-test execution to prevent 10-turn retry deadlocks.
+- **Rich Contract Diagnostic Guard (`pkg/services/test_contract_diagnostic_guard.go`)**:
+  - Validates and enforces that authored test assertions include diagnostic context payloads (`msg=`, input arguments, expected contract, actual response).
+  - Wired into `SyntaxValidator` to reject bare, uninformative assertions on dispatch operations.
+
+### Fixed
+- **Instant Eviction & Blacklisting on Credit Exhaustion (`pkg/infrastructure/llm/client.go`, `pkg/infrastructure/llm/router_eviction.go`)**:
+  - Resolved provider failover thrashing when Anthropic API returns HTTP 400 Bad Request with `"Your credit balance is too low to access the Anthropic API"`.
+  - Expanded `isCreditExhausted` and `isEvictionError` to recognize Anthropic HTTP 400, `"credit balance is too low"`, `"purchase credits"`, and `"plans & billing"` patterns, immediately returning `ErrCreditExhausted` and evicting the depleted provider from the router so downstream turns cascade to next available providers (`gemini`, `openai`) without delay.
+
 ## [0.99.0] - 2026-09-25
+
 
 ### Added
 - **Deterministic Anti-Hallucination Gates Across Agent Decision Lifecycle (`pkg/services/`)**:

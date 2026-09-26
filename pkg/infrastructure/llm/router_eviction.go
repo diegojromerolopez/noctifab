@@ -60,7 +60,7 @@ func isEvictionError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, ErrCreditExhausted) {
+	if errors.Is(err, ErrCreditExhausted) || isCreditExhausted(err) {
 		return true
 	}
 	if isModelNotFoundOrDeprecated(err) {
@@ -71,10 +71,23 @@ func isEvictionError(err error) bool {
 		if he.StatusCode == 401 || he.StatusCode == 402 || he.StatusCode == 404 {
 			return true
 		}
+		low := strings.ToLower(he.Body)
+		if strings.Contains(low, "credit balance is too low") ||
+			strings.Contains(low, "purchase credits") ||
+			strings.Contains(low, "plans & billing") ||
+			strings.Contains(low, "insufficient balance") ||
+			strings.Contains(low, "creditserror") ||
+			strings.Contains(low, "credit exhausted") ||
+			strings.Contains(low, "insufficient_quota") {
+			return true
+		}
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "creditserror") ||
 		strings.Contains(msg, "insufficient balance") ||
+		strings.Contains(msg, "credit balance is too low") ||
+		strings.Contains(msg, "purchase credits") ||
+		strings.Contains(msg, "plans & billing") ||
 		strings.Contains(msg, "payment required") ||
 		strings.Contains(msg, "credit exhausted") ||
 		strings.Contains(msg, "401 unauthorized") ||
@@ -86,6 +99,7 @@ func isEvictionError(err error) bool {
 		strings.Contains(msg, "account is in good standing") ||
 		(strings.Contains(msg, "model") && (strings.Contains(msg, "is not found") || strings.Contains(msg, "does not exist")))
 }
+
 
 // GetEvictedProviders returns a map of candidate names to their eviction details.
 func (r *ResilientLLMRouter) GetEvictedProviders() map[string]string {

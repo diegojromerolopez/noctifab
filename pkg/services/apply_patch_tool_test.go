@@ -107,9 +107,10 @@ func TestApplyPatchTool_Execute(t *testing.T) {
 +package main
 +
 +func NewFunc() {
-+	// new file
++	println("active")
 +}
 `
+
 
 		res, err := tool.Execute(context.Background(), state, map[string]any{
 			"patch": patch,

@@ -22,15 +22,19 @@ type SyntaxViolation struct {
 // SyntaxValidator provides fast, in-process and deterministic verification across
 // source code, catching syntax errors, empty stub placeholders, and undeclared imports.
 type SyntaxValidator struct {
-	diffValidator *DiffMutationValidator
-	manifestGuard *ManifestIntegrityGuard
+	diffValidator   *DiffMutationValidator
+	manifestGuard   *ManifestIntegrityGuard
+	facadeValidator *FacadeIntegrityValidator
+	diagnosticGuard *TestContractDiagnosticGuard
 }
 
 // NewSyntaxValidator creates a new SyntaxValidator instance.
 func NewSyntaxValidator() *SyntaxValidator {
 	return &SyntaxValidator{
-		diffValidator: NewDiffMutationValidator(),
-		manifestGuard: NewManifestIntegrityGuard(),
+		diffValidator:   NewDiffMutationValidator(),
+		manifestGuard:   NewManifestIntegrityGuard(),
+		facadeValidator: NewFacadeIntegrityValidator(),
+		diagnosticGuard: NewTestContractDiagnosticGuard(),
 	}
 }
 
@@ -240,6 +244,31 @@ func (v *SyntaxValidator) validatePython(ctx context.Context, path string) (*Syn
 		}
 	}
 
+	// Diagnostic richness check on test files
+	if isTestPath(path) && v.diagnosticGuard != nil {
+		if diagViolations := v.diagnosticGuard.ValidateDiagnosticRichness(path, string(content)); len(diagViolations) > 0 {
+			return &SyntaxViolation{
+				FilePath: path,
+				Line:     diagViolations[0].LineNumber,
+				Message:  diagViolations[0].Reason,
+			}, nil
+		}
+	}
+
+	// Facade integrity check when tests invoke core project classes
+	if isTestPath(path) && v.facadeValidator != nil {
+		if root := findProjectRoot(path); root != "" {
+			srcFiles := loadProjectSourceFiles(filepath.Join(root, "src"))
+			tFiles := map[string]string{path: string(content)}
+			if fViolations := v.facadeValidator.ValidateFacades(srcFiles, tFiles); len(fViolations) > 0 {
+				return &SyntaxViolation{
+					FilePath: path,
+					Message:  fViolations[0].Error(),
+				}, nil
+			}
+		}
+	}
+
 	// Fast Python compilation via python3 -m py_compile if python3 is available
 	pythonPath, err := exec.LookPath("python3")
 	if err != nil {
@@ -294,3 +323,23 @@ func findProjectRoot(startPath string) string {
 	}
 	return ""
 }
+
+func loadProjectSourceFiles(srcDir string) map[string]string {
+	files := make(map[string]string)
+	if _, err := os.Stat(srcDir); err != nil {
+		return files
+	}
+	_ = filepath.WalkDir(srcDir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(p, ".py") || (strings.HasSuffix(p, ".go") && !strings.HasSuffix(p, "_test.go")) {
+			if content, rErr := os.ReadFile(p); rErr == nil {
+				files[p] = string(content)
+			}
+		}
+		return nil
+	})
+	return files
+}
+

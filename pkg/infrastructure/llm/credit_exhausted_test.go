@@ -101,10 +101,12 @@ func TestIsCreditExhausted(t *testing.T) {
 		want bool
 	}{
 		{"http 402", &httpError{StatusCode: 402, Body: `{"error":"out of credits"}`, Header: http.Header{}}, true},
+		{"anthropic 400 credit balance too low", &httpError{StatusCode: 400, Body: `{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}`, Header: http.Header{}}, true},
 		{"429 with credit word", &httpError{StatusCode: 429, Body: `{"error":"You have depleted your monthly included credits"}`, Header: http.Header{}}, true},
 		{"429 pure rate limit", &httpError{StatusCode: 429, Body: `{"error":"rate limited"}`, Header: http.Header{}}, false},
 		{"200 with quota", &httpError{StatusCode: 200, Body: `quota`, Header: http.Header{}}, false},
 		{"plain error", errors.New("boom"), false},
+		{"plain credit balance error string", errors.New("provider returned: credit balance is too low to proceed"), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

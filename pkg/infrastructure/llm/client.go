@@ -70,24 +70,51 @@ type Client struct {
 var ErrCreditExhausted = errors.New("LLM provider credit exhausted")
 
 // isCreditExhausted reports whether err signals provider credit/limit exhaustion.
-// An HTTP 402 from the completion endpoint always qualifies. A 429 is only
-// treated as credit exhaustion when the provider body explicitly mentions
-// "credit" (e.g. OpenRouter's "You have depleted your monthly included
-// credits") — a plain rate-limit 429 still falls through to normal handling.
+// An HTTP 402 always qualifies. Anthropic returns HTTP 400 with "credit balance is too low".
+// A 429 is treated as credit exhaustion when the provider body mentions credits/quota.
 func isCreditExhausted(err error) bool {
-	var he *httpError
-	if !errors.As(err, &he) {
+	if err == nil {
 		return false
 	}
-	if he.StatusCode == http.StatusPaymentRequired {
+	if errors.Is(err, ErrCreditExhausted) {
 		return true
 	}
-	if he.StatusCode == http.StatusTooManyRequests {
+	var he *httpError
+	if errors.As(err, &he) {
+		if he.StatusCode == http.StatusPaymentRequired {
+			return true
+		}
 		low := strings.ToLower(he.Body)
-		return strings.Contains(low, "credit")
+		if strings.Contains(low, "credit balance is too low") ||
+			strings.Contains(low, "purchase credits") ||
+			strings.Contains(low, "plans & billing") ||
+			strings.Contains(low, "insufficient balance") ||
+			strings.Contains(low, "creditserror") ||
+			strings.Contains(low, "credit exhausted") ||
+			strings.Contains(low, "insufficient_quota") ||
+			strings.Contains(low, "exceeded your current quota") ||
+			strings.Contains(low, "billing details") ||
+			strings.Contains(low, "overdue-payment") ||
+			strings.Contains(low, "arrearage") {
+			return true
+		}
+		if he.StatusCode == http.StatusTooManyRequests && strings.Contains(low, "credit") {
+			return true
+		}
 	}
-	return false
+	low := strings.ToLower(err.Error())
+	return strings.Contains(low, "credit balance is too low") ||
+		strings.Contains(low, "purchase credits") ||
+		strings.Contains(low, "plans & billing") ||
+		strings.Contains(low, "insufficient balance") ||
+		strings.Contains(low, "creditserror") ||
+		strings.Contains(low, "credit exhausted") ||
+		strings.Contains(low, "insufficient_quota") ||
+		strings.Contains(low, "exceeded your current quota") ||
+		strings.Contains(low, "overdue-payment") ||
+		strings.Contains(low, "arrearage")
 }
+
 
 func (c *Client) getNextAPIKey() string {
 	if len(c.APIKeys) > 0 {
