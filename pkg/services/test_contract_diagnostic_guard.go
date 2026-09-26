@@ -50,13 +50,13 @@ func (g *TestContractDiagnosticGuard) validatePythonDiagnostics(filePath, conten
 	for idx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "self.assert") {
-			if strings.Contains(trimmed, "self.dispatch(") || strings.Contains(trimmed, "dispatch(") {
+			if isExecutionAssertion(trimmed) {
 				if !strings.Contains(trimmed, "msg=") && !hasThirdDiagnosticArg(trimmed) {
 					violations = append(violations, ContractDiagnosticViolation{
 						FilePath:   filePath,
 						LineNumber: idx + 1,
 						Expression: trimmed,
-						Reason:     "operation dispatch assertion lacks descriptive msg= parameter with input data and contract context",
+						Reason:     "operation execution assertion lacks descriptive msg= parameter with input data and contract context",
 					})
 				}
 			}
@@ -65,6 +65,22 @@ func (g *TestContractDiagnosticGuard) validatePythonDiagnostics(filePath, conten
 
 	return violations
 }
+
+// isExecutionAssertion checks if the assertion evaluates the result of an executed method or function call.
+func isExecutionAssertion(expr string) bool {
+	openParen := strings.Index(expr, "(")
+	if openParen == -1 {
+		return false
+	}
+	closeParen := strings.LastIndex(expr, ")")
+	if closeParen <= openParen {
+		return false
+	}
+	inner := expr[openParen+1 : closeParen]
+	// Check for a nested function or method call inside the assertion arguments: e.g. fn(...) or obj.method(...)
+	return strings.Contains(inner, "(")
+}
+
 
 // hasThirdDiagnosticArg checks if an assertion call has at least 2 top-level commas (3 arguments).
 func hasThirdDiagnosticArg(expr string) bool {
