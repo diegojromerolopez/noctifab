@@ -80,3 +80,58 @@ Goal: implement core and string commands.
 	// Verify user story was created
 	assert.FileExists(t, filepath.Join(tempDir, "roadmap", "user-stories", "US-001-core.md"))
 }
+
+func TestGenerateRoadmap_PartitionsSpecWithCompactionMode(t *testing.T) {
+	tempDir := t.TempDir()
+
+	specContent := `# Multi-Section Spec
+<!-- HTML comment in spec -->
+
+## 1. Overview
+Please note that this is the core system invariants.
+---
+
+## 6. Commands
+
+### 6.1 String Commands
+<!-- Slice comment -->
+| Command | Sig |
+| :--- | :--- |
+| ` + "`GET`" + ` | GET k |
+| ` + "`SET`" + ` | SET k v |
+`
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte(specContent), 0644))
+
+	mockClient := &partitionTestMockLLMClient{
+		Response: &domain.LLMResponse{
+			Actions: []domain.LLMAction{
+				{
+					Tool: "create_story",
+					Args: map[string]interface{}{
+						"filename": "roadmap/user-stories/US-001-core.md",
+						"content":  "# US-001: Core\n",
+					},
+				},
+			},
+		},
+	}
+
+	ctx := services.WithCompactionMode(context.Background(), "caveman")
+	err := services.GenerateRoadmap(ctx, tempDir, mockClient, nil)
+	require.NoError(t, err)
+
+	specsDir := filepath.Join(tempDir, ".noctifab", "specs")
+	assert.FileExists(t, filepath.Join(specsDir, "01_string.md"))
+
+	// Verify slice was compacted (comment stripped)
+	sliceContent, err := os.ReadFile(filepath.Join(specsDir, "01_string.md"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(sliceContent), "<!-- Slice comment -->")
+	assert.Contains(t, string(sliceContent), "| `GET` | GET k |")
+
+	// Verify core was compacted (comment and divider stripped)
+	coreContent, err := os.ReadFile(filepath.Join(specsDir, "00_core_invariants.md"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(coreContent), "<!-- HTML comment in spec -->")
+	assert.NotContains(t, string(coreContent), "\n---\n")
+}

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.104.0] - 2026-09-26
+
+### Added
+- **Multi-Strategy Spec Chunk Compaction (`pkg/services/spec_partitioner.go`)**:
+  - Extended `PartitionSpecWithCompaction` and `PartitionSpecIfNeededWithCompaction` to apply the active context compaction strategy (`caveman`, `simple_english`, `aggressive`) across all generated domain slice files (`01_*.md` ... `NN_*.md`) as well as `00_core_invariants.md`.
+  - Added `compaction_mode` tracking in `manifest.json` for deterministic, automatic cache invalidation whenever the compaction strategy configuration changes.
+  - Wired `PartitionSpecIfNeededWithCompaction` directly into `roadmap_generator.go`, ensuring all prompt contexts fed to the Product Manager and downstream tasks are uniformly compacted and lean.
+
 ## [0.103.0] - 2026-09-26
 
 ### Added

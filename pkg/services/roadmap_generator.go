@@ -98,17 +98,20 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 	}
 	specContent := string(specBytes)
 
+	compactionMode := CompactionModeFromContext(ctx)
 	// If specification has domain sections/tables, deterministically partition into .noctifab/specs/
-	if manifest, pErr := PartitionSpecIfNeeded(projectPath); pErr == nil && manifest != nil && len(manifest.Sections) > 0 {
-		fmt.Printf("ℹ [Product Manager] Deterministically partitioned SPEC.md into .noctifab/specs/ (%d domain slices, %s)\n", len(manifest.Sections), manifest.CoreFile)
+	if manifest, pErr := PartitionSpecIfNeededWithCompaction(projectPath, compactionMode); pErr == nil && manifest != nil && len(manifest.Sections) > 0 {
+		compactionInfo := ""
+		if compactionMode != "" && compactionMode != "none" {
+			compactionInfo = fmt.Sprintf(", compaction: %s", compactionMode)
+		}
+		fmt.Printf("ℹ [Product Manager] Deterministically partitioned SPEC.md into .noctifab/specs/ (%d domain slices, %s%s)\n", len(manifest.Sections), manifest.CoreFile, compactionInfo)
 		corePath := filepath.Join(projectPath, ".noctifab", "specs", manifest.CoreFile)
 		if coreBytes, rErr := os.ReadFile(corePath); rErr == nil && len(coreBytes) > 0 {
 			specContent = string(coreBytes)
 		}
-	}
-
-	if mode := CompactionModeFromContext(ctx); mode != "" && mode != "none" {
-		specContent = llm.CompactMarkdownSpecWithMode(specContent, mode)
+	} else if compactionMode != "" && compactionMode != "none" {
+		specContent = llm.CompactMarkdownSpecWithMode(specContent, compactionMode)
 	}
 	specContent = SliceSpecForRoadmap(specContent)
 

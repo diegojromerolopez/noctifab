@@ -10,17 +10,20 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 )
 
 // SpecManifest describes the deterministic partitioning of SPEC.md into .noctifab/specs/.
 type SpecManifest struct {
-	SpecSource  string             `json:"spec_source"`
-	SpecSHA256  string             `json:"spec_sha256"`
-	GeneratedAt string             `json:"generated_at"`
-	TotalLines  int                `json:"total_lines"`
-	TotalBytes  int                `json:"total_bytes"`
-	CoreFile    string             `json:"core_file"`
-	Sections    []SpecSectionEntry `json:"sections"`
+	SpecSource     string             `json:"spec_source"`
+	SpecSHA256     string             `json:"spec_sha256"`
+	CompactionMode string             `json:"compaction_mode,omitempty"`
+	GeneratedAt    string             `json:"generated_at"`
+	TotalLines     int                `json:"total_lines"`
+	TotalBytes     int                `json:"total_bytes"`
+	CoreFile       string             `json:"core_file"`
+	Sections       []SpecSectionEntry `json:"sections"`
 }
 
 // SpecSectionEntry represents a sliced domain subsystem from SPEC.md.
@@ -41,6 +44,12 @@ var commandTableRowRegex = regexp.MustCompile(`^\|\s*` + "`([A-Z0-9_]+)`" + `\s*
 // PartitionSpecIfNeeded checks if projectPath/SPEC.md exists and partitions it into .noctifab/specs/.
 // It is idempotent and skips re-partitioning if the SHA256 matches manifest.json.
 func PartitionSpecIfNeeded(projectPath string) (*SpecManifest, error) {
+	return PartitionSpecIfNeededWithCompaction(projectPath, "")
+}
+
+// PartitionSpecIfNeededWithCompaction checks if projectPath/SPEC.md exists and partitions it into .noctifab/specs/
+// using the specified compaction strategy across all chunk files.
+func PartitionSpecIfNeededWithCompaction(projectPath string, compactionMode string) (*SpecManifest, error) {
 	specPath := filepath.Join(projectPath, "SPEC.md")
 	data, err := os.ReadFile(specPath)
 	if err != nil {
@@ -56,32 +65,42 @@ func PartitionSpecIfNeeded(projectPath string) (*SpecManifest, error) {
 	hash := sha256.Sum256(data)
 	specHash := hex.EncodeToString(hash[:])
 
+	cleanCompactionMode := strings.ToLower(strings.TrimSpace(compactionMode))
 	// Check cache
 	if mData, err := os.ReadFile(manifestPath); err == nil {
 		var manifest SpecManifest
-		if json.Unmarshal(mData, &manifest) == nil && manifest.SpecSHA256 == specHash {
+		if json.Unmarshal(mData, &manifest) == nil &&
+			manifest.SpecSHA256 == specHash &&
+			strings.ToLower(strings.TrimSpace(manifest.CompactionMode)) == cleanCompactionMode {
 			return &manifest, nil
 		}
 	}
 
-	return PartitionSpec(string(data), specsDir, specHash)
+	return PartitionSpecWithCompaction(string(data), specsDir, specHash, cleanCompactionMode)
 }
 
 // PartitionSpec deterministically parses specContent and writes slices + manifest.json into outputDir.
 func PartitionSpec(specContent string, outputDir string, specHash string) (*SpecManifest, error) {
+	return PartitionSpecWithCompaction(specContent, outputDir, specHash, "")
+}
+
+// PartitionSpecWithCompaction deterministically parses specContent and writes compacted slices + manifest.json into outputDir.
+func PartitionSpecWithCompaction(specContent string, outputDir string, specHash string, compactionMode string) (*SpecManifest, error) {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating specs output directory %q: %w", outputDir, err)
 	}
 
+	cleanCompactionMode := strings.ToLower(strings.TrimSpace(compactionMode))
 	lines := strings.Split(specContent, "\n")
 	manifest := &SpecManifest{
-		SpecSource:  "SPEC.md",
-		SpecSHA256:  specHash,
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		TotalLines:  len(lines),
-		TotalBytes:  len(specContent),
-		CoreFile:    "00_core_invariants.md",
-		Sections:    make([]SpecSectionEntry, 0),
+		SpecSource:     "SPEC.md",
+		SpecSHA256:     specHash,
+		CompactionMode: cleanCompactionMode,
+		GeneratedAt:    time.Now().UTC().Format(time.RFC3339),
+		TotalLines:     len(lines),
+		TotalBytes:     len(specContent),
+		CoreFile:       "00_core_invariants.md",
+		Sections:       make([]SpecSectionEntry, 0),
 	}
 
 	type sectionBlock struct {
@@ -141,6 +160,9 @@ func PartitionSpec(specContent string, outputDir string, specHash string) (*Spec
 			filePath := filepath.Join(outputDir, fileName)
 
 			sliceContent := strings.Join(sec.lines, "\n")
+			if cleanCompactionMode != "" && cleanCompactionMode != "none" {
+				sliceContent = llm.CompactMarkdownSpecWithMode(sliceContent, cleanCompactionMode)
+			}
 			if err := os.WriteFile(filePath, []byte(sliceContent), 0644); err != nil {
 				return nil, fmt.Errorf("writing domain slice %q: %w", fileName, err)
 			}
@@ -170,6 +192,9 @@ func PartitionSpec(specContent string, outputDir string, specHash string) (*Spec
 	// Write 00_core_invariants.md
 	coreFilePath := filepath.Join(outputDir, manifest.CoreFile)
 	coreContent := strings.Join(coreLines, "\n")
+	if cleanCompactionMode != "" && cleanCompactionMode != "none" {
+		coreContent = llm.CompactMarkdownSpecWithMode(coreContent, cleanCompactionMode)
+	}
 	if err := os.WriteFile(coreFilePath, []byte(coreContent), 0644); err != nil {
 		return nil, fmt.Errorf("writing core invariants file %q: %w", manifest.CoreFile, err)
 	}

@@ -3,6 +3,7 @@ package services
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -166,4 +167,151 @@ func TestPartitionSpec_RealPyedisSpec(t *testing.T) {
 	t.Logf("Pyedis partitioned into %d sections with %d total commands across tables (Core file: %d bytes)", len(manifest.Sections), totalCommands, len(coreBytes))
 	assert.Less(t, len(coreBytes), 50000, "Core file should be substantially compacted compared to original 88KB")
 	assert.Contains(t, string(coreBytes), "Detailed command matrix partitioned into")
+}
+
+func TestPartitionSpecWithCompaction_AllChunksCompacted(t *testing.T) {
+	tempDir := t.TempDir()
+	outDir := filepath.Join(tempDir, ".noctifab", "specs")
+
+	sampleSpec := `# Sample Specification
+<!-- Some internal author comment that should be stripped -->
+
+## 1. Overview & Architecture
+Please note that in order to establish a clean foundation, the system is configured to operate in memory.
+---
+
+## 2. Directory Layout
+- src/main.py
+- src/commands.py
+
+## 6. Supported Commands & Parity Semantics
+
+### 6.1 String Commands
+<!-- Another comment inside slice -->
+It should be noted that strings are binary-safe buffers.
+| Command | Signature | Success | Error |
+| :--- | :--- | :--- | :--- |
+| ` + "`GET`" + ` | GET key | $len\r\nval\r\n | -ERR |
+| ` + "`SET`" + ` | SET key val | +OK\r\n | -ERR |
+`
+
+	hash := sha256.Sum256([]byte(sampleSpec))
+	specHash := hex.EncodeToString(hash[:])
+
+	// 1. Partition with caveman compaction
+	manifest, err := PartitionSpecWithCompaction(sampleSpec, outDir, specHash, "caveman")
+	require.NoError(t, err)
+	require.NotNil(t, manifest)
+	assert.Equal(t, "caveman", manifest.CompactionMode)
+
+	// Verify domain slice 01_string.md is compacted (no HTML comments)
+	stringSliceBytes, err := os.ReadFile(filepath.Join(outDir, "01_string.md"))
+	require.NoError(t, err)
+	stringSlice := string(stringSliceBytes)
+	assert.NotContains(t, stringSlice, "<!-- Another comment inside slice -->")
+	assert.Contains(t, stringSlice, "| `GET` | GET key |")
+
+	// Verify 00_core_invariants.md is compacted (no HTML comments, no divider lines ---)
+	coreBytes, err := os.ReadFile(filepath.Join(outDir, "00_core_invariants.md"))
+	require.NoError(t, err)
+	coreStr := string(coreBytes)
+	assert.NotContains(t, coreStr, "<!-- Some internal author comment")
+	assert.NotContains(t, coreStr, "\n---\n")
+
+	// 2. Cache invalidation on compaction mode change
+	projDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(projDir, "SPEC.md"), []byte(sampleSpec), 0644))
+
+	mNone, err := PartitionSpecIfNeededWithCompaction(projDir, "none")
+	require.NoError(t, err)
+	assert.Equal(t, "none", mNone.CompactionMode)
+
+	// Changing to simple_english should trigger re-partitioning
+	mSimple, err := PartitionSpecIfNeededWithCompaction(projDir, "simple_english")
+	require.NoError(t, err)
+	assert.Equal(t, "simple_english", mSimple.CompactionMode)
+
+	// Changing to aggressive should trigger re-partitioning
+	mAggressive, err := PartitionSpecIfNeededWithCompaction(projDir, "aggressive")
+	require.NoError(t, err)
+	assert.Equal(t, "aggressive", mAggressive.CompactionMode)
+}
+
+func TestPartitionSpecWithCompaction_MultipleSlicesAllCompacted(t *testing.T) {
+	specWithComments := `# Comprehensive Spec
+<!-- Global header comment -->
+
+## 1. Overview
+Please note that in order to establish a durable store, all state persists to disk.
+---
+
+## 2. Directory Layout
+- src/main.py
+
+## 6. Supported Commands & Parity Semantics
+
+### 6.1 String Commands
+<!-- Slice 1 comment -->
+Strings are simple key-value entries.
+| Command | Signature |
+| :--- | :--- |
+| ` + "`GET`" + ` | GET k |
+
+### 6.2 List Commands
+<!-- Slice 2 comment -->
+Lists are ordered sequences of strings.
+| Command | Signature |
+| :--- | :--- |
+| ` + "`LPUSH`" + ` | LPUSH k v |
+
+### 6.3 Hash Commands
+<!-- Slice 3 comment -->
+Hashes represent field-value maps.
+| Command | Signature |
+| :--- | :--- |
+| ` + "`HSET`" + ` | HSET k f v |
+`
+	hash := sha256.Sum256([]byte(specWithComments))
+	specHash := hex.EncodeToString(hash[:])
+
+	strategies := []struct {
+		name string
+		mode string
+	}{
+		{name: "Caveman", mode: "caveman"},
+		{name: "SimpleEnglish", mode: "simple_english"},
+		{name: "Aggressive", mode: "aggressive"},
+	}
+
+	for _, tt := range strategies {
+		t.Run(tt.name, func(t *testing.T) {
+			outDir := filepath.Join(t.TempDir(), ".noctifab", "specs")
+			manifest, err := PartitionSpecWithCompaction(specWithComments, outDir, specHash, tt.mode)
+			require.NoError(t, err)
+			require.NotNil(t, manifest)
+			assert.Len(t, manifest.Sections, 3)
+
+			// Verify 00_core_invariants.md is compacted
+			coreBytes, err := os.ReadFile(filepath.Join(outDir, "00_core_invariants.md"))
+			require.NoError(t, err)
+			assert.NotContains(t, string(coreBytes), "<!-- Global header comment -->")
+			if tt.mode == "caveman" || tt.mode == "aggressive" {
+				assert.NotContains(t, string(coreBytes), "\n---\n")
+			}
+
+			// Verify ALL domain slice files are compacted
+			expectedFiles := []string{"01_string.md", "02_list.md", "03_hash.md"}
+			for idx, fname := range expectedFiles {
+				slicePath := filepath.Join(outDir, fname)
+				require.FileExists(t, slicePath)
+				contentBytes, err := os.ReadFile(slicePath)
+				require.NoError(t, err)
+				contentStr := string(contentBytes)
+
+				comment := fmt.Sprintf("<!-- Slice %d comment -->", idx+1)
+				assert.NotContains(t, contentStr, comment, "expected slice %s to have comments stripped", fname)
+				assert.NotEmpty(t, contentStr)
+			}
+		})
+	}
 }
