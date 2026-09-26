@@ -115,7 +115,6 @@ func isCreditExhausted(err error) bool {
 		strings.Contains(low, "arrearage")
 }
 
-
 func (c *Client) getNextAPIKey() string {
 	if len(c.APIKeys) > 0 {
 		idx := atomic.AddUint64(&c.keyIndex, 1) - 1

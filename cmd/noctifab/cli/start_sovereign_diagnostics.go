@@ -34,9 +34,20 @@ type SovereignDiagnosticBundle struct {
 // traces, and error logs to extract all concrete diagnostic data and offending
 // source code snippets into a unified diagnostic report.
 func CollectSovereignDiagnostics(targetDir string, state *domain.State, failedStories, acceptanceGaps []string, validationOutput string, telemetryInject ...bool) string {
+	return CollectSovereignDiagnosticsWithWindow(targetDir, state, failedStories, acceptanceGaps, validationOutput, 0, telemetryInject...)
+}
+
+// CollectSovereignDiagnosticsWithWindow applies an optional sliding window character budget to validation output.
+// If slidingWindow <= 0, no sliding window or truncation is performed, retaining full raw logs.
+func CollectSovereignDiagnosticsWithWindow(targetDir string, state *domain.State, failedStories, acceptanceGaps []string, validationOutput string, slidingWindow int, telemetryInject ...bool) string {
 	inject := len(telemetryInject) > 0 && telemetryInject[0]
 	var bundle SovereignDiagnosticBundle
-	bundle.ValidationOutput = strings.TrimSpace(validationOutput)
+
+	trimmedValidation := strings.TrimSpace(validationOutput)
+	if slidingWindow > 0 && len(trimmedValidation) > slidingWindow {
+		trimmedValidation = "... [log truncated by sovereign rescue sliding window] ...\n" + trimmedValidation[len(trimmedValidation)-slidingWindow:]
+	}
+	bundle.ValidationOutput = trimmedValidation
 	bundle.AcceptanceGaps = acceptanceGaps
 	bundle.FailedStories = failedStories
 	bundle.OffendingFiles = make(map[string]string)

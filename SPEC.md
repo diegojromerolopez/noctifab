@@ -1328,9 +1328,19 @@ To optimize execution speed and efficiency, the orchestrator divides the executi
 | Node Type | Execution Mode | Example Operations |
 |---|---|---|
 | **Agentic** | LLM-driven | Task planning, coding implementation, diagnostic error analysis, clarification questions. |
-| **Deterministic** | Local Go Runner | Running tests/linters, code formatting (`go fmt`), compiling/building, branching, git commits/merges. |
+| **Deterministic** | Local Go Runner | Running tests/linters, code formatting (`go fmt`), compiling/building, branching, git commits/merges, static AST facade/delta validation, and process/socket management. |
 
 By offloading formatting, compilation checks, and merge logic to deterministic Go code, the system minimizes LLM token consumption and increases execution robustness.
+
+##### Deterministic Quality & Anti-Hallucination Gates
+The deterministic runtime enforces strict programmatic quality gates across the execution lifecycle:
+*   **Traceback-to-Diff Alignment Guard (`pkg/services/repair_alignment_guard.go`):** Parses failure logs across Python, Go, Node, and Rust to extract offending file paths. Rejects sycophantic repair mutations that touch unrelated files or repeat identical failing diff hashes.
+*   **Isolated Task-Level Sovereign Rescue (`pkg/services/orchestrator_dispatch_deadlock.go`):** Intercepts stalled DAG dispatch cycles when 0 tasks are ready, executing an isolated, single-task Sovereign Fallback rescue to unblock the pipeline before declaring story deadlock.
+*   **Deterministic Container & Socket Teardown Guard (`pkg/services/container_teardown_guard.go`):** Pre-flight and post-execution discovery of Docker Compose files and project ports (`DetectProjectPorts`), executing `docker compose down -v --remove-orphans` and socket unbinding to guarantee hermetic test execution.
+*   **Mutation Delta Invariant Guard (`pkg/services/mutation_delta_guard.go`):** Verifies that authored tests for mutating operations assert algebraic state deltas ($\Delta = \text{len}_{\text{after}} - \text{len}_{\text{before}}$) or descriptive contract messages rather than uncorroborated magic scalar returns.
+*   **Facade Integrity Validator (`pkg/services/facade_integrity_validator.go`):** Statically parses declared classes and methods across source modules and cross-references calls in test suites, rejecting missing facade method calls prior to test execution.
+*   **Rich Contract Diagnostic Guard (`pkg/services/test_contract_diagnostic_guard.go`):** Enforces that authored test assertions include descriptive failure messages (`msg=`, input arguments, expected contract rules) to provide full diagnostic context upon failure.
+*   **Sovereign Rescue Diagnostic Sliding Window (`fallback.sovereign_rescue.context.sliding_window`):** Configurable character budget cap for failure logs in whole-project sovereign recovery prompts, preserving the failure traceback tail while pruning uninformative passing test logs.
 
 #### 3.5.3. DB-backed State Coordination & Command Channel Event Loop
 The orchestrator operates in a multi-agent environment where multiple worker threads (agents) execute tasks and modify the workspace concurrently. To coordinate these tasks safely:

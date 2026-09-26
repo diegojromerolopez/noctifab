@@ -659,6 +659,7 @@ Configuration values can be set or overridden via environment variables without 
 | Environment Variable | Description | Default |
 |---|---|---|
 | `NOCTIFAB_RESCUE_MAX_TURNS` | Maximum multi-turn cycles for Autonomous Sovereign Rescue Takeover (`fallback.sovereign_rescue.max_turns`) | `2` |
+| `NOCTIFAB_RESCUE_SLIDING_WINDOW` | Character budget for sovereign rescue diagnostic sliding window (`fallback.sovereign_rescue.context.sliding_window`) | `0` (disabled) |
 | `NOCTIFAB_FALLBACK_ENABLED` | Enable or disable the background fallback watchdog goroutine (`fallback.enabled`) | `true` |
 | `NOCTIFAB_FALLBACK_POLL_INTERVAL` | Fallback watchdog polling interval (e.g. `30s`, `1m`) | `30s` |
 | `NOCTIFAB_FALLBACK_MAX_RETRIES` | Maximum retry/unblock attempts before marking a task failed | `3` |

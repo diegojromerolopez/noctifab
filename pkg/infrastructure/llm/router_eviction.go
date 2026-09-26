@@ -100,7 +100,6 @@ func isEvictionError(err error) bool {
 		(strings.Contains(msg, "model") && (strings.Contains(msg, "is not found") || strings.Contains(msg, "does not exist")))
 }
 
-
 // GetEvictedProviders returns a map of candidate names to their eviction details.
 func (r *ResilientLLMRouter) GetEvictedProviders() map[string]string {
 	r.mu.RLock()

@@ -111,7 +111,6 @@ func TestApplyPatchTool_Execute(t *testing.T) {
 +}
 `
 
-
 		res, err := tool.Execute(context.Background(), state, map[string]any{
 			"patch": patch,
 		})

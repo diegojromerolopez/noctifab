@@ -132,7 +132,7 @@ func TestSovereignRescue_E2EGateAndAntiStub(t *testing.T) {
 							Tool: "write_file",
 							Args: map[string]any{
 								"path":    "tests/test_app.py",
-								"content": "import unittest\nclass TestApp(unittest.TestCase):\n    def test_real(self):\n        self.assertEqual(len([1,2]), 2)\n",
+								"content": "import unittest\nclass TestApp(unittest.TestCase):\n    def test_real(self):\n        self.assertEqual(len([1,2]), 2, msg=\"expected length 2\")\n",
 							},
 						},
 					},

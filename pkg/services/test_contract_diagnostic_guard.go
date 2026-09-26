@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-
 // ContractDiagnosticViolation reports a test assertion that lacks diagnostic context
 // (e.g. bare assertEqual without operation input data or contract rule).
 type ContractDiagnosticViolation struct {
@@ -28,8 +27,6 @@ type TestContractDiagnosticGuard struct{}
 func NewTestContractDiagnosticGuard() *TestContractDiagnosticGuard {
 	return &TestContractDiagnosticGuard{}
 }
-
-
 
 // ValidateDiagnosticRichness inspects test code and flags assertions that lack
 // descriptive message payloads.
@@ -80,7 +77,6 @@ func isExecutionAssertion(expr string) bool {
 	// Check for a nested function or method call inside the assertion arguments: e.g. fn(...) or obj.method(...)
 	return strings.Contains(inner, "(")
 }
-
 
 // hasThirdDiagnosticArg checks if an assertion call has at least 2 top-level commas (3 arguments).
 func hasThirdDiagnosticArg(expr string) bool {
@@ -135,7 +131,6 @@ func hasThirdDiagnosticArg(expr string) bool {
 
 	return topLevelCommas >= 2
 }
-
 
 // FormatRichContractMessage generates a standard, high-visibility diagnostic message string
 // for inclusion in test assertions.

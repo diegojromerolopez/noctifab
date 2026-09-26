@@ -164,11 +164,17 @@ func (tsi *TestStreamIsolator) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, 
 		idleTimer.Reset(tsi.cfg.IdleTimeout)
 	}
 
+	var cmdDone bool
+	var cmdErr error
+
 	for {
 		select {
 		case line, ok := <-lineChan:
 			if !ok {
 				lineChan = nil
+				if cmdDone {
+					return outputBuf.Bytes(), cmdErr
+				}
 				continue
 			}
 			mu.Lock()
@@ -234,7 +240,11 @@ func (tsi *TestStreamIsolator) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, 
 
 		case waitErr := <-done:
 			_ = tsi.killGroup(cmd, syscall.SIGKILL)
-			return outputBuf.Bytes(), waitErr
+			cmdDone = true
+			cmdErr = waitErr
+			if lineChan == nil {
+				return outputBuf.Bytes(), waitErr
+			}
 		}
 	}
 }

@@ -143,3 +143,33 @@ func TestCollectSovereignDiagnostics_IncludesTelemetrySpans(t *testing.T) {
 		t.Errorf("expected NO telemetry spans section in sovereign diagnostics by default")
 	}
 }
+
+func TestCollectSovereignDiagnostics_SlidingWindow(t *testing.T) {
+	longOutput := strings.Repeat("A", 1000) + "TARGET_FAILURE_TAIL"
+
+	t.Run("when slidingWindow is 0 or negative, raw output is retained completely", func(t *testing.T) {
+		diag := CollectSovereignDiagnosticsWithWindow("", nil, nil, nil, longOutput, 0)
+		if !strings.Contains(diag, strings.Repeat("A", 1000)) {
+			t.Errorf("expected full log retained when slidingWindow=0")
+		}
+		if !strings.Contains(diag, "TARGET_FAILURE_TAIL") {
+			t.Errorf("expected failure tail present")
+		}
+		if strings.Contains(diag, "log truncated by sovereign rescue sliding window") {
+			t.Errorf("did not expect truncation header when slidingWindow=0")
+		}
+	})
+
+	t.Run("when slidingWindow is set, truncates to sliding window and preserves tail", func(t *testing.T) {
+		diag := CollectSovereignDiagnosticsWithWindow("", nil, nil, nil, longOutput, 50)
+		if !strings.Contains(diag, "log truncated by sovereign rescue sliding window") {
+			t.Errorf("expected truncation notice when log exceeds sliding window")
+		}
+		if !strings.Contains(diag, "TARGET_FAILURE_TAIL") {
+			t.Errorf("expected failure tail preserved in truncated log")
+		}
+		if strings.Contains(diag, strings.Repeat("A", 100)) {
+			t.Errorf("expected head of 1000 As to be pruned by sliding window")
+		}
+	})
+}

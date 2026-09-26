@@ -187,7 +187,11 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 
 	_, lastFailureLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
 	telemetryInject := opts.Cfg != nil && opts.Cfg.Sandbox.Telemetry.Inject
-	diagnostics := CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, telemetryInject)
+	slidingWindow := 0
+	if opts.Cfg != nil {
+		slidingWindow = opts.Cfg.Fallback.SovereignRescue.GetSlidingWindow()
+	}
+	diagnostics := CollectSovereignDiagnosticsWithWindow(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, slidingWindow, telemetryInject)
 
 	resolvedStrategy := ResolveToolchainStrategy(ctx, opts.ToolchainStrategy, nil)
 	bestCommit := captureSovereignBaselineCommit(ctx, opts.GitClient)
@@ -353,7 +357,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		if len(feedbackParts) > 0 {
 			lastFailureLog = fmt.Sprintf("%s\n\nVALIDATION OUTPUT:\n%s", strings.Join(feedbackParts, "\n\n"), newLog)
 		}
-		diagnostics = CollectSovereignDiagnostics(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, telemetryInject)
+		diagnostics = CollectSovereignDiagnosticsWithWindow(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, slidingWindow, telemetryInject)
 		fmt.Printf("⚠️ [Sovereign Rescue] Turn %d verification failed. Feeding diagnostics into turn %d...\n", turn, turn+1)
 	}
 

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.102.0] - 2026-09-26
+
+### Added
+- **Sovereign Rescue Diagnostic Sliding Window (`fallback.sovereign_rescue.context.sliding_window`)**:
+  - Configurable failure log character budget for whole-project sovereign recovery prompts (`sovereign_rescue.context.sliding_window: 15000` or `NOCTIFAB_RESCUE_SLIDING_WINDOW`).
+  - By default (if omitted or set to 0), sliding window is disabled, preserving full raw logs.
+  - When configured, prunes verbose passing test logs while preserving the failure traceback tail to prevent prompt blowups and context deadline timeouts on multi-turn recovery.
+- **Mutation Delta Invariant Guard (`pkg/services/mutation_delta_guard.go`)**:
+  - Enforces that authored unit and integration tests for state-mutating operations assert algebraic state deltas ($\Delta = \text{len}_{\text{after}} - \text{len}_{\text{before}}$) or include descriptive failure contracts (`msg=`) rather than asserting uncorroborated magic scalar returns.
+- **Documentation Synchronization**:
+  - Updated `docs/configuration.md`, `docs/fallback_agent.md`, `docs/cli_usage.md`, and `SPEC.md` with complete reference documentation for the new deterministic gates and sliding window configurations.
+
 ## [0.101.0] - 2026-09-26
 
 ### Added

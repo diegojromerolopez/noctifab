@@ -221,7 +221,6 @@ In case of any persistent or unresolvable error, force a solution (even if simpl
 `, prevPrompt, toolOutputsBlock, testOutput, testErr, msg)
 }
 
-
 type RepairResult struct {
 	Success    bool
 	Output     string

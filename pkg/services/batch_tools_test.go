@@ -52,7 +52,6 @@ func TestWriteFilesTool_Execute_ListFormat(t *testing.T) {
 			map[string]any{"path": "src/main.go", "content": "package main"},
 			map[string]any{"path": "src/util.go", "content": "package main\n\nfunc Util() string {\n\treturn \"util\"\n}"},
 		},
-
 	}
 
 	out, err := tool.Execute(context.Background(), state, args)

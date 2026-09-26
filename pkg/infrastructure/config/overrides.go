@@ -96,6 +96,18 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.Fallback.SovereignRescue.MissingToolchainStrategy = strings.ToLower(strings.TrimSpace(val))
 		cfg.Unblocker.SovereignRescue.MissingToolchainStrategy = strings.ToLower(strings.TrimSpace(val))
 	}
+	if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_SLIDING_WINDOW"); ok {
+		if i, err := strconv.Atoi(val); err == nil && i > 0 {
+			if cfg.Fallback.SovereignRescue.Context == nil {
+				cfg.Fallback.SovereignRescue.Context = &SovereignRescueContextConfig{}
+			}
+			cfg.Fallback.SovereignRescue.Context.SlidingWindow = i
+			if cfg.Unblocker.SovereignRescue.Context == nil {
+				cfg.Unblocker.SovereignRescue.Context = &SovereignRescueContextConfig{}
+			}
+			cfg.Unblocker.SovereignRescue.Context.SlidingWindow = i
+		}
+	}
 	if val, ok := os.LookupEnv("NOCTIFAB_SANDBOX_MODE"); ok {
 		cfg.Sandbox.Mode = val
 	}

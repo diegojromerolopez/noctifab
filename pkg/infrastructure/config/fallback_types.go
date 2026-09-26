@@ -7,14 +7,27 @@ import (
 	"time"
 )
 
+// SovereignRescueContextConfig configures diagnostic prompt context assembly for sovereign recovery turns.
+type SovereignRescueContextConfig struct {
+	SlidingWindow int `yaml:"sliding_window,omitempty"`
+}
+
 // SovereignRescueConfig configures the autonomous whole-project sovereign recovery engine.
 type SovereignRescueConfig struct {
-	Enabled                  *bool              `yaml:"enabled,omitempty"`
-	MaxTurns                 int                `yaml:"max_turns"`
-	MaxAttempts              int                `yaml:"max_attempts,omitempty"`
-	Timeout                  Duration           `yaml:"timeout,omitempty"`
-	MissingToolchainStrategy string             `yaml:"missing_toolchain_strategy,omitempty"`
-	Providers                []AgentProviderRef `yaml:"providers,omitempty"`
+	Enabled                  *bool                         `yaml:"enabled,omitempty"`
+	MaxTurns                 int                           `yaml:"max_turns"`
+	MaxAttempts              int                           `yaml:"max_attempts,omitempty"`
+	Timeout                  Duration                      `yaml:"timeout,omitempty"`
+	MissingToolchainStrategy string                        `yaml:"missing_toolchain_strategy,omitempty"`
+	Providers                []AgentProviderRef            `yaml:"providers,omitempty"`
+	Context                  *SovereignRescueContextConfig `yaml:"context,omitempty"`
+}
+
+func (s SovereignRescueConfig) GetSlidingWindow() int {
+	if s.Context != nil && s.Context.SlidingWindow > 0 {
+		return s.Context.SlidingWindow
+	}
+	return 0
 }
 
 func (s SovereignRescueConfig) IsEnabled() bool {

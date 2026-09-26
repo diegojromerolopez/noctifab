@@ -247,6 +247,8 @@ fallback:
     max_turns: 10      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
     timeout: 5m
     missing_toolchain_strategy: auto # "auto" | "docker" | "local" | "off"
+    context:
+      sliding_window: 15000          # Optional character budget cap for failure logs (0 = disabled)
     providers:
       - name: gemini
         temperature: 0.3

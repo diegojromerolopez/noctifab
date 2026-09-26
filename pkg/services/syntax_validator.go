@@ -342,4 +342,3 @@ func loadProjectSourceFiles(srcDir string) map[string]string {
 	})
 	return files
 }
-

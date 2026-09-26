@@ -154,4 +154,3 @@ func Run() {
 		assert.Contains(t, violation.Message, "lacks descriptive msg=")
 	})
 }
-

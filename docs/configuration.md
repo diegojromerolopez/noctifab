@@ -633,9 +633,29 @@ fallback:
     - `"docker"`: Instructs the agent to create a `Dockerfile` with the missing compiler/runtime and wire `Makefile` (`build`, `test`, `e2e`) to execute containerized via `docker run --rm -v $(PWD):/app -w /app ...`.
     - `"local"`: Instructs the agent to install missing tools onto the host machine via `install_package` (pip, brew, apt, npm, cargo, etc.).
     - `"off"`: Disables fallback recovery for missing toolchains.
+  - **`context.sliding_window`** (Integer): Maximum character budget for failure logs in sovereign rescue prompts (e.g. `15000`). If omitted or set to `0` (default), no sliding window or truncation is performed and full raw logs are passed to the model. When configured, prunes verbose passing test logs while preserving the failure tail (tracebacks, assertion errors). Configurable via environment variable `NOCTIFAB_RESCUE_SLIDING_WINDOW`.
   - **`providers`** (List of `AgentProviderRef`): Explicit prioritized LLM providers for Sovereign Rescue. Uses the identical schema as `agents.<role>.providers` (`name`, `model`, `temperature`, `max_tokens`, etc.), overriding `roles.fallback.profile`. Every corrective turn is logged to console/stderr and persisted directly to `state.LastActions` in the database.
 
 See [fallback_agent.md](fallback_agent.md) for full references on the unified self-healing architecture, triggers, and compromise hierarchy.
+
+---
+
+## Deterministic Anti-Hallucination & Quality Guards
+
+Noctifab integrates deterministic compiler, AST, and process guards that intercept hallucinated, sycophantic, or corrupting agent actions without relying on conversational LLM self-evaluation:
+
+- **Traceback-to-Diff Alignment Guard (`pkg/services/repair_alignment_guard.go`)**:
+  Parses error tracebacks across Python, Go, Node.js, and Rust. Enforces that surgical repair edits intersect with the offending files from the traceback or task target files. Rejects sycophantic mutations that edit unrelated files, and rejects identical repeat diff hashes.
+- **Isolated Task-Level Sovereign Rescue (`pkg/services/orchestrator_dispatch_deadlock.go`)**:
+  When a task exhausts retries and causes a DAG deadlock, the orchestrator triggers an isolated, task-scoped sovereign rescue inside the task's worktree. Downstream dependencies are unblocked without aborting the entire story into whole-project takeover.
+- **Deterministic Container & Socket Teardown Guard (`pkg/services/container_teardown_guard.go`)**:
+  Discovers Docker Compose files (`docker-compose.yml`, `docker-compose.e2e.yml`) and declared project ports (`DetectProjectPorts`). Deterministically executes `docker compose down -v --remove-orphans` and reaps orphan TCP port listeners during pre-flight and post-execution hooks.
+- **Mutation Delta Invariant Guard (`pkg/services/mutation_delta_guard.go`)**:
+  Enforces that authored unit and integration tests for mutating operations assert algebraic state deltas ($\Delta = \text{len}_{\text{after}} - \text{len}_{\text{before}}$) or contain descriptive assertion contract messages rather than uncorroborated magic scalar returns.
+- **Facade Integrity Validator (`pkg/services/facade_integrity_validator.go`)**:
+  Statically parses classes and declared methods across Python and Go source files. Cross-references method calls in test suites against facade definitions to reject missing method calls (e.g. `AttributeError: 'Store' object has no attribute 'get_hash'`) before tests execute.
+- **Rich Contract Diagnostic Guard (`pkg/services/test_contract_diagnostic_guard.go`)**:
+  Enforces that authored test assertions include descriptive failure message payloads (`msg=`, input arguments, expected contract rules) to provide full diagnostic context upon failure.
 
 ---
 
