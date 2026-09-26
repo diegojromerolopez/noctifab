@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.103.0] - 2026-09-26
+
+### Added
+- **Diff Oscillation & Ping-Pong Loop Guard (`pkg/services/diff_oscillation_guard.go`)**:
+  - Deterministically tracks SHA-256 digests of workspace and patch diffs across repair turns.
+  - Automatically detects when an LLM agent reverts to an earlier failed state or cycles between two broken states, halting ping-pong loops immediately.
+- **Regression Barrier & Pass-Loss Guard (`pkg/services/regression_barrier_guard.go`)**:
+  - Tracks a persistent watermark of passing test cases across execution turns.
+  - Rejects patches that break previously passing tests ("fixing test A by breaking test B"), enforcing strict non-regressive monotonic progress.
+- **Semantic Mutation vs No-Op Guard (`pkg/services/semantic_mutation_guard.go`)**:
+  - Normalizes code by stripping comments, docstrings, whitespace, and debug print/log statements across Python, Go, JavaScript, and Rust.
+  - Rejects changes that contain zero structural logic alterations, preventing endless cosmetic or logging loops.
+- **Undeclared Import Guard (`pkg/services/undeclared_import_guard.go`)**:
+  - Fast AST validation inspecting external module imports against language standard libraries and declared project manifests (`pyproject.toml`, `requirements.txt`, `go.mod`, `Cargo.toml`, `package.json`).
+  - Catches hallucinated third-party package dependencies in milliseconds prior to slow compiler or test runner execution.
+- **Relative Module Anchoring Guard (`pkg/services/relative_module_anchor_guard.go`)**:
+  - Resolves relative module import paths against physical filesystem trees.
+  - Flags non-existent target files or directories before launching test harnesses.
+- **Test Case Count Monotonicity Guard (`pkg/services/test_count_monotonicity_guard.go`)**:
+  - Scans and counts test case definitions across test suites.
+  - Strictly rejects edits that decrease the total count of active test cases, preventing LLMs from silently deleting or skipping failing tests.
+- **Test Discovery Parity Guard (`pkg/services/test_discovery_parity_guard.go`)**:
+  - Compares statically declared test definitions with test runner execution metrics.
+  - Rejects runs where tests are authored in the workspace but the test runner discovers or executes 0 tests due to naming or configuration mismatches.
+
 ## [0.102.0] - 2026-09-26
 
 ### Added

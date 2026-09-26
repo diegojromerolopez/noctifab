@@ -1167,6 +1167,16 @@ To prevent non-functional dummy implementations, placeholder stubs, vacuous asse
     *   *Remediation Trigger:* If any violation is found, the orchestrator triggers an immediate remediation turn (`fix` role) before handing off to the Tester.
 2.  **Post-Tester Quality Gate:** Runs immediately after the Tester Agent authors tests. It scans test files for tautological/vacuous assertions (`assert True`, `assert 1 == 1`, empty test functions) and shell error suppression masks (`|| true`, `|| exit 0`, `set +e`), triggering an automatic test fix turn if detected.
 
+#### 3.4.2.1. Deterministic Anti-Hallucination & Anti-Stall Guard Suite
+To eliminate infinite repair loops, sycophantic no-op edits, phantom dependencies, and test suite degradations across agent turns, Noctifab enforces a deterministic guard suite in `pkg/services`:
+
+1. **Diff Oscillation & Ping-Pong Loop Guard (`diff_oscillation_guard.go`):** Tracks cryptographic SHA-256 digests of workspace and patch diffs across repair turns. When a proposed mutation reproduces an earlier failed state ($S_t == S_{t-2}$), the turn is immediately halted, breaking ping-pong oscillations.
+2. **Regression Barrier & Pass-Loss Guard (`regression_barrier_guard.go`):** Maintains a monotonic watermark of previously passing test cases. If a repair patch breaks any test that was passing in preceding turns ("fixing A by breaking B"), the patch is rejected immediately with a regression violation.
+3. **Semantic Mutation vs No-Op Guard (`semantic_mutation_guard.go`):** Code normalizer that strips comments, docstrings, whitespace, and debug print/log statements across Python, Go, TypeScript/JavaScript, and Rust. Changes that contain zero structural logic alterations are rejected as superficial no-op loops.
+4. **Undeclared Import Guard (`undeclared_import_guard.go`):** AST validator inspecting source files for third-party module imports not declared in project build manifests (`pyproject.toml`, `requirements.txt`, `go.mod`, `Cargo.toml`, `package.json`) or standard libraries, failing fast before slow package managers or compilers run.
+5. **Relative Module Anchoring Guard (`relative_module_anchor_guard.go`):** Resolves relative module imports (`from .foo import ...`, `import "./foo"`) against the physical filesystem tree, stopping hallucinations of non-existent directory layouts.
+6. **Test Case Count Monotonicity Guard (`test_count_monotonicity_guard.go`):** Scans test suite files and asserts that the total count of active test functions does not decrease across turns, preventing agents from silently deleting or skipping failing tests to pass quality gates.
+7. **Test Discovery Parity Guard (`test_discovery_parity_guard.go`):** Compares static test case declarations with runner metrics, failing runs where tests are authored in the workspace but the runner reports 0 tests executed.
 
 #### 3.4.3. Harness Sandbox Boundaries (Configurable Isolation Modes)
 To guarantee safe operation and prevent irreversible actions (such as unauthorized commands or data deletion), the execution engine executes all tools and commands inside a restricted, configurable agent harness sandbox. The isolation model is configured via the `--sandbox-mode` CLI flag or `NOCTIFAB_SANDBOX_MODE` environment variable.
