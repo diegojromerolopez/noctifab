@@ -3,9 +3,55 @@ package cli
 import (
 	"fmt"
 	"strings"
+
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 )
 
-func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGaps []string, failureLog string, turn, maxTurns int, resolvedStrategy string, detectedMissing bool) string {
+const sovereignRescuePromptTail = `=== AVAILABLE TOOLS ===
+- write_file: create or overwrite a file. Args: {"path": "relative/path", "content": "..."}
+- write_files: atomically create or overwrite multiple files. Args: {"files": [{"path": "relative/path", "content": "..."}]}
+- edit_file: modify an existing file. Args: {"path": "relative/path", "target_content": "exact code block to replace", "replacement_content": "new code block"}
+- check_socket: test TCP/UDP connection and optional payload ping/pong response. Args: {"host": "127.0.0.1", "port": 6379, "timeout_seconds": 2}
+- check_http: test HTTP endpoint status, headers, and body response. Args: {"url": "http://127.0.0.1:8080/health", "method": "GET", "expected_status": 200}
+- validate_manifest: validate package manifest dependencies (Cargo.toml, pyproject.toml, go.mod, package.json). Args: {"manifest_path": "Cargo.toml"}
+- install_package: install project dependencies via the configured package manager. Args: {"package": "name"}
+
+=== REQUIRED RESPONSE FORMAT ===
+You MUST respond ONLY with a single JSON object matching this schema (do NOT wrap in markdown code fences):
+{
+  "reasoning": "Explanation of fixes or diagnostic probes applied to unblock the project",
+  "actions": [
+    {
+      "tool": "check_socket",
+      "args": {
+        "host": "127.0.0.1",
+        "port": 6379,
+        "timeout_seconds": 2
+      }
+    },
+    {
+      "tool": "write_file",
+      "args": {
+        "path": "src/main.py",
+        "content": "..."
+      }
+    },
+    {
+      "tool": "write_files",
+      "args": {
+        "files": [
+          {"path": "tests/test_app.py", "content": "..."},
+          {"path": "Makefile", "content": "..."}
+        ]
+      }
+    }
+  ]
+}
+`
+
+var sovereignRescuePromptTailLen = len(sovereignRescuePromptTail)
+
+func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGaps []string, failureLog string, turn, maxTurns int, resolvedStrategy string, detectedMissing bool, compactionMode ...string) string {
 	var sb strings.Builder
 	sb.WriteString("You are Noctifab's Sovereign Omni-Agent.\n")
 	sb.WriteString("The standard multi-agent pipeline encountered an unresolvable bottleneck and could not finish.\n")
@@ -59,46 +105,18 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 	sb.WriteString("7. STRUCTURED DATA & SCRIPT-FIRST REFLEX: For any task dealing with structured data (JSON, YAML, TOML, CSV, schemas, ASTs, SQL seed/migrations, tabular data, or graph relationships), ASK YOURSELF if writing and executing an automated script (e.g. in Python or Go) is better, faster, and more reliable than manual string editing. Use scripts to parse, transform, validate, and verify structured data programmatically.\n")
 	sb.WriteString("8. You are an autonomous headless dark-factory repair engine. You DO NOT interact with a human user and do not require chat-based interactive tools. The host orchestrator reads your JSON response and executes all file write/edit and diagnostic actions directly onto the workspace filesystem. You MUST provide all source code, tests, Dockerfiles, and configurations directly inside the 'actions' array using 'write_file', 'write_files', 'edit_file', 'check_socket', 'check_http', 'validate_manifest', or 'install_package'. Do NOT emit apologies, refusals, or claims that you lack workspace write tools.\n\n")
 
-	sb.WriteString("=== AVAILABLE TOOLS ===\n")
-	sb.WriteString("- write_file: create or overwrite a file. Args: {\"path\": \"relative/path\", \"content\": \"...\"}\n")
-	sb.WriteString("- write_files: atomically create or overwrite multiple files. Args: {\"files\": [{\"path\": \"relative/path\", \"content\": \"...\"}]}\n")
-	sb.WriteString("- edit_file: modify an existing file. Args: {\"path\": \"relative/path\", \"target_content\": \"exact code block to replace\", \"replacement_content\": \"new code block\"}\n")
-	sb.WriteString("- check_socket: test TCP/UDP connection and optional payload ping/pong response. Args: {\"host\": \"127.0.0.1\", \"port\": 6379, \"timeout_seconds\": 2}\n")
-	sb.WriteString("- check_http: test HTTP endpoint status, headers, and body response. Args: {\"url\": \"http://127.0.0.1:8080/health\", \"method\": \"GET\", \"expected_status\": 200}\n")
-	sb.WriteString("- validate_manifest: validate package manifest dependencies (Cargo.toml, pyproject.toml, go.mod, package.json). Args: {\"manifest_path\": \"Cargo.toml\"}\n")
-	sb.WriteString("- install_package: install project dependencies via the configured package manager. Args: {\"package\": \"name\"}\n\n")
+	mode := "none"
+	if len(compactionMode) > 0 {
+		mode = strings.ToLower(strings.TrimSpace(compactionMode[0]))
+	}
 
-	sb.WriteString("=== REQUIRED RESPONSE FORMAT ===\n")
-	sb.WriteString("You MUST respond ONLY with a single JSON object matching this schema (do NOT wrap in markdown code fences):\n")
-	sb.WriteString("{\n")
-	sb.WriteString("  \"reasoning\": \"Explanation of fixes or diagnostic probes applied to unblock the project\",\n")
-	sb.WriteString("  \"actions\": [\n")
-	sb.WriteString("    {\n")
-	sb.WriteString("      \"tool\": \"check_socket\",\n")
-	sb.WriteString("      \"args\": {\n")
-	sb.WriteString("        \"host\": \"127.0.0.1\",\n")
-	sb.WriteString("        \"port\": 6379,\n")
-	sb.WriteString("        \"timeout_seconds\": 2\n")
-	sb.WriteString("      }\n")
-	sb.WriteString("    },\n")
-	sb.WriteString("    {\n")
-	sb.WriteString("      \"tool\": \"write_file\",\n")
-	sb.WriteString("      \"args\": {\n")
-	sb.WriteString("        \"path\": \"src/main.py\",\n")
-	sb.WriteString("        \"content\": \"...\"\n")
-	sb.WriteString("      }\n")
-	sb.WriteString("    },\n")
-	sb.WriteString("    {\n")
-	sb.WriteString("      \"tool\": \"write_files\",\n")
-	sb.WriteString("      \"args\": {\n")
-	sb.WriteString("        \"files\": [\n")
-	sb.WriteString("          {\"path\": \"tests/test_app.py\", \"content\": \"...\"},\n")
-	sb.WriteString("          {\"path\": \"Makefile\", \"content\": \"...\"}\n")
-	sb.WriteString("        ]\n")
-	sb.WriteString("      }\n")
-	sb.WriteString("    }\n")
-	sb.WriteString("  ]\n")
-	sb.WriteString("}\n")
+	headStr := sb.String()
+	switch mode {
+	case "caveman", "aggressive":
+		headStr = llm.CompactCaveman(headStr)
+	case "simple_english":
+		headStr = llm.CompactSimpleEnglish(headStr)
+	}
 
-	return sb.String()
+	return headStr + sovereignRescuePromptTail
 }

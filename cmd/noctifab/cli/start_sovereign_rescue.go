@@ -11,6 +11,7 @@ import (
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"go.opentelemetry.io/otel/attribute"
@@ -168,6 +169,25 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		specContent = "Implement a working application based on the repository user stories."
 	}
 
+	rescueCtxCfg := config.ContextConfig{
+		Mode:              "diff_window",
+		WindowSize:        30,
+		Compaction:        "caveman",
+		CavemanCompaction: true,
+	}
+	slidingWindow := 0
+	if opts.Cfg != nil {
+		rescueCtxCfg = opts.Cfg.Fallback.SovereignRescue.GetContextConfig()
+		slidingWindow = opts.Cfg.Fallback.SovereignRescue.GetSlidingWindow()
+	}
+	if slidingWindow <= 0 {
+		slidingWindow = 16000
+	}
+
+	if rescueCtxCfg.GetCompactionMode() != "none" {
+		specContent = llm.CompactMarkdownSpecWithMode(specContent, rescueCtxCfg.GetCompactionMode())
+	}
+
 	// 3. Obtain initial failure diagnostics
 	dummyTask := domain.Task{
 		ID:          "sovereign-project-rescue",
@@ -187,11 +207,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 
 	_, lastFailureLog, _ := opts.Validator.ValidateTask(ctx, state, dummyTask)
 	telemetryInject := opts.Cfg != nil && opts.Cfg.Sandbox.Telemetry.Inject
-	slidingWindow := 0
-	if opts.Cfg != nil {
-		slidingWindow = opts.Cfg.Fallback.SovereignRescue.GetSlidingWindow()
-	}
-	diagnostics := CollectSovereignDiagnosticsWithWindow(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, slidingWindow, telemetryInject)
+	diagnostics := CollectSovereignDiagnosticsWithConfig(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, rescueCtxCfg, slidingWindow, telemetryInject)
 
 	resolvedStrategy := ResolveToolchainStrategy(ctx, opts.ToolchainStrategy, nil)
 	bestCommit := captureSovereignBaselineCommit(ctx, opts.GitClient)
@@ -202,11 +218,12 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		fmt.Printf("🔧 [Sovereign Rescue] Turn %d/%d: Prompting direct sovereign LLM agent...\n", turn, maxTurns)
 
 		detectedMissing := DetectMissingToolchainIndicator(diagnostics)
-		prompt := buildSovereignRescuePrompt(specContent, opts.FailedStories, opts.AcceptanceGaps, diagnostics, turn, maxTurns, resolvedStrategy, detectedMissing)
+		prompt := buildSovereignRescuePrompt(specContent, opts.FailedStories, opts.AcceptanceGaps, diagnostics, turn, maxTurns, resolvedStrategy, detectedMissing, rescueCtxCfg.GetCompactionMode())
 
 		turnCtx, cancel := context.WithTimeout(ctx, turnTimeout)
 		turnCtx = domain.WithRoleContext(turnCtx, string(domain.AgentRoleFallback))
 		turnCtx = context.WithValue(turnCtx, services.AgentRoleKey, "fallback")
+		turnCtx = domain.WithUncompactableTail(turnCtx, sovereignRescuePromptTailLen)
 		resp, err := opts.LLMClient.Complete(turnCtx, prompt)
 		cancel()
 
@@ -357,7 +374,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		if len(feedbackParts) > 0 {
 			lastFailureLog = fmt.Sprintf("%s\n\nVALIDATION OUTPUT:\n%s", strings.Join(feedbackParts, "\n\n"), newLog)
 		}
-		diagnostics = CollectSovereignDiagnosticsWithWindow(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, slidingWindow, telemetryInject)
+		diagnostics = CollectSovereignDiagnosticsWithConfig(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, rescueCtxCfg, slidingWindow, telemetryInject)
 		fmt.Printf("⚠️ [Sovereign Rescue] Turn %d verification failed. Feeding diagnostics into turn %d...\n", turn, turn+1)
 	}
 

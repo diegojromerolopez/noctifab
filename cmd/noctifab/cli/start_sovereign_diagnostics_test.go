@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 )
 
 func TestCollectSovereignDiagnostics(t *testing.T) {
@@ -170,6 +172,72 @@ func TestCollectSovereignDiagnostics_SlidingWindow(t *testing.T) {
 		}
 		if strings.Contains(diag, strings.Repeat("A", 100)) {
 			t.Errorf("expected head of 1000 As to be pruned by sliding window")
+		}
+	})
+}
+
+func TestCollectSovereignDiagnostics_WindowingSchema(t *testing.T) {
+	tmpDir := t.TempDir()
+	largeFile := filepath.Join(tmpDir, "large.py")
+	var lines []string
+	for i := 1; i <= 200; i++ {
+		lines = append(lines, fmt.Sprintf("line_%d = %d", i, i))
+	}
+	_ = os.WriteFile(largeFile, []byte(strings.Join(lines, "\n")), 0644)
+
+	t.Run("when diff_window mode is configured it slices around target line with omissions", func(t *testing.T) {
+		snippet := extractFileSnippetWithConfig(tmpDir, largeFile, 100, config.ContextConfig{
+			Mode:       "diff_window",
+			WindowSize: 20,
+		})
+		if !strings.Contains(snippet, "omitted before") {
+			t.Errorf("expected omission marker before window, got:\n%s", snippet)
+		}
+		if !strings.Contains(snippet, "omitted after") {
+			t.Errorf("expected omission marker after window, got:\n%s", snippet)
+		}
+		if !strings.Contains(snippet, ">> 100 | line_100 = 100") {
+			t.Errorf("expected target line 100 marked with >>, got:\n%s", snippet)
+		}
+	})
+
+	t.Run("when tree_sitter mode is configured it extracts symbol definitions", func(t *testing.T) {
+		pyCode := "import sys\nimport os\n\ndef my_func():\n    pass\n\nclass MyClass:\n    pass\n"
+		for i := 0; i < 30; i++ {
+			pyCode += fmt.Sprintf("x_%d = %d\n", i, i)
+		}
+		pyFile := filepath.Join(tmpDir, "symbols.py")
+		_ = os.WriteFile(pyFile, []byte(pyCode), 0644)
+
+		snippet := extractFileSnippetWithConfig(tmpDir, pyFile, 1, config.ContextConfig{
+			Mode:       "tree_sitter",
+			TreeSitter: true,
+		})
+		if !strings.Contains(snippet, "def my_func") {
+			t.Errorf("expected def symbol in tree-sitter output, got:\n%s", snippet)
+		}
+		if !strings.Contains(snippet, "class MyClass") {
+			t.Errorf("expected class symbol in tree-sitter output, got:\n%s", snippet)
+		}
+	})
+}
+
+func TestBuildSovereignRescuePrompt_Compaction(t *testing.T) {
+	spec := "# The Specification\nPlease kindly ensure that you implement the system with utmost care."
+	stories := []string{"US-001: Implement Core"}
+	gaps := []string{"Missing endpoint"}
+	failureLog := "Traceback (most recent call last):\n  File 'test.py', line 1"
+
+	t.Run("when caveman compaction is specified it compacts the head and preserves JSON schema tail", func(t *testing.T) {
+		prompt := buildSovereignRescuePrompt(spec, stories, gaps, failureLog, 1, 5, "auto", false, "caveman")
+		if !strings.Contains(prompt, "=== AVAILABLE TOOLS ===") {
+			t.Errorf("expected tools section preserved verbatim")
+		}
+		if !strings.Contains(prompt, "=== REQUIRED RESPONSE FORMAT ===") {
+			t.Errorf("expected response format preserved verbatim")
+		}
+		if !strings.Contains(prompt, "write_file") || !strings.Contains(prompt, "check_socket") {
+			t.Errorf("expected tools to remain intact")
 		}
 	})
 }

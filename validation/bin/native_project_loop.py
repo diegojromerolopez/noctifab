@@ -516,6 +516,15 @@ def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = N
 
     # Reset git working copy to baseline commit or upstream base branch
     if os.path.exists(os.path.join(project_dir, ".git")):
+        cfg_backup = None
+        cfg_file = os.path.join(noctifab_dir, "config.yaml")
+        if os.path.exists(cfg_file):
+            try:
+                with open(cfg_file, "r", encoding="utf-8") as f:
+                    cfg_backup = f.read()
+            except Exception:
+                pass
+
         for branch in ["main", "master"]:
             target_ref = baseline_commit or branch
             chk = subprocess.run(["git", "checkout", "-f", branch], cwd=project_dir, capture_output=True, text=True)
@@ -527,6 +536,13 @@ def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = N
                     subprocess.run(["git", "reset", "--hard", f"origin/{branch}"], cwd=project_dir, capture_output=True)
                 subprocess.run(["git", "clean", "-fdx", "-e", ".noctifab/secrets.yaml", "-e", ".noctifab/config.yaml"], cwd=project_dir, capture_output=True)
                 break
+
+        if cfg_backup is not None:
+            try:
+                with open(cfg_file, "w", encoding="utf-8") as f:
+                    f.write(cfg_backup)
+            except Exception:
+                pass
 
     # 5. Ensure hermetic virtual environment exists for Python projects (using uv or python -m venv)
     is_python = any(os.path.exists(os.path.join(project_dir, f)) for f in ["pyproject.toml", "requirements.txt", "setup.py", "Makefile"])

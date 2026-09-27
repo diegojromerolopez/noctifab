@@ -81,6 +81,14 @@ func (g *ContainerTeardownGuard) TeardownProjectEnvironment(ctx context.Context,
 			// Non-fatal if docker is not running or compose file was not active
 			_ = out
 		}
+
+		// Forcefully remove any containers explicitly named in the compose file to eliminate daemon name collision
+		fullComposePath := filepath.Join(projectPath, cf)
+		for _, cn := range extractExplicitContainerNames(fullComposePath) {
+			rmCtx, rmCancel := context.WithTimeout(ctx, 3*time.Second)
+			_, _ = g.composeRunner(rmCtx, projectPath, "docker", "rm", "-f", cn)
+			rmCancel()
+		}
 	}
 
 	// Detect ports and reap any remaining host or container listening processes
@@ -128,4 +136,25 @@ func (g *ContainerTeardownGuard) FormatTeardownSummary(composeFiles []string, po
 		return "clean environment (no containers or ports detected)"
 	}
 	return strings.Join(parts, "; ")
+}
+
+// extractExplicitContainerNames reads a docker-compose manifest and extracts explicit container_name values.
+func extractExplicitContainerNames(filePath string) []string {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "container_name:") {
+			val := strings.TrimSpace(strings.TrimPrefix(trimmed, "container_name:"))
+			val = strings.Trim(val, `"' `)
+			if val != "" && !strings.Contains(val, "$") {
+				names = append(names, val)
+			}
+		}
+	}
+	return names
 }

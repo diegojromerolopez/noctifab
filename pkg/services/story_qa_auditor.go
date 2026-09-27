@@ -108,6 +108,11 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 		if !a.isCommandAllowed(e2eCmd) {
 			fmt.Printf("⚠️  [Story QA Pre-Flight] Skipping E2E command %q: binary not in sandbox allowed_commands\n", e2eCmd)
 		} else {
+			guard := NewContainerTeardownGuard(nil, nil)
+			_ = guard.PreFlightClean(ctx, state.ProjectPath)
+			defer func() {
+				_ = guard.PostRunClean(ctx, state.ProjectPath)
+			}()
 			fmt.Printf("🔍 [Story QA] Running E2E test verification command: %q...\n", e2eCmd)
 			e2eOut, e2eErr := a.runner.RunCommand(ctx, state.ProjectPath, e2eCmd, "")
 			if e2eErr != nil {

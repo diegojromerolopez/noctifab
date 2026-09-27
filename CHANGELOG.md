@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.105.0] - 2026-09-27
+
+### Added
+- **Pre-E2E Teardown Enforcement (`pkg/services/container_teardown_guard.go`, `test_validator_e2e.go`)**:
+  - Enforced pre-flight and post-run container cleaning before executing any E2E suite across `TestValidator`, `RunE2ETestsTool`, `AcceptanceAuditor`, and `StoryQAAuditor`.
+  - Added parsing of explicit `container_name:` definitions from Docker Compose files, issuing forced `docker rm -f` teardown before starting runs to prevent name conflicts on retry loops.
+  - Added Python native E2E test detection distinguishing between `pytest` and `unittest` using `uv` or standard runners.
+- **Whole-Project Sovereign Rescue Context Budgeting (`cmd/noctifab/cli/start_sovereign_diagnostics.go`, `start_sovereign_rescue.go`, `start_sovereign_rescue_prompt.go`)**:
+  - Added full `ContextConfig` configuration support to `SovereignRescueConfig` (`mode`, `window_size`, `diff_window_lines`, `tree_sitter`, `compaction`, `caveman_compaction`, `sliding_window`).
+  - Implemented `extractFileSnippetWithConfig` applying windowing schema (omission of lines outside the window budget) and tree-sitter AST symbol extraction for offending code artifacts.
+  - Added automatic caveman compaction of `SPEC.md` (`llm.CompactMarkdownSpecWithMode`) and prompt head (`llm.CompactCaveman`), reducing prompt payload size by ~90% and completely preventing HTTP client deadline timeouts during whole-project sovereign recovery.
+  - Enforced static preservation of the tools and JSON response contract tail via `domain.WithUncompactableTail`.
+
 ## [0.104.0] - 2026-09-26
 
 ### Added

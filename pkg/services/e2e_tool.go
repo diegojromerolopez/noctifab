@@ -14,10 +14,11 @@ import (
 // RunE2ETestsTool implements run_e2e_tests, allowing any agent (tester, generator,
 // QA auditor, sovereign rescue) to execute containerized and black-box E2E test suites.
 type RunE2ETestsTool struct {
-	Runner  Sandbox
-	Timeout time.Duration
-	E2EMode string
-	E2ECmd  string
+	Runner         Sandbox
+	Timeout        time.Duration
+	E2EMode        string
+	E2ECmd         string
+	ContainerGuard *ContainerTeardownGuard
 }
 
 // Name returns the identifier of the tool.
@@ -53,6 +54,17 @@ func (t *RunE2ETestsTool) Execute(ctx context.Context, state *domain.State, args
 	}
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	defer runCancel()
+
+	// Pre-E2E Teardown Enforcement:
+	// Free lingering containers, volumes, and ports before launching the E2E suite
+	guard := t.ContainerGuard
+	if guard == nil {
+		guard = NewContainerTeardownGuard(nil, nil)
+	}
+	_ = guard.PreFlightClean(ctx, state.ProjectPath)
+	defer func() {
+		_ = guard.PostRunClean(ctx, state.ProjectPath)
+	}()
 
 	fmt.Fprintf(os.Stderr, "🐳 [E2E Tool] Executing E2E test command: %q...\n", command)
 	out, err := t.Runner.RunCommand(runCtx, state.ProjectPath, command, "")

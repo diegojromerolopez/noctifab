@@ -56,4 +56,29 @@ func TestContainerTeardownGuard(t *testing.T) {
 		s2 := guard.FormatTeardownSummary(nil, nil)
 		assert.Equal(t, "clean environment (no containers or ports detected)", s2)
 	})
+
+	t.Run("extractExplicitContainerNames and forced rm -f of named containers", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		composeContent := "version: '3.8'\nservices:\n  pyedis:\n    container_name: pyedis-server\n  runner:\n    container_name: \"test-runner-e2e\"\n"
+		composePath := filepath.Join(tmpDir, "docker-compose.e2e.yml")
+		require.NoError(t, os.WriteFile(composePath, []byte(composeContent), 0600))
+
+		names := extractExplicitContainerNames(composePath)
+		assert.Contains(t, names, "pyedis-server")
+		assert.Contains(t, names, "test-runner-e2e")
+
+		var executedCommands []string
+		mockRunner := func(ctx context.Context, dir string, name string, args ...string) ([]byte, error) {
+			executedCommands = append(executedCommands, name+" "+args[0])
+			return []byte("ok"), nil
+		}
+
+		guard := NewContainerTeardownGuard(mockRunner, nil)
+		err := guard.TeardownProjectEnvironment(context.Background(), tmpDir)
+		assert.NoError(t, err)
+
+		// Must have executed compose down and docker rm for each named container
+		assert.Contains(t, executedCommands, "docker compose")
+		assert.Contains(t, executedCommands, "docker rm")
+	})
 }

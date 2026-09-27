@@ -173,10 +173,21 @@ func detectNativeE2ECommand(projectPath string) string {
 			if !hasTestsE2E && hasTestE2E {
 				subPath = "test/e2e"
 			}
+			if fileExists(filepath.Join(projectPath, subPath, "run_tests.sh")) {
+				return "sh " + filepath.Join(subPath, "run_tests.sh")
+			}
 			if fileExists(filepath.Join(projectPath, "pyproject.toml")) {
+				content, _ := os.ReadFile(filepath.Join(projectPath, "pyproject.toml"))
 				if _, err := exec.LookPath("uv"); err == nil {
-					return "uv run pytest " + subPath
+					if strings.Contains(string(content), "pytest") {
+						return "uv run pytest " + subPath
+					}
+					return "uv run python -m unittest discover -s " + subPath
 				}
+				if strings.Contains(string(content), "pytest") {
+					return "pytest " + subPath
+				}
+				return "python3 -m unittest discover -s " + subPath
 			}
 			return "pytest " + subPath
 		}

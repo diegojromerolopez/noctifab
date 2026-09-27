@@ -9,7 +9,9 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 )
 
 var (
@@ -34,12 +36,18 @@ type SovereignDiagnosticBundle struct {
 // traces, and error logs to extract all concrete diagnostic data and offending
 // source code snippets into a unified diagnostic report.
 func CollectSovereignDiagnostics(targetDir string, state *domain.State, failedStories, acceptanceGaps []string, validationOutput string, telemetryInject ...bool) string {
-	return CollectSovereignDiagnosticsWithWindow(targetDir, state, failedStories, acceptanceGaps, validationOutput, 0, telemetryInject...)
+	return CollectSovereignDiagnosticsWithConfig(targetDir, state, failedStories, acceptanceGaps, validationOutput, config.ContextConfig{Mode: "diff_window", WindowSize: 30}, 0, telemetryInject...)
 }
 
 // CollectSovereignDiagnosticsWithWindow applies an optional sliding window character budget to validation output.
 // If slidingWindow <= 0, no sliding window or truncation is performed, retaining full raw logs.
 func CollectSovereignDiagnosticsWithWindow(targetDir string, state *domain.State, failedStories, acceptanceGaps []string, validationOutput string, slidingWindow int, telemetryInject ...bool) string {
+	return CollectSovereignDiagnosticsWithConfig(targetDir, state, failedStories, acceptanceGaps, validationOutput, config.ContextConfig{Mode: "diff_window", WindowSize: 30}, slidingWindow, telemetryInject...)
+}
+
+// CollectSovereignDiagnosticsWithConfig applies a context configuration (windowing schema, AST/tree_sitter mode)
+// and sliding window character budget to validation output, task failure logs, and offending file extractions.
+func CollectSovereignDiagnosticsWithConfig(targetDir string, state *domain.State, failedStories, acceptanceGaps []string, validationOutput string, ctxCfg config.ContextConfig, slidingWindow int, telemetryInject ...bool) string {
 	inject := len(telemetryInject) > 0 && telemetryInject[0]
 	var bundle SovereignDiagnosticBundle
 
@@ -58,14 +66,20 @@ func CollectSovereignDiagnosticsWithWindow(targetDir string, state *domain.State
 		allLogsBuilder.WriteString("\n")
 	}
 
-	var allTargetFiles []string
+	var relevantTargetFiles []string
 
 	// 1. Collect failed task traces from state
 	if state != nil {
 		for _, t := range state.Tasks {
-			allTargetFiles = append(allTargetFiles, t.TargetFiles...)
 			if t.Status == domain.TaskFailed || strings.TrimSpace(t.FailureLog) != "" {
-				msg := fmt.Sprintf("Task [%s] %q (Status: %s):\n%s", t.ID, t.Title, t.Status, strings.TrimSpace(t.FailureLog))
+				relevantTargetFiles = append(relevantTargetFiles, t.TargetFiles...)
+				trimmedLog := strings.TrimSpace(t.FailureLog)
+				// Limit individual task failure logs to avoid context blowup
+				maxTaskLog := 1200
+				if len(trimmedLog) > maxTaskLog {
+					trimmedLog = "... [log truncated] ...\n" + trimmedLog[len(trimmedLog)-maxTaskLog:]
+				}
+				msg := fmt.Sprintf("Task [%s] %q (Status: %s):\n%s", t.ID, t.Title, t.Status, trimmedLog)
 				bundle.TaskFailures = append(bundle.TaskFailures, msg)
 				allLogsBuilder.WriteString(msg)
 				allLogsBuilder.WriteString("\n")
@@ -84,16 +98,21 @@ func CollectSovereignDiagnosticsWithWindow(targetDir string, state *domain.State
 
 	combinedLogs := allLogsBuilder.String()
 
-	// 3. Discover offending source code files mentioned in error traces
-	discoveredFiles := extractOffendingFilePaths(targetDir, combinedLogs, allTargetFiles)
+	// 3. Discover offending source code files mentioned in error traces or failed task targets
+	discoveredFiles := extractOffendingFilePaths(targetDir, combinedLogs, relevantTargetFiles)
+	count := 0
 	for filePath, targetLine := range discoveredFiles {
-		snippet := extractFileSnippet(filePath, targetLine)
+		if count >= 6 {
+			break
+		}
+		snippet := extractFileSnippetWithConfig(targetDir, filePath, targetLine, ctxCfg)
 		if snippet != "" {
 			rel, _ := filepath.Rel(targetDir, filePath)
 			if rel == "" {
 				rel = filePath
 			}
 			bundle.OffendingFiles[rel] = snippet
+			count++
 		}
 	}
 
@@ -109,14 +128,6 @@ func CollectSovereignDiagnosticsWithWindow(targetDir string, state *domain.State
 
 func extractOffendingFilePaths(targetDir string, logs string, targetFiles []string) map[string]int {
 	offending := make(map[string]int)
-
-	// Check explicit task target files
-	for _, tf := range targetFiles {
-		full := filepath.Join(targetDir, tf)
-		if info, err := os.Stat(full); err == nil && !info.IsDir() {
-			offending[full] = 1
-		}
-	}
 
 	// Python tracebacks
 	for _, match := range pyTraceRegex.FindAllStringSubmatch(logs, -1) {
@@ -156,6 +167,16 @@ func extractOffendingFilePaths(targetDir string, logs string, targetFiles []stri
 		}
 	}
 
+	// Check explicit task target files (only if not already found in traces)
+	for _, tf := range targetFiles {
+		full := filepath.Join(targetDir, tf)
+		if _, exists := offending[full]; !exists {
+			if info, err := os.Stat(full); err == nil && !info.IsDir() {
+				offending[full] = 1
+			}
+		}
+	}
+
 	return offending
 }
 
@@ -186,9 +207,23 @@ func resolveProjectPath(targetDir, p string) string {
 }
 
 func extractFileSnippet(fullPath string, targetLine int) string {
+	return extractFileSnippetWithConfig("", fullPath, targetLine, config.ContextConfig{Mode: "diff_window", WindowSize: 30})
+}
+
+func extractFileSnippetWithConfig(targetDir, fullPath string, targetLine int, ctxCfg config.ContextConfig) string {
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		return ""
+	}
+
+	rel, _ := filepath.Rel(targetDir, fullPath)
+	if rel == "" {
+		rel = fullPath
+	}
+
+	if ctxCfg.GetMode() == config.ContextModeTreeSitter {
+		slicer := services.NewContextSlicer(ctxCfg)
+		return slicer.SliceFileContext(rel, string(content), "")
 	}
 
 	lines := strings.Split(string(content), "\n")
@@ -196,8 +231,13 @@ func extractFileSnippet(fullPath string, targetLine int) string {
 		return "(empty file)"
 	}
 
-	// If file is short (< 100 lines), provide the entire file
-	if len(lines) <= 100 {
+	windowLines := ctxCfg.GetWindowLines()
+	if windowLines <= 0 {
+		windowLines = 30
+	}
+
+	// If file is short (<= windowLines*2), provide the entire file
+	if len(lines) <= windowLines*2 {
 		var sb strings.Builder
 		for i, line := range lines {
 			marker := "  "
@@ -209,23 +249,36 @@ func extractFileSnippet(fullPath string, targetLine int) string {
 		return sb.String()
 	}
 
-	// Otherwise, slice around targetLine
-	start := targetLine - 25
+	// Windowing schema: slice around targetLine
+	start := targetLine - windowLines/2
+	if targetLine <= 0 {
+		start = 0
+	}
 	if start < 0 {
 		start = 0
 	}
-	end := targetLine + 25
+	end := start + windowLines
 	if end > len(lines) {
 		end = len(lines)
+		start = end - windowLines
+		if start < 0 {
+			start = 0
+		}
 	}
 
 	var sb strings.Builder
+	if start > 0 {
+		fmt.Fprintf(&sb, "... [%d lines omitted before] ...\n", start)
+	}
 	for i := start; i < end; i++ {
 		marker := "  "
-		if i+1 == targetLine {
+		if targetLine > 0 && i+1 == targetLine {
 			marker = ">>"
 		}
 		fmt.Fprintf(&sb, "%s %3d | %s\n", marker, i+1, lines[i])
+	}
+	if end < len(lines) {
+		fmt.Fprintf(&sb, "... [%d lines omitted after] ...\n", len(lines)-end)
 	}
 	return sb.String()
 }

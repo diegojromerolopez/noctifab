@@ -7,9 +7,54 @@ import (
 	"time"
 )
 
-// SovereignRescueContextConfig configures diagnostic prompt context assembly for sovereign recovery turns.
+// SovereignRescueContextConfig configures diagnostic prompt context assembly and compaction for sovereign recovery turns.
 type SovereignRescueContextConfig struct {
-	SlidingWindow int `yaml:"sliding_window,omitempty"`
+	Mode              string   `yaml:"mode,omitempty"`
+	TreeSitter        bool     `yaml:"tree_sitter,omitempty"`
+	DiffWindowLines   int      `yaml:"diff_window_lines,omitempty"`
+	WindowSize        int      `yaml:"window_size,omitempty"`
+	CavemanCompaction bool     `yaml:"caveman_compaction,omitempty"`
+	Compaction        string   `yaml:"compaction,omitempty"` // Options: "none", "simple_english", "caveman", "aggressive"
+	SkipFolders       []string `yaml:"skip_folders,omitempty"`
+	SlidingWindow     int      `yaml:"sliding_window,omitempty"`
+}
+
+func (s *SovereignRescueContextConfig) ToContextConfig() ContextConfig {
+	if s == nil {
+		return ContextConfig{
+			Mode:              "diff_window",
+			WindowSize:        30,
+			Compaction:        "caveman",
+			CavemanCompaction: true,
+		}
+	}
+	mode := s.Mode
+	if mode == "" {
+		mode = "diff_window"
+	}
+	window := s.WindowSize
+	if window <= 0 {
+		window = s.DiffWindowLines
+	}
+	if window <= 0 {
+		window = 30
+	}
+	comp := s.Compaction
+	if comp == "" && s.CavemanCompaction {
+		comp = "caveman"
+	}
+	if comp == "" {
+		comp = "caveman"
+	}
+	return ContextConfig{
+		Mode:              mode,
+		TreeSitter:        s.TreeSitter,
+		DiffWindowLines:   window,
+		WindowSize:        window,
+		CavemanCompaction: comp == "caveman" || s.CavemanCompaction,
+		Compaction:        comp,
+		SkipFolders:       s.SkipFolders,
+	}
 }
 
 // SovereignRescueConfig configures the autonomous whole-project sovereign recovery engine.
@@ -20,14 +65,30 @@ type SovereignRescueConfig struct {
 	Timeout                  Duration                      `yaml:"timeout,omitempty"`
 	MissingToolchainStrategy string                        `yaml:"missing_toolchain_strategy,omitempty"`
 	Providers                []AgentProviderRef            `yaml:"providers,omitempty"`
+	SlidingWindow            int                           `yaml:"sliding_window,omitempty"`
 	Context                  *SovereignRescueContextConfig `yaml:"context,omitempty"`
 }
 
 func (s SovereignRescueConfig) GetSlidingWindow() int {
+	if s.SlidingWindow > 0 {
+		return s.SlidingWindow
+	}
 	if s.Context != nil && s.Context.SlidingWindow > 0 {
 		return s.Context.SlidingWindow
 	}
 	return 0
+}
+
+func (s SovereignRescueConfig) GetContextConfig() ContextConfig {
+	if s.Context != nil {
+		return s.Context.ToContextConfig()
+	}
+	return ContextConfig{
+		Mode:              "diff_window",
+		WindowSize:        30,
+		Compaction:        "caveman",
+		CavemanCompaction: true,
+	}
 }
 
 func (s SovereignRescueConfig) IsEnabled() bool {

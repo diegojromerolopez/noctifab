@@ -348,4 +348,60 @@ FAILED tests/integration/test_connection.py::test_ping - AssertionError: PONG !=
 		assert.Contains(t, logMsg, "E2E test validation failed")
 		assert.Contains(t, logMsg, "test_connection.py")
 	})
+
+	t.Run("when E2E runs, Pre-E2E Teardown and PostRunClean are strictly enforced", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		makefilePath := filepath.Join(tmpDir, "Makefile")
+		err := os.WriteFile(makefilePath, []byte("test:\n\tpytest\n\ne2e:\n\tpytest tests/e2e\n"), 0644)
+		require.NoError(t, err)
+
+		sb := &scriptedCommandSandbox{
+			responses: map[string]struct {
+				out string
+				err error
+			}{
+				"": {
+					out: "PASSED: 5 unit tests",
+					err: nil,
+				},
+				"make e2e": {
+					out: "PASSED: 2 e2e tests",
+					err: nil,
+				},
+			},
+		}
+
+		var guardEvents []string
+		mockRunner := func(ctx context.Context, dir string, name string, args ...string) ([]byte, error) {
+			guardEvents = append(guardEvents, args[len(args)-1]) // down or rm
+			return []byte("ok"), nil
+		}
+		guard := NewContainerTeardownGuard(mockRunner, nil)
+
+		v := NewTestValidator(sb, false, nil, nil)
+		v.ContainerGuard = guard
+		v.SetE2EConfig(config.E2EConfig{Mode: "native"})
+
+		// Create compose file to trigger teardown runner
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "docker-compose.e2e.yml"), []byte("services:\n  server:\n    container_name: test-server\n"), 0644))
+
+		state := &domain.State{
+			ProjectPath: tmpDir,
+			Tasks: []domain.Task{
+				{ID: "qa-remediation-1", Status: domain.TaskInProgress},
+			},
+		}
+		task := domain.Task{
+			ID:          "qa-remediation-1",
+			Title:       "Remediate E2E",
+			TargetFiles: []string{"tests/e2e/test_e2e.py"},
+		}
+
+		passed, _, valErr := v.ValidateTask(context.Background(), state, task)
+		require.NoError(t, valErr)
+		assert.True(t, passed)
+
+		// Assert that both PreFlightClean (before RunCommand) and PostRunClean were called
+		assert.GreaterOrEqual(t, len(guardEvents), 2, "expected both pre-flight teardown and post-run clean to be executed")
+	})
 }

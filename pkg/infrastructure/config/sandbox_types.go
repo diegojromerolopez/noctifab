@@ -32,6 +32,7 @@ type SandboxConfig struct {
 	Linter                LinterConfig           `yaml:"linter"`
 	E2E                   E2EConfig              `yaml:"e2e"`
 	Telemetry             SandboxTelemetryConfig `yaml:"telemetry"`
+	Context               *ContextConfig         `yaml:"context,omitempty"`
 	// Legacy flat fields for backward compatibility
 	LinterCommand                *string  `yaml:"linter_command,omitempty"`
 	MaxLinterRetries             *int     `yaml:"max_linter_retries,omitempty"`

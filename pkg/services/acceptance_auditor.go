@@ -151,6 +151,11 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		if !a.isCommandAllowed(e2eCmd) {
 			e2eLog = fmt.Sprintf("⚠️  E2E command %q skipped: binary not in sandbox allowed_commands", e2eCmd)
 		} else {
+			guard := NewContainerTeardownGuard(nil, nil)
+			_ = guard.PreFlightClean(ctx, state.ProjectPath)
+			defer func() {
+				_ = guard.PostRunClean(ctx, state.ProjectPath)
+			}()
 			fmt.Printf("🔍 [Acceptance Gate] Running E2E verification command: %q...\n", e2eCmd)
 			e2eOut, e2eErr := a.runner.RunCommand(ctx, state.ProjectPath, e2eCmd, "")
 			if e2eErr != nil {

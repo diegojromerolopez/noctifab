@@ -48,6 +48,7 @@ type TestValidator struct {
 	E2ECommand            string
 	E2EMode               string
 	EnforceE2E            bool
+	ContainerGuard        *ContainerTeardownGuard
 }
 
 func (v *TestValidator) SetE2ECommand(cmd string) {
@@ -251,34 +252,8 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 	// Strict majority vote; with the default single run this reduces to
 	// requiring that one run to pass.
 	if passCount > runs/2 {
-		if v.shouldValidateE2E(state, task) {
-			e2eCmd := v.detectE2ECommand(state.ProjectPath)
-			if e2eCmd != "" && v.Runner != nil {
-				e2eTimeout := v.RunTimeout
-				if e2eTimeout <= 0 {
-					e2eTimeout = 5 * time.Minute
-				}
-				e2eCtx, e2eCancel := context.WithTimeout(ctx, e2eTimeout)
-				e2eOut, e2eErr := v.Runner.RunCommand(e2eCtx, state.ProjectPath, e2eCmd, "")
-				e2eCancel()
-
-				if e2eErr != nil {
-					if isCommandToolMissing(v.Runner, e2eCmd, e2eOut+" "+e2eErr.Error()) {
-						fmt.Printf("⚠️  [Validation Degraded] Task %s: required E2E tool is absent on host (%s). Proceeding in degraded mode.\n", task.ID, e2eCmd)
-					} else if !isE2EFailureInScope(state, task, e2eOut+"\n"+e2eErr.Error()) {
-						fmt.Printf("⚠️  Orchestrator: Task %s E2E failure(s) outside scope; ignoring in loop.\n", task.ID)
-					} else {
-						fmt.Printf("❌ Orchestrator: Task %s E2E test gate (%s) failed: %v\n", task.ID, e2eCmd, e2eErr)
-						return false, fmt.Sprintf("E2E test validation failed (%s):\n%s\n%v", e2eCmd, e2eOut, e2eErr), nil
-					}
-				} else {
-					noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, e2eOut)
-					if noTestsRan {
-						fmt.Printf("❌ Orchestrator: Task %s E2E test suite produced no tests: %s\n", task.ID, notice)
-						return false, fmt.Sprintf("E2E test validation failed (%s): %s", e2eCmd, notice), nil
-					}
-				}
-			}
+		if ok, msg, err := v.validateE2E(ctx, state, task); !ok {
+			return false, msg, err
 		}
 
 		if passCount == runs {
