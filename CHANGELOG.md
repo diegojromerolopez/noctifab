@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added diagnostic turn preservation in sovereign repair (`RunFallbackAgent`): non-mutating turns that only invoke inspection tools (`read_file`, `run_tests`, `noop`) are granted diagnostic grace and do not consume sovereign repair turns.
   - Enabled single-turn surgical repair on `generator_no_op_validation_failed` in `orchestrator_execute.go`, clearing QA blocking if the surgical pass succeeds.
   - Extracted `summarizeFailureLog` to dedicated `pkg/services/orchestrator_log_summary.go` keeping `orchestrator_generator.go` under 450 lines.
+- **Premature E2E Gate Unit Path Exemption (`pkg/services/test_validator.go`)**:
+  - Explicitly exempt unit test files (`/unit/`, `unit/`) from triggering containerized/detected E2E verification suites in `shouldValidateE2E`.
+  - Removed broad `test_server` and `test_client` substring matches that falsely classified in-process unit test files (e.g. `tests/unit/commands/test_server.py`) as E2E targets.
 - **Subprocess Test Timeout Environment Injection (`pkg/services/worktree_cache.go`)**:
   - Injected `NOCTIFAB_TEST_TIMEOUT` and `TEST_TIMEOUT` environment variables (defaulting to `0.5` seconds) across all sandbox and worktree toolchain executions via `BuildSharedCacheEnv`.
   - Enables unit and integration tests to configure fast-fail timeouts for loopback socket/network operations dynamically instead of hardcoding slow static delays.

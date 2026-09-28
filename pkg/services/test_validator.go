@@ -88,12 +88,14 @@ func (v *TestValidator) shouldValidateE2E(state *domain.State, task domain.Task)
 	// Check if task targets E2E or integration files
 	for _, tf := range task.TargetFiles {
 		lower := strings.ToLower(tf)
+		if strings.Contains(lower, "/unit/") || strings.HasPrefix(lower, "unit/") {
+			// Explicit unit test file — never trigger E2E gate on pure unit tests
+			continue
+		}
 		if strings.Contains(lower, "e2e") ||
 			strings.Contains(lower, "integration") ||
 			strings.HasSuffix(lower, "docker-compose.yml") ||
-			strings.HasSuffix(lower, "docker-compose.e2e.yml") ||
-			strings.Contains(lower, "test_server") ||
-			strings.Contains(lower, "test_client") {
+			strings.HasSuffix(lower, "docker-compose.e2e.yml") {
 			return true
 		}
 	}

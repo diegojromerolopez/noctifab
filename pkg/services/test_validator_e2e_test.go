@@ -197,6 +197,48 @@ func TestTestValidator_E2E_TargetFiles(t *testing.T) {
 		assert.Len(t, sb.calls, 1, "only unit tests should have been executed")
 	})
 
+	t.Run("when task targets unit test with test_server in unit path, E2E is skipped", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		makefilePath := filepath.Join(tmpDir, "Makefile")
+		err := os.WriteFile(makefilePath, []byte("test:\n\tpytest\n\ne2e:\n\tpytest tests/e2e\n"), 0644)
+		require.NoError(t, err)
+
+		sb := &scriptedCommandSandbox{
+			responses: map[string]struct {
+				out string
+				err error
+			}{
+				"": {
+					out: "PASSED: 5 unit tests",
+					err: nil,
+				},
+			},
+		}
+
+		v := NewTestValidator(sb, false, nil, nil)
+		v.SetE2EConfig(config.E2EConfig{Mode: "native"})
+
+		state := &domain.State{
+			ProjectPath: tmpDir,
+			Tasks: []domain.Task{
+				{ID: "US-005-TASK-001", StoryID: "US-001", Status: domain.TaskInProgress},
+				{ID: "US-005-TASK-002", StoryID: "US-001", Status: domain.TaskPending},
+			},
+		}
+		task := domain.Task{
+			ID:          "US-005-TASK-001",
+			StoryID:     "US-001",
+			Title:       "Implement server commands",
+			TargetFiles: []string{"src/commands/server.py", "tests/unit/commands/test_server.py"},
+		}
+
+		passed, logMsg, valErr := v.ValidateTask(context.Background(), state, task)
+		require.NoError(t, valErr)
+		assert.True(t, passed)
+		assert.NotContains(t, logMsg, "E2E")
+		assert.Len(t, sb.calls, 1, "unit test in tests/unit/commands/test_server.py must not trigger E2E")
+	})
+
 	t.Run("when task is the final task in a story, E2E is validated", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		makefilePath := filepath.Join(tmpDir, "Makefile")
