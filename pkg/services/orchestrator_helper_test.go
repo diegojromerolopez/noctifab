@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -133,6 +134,60 @@ func TestRunGeneratorAgent_NoopAutoExecutesRunTests(t *testing.T) {
 
 	assert.Equal(t, 1, mockLLMClient.callCount, "Agent should exit on turn 1 when returning noop")
 	assert.True(t, testRunnerCalled, "run_tests must be auto-triggered on noop signal")
+}
+
+func TestRunGeneratorAgent_RedNoopRejected_StrikeGuard(t *testing.T) {
+	tempDir := t.TempDir()
+	state := &domain.State{
+		ProjectPath: tempDir,
+	}
+
+	task := domain.Task{ID: "task-red-noop-test", Title: "Red Noop Test"}
+
+	repo := &mockRepo{state: state}
+	reg := NewToolRegistry()
+
+	reg.Register(&customTool{
+		name: "run_tests",
+		executeFn: func(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
+			return "tests failing: syntax error", fmt.Errorf("tests failed")
+		},
+	})
+	reg.Register(&customTool{
+		name: "write_file",
+		executeFn: func(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
+			return "wrote file", nil
+		},
+	})
+
+	// Response 1: noop on red test suite -> rejected, strike 1, turn NOT consumed
+	// Response 2: write_file -> mutating tool resets strike and advances
+	// Response 3: write_file -> completion
+	mockLLMClient := &testMockLLM{
+		responses: []*domain.LLMResponse{
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+			{Actions: []domain.LLMAction{{Tool: "write_file", Args: map[string]any{"path": "foo.go", "content": "package foo"}}}},
+			{Actions: []domain.LLMAction{{Tool: "write_file", Args: map[string]any{"path": "foo.go", "content": "package foo\nfunc Bar(){}"}}}},
+		},
+	}
+	validator := NewPolicyValidator(nil, "main", nil)
+	scheduler := NewScheduler(NewFileLockRegistry())
+	git := NewGitClient(tempDir)
+	queue := NewRebaseQueue(git)
+	evaluator := NewTestValidator(nil, false, mockLLMClient, nil)
+	vcsClient := &mockVCS{}
+	cfg := OrchestratorConfig{
+		PollInterval:         10 * time.Millisecond,
+		GeneratorsIterations: 2,
+	}
+
+	orch := NewOrchestrator(repo, reg, mockLLMClient, validator, scheduler, git, queue, evaluator, vcsClient, cfg, nil, nil, nil)
+
+	orch.RunGeneratorAgent(context.Background(), task, state, nil, "", "implement")
+
+	// Even though GeneratorsIterations is 2, Response 1 was a red noop and did NOT consume a turn.
+	// So Response 2 and Response 3 were both executed!
+	assert.GreaterOrEqual(t, mockLLMClient.callCount, 2, "Agent should not consume a turn on initial red noop")
 }
 
 func TestRunGeneratorAgent_LimitRequestTestFix(t *testing.T) {

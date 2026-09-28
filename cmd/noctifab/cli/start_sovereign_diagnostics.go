@@ -206,10 +206,6 @@ func resolveProjectPath(targetDir, p string) string {
 	return ""
 }
 
-func extractFileSnippet(fullPath string, targetLine int) string {
-	return extractFileSnippetWithConfig("", fullPath, targetLine, config.ContextConfig{Mode: "diff_window", WindowSize: 30})
-}
-
 func extractFileSnippetWithConfig(targetDir, fullPath string, targetLine int, ctxCfg config.ContextConfig) string {
 	content, err := os.ReadFile(fullPath)
 	if err != nil {

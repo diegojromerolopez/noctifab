@@ -222,6 +222,18 @@ func BuildSharedCacheEnv(rootProjectDir string) []string {
 		"COMPOSE_DOCKER_CLI_BUILD=1",
 	}
 
+	testTimeout := os.Getenv("NOCTIFAB_TEST_TIMEOUT")
+	if testTimeout == "" {
+		testTimeout = os.Getenv("TEST_TIMEOUT")
+	}
+	if testTimeout == "" {
+		testTimeout = "0.5"
+	}
+	env = append(env,
+		fmt.Sprintf("NOCTIFAB_TEST_TIMEOUT=%s", testTimeout),
+		fmt.Sprintf("TEST_TIMEOUT=%s", testTimeout),
+	)
+
 	// Python virtual environment projection: prepend bin to PATH if present
 	for _, venvName := range []string{".venv", "venv"} {
 		venvPath := filepath.Join(cleanRoot, venvName)

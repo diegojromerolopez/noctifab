@@ -48,7 +48,7 @@ func (o *Orchestrator) RunFallbackAgent(
 
 	maxTurns := fbCfg.MaxTurns
 	if maxTurns <= 0 {
-		maxTurns = 2
+		maxTurns = 5
 	}
 
 	turnTimeout := time.Duration(fbCfg.Timeout)
@@ -114,6 +114,8 @@ func (o *Orchestrator) RunFallbackAgent(
 	}
 
 	currentLog := failureLog
+	fallbackNoopStrikes := 0
+	maxFallbackNoopStrikes := 2
 
 	for turn := 1; turn <= maxTurns; turn++ {
 		fmt.Printf("🔧 [Fallback Agent] Starting sovereign turn %d/%d for task %s...\n", turn, maxTurns, effectiveTask.ID)
@@ -173,10 +175,14 @@ func (o *Orchestrator) RunFallbackAgent(
 			continue
 		}
 
+		hasMutatingAction := false
 		if resp != nil && len(resp.Actions) > 0 {
 			for _, action := range resp.Actions {
 				if action.Tool == "noop" {
 					continue
+				}
+				if IsMutatingTool(action.Tool) {
+					hasMutatingAction = true
 				}
 				if o.registry != nil {
 					tool, ok := o.registry.Get(action.Tool)
@@ -274,6 +280,18 @@ func (o *Orchestrator) RunFallbackAgent(
 					}
 				}
 				return true, newLogMsg
+			}
+
+			if !hasMutatingAction {
+				if fallbackNoopStrikes < maxFallbackNoopStrikes {
+					fallbackNoopStrikes++
+					fmt.Printf("⚠️  [Fallback Agent Diagnostic Grace] Turn %d did not mutate files while tests failing (strike %d/%d). Sovereign turn preserved.\n", turn, fallbackNoopStrikes, maxFallbackNoopStrikes)
+					turn--
+					currentLog = fmt.Sprintf("Previous turn performed inspection/noop without workspace changes, but tests are FAILING:\n%s\nYou MUST invoke write_file or edit_file to repair the failing code.", summarizeFailureLog(newLogMsg))
+					continue
+				}
+			} else {
+				fallbackNoopStrikes = 0
 			}
 			currentLog = newLogMsg
 		}

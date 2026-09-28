@@ -196,11 +196,15 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 
 		// First-Class Generator Surgical Repair
 		initCategory := CategorizeFailureLog(logMsg)
-		if !passed && qaBlocked == "" && (initCategory == FailureCompile || initCategory == FailureTestLogic || strings.Contains(strings.ToLower(logMsg), "e2e") || strings.Contains(logMsg, "zero file mutations")) {
-			fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s...\n", taskID, initCategory)
+		canSurgicallyRepair := qaBlocked == "" || qaBlocked == "generator_no_op_validation_failed"
+		if !passed && canSurgicallyRepair && (initCategory == FailureCompile || initCategory == FailureTestLogic || strings.Contains(strings.ToLower(logMsg), "e2e") || strings.Contains(logMsg, "zero file mutations") || qaBlocked == "generator_no_op_validation_failed") {
+			fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s (qaBlocked=%s)...\n", taskID, initCategory, qaBlocked)
 			o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
 			passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
 			passed, logMsg = checkTaskMutations(ctx, task, taskGit, integrationBranch, passed, logMsg)
+			if passed {
+				qaBlocked = ""
+			}
 		}
 
 		if passed && qaBlocked == "" {

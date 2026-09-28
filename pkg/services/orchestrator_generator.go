@@ -145,6 +145,8 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	failedIncrementalEdits := make(map[string]int)
 	anyFileMutated := false
 	errorFingerprinter := NewErrorFingerprinter(1)
+	noopStrikes := 0
+	maxNoopStrikes := 2
 
 	for turn := 0; turn < maxTurns; turn++ {
 		circuitBreaker.ResetTurn()
@@ -314,6 +316,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					if IsMutatingTool(action.Tool) {
 						fileMutated = true
 						anyFileMutated = true
+						noopStrikes = 0
 						circuitBreaker.RecordAction(action.Tool, action.Args)
 						consecutiveLinterFailures = 0
 						seenFileDependentCalls = make(map[string]bool)
@@ -394,14 +397,31 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 				runTestsTool, ok := o.registry.Get("run_tests")
 				if ok {
 					out, execErr := runTestsTool.Execute(genCtx, state, map[string]any{})
+					diagCache.OnToolExecuted("run_tests", map[string]any{}, out, execErr)
+					circuitBreaker.RecordTestResult(execErr == nil)
+					runTestsCalled = true
 					if execErr != nil {
 						fmt.Printf("Orchestrator: Auto-triggered run_tests failed for task %s: %v. Rejecting noop.\n", task.ID, execErr)
 						turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Action 'noop' rejected: auto-triggered run_tests failed: %v\nOutput:\n%s", execErr, out))
 						hasNoop = false
 					}
 				}
+			} else if circuitBreaker.ConsecutiveTestPasses == 0 {
+				fmt.Printf("Orchestrator: Task %s [Generator] returned noop while tests are failing. Rejecting noop.\n", task.ID)
+				turnToolOutputs = append(turnToolOutputs, "⚠️ [ACTION REJECTED: TESTS FAILING] You returned 'noop' or no actions, but the test suite is currently FAILING. You cannot declare completion while tests are failing. You MUST invoke 'edit_file' or 'write_file' to implement or fix the required functionality.")
+				hasNoop = false
 			}
-			if hasNoop {
+
+			if !hasNoop {
+				// Strike Guard: If noop was rejected on red test suite, do not consume turn on initial strikes
+				if noopStrikes < maxNoopStrikes {
+					noopStrikes++
+					fmt.Printf("⚠️  [Generator Red No-Op Guard] Task %s: noop rejected while tests failing (strike %d/%d). Turn not consumed.\n", task.ID, noopStrikes, maxNoopStrikes)
+					turn--
+				} else {
+					fmt.Printf("⚡ [Generator Red No-Op Guard] Task %s: noop strike limit reached (%d/%d). Consuming turn.\n", task.ID, noopStrikes, maxNoopStrikes)
+				}
+			} else {
 				break
 			}
 		}
@@ -417,32 +437,4 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	}
 
 	o.registerAgentComplete(ctx, "generator", task.ID, lastErr)
-}
-
-func summarizeFailureLog(log string) string {
-	lines := strings.Split(log, "\n")
-	var importantLines []string
-	capture := false
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "ERROR:") || strings.HasPrefix(trimmed, "FAIL:") || strings.Contains(line, "Anti-stub") {
-			capture = true
-		}
-		if capture {
-			importantLines = append(importantLines, line)
-		} else if strings.Contains(line, "Error:") || strings.Contains(line, "Exception") || strings.Contains(line, "FAILED") || strings.Contains(line, "error:") || strings.Contains(line, "Anti-stub") {
-			importantLines = append(importantLines, line)
-		}
-	}
-
-	if len(importantLines) == 0 {
-		// Fallback to last 15 lines if no specific failures are captured
-		start := len(lines) - 15
-		if start < 0 {
-			start = 0
-		}
-		return strings.Join(lines[start:], "\n")
-	}
-
-	return strings.Join(importantLines, "\n")
 }

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.106.0] - 2026-09-28
+
+### Added
+- **Red No-Op Guard with Turn-Preserving Strike Budget (`pkg/services/orchestrator_generator.go`, `orchestrator_fallback.go`, `orchestrator_execute.go`)**:
+  - Implemented deterministic rejection of `noop` or empty action signals in `RunGeneratorAgent` whenever the active test suite is failing.
+  - Added a 2-strike turn preservation budget: an initial no-op attempt on a failing test suite is rejected with actionable diagnostic feedback without consuming a generator turn (`turn--`). The strike counter automatically resets upon any successful workspace file mutation.
+  - Added diagnostic turn preservation in sovereign repair (`RunFallbackAgent`): non-mutating turns that only invoke inspection tools (`read_file`, `run_tests`, `noop`) are granted diagnostic grace and do not consume sovereign repair turns.
+  - Enabled single-turn surgical repair on `generator_no_op_validation_failed` in `orchestrator_execute.go`, clearing QA blocking if the surgical pass succeeds.
+  - Extracted `summarizeFailureLog` to dedicated `pkg/services/orchestrator_log_summary.go` keeping `orchestrator_generator.go` under 450 lines.
+- **Subprocess Test Timeout Environment Injection (`pkg/services/worktree_cache.go`)**:
+  - Injected `NOCTIFAB_TEST_TIMEOUT` and `TEST_TIMEOUT` environment variables (defaulting to `0.5` seconds) across all sandbox and worktree toolchain executions via `BuildSharedCacheEnv`.
+  - Enables unit and integration tests to configure fast-fail timeouts for loopback socket/network operations dynamically instead of hardcoding slow static delays.
+  - Updated prompt contracts to encourage configurable sub-second socket timeouts with strict `finally` resource closing.
+
 ## [0.105.0] - 2026-09-27
 
 ### Added

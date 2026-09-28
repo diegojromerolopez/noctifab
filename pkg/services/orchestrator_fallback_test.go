@@ -335,3 +335,76 @@ func TestOrchestrator_RunFallbackAgent_SkipsE2EForUnitTask(t *testing.T) {
 	passed, _ := orch.RunFallbackAgent(context.Background(), &task, &taskState, nil, "initial fail", "retries_exhausted")
 	assert.True(t, passed, "unit task should pass without running E2E gate")
 }
+
+type mockDynamicSandbox struct {
+	runFn func(command string) (string, error)
+}
+
+func (m *mockDynamicSandbox) RunCommand(ctx context.Context, projectPath string, command string, pkg string) (string, error) {
+	if m.runFn != nil {
+		return m.runFn(command)
+	}
+	return "PASS", nil
+}
+
+func TestOrchestrator_RunFallbackAgent_DiagnosticTurnPreserved(t *testing.T) {
+	sandboxCallCount := 0
+	sandbox := &mockDynamicSandbox{
+		runFn: func(command string) (string, error) {
+			sandboxCallCount++
+			if sandboxCallCount == 1 {
+				// Turn 1 evaluation fails (only read tool/noop was called)
+				return "FAIL: tests still failing", errors.New("exit 1")
+			}
+			// Turn 2 evaluation passes (mutating tool called)
+			return "PASS: all tests passed", nil
+		},
+	}
+
+	reg := NewToolRegistry()
+	reg.Register(&customTool{
+		name: "write_file",
+		executeFn: func(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
+			return "wrote file", nil
+		},
+	})
+
+	mockLLM := &testMockLLM{
+		responses: []*domain.LLMResponse{
+			// Response 1: noop -> non-mutating on failing tests, diagnostic grace preserved
+			{Actions: []domain.LLMAction{{Tool: "noop"}}},
+			// Response 2: write_file -> mutating tool
+			{Actions: []domain.LLMAction{{Tool: "write_file", Args: map[string]any{"path": "fix.go", "content": "package fix"}}}},
+		},
+	}
+
+	cfg := OrchestratorConfig{
+		Fallback: config.FallbackAgentConfig{
+			Enabled:  true,
+			MaxTurns: 1, // With MaxTurns=1, Response 1 does not consume turn, allowing Response 2 to run and pass!
+			Timeout:  config.Duration(5 * time.Second),
+		},
+	}
+
+	evaluator := NewTestValidator(sandbox, false, mockLLM, nil)
+
+	orch := &Orchestrator{
+		cfg:            cfg,
+		llmClient:      mockLLM,
+		registry:       reg,
+		evaluator:      evaluator,
+		promptRenderer: prompts.NewDefaultRenderer(),
+	}
+
+	task := domain.Task{
+		ID:    "T-DIAG",
+		Title: "Diagnostic Turn Task",
+	}
+	taskState := domain.State{
+		ID:          "story-diag",
+		ProjectPath: t.TempDir(),
+	}
+
+	passed, _ := orch.RunFallbackAgent(context.Background(), &task, &taskState, nil, "initial failure", "qa_gate_deadlock")
+	assert.True(t, passed, "expected task to succeed because diagnostic turn 1 was preserved under MaxTurns=1")
+}
