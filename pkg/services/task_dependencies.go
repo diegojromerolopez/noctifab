@@ -20,12 +20,41 @@ func ValidatePlannedTasks(tasks []domain.Task, projectPath ...string) error {
 	}
 	for i := range tasks {
 		task := &tasks[i]
-		if task.Title == "" || len(task.Description) < 15 {
+		if strings.TrimSpace(task.Title) == "" || len(strings.TrimSpace(task.Description)) < 15 {
 			return fmt.Errorf("planning failed: task '%s' ('%s') does not have a detailed title or description", task.ID, task.Title)
 		}
-		if len(task.TargetFiles) == 0 {
-			task.TargetFiles = []string{".gitignore"}
+		// Clean and filter TargetFiles: trim, remove empty strings and blacklisted paths
+		var cleanTargetFiles []string
+		seenFiles := make(map[string]bool)
+		for _, tf := range task.TargetFiles {
+			c := strings.TrimSpace(tf)
+			if c == "" || isBlacklistedPlannedFile(c) {
+				continue
+			}
+			if !seenFiles[c] {
+				seenFiles[c] = true
+				cleanTargetFiles = append(cleanTargetFiles, c)
+			}
 		}
+		if len(cleanTargetFiles) == 0 {
+			cleanTargetFiles = []string{".gitignore"}
+		}
+		task.TargetFiles = cleanTargetFiles
+
+		// Clean and deduplicate DependsOn: trim, remove empty strings and self-dependencies
+		var cleanDeps []string
+		seenDeps := make(map[string]bool)
+		for _, dep := range task.DependsOn {
+			d := strings.TrimSpace(dep)
+			if d == "" || d == task.ID || (task.Title != "" && d == task.Title) {
+				continue
+			}
+			if !seenDeps[d] {
+				seenDeps[d] = true
+				cleanDeps = append(cleanDeps, d)
+			}
+		}
+		task.DependsOn = cleanDeps
 	}
 	resolved, err := ResolveTaskDependencies(tasks, path)
 	if err != nil {
@@ -235,3 +264,16 @@ func storyExists(projectPath, dep string) bool {
 
 	return false
 }
+
+func isBlacklistedPlannedFile(path string) bool {
+	clean := strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
+	parts := strings.Split(clean, "/")
+	for _, p := range parts {
+		if p == ".git" || p == ".noctifab" || p == "node_modules" || p == "__pycache__" || p == ".venv" || p == "target" || p == "vendor" {
+			return true
+		}
+	}
+	ext := filepath.Ext(clean)
+	return ext == ".o" || ext == ".a" || ext == ".so" || ext == ".dylib" || ext == ".exe" || ext == ".pyc"
+}
+

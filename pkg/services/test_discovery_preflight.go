@@ -302,7 +302,7 @@ func EvaluateTestExecution(projectPath string, out string) (bool, string) {
 
 	testFiles := DiscoverTestFiles(projectPath)
 
-	// 2. Empty output when test files exist
+	// 2. Empty output
 	if strings.TrimSpace(out) == "" {
 		if len(testFiles) > 0 {
 			return true, fmt.Sprintf("Test runner produced empty output while %d test files exist on disk.", len(testFiles))
@@ -311,7 +311,7 @@ func EvaluateTestExecution(projectPath string, out string) (bool, string) {
 		if strings.HasPrefix(testCmd, "make") {
 			return true, "Test suite failed: 0 test files discovered in tests/ directory and 0 test assertions executed."
 		}
-		return false, ""
+		return true, "Test suite execution failed: 0 test assertions executed (empty test output)."
 	}
 
 	// 3. Discrepancy Detection:

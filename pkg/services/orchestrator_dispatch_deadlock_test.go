@@ -128,4 +128,29 @@ func TestOrchestrator_HandleDeadlockOrRescue(t *testing.T) {
 		assert.Contains(t, err.Error(), "deadlock detected")
 		assert.Equal(t, domain.StoryFailed, st.StoryStatus)
 	})
+
+	t.Run("when failed task has LastResortUsed true from in-loop retries it is still picked if not pipeline_deadlock", func(t *testing.T) {
+		st := &domain.State{
+			ID: "test-state",
+			Tasks: []domain.Task{
+				{ID: "T1", Title: "Task 1", Status: domain.TaskFailed, LastResortUsed: true, FailureLog: "compiler error on turn 3"},
+				{ID: "T2", Title: "Task 2", Status: domain.TaskPending, DependsOn: []string{"T1"}},
+			},
+		}
+		repo := &mockRescueRepo{state: st}
+		orch := &Orchestrator{
+			cfg: OrchestratorConfig{
+				Fallback: config.FallbackAgentConfig{
+					Enabled: false, // will not run fallback, but verifies candidate selection proceeds to fallback branch
+				},
+			},
+			repo: repo,
+		}
+
+		resumed, err := orch.handleDeadlockOrRescue(context.Background(), st)
+		assert.False(t, resumed)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "deadlock detected")
+	})
 }
+

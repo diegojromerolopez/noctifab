@@ -46,8 +46,8 @@ func ParseTestOutput(output string, exitCode int) ParsedTestReport {
 	if trimmed == "" {
 		return ParsedTestReport{
 			Protocol:    "empty",
-			Success:     exitCode == 0,
-			SummaryText: "Empty output",
+			Success:     false,
+			SummaryText: "Empty output (zero tests discovered or executed)",
 		}
 	}
 

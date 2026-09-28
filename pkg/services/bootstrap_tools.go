@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -20,11 +21,11 @@ func (t *AddTaskTool) Description() string {
 
 func (t *AddTaskTool) Execute(ctx context.Context, state *domain.State, args map[string]any) (string, error) {
 	title, ok := args["title"].(string)
-	if !ok || title == "" {
+	if !ok || strings.TrimSpace(title) == "" {
 		return "", errors.New("missing or invalid 'title' argument")
 	}
 	desc, ok := args["description"].(string)
-	if !ok || desc == "" {
+	if !ok || len(strings.TrimSpace(desc)) < 15 {
 		return "", errors.New("missing or invalid 'description' argument")
 	}
 
@@ -39,15 +40,24 @@ func (t *AddTaskTool) Execute(ctx context.Context, state *domain.State, args map
 		if depSlice, ok := depRaw.([]any); ok {
 			for _, d := range depSlice {
 				if s, ok := d.(string); ok {
-					dependsOn = append(dependsOn, s)
+					s = strings.TrimSpace(s)
+					if s != "" {
+						dependsOn = append(dependsOn, s)
+					}
 				}
 			}
 		} else if depStringSlice, ok := depRaw.([]string); ok {
-			dependsOn = depStringSlice
+			for _, s := range depStringSlice {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					dependsOn = append(dependsOn, s)
+				}
+			}
 		}
 	}
 
 	id, _ := args["id"].(string)
+	id = strings.TrimSpace(id)
 	if id == "" {
 		id = "task-" + uuid.New().String()[:8]
 	}
@@ -68,19 +78,27 @@ func (t *AddTaskTool) Execute(ctx context.Context, state *domain.State, args map
 		if tfSlice, ok := tfRaw.([]any); ok {
 			for _, f := range tfSlice {
 				if s, ok := f.(string); ok {
-					targetFiles = append(targetFiles, s)
+					s = strings.TrimSpace(s)
+					if s != "" {
+						targetFiles = append(targetFiles, s)
+					}
 				}
 			}
 		} else if tfStringSlice, ok := tfRaw.([]string); ok {
-			targetFiles = tfStringSlice
+			for _, s := range tfStringSlice {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					targetFiles = append(targetFiles, s)
+				}
+			}
 		}
 	}
 
 	storyID := ExtractStoryID(state.Metadata.InputPath)
 	task := domain.Task{
 		ID:          id,
-		Title:       title,
-		Description: desc,
+		Title:       strings.TrimSpace(title),
+		Description: strings.TrimSpace(desc),
 		Status:      domain.TaskPending,
 		ChangeType:  changeType,
 		DependsOn:   dependsOn,

@@ -38,7 +38,7 @@ func (o *Orchestrator) handleDeadlockOrRescue(ctx context.Context, state *domain
 	var rescueCandidate *domain.Task
 	for i := range state.Tasks {
 		t := &state.Tasks[i]
-		if t.Status == domain.TaskFailed && !t.LastResortUsed {
+		if t.Status == domain.TaskFailed && !strings.Contains(t.FailureLog, "pipeline_deadlock") {
 			rescueCandidate = t
 			break
 		}
@@ -73,12 +73,12 @@ func (o *Orchestrator) handleDeadlockOrRescue(ctx context.Context, state *domain
 			return true, nil
 		}
 
-		// Rescue failed: mark LastResortUsed to prevent recurring loops
+		// Rescue failed: mark LastResortUsed and pipeline_deadlock marker to prevent recurring loops
 		_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
 			for i := range st.Tasks {
 				if st.Tasks[i].ID == rescueCandidate.ID {
 					st.Tasks[i].LastResortUsed = true
-					st.Tasks[i].FailureLog = fbLog
+					st.Tasks[i].FailureLog = fmt.Sprintf("[pipeline_deadlock] %s", fbLog)
 					break
 				}
 			}

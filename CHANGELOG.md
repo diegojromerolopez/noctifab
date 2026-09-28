@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.107.0] - 2026-09-28
+
+### Added
+- **Isolated Sovereign Deadlock Rescue Decoupling (`pkg/services/orchestrator_dispatch_deadlock.go`, `orchestrator_fallback.go`)**:
+  - Decoupled in-loop retry fallback from isolated deadlock sovereign rescue. `handleDeadlockOrRescue` now searches for failed tasks that have not yet attempted deadlock rescue (`!strings.Contains(t.FailureLog, "pipeline_deadlock")`).
+  - Restricted setting `task.LastResortUsed = true` in `orchestrator_fallback.go` to triggers initiated by `pipeline_deadlock`, ensuring that tasks exhausting their turn-based retry budgets still receive an isolated sovereign rescue attempt before project abort.
+  - Added unit test coverage verifying that in-loop fallback execution does not block deadlock rescue.
+- **Deterministic Anti-Mega-Task Scope Ceiling Harness (`pkg/services/task_cohesion.go`)**:
+  - Implemented `isMegaTaskViolation`: deterministically detects and rejects monolithic tasks that target > 6 production implementation files or enumerate > 8 command/operation keywords (e.g. 38 commands in a single task).
+  - Integrated into `ValidateTaskCohesion`, rejecting overly broad task plans before dispatch and forcing the planner to produce smaller, modular sibling tasks.
+- **Deterministic Task Input & Dependency Sanitization (`pkg/services/task_dependencies.go`, `bootstrap_tools.go`)**:
+  - Enforced trimmed non-empty titles and minimum 15-character descriptions across task creation and validation.
+  - Added automated sanitization to clean whitespace, filter out blacklisted directories (`.git`, `.noctifab`, `__pycache__`, `node_modules`, `target`, binary extensions) from `TargetFiles`.
+  - Pruned self-referential dependencies (`task.ID in task.DependsOn`) and duplicate dependencies in `task.DependsOn`.
+- **Deterministic Anti-Empty Test Harness & Zero-Test Anti-Spoofing (`pkg/services/test_output_parser.go`, `test_discovery_preflight.go`)**:
+  - Enforced `ParseTestOutput` failure (`Success: false`, `0 tests discovered/executed`) when test runner output is empty (`trimmed == ""`), closing a potential false-zero bypass for silent test commands.
+  - Updated `EvaluateTestExecution` to consistently fail on empty runner outputs across all languages.
+- **Planner Prompt Anti-Mega-Task and Anti-Cascade Mandates (`pkg/infrastructure/prompts/defaults/planner/decompose.tmpl`)**:
+  - Added Rule 14 (`ANTI-MEGA-TASK MANDATE`): Capping operations at 4–6 commands/endpoints/files per task, mandating modular parallel sibling tasks.
+  - Added Rule 15 (`ANTI-CASCADE DEPENDENCY MANDATE`): Forbidding artificial serial daisy-chaining across disjoint command modules; mandating dependency on foundational dispatcher/store tasks.
+
 ## [0.106.0] - 2026-09-28
 
 ### Added

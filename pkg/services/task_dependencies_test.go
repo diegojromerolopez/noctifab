@@ -277,6 +277,49 @@ func TestValidatePlannedTasks_InputValidationErrors(t *testing.T) {
 			t.Errorf("expected TargetFiles to default to [.gitignore], got: %v", tasks[0].TargetFiles)
 		}
 	})
+
+	t.Run("filters out blacklisted paths and empty strings from TargetFiles", func(t *testing.T) {
+		tasks := []domain.Task{
+			{
+				ID:          "task-1",
+				Title:       "Valid Title",
+				Description: "A valid description of sufficient length",
+				TargetFiles: []string{"", "  ", ".git/config", "src/foo.py", "__pycache__/foo.cpython-312.pyc"},
+			},
+		}
+		err := ValidatePlannedTasks(tasks, t.TempDir())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(tasks[0].TargetFiles) != 1 || tasks[0].TargetFiles[0] != "src/foo.py" {
+			t.Errorf("expected TargetFiles to only contain [src/foo.py], got: %v", tasks[0].TargetFiles)
+		}
+	})
+
+	t.Run("filters out self-dependencies and deduplicates DependsOn", func(t *testing.T) {
+		tasks := []domain.Task{
+			{
+				ID:          "task-1",
+				Title:       "Valid Title",
+				Description: "A valid description of sufficient length",
+				TargetFiles: []string{"src/foo.py"},
+				DependsOn:   []string{"task-1", "", "  ", "task-2", "task-2"},
+			},
+			{
+				ID:          "task-2",
+				Title:       "Valid Title 2",
+				Description: "A valid description of sufficient length 2",
+				TargetFiles: []string{"src/bar.py"},
+			},
+		}
+		err := ValidatePlannedTasks(tasks, t.TempDir())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(tasks[0].DependsOn) != 1 || tasks[0].DependsOn[0] != "task-2" {
+			t.Errorf("expected DependsOn to be [task-2], got: %v", tasks[0].DependsOn)
+		}
+	})
 }
 
 func TestResolveTaskDependencies_InputValidationAndEdgeCases(t *testing.T) {
