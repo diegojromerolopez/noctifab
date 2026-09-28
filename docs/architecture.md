@@ -612,6 +612,8 @@ To preserve LLM context economics and minimize Time-To-First-Token (TTFT):
 ### 20. Automatic Sovereign Rescue Takeover (`cmd/noctifab/cli/start_sovereign_rescue.go`)
 - **Architecture Dissolution**: When specialized multi-agent stories fail, stall, or exhaust loop iterations, all architectural boundaries, story divisions, and worker roles are automatically dissolved.
 - **Direct Sovereign LLM Takeover**: A single sovereign agent directly takes control of the entire workspace with full authority to write code, author unit tests under `tests/`, implement `build`/`test`/`e2e` Makefile recipes, and pass Dual-Gate verification.
+- **Whole-Project Context Budgeting & Telegraphic Compaction**: Automatically compacts `SPEC.md` and prompt directives using telegraphic `caveman` rules (`llm.CompactMarkdownSpecWithMode`, `llm.CompactCaveman`), windows offending files around error lines or extracts AST symbol maps (`tree_sitter` mode), and applies sliding window log budgets (default: `16000`), reducing prompt size by ~90% and eliminating HTTP client deadline timeouts.
+- **Pre-E2E Teardown Enforcement**: Prior to executing the E2E verification gate, `ContainerTeardownGuard` purges any lingering Docker containers (including explicit `container_name:` definitions via `docker rm -f`) and issues `docker compose down -v --remove-orphans`, guaranteeing clean network sockets and preventing container name collisions across turns.
 - **Zero-Block Guarantee**: Eliminates over-specialization paralysis, guaranteeing that the pipeline never deadlocks or terminates with an incomplete build while an autonomous LLM turn can deliver a working program.
 
 ### 21. Aggressive Multi-Block Prompt Prefix Caching (`pkg/infrastructure/llm/anthropic.go`, `pkg/domain/llm_client.go`)

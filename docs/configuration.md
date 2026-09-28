@@ -398,7 +398,10 @@ sandbox:
 ```
 
 - **`mode`** (String): Isolation strategy environment. Values: `host` (jail checks on the developer machine) or `docker` (complete container sandbox isolation).
-- **`e2e.mode`** (String): End-to-end acceptance testing execution strategy. Values: `docker` (default, discovers `docker-compose.e2e.yml` or `docker-compose.yml`) or `native` (local test execution via `make e2e`, `npm run test:e2e`, or language-specific runners such as `pytest tests/e2e`, `cargo test --test e2e`, `go test -v ./tests/e2e/...`). When executing in Docker mode, Noctifab parses the compose configuration to dynamically resolve the runner service (`test-runner-e2e`, `test-runner`, `test-client`, or `e2e`) and passes `--exit-code-from <service>`.
+- **`e2e.mode`** (String): End-to-end acceptance testing execution strategy. Values: `docker` (default, discovers `docker-compose.e2e.yml` or `docker-compose.yml`) or `native` (local test execution via `make e2e`, `npm run test:e2e`, or language-specific runners such as `pytest tests/e2e`, `cargo test --test e2e`, `go test -v ./tests/e2e/...`, or `uv run python -m unittest discover -s tests -v`). When executing in Docker mode, Noctifab parses the compose configuration to dynamically resolve the runner service (`test-runner-e2e`, `test-runner`, `test-client`, or `e2e`) and passes `--exit-code-from <service>`.
+- **`e2e.command`** (String): Optional explicit command override for end-to-end acceptance testing.
+- **Pre-E2E Teardown Enforcement**: Prior to executing any E2E suite (and deferred immediately upon run completion), Noctifab's `ContainerTeardownGuard` performs deterministic container and socket teardown: parsing any explicit `container_name:` definitions from Compose manifests, force-removing lingering containers (`docker rm -f`), and issuing `docker compose down -v --remove-orphans`. This guarantees clean network sockets and prevents container name conflicts on task retries.
+- **`sandbox.context`**: Context pruning and packing configuration (mirrors top-level `context`), defining `mode`, `tree_sitter`, `diff_window_lines`, `window_size`, `compaction`, and `skip_folders`.
 - **`telemetry.inject`** (Boolean): When `true` (default: `true`), activates OpenTelemetry distributed tracing across all core workflow functions (`GenerateRoadmap`, `ExecuteSpike`, `executeStory`, `PlanStory`, `RunReaderPhase`, `RunTesterAgent`, `RunGeneratorAgent`, `ValidateTask`, `runQAGate`, `FinalizeUserStory`, `DispatchSovereignRescue`, and `RunCommand`). In addition, automatically injects standard W3C TraceContext headers (`TRACEPARENT` and `TRACESTATE`) into the sandbox subprocess execution environment (`RunCommand`), enabling child test runners and application processes to link directly to Noctifab's active trace span. Also instructs code generation and test authoring agents to inject lightweight structured telemetry into generated entrypoints and test fixtures.
 - **`telemetry.trace_format`** (String): Serialization format for telemetry traces. Options: `jsonl` (default, writes streaming JSON Lines directly to `.noctifab/traces.jsonl` for zero-dependency inspection via `jq` or `tail`) or `otlp` (exports standard OpenTelemetry Protocol traces to the configured collector endpoint).
 - **Autonomous Tooling (`run_e2e_tests`)**: The resolved E2E command is also accessible autonomously to the `generator`, `tester`, and `auditor` agents via the `run_e2e_tests` tool, allowing in-turn verification of containerized and native integration suites.
@@ -624,17 +627,25 @@ fallback:
   - **`qa_deadlock_turns`** (Integer): Number of consecutive QA deadlock turns before escalating (default: `2`).
   - **`watchdog_timeout_turns`** (Integer): Number of watchdog timeout failures before escalating (default: `2`).
   - **`stall_count_threshold`** (Integer): Number of cumulative stall cycles before summoning sovereign repair (default: `4`).
-- **`sovereign_rescue`**: Configures the whole-project emergency sovereign takeover engine (TR-16):
-  - **`enabled`** (Boolean): Enable autonomous sovereign rescue takeover upon loop exhaustion (default: `true`).
-  - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `10`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
-  - **`timeout`** (Duration): Per-turn execution timeout limit for sovereign LLM completions (default: `5m`).
-  - **`missing_toolchain_strategy`** (String): Strategy for handling missing host toolchains or compilers during sovereign recovery (default: `"auto"`). Configurable via environment variable `NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY`. Options:
-    - `"auto"`: Probes for Docker daemon availability. If Docker is running, uses `"docker"`; otherwise falls back to `"local"`.
-    - `"docker"`: Instructs the agent to create a `Dockerfile` with the missing compiler/runtime and wire `Makefile` (`build`, `test`, `e2e`) to execute containerized via `docker run --rm -v $(PWD):/app -w /app ...`.
-    - `"local"`: Instructs the agent to install missing tools onto the host machine via `install_package` (pip, brew, apt, npm, cargo, etc.).
-    - `"off"`: Disables fallback recovery for missing toolchains.
-  - **`context.sliding_window`** (Integer): Maximum character budget for failure logs in sovereign rescue prompts (e.g. `15000`). If omitted or set to `0` (default), no sliding window or truncation is performed and full raw logs are passed to the model. When configured, prunes verbose passing test logs while preserving the failure tail (tracebacks, assertion errors). Configurable via environment variable `NOCTIFAB_RESCUE_SLIDING_WINDOW`.
-  - **`providers`** (List of `AgentProviderRef`): Explicit prioritized LLM providers for Sovereign Rescue. Uses the identical schema as `agents.<role>.providers` (`name`, `model`, `temperature`, `max_tokens`, etc.), overriding `roles.fallback.profile`. Every corrective turn is logged to console/stderr and persisted directly to `state.LastActions` in the database.
+  - **`sovereign_rescue`**: Configures the whole-project emergency sovereign takeover engine (TR-16):
+    - **`enabled`** (Boolean): Enable autonomous sovereign rescue takeover upon loop exhaustion (default: `true`).
+    - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `10`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
+    - **`timeout`** (Duration): Per-turn execution timeout limit for sovereign LLM completions (default: `5m`).
+    - **`missing_toolchain_strategy`** (String): Strategy for handling missing host toolchains or compilers during sovereign recovery (default: `"auto"`). Configurable via environment variable `NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY`. Options:
+      - `"auto"`: Probes for Docker daemon availability. If Docker is running, uses `"docker"`; otherwise falls back to `"local"`.
+      - `"docker"`: Instructs the agent to create a `Dockerfile` with the missing compiler/runtime and wire `Makefile` (`build`, `test`, `e2e`) to execute containerized via `docker run --rm -v $(PWD):/app -w /app ...`.
+      - `"local"`: Instructs the agent to install missing tools onto the host machine via `install_package` (pip, brew, apt, npm, cargo, etc.).
+      - `"off"`: Disables fallback recovery for missing toolchains.
+    - **`sliding_window`** (Integer): Character budget cap for failure logs (default: `16000`). Overridable via `NOCTIFAB_RESCUE_SLIDING_WINDOW`.
+    - **`context`**: Configures prompt context windowing and compaction for whole-project sovereign recovery turns (shares identical properties with `context` and `sandbox.context`):
+      - **`mode`** (String): Context slicing mode (`"diff_window"`, `"tree_sitter"`, or `"full"`).
+      - **`tree_sitter`** (Boolean): When `true`, extracts AST symbols (functions, classes, interfaces) from offending files rather than raw source code blocks.
+      - **`window_size`** / **`diff_window_lines`** (Integer): Number of lines to preserve around target error traceback lines (default: `30`), omitting irrelevant code lines before and after.
+      - **`compaction`** (String): Compaction strategy for `SPEC.md` and prompt directives (`"caveman"`, `"simple_english"`, or `"none"`). In `"caveman"` mode, strips decorative prose and headers while strictly preserving code blocks, JSON schemas, and technical invariants.
+      - **`caveman_compaction`** (Boolean): Legacy boolean flag enabling telegraphic caveman compaction.
+      - **`sliding_window`** (Integer): Character budget cap for failure logs (default: `16000`).
+      - **`skip_folders`** (List of Strings): Custom project directories to skip from context packing.
+    - **`providers`** (List of `AgentProviderRef`): Explicit prioritized LLM providers for Sovereign Rescue. Uses the identical schema as `agents.<role>.providers` (`name`, `model`, `temperature`, `max_tokens`, etc.), overriding `roles.fallback.profile`. Every corrective turn is logged to console/stderr and persisted directly to `state.LastActions` in the database.
 
 See [fallback_agent.md](fallback_agent.md) for full references on the unified self-healing architecture, triggers, and compromise hierarchy.
 

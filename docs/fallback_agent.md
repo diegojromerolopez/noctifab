@@ -166,10 +166,12 @@ The Fallback Agent is invoked automatically under specific pipeline conditions a
   1. When iteration loops conclude and any stories remain failed or incomplete, the orchestrator triggers an automatic **Sovereign Rescue Takeover** via `DispatchSovereignRescue` (`cmd/noctifab/cli/start_sovereign_rescue.go`).
   2. If the parent loop context expired due to execution timeout (`runtime.max_duration`), `DispatchSovereignRescue` automatically decouples from the expired context and allocates an independent emergency rescue context runway (default 10 minutes) so that sovereign recovery is never paralyzed by prior loop budget exhaustion.
   3. All architectural boundaries, story divisions, and specialized worker roles are dissolved.
-  4. A single Sovereign LLM Agent directly takes control of the entire workspace. It receives `SPEC.md`, the failure diagnostics, compiler/test error logs, and any tool execution errors from previous turns formatted into a structured JSON envelope prompt.
-  5. The Sovereign Agent directly implements missing code, writes unit tests under `tests/`, and supplies standard `build`, `test` (exiting 1 on 0 tests), and `e2e` Makefile targets.
-  6. **Missing Host Toolchain Recovery**: If a required compiler or tool is absent on the host, Sovereign Rescue dynamically adapts based on `fallback.sovereign_rescue.missing_toolchain_strategy` (`"auto"`, `"docker"`, `"local"`, or `"off"`). Under `"docker"` (or `"auto"` when Docker is available), it writes a minimal `Dockerfile` and delegates `Makefile` recipes (`build`, `test`, `e2e`) through `docker run --rm -v $(PWD):/app -w /app ...`, ensuring verification passes inside the container. Under `"local"`, it uses `install_package` on the host.
-  7. It executes `ValidateTask` (Dual-Gate Verification). Upon success, it commits the changes and marks all stories complete, delivering a runnable project without manual intervention.
+  4. A single Sovereign LLM Agent directly takes control of the entire workspace. It receives `SPEC.md`, failure diagnostics, compiler/test error logs, and any tool execution errors from previous turns formatted into a structured JSON envelope prompt.
+  5. **Whole-Project Context Budgeting & Compaction**: To prevent prompt explosion and HTTP client deadline timeouts (e.g. on 80+ KB specifications with multiple failing tasks), Sovereign Rescue applies telegraphic `caveman` compaction to `SPEC.md` (`llm.CompactMarkdownSpecWithMode`) and prompt instructions (`llm.CompactCaveman`). Offending source files are windowed around error lines (or extracted via AST symbols under `tree_sitter` mode), and task failure logs are capped with a sliding window budget (default: `16000`), reducing prompt payload size by ~90% while preserving verbatim tools and JSON response schemas.
+  6. The Sovereign Agent directly implements missing code, writes unit tests under `tests/`, and supplies standard `build`, `test` (exiting 1 on 0 tests), and `e2e` Makefile targets.
+  7. **Pre-E2E Teardown Enforcement**: Prior to executing the E2E verification gate on each turn, `ContainerTeardownGuard` purges any lingering containers (including explicit `container_name:` definitions via `docker rm -f`) and issues `docker compose down -v --remove-orphans`, preventing socket deadlocks and container name collisions.
+  8. **Missing Host Toolchain Recovery**: If a required compiler or tool is absent on the host, Sovereign Rescue dynamically adapts based on `fallback.sovereign_rescue.missing_toolchain_strategy` (`"auto"`, `"docker"`, `"local"`, or `"off"`). Under `"docker"` (or `"auto"` when Docker is available), it writes a minimal `Dockerfile` and delegates `Makefile` recipes (`build`, `test`, `e2e`) through `docker run --rm -v $(PWD):/app -w /app ...`, ensuring verification passes inside the container. Under `"local"`, it uses `install_package` on the host.
+  9. It executes `ValidateTask` (Dual-Gate Verification). Upon success, it commits the changes and marks all stories complete, delivering a runnable project without manual intervention.
 
 ---
 
@@ -247,8 +249,14 @@ fallback:
     max_turns: 10      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
     timeout: 5m
     missing_toolchain_strategy: auto # "auto" | "docker" | "local" | "off"
+    sliding_window: 16000            # Global character budget cap for failure logs
     context:
-      sliding_window: 15000          # Optional character budget cap for failure logs (0 = disabled)
+      mode: tree_sitter              # "diff_window" | "tree_sitter" | "full"
+      tree_sitter: true              # Extract AST symbol maps for offending files
+      diff_window_lines: 40          # Preserved line window around error traceback lines
+      window_size: 40
+      compaction: caveman            # Telegraphic markdown compaction ("caveman" | "simple_english" | "none")
+      sliding_window: 16000          # Optional character budget cap for failure logs
     providers:
       - name: gemini
         temperature: 0.3
