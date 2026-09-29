@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -15,14 +16,18 @@ import (
 )
 
 type mockRoadmapAuditorLLM struct {
+	mu        sync.Mutex
 	responses map[string]*domain.LLMResponse
 	errOnID   string
 	calls     int
 }
 
 func (m *mockRoadmapAuditorLLM) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	m.mu.Lock()
 	m.calls++
-	if m.errOnID != "" && strings.Contains(prompt, "Target User Story to Audit & Refine:\n# "+m.errOnID) {
+	errOnID := m.errOnID
+	m.mu.Unlock()
+	if errOnID != "" && strings.Contains(prompt, "Target User Story to Audit & Refine:\n# "+errOnID) {
 		return nil, fmt.Errorf("context deadline exceeded")
 	}
 	for target, resp := range m.responses {

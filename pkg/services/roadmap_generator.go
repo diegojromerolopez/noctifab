@@ -165,6 +165,10 @@ func GenerateRoadmapWithStreaming(
 				return aErr
 			}
 			fmt.Printf("ℹ [Product Manager] Completed pass %d/%d (audited & refined %d/%d stories)\n", p, passes, refinedCount, len(matches))
+			if refinedCount == 0 && p >= 2 {
+				fmt.Printf("ℹ [Product Manager] Roadmap converged on pass %d/%d (0 stories required further modification); skipping remaining audit passes.\n", p, passes)
+				break
+			}
 			continue
 		}
 
@@ -290,8 +294,8 @@ func GenerateRoadmapWithStreaming(
 				storiesCount++
 			}
 
-			// On the final pass, purge any obsolete user story files from prior passes
-			if p == passes && len(writtenPaths) > 0 {
+			// Purge any obsolete or pre-sanitized duplicate user story files not in writtenPaths
+			if len(writtenPaths) > 0 {
 				if existingFiles, err := filepath.Glob(filepath.Join(storiesDir, "*.md")); err == nil {
 					for _, ef := range existingFiles {
 						if !writtenPaths[filepath.Clean(ef)] {

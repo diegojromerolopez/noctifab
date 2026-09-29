@@ -122,17 +122,19 @@ func (s *StoryDAGScheduler) AddStory(item StoryWorkItem) {
 		}
 	}
 
-	node := &StoryDAGNode{
-		Item:      item,
-		StoryID:   storyID,
-		DependsOn: deps,
-		Status:    StoryNodePending,
-	}
-
-	if _, exists := s.nodes[storyID]; !exists {
+	if existing, exists := s.nodes[storyID]; exists {
+		existing.Item = item
+		existing.DependsOn = deps
+	} else {
 		s.storyIDs = append(s.storyIDs, storyID)
+		s.nodes[storyID] = &StoryDAGNode{
+			Item:      item,
+			StoryID:   storyID,
+			DependsOn: deps,
+			Status:    StoryNodePending,
+		}
 	}
-	s.nodes[storyID] = node
+	s.sortStoryIDsLocked()
 	if s.cond != nil {
 		s.cond.Broadcast()
 	}
@@ -163,16 +165,10 @@ func isSkeletonStory(node *StoryDAGNode) bool {
 		strings.Contains(lowerPath, "foundation") || strings.Contains(lowerSpec, "walking skeleton")
 }
 
-// Execute runs all queued user stories concurrently according to the dependency DAG.
-// processFunc is invoked concurrently for each unblocked user story.
-func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx context.Context, item StoryWorkItem) error) error {
-	s.mu.Lock()
-	if len(s.nodes) == 0 {
-		s.mu.Unlock()
-		return nil
-	}
-	// Prioritize zero-dependency stories (especially walking skeletons/scaffolds)
-	// so the foundation entrypoint is built first before dependent feature stories.
+// sortStoryIDsLocked prioritizes zero-dependency stories (especially walking skeletons/scaffolds)
+// so the foundation entrypoint is built first before dependent feature stories.
+// Caller must hold s.mu.
+func (s *StoryDAGScheduler) sortStoryIDsLocked() {
 	sort.SliceStable(s.storyIDs, func(i, j int) bool {
 		nodeI := s.nodes[s.storyIDs[i]]
 		nodeJ := s.nodes[s.storyIDs[j]]
@@ -191,12 +187,33 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 		}
 		return s.storyIDs[i] < s.storyIDs[j]
 	})
-	s.mu.Unlock()
+}
 
+// Execute runs all queued user stories concurrently according to the dependency DAG.
+// processFunc is invoked concurrently for each unblocked user story.
+func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx context.Context, item StoryWorkItem) error) error {
+	s.mu.Lock()
+	if len(s.nodes) == 0 && (!s.streaming || s.streamClosed) {
+		s.mu.Unlock()
+		return nil
+	}
+	s.sortStoryIDsLocked()
 	if s.cond == nil {
 		s.cond = sync.NewCond(&s.mu)
 	}
 	cond := s.cond
+	s.mu.Unlock()
+
+	stopWake := make(chan struct{})
+	defer close(stopWake)
+	go func() {
+		select {
+		case <-ctx.Done():
+			cond.Broadcast()
+		case <-stopWake:
+		}
+	}()
+
 	var activeCount int
 	var firstErr error
 

@@ -155,7 +155,7 @@ func ExpandRoadmapStoriesParallelStreaming(
 			if expErr != nil {
 				fmt.Printf("⚠️  [Product Manager] Story expansion error for %s: %v (applying synthetic fallback)\n", target.ID, expErr)
 				expanded = &RawStoryItem{
-					Filename: fmt.Sprintf("%s-%s.md", strings.ToLower(target.ID), target.Slug),
+					Filename: fmt.Sprintf("roadmap/user-stories/%s-%s.md", strings.ToUpper(target.ID), target.Slug),
 					Content:  buildSyntheticStoryFromOutline(target),
 				}
 			}
@@ -249,7 +249,7 @@ func ExpandRoadmapStory(
 					if slug == "" {
 						slug = ToSlug(target.Title)
 					}
-					filename = fmt.Sprintf("roadmap/user-stories/%s-%s.md", target.ID, slug)
+					filename = fmt.Sprintf("roadmap/user-stories/%s-%s.md", strings.ToUpper(target.ID), slug)
 				}
 				return &RawStoryItem{
 					Filename: filename,
@@ -265,7 +265,7 @@ func ExpandRoadmapStory(
 		if slug == "" {
 			slug = ToSlug(target.Title)
 		}
-		filename := fmt.Sprintf("roadmap/user-stories/%s-%s.md", target.ID, slug)
+		filename := fmt.Sprintf("roadmap/user-stories/%s-%s.md", strings.ToUpper(target.ID), slug)
 		return &RawStoryItem{
 			Filename: filename,
 			Content:  resp.Reasoning,
@@ -274,7 +274,7 @@ func ExpandRoadmapStory(
 
 	// Clean synthetic fallback based on outline data if LLM returned no action
 	syntheticContent := buildSyntheticStoryFromOutline(target)
-	filename := fmt.Sprintf("roadmap/user-stories/%s-%s.md", target.ID, target.Slug)
+	filename := fmt.Sprintf("roadmap/user-stories/%s-%s.md", strings.ToUpper(target.ID), target.Slug)
 	return &RawStoryItem{
 		Filename: filename,
 		Content:  syntheticContent,
@@ -314,11 +314,11 @@ change_type: "new"
     "id": "%s.baseline",
     "interface": "CLI or Socket",
     "applicable_path_prefixes": ["src/"],
-    "allowed_executables": [],
+    "allowed_executables": ["make"],
     "exit_codes": [0],
     "stdout_contains": [],
     "stderr_prefixes": []
   }]
 }
-`+"```\n", target.ID, target.Title, target.Summary, target.DomainSlice, string(depsJSON), relPath, relPath, target.ID, strings.ToLower(target.ID))
+`+"```\n", strings.ToUpper(target.ID), target.Title, target.Summary, target.DomainSlice, string(depsJSON), relPath, relPath, strings.ToUpper(target.ID), strings.ToLower(target.ID))
 }

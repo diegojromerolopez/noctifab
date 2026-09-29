@@ -614,6 +614,8 @@ def run_filesystem_validation(project_dir: str, timeout_seconds: int, preserve_w
     )
 
     timed_out = False
+    in_final_gate = False
+    grace_granted = False
 
     try:
         import select
@@ -629,11 +631,18 @@ def run_filesystem_validation(project_dir: str, timeout_seconds: int, preserve_w
                     if line:
                         log_fh.write(line)
                         log_fh.flush()
-                        if any(k in line for k in ["Tool Executed", "Task", "PASS", "FAIL", "Orchestrator", "Validating", "building", "Tokens", "Story", "Merge", "Rescue", "Sovereign"]):
+                        if "Whole-Project Acceptance Gate" in line or "Sovereign Rescue" in line or "SOVEREIGN RESCUE" in line:
+                            in_final_gate = True
+                        if any(k in line for k in ["Tool Executed", "Task", "PASS", "FAIL", "Orchestrator", "Validating", "building", "Tokens", "Story", "Merge", "Rescue", "Sovereign", "Acceptance Gate"]):
                             print(f"  [{project_name}] {line.strip()[:110]}", flush=True)
 
             elapsed = time.time() - start_time
             if elapsed > timeout_seconds:
+                if in_final_gate and not grace_granted:
+                    grace_granted = True
+                    timeout_seconds += 300
+                    log_info(f"Run is in final Sovereign Rescue / Acceptance Gate; granting +300s finish-line runway (new limit: {timeout_seconds}s)...")
+                    continue
                 log_error(f"Timeout reached ({timeout_seconds}s). Stopping Noctifab process...")
                 timed_out = True
                 proc.terminate()

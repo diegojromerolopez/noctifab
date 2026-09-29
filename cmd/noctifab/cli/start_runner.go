@@ -301,9 +301,13 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	if roadmapDoneCh != nil {
 		<-roadmapDoneCh
 		generatedStories := discoverStoryFiles(targetDir)
-		if len(generatedStories) > 0 && gitClient != nil {
-			_, _ = gitClient.Run(cmdCtx, true, "add", "roadmap")
-			_, _ = gitClient.Run(cmdCtx, true, "commit", "-m", "docs(roadmap): generate user stories from SPEC.md")
+		if len(generatedStories) > 0 {
+			storyFiles = generatedStories
+			sort.Strings(storyFiles)
+			if gitClient != nil {
+				_, _ = gitClient.Run(cmdCtx, true, "add", "roadmap")
+				_, _ = gitClient.Run(cmdCtx, true, "commit", "-m", "docs(roadmap): generate user stories from SPEC.md")
+			}
 		}
 	}
 

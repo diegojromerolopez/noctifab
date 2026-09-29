@@ -250,7 +250,7 @@ func TestStoryDAGScheduler_InputValidationAndEdgeCases(t *testing.T) {
 		assert.Equal(t, "US-003", executed[1])
 	})
 
-	t.Run("streams user stories dynamically into executing scheduler", func(t *testing.T) {
+	t.Run("streams user stories dynamically into executing scheduler even when initially empty", func(t *testing.T) {
 		scheduler := services.NewStoryDAGScheduler(2)
 		scheduler.SetStreaming(true)
 
@@ -269,17 +269,21 @@ func TestStoryDAGScheduler_InputValidationAndEdgeCases(t *testing.T) {
 			doneCh <- err
 		}()
 
+		// Ensure Execute() has already entered its loop with len(nodes) == 0 before any story is added
+		time.Sleep(30 * time.Millisecond)
+
 		// Stream US-001 first
 		scheduler.AddStory(services.StoryWorkItem{Path: "US-001.md", Spec: "depends_on: []"})
 
-		// Wait briefly to verify US-001 starts before US-002 is even fed
-		time.Sleep(10 * time.Millisecond)
+		// Wait for US-001 to complete, then re-add US-001 (simulating Pass 2 audit) to verify it is not re-executed
+		time.Sleep(40 * time.Millisecond)
+		scheduler.AddStory(services.StoryWorkItem{Path: "US-001.md", Spec: "depends_on: []\n# Refined"})
 
 		// Stream US-002
 		scheduler.AddStory(services.StoryWorkItem{Path: "US-002.md", Spec: "depends_on: [\"US-001\"]"})
 
 		// Close stream
-		time.Sleep(30 * time.Millisecond)
+		time.Sleep(40 * time.Millisecond)
 		scheduler.CloseStoryStream()
 
 		select {

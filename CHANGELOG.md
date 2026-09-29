@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.109.0] - 2026-09-30
+
+### Added
+- **Parallel Sliced Story-by-Story Roadmap Auditing & Early Convergence (`pkg/services/roadmap_auditor.go`, `pkg/services/roadmap_generator.go`, `pkg/services/roadmap_two_stage.go`, `audit.tmpl`)**:
+  - Parallelized `AuditRoadmapStoriesPerStory` (`AuditRoadmapStoriesParallel`) across a bounded worker pool (`concurrency = 4`), cutting multi-story audit wall-clock latency by ~4x.
+  - Replaced full `SPEC.md` payload injection in per-story audits with targeted `BuildBasicAndFeatureSpec` slices and deterministic `[Contract Validation Error Requiring Repair: ...]` diagnostics from `ValidateStoryContract`.
+  - Added fast no-op JSON response mandate (`{"actions": []}`) to `audit.tmpl` when a target story already satisfies DoD and `noctifab-contract` requirements, plus early multi-pass convergence (`refinedCount == 0`) and duplicate/obsolete story file cleanup after every pass.
+  - Normalized fallback synthetic story filenames in `roadmap_two_stage.go` to uppercase `US-XXX` and populated default `"allowed_executables": ["make"]` in synthetic contracts.
+- **Finish-Line Grace Runway in Native Validation Loop (`validation/bin/native_project_loop.py`)**:
+  - Added a one-time `+300s` finish-line grace extension when `noctifab start` is actively executing `Sovereign Rescue` or the `Whole-Project Acceptance Gate` at `timeout_seconds`, preventing mid-rescue SIGTERM kills.
+
+### Fixed
+- **Streaming Story DAG Scheduler Premature Exit & Re-Add State Reset (`pkg/services/story_dag_scheduler.go`, `cmd/noctifab/cli/start_runner.go`, `cmd/noctifab/cli/start_dag_loop.go`)**:
+  - Fixed `StoryDAGScheduler.Execute()` returning immediately when `len(s.nodes) == 0` while `streaming && !streamClosed`, ensuring Loop 1 waits for streamed stories from Pass 1 roadmap synthesis.
+  - Made `StoryDAGScheduler.AddStory()` preserve `RUNNING` and `SUCCESS` node states when subsequent roadmap audit passes re-stream existing story IDs.
+  - Synchronized `storyFiles = generatedStories` after `<-roadmapDoneCh` in `start_runner.go` and cleaned up the initial `SPEC.md` placeholder in `start_dag_loop.go` so `RunWholeProjectAcceptanceGate` and post-loop checks inspect all generated user stories.
+
 ## [0.108.0] - 2026-09-29
 
 ### Added

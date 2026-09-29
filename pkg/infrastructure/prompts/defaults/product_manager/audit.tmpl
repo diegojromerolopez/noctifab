@@ -27,10 +27,10 @@ SPECIFICATION REVIEW & REFINEMENT MANDATE:
 REFINEMENT & AUDIT MANDATE:
 {{if .TargetStory}}
 You are auditing and refining the single target user story provided above.
+CRITICAL JSON ENVELOPE RULE: Your entire response MUST be a single raw JSON object starting with '{' and ending with '}' containing "reasoning" and "actions". Never output conversational prose or markdown outside the JSON object.
 1. Inspect the target user story against the specification and requirements.
-2. If the user story is vague or lacks an explicit Definition of Done (DoD), edge case matrix, error handling rules, or interface contracts, REWRITE and ENRICH it with complete DoD criteria, edge cases, error prefixes, exit codes, and formatting rules.
-3. Verify that its 'depends_on' field correctly aligns with preceding stories in the Roadmap Catalog (avoiding artificial sequential chaining).
-4. Emit a 'create_story' tool action with the target filename under roadmap/user-stories/ in the form 'roadmap/user-stories/US-XXX-title-slug.md' containing the complete, refined markdown content.
+2. Fast No-Op Path for Valid Stories: If the target user story already contains an explicit Definition of Done (DoD), edge case matrix, modular file paths, valid 'depends_on' references, and a valid 'noctifab-contract' block (with no Contract Validation Error reported above), DO NOT rewrite or regurgitate the story — simply return `"actions": []` with a concise `"reasoning"` confirming the story is complete.
+3. Only if the target user story is missing required DoD criteria, has invalid 'depends_on' chaining, or has a Contract Validation Error, emit a 'create_story' tool action with the target filename under roadmap/user-stories/ in the form 'roadmap/user-stories/US-XXX-title-slug.md' containing the complete, repaired markdown content.
 {{else}}
 If existing user story files are provided in the prompt:
 1. Inspect each existing user story against the specification and requirements.

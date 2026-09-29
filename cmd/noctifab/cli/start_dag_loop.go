@@ -124,10 +124,29 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 				storyOutcomes[currentStoryFile] = storyErr
 				if storyErr == nil {
 					loopSucceeded++
+					if opts.ExecutionReporter != nil {
+						opts.ExecutionReporter.EndStory(storyCtx, storyID, domain.ExecutionSuccess)
+					}
+				} else if opts.ExecutionReporter != nil {
+					opts.ExecutionReporter.EndStory(storyCtx, storyID, domain.ExecutionFailed)
 				}
 				outcomesMu.Unlock()
 				return storyErr
 			})
+			opts.StreamingScheduler = nil
+			if discovered := discoverStoryFiles(opts.TargetDir); len(discovered) > 0 {
+				for _, sf := range opts.StoryFiles {
+					if strings.EqualFold(filepath.Base(sf), "SPEC.md") {
+						delete(storyOutcomes, sf)
+					}
+				}
+				opts.StoryFiles = discovered
+				for _, df := range discovered {
+					if _, exists := storyOutcomes[df]; !exists {
+						storyOutcomes[df] = errors.New("pending")
+					}
+				}
+			}
 		} else if storyConcurrency > 1 && len(activeStoryFiles) > 1 {
 			// Story-Level Parallel Execution via StoryDAGScheduler with strict dependency gating
 			dagScheduler := services.NewStoryDAGScheduler(storyConcurrency)
