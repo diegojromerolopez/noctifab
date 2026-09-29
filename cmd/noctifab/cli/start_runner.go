@@ -20,7 +20,6 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/reportfs"
-	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/diegojromerolopez/noctifab/pkg/services/reporting"
 )
@@ -205,6 +204,13 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	llmClient := llm.BuildFailoverClient(cfg, budgetStore)
 	reg := initToolRegistry(cfg, sandboxRunner, llmClient)
 
+	// Background cache pre-warming in dependency staging:
+	// Proactively fetch dependencies and warm toolchain caches while roadmap & specs initialize.
+	if targetDir != "" && sandboxRunner != nil {
+		preWarmMgr := services.NewDependencyManager(cfg.Sandbox.PackageManagers)
+		preWarmMgr.StartBackgroundPreWarm(cmdCtx, targetDir, sandboxRunner)
+	}
+
 	mailbox := services.NewCommandMailbox(repo)
 	go mailbox.Start(cmdCtx)
 
@@ -223,83 +229,35 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if hasExistingStories {
-		fmt.Printf("ℹ [Roadmap] Existing roadmap user stories found; skipping Product Manager Agent refinement to preserve existing roadmap files.\n")
-	} else {
-		fmt.Printf("No user stories found in %s/roadmap. Spawning Product Manager Agent to generate roadmap from SPEC.md...\n", targetDir)
-		if executionReporter != nil {
-			executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "roadmap_generation", At: time.Now().UTC()})
-		}
-		pmCfg := cfg.Agents.ProductManager
-		pmCtx := services.WithCompactionMode(cmdCtx, cfg.Context.GetCompactionMode())
-		if genErr := services.GenerateRoadmapWithFullConfig(pmCtx, targetDir, llmClient, promptRenderer, pmCfg.Passes, pmCfg.GetMaxUserStories(), pmCfg.GetMinComplexity(), pmCfg.GetMaxComplexity()); genErr != nil {
-			fmt.Printf("Warning: Product Manager Agent story generation failed: %v\n", genErr)
-		}
-		if executionReporter != nil {
-			executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "roadmap_generation", At: time.Now().UTC()})
-		}
-	}
-
 	storyFiles := discoverStoryFiles(targetDir)
 	if len(storyFiles) == 0 {
 		storyFiles = []string{specFile}
 	}
 	sort.Strings(storyFiles)
 
-	gitClient := services.NewGitClient(".")
-	if !hasExistingStories && len(storyFiles) > 0 {
-		_, _ = gitClient.Run(cmdCtx, true, "add", "roadmap")
-		_, _ = gitClient.Run(cmdCtx, true, "commit", "-m", "docs(roadmap): generate user stories from SPEC.md")
-	}
-	rebaseQueue := services.NewRebaseQueue(gitClient)
-	go rebaseQueue.Start(cmdCtx)
+	executeStory, _, speculativePlanner, gitClient, _, evaluator := initStoryExecutionEnvironment(
+		cmdCtx, cfg, targetDir, storyFiles, repo, reg, llmClient, sandboxRunner, mailbox, executionReporter, promptRenderer,
+	)
 
-	profilesMap := make(map[string]services.ProfileConfig)
-	for role, prof := range cfg.Profiles {
-		profilesMap[role] = services.ProfileConfig{
-			AllowedTools:    prof.AllowedTools,
-			AllowedCommands: prof.AllowedCommands,
+	var streamingScheduler *services.StoryDAGScheduler
+	var roadmapDoneCh <-chan error
+
+	if hasExistingStories {
+		fmt.Printf("ℹ [Roadmap] Existing roadmap user stories found; skipping Product Manager Agent refinement to preserve existing roadmap files.\n")
+	} else {
+		fmt.Printf("No user stories found in %s/roadmap. Spawning Product Manager Agent to generate roadmap from SPEC.md in streaming mode...\n", targetDir)
+		storyConcurrency := cfg.Agents.Orchestrator.Number
+		if storyConcurrency <= 0 {
+			if cfg.VCS.UseWorktrees {
+				storyConcurrency = 2
+			} else {
+				storyConcurrency = 1
+			}
 		}
+		streamingScheduler = services.NewStoryDAGScheduler(storyConcurrency)
+		streamingScheduler.SetStreaming(true)
+		roadmapDoneCh = GenerateRoadmapStreaming(cmdCtx, targetDir, cfg, llmClient, promptRenderer, executionReporter, streamingScheduler)
 	}
-	validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
-	validator.ExcludePaths = cfg.Sandbox.ExcludePaths
-	validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
-	scheduler := services.NewScheduler(services.NewFileLockRegistry())
-	evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
-	evaluator.SetE2EConfig(cfg.Sandbox.E2E)
-	evaluator.Formatter = services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
-	evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
-	evaluator.SyntaxChecker = services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)
-	if cfg.Sandbox.TimeoutSeconds > 0 {
-		evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
-	}
-	vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
-	repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
-
-	orchConfig := buildOrchestratorConfig(cfg)
-
-	storyDeps := storyExecutorDeps{
-		cfg:               cfg,
-		targetDir:         targetDir,
-		storyFiles:        storyFiles,
-		gitClient:         gitClient,
-		rebaseQueue:       rebaseQueue,
-		repo:              repo,
-		reg:               reg,
-		llmClient:         llmClient,
-		validator:         validator,
-		scheduler:         scheduler,
-		evaluator:         evaluator,
-		vcsClient:         vcsClient,
-		orchConfig:        orchConfig,
-		mailbox:           mailbox,
-		repairHandler:     repairHandler,
-		promptRenderer:    promptRenderer,
-		executionReporter: executionReporter,
-	}
-	executeStory := buildStoryExecutor(storyDeps)
-	planStory := buildStoryPlanner(storyDeps)
-	speculativePlanner := NewSpeculativePlanner(repo, planStory)
 
 	if executionReporter != nil {
 		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "story_execution", At: time.Now().UTC()})
@@ -337,7 +295,17 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		WebHost:            webHost,
 		WebPort:            webPort,
 		SpeculativePlanner: speculativePlanner,
+		StreamingScheduler: streamingScheduler,
 	})
+
+	if roadmapDoneCh != nil {
+		<-roadmapDoneCh
+		generatedStories := discoverStoryFiles(targetDir)
+		if len(generatedStories) > 0 && gitClient != nil {
+			_, _ = gitClient.Run(cmdCtx, true, "add", "roadmap")
+			_, _ = gitClient.Run(cmdCtx, true, "commit", "-m", "docs(roadmap): generate user stories from SPEC.md")
+		}
+	}
 
 	if executionReporter != nil {
 		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "story_execution", At: time.Now().UTC()})

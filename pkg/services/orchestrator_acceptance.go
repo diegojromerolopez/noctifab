@@ -63,16 +63,32 @@ func (o *Orchestrator) queueAcceptanceRemediationTask(ctx context.Context, state
 			fmt.Fprintf(&sb, "%d. [%s] %s: %s\n", i+1, fix.Action, fix.File, fix.Description)
 		}
 	}
+
+	if len(auditResult.PredictedFailures) > 0 {
+		sb.WriteString("\n### 🔮 SOVEREIGN QA PREDICTED FUTURE FAILURE VECTORS & LATENT DEFECTS:\n")
+		sb.WriteString("The Sovereign QA Auditor analyzed execution logs and code and predicted high-probability latent failures:\n")
+		for i, pred := range auditResult.PredictedFailures {
+			fmt.Fprintf(&sb, "%d. [%s] %s (%s): %s\n   Trigger Scenario: %s\n   Required Mitigation: %s\n",
+				i+1, pred.RiskLevel, pred.Category, pred.AffectedFile, pred.Description, pred.TriggerScenario, pred.Mitigation)
+		}
+	}
+
 	fmt.Fprintf(&sb, "\nSummary: %s\n\n", auditResult.Summary)
 	sb.WriteString("MANDATE:\n")
 	sb.WriteString("1. Apply all proposed fixes listed above, implementing missing commands, exports, and dispatcher bindings declared in SPEC.md.\n")
 	sb.WriteString("2. Author non-tautological, behavioral black-box E2E tests covering each command's observable inputs and outputs.\n")
-	sb.WriteString("3. Verify that all unit and E2E tests pass before completing your turn.\n")
+	sb.WriteString("3. Mitigate all predicted future failure vectors to prevent latent crashes, buffer mutations, or connection drops.\n")
+	sb.WriteString("4. Verify that all unit and E2E tests pass before completing your turn.\n")
 
 	var targetFiles []string
 	for _, fix := range auditResult.Fixes {
 		if fix.File != "" {
 			targetFiles = append(targetFiles, fix.File)
+		}
+	}
+	for _, pred := range auditResult.PredictedFailures {
+		if pred.AffectedFile != "" {
+			targetFiles = append(targetFiles, pred.AffectedFile)
 		}
 	}
 

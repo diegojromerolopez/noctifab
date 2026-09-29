@@ -106,8 +106,10 @@ func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, promp
 	}
 
 	timeout := a.timeout
-	if timeout <= 0 || timeout > 90*time.Second {
-		timeout = 90 * time.Second
+	if timeout <= 0 {
+		timeout = 180 * time.Second
+	} else if timeout > 10*time.Minute {
+		timeout = 10 * time.Minute
 	}
 
 	client := &http.Client{

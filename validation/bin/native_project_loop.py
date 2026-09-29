@@ -525,6 +525,9 @@ def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = N
             except Exception:
                 pass
 
+        # Prune git worktrees before branch operations
+        subprocess.run(["git", "worktree", "prune"], cwd=project_dir, capture_output=True)
+
         for branch in ["main", "master"]:
             target_ref = baseline_commit or branch
             chk = subprocess.run(["git", "checkout", "-f", branch], cwd=project_dir, capture_output=True, text=True)
@@ -536,6 +539,14 @@ def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = N
                     subprocess.run(["git", "reset", "--hard", f"origin/{branch}"], cwd=project_dir, capture_output=True)
                 subprocess.run(["git", "clean", "-fdx", "-e", ".noctifab/secrets.yaml", "-e", ".noctifab/config.yaml"], cwd=project_dir, capture_output=True)
                 break
+
+        # Delete any stale worker or feature branches
+        br_res = subprocess.run(["git", "branch"], cwd=project_dir, capture_output=True, text=True)
+        if br_res.returncode == 0:
+            for line in br_res.stdout.splitlines():
+                b = line.strip().lstrip("*+ ").strip()
+                if b.startswith("noctifab/") or b == "feat/noctifab-generation":
+                    subprocess.run(["git", "branch", "-D", b], cwd=project_dir, capture_output=True)
 
         if cfg_backup is not None:
             try:
@@ -549,7 +560,7 @@ def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = N
     if is_python:
         uv_path = shutil.which("uv")
         if uv_path:
-            subprocess.run([uv_path, "venv", ".venv"], cwd=project_dir, capture_output=True)
+            subprocess.run([uv_path, "venv", "--seed", ".venv"], cwd=project_dir, capture_output=True)
         else:
             subprocess.run(["python3", "-m", "venv", ".venv"], cwd=project_dir, capture_output=True)
 

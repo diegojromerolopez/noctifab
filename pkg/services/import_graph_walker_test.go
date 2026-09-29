@@ -152,3 +152,40 @@ func TestImportGraphWalker_SeedFromSymbolInDescription(t *testing.T) {
 		t.Errorf("expected models.py in gathered context, got %s", joined)
 	}
 }
+
+func TestParseFileDependencies_PythonDotted(t *testing.T) {
+	content := `
+from src.resp import encode_simple_string
+from src.commands.strings_basic import handle_set
+import src.store
+`
+	allFiles := map[string]bool{
+		"src/resp.py":                   true,
+		"src/commands/strings_basic.py": true,
+		"src/store.py":                  true,
+	}
+
+	dep := ParseFileDependencies("src/main.py", content, allFiles)
+	if len(dep.Imports) != 3 {
+		t.Errorf("expected 3 dotted local imports, got %d: %+v", len(dep.Imports), dep.Imports)
+	}
+}
+
+func TestImportGraphWalker_EagerTargetFilesFullContent(t *testing.T) {
+	tempDir := t.TempDir()
+	fullCode := "class TargetStore:\n    def __init__(self):\n        self.data = {}\n    def get(self, k):\n        return self.data.get(k)\n"
+	_ = os.WriteFile(filepath.Join(tempDir, "store.py"), []byte(fullCode), 0644)
+
+	workspaceFiles := []string{"store.py"}
+	walker := NewImportGraphWalker()
+
+	// Given tree-sitter slicer mode
+	slicer := NewContextSlicer(config.ContextConfig{Mode: "tree_sitter"})
+
+	// Target files includes store.py -> must be formatted in full, not stripped to symbol outline
+	gathered := walker.GatherContext(tempDir, []string{"store.py"}, "Task Title", "Task Desc", workspaceFiles, slicer)
+	joined := strings.Join(gathered, "\n")
+	if !strings.Contains(joined, "self.data = {}") {
+		t.Errorf("expected eager full file content in context, got %s", joined)
+	}
+}

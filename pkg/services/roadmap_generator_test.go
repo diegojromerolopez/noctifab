@@ -432,3 +432,57 @@ func TestResolveUserStoryCeiling(t *testing.T) {
 	assert.Equal(t, 12, services.ResolveUserStoryCeiling(veryLargeSpec, 5))
 	assert.Equal(t, 12, services.ResolveUserStoryCeiling(veryLargeSpec, 0))
 }
+
+type mockStepRoadmapLLMClient struct {
+	step      int
+	responses []*domain.LLMResponse
+	errors    []error
+}
+
+func (m *mockStepRoadmapLLMClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	idx := m.step
+	m.step++
+	if idx < len(m.errors) && m.errors[idx] != nil {
+		return nil, m.errors[idx]
+	}
+	if idx < len(m.responses) {
+		return m.responses[idx], nil
+	}
+	return nil, fmt.Errorf("unexpected step %d", idx)
+}
+
+func TestGenerateRoadmap_GracefulDegradationOnLaterPassFailure(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "noctifab-graceful-roadmap-*")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	specPath := filepath.Join(tempDir, "SPEC.md")
+	require.NoError(t, os.WriteFile(specPath, []byte("# Spec"), 0644))
+
+	mockLLM := &mockStepRoadmapLLMClient{
+		responses: []*domain.LLMResponse{
+			{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "create_story",
+						Args: map[string]any{
+							"filename": "roadmap/user-stories/US-001-pass1.md",
+							"content":  "# US-001 Pass 1 Story\n\n```noctifab-contract\n{\"story_id\":\"US-001\",\"public_contracts\":[{\"id\":\"c1\",\"interface\":\"cli\",\"allowed_executables\":[\"run\"],\"exit_codes\":[0]}]}\n```",
+						},
+					},
+				},
+			},
+			nil, // Step 2 (Pass 2) fails with context deadline exceeded
+		},
+		errors: []error{
+			nil,
+			fmt.Errorf("context deadline exceeded"),
+		},
+	}
+
+	err = services.GenerateRoadmapWithPasses(context.Background(), tempDir, mockLLM, nil, 2)
+	assert.NoError(t, err, "expected graceful degradation to retain pass 1 stories without returning error")
+
+	stories, _ := filepath.Glob(filepath.Join(tempDir, "roadmap", "user-stories", "*.md"))
+	assert.Len(t, stories, 1, "pass 1 user story should be retained on disk")
+}

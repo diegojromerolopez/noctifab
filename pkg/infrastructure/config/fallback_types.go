@@ -135,6 +135,7 @@ type FallbackAgentConfig struct {
 	AllowSpecMutation   bool                   `yaml:"allow_spec_mutation"`
 	AllowScopeReduction bool                   `yaml:"allow_scope_reduction"`
 	EnforceSpecQuality  bool                   `yaml:"enforce_spec_quality"`
+	ParallelRepair      bool                   `yaml:"parallel_repair"`
 	RescueMaxTurns      int                    `yaml:"rescue_max_turns,omitempty"`
 	SovereignRescue     *SovereignRescueConfig `yaml:"sovereign_rescue,omitempty"`
 }

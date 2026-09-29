@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -140,6 +141,10 @@ func TestPartitionSpec_RealPyedisSpec(t *testing.T) {
 
 	content, err := os.ReadFile(pyedisSpec)
 	require.NoError(t, err)
+
+	if !strings.Contains(string(content), "| Command |") && !strings.Contains(string(content), "| :---") {
+		t.Skip("pyedis/SPEC.md does not contain markdown command tables")
+	}
 
 	tempDir := t.TempDir()
 	outDir := filepath.Join(tempDir, ".noctifab", "specs")
@@ -314,4 +319,63 @@ Hashes represent field-value maps.
 			}
 		})
 	}
+}
+
+func TestBuildBasicAndFeatureSpec_And_RoadmapOutlineSpec(t *testing.T) {
+	tempDir := t.TempDir()
+	outDir := filepath.Join(tempDir, ".noctifab", "specs")
+
+	sampleSpec := `# Project Spec
+## 1. Core Architecture
+Global server and protocol invariants.
+
+## 2. String Commands
+| Command | Signature |
+| :--- | :--- |
+| ` + "`GET`" + ` | GET key |
+| ` + "`SET`" + ` | SET key val |
+
+## 3. List Commands
+| Command | Signature |
+| :--- | :--- |
+| ` + "`LPUSH`" + ` | LPUSH key val |
+| ` + "`LPOP`" + ` | LPOP key |
+`
+	specHash := "testhash123"
+	manifest, err := PartitionSpec(sampleSpec, outDir, specHash)
+	require.NoError(t, err)
+	require.NotNil(t, manifest)
+	assert.Len(t, manifest.Sections, 2)
+
+	// 1. Test BuildRoadmapOutlineSpec
+	outlineSpec := BuildRoadmapOutlineSpec(tempDir, "fallback")
+	assert.Contains(t, outlineSpec, "Global server and protocol invariants")
+	assert.Contains(t, outlineSpec, "Specification Domain Subsystems Index")
+	assert.Contains(t, outlineSpec, "String Commands")
+	assert.Contains(t, outlineSpec, "List Commands")
+	assert.NotContains(t, outlineSpec, "fallback")
+
+	// 2. Test BuildBasicAndFeatureSpec matching by ID/Title
+	listSpec := BuildBasicAndFeatureSpec(tempDir, "List Commands", "fallback")
+	assert.Contains(t, listSpec, "Basic System Invariants & Core Architecture")
+	assert.Contains(t, listSpec, "Global server and protocol invariants")
+	assert.Contains(t, listSpec, "Target Feature Specification:")
+	assert.Contains(t, listSpec, "List Commands")
+	assert.Contains(t, listSpec, "LPUSH")
+	assert.NotContains(t, listSpec, "fallback")
+
+	// 3. Test BuildBasicAndFeatureSpec matching by command keyword
+	getSpec := BuildBasicAndFeatureSpec(tempDir, "Implement GET and SET", "fallback")
+	assert.Contains(t, getSpec, "Basic System Invariants & Core Architecture")
+	assert.Contains(t, getSpec, "Target Feature Specification:")
+	assert.Contains(t, getSpec, "String Commands")
+	assert.Contains(t, getSpec, "GET")
+
+	// 4. Test fallback when manifest doesn't exist
+	emptyDir := t.TempDir()
+	fbSpec := BuildBasicAndFeatureSpec(emptyDir, "Strings", "my-fallback")
+	assert.Equal(t, "my-fallback", fbSpec)
+
+	fbOutline := BuildRoadmapOutlineSpec(emptyDir, "my-fallback-outline")
+	assert.Equal(t, "my-fallback-outline", fbOutline)
 }

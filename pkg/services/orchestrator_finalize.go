@@ -141,7 +141,15 @@ func (o *Orchestrator) AuditStoryCompleteness(ctx context.Context, state *domain
 	if o.storyQAAuditor == nil {
 		return &StoryQAResult{Passed: true, Summary: "No story QA auditor configured"}, nil
 	}
-	return o.storyQAAuditor.AuditStoryCompleteness(ctx, state, state.Metadata.InputPath)
+	res, err := o.storyQAAuditor.AuditStoryCompleteness(ctx, state, state.Metadata.InputPath)
+	if err == nil && res != nil && res.Passed && o.acceptanceAuditor != nil && state != nil {
+		storyID := ExtractStoryID(state.Metadata.InputPath)
+		if storyID == "" {
+			storyID = state.Metadata.FeatureName
+		}
+		o.acceptanceAuditor.RecordStoryVerified(storyID, nil)
+	}
+	return res, err
 }
 
 func (o *Orchestrator) shouldAuditStoryCompleteness(state *domain.State) bool {

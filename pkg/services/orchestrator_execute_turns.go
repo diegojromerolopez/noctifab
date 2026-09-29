@@ -22,9 +22,12 @@ func (o *Orchestrator) executeTaskCodeFirst(
 	qaBlocked := ""
 	if task.Retries == 0 {
 		execOrder := strings.ToLower(strings.TrimSpace(o.cfg.TaskExecutionOrder))
-		if execOrder == "tester_first" {
+		switch execOrder {
+		case "parallel", "co_synthesis", "parallel_co_synthesis":
+			qaBlocked = o.executeParallelCoSynthesisTurn(ctx, task, taskState, taskGit, fileContexts, taskID)
+		case "tester_first":
 			qaBlocked = o.executeTesterFirstTurn(ctx, task, taskState, taskGit, fileContexts, taskID)
-		} else {
+		default:
 			qaBlocked = o.executeGeneratorFirstTurn(ctx, task, taskState, taskGit, fileContexts, taskID)
 		}
 	} else {

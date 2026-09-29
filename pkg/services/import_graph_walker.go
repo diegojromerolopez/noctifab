@@ -120,12 +120,16 @@ func ParseFileDependencies(relPath string, content string, allFiles map[string]b
 					}
 				}
 				modName = strings.TrimPrefix(modName, ".")
-				modPath1 := filepath.Join(dir, modName+".py")
-				modPath2 := filepath.Join(modName + ".py")
-				modPath3 := filepath.Join("src", modName+".py")
-				modInit := filepath.Join(modName, "__init__.py")
+				subPath := strings.ReplaceAll(modName, ".", "/")
+				modPath1 := filepath.Join(dir, subPath+".py")
+				modPath2 := subPath + ".py"
+				modPath3 := filepath.Join("src", subPath+".py")
+				modInit1 := filepath.Join(subPath, "__init__.py")
+				modInit2 := filepath.Join(dir, subPath, "__init__.py")
+				modInit3 := filepath.Join("src", subPath, "__init__.py")
+				modDirect := modName + ".py"
 
-				for _, cand := range []string{modPath1, modPath2, modPath3, modInit} {
+				for _, cand := range []string{modPath1, modPath2, modPath3, modInit1, modInit2, modInit3, modDirect} {
 					candNorm := filepath.ToSlash(cand)
 					if allFiles[candNorm] {
 						dep.Imports = append(dep.Imports, candNorm)
@@ -339,6 +343,11 @@ func (w *ImportGraphWalker) GatherContext(projectPath string, taskTargetFiles []
 	// Ensure deterministic ordering
 	sort.Strings(orderedFiles)
 
+	targetMap := make(map[string]bool)
+	for _, tf := range taskTargetFiles {
+		targetMap[filepath.ToSlash(tf)] = true
+	}
+
 	var gathered []string
 	for _, relPath := range orderedFiles {
 		fullPath := filepath.Join(projectPath, relPath)
@@ -349,7 +358,11 @@ func (w *ImportGraphWalker) GatherContext(projectPath string, taskTargetFiles []
 
 		rawContent := string(content)
 		var sliced string
-		if slicer != nil {
+		// Eager Context Bundling: Provide full file content for task target files
+		// and direct dependencies when context size is manageable, eliminating redundant read turns.
+		if targetMap[filepath.ToSlash(relPath)] || len(orderedFiles) <= 4 {
+			sliced = fmt.Sprintf("File %s:\n```\n%s\n```", relPath, rawContent)
+		} else if slicer != nil {
 			sliced = slicer.SliceFileContext(relPath, rawContent, "")
 		} else {
 			sliced = fmt.Sprintf("File %s:\n```\n%s\n```", relPath, rawContent)

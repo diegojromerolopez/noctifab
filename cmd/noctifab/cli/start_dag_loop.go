@@ -30,6 +30,7 @@ type StoryLoopOptions struct {
 	WebHost            string
 	WebPort            int
 	SpeculativePlanner *SpeculativePlanner
+	StreamingScheduler *services.StoryDAGScheduler
 }
 
 // runStoryIterationLoops executes the user stories across iteration loops either concurrently (via StoryDAGScheduler) or sequentially.
@@ -70,12 +71,64 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 			}
 		}
 
-		if len(activeStoryFiles) == 0 {
+		if len(activeStoryFiles) == 0 && opts.StreamingScheduler == nil {
 			fmt.Printf("⚠️ [Loop %d] No active story files found on disk. Concluding loop pass.\n", loopIdx)
 			break
 		}
 
-		if storyConcurrency > 1 && len(activeStoryFiles) > 1 {
+		if opts.StreamingScheduler != nil {
+			dagScheduler := opts.StreamingScheduler
+			isPipelined := true
+			if opts.Cfg != nil {
+				isPipelined = opts.Cfg.Agents.Orchestrator.IsPipelined()
+			}
+			dagScheduler.SetPipelined(isPipelined)
+
+			var outcomesMu sync.Mutex
+			_ = dagScheduler.Execute(ctx, func(storyCtx context.Context, item services.StoryWorkItem) error {
+				currentStoryFile := item.Path
+				if _, err := os.Stat(currentStoryFile); os.IsNotExist(err) {
+					fmt.Printf("ℹ [Loop %d] Story file %s no longer exists — skipping\n", loopIdx, currentStoryFile)
+					return nil
+				}
+				storyID := services.ExtractStoryID(currentStoryFile)
+				storyTitle := extractStoryTitle(currentStoryFile)
+				storyMeta := domain.StoryMetadata{
+					StoryID:     storyID,
+					Source:      currentStoryFile,
+					FeatureName: filepath.Base(currentStoryFile),
+					Title:       storyTitle,
+					Sequence:    1,
+					StartedAt:   time.Now().UTC(),
+				}
+
+				outcomesMu.Lock()
+				loopAttempted++
+				outcomesMu.Unlock()
+
+				if opts.ExecutionReporter != nil {
+					opts.ExecutionReporter.BeginStory(storyCtx, storyMeta)
+				}
+
+				if opts.SpeculativePlanner != nil {
+					allStories := discoverStoryFiles(opts.TargetDir)
+					if len(allStories) == 0 {
+						allStories = []string{currentStoryFile}
+					}
+					opts.SpeculativePlanner.PrePlanQueuedStories(storyCtx, allStories, currentStoryFile)
+				}
+
+				storyErr := opts.ExecuteStory(storyCtx, currentStoryFile)
+
+				outcomesMu.Lock()
+				storyOutcomes[currentStoryFile] = storyErr
+				if storyErr == nil {
+					loopSucceeded++
+				}
+				outcomesMu.Unlock()
+				return storyErr
+			})
+		} else if storyConcurrency > 1 && len(activeStoryFiles) > 1 {
 			// Story-Level Parallel Execution via StoryDAGScheduler with strict dependency gating
 			dagScheduler := services.NewStoryDAGScheduler(storyConcurrency)
 			isPipelined := true

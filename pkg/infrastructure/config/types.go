@@ -2,6 +2,7 @@ package config
 
 import (
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -133,6 +134,14 @@ type AgentRoleConfig struct {
 	MaxTokens      int64              `yaml:"max_tokens,omitempty"`
 	Ensemble       EnsembleConfig     `yaml:"ensemble,omitempty"`
 	Pipelined      *bool              `yaml:"pipelined,omitempty"`
+	Timeout        Duration           `yaml:"timeout,omitempty"`
+}
+
+func (a AgentRoleConfig) GetTimeout() time.Duration {
+	if a.Timeout > 0 {
+		return time.Duration(a.Timeout)
+	}
+	return 180 * time.Second
 }
 
 func (a AgentRoleConfig) GetMaxUserStories() int {
@@ -248,6 +257,9 @@ type ProviderSpec struct {
 	// ExtraParams holds provider-specific extra body parameters passed verbatim
 	// in the API request.
 	ExtraParams map[string]string `yaml:"extra_params,omitempty"`
+	// ContextWindow specifies the maximum input context window size in tokens for this provider/model.
+	// When 0, the built-in heuristic (GetModelContextWindow) is used.
+	ContextWindow int64 `yaml:"context_window,omitempty"`
 }
 
 type LLMConfig struct {
@@ -274,6 +286,16 @@ type LLMConfig struct {
 	// MaxPromptTokens is a pre-send cap on the estimated token size of
 	// outgoing prompts (0 = built-in default of 262144, negative = disabled).
 	MaxPromptTokens int64 `yaml:"max_prompt_tokens"`
+	// AdaptiveContextRouting, when true, dynamically re-orders or filters candidates
+	// based on the prompt's estimated token size, bypassing static priority ordering
+	// to prioritize models with sufficient context window capacity.
+	AdaptiveContextRouting bool `yaml:"adaptive_context_routing,omitempty"`
+	// BypassPriorityByContext is an alias for AdaptiveContextRouting.
+	BypassPriorityByContext bool `yaml:"bypass_priority_by_context,omitempty"`
+}
+
+func (l LLMConfig) IsAdaptiveContextRoutingEnabled() bool {
+	return l.AdaptiveContextRouting || l.BypassPriorityByContext
 }
 
 type PullRequestConfig struct {
@@ -345,6 +367,7 @@ type RoleSetting struct {
 	Providers   []AgentProviderRef `yaml:"providers,omitempty"`
 	MaxTokens   int64              `yaml:"max_tokens,omitempty"`
 	Ensemble    EnsembleConfig     `yaml:"ensemble,omitempty"`
+	Timeout     Duration           `yaml:"timeout,omitempty"`
 }
 
 type RolesConfig struct {

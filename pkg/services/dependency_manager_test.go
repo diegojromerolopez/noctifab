@@ -25,6 +25,7 @@ func TestDetectMissingTool(t *testing.T) {
 		{name: "ts-node not found", output: "exec: \"ts-node\": executable file not found", wantTool: "ts-node", wantFound: true},
 		{name: "rspec not found", output: "bash: rspec: command not found", wantTool: "rspec", wantFound: true},
 		{name: "dune not found", output: "bash: dune: command not found", wantTool: "dune", wantFound: true},
+		{name: "no module named pip", output: "/Users/user/.venv/bin/python3: No module named pip", wantTool: "pip", wantFound: true},
 		{name: "no match", output: "unrelated output", wantTool: "", wantFound: false},
 		{name: "empty output", output: "", wantTool: "", wantFound: false},
 		{name: "tool not in map", output: "exec: \"some-unknown-tool\": executable file not found", wantTool: "", wantFound: false},

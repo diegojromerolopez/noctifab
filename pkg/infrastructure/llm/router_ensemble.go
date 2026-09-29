@@ -312,7 +312,7 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 				}
 			}
 			pm := r.cfg.Agents.ProductManager
-			if len(pm.Providers) > 0 || pm.Ensemble.IsEnabled() {
+			if len(pm.Providers) > 0 || pm.Ensemble.IsEnabled() || pm.Timeout > 0 {
 				return config.RoleSetting{
 					Model:       pm.Model,
 					Temperature: pm.Temperature,
@@ -320,6 +320,7 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 					Providers:   pm.Providers,
 					MaxTokens:   pm.MaxTokens,
 					Ensemble:    pm.Ensemble,
+					Timeout:     pm.Timeout,
 				}
 			}
 		case "fallback", "sovereign_rescue", "sovereignrescue":
@@ -339,7 +340,7 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 				return config.RoleSetting{Model: lr.Model, Temperature: lr.Temperature, Profile: lr.Profile, Providers: lr.Providers}
 			}
 		}
-		if len(agentRole.Providers) > 0 || agentRole.Ensemble.IsEnabled() {
+		if len(agentRole.Providers) > 0 || agentRole.Ensemble.IsEnabled() || agentRole.Timeout > 0 {
 			return config.RoleSetting{
 				Model:       agentRole.Model,
 				Temperature: agentRole.Temperature,
@@ -348,6 +349,7 @@ func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting 
 				Providers:   agentRole.Providers,
 				MaxTokens:   agentRole.MaxTokens,
 				Ensemble:    agentRole.Ensemble,
+				Timeout:     agentRole.Timeout,
 			}
 		}
 	}

@@ -51,7 +51,22 @@ func GenerateRoadmapWithConfig(ctx context.Context, projectPath string, llmClien
 }
 
 // GenerateRoadmapWithFullConfig executes a multi-pass Product Manager roadmap generation with user story limits and complexity bounds.
-func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int, maxUserStories int, minComplexity int, maxComplexity int) (lastErr error) {
+func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmClient domain.LLMClient, renderer PromptRenderer, passes int, maxUserStories int, minComplexity int, maxComplexity int) error {
+	return GenerateRoadmapWithStreaming(ctx, projectPath, llmClient, renderer, passes, maxUserStories, minComplexity, maxComplexity, nil)
+}
+
+// GenerateRoadmapWithStreaming executes roadmap generation and streams each story as it completes Stage 2 expansion.
+func GenerateRoadmapWithStreaming(
+	ctx context.Context,
+	projectPath string,
+	llmClient domain.LLMClient,
+	renderer PromptRenderer,
+	passes int,
+	maxUserStories int,
+	minComplexity int,
+	maxComplexity int,
+	onStoryReady func(filePath, content string),
+) (lastErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "GenerateRoadmap",
 		trace.WithAttributes(
 			attribute.String("project_path", projectPath),
@@ -138,12 +153,25 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 			}
 		}
 
-		action := "generate"
 		if len(existingStories) > 0 {
-			action = "audit"
+			matches, _ := filepath.Glob(filepath.Join(storiesDir, "*.md"))
+			fmt.Printf("ℹ [Product Manager] Performing per-story roadmap audit on %d stories (Pass %d/%d)...\n", len(matches), p, passes)
+			refinedCount, aErr := AuditRoadmapStoriesPerStory(ctx, projectPath, matches, specContent, legacyBlock, llmClient, renderer, onStoryReady)
+			if aErr != nil {
+				if len(matches) > 0 {
+					fmt.Printf("⚠️  [Product Manager] Roadmap refinement pass %d/%d encountered error (%v). Gracefully retaining %d verified user stories from earlier passes and proceeding.\n", p, passes, aErr, len(matches))
+					return nil
+				}
+				return aErr
+			}
+			fmt.Printf("ℹ [Product Manager] Completed pass %d/%d (audited & refined %d/%d stories)\n", p, passes, refinedCount, len(matches))
+			continue
 		}
+
+		action := "generate"
+		stage1Spec := BuildRoadmapOutlineSpec(projectPath, specContent)
 		rendered, err := renderer.Render(prompts.AgentProductManager, action, prompts.ProductManagerPromptData{
-			Spec:            specContent,
+			Spec:            stage1Spec,
 			ExistingStories: strings.Join(existingStories, "\n"),
 			LegacyFiles:     legacyBlock,
 			MaxUserStories:  effectiveMaxStories,
@@ -160,7 +188,9 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 
 		passSuccess := false
 		for attempt := 0; attempt < 3; attempt++ {
-			resp, err := llmClient.Complete(pmCtx, prompt)
+			callCtx, cancel := context.WithTimeout(pmCtx, 180*time.Second)
+			resp, err := llmClient.Complete(callCtx, prompt)
+			cancel()
 			if err != nil {
 				lastErr = err
 				continue
@@ -173,6 +203,7 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 			storiesCount := 0
 			specRefined := false
 			var rawStories []RawStoryItem
+			var outlines []StoryOutlineItem
 			for _, act := range resp.Actions {
 				if act.Tool == "refine_spec" {
 					content, _ := act.Args["content"].(string)
@@ -187,6 +218,11 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 						}
 					}
 				}
+				if act.Tool == "plan_roadmap" {
+					if parsed, pErr := ParseStoryOutlines(act); pErr == nil && len(parsed) > 0 {
+						outlines = append(outlines, parsed...)
+					}
+				}
 				if act.Tool == "create_story" {
 					filename, _ := act.Args["filename"].(string)
 					content, _ := act.Args["content"].(string)
@@ -195,6 +231,40 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 							Filename: filename,
 							Content:  content,
 						})
+					}
+				}
+			}
+
+			// If Stage 1 produced an outline, execute Stage 2 expansion for any unexpanded stories
+			if len(outlines) > 0 {
+				existingIDs := make(map[string]bool)
+				for _, rs := range rawStories {
+					base := filepath.Base(rs.Filename)
+					parts := strings.Split(base, "-")
+					if len(parts) >= 2 {
+						id := strings.ToUpper(parts[0] + "-" + parts[1])
+						existingIDs[id] = true
+					}
+				}
+
+				fmt.Printf("ℹ [Product Manager] Stage 1 planned %d user stories. Expanding into full definitions of done (Stage 2 in parallel)...\n", len(outlines))
+				var streamingCallback StoryReadyCallback
+				if onStoryReady != nil {
+					streamingCallback = func(story RawStoryItem) {
+						targetPath := NormalizeStoryPath(projectPath, story.Filename, story.Content)
+						_ = os.MkdirAll(filepath.Dir(targetPath), 0755)
+						_ = os.WriteFile(targetPath, []byte(story.Content), 0644)
+						onStoryReady(targetPath, story.Content)
+					}
+				}
+				parallelStories := ExpandRoadmapStoriesParallelStreaming(ctx, projectPath, outlines, existingIDs, specContent, legacyBlock, existingStories, llmClient, renderer, 4, streamingCallback)
+				for _, exp := range parallelStories {
+					rawStories = append(rawStories, exp)
+					existingStories = append(existingStories, fmt.Sprintf("=== File: %s ===\n%s\n", exp.Filename, exp.Content))
+					base := filepath.Base(exp.Filename)
+					parts := strings.Split(base, "-")
+					if len(parts) >= 2 {
+						existingIDs[strings.ToUpper(parts[0]+"-"+parts[1])] = true
 					}
 				}
 			}
@@ -242,6 +312,14 @@ func GenerateRoadmapWithFullConfig(ctx context.Context, projectPath string, llmC
 		}
 
 		if !passSuccess {
+			// Graceful Degradation: If an earlier pass already successfully created valid user stories,
+			// a failure on a subsequent audit/refinement pass (e.g. timeout) must not fail the entire roadmap.
+			if p > 1 {
+				if existingStories, globErr := filepath.Glob(filepath.Join(storiesDir, "*.md")); globErr == nil && len(existingStories) > 0 {
+					fmt.Printf("⚠️  [Product Manager] Roadmap refinement pass %d/%d encountered error (%v). Gracefully retaining %d verified user stories from earlier passes and proceeding.\n", p, passes, lastErr, len(existingStories))
+					return nil
+				}
+			}
 			return fmt.Errorf("roadmap generation failed on pass %d/%d: %w", p, passes, lastErr)
 		}
 	}

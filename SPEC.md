@@ -848,6 +848,7 @@ Implementations of this interface reside under `pkg/infrastructure/llm/` and imp
 *   **Preflight Model Verification & Auto-Resolution (`pkg/infrastructure/llm/ping.go`):** During preflight checks, Noctifab queries the live `/models` endpoint of configured providers. If a configured model is missing, deprecated, or returning 404, Noctifab auto-resolves to the highest-ranked available flagship model from that provider upfront, eliminating startup failover delays.
 *   **Persistent Parameter Capability Cache (`pkg/infrastructure/llm/openai_adapt.go`):** In-memory cache memorizes rejected chat completion parameters (such as `temperature`, `max_tokens`, `response_format`, or extra body parameters) upon first error per normalized model key. Subsequent requests to that model across all agent roles automatically filter out the invalid parameters with zero retry churn.
 *   **Task Diagnostic Cache & SHA-256 Deduplication (`pkg/services/diagnostic_cache.go`):** Files injected into the initial prompt context are tracked with cryptographic SHA-256 checksums. When `read_file` is requested for an unmodified prompt file, a concise reference notice is returned instead of re-injecting duplicate file payloads. Any file mutation automatically invalidates cached diagnostic test/lint results.
+*   **Adaptive Speculative Hedging with Dynamic Demotion Memory (`pkg/infrastructure/llm/router_hedging.go`):** To avoid blocking on sluggish or hanging LLM provider connections, the router initiates a speculative hedged completion to a secondary provider after a configured hedge delay (e.g. 25s). If the primary provider has accumulated recent consecutive timeouts or latency demotion penalties, the hedge delay dynamically scales down (e.g. to 10s, 3s, or 1s), launching the hedge almost immediately and preventing long idle stalls.
 
 ##### Lenient JSON Parsing & Struct Normalizer (`pkg/infrastructure/llm/parser.go`)
 Lower-tier reasoning models (e.g. Gemini 3.5 Flash or GPT-3.5) often return JSON schemas with inconsistent field types that violate strict Go serialization. The parser under `pkg/infrastructure/llm/parser.go` implements a lenient unmarshalling and type normalization flow:
@@ -856,6 +857,7 @@ Lower-tier reasoning models (e.g. Gemini 3.5 Flash or GPT-3.5) often return JSON
     *   Coerces single-string dependency values (e.g., `"depends_on": "task-a"`) into string slices (`["task-a"]`).
     *   Converts stringified booleans (e.g. `"resolved": "true"`) to boolean `true`.
     *   Translates empty arrays or null fields to clean struct defaults.
+    *   **Flexible Contract Exit Code Normalization (`pkg/domain/exit_code_list.go`):** Unmarshals exit codes formatted as integer slices (`[0, 1]`), string slices (`["0", "1"]`), dictionary maps (`{"0": "ok"}`), single integers (`0`), or single strings (`"0"`) into a clean `[]int` slice (`ExitCodeList`), preventing schema mismatch errors during story verification.
 3.  **Domain Construction:** Returns a fully compliant and validated `LLMResponse` struct. If normalization fails, the parser returns a formatted syntax prompt warning back to the LLM.
 
 #### Prompt Design & Injection Templates
@@ -1637,7 +1639,7 @@ The database stores the following task states after a shutdown event halts execu
 
 ---
 
-### 3.6.8. Dependency Auto-Install
+### 3.6.8. Dependency Auto-Install & Toolchain Preflight
 
 To reduce human intervention when required toolchains are missing, the sandbox can automatically detect and install missing dependencies.
 
@@ -1646,6 +1648,12 @@ To reduce human intervention when required toolchains are missing, the sandbox c
 2. If a tool is missing and `sandbox.auto_install_deps` is `true`, the sandbox attempts to install it using the configured package managers (e.g., `brew`, `apt`, `pip`, `go install`).
 3. The list of supported package managers is configured via `sandbox.package_managers`.
 4. If the tool cannot be installed, the task is marked as failed with `ErrMissingDependency`.
+
+#### Language-Agnostic Build Manifest & Dependency Preflight (`pkg/services/dependency_manager.go`)
+Noctifab is strictly project- and language-agnostic. Runtimes, compilers, and dependencies are inspected and remediated generically across all ecosystems (Go, Rust, Node, Python, Ruby, C, OCaml) without hardcoded language special cases:
+1. **Build Manifest Preflight:** Before dispatching prompts, preflight inspects build manifests (`Makefile`, `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`) to verify target recipes exist before invoking them.
+2. **Missing Dependency Detection:** When commands fail with missing binary or tool indicators (`command not found`, `executable file not found`, `no module named <tool>`, exit status 127), the `DependencyManager` intercepts the failure log.
+3. **Automated Toolchain Remediation:** If the required package manager is permitted in `sandbox.package_managers`, the tool is installed dynamically using ecosystem-standard installation commands (e.g. `curl -sSf https://sh.rustup.rs | sh`, `python3 -m ensurepip --upgrade`, `npm install -g`, `go install`), ensuring runner scripts and dark factory loops remain completely free of hardcoded language workarounds.
 
 #### Configuration
 ```yaml
@@ -1670,12 +1678,14 @@ sandbox:
 
 ### 3.6.9. Watchdog Liveness Monitor & Repair Integration
 
-The Watchdog Liveness Monitor wraps all sandbox command execution with two safeguards to prevent hangs and runaway processes. When a command fails, the orchestrator's repair handler categorizes the failure and attempts automatic remediation.
+The Watchdog Liveness Monitor wraps all sandbox command execution with safeguards to prevent hangs, runaway processes, and false-positive timeouts during heavy compilation. When a command fails, the orchestrator's repair handler categorizes the failure and attempts automatic remediation.
 
 #### Watchdog Safeguards
 1. **MaxDuration (Absolute Timeout):** The process group is killed via SIGKILL if execution exceeds the configured timeout (default: 5 minutes).
 2. **IdleTimeout (Sliding Window):** Resets on every byte of stdout/stderr output. If no output is produced for the configured duration (default: 30s), the process is killed and `ErrWatchdogIdleTimeout` is returned. This prevents silent hangs from deadlocked threads or infinite loops producing no output.
-3. **Process Group Termination:** Both timeouts use `syscall.SysProcAttr{Setpgid: true}` to kill the entire process group, ensuring child processes and background threads are terminated.
+3. **Dynamic Watchdog Idle Timeouts by Command Type (`ResolveDynamicIdleTimeout`):** Heavy compilation, container builds, and dependency installations often remain silent during large package downloads or multi-stage Docker builds. The watchdog inspects the command binary and arguments to dynamically grant extended idle windows (minimum 120s) to `docker build`, `podman`, `cargo build`, `go build`, `pip install`, `npm install`, and `make build`, while preserving the aggressive 30s timeout for unit tests and fast utilities.
+4. **Host-Mode Negative Guidance in Diagnostics:** When running in `--sandbox-mode host`, diagnostic repair prompts strictly forbid suggesting or generating `docker build` or container commands, alerting the agent that container toolchains are disabled and instructing it to use the host's native toolchains (e.g. virtualenvs, Cargo, Go).
+5. **Process Group Termination:** Both timeouts use `syscall.SysProcAttr{Setpgid: true}` to kill the entire process group, ensuring child processes and background threads are terminated.
 
 #### Failure Categorization
 When a command is killed or exits with an error, the `WatchdogRepair` categorizes the failure into one of these types:

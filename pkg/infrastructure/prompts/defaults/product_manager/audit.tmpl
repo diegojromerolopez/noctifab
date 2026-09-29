@@ -10,6 +10,13 @@ Audit and refine existing user stories to ensure complete Definition of Done (Do
 Specification:
 {{.Spec}}
 
+{{if .TargetStory}}
+Target User Story to Audit & Refine:
+{{.TargetStory}}
+
+Roadmap Catalog Overview (Cross-Story Dependencies & Scope Boundaries):
+{{.RoadmapCatalog}}
+{{end}}
 Existing User Stories:
 {{.ExistingStories}}{{.LegacyFiles}}
 
@@ -18,10 +25,18 @@ SPECIFICATION REVIEW & REFINEMENT MANDATE:
 2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your user story creation actions.
 
 REFINEMENT & AUDIT MANDATE:
+{{if .TargetStory}}
+You are auditing and refining the single target user story provided above.
+1. Inspect the target user story against the specification and requirements.
+2. If the user story is vague or lacks an explicit Definition of Done (DoD), edge case matrix, error handling rules, or interface contracts, REWRITE and ENRICH it with complete DoD criteria, edge cases, error prefixes, exit codes, and formatting rules.
+3. Verify that its 'depends_on' field correctly aligns with preceding stories in the Roadmap Catalog (avoiding artificial sequential chaining).
+4. Emit a 'create_story' tool action with the target filename under roadmap/user-stories/ in the form 'roadmap/user-stories/US-XXX-title-slug.md' containing the complete, refined markdown content.
+{{else}}
 If existing user story files are provided in the prompt:
 1. Inspect each existing user story against the specification and requirements.
 2. If an existing user story is vague or lacks an explicit Definition of Done (DoD), edge case matrix, error handling rules, or interface contracts, REWRITE and ENRICH it with complete DoD criteria, edge cases, error prefixes, exit codes, and formatting rules.
 3. Emit 'create_story' tool actions with the target filename under roadmap/user-stories/ in the form 'roadmap/user-stories/US-XXX-title-slug.md' and the updated markdown content.
+{{end}}
 
 ROADMAP CONSOLIDATION & STORY LIMIT RULE:
 1. Unified Complexity Unit (CU) Metric: Evaluate specification size using Complexity Units: CU = Unadjusted Function Points (inputs/outputs/models) + (3 * UI/UX Components) + (3 * Infrastructure Seams).
@@ -39,6 +54,13 @@ PROGRESSIVE VERTICAL SLICES & MINIMAL DEPENDENCY MANDATE:
 4. Strict Prohibition on Artificial Sequential Chaining (Domain-Sliced Fan-Out): ARTIFICIAL SEQUENTIAL CHAINING IS STRICTLY FORBIDDEN. Do NOT chain feature stories linearly (e.g. US-003 depending on US-002, US-004 depending on US-003) when stories represent independent commands, data structures, endpoints, or modules. All independent feature stories MUST declare 'depends_on: ["US-001"]' so that the Orchestrator's StoryDAGScheduler can dispatch multiple stories in parallel across isolated Git worktrees simultaneously. Only declare a dependency on an intermediate feature story if a story physically cannot compile or execute without code introduced strictly in that specific predecessor.
 5. All Subsequent Stories Runnable: Subsequent user stories progressively add vertical feature slices with end-to-end command dispatch and co-located tests, ensuring the codebase is 100% runnable, testable, and demonstrable at every single story.
 6. Comprehensive Functional Subsystem Coverage Mandate: You MUST decompose all major functional subsystems declared in SPEC.md (e.g. network/wire protocols, data storage/indexing, command dispatchers, and persistence) into distinct functional user stories. For extensive specifications declaring distinct data structures, command families, or protocols (e.g. key-value, hashes, lists, sets, sorted sets, streams, transactions, pub/sub), you MUST allocate dedicated feature stories to each domain capability so that 100% of the functional command matrix and wire surface declared in SPEC.md is fully represented across the roadmap before the final hardening story. Never truncate, omit, or compress multi-subsystem specifications into only a skeleton and a generic hardening story. Every command, feature group, or API endpoint declared in SPEC.md must have an explicit user story and Definition of Done with executable behavioral contracts.
+7. Semantic Feature Grouping & Sub-Family Decomposition Mandate:
+   - Strict Semantic Domain Boundaries: When SPEC.md outlines multiple command families, distinct data structures, diverse protocols, or separate domain entities (e.g. in key-value/protocol stores: Strings, Bitmaps, HyperLogLogs, Lists, Hashes, Sets, Sorted Sets, Streams, Pub/Sub, Transactions; in game/chess engines: Board/Pieces, Move Generation, Fen/PGN, Evaluation, Search, UCI protocol; in web/REST systems: Users/Auth, Catalogs, Orders, Payments):
+     * You MUST SEMANTICALLY GROUP user stories by individual domain capability or data structure family.
+     * NEVER lump multiple distinct command families or data structures into a single gigantic user story (e.g. NEVER combine Strings, Bitmaps, and HyperLogLogs into one story; NEVER combine Lists, Hashes, Sets, and Sorted Sets into one story).
+     * Allocate a DEDICATED user story for EACH distinct data structure or command family (e.g. US-002: Strings & Numeric Operations; US-003: Bitmaps & Bitfield Operations; US-004: HyperLogLog Operations; US-005: Lists; US-006: Hashes; US-007: Sets; US-008: Sorted Sets).
+   - Per-Story Command & Endpoint Ceiling: No single feature user story may contain more than 6 to 10 commands or API endpoints. If a single family has more than 10 commands (e.g. 20+ string operations), divide it into semantic sub-capability stories (e.g. Basic String Storage & Key Access vs. String Numeric, Range & Append Operations).
+   - Downstream Planning Cohesion: Semantic grouping guarantees that the downstream Planner Agent can decompose stories into fine-grained, atomic DAG tasks without triggering anti-mega-task granularity violations or token context limits.
 
 LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE:
 If existing legacy code files are detected in the input context:

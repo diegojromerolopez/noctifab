@@ -102,3 +102,25 @@ func TestValidateTaskCohesion_InvalidMegaTask_TooManyCommands(t *testing.T) {
 	}
 }
 
+func TestValidateTaskCohesion_ValidTaskWithMarkdownAndOptions(t *testing.T) {
+	tasks := []domain.Task{
+		{
+			ID:    "US-003-TASK-001",
+			Title: "Implement String Core Storage and Basic Key Access",
+			Description: `### REQUIREMENTS & SCOPE
+Implement SET, GET, and DEL command handlers.
+Support EX, PX, NX, and XX options for SET command.
+MUST return ERR on syntax error, or WRONGTYPE if target key holds a different type.
+Co-located tests in tests/unit/commands/test_strings.py asserting EXPECTED output.`,
+			TargetFiles: []string{
+				"src/commands/strings.py",
+				"tests/unit/commands/test_strings.py",
+			},
+		},
+	}
+
+	err := ValidateTaskCohesion(tasks)
+	if err != nil {
+		t.Fatalf("expected task with markdown headers and options to pass, but got error: %v", err)
+	}
+}

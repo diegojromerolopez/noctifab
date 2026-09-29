@@ -408,3 +408,60 @@ func TestOrchestrator_RunFallbackAgent_DiagnosticTurnPreserved(t *testing.T) {
 	passed, _ := orch.RunFallbackAgent(context.Background(), &task, &taskState, nil, "initial failure", "qa_gate_deadlock")
 	assert.True(t, passed, "expected task to succeed because diagnostic turn 1 was preserved under MaxTurns=1")
 }
+
+func TestOrchestrator_RunFallbackAgent_ParallelHypothesisRacing(t *testing.T) {
+	reg := NewToolRegistry()
+	reg.Register(&mockTool{name: "write_file"})
+
+	mockLLM := &testMockLLM{
+		responses: []*domain.LLMResponse{
+			// Candidate 1 (Surgical): produces failing edit
+			{
+				Actions: []domain.LLMAction{
+					{Tool: "write_file", Args: map[string]interface{}{"path": "mod.go", "content": "package failing"}},
+				},
+			},
+			// Candidate 2 (Architectural): produces winning repair
+			{
+				Actions: []domain.LLMAction{
+					{Tool: "write_file", Args: map[string]interface{}{"path": "mod.go", "content": "package passing"}},
+				},
+			},
+		},
+	}
+
+	callCount := 0
+	sandbox := &mockDynamicSandbox{
+		runFn: func(command string) (string, error) {
+			callCount++
+			if callCount == 1 {
+				return "FAIL: candidate 1 failed", errors.New("exit 1")
+			}
+			return "PASS: candidate 2 succeeded", nil
+		},
+	}
+
+	evaluator := NewTestValidator(sandbox, false, mockLLM, reg.Tools())
+	cfg := OrchestratorConfig{
+		Fallback: config.FallbackAgentConfig{
+			Enabled:        true,
+			ParallelRepair: true,
+			MaxTurns:       1,
+			Timeout:        config.Duration(5 * time.Second),
+		},
+	}
+
+	orch := &Orchestrator{
+		cfg:            cfg,
+		llmClient:      mockLLM,
+		registry:       reg,
+		evaluator:      evaluator,
+		promptRenderer: prompts.NewDefaultRenderer(),
+	}
+
+	task := domain.Task{ID: "T-PARALLEL", Title: "Parallel Fallback Task"}
+	taskState := domain.State{ID: "story-parallel", ProjectPath: t.TempDir()}
+
+	passed, _ := orch.RunFallbackAgent(context.Background(), &task, &taskState, nil, "initial error", "retries_exhausted")
+	assert.True(t, passed, "expected parallel fallback racing to succeed via candidate 2")
+}

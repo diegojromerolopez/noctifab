@@ -261,3 +261,117 @@ func deriveSuggestedTarget(slug string) string {
 		return fmt.Sprintf("src/commands/%s.py", slug)
 	}
 }
+
+// BuildBasicAndFeatureSpec combines the basic context (00_core_invariants.md) with the
+// targeted domain slice for the requested feature or capability. If partitioned slices
+// are not available, it safely falls back to fallbackSpec.
+func BuildBasicAndFeatureSpec(projectPath string, domainSliceOrTitle string, fallbackSpec string) string {
+	specsDir := filepath.Join(projectPath, ".noctifab", "specs")
+	manifestPath := filepath.Join(specsDir, "manifest.json")
+	mData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fallbackSpec
+	}
+
+	var manifest SpecManifest
+	if err := json.Unmarshal(mData, &manifest); err != nil {
+		return fallbackSpec
+	}
+
+	corePath := filepath.Join(specsDir, manifest.CoreFile)
+	coreBytes, err := os.ReadFile(corePath)
+	if err != nil || len(coreBytes) == 0 {
+		return fallbackSpec
+	}
+	basicContext := string(coreBytes)
+
+	targetQuery := strings.ToLower(strings.TrimSpace(domainSliceOrTitle))
+	var matchedFile string
+	var matchedTitle string
+
+	if targetQuery != "" {
+		// 1. Direct ID or Title exact/substring match
+		for _, sec := range manifest.Sections {
+			secID := strings.ToLower(sec.ID)
+			secTitle := strings.ToLower(sec.Title)
+			if secID == targetQuery || strings.Contains(targetQuery, secID) || strings.Contains(secID, targetQuery) ||
+				secTitle == targetQuery || strings.Contains(targetQuery, secTitle) || strings.Contains(secTitle, targetQuery) {
+				matchedFile = sec.File
+				matchedTitle = sec.Title
+				break
+			}
+		}
+
+		// 2. Command match: if targetQuery mentions a specific command
+		if matchedFile == "" {
+			for _, sec := range manifest.Sections {
+				for _, cmd := range sec.Commands {
+					if strings.Contains(strings.ToUpper(targetQuery), cmd) {
+						matchedFile = sec.File
+						matchedTitle = sec.Title
+						break
+					}
+				}
+				if matchedFile != "" {
+					break
+				}
+			}
+		}
+	}
+
+	if matchedFile == "" {
+		return basicContext
+	}
+
+	slicePath := filepath.Join(specsDir, matchedFile)
+	sliceBytes, err := os.ReadFile(slicePath)
+	if err != nil || len(sliceBytes) == 0 {
+		return basicContext
+	}
+
+	var sb strings.Builder
+	sb.WriteString("# Basic System Invariants & Core Architecture\n")
+	sb.WriteString(basicContext)
+	sb.WriteString("\n\n---\n\n# Target Feature Specification: ")
+	sb.WriteString(matchedTitle)
+	sb.WriteString("\n")
+	sb.WriteString(string(sliceBytes))
+	return sb.String()
+}
+
+// BuildRoadmapOutlineSpec constructs a compact specification for Stage 1 roadmap planning.
+// It includes the core invariants (Basic Context) along with an index of partitioned domain
+// sections and their command counts, preventing token bloat while ensuring complete scope visibility.
+func BuildRoadmapOutlineSpec(projectPath string, fallbackSpec string) string {
+	specsDir := filepath.Join(projectPath, ".noctifab", "specs")
+	manifestPath := filepath.Join(specsDir, "manifest.json")
+	mData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fallbackSpec
+	}
+
+	var manifest SpecManifest
+	if err := json.Unmarshal(mData, &manifest); err != nil || len(manifest.Sections) == 0 {
+		return fallbackSpec
+	}
+
+	corePath := filepath.Join(specsDir, manifest.CoreFile)
+	coreBytes, err := os.ReadFile(corePath)
+	if err != nil || len(coreBytes) == 0 {
+		return fallbackSpec
+	}
+
+	var sb strings.Builder
+	sb.WriteString(string(coreBytes))
+	sb.WriteString("\n\n## Specification Domain Subsystems Index\n")
+	sb.WriteString("The specification has been partitioned into the following domain subsystems. When planning user stories (via 'plan_roadmap'), create dedicated vertical slice stories aligned with these domain slices:\n\n")
+
+	for idx, sec := range manifest.Sections {
+		cmdList := ""
+		if len(sec.Commands) > 0 {
+			cmdList = fmt.Sprintf(" (Commands: %s)", strings.Join(sec.Commands, ", "))
+		}
+		sb.WriteString(fmt.Sprintf("%d. **%s** (`%s`): %d commands/operations%s\n", idx+1, sec.Title, sec.ID, sec.CommandCount, cmdList))
+	}
+	return sb.String()
+}

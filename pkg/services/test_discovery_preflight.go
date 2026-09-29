@@ -10,59 +10,16 @@ import (
 )
 
 // PrepareTestEnvironment performs language-agnostic pre-flight structural
-// preparation on workspace test directories. For example, ensuring nested test
-// packages contain necessary structural markers (like __init__.py in Python test
-// trees) so that ecosystem test runners do not silently skip nested suites.
+// preparation on workspace source and test directories. It ensures mandatory
+// package markers (like __init__.py in Python test and source trees, mod.rs in Rust test
+// submodules, and chmod +x on shell scripts) are present so ecosystem test runners
+// do not silently skip nested suites.
 func PrepareTestEnvironment(projectPath string) error {
 	if projectPath == "" {
 		return nil
 	}
 
-	testRoots := []string{"tests", "test", "spec", "specs"}
-	for _, root := range testRoots {
-		rootPath := filepath.Join(projectPath, root)
-		info, err := os.Stat(rootPath)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-
-		_ = filepath.Walk(rootPath, func(path string, fi os.FileInfo, walkErr error) error {
-			if walkErr != nil || !fi.IsDir() {
-				return nil
-			}
-
-			// Skip version control and build cache folders
-			base := fi.Name()
-			if strings.HasPrefix(base, ".") || base == "node_modules" || base == "__pycache__" || base == "target" || base == "vendor" {
-				return filepath.SkipDir
-			}
-
-			// Check if directory contains Python test files
-			entries, readErr := os.ReadDir(path)
-			if readErr != nil {
-				return nil
-			}
-
-			hasPythonFiles := false
-			for _, entry := range entries {
-				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
-					hasPythonFiles = true
-					break
-				}
-			}
-
-			if hasPythonFiles {
-				initPath := filepath.Join(path, "__init__.py")
-				if _, statErr := os.Stat(initPath); os.IsNotExist(statErr) {
-					// Auto-scaffold package marker for Python discovery
-					_ = os.WriteFile(initPath, []byte(""), 0644)
-				}
-			}
-
-			return nil
-		})
-	}
-
+	_ = EnsureLanguagePackageMarkers(projectPath)
 	_ = PreflightE2EEnvironment(projectPath)
 
 	return nil
@@ -279,6 +236,28 @@ var (
 	tapTestsRegex   = regexp.MustCompile(`(?i)(?:# tests|# pass)\s+(\d+)`)
 	goRanTestsRegex = regexp.MustCompile(`(?m)^---\s+(?:PASS|FAIL):\s+\S+`)
 )
+
+// EvaluateE2ETestExecution inspects runner output to detect zero-test runs or empty outputs
+// for E2E suites without triggering whole-workspace unit test AST discrepancy checks.
+func EvaluateE2ETestExecution(out string) (bool, string) {
+	outLower := strings.ToLower(out)
+	if strings.Contains(outLower, "no tests ran") ||
+		strings.Contains(outLower, "ran 0 tests") ||
+		strings.Contains(outLower, "collected 0 items") ||
+		strings.Contains(outLower, "collected 0 tests") ||
+		(strings.Contains(outLower, "0 passed") && strings.Contains(outLower, "0 failed")) ||
+		strings.Contains(outLower, "[no test files]") ||
+		strings.Contains(outLower, "no tests found") ||
+		strings.Contains(outLower, "no tests were found") ||
+		strings.Contains(outLower, "nothing to be done") ||
+		strings.Contains(outLower, "exit status 5") {
+		return true, "E2E test suite execution failed: 0 test assertions executed."
+	}
+	if strings.TrimSpace(out) == "" {
+		return true, "E2E test suite execution failed: 0 test assertions executed (empty test output)."
+	}
+	return false, ""
+}
 
 // EvaluateTestExecution inspects runner output and discovered test files to
 // detect zero-test runs, skipped test suites, and discovery discrepancies across

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
@@ -169,34 +170,51 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		var activeProviders []config.ProviderSpec
 		var bannedNames []string
 
+		type pingResult struct {
+			latency       time.Duration
+			resolvedModel string
+			err           error
+		}
+		results := make([]pingResult, len(cfg.LLM.Providers))
+		var wg sync.WaitGroup
 		for i, p := range cfg.LLM.Providers {
+			wg.Add(1)
+			go func(idx int, prov config.ProviderSpec) {
+				defer wg.Done()
+				lat, resModel, err := llm.PingAndResolveModel(context.Background(), prov.Provider, prov.APIKeyValue, prov.URL, prov.Model)
+				results[idx] = pingResult{latency: lat, resolvedModel: resModel, err: err}
+			}(i, p)
+		}
+		wg.Wait()
+
+		for i, p := range cfg.LLM.Providers {
+			res := results[i]
 			fmt.Printf("- LLM provider (%s / %s) ping: ", p.Name, p.Provider)
-			latency, resolvedModel, err := llm.PingAndResolveModel(context.Background(), p.Provider, p.APIKeyValue, p.URL, p.Model)
-			if err != nil {
-				low := strings.ToLower(err.Error())
+			if res.err != nil {
+				low := strings.ToLower(res.err.Error())
 				if strings.Contains(low, "401") || strings.Contains(low, "402") || strings.Contains(low, "credit") || strings.Contains(low, "unauthorized") {
-					fmt.Printf("BANNED ⚠️ (CREDIT EXHAUSTED / AUTH ERROR: %v)\n", err)
+					fmt.Printf("BANNED ⚠️ (CREDIT EXHAUSTED / AUTH ERROR: %v)\n", res.err)
 				} else {
-					fmt.Printf("BANNED (unreachable: %v)\n", err)
+					fmt.Printf("BANNED (unreachable: %v)\n", res.err)
 				}
 				bannedNames = append(bannedNames, p.Name)
 				continue
 			}
-			if latency > maxAllowedPingLatency {
-				fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", latency.Milliseconds())
+			if res.latency > maxAllowedPingLatency {
+				fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", res.latency.Milliseconds())
 				bannedNames = append(bannedNames, p.Name)
 				continue
 			}
-			if resolvedModel != "" && !strings.EqualFold(resolvedModel, p.Model) && p.Model != "" {
-				fmt.Printf("OK (%dms) -> model '%s' resolved to: %s\n", latency.Milliseconds(), p.Model, resolvedModel)
-				p.Model = resolvedModel
-				cfg.LLM.Providers[i].Model = resolvedModel
-			} else if resolvedModel != "" && p.Model == "" {
-				fmt.Printf("OK (%dms) -> auto-selected model: %s\n", latency.Milliseconds(), resolvedModel)
-				p.Model = resolvedModel
-				cfg.LLM.Providers[i].Model = resolvedModel
+			if res.resolvedModel != "" && !strings.EqualFold(res.resolvedModel, p.Model) && p.Model != "" {
+				fmt.Printf("OK (%dms) -> model '%s' resolved to: %s\n", res.latency.Milliseconds(), p.Model, res.resolvedModel)
+				p.Model = res.resolvedModel
+				cfg.LLM.Providers[i].Model = res.resolvedModel
+			} else if res.resolvedModel != "" && p.Model == "" {
+				fmt.Printf("OK (%dms) -> auto-selected model: %s\n", res.latency.Milliseconds(), res.resolvedModel)
+				p.Model = res.resolvedModel
+				cfg.LLM.Providers[i].Model = res.resolvedModel
 			} else {
-				fmt.Printf("OK (%dms)\n", latency.Milliseconds())
+				fmt.Printf("OK (%dms)\n", res.latency.Milliseconds())
 			}
 			activeProviders = append(activeProviders, p)
 		}
@@ -224,23 +242,40 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		}
 	} else if len(cfg.LLMs) > 0 {
 		var activeLLMs []config.LLMConfig
+		type pingResult struct {
+			latency       time.Duration
+			resolvedModel string
+			err           error
+		}
+		results := make([]pingResult, len(cfg.LLMs))
+		var wg sync.WaitGroup
 		for i, p := range cfg.LLMs {
+			wg.Add(1)
+			go func(idx int, prov config.LLMConfig) {
+				defer wg.Done()
+				lat, resModel, err := llm.PingAndResolveModel(context.Background(), prov.Provider, prov.APIKeyValue, prov.URL, prov.Model)
+				results[idx] = pingResult{latency: lat, resolvedModel: resModel, err: err}
+			}(i, p)
+		}
+		wg.Wait()
+
+		for i, p := range cfg.LLMs {
+			res := results[i]
 			fmt.Printf("- LLM provider (%s) ping: ", p.Provider)
-			latency, resolvedModel, err := llm.PingAndResolveModel(context.Background(), p.Provider, p.APIKeyValue, p.URL, p.Model)
-			if err != nil {
-				fmt.Printf("BANNED (unreachable: %v)\n", err)
+			if res.err != nil {
+				fmt.Printf("BANNED (unreachable: %v)\n", res.err)
 				continue
 			}
-			if latency > maxAllowedPingLatency {
-				fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", latency.Milliseconds())
+			if res.latency > maxAllowedPingLatency {
+				fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", res.latency.Milliseconds())
 				continue
 			}
-			if resolvedModel != "" && !strings.EqualFold(resolvedModel, p.Model) {
-				fmt.Printf("OK (%dms) -> resolved model: %s\n", latency.Milliseconds(), resolvedModel)
-				p.Model = resolvedModel
-				cfg.LLMs[i].Model = resolvedModel
+			if res.resolvedModel != "" && !strings.EqualFold(res.resolvedModel, p.Model) {
+				fmt.Printf("OK (%dms) -> resolved model: %s\n", res.latency.Milliseconds(), res.resolvedModel)
+				p.Model = res.resolvedModel
+				cfg.LLMs[i].Model = res.resolvedModel
 			} else {
-				fmt.Printf("OK (%dms)\n", latency.Milliseconds())
+				fmt.Printf("OK (%dms)\n", res.latency.Milliseconds())
 			}
 			activeLLMs = append(activeLLMs, p)
 		}

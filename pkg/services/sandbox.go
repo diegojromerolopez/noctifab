@@ -369,9 +369,10 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 	if perTestTimeout <= 0 {
 		perTestTimeout = 30 * time.Second
 	}
+	dynamicIdle := ResolveDynamicIdleTimeout(binary, cmd.Args, s.IdleTimeout)
 	isolator := NewTestStreamIsolator(StreamIsolatorConfig{
 		PerTestTimeout: perTestTimeout,
-		IdleTimeout:    s.IdleTimeout,
+		IdleTimeout:    dynamicIdle,
 		MaxDuration:    5 * time.Minute,
 	})
 	start := time.Now()

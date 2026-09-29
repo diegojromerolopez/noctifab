@@ -87,3 +87,18 @@ func TestSpecMultiAgentPipeline_ExecuteRefinePass(t *testing.T) {
 	_, errMissing := pipeline.ExecuteRefinePass(ctx, "spec", "feedback", revisions)
 	assert.Error(t, errMissing)
 }
+
+func TestMergeSpecEnrichments(t *testing.T) {
+	baseSpec := "# SPEC.md: Test App\n\n## 1. Overview\nOverview content"
+	archSpec := "## 2. Architecture\nMicroservices in Go\n\n## 4. Interfaces\nCLI: --port"
+	testerSpec := "## 5. Verification\nUnit and E2E matrix with mock clocks"
+	qaSpec := "## 6. Definition of Done\nExit codes and contracts"
+
+	merged := mergeSpecEnrichments(baseSpec, archSpec, testerSpec, qaSpec)
+
+	assert.Contains(t, merged, "## 1. Overview")
+	assert.Contains(t, merged, "## 2. Architecture")
+	assert.Contains(t, merged, "## 4. Interfaces")
+	assert.Contains(t, merged, "## 5. Verification")
+	assert.Contains(t, merged, "## 6. Definition of Done")
+}

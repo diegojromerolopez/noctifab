@@ -107,4 +107,28 @@ func TestBuildToolchainFallbackDirective(t *testing.T) {
 			t.Errorf("expected empty directive for off strategy, got %q", d)
 		}
 	})
+
+	t.Run("host directive forbids docker and mandates native toolchains", func(t *testing.T) {
+		d := BuildToolchainFallbackDirective(ToolchainStrategyHost, false)
+		if !strings.Contains(d, "HOST SANDBOX MANDATE") {
+			t.Errorf("expected HOST SANDBOX MANDATE in host directive, got: %s", d)
+		}
+		if !strings.Contains(d, "Do NOT invoke 'docker build'") {
+			t.Errorf("expected negative docker instruction in host directive, got: %s", d)
+		}
+	})
+
+	t.Run("host directive warns about prior docker attempt in failureLog", func(t *testing.T) {
+		d := BuildToolchainFallbackDirectiveWithDiagnostics(ToolchainStrategyHost, false, "make: *** [build] docker build -t project-env failed")
+		if !strings.Contains(d, "CRITICAL RECOVERY NOTICE") {
+			t.Errorf("expected CRITICAL RECOVERY NOTICE when failureLog contains docker, got: %s", d)
+		}
+	})
+
+	t.Run("resolve strategy with sandboxMode host always resolves to host", func(t *testing.T) {
+		got := ResolveToolchainStrategyForSandbox(context.Background(), "auto", "host", func(ctx context.Context) bool { return true })
+		if got != ToolchainStrategyHost {
+			t.Errorf("expected host strategy when sandboxMode is host, got: %s", got)
+		}
+	})
 }

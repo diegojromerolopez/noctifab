@@ -53,7 +53,7 @@ func (v *TestValidator) validateE2E(ctx context.Context, state *domain.State, ta
 		return false, fmt.Sprintf("E2E test validation failed (%s):\n%s\n%v", e2eCmd, e2eOut, e2eErr), nil
 	}
 
-	noTestsRan, notice := EvaluateTestExecution(state.ProjectPath, e2eOut)
+	noTestsRan, notice := EvaluateE2ETestExecution(e2eOut)
 	if noTestsRan {
 		fmt.Printf("❌ Orchestrator: Task %s E2E test suite produced no tests: %s\n", task.ID, notice)
 		return false, fmt.Sprintf("E2E test validation failed (%s): %s", e2eCmd, notice), nil

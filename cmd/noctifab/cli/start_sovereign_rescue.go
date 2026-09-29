@@ -209,7 +209,11 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	telemetryInject := opts.Cfg != nil && opts.Cfg.Sandbox.Telemetry.Inject
 	diagnostics := CollectSovereignDiagnosticsWithConfig(opts.TargetDir, state, opts.FailedStories, opts.AcceptanceGaps, lastFailureLog, rescueCtxCfg, slidingWindow, telemetryInject)
 
-	resolvedStrategy := ResolveToolchainStrategy(ctx, opts.ToolchainStrategy, nil)
+	sandboxMode := "host"
+	if opts.Cfg != nil && opts.Cfg.Sandbox.Mode != "" {
+		sandboxMode = opts.Cfg.Sandbox.Mode
+	}
+	resolvedStrategy := ResolveToolchainStrategyForSandbox(ctx, opts.ToolchainStrategy, sandboxMode, nil)
 	bestCommit := captureSovereignBaselineCommit(ctx, opts.GitClient)
 
 	// 4. Multi-Turn Sovereign Rescue Loop

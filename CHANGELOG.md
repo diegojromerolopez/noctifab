@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.108.0] - 2026-09-29
+
+### Added
+- **Graceful Degradation in Roadmap Multi-Pass Generation (`pkg/services/roadmap_generator.go`)**:
+  - Implemented progressive error tolerance in `GenerateRoadmap`. When later refinement passes (Pass 2 or Pass 3) fail (due to LLM context timeouts or rate limits), earlier verified user story files are retained and returned rather than aborting the entire roadmap generation workflow.
+- **Story-by-Story Roadmap Auditing (`pkg/services/roadmap_auditor.go`, `pkg/services/roadmap_generator.go`, `audit.tmpl`)**:
+  - Replaced monolithic multi-story audit prompts with isolated per-story LLM refinement requests (`AuditRoadmapStoriesPerStory`).
+  - Injected concise high-level roadmap catalogs (`RoadmapCatalog`) for cross-story dependency awareness without blowing token budgets.
+  - Eliminated 200KB+ mega-prompts and 180s context deadline timeouts while preventing "lost in the middle" story neglect.
+- **Language-Agnostic Build Manifest & Dependency Preflight (`pkg/services/dependency_manager.go`, `cmd/noctifab/cli/preflight.go`, `SPEC.md`)**:
+  - Replaced ad-hoc language-specific virtualenv logic with strictly language-agnostic manifest inspection and runtime verification.
+  - Expanded `DependencyManager` missing tool detection (`no module named <tool>`, `command not found`, `executable file not found`) across all configured ecosystem package managers (`pip`, `go`, `brew`, `npm`, `gem`, `opam`, `cargo`).
+  - Formalized language-agnostic preflight and toolchain remediation in `SPEC.md`.
+- **Dynamic Watchdog Idle Timeouts by Command Type (`pkg/services/watchdog.go`, `pkg/services/sandbox.go`, `SPEC.md`)**:
+  - Introduced `ResolveDynamicIdleTimeout`: assigns extended idle windows (minimum 120s) to long-running, silent commands (e.g. `docker build`, `podman`, `cargo build`, `go build`, `pip install`, `npm install`, `make build`), while maintaining tight 30s timeouts for fast unit test runs and tool executions.
+- **Explicit Host-Mode Negative Guidance in Diagnostics (`cmd/noctifab/cli/start_sovereign_toolchain.go`, `cmd/noctifab/cli/start_sovereign_rescue_prompt.go`)**:
+  - Injected an explicit negative guidance block (`=== HOST SANDBOX MANDATE (NO DOCKER) ===`) into Sovereign Rescue and diagnostic prompts when `--sandbox-mode host` is active, strictly prohibiting Docker commands and container wrappers when native toolchains fail.
+- **Adaptive Speculative Hedging with Dynamic Demotion Memory (`pkg/infrastructure/llm/router_hedging.go`, `pkg/infrastructure/llm/router_latency_tracker.go`, `SPEC.md`)**:
+  - Track consecutive provider timeouts and scale down hedge delay dynamically (e.g. from 25s down to 10s, 3s, or 1s) when the primary LLM provider exhibits degradation, launching speculative backup completions proactively before idle deadlocks.
+- **Flexible Contract Exit Code Unmarshaling (`pkg/domain/exit_code_list.go`, `pkg/domain/qa_contract.go`, `SPEC.md`)**:
+  - Created `ExitCodeList` supporting polymorphic deserialization of contract exit codes formatted as integer lists (`[0, 1]`), string lists (`["0", "1"]`), dictionary maps (`{"0": "ok"}`), single integers (`0`), or single strings (`"0"`), preventing schema parsing failures.
+
 ## [0.107.0] - 2026-09-28
 
 ### Added

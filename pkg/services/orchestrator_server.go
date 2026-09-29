@@ -48,6 +48,12 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 	}
 
 	specToPlan := spec
+	storyQuery := storyID
+	if state.Metadata.FeatureName != "" {
+		storyQuery = state.Metadata.FeatureName
+	}
+	specToPlan = BuildBasicAndFeatureSpec(state.ProjectPath, storyQuery, specToPlan)
+
 	if o.cfg.Context.GetCompactionMode() != "none" {
 		specToPlan = llm.CompactMarkdownSpecWithMode(specToPlan, o.cfg.Context.GetCompactionMode())
 	}

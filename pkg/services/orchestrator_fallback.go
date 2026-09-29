@@ -157,144 +157,56 @@ func (o *Orchestrator) RunFallbackAgent(
 				effectiveTask.Title, effectiveTask.Description, contextBlock, prompts.Contract(prompts.AgentFallback))
 		}
 
-		llmCtx, cancel := context.WithTimeout(ctx, turnTimeout)
-		llmCtx = domain.WithRoleContext(llmCtx, string(domain.AgentRoleFallback))
-		llmCtx = context.WithValue(llmCtx, AgentRoleKey, "fallback")
-		contractLen := len(prompts.Contract(prompts.AgentFallback))
-		llmCtx = domain.WithUncompactableTail(llmCtx, contractLen)
-		if len(promptBody) > contractLen {
-			llmCtx = domain.WithCacheablePrefix(llmCtx, len(promptBody)-contractLen)
+		// Parallel Fallback & Repair: Multi-hypothesis racing during sovereign fallback recovery
+		var candidates []CandidateRepair
+		if fbCfg.ParallelRepair || os.Getenv("NOCTIFAB_PARALLEL_FALLBACK") == "true" {
+			candidates = o.generateParallelRepairHypotheses(ctx, promptBody, effectiveTask, turnTimeout)
+		} else {
+			resp, err := o.completeFallbackTurn(ctx, promptBody, turnTimeout)
+			candidates = []CandidateRepair{{Kind: HypothesisSurgicalFix, Prompt: promptBody, Response: resp, Error: err}}
+		}
+		passed, newLogMsg, hasMutatingAction := o.raceAndApplyCandidateHypotheses(
+			ctx, candidates, effectiveTask, taskState, taskGit, turn, maxTurns, turnTimeout)
+
+		if passed {
+			successMsg := fmt.Sprintf("✨ [Fallback Agent] Sovereign unblock successful on turn %d/%d for task %s!", turn, maxTurns, effectiveTask.ID)
+			fmt.Println(successMsg)
+			fmt.Fprintf(os.Stderr, "%s\n", successMsg)
+
+			o.registerAgentComplete(ctx, string(domain.AgentRoleFallback), effectiveTask.ID, nil)
+			if taskState != nil {
+				successAction := domain.Action{
+					Timestamp: time.Now().UTC(),
+					Tool:      "fallback_agent_success",
+					Reasoning: fmt.Sprintf("Sovereign repair succeeded on turn %d/%d for task %s", turn, maxTurns, effectiveTask.ID),
+					Result:    "All tests passed after sovereign repair",
+					Success:   true,
+				}
+				taskState.LastActions = append(taskState.LastActions, successAction)
+
+				saveErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
+					st.LastActions = append(st.LastActions, successAction)
+					return nil
+				})
+				if saveErr != nil {
+					fmt.Fprintf(os.Stderr, "⚠ [Fallback Agent] State save on success failed: %v\n", saveErr)
+				}
+			}
+			return true, newLogMsg
 		}
 
-		resp, err := o.llmClient.Complete(llmCtx, promptBody)
-		cancel()
-		o.recordTokenUsage(ctx, promptBody, resp)
-
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "⚠ [Fallback Agent] Turn %d LLM call failed: %v\n", turn, err)
-			continue
+		if !hasMutatingAction {
+			if fallbackNoopStrikes < maxFallbackNoopStrikes {
+				fallbackNoopStrikes++
+				fmt.Printf("⚠️  [Fallback Agent Diagnostic Grace] Turn %d did not mutate files while tests failing (strike %d/%d). Sovereign turn preserved.\n", turn, fallbackNoopStrikes, maxFallbackNoopStrikes)
+				turn--
+				currentLog = fmt.Sprintf("Previous turn performed inspection/noop without workspace changes, but tests are FAILING:\n%s\nYou MUST invoke write_file or edit_file to repair the failing code.", summarizeFailureLog(newLogMsg))
+				continue
+			}
+		} else {
+			fallbackNoopStrikes = 0
 		}
-
-		hasMutatingAction := false
-		if resp != nil && len(resp.Actions) > 0 {
-			for _, action := range resp.Actions {
-				if action.Tool == "noop" {
-					continue
-				}
-				if IsMutatingTool(action.Tool) {
-					hasMutatingAction = true
-				}
-				if o.registry != nil {
-					tool, ok := o.registry.Get(action.Tool)
-					if ok {
-						_, execErr := tool.Execute(ctx, taskState, action.Args)
-						if execErr != nil {
-							fmt.Fprintf(os.Stderr, "⚠ [Fallback Tool Failed] %s: %v\n", action.Tool, execErr)
-						}
-					}
-				}
-			}
-
-			// Stage and commit changes with standardized tag
-			if taskGit != nil {
-				if commitErr := o.stageAndCommit(ctx, taskGit, effectiveTask.ID,
-					"fix(fallback): sovereign unblock for task %s - %s [turn %d/%d]", effectiveTask.Title, turn, maxTurns); commitErr != nil {
-					fmt.Fprintf(os.Stderr, "⚠ [Fallback Agent] Git commit failed on turn %d: %v\n", turn, commitErr)
-				}
-			}
-		}
-
-		// Re-evaluate tests
-		if o.evaluator != nil {
-			passed, newLogMsg, _ := o.evaluator.ValidateTask(ctx, taskState, effectiveTask)
-
-			// E2E Verification Gate:
-			// If unit tests passed and an E2E suite is detected, run the E2E verification gate only if within task E2E scope.
-			if passed && o.evaluator != nil && o.evaluator.Runner != nil && taskState != nil && taskState.ProjectPath != "" && o.evaluator.shouldValidateE2E(taskState, effectiveTask) {
-				e2eMode := o.cfg.E2E.Mode
-				e2eCmd := o.cfg.E2E.Command
-				detectedE2E := DetectE2ECommand(taskState.ProjectPath, e2eMode, e2eCmd)
-				if detectedE2E != "" {
-					e2eTimeout := 5 * time.Minute
-					if turnTimeout > 0 {
-						e2eTimeout = turnTimeout
-					}
-					e2eCtx, e2eCancel := context.WithTimeout(ctx, e2eTimeout)
-					fmt.Printf("🔍 [Fallback Agent] Running E2E verification gate: %q...\n", detectedE2E)
-					e2eOut, e2eErr := o.evaluator.Runner.RunCommand(e2eCtx, taskState.ProjectPath, detectedE2E, "")
-					e2eCancel()
-					if e2eErr != nil {
-						if isCommandToolMissing(o.evaluator.Runner, detectedE2E, e2eOut+" "+e2eErr.Error()) {
-							fmt.Printf("⚠️  [Fallback Agent Degraded] Task %s: required E2E tool is absent on host (%s). Proceeding in degraded mode.\n", effectiveTask.ID, detectedE2E)
-						} else if !isE2EFailureInScope(taskState, effectiveTask, e2eOut+"\n"+e2eErr.Error()) {
-							fmt.Printf("⚠️  [Fallback Agent] Task %s E2E failure(s) are outside the scope of active feature; ignoring out-of-scope failure in fallback loop.\n", effectiveTask.ID)
-						} else {
-							passed = false
-							newLogMsg = fmt.Sprintf("Unit tests passed, but E2E verification failed (%s):\n%s\n%v", detectedE2E, e2eOut, e2eErr)
-							fmt.Printf("⚠️ [Fallback Agent] E2E verification failed: %v\n", e2eErr)
-						}
-					} else {
-						fmt.Printf("✅ [Fallback Agent] E2E verification gate PASSED (%s)!\n", detectedE2E)
-					}
-				}
-			}
-
-			// Anti-Stub & Anti-Gaming Quality Gate:
-			if passed && taskState != nil && taskState.ProjectPath != "" {
-				antiStub := NewAntiStubValidator()
-				violations, _ := antiStub.ValidateWorkspace(taskState.ProjectPath, effectiveTask.TargetFiles)
-				if len(violations) > 0 {
-					passed = false
-					var sb strings.Builder
-					fmt.Fprintf(&sb, "Anti-stub / anti-gaming validation failed with %d violation(s):\n", len(violations))
-					for _, v := range violations {
-						fmt.Fprintf(&sb, "- %s:%d: [%s] %s\n", v.Path, v.Line, v.Rule, v.Snippet)
-					}
-					newLogMsg = sb.String()
-					fmt.Printf("⚠️ [Fallback Agent] Anti-Stub validation failed with %d violation(s)\n", len(violations))
-				}
-			}
-
-			if passed {
-				successMsg := fmt.Sprintf("✨ [Fallback Agent] Sovereign unblock successful on turn %d/%d for task %s!", turn, maxTurns, effectiveTask.ID)
-				fmt.Println(successMsg)
-				fmt.Fprintf(os.Stderr, "%s\n", successMsg)
-
-				o.registerAgentComplete(ctx, string(domain.AgentRoleFallback), effectiveTask.ID, nil)
-				if taskState != nil {
-					successAction := domain.Action{
-						Timestamp: time.Now().UTC(),
-						Tool:      "fallback_agent_success",
-						Reasoning: fmt.Sprintf("Sovereign repair succeeded on turn %d/%d for task %s", turn, maxTurns, effectiveTask.ID),
-						Result:    "All tests passed after sovereign repair",
-						Success:   true,
-					}
-					taskState.LastActions = append(taskState.LastActions, successAction)
-
-					saveErr := o.updateStateWithRetry(ctx, func(st *domain.State) error {
-						st.LastActions = append(st.LastActions, successAction)
-						return nil
-					})
-					if saveErr != nil {
-						fmt.Fprintf(os.Stderr, "⚠ [Fallback Agent] State save on success failed: %v\n", saveErr)
-					}
-				}
-				return true, newLogMsg
-			}
-
-			if !hasMutatingAction {
-				if fallbackNoopStrikes < maxFallbackNoopStrikes {
-					fallbackNoopStrikes++
-					fmt.Printf("⚠️  [Fallback Agent Diagnostic Grace] Turn %d did not mutate files while tests failing (strike %d/%d). Sovereign turn preserved.\n", turn, fallbackNoopStrikes, maxFallbackNoopStrikes)
-					turn--
-					currentLog = fmt.Sprintf("Previous turn performed inspection/noop without workspace changes, but tests are FAILING:\n%s\nYou MUST invoke write_file or edit_file to repair the failing code.", summarizeFailureLog(newLogMsg))
-					continue
-				}
-			} else {
-				fallbackNoopStrikes = 0
-			}
-			currentLog = newLogMsg
-		}
+		currentLog = newLogMsg
 	}
 
 	failAlert := fmt.Sprintf("🚨 [CRITICAL ALERT] Fallback Agent completed %d turns without resolving task %s.", maxTurns, effectiveTask.ID)

@@ -88,7 +88,7 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 	sb.WriteString(failureLog)
 	sb.WriteString("\n\n")
 
-	if directive := BuildToolchainFallbackDirective(resolvedStrategy, detectedMissing); directive != "" {
+	if directive := BuildToolchainFallbackDirectiveWithDiagnostics(resolvedStrategy, detectedMissing, failureLog); directive != "" {
 		sb.WriteString(directive)
 	}
 

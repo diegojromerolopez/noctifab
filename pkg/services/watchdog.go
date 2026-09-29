@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -17,6 +18,53 @@ var (
 	ErrWatchdogMaxDuration = errors.New("command killed: max wall-clock duration exceeded")
 	ErrWatchdogIdleTimeout = errors.New("command killed: no output produced within idle timeout")
 )
+
+// ResolveDynamicIdleTimeout calculates an appropriate idle timeout based on command semantics.
+// Fast test suites, linters, and formatters utilize baseTimeout (typically 30s) to catch infinite loops quickly.
+// Heavy compilers, package managers, network operations, and container tools (docker, podman, cargo build,
+// go build, npm install, pip install, make build) receive an extended idle allowance (at least 120s)
+// to prevent premature watchdog kills during silent downloads or long single-threaded compilations.
+func ResolveDynamicIdleTimeout(binary string, args []string, baseTimeout time.Duration) time.Duration {
+	if baseTimeout <= 0 {
+		baseTimeout = 30 * time.Second
+	}
+
+	fullCmd := strings.ToLower(binary + " " + strings.Join(args, " "))
+
+	heavyIndicators := []string{
+		"docker",
+		"podman",
+		"pip install",
+		"pip3 install",
+		"npm install",
+		"npm i ",
+		"yarn install",
+		"yarn add",
+		"pnpm install",
+		"pnpm add",
+		"cargo build",
+		"go build",
+		"go mod download",
+		"make build",
+		"make compile",
+		"make all",
+		"mvn ",
+		"gradle ",
+		"bundle install",
+		"composer install",
+	}
+
+	for _, ind := range heavyIndicators {
+		if strings.Contains(fullCmd, ind) {
+			if baseTimeout < 120*time.Second {
+				return 120 * time.Second
+			}
+			return baseTimeout
+		}
+	}
+
+	return baseTimeout
+}
 
 type Watchdog struct {
 	MaxDuration time.Duration
@@ -83,10 +131,12 @@ func (w *Watchdog) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 	maxTimer := time.NewTimer(maxDuration)
 	defer maxTimer.Stop()
 
+	effectiveIdle := ResolveDynamicIdleTimeout(cmd.Path, cmd.Args, w.IdleTimeout)
+
 	var idleTimer *time.Timer
 	var idleCh <-chan time.Time
-	if w.IdleTimeout > 0 {
-		idleTimer = time.NewTimer(w.IdleTimeout)
+	if effectiveIdle > 0 {
+		idleTimer = time.NewTimer(effectiveIdle)
 		idleCh = idleTimer.C
 	}
 
@@ -101,11 +151,11 @@ func (w *Watchdog) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 			return capturer.Output(), ErrWatchdogMaxDuration
 
 		case <-idleCh:
-			if capturer.SinceLastOutput() >= w.IdleTimeout {
+			if capturer.SinceLastOutput() >= effectiveIdle {
 				_ = killProcessGroup(cmd)
 				return capturer.Output(), ErrWatchdogIdleTimeout
 			}
-			remaining := w.IdleTimeout - capturer.SinceLastOutput()
+			remaining := effectiveIdle - capturer.SinceLastOutput()
 			if remaining < 0 {
 				remaining = 0
 			}

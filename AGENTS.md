@@ -114,6 +114,10 @@ To maintain modularity and high context compatibility, the following guidelines 
 17. **Anti-False Zero Exit Code & Crash Signal Mandate:**
     *   **Masked Fatal Crash Rejection:** Never assume a process passed simply because its exit code was reported as 0. Shell constructs (`|| true`), unhandled subshell exceptions, or broken signal traps often mask fatal crashes.
     *   **Deterministic Signal & Crash Scanning:** The test and execution engines must scan stdout and stderr for fatal process signals (`SIGSEGV`, `SIGBUS`, `SIGABRT`, `SIGILL`, Go/Rust panics, Python fatal errors, out-of-memory `OOMKilled`, AddressSanitizer deadly signals). If any fatal crash signal is detected in output, the run must be rejected immediately as a failed execution, preventing masked crashes from falsely passing quality gates.
+18. **Non-Blocking Concurrent HTTP & Network I/O Mandate:**
+    *   **HTTP as Network-Bound Latency Dominator:** In an AI coding dark factory, remote HTTP requests to LLM providers and APIs account for over 95% of total execution wall-clock time, while local compilation, AST analysis, and test runs execute in milliseconds. Blocking on serial HTTP network requests is strictly forbidden whenever parallelization or concurrency is architecturally possible.
+    *   **Always Concurrent or Backgrounded:** Agents and orchestrator services must treat HTTP requests as asynchronous, concurrent operations. Whenever multiple requests can be made (e.g. streaming user stories, parallel co-synthesis of code and tests, speculative macro-planning of downstream tasks, multi-provider speculative hedging, background health checks, or telemetry dispatch), they **MUST** be executed concurrently in background goroutines or decoupled worker pipelines.
+    *   **Avoid Blocking I/O Overlaps:** Never let expensive serial HTTP network round-trips block independent local I/O, file scanning, toolchain preflight, or subsequent story decomposition. Pipeline downstream tasks, pre-plan upcoming stories, and overlap network wait times with CPU computation and local test verification.
 
 ---
 

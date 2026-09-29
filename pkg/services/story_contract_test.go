@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,6 +37,13 @@ func TestParseStoryContract(t *testing.T) {
 		require.Equal(t, fmt.Sprintf("%x", sha256.Sum256([]byte(markdown))), contract.SourceSHA256)
 		require.Equal(t, []string{"cmd", "pkg/cli"}, contract.PublicContracts[0].ApplicablePathPrefixes)
 		require.Equal(t, []string{"./dist/example"}, contract.PublicContracts[0].AllowedExecutables)
+	})
+
+	t.Run("when exit_codes is formatted as a map or string array it unmarshals correctly", func(t *testing.T) {
+		markdown := strings.Replace(validStoryMarkdown(), `"exit_codes": [2]`, `"exit_codes": {"0": "success", "1": "error"}`, 1)
+		contract, err := services.ParseStoryContract("./roadmap/US-001.md", markdown)
+		require.NoError(t, err)
+		require.Equal(t, domain.ExitCodeList{0, 1}, contract.PublicContracts[0].ExitCodes)
 	})
 
 	tests := []struct {

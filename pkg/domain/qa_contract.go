@@ -2,13 +2,13 @@ package domain
 
 // PublicContract defines observable behavior exposed by a story.
 type PublicContract struct {
-	ID                     string   `json:"id"`
-	Interface              string   `json:"interface"` // "cli", "http", "grpc", "socket"
-	ApplicablePathPrefixes []string `json:"applicable_path_prefixes,omitempty"`
-	AllowedExecutables     []string `json:"allowed_executables,omitempty"`
-	ExitCodes              []int    `json:"exit_codes,omitempty"`
-	StdoutContains         []string `json:"stdout_contains,omitempty"`
-	StderrPrefixes         []string `json:"stderr_prefixes,omitempty"`
+	ID                     string       `json:"id"`
+	Interface              string       `json:"interface"` // "cli", "http", "grpc", "socket"
+	ApplicablePathPrefixes []string     `json:"applicable_path_prefixes,omitempty"`
+	AllowedExecutables     []string     `json:"allowed_executables,omitempty"`
+	ExitCodes              ExitCodeList `json:"exit_codes,omitempty"`
+	StdoutContains         []string     `json:"stdout_contains,omitempty"`
+	StderrPrefixes         []string     `json:"stderr_prefixes,omitempty"`
 
 	// HTTP & Bruno contract specifications for web/API services
 	HTTPMethod           string `json:"http_method,omitempty"`

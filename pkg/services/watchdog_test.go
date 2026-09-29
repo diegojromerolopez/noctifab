@@ -100,3 +100,41 @@ func TestWatchdog_ContextCancellation(t *testing.T) {
 		t.Fatal("timed out waiting for watchdog to respond to cancellation")
 	}
 }
+
+func TestResolveDynamicIdleTimeout(t *testing.T) {
+	base := 30 * time.Second
+
+	// Standard test/lint commands use base timeout
+	if got := ResolveDynamicIdleTimeout("python3", []string{"-m", "unittest", "discover"}, base); got != 30*time.Second {
+		t.Errorf("expected 30s for unittest, got %v", got)
+	}
+	if got := ResolveDynamicIdleTimeout("go", []string{"test", "./..."}, base); got != 30*time.Second {
+		t.Errorf("expected 30s for go test, got %v", got)
+	}
+	if got := ResolveDynamicIdleTimeout("ruff", []string{"check", "."}, base); got != 30*time.Second {
+		t.Errorf("expected 30s for ruff, got %v", got)
+	}
+
+	// Container & heavy compilation commands scale to at least 120s
+	if got := ResolveDynamicIdleTimeout("docker", []string{"build", "-t", "app", "."}, base); got != 120*time.Second {
+		t.Errorf("expected 120s for docker build, got %v", got)
+	}
+	if got := ResolveDynamicIdleTimeout("make", []string{"build"}, base); got != 120*time.Second {
+		t.Errorf("expected 120s for make build, got %v", got)
+	}
+	if got := ResolveDynamicIdleTimeout("pip", []string{"install", "-r", "requirements.txt"}, base); got != 120*time.Second {
+		t.Errorf("expected 120s for pip install, got %v", got)
+	}
+	if got := ResolveDynamicIdleTimeout("cargo", []string{"build", "--release"}, base); got != 120*time.Second {
+		t.Errorf("expected 120s for cargo build, got %v", got)
+	}
+	if got := ResolveDynamicIdleTimeout("go", []string{"build", "-o", "bin/app"}, base); got != 120*time.Second {
+		t.Errorf("expected 120s for go build, got %v", got)
+	}
+
+	// Higher base timeout is preserved
+	higherBase := 180 * time.Second
+	if got := ResolveDynamicIdleTimeout("docker", []string{"build", "."}, higherBase); got != 180*time.Second {
+		t.Errorf("expected 180s when base is higher, got %v", got)
+	}
+}

@@ -23,6 +23,7 @@ type pkgEntry struct {
 
 var toolPackageMap = map[string]pkgEntry{
 	"cargo":         {"curl", "curl -sSf https://sh.rustup.rs | sh -s -- -y"},
+	"pip":           {"python3", "python3 -m ensurepip --upgrade"},
 	"pytest":        {"pip", "pip install pytest"},
 	"pytest-cov":    {"pip", "pip install pytest-cov"},
 	"pytest-django": {"pip", "pip install pytest-django"},
@@ -73,6 +74,7 @@ func (dm *DependencyManager) DetectMissingTool(output string) (string, bool) {
 		"exit status 127",
 		": not found",
 		"not found",
+		"no module named",
 	}
 	hasMissingPattern := false
 	for _, p := range patterns {

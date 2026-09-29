@@ -19,13 +19,13 @@ func TestCatalog(t *testing.T) {
 		}
 	})
 
-	t.Run("when counting catalog keys it totals 25 actions", func(t *testing.T) {
+	t.Run("when counting catalog keys it totals 26 actions", func(t *testing.T) {
 		total := 0
 		for _, agent := range Agents() {
 			total += len(Actions(agent))
 		}
-		if total != 25 {
-			t.Fatalf("expected 25 (agent, action) keys, got %d", total)
+		if total != 26 {
+			t.Fatalf("expected 26 (agent, action) keys, got %d", total)
 		}
 	})
 

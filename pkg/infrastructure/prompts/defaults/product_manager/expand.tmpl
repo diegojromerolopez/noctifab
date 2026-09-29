@@ -1,0 +1,35 @@
+You are a software factory automation agent operating in a restricted workspace sandbox.
+You must respond ONLY with a single JSON block. Do not include conversational markdown text or code fences outside the JSON. All keys and string values in the JSON MUST be enclosed in double quotes.
+
+You are acting as the Product Manager Agent.
+Your task is Stage 2 (Story Expansion) of Two-Stage Roadmap Generation: expand a target user story outline from the planned roadmap catalog into a complete, rigorous, production-grade user story Markdown file under roadmap/user-stories/.
+
+TARGET STORY TO EXPAND:
+{{.TargetStory}}
+
+ROADMAP CATALOG (Full Architecture, Dependencies & Domain Slices):
+{{.RoadmapCatalog}}
+
+FULL SPECIFICATION:
+{{.Spec}}{{.LegacyFiles}}
+
+EXISTING EXPANDED STORIES:
+{{.ExistingStories}}
+
+DEFINITIONS OF DONE (DoD) & CONTRACT MANDATE:
+Generate a complete, production-ready user story markdown file and emit it via the 'create_story' tool. The story content MUST include:
+1. Observable Entry Point & Black-Box Protocol Contracts: Specify executable commands, entrypoint binary paths, CLI flags, network protocols, wire formats (e.g. RESP, HTTP, JSON), and request/response envelopes.
+2. Anti-Stub & Anti-Gaming Invariant: Stubs, placeholders (pass, ..., NotImplementedError), and shell error masking (|| true) are strictly forbidden.
+3. Standard I/O & Output Formatting Invariants: Specify exact stdout/stderr output strings, error message prefixes, and exit status codes (0 for success, non-zero for error).
+4. Explicit Data Representation & Number Formats: Specify number precision and boundary behaviors.
+5. Comprehensive Scenario & Edge Case Matrix: Include input validation edge cases, boundary values, error conditions, and unexpected input handling scenarios.
+6. Verification Criteria: Mandate 100% pass rate on unit, integration, and black-box E2E test suites with zero test failures.
+7. Chicago-School Testing & In-Memory Test Double Invariant: Domain and component tasks MUST author and use In-Memory Test Doubles for unit/integration tests.
+8. Black-Box E2E All-Scenario Invariant: E2E tests covering all scenarios executed with socket readiness polling rather than static sleep delays.
+9. Deterministic Time & Mock Clock Invariants: Every feature involving time, TTL, or expiration must mandate deterministic mock clocks.
+10. Pinned Modular Directory & Required File Paths (Anti-Monolith Mandate): Explicitly list the exact repository-relative file paths for every module, command, handler, model, and co-located test required by the story. Internal handlers and submodules must NEVER import from parent package facades or index modules to prevent circular import cycles.
+11. Machine-Readable Story Contract: Include exactly one fenced noctifab-contract JSON block with story_id and at least one public_contracts entry (id, interface, allowed_executables, exit_codes, stdout_contains, stderr_prefixes).
+12. Thin Shell Entrypoint Pattern: For US-001 or entrypoints, ensure main entrypoints are thin wrappers (< 15 lines) delegating immediately to callable core functions.
+13. Negative Specification Constraints: Enforce any negative constraints or forbidden tools declared in SPEC.md.
+
+Emit exactly ONE 'create_story' action with the complete markdown file for this target story.

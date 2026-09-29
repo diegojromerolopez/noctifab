@@ -276,4 +276,3 @@ func isBlacklistedPlannedFile(path string) bool {
 	ext := filepath.Ext(clean)
 	return ext == ".o" || ext == ".a" || ext == ".so" || ext == ".dylib" || ext == ".exe" || ext == ".pyc"
 }
-

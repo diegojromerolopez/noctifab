@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
@@ -25,10 +26,11 @@ type ProposedFix struct {
 
 // AcceptanceAuditResult encapsulates the whole-project audit against SPEC.md.
 type AcceptanceAuditResult struct {
-	Passed  bool          `json:"passed"`
-	Summary string        `json:"summary"`
-	Gaps    []string      `json:"gaps,omitempty"`
-	Fixes   []ProposedFix `json:"fixes,omitempty"`
+	Passed            bool                `json:"passed"`
+	Summary           string              `json:"summary"`
+	Gaps              []string            `json:"gaps,omitempty"`
+	Fixes             []ProposedFix       `json:"fixes,omitempty"`
+	PredictedFailures []FailurePrediction `json:"predicted_failures,omitempty"`
 }
 
 // AcceptanceAuditor compares the implemented codebase against the root SPEC.md.
@@ -36,10 +38,13 @@ type AcceptanceAuditor struct {
 	llmClient       domain.LLMClient
 	renderer        PromptRenderer
 	runner          Sandbox
+	sovereignQA     *SovereignQAAuditor
 	e2eCmd          string
 	e2eMode         string
 	defaultTestCmd  string
 	allowedCommands []string
+	verifiedStories map[string]bool
+	ledgerMu        sync.Mutex
 }
 
 // NewAcceptanceAuditor instantiates an AcceptanceAuditor service.
@@ -52,9 +57,11 @@ func NewAcceptanceAuditor(client domain.LLMClient, renderer PromptRenderer, runn
 		r = runner[0]
 	}
 	return &AcceptanceAuditor{
-		llmClient: client,
-		renderer:  renderer,
-		runner:    r,
+		llmClient:       client,
+		renderer:        renderer,
+		runner:          r,
+		sovereignQA:     NewSovereignQAAuditor(client, r),
+		verifiedStories: make(map[string]bool),
 	}
 }
 
@@ -67,17 +74,31 @@ func (a *AcceptanceAuditor) ConfigureFromConfig(cfg *config.Config) {
 		if cmd := cfg.Sandbox.GetE2ECommand(); cmd != "" {
 			a.e2eCmd = cmd
 		}
+		if a.sovereignQA != nil {
+			a.sovereignQA.ConfigureFromConfig(cfg)
+		}
 	}
 }
 
 // SetRunner sets the sandbox runner.
 func (a *AcceptanceAuditor) SetRunner(runner Sandbox) {
 	a.runner = runner
+	if a.sovereignQA != nil {
+		a.sovereignQA.SetRunner(runner)
+	}
+}
+
+// SetSovereignQA overrides the Sovereign QA auditor service.
+func (a *AcceptanceAuditor) SetSovereignQA(sqa *SovereignQAAuditor) {
+	a.sovereignQA = sqa
 }
 
 // SetE2ECommand sets the custom E2E command.
 func (a *AcceptanceAuditor) SetE2ECommand(cmd string) {
 	a.e2eCmd = cmd
+	if a.sovereignQA != nil {
+		a.sovereignQA.SetE2ECommand(cmd)
+	}
 }
 
 // SetE2EMode sets the E2E mode ("docker" or "native").
@@ -90,6 +111,9 @@ func (a *AcceptanceAuditor) SetE2EConfig(e2e config.E2EConfig) {
 	a.e2eMode = e2e.Mode
 	if e2e.Command != "" {
 		a.e2eCmd = e2e.Command
+		if a.sovereignQA != nil {
+			a.sovereignQA.SetE2ECommand(e2e.Command)
+		}
 	}
 }
 
@@ -101,6 +125,9 @@ func (a *AcceptanceAuditor) SetDefaultTestCommand(cmd string) {
 // SetAllowedCommands sets the whitelisted binaries allowed by the sandbox policy.
 func (a *AcceptanceAuditor) SetAllowedCommands(cmds []string) {
 	a.allowedCommands = cmds
+	if a.sovereignQA != nil {
+		a.sovereignQA.SetAllowedCommands(cmds)
+	}
 }
 
 // AuditProjectAcceptance verifies whether the implemented codebase satisfies SPEC.md.
@@ -143,10 +170,15 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 
 	_ = PrepareTestEnvironment(state.ProjectPath)
 
-	// 1. Behavioral E2E Execution Pre-Flight Gate
+	// 1. Behavioral E2E Execution & Interface Probe Pre-Flight Gate
 	var e2eLog string
 	e2eFailed := false
 	e2eCmd := a.detectE2ECommand(state.ProjectPath)
+	if e2eCmd == "" && a.sovereignQA != nil {
+		e2eCmd = a.sovereignQA.DetectProbeCommand(state.ProjectPath)
+	}
+	var e2eOut string
+	var e2eErr error
 	if e2eCmd != "" && a.runner != nil {
 		if !a.isCommandAllowed(e2eCmd) {
 			e2eLog = fmt.Sprintf("⚠️  E2E command %q skipped: binary not in sandbox allowed_commands", e2eCmd)
@@ -157,7 +189,7 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 				_ = guard.PostRunClean(ctx, state.ProjectPath)
 			}()
 			fmt.Printf("🔍 [Acceptance Gate] Running E2E verification command: %q...\n", e2eCmd)
-			e2eOut, e2eErr := a.runner.RunCommand(ctx, state.ProjectPath, e2eCmd, "")
+			e2eOut, e2eErr = a.runner.RunCommand(ctx, state.ProjectPath, e2eCmd, "")
 			if e2eErr != nil {
 				if isSandboxViolation(e2eErr, e2eOut) {
 					e2eLog = fmt.Sprintf("⚠️  Sandbox policy restriction on E2E command %q (%v); skipped.", e2eCmd, e2eErr)
@@ -175,6 +207,26 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		}
 	} else if e2eCmd == "" {
 		e2eLog = "⚠️  No E2E test target detected (no 'e2e:' in Makefile or docker-compose.yml)."
+	}
+
+	// Incremental Ledger Fast Pass: If all project stories have been incrementally verified
+	// through story-level QA completeness gates and behavioral E2E tests are 100% green,
+	// fast-pass whole-project acceptance with 0ms LLM latency.
+	a.ledgerMu.Lock()
+	allIncrementallyVerified := len(a.verifiedStories) > 0 && len(state.Stories) > 0
+	for _, s := range state.Stories {
+		if !a.verifiedStories[s.ID] && s.Status == domain.StorySuccess {
+			allIncrementallyVerified = false
+			break
+		}
+	}
+	a.ledgerMu.Unlock()
+
+	if allIncrementallyVerified && !e2eFailed && e2eErr == nil && (e2eOut != "" || e2eCmd == "") {
+		return &AcceptanceAuditResult{
+			Passed:  true,
+			Summary: fmt.Sprintf("All %d user story milestones incrementally verified against SPEC.md with passing behavioral E2E tests", len(state.Stories)),
+		}, nil
 	}
 
 	workspaceFiles := a.collectWorkspaceSnapshot(ctx, state.ProjectPath)
@@ -204,6 +256,28 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 	}
 
 	result := a.parseAuditResponse(resp)
+
+	// 2. Sovereign QA Predictive Code & Log Analysis Gate
+	if a.sovereignQA != nil {
+		sqaResult, sqaErr := a.sovereignQA.Audit(ctx, state, e2eCmd, e2eOut, e2eErr)
+		if sqaErr == nil && sqaResult != nil {
+			result.PredictedFailures = sqaResult.PredictedFailures
+			if !sqaResult.Passed {
+				result.Passed = false
+				for _, imm := range sqaResult.ImmediateErrors {
+					result.Gaps = append(result.Gaps, imm)
+				}
+				for _, pred := range sqaResult.PredictedFailures {
+					if strings.ToLower(pred.RiskLevel) == "critical" || strings.ToLower(pred.RiskLevel) == "high" {
+						gapMsg := fmt.Sprintf("Predictive QA Failure Risk [%s] (%s): %s (Trigger: %s)", pred.RiskLevel, pred.AffectedFile, pred.Description, pred.TriggerScenario)
+						result.Gaps = append(result.Gaps, gapMsg)
+					}
+				}
+				result.Fixes = append(result.Fixes, sqaResult.Fixes...)
+			}
+		}
+	}
+
 	if e2eFailed {
 		result.Passed = false
 		result.Gaps = append(result.Gaps, "E2E behavioral test execution failed")
@@ -385,4 +459,27 @@ func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *Accept
 		Passed:  false,
 		Summary: "Acceptance audit response could not be parsed: " + summary,
 	}
+}
+
+// RecordStoryVerified registers a completed user story in the incremental acceptance ledger.
+func (a *AcceptanceAuditor) RecordStoryVerified(storyID string, verifiedFeatures []string) {
+	if a == nil || storyID == "" {
+		return
+	}
+	a.ledgerMu.Lock()
+	defer a.ledgerMu.Unlock()
+	if a.verifiedStories == nil {
+		a.verifiedStories = make(map[string]bool)
+	}
+	a.verifiedStories[storyID] = true
+}
+
+// IsStoryVerified checks if a story has been incrementally verified.
+func (a *AcceptanceAuditor) IsStoryVerified(storyID string) bool {
+	if a == nil || storyID == "" {
+		return false
+	}
+	a.ledgerMu.Lock()
+	defer a.ledgerMu.Unlock()
+	return a.verifiedStories[storyID]
 }

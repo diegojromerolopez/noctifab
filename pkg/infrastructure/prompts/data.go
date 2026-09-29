@@ -42,6 +42,10 @@ type ProductManagerPromptData struct {
 	MinComplexity int
 	// MaxComplexity is the target maximum complexity units per story (0 = default 35).
 	MaxComplexity int
+	// TargetStory is the specific story outline being expanded in Stage 2.
+	TargetStory string
+	// RoadmapCatalog is the full list of outlined stories from Stage 1.
+	RoadmapCatalog string
 }
 
 // PlannerPromptData backs the planner/* action templates.

@@ -129,31 +129,87 @@ func isCohesionDocOrConfig(base string) bool {
 }
 
 var nonCommandWords = map[string]bool{
-	"CRITICAL": true, "MANDATE": true, "TASK": true, "DAG": true,
-	"JSON": true, "YAML": true, "XML": true, "HTML": true,
-	"HTTP": true, "TCP": true, "UDP": true, "IP": true,
-	"REST": true, "RESP": true, "RESP2": true, "RESP3": true,
-	"API": true, "CLI": true, "E2E": true, "QA": true,
-	"LLM": true, "CU": true, "DOD": true, "AOF": true,
-	"RDB": true, "TTL": true, "UTC": true, "ID": true,
-	"URL": true, "URI": true, "UUID": true, "OK": true,
-	"FAIL": true, "TRUE": true, "FALSE": true, "NONE": true,
-	"SOLID": true, "DDD": true, "AST": true, "VCS": true,
+	"CRITICAL": true, "MANDATE": true, "TASK": true, "TASKS": true, "DAG": true,
+	"JSON": true, "YAML": true, "XML": true, "HTML": true, "CSV": true, "SQL": true,
+	"HTTP": true, "HTTPS": true, "TCP": true, "UDP": true, "IP": true, "SSH": true,
+	"REST": true, "RESP": true, "RESP2": true, "RESP3": true, "RPC": true, "GRPC": true,
+	"API": true, "APIS": true, "CLI": true, "E2E": true, "QA": true, "CI": true, "CD": true,
+	"LLM": true, "CU": true, "DOD": true, "AOF": true, "RDB": true, "TTL": true, "UTC": true,
+	"ID": true, "IDS": true, "URL": true, "URI": true, "UUID": true, "OK": true, "ERR": true,
+	"FAIL": true, "FAILED": true, "TRUE": true, "FALSE": true, "NONE": true, "NIL": true, "NULL": true,
+	"SOLID": true, "DDD": true, "AST": true, "VCS": true, "PR": true, "OS": true, "IO": true,
+	"ASCII": true, "UTF8": true, "POSIX": true, "FIFO": true, "LRU": true, "LFU": true, "CPU": true, "RAM": true, "EOF": true, "OOM": true,
+	// Common English & Markdown heading keywords in uppercase
+	"REQUIREMENTS": true, "REQUIREMENT": true, "GOAL": true, "GOALS": true, "SCOPE": true,
+	"NOTE": true, "NOTES": true, "IMPORTANT": true, "WARNING": true, "TODO": true, "FIXME": true,
+	"ERROR": true, "ERRORS": true, "SUCCESS": true, "PENDING": true, "RUN": true, "RUNS": true,
+	"TEST": true, "TESTS": true, "STDOUT": true, "STDERR": true, "EXIT": true, "CODE": true,
+	"INPUT": true, "INPUTS": true, "OUTPUT": true, "OUTPUTS": true, "FILES": true, "FILE": true,
+	"DEPENDENCIES": true, "DEPENDS": true, "PLAN": true, "STATUS": true, "DESCRIPTION": true, "TITLE": true,
+	"STEP": true, "STEPS": true, "CHECK": true, "CHECKS": true, "EXPECTED": true, "ACTUAL": true,
+	"RESULT": true, "RESULTS": true, "ASSERT": true, "ASSERTION": true, "ASSERTIONS": true,
+	"RETURN": true, "RETURNS": true, "RAISE": true, "RAISES": true, "EXCEPT": true, "CATCH": true,
+	"OPTION": true, "OPTIONS": true, "FLAG": true, "FLAGS": true, "VALUE": true, "VALUES": true,
+	"KEY": true, "KEYS": true, "TYPE": true, "TYPES": true, "DATA": true, "SYNTAX": true,
+	"STORE": true, "SERVER": true, "CLIENT": true, "SOCKET": true, "BUFFER": true, "STREAM": true,
+	"MUST": true, "SHOULD": true, "NOT": true, "ONLY": true, "AND": true, "OR": true, "FOR": true,
+	"IN": true, "OF": true, "WITH": true, "WITHOUT": true, "BY": true, "ALL": true, "ANY": true,
+	// Common protocol argument flags / modifiers (not commands themselves)
+	"EX": true, "PX": true, "NX": true, "XX": true, "KEEPTTL": true, "EXAT": true, "PXAT": true,
+	"GT": true, "LT": true, "CH": true, "WITHSCORES": true, "LIMIT": true, "WEIGHTS": true,
+	"AGGREGATE": true, "REV": true, "BYLEX": true, "BYSCORE": true, "COUNT": true, "MATCH": true,
 }
 
-var commandWordRegex = regexp.MustCompile(`\b[A-Z][A-Z0-9_]{1,14}\b`)
+var (
+	commandWordRegex    = regexp.MustCompile(`\b[A-Z][A-Z0-9_]{1,14}\b`)
+	commandListSeqRegex = regexp.MustCompile(`(?i)(?:implement|commands?|operations?|endpoints?|support|verbs?)[:\s]+([A-Z0-9_,\s\(\)\/]+?)(?:\.|\n|;|$)`)
+	commaSeparatedRegex = regexp.MustCompile(`\b[A-Z][A-Z0-9_]{1,14}\b(?:,\s*(?:and\s+)?\b[A-Z][A-Z0-9_]{1,14}\b)+`)
+	bulletItemCmdRegex  = regexp.MustCompile(`(?m)^\s*[-*•\d.]+\s*(?:` + "`" + `)?([A-Z][A-Z0-9_]{1,14})(?:` + "`" + `)?(?:\s*[:(]|$)`)
+)
 
-func countEnumeratedCommands(text string) int {
-	matches := commandWordRegex.FindAllString(text, -1)
-	if len(matches) == 0 {
-		return 0
-	}
+func countEnumeratedCommands(titleAndDesc string) int {
 	seen := make(map[string]bool)
-	for _, m := range matches {
+
+	// 1. Extract from Title (titles are concise and explicitly name target commands)
+	parts := strings.Split(titleAndDesc, "\n")
+	title := parts[0]
+	for _, m := range commandWordRegex.FindAllString(title, -1) {
 		if !nonCommandWords[m] {
 			seen[m] = true
 		}
 	}
+
+	desc := titleAndDesc
+	if len(parts) > 1 {
+		desc = strings.Join(parts[1:], "\n")
+	}
+
+	// 2. Extract from explicit command list phrases in Description (e.g. "Implement A, B, C", "commands: A, B, C")
+	for _, match := range commandListSeqRegex.FindAllStringSubmatch(desc, -1) {
+		if len(match) > 1 {
+			for _, word := range commandWordRegex.FindAllString(match[1], -1) {
+				if !nonCommandWords[word] {
+					seen[word] = true
+				}
+			}
+		}
+	}
+
+	// 3. Extract from comma-separated sequences of uppercase tokens (e.g. "AUTH, BGSAVE, BGREWRITEAOF, CLIENT, COMMAND")
+	for _, seq := range commaSeparatedRegex.FindAllString(desc, -1) {
+		for _, word := range commandWordRegex.FindAllString(seq, -1) {
+			if !nonCommandWords[word] {
+				seen[word] = true
+			}
+		}
+	}
+
+	// 4. Extract from bullet items (e.g. "- PING: check connection", "- ECHO: echo argument")
+	for _, match := range bulletItemCmdRegex.FindAllStringSubmatch(desc, -1) {
+		if len(match) > 1 && !nonCommandWords[match[1]] {
+			seen[match[1]] = true
+		}
+	}
+
 	return len(seen)
 }
-

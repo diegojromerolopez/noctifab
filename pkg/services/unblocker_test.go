@@ -165,7 +165,7 @@ func TestNewUnblockerAgent_Defaults(t *testing.T) {
 		u := NewUnblockerAgent(nil, nil, nil, 0, 0, 0, 0, false)
 		assert.Equal(t, 30*time.Second, u.pollInterval)
 		assert.Equal(t, 5, u.maxRetries)
-		assert.Equal(t, 2*time.Minute, u.stallThreshold)
+		assert.Equal(t, 3*time.Minute, u.stallThreshold)
 		assert.Equal(t, 5*time.Minute, u.conflictThreshold)
 	})
 

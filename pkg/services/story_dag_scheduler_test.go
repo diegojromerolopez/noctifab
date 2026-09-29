@@ -249,4 +249,50 @@ func TestStoryDAGScheduler_InputValidationAndEdgeCases(t *testing.T) {
 		assert.Equal(t, "US-004", executed[0])
 		assert.Equal(t, "US-003", executed[1])
 	})
+
+	t.Run("streams user stories dynamically into executing scheduler", func(t *testing.T) {
+		scheduler := services.NewStoryDAGScheduler(2)
+		scheduler.SetStreaming(true)
+
+		var executedMu sync.Mutex
+		var executed []string
+
+		doneCh := make(chan error, 1)
+		go func() {
+			err := scheduler.Execute(context.Background(), func(ctx context.Context, item services.StoryWorkItem) error {
+				executedMu.Lock()
+				executed = append(executed, services.ExtractStoryID(item.Path))
+				executedMu.Unlock()
+				time.Sleep(20 * time.Millisecond)
+				return nil
+			})
+			doneCh <- err
+		}()
+
+		// Stream US-001 first
+		scheduler.AddStory(services.StoryWorkItem{Path: "US-001.md", Spec: "depends_on: []"})
+
+		// Wait briefly to verify US-001 starts before US-002 is even fed
+		time.Sleep(10 * time.Millisecond)
+
+		// Stream US-002
+		scheduler.AddStory(services.StoryWorkItem{Path: "US-002.md", Spec: "depends_on: [\"US-001\"]"})
+
+		// Close stream
+		time.Sleep(30 * time.Millisecond)
+		scheduler.CloseStoryStream()
+
+		select {
+		case err := <-doneCh:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for streaming scheduler to complete")
+		}
+
+		executedMu.Lock()
+		defer executedMu.Unlock()
+		require.Len(t, executed, 2)
+		assert.Equal(t, "US-001", executed[0])
+		assert.Equal(t, "US-002", executed[1])
+	})
 }

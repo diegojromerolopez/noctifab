@@ -69,7 +69,7 @@ func NewFallbackAgent(
 		maxRetries = 5
 	}
 	if stallThreshold <= 0 {
-		stallThreshold = 2 * time.Minute
+		stallThreshold = 3 * time.Minute
 	}
 	if conflictThreshold <= 0 {
 		conflictThreshold = 5 * time.Minute

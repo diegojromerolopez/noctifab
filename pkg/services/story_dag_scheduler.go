@@ -43,9 +43,12 @@ type StoryDAGScheduler struct {
 	nodes         map[string]*StoryDAGNode
 	storyIDs      []string // preserves order of discovery
 	mu            sync.Mutex
+	cond          *sync.Cond
 	maxConcurrent int
 	pipelined     bool
 	gitMergeMutex sync.Mutex // serializes git branch merging during state finalization
+	streaming     bool
+	streamClosed  bool
 }
 
 // NewStoryDAGScheduler initializes a StoryDAGScheduler with a maximum concurrency limit.
@@ -53,10 +56,12 @@ func NewStoryDAGScheduler(maxConcurrent int) *StoryDAGScheduler {
 	if maxConcurrent <= 0 {
 		maxConcurrent = 4
 	}
-	return &StoryDAGScheduler{
+	s := &StoryDAGScheduler{
 		nodes:         make(map[string]*StoryDAGNode),
 		maxConcurrent: maxConcurrent,
 	}
+	s.cond = sync.NewCond(&s.mu)
+	return s
 }
 
 // SetPipelined configures whether child stories can begin planning and task dispatch
@@ -72,6 +77,31 @@ func (s *StoryDAGScheduler) IsPipelined() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.pipelined
+}
+
+// SetStreaming configures the scheduler for streaming story ingestion.
+// While streaming is active, the scheduler will not terminate or declare a deadlock
+// if the queue is empty; it waits until CloseStoryStream is called.
+func (s *StoryDAGScheduler) SetStreaming(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.streaming = enabled
+	if !enabled {
+		s.streamClosed = true
+	}
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
+}
+
+// CloseStoryStream signals that all stories have been fed into the scheduler.
+func (s *StoryDAGScheduler) CloseStoryStream() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.streamClosed = true
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
 }
 
 // AddStory parses a StoryWorkItem and adds it to the scheduling graph.
@@ -103,6 +133,9 @@ func (s *StoryDAGScheduler) AddStory(item StoryWorkItem) {
 		s.storyIDs = append(s.storyIDs, storyID)
 	}
 	s.nodes[storyID] = node
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
 }
 
 // MarkStoryCompleted marks a story node as already succeeded without executing it, unblocking dependent stories.
@@ -160,7 +193,10 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 	})
 	s.mu.Unlock()
 
-	cond := sync.NewCond(&s.mu)
+	if s.cond == nil {
+		s.cond = sync.NewCond(&s.mu)
+	}
+	cond := s.cond
 	var activeCount int
 	var firstErr error
 
@@ -169,10 +205,14 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 
 		// Check if all nodes have finished
 		allFinished := true
-		for _, node := range s.nodes {
-			if node.Status == StoryNodePending || node.Status == StoryNodeRunning {
-				allFinished = false
-				break
+		if s.streaming && !s.streamClosed {
+			allFinished = false
+		} else {
+			for _, node := range s.nodes {
+				if node.Status == StoryNodePending || node.Status == StoryNodeRunning {
+					allFinished = false
+					break
+				}
 			}
 		}
 
@@ -231,6 +271,11 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 		}
 
 		if len(dispatch) == 0 && activeCount == 0 {
+			if s.streaming && !s.streamClosed {
+				cond.Wait()
+				s.mu.Unlock()
+				continue
+			}
 			// Deadlock detection: pending nodes exist but none can be dispatched
 			var pendingIDs []string
 			for _, node := range s.nodes {
@@ -271,7 +316,7 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 
 		// Wait for progress
 		s.mu.Lock()
-		if activeCount > 0 && len(dispatch) == 0 {
+		if (activeCount > 0 || (s.streaming && !s.streamClosed)) && len(dispatch) == 0 {
 			cond.Wait()
 		}
 		s.mu.Unlock()

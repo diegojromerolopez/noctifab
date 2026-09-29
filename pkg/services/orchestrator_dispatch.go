@@ -341,6 +341,7 @@ func (o *Orchestrator) dispatchContinuously(ctx context.Context, stateID string,
 				completions <- taskID
 			}(t.ID)
 		}
+		o.preWarmUpcomingTasks(stateID)
 	}
 
 	dispatch(initial)
@@ -401,4 +402,26 @@ func (o *Orchestrator) readyTasksForFreeSlots(state *domain.State, inflight map[
 		}
 	}
 	return out
+}
+
+// preWarmUpcomingTasks asynchronously pre-seeds minimal stub files and directories
+// for pending downstream tasks, ensuring zero filesystem preparation latency upon dispatch.
+func (o *Orchestrator) preWarmUpcomingTasks(stateID string) {
+	if o == nil || o.repo == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		state, err := o.repo.Load(ctx)
+		if err != nil || state == nil || strings.TrimSpace(state.ProjectPath) == "" {
+			return
+		}
+		for i := range state.Tasks {
+			t := &state.Tasks[i]
+			if t.Status == domain.TaskPending {
+				o.ensureTargetStubFilesExist(state.ProjectPath, t)
+			}
+		}
+	}()
 }

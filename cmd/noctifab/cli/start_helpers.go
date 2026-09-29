@@ -13,6 +13,7 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 )
 
@@ -177,4 +178,77 @@ func computeFailureSignature(outcomes map[string]error) string {
 	}
 	sort.Strings(entries)
 	return strings.Join(entries, ";")
+}
+
+func initStoryExecutionEnvironment(
+	cmdCtx context.Context,
+	cfg *config.Config,
+	targetDir string,
+	storyFiles []string,
+	repo domain.StateRepository,
+	reg *services.ToolRegistry,
+	llmClient domain.LLMClient,
+	sandboxRunner services.Sandbox,
+	mailbox *services.CommandMailbox,
+	executionReporter domain.ExecutionReporter,
+	promptRenderer services.PromptRenderer,
+) (
+	executeStory func(ctx context.Context, currentStoryFile string) error,
+	planStory func(ctx context.Context, currentStoryFile string) error,
+	speculativePlanner *SpeculativePlanner,
+	gitClient *services.GitClient,
+	rebaseQueue *services.RebaseQueue,
+	evaluator *services.TestValidator,
+) {
+	gitClient = services.NewGitClient(".")
+	rebaseQueue = services.NewRebaseQueue(gitClient)
+	go rebaseQueue.Start(cmdCtx)
+
+	profilesMap := make(map[string]services.ProfileConfig)
+	for role, prof := range cfg.Profiles {
+		profilesMap[role] = services.ProfileConfig{
+			AllowedTools:    prof.AllowedTools,
+			AllowedCommands: prof.AllowedCommands,
+		}
+	}
+	validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+	validator.ExcludePaths = cfg.Sandbox.ExcludePaths
+	validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
+	scheduler := services.NewScheduler(services.NewFileLockRegistry())
+	evaluator = services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+	evaluator.SetE2EConfig(cfg.Sandbox.E2E)
+	evaluator.Formatter = services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
+	evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
+	evaluator.SyntaxChecker = services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)
+	if cfg.Sandbox.TimeoutSeconds > 0 {
+		evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
+	}
+	vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
+	repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
+
+	orchConfig := buildOrchestratorConfig(cfg)
+
+	storyDeps := storyExecutorDeps{
+		cfg:               cfg,
+		targetDir:         targetDir,
+		storyFiles:        storyFiles,
+		gitClient:         gitClient,
+		rebaseQueue:       rebaseQueue,
+		repo:              repo,
+		reg:               reg,
+		llmClient:         llmClient,
+		validator:         validator,
+		scheduler:         scheduler,
+		evaluator:         evaluator,
+		vcsClient:         vcsClient,
+		orchConfig:        orchConfig,
+		mailbox:           mailbox,
+		repairHandler:     repairHandler,
+		promptRenderer:    promptRenderer,
+		executionReporter: executionReporter,
+	}
+	executeStory = buildStoryExecutor(storyDeps)
+	planStory = buildStoryPlanner(storyDeps)
+	speculativePlanner = NewSpeculativePlanner(repo, planStory)
+	return
 }
