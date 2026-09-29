@@ -99,6 +99,13 @@ python3 validation/bin/validation_project_loop.py [PROJECT] [OPTIONS]
 *   `--dry-run`: Extracts and displays diagnostic metrics and token usage from existing artifacts on disk without launching a Docker container.
 *   `--skip-compile`: Skips recompiling Noctifab and updating the base image (useful for rapid diagnostic inspection).
 
+### Native Host Execution Runner (`validation/bin/native_project_loop.py`)
+For running validation projects directly against a local repository on the host (`--sandbox-mode host`):
+```bash
+python3 validation/bin/native_project_loop.py /path/to/repo --duration-hours 2
+```
+*   **Finish-Line Grace Runway (`+300s`)**: If `timeout_seconds` is reached while `noctifab` is actively executing `Sovereign Rescue` (`DispatchSovereignRescue`) or the `Whole-Project Acceptance Gate`, `native_project_loop.py` automatically grants a one-time `+300s` (5-minute) finish-line grace extension so in-flight rescue turns or acceptance audits can complete and commit cleanly without premature `SIGTERM` interruption.
+
 ### Common Examples
 
 #### 1. Running on `pyedis` for 5 Hours (Time-Bounded Soak & Improvement)

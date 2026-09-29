@@ -539,10 +539,10 @@ agents:
     passes: 2 # 1 = Fast, 2 = Standard 2-Pass Refinement (default), 3 = Deep Contract Audit
 ```
 
-### 5. Multi-Pass Product Manager Architecture (`agents.product_manager.passes`)
-The Product Manager Agent executes a multi-pass specification decomposition and audit loop:
-* **Pass 1 (Decomposition & Drafting)**: Renders `generate` prompt, creating initial user stories in `roadmap/user-stories/US-XXX-slug.md`.
-* **Pass 2+ (Cross-Story Audit & Contract Alignment)**: Renders `audit` prompt with existing generated stories as context, verifying cross-story dependencies, contract IDs, and `SPEC.md` requirement coverage.
+### 5. Multi-Pass Product Manager Architecture & Streaming Story DAG (`agents.product_manager.passes`)
+The Product Manager Agent executes a multi-pass specification decomposition and parallel per-story audit loop (`pkg/services/roadmap_generator.go`, `pkg/services/roadmap_auditor.go`):
+* **Pass 1 (Streaming Decomposition & Drafting)**: Renders `generate` (or two-stage outline + per-story expansion), writing initial user stories to `roadmap/user-stories/US-XXX-slug.md` and streaming each story immediately to `StoryDAGScheduler`. When `StoryDAGScheduler` starts in streaming mode (`streaming && !streamClosed`), `Execute()` waits on `s.cond` until stories arrive or `CloseStream()` is called.
+* **Pass 2+ (Parallel Sliced Story-by-Story Audit & Early Convergence)**: `AuditRoadmapStoriesPerStory` (`AuditRoadmapStoriesParallel`) audits stories concurrently across a bounded worker pool (`concurrency = 4`). Each story audit receives a concise `RoadmapCatalog`, a targeted `BuildBasicAndFeatureSpec` slice of `SPEC.md`, and deterministic `ValidateStoryContract` diagnostics (`[Contract Validation Error Requiring Repair: ...]`). Stories that already satisfy all DoD and `noctifab-contract` invariants return a fast no-op (`{"actions": []}`). When a refinement pass produces zero story modifications (`refinedCount == 0`), multi-pass generation converges and exits early. Re-streaming stories during Pass 2+ updates metadata and dependencies in `StoryDAGScheduler.AddStory()` without resetting `RUNNING` or `SUCCESS` nodes back to `PENDING`.
 
 ### 6. Black-Box Contract Scenario Prompt Injection
 Machine-readable contract expectations parsed from story `noctifab-contract` JSON blocks (`AllowedExecutables`, `ExitCodes`, `StderrPrefixes`, `StdoutContains`) are formatted into a prominent `### BLACK-BOX CONTRACT EXPECTATIONS (NON-NEGOTIABLE)` prompt context section and injected directly into Generator and Tester agent prompts.
@@ -626,6 +626,14 @@ To preserve LLM context economics and minimize Time-To-First-Token (TTFT):
 ### 22. Docker Layer Caching & BuildKit Acceleration (`pkg/services/worktree_cache.go`, agent prompt templates)
 - **Automatic BuildKit Activation**: Injects `DOCKER_BUILDKIT=1` and `COMPOSE_DOCKER_CLI_BUILD=1` into all sandbox executions via `BuildSharedCacheEnv`.
 - **Dependency-First Layering Mandate**: Prompts enforce copying dependency manifests (`requirements.txt`, `package.json`, `go.mod`, `Cargo.toml`, `Gemfile`) and running installation steps in dedicated layers before application source code (`COPY . .`), maximizing Docker layer cache reusability across edits.
+
+### 23. Adaptive Speculative Hedging & Command-Aware Watchdog Timeouts (`pkg/infrastructure/llm/router_hedging.go`, `pkg/services/watchdog.go`)
+- **Adaptive Speculative Hedging (`router_latency_tracker.go`)**: Tracks consecutive provider timeouts and dynamically scales down speculative hedge delays (e.g. from 25s down to 10s, 3s, or 1s) when the primary LLM provider degrades, launching backup completions proactively before idle deadlocks.
+- **Dynamic Watchdog Idle Timeouts (`ResolveDynamicIdleTimeout`)**: Assigns extended idle windows (minimum 120s) to silent, long-running build and package installation commands (`docker build`, `cargo build`, `go build`, `pip install`, `npm install`, `make build`), while maintaining tight 30s timeouts for fast unit test runs.
+
+### 24. Red No-Op Strike Guard & Anti-Mega-Task Scope Ceiling (`pkg/services/orchestrator_generator.go`, `pkg/services/task_cohesion.go`)
+- **Red No-Op Guard with 2-Strike Turn Preservation**: Deterministically rejects `noop` or empty actions in `RunGeneratorAgent` whenever the active test suite is failing, granting a 2-strike turn-preserving budget (`turn--`) with actionable failure diagnostics before consuming generator turns.
+- **Anti-Mega-Task Scope Ceiling (`isMegaTaskViolation`)**: Deterministically rejects monolithic tasks targeting $> 6$ production files or enumerating $> 8$ command/operation keywords during `ValidateTaskCohesion`, forcing the planner to decompose work into modular sibling tasks.
 
 ---
 

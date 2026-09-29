@@ -111,8 +111,10 @@ with named placeholders. The available placeholders per agent:
 
 | Placeholder | Content |
 | --- | --- |
-| `{{.Spec}}` | Raw SPEC.md content |
-| `{{.ExistingStories}}` | Concatenated existing user stories (`audit` only) |
+| `{{.Spec}}` | Raw or feature-sliced `SPEC.md` content |
+| `{{.ExistingStories}}` | Concatenated existing user stories (`audit` holistic mode only) |
+| `{{.TargetStory}}` | Single target user story markdown content + deterministic contract validation diagnostics (`audit` per-story mode) |
+| `{{.RoadmapCatalog}}` | High-level catalog of all user story IDs and titles in the roadmap for cross-story dependency awareness (`audit` per-story mode) |
 | `{{.LegacyFiles}}` | Pre-formatted legacy codebase context block, or empty |
 
 ### `planner/*` — PlannerPromptData
