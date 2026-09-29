@@ -71,13 +71,13 @@ func FormatRoadmapCatalog(outlines []StoryOutlineItem) string {
 		if len(o.DependsOn) > 0 {
 			deps = strings.Join(o.DependsOn, ", ")
 		}
-		sb.WriteString(fmt.Sprintf("- **%s: %s** (Slug: %s | Complexity: %d CU | DependsOn: [%s])\n",
-			o.ID, o.Title, o.Slug, o.Complexity, deps))
+		fmt.Fprintf(&sb, "- **%s: %s** (Slug: %s | Complexity: %d CU | DependsOn: [%s])\n",
+			o.ID, o.Title, o.Slug, o.Complexity, deps)
 		if o.DomainSlice != "" {
-			sb.WriteString(fmt.Sprintf("  - Domain Capability: %s\n", o.DomainSlice))
+			fmt.Fprintf(&sb, "  - Domain Capability: %s\n", o.DomainSlice)
 		}
 		if o.Summary != "" {
-			sb.WriteString(fmt.Sprintf("  - Scope Summary: %s\n", o.Summary))
+			fmt.Fprintf(&sb, "  - Scope Summary: %s\n", o.Summary)
 		}
 	}
 	return sb.String()

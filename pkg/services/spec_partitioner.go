@@ -371,7 +371,7 @@ func BuildRoadmapOutlineSpec(projectPath string, fallbackSpec string) string {
 		if len(sec.Commands) > 0 {
 			cmdList = fmt.Sprintf(" (Commands: %s)", strings.Join(sec.Commands, ", "))
 		}
-		sb.WriteString(fmt.Sprintf("%d. **%s** (`%s`): %d commands/operations%s\n", idx+1, sec.Title, sec.ID, sec.CommandCount, cmdList))
+		fmt.Fprintf(&sb, "%d. **%s** (`%s`): %d commands/operations%s\n", idx+1, sec.Title, sec.ID, sec.CommandCount, cmdList)
 	}
 	return sb.String()
 }
