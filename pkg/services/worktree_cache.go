@@ -59,8 +59,8 @@ func SymlinkSharedDependencies(srcDir, dstDir string) {
 			if _, errDst := os.Lstat(dstPath); os.IsNotExist(errDst) {
 				_ = createRelativeOrAbsoluteSymlink(srcPath, dstPath)
 			}
-		} else if dir == "node_modules" {
-			// Global node_modules fallback if available in environment (e.g. containers)
+		} else if dir == "node_modules" && hasNodeManifest(cleanSrc, cleanDst) {
+			// Global node_modules fallback if available in environment (e.g. containers) for Node.js projects
 			globalNode := "/usr/local/lib/node_modules"
 			if gInfo, gErr := os.Stat(globalNode); gErr == nil && gInfo.IsDir() {
 				if _, errDst := os.Lstat(dstPath); os.IsNotExist(errDst) {
@@ -153,6 +153,15 @@ func ConfigureToolchainWorktreeCaches(srcDir, dstDir string) {
 func hasGradleManifest(dir string) bool {
 	for _, f := range []string{"build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func hasNodeManifest(dirs ...string) bool {
+	for _, dir := range dirs {
+		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
 			return true
 		}
 	}

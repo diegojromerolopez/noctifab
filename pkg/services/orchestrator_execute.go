@@ -382,10 +382,21 @@ func checkTaskMutations(ctx context.Context, task *domain.Task, taskGit *GitClie
 	if len(task.TargetFiles) == 0 && task.ChangeType == "" {
 		return passed, logMsg
 	}
-	uncommitted, _ := taskGit.Run(ctx, false, "status", "--porcelain")
+	uncommittedRaw, _ := taskGit.Run(ctx, false, "status", "--porcelain")
+	hasUncommitted := false
+	for _, line := range strings.Split(uncommittedRaw, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) > 3 {
+			filePart := strings.TrimSpace(trimmed[2:])
+			if !IsPathExcluded(filePart, nil) {
+				hasUncommitted = true
+				break
+			}
+		}
+	}
 	diffOut, _ := taskGit.Run(ctx, false, "diff", "--name-only", integrationBranch)
 	logOut, _ := taskGit.Run(ctx, false, "log", integrationBranch+"..HEAD", "--oneline")
-	if strings.TrimSpace(uncommitted) == "" && strings.TrimSpace(diffOut) == "" && strings.TrimSpace(logOut) == "" {
+	if !hasUncommitted && strings.TrimSpace(diffOut) == "" && strings.TrimSpace(logOut) == "" {
 		fmt.Printf("⚠️ Orchestrator: Task %s passed tests but produced zero file changes relative to %s. Rejecting false-positive pass.\n", task.ID, integrationBranch)
 		return false, fmt.Sprintf("Task %s produced zero file mutations or git changes relative to %s. Baseline tests passed, but no actual work was implemented.", task.ID, integrationBranch)
 	}
