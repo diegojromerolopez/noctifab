@@ -51,6 +51,10 @@ func AttrInt(key string, value int) attribute.KeyValue {
 }
 
 func InitTracer(serviceName, endpoint string) (*sdktrace.TracerProvider, error) {
+	return InitTracerWithFile(serviceName, endpoint, "")
+}
+
+func InitTracerWithFile(serviceName, endpoint, traceFile string) (*sdktrace.TracerProvider, error) {
 	if serviceName == "" {
 		serviceName = os.Getenv("OTEL_SERVICE_NAME")
 	}
@@ -62,27 +66,45 @@ func InitTracer(serviceName, endpoint string) (*sdktrace.TracerProvider, error) 
 		endpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	}
 
+	if traceFile == "" {
+		traceFile = os.Getenv("OTEL_TRACES_FILE")
+	}
+
 	exporterType := os.Getenv("OTEL_TRACES_EXPORTER")
 
-	var exporter sdktrace.SpanExporter
-	var err error
+	var batcherOpts []sdktrace.TracerProviderOption
 
-	switch {
-	case exporterType == "stdout" || (endpoint == "" && exporterType != "otlp"):
-		exporter, err = NewStdoutExporter()
-	case endpoint != "":
+	if traceFile != "" {
+		fileExp, fErr := NewFileExporter(traceFile)
+		if fErr != nil {
+			return nil, fmt.Errorf("telemetry: failed to create file exporter: %w", fErr)
+		}
+		batcherOpts = append(batcherOpts, sdktrace.WithBatcher(fileExp))
+	}
+
+	if endpoint != "" {
 		opts := []otlptracehttp.Option{
 			otlptracehttp.WithEndpoint(endpoint),
 		}
 		if os.Getenv("OTEL_EXPORTER_OTLP_INSECURE") != "false" {
 			opts = append(opts, otlptracehttp.WithInsecure())
 		}
-		exporter, err = otlptracehttp.New(context.Background(), opts...)
-	default:
-		exporter, err = NewStdoutExporter()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("telemetry: failed to create exporter: %w", err)
+		otlpExp, oErr := otlptracehttp.New(context.Background(), opts...)
+		if oErr != nil {
+			return nil, fmt.Errorf("telemetry: failed to create otlp exporter: %w", oErr)
+		}
+		batcherOpts = append(batcherOpts, sdktrace.WithBatcher(otlpExp))
+	} else if len(batcherOpts) == 0 {
+		stdoutExp, sErr := NewStdoutExporter()
+		if sErr != nil {
+			return nil, fmt.Errorf("telemetry: failed to create stdout exporter: %w", sErr)
+		}
+		batcherOpts = append(batcherOpts, sdktrace.WithBatcher(stdoutExp))
+	} else if exporterType == "stdout" {
+		stdoutExp, sErr := NewStdoutExporter()
+		if sErr == nil {
+			batcherOpts = append(batcherOpts, sdktrace.WithBatcher(stdoutExp))
+		}
 	}
 
 	hostname, _ := os.Hostname()
@@ -99,14 +121,15 @@ func InitTracer(serviceName, endpoint string) (*sdktrace.TracerProvider, error) 
 		}
 	}
 
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
+	providerOpts := append([]sdktrace.TracerProviderOption{
 		sdktrace.WithResource(resource.NewWithAttributes(
 			"https://opentelemetry.io/schema/1.21.0",
 			resAttrs...,
 		)),
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-	)
+	}, batcherOpts...)
+
+	tp := sdktrace.NewTracerProvider(providerOpts...)
 
 	otel.SetTracerProvider(tp)
 	tracer = tp.Tracer(serviceName)

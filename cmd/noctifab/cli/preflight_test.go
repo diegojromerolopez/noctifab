@@ -188,7 +188,7 @@ func TestRunPreFlightChecks_MissingHostBinary(t *testing.T) {
 		},
 	}
 
-	err := runPreFlightChecks(cfg)
+	err := runPreFlightChecks(cfg, t.TempDir())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "required sandbox binary not found on host $PATH")
 	assert.Contains(t, err.Error(), "nonexistent_binary_xyz_123")

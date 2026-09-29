@@ -2,6 +2,7 @@ package reporting_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -163,6 +164,40 @@ func TestReportingPipeline(t *testing.T) {
 			assert.Contains(t, output, "## Multi-Loop Convergence Matrix")
 			assert.Contains(t, output, "| **Loop 1** | 4 | 3 | 2 | 125000 | 3m | FAILED |")
 			assert.Contains(t, output, "| **Loop 2** | 1 | 1 | 1 | 45000 | 1m 5s | SUCCESS |")
+		})
+
+		t.Run("it processes high frequency events in decoupled background worker queue without stalling", func(t *testing.T) {
+			queueRepFile := filepath.Join(tmpDir, "report_queue.md")
+			agent, err := reporting.NewReporterAgent(queueRepFile, clock, writer, nil, nil)
+			require.NoError(t, err)
+
+			agent.Start(context.Background(), domain.RunMetadata{
+				RunID:       "run-queue-01",
+				ProjectPath: tmpDir,
+				StartedAt:   clock.Now(),
+			})
+
+			// Blast 100 events concurrently into Observe
+			const eventCount = 100
+			pTokens := int64(10)
+			cTokens := int64(5)
+			for i := 0; i < eventCount; i++ {
+				go agent.Observe(context.Background(), domain.ExecutionEvent{
+					ID:               fmt.Sprintf("burst-event-%d", i),
+					RunID:            "run-queue-01",
+					PromptTokens:     &pTokens,
+					CompletionTokens: &cTokens,
+				})
+			}
+
+			// Finish gracefully drains the worker queue and commits final report
+			agent.Finish(context.Background(), domain.ExecutionSuccess)
+
+			readBytes, readErr := os.ReadFile(queueRepFile)
+			require.NoError(t, readErr)
+			content := string(readBytes)
+			assert.Contains(t, content, "# Noctifab Execution Report")
+			assert.Contains(t, content, "> Status: SUCCESS")
 		})
 	})
 }

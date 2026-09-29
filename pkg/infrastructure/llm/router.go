@@ -14,10 +14,11 @@ import (
 
 // RouterCandidate represents a candidate client with its provider name, model, and client implementation.
 type RouterCandidate struct {
-	Name     string
-	Provider string
-	Model    string
-	Client   domain.LLMClient
+	Name          string
+	Provider      string
+	Model         string
+	Client        domain.LLMClient
+	ContextWindow int64
 }
 
 // ResilientLLMRouter manages multi-provider per-agent routing, dynamic model fallbacks, and global failovers.
@@ -35,6 +36,15 @@ type ResilientLLMRouter struct {
 	candidateCache   map[string][]RouterCandidate
 	evictedUntil     map[string]time.Time
 	evictionReasons  map[string]string
+	latencyTracker   *LatencyTracker
+	hedgeDelay       time.Duration
+}
+
+// SetHedgeDelay sets the speculative hedging delay. A negative value disables hedging.
+func (r *ResilientLLMRouter) SetHedgeDelay(d time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hedgeDelay = d
 }
 
 // NewResilientLLMRouter constructs a new ResilientLLMRouter.
@@ -93,6 +103,7 @@ func NewResilientLLMRouter(cfg *config.Config, budgetStore domain.BudgetStore) *
 		candidateCache:   make(map[string][]RouterCandidate),
 		evictedUntil:     make(map[string]time.Time),
 		evictionReasons:  make(map[string]string),
+		latencyTracker:   NewLatencyTracker(),
 	}
 }
 
@@ -138,6 +149,14 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 	seen := make(map[string]bool)
 
 	roleSetting := r.getRoleSetting(roleName)
+
+	// 0. If ensemble strategy is configured for this role, build ensemble candidate as top priority
+	if roleSetting.Ensemble.IsEnabled() {
+		ensCand := r.buildEnsembleCandidate(roleName, roleSetting.Ensemble)
+		if ensCand != nil {
+			candidates = append(candidates, *ensCand)
+		}
+	}
 
 	// 1. Process role-specific providers if configured
 	if len(roleSetting.Providers) > 0 {
@@ -187,20 +206,49 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 				seen[key] = true
 
 				overrideSpec := spec
-				if ref.EnableThinking != nil {
-					overrideSpec.EnableThinking = ref.EnableThinking
+				if ref.Temperature != nil {
+					overrideSpec.Temperature = *ref.Temperature
 				}
-				if ref.ThinkingBudget != nil {
-					overrideSpec.ThinkingBudget = ref.ThinkingBudget
+				if ref.MaxTokens != nil {
+					overrideSpec.MaxTokens = *ref.MaxTokens
+				}
+				if th := ref.GetEnableThinking(); th != nil {
+					overrideSpec.EnableThinking = th
+				} else if roleSetting.Thinking != nil && roleSetting.Thinking.Enabled != nil {
+					overrideSpec.EnableThinking = roleSetting.Thinking.Enabled
+				}
+				if tb := ref.GetThinkingBudget(); tb != nil {
+					overrideSpec.ThinkingBudget = tb
+				} else if roleSetting.Thinking != nil && roleSetting.Thinking.Budget != nil {
+					overrideSpec.ThinkingBudget = roleSetting.Thinking.Budget
 				}
 
 				client := r.buildClientForSpec(overrideSpec, m)
 				if client != nil {
+					if ref.Temperature != nil {
+						if c, ok := client.(*Client); ok {
+							c.Temperature = *ref.Temperature
+						}
+					}
+					if roleSetting.Timeout > 0 {
+						if c, ok := client.(*Client); ok {
+							c.Timeout = time.Duration(roleSetting.Timeout)
+						}
+					} else if roleName == "product_manager" || roleName == "productmanager" {
+						if c, ok := client.(*Client); ok {
+							c.Timeout = 180 * time.Second
+						}
+					}
+					cw := overrideSpec.ContextWindow
+					if cw <= 0 {
+						cw = GetModelContextWindow(overrideSpec.Provider, m)
+					}
 					candidates = append(candidates, RouterCandidate{
-						Name:     overrideSpec.Name,
-						Provider: overrideSpec.Provider,
-						Model:    m,
-						Client:   client,
+						Name:          overrideSpec.Name,
+						Provider:      overrideSpec.Provider,
+						Model:         m,
+						Client:        client,
+						ContextWindow: cw,
 					})
 				}
 			}
@@ -236,11 +284,25 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 
 		client := r.buildClientForSpec(spec, m)
 		if client != nil {
+			if roleSetting.Timeout > 0 {
+				if c, ok := client.(*Client); ok {
+					c.Timeout = time.Duration(roleSetting.Timeout)
+				}
+			} else if roleName == "product_manager" || roleName == "productmanager" {
+				if c, ok := client.(*Client); ok {
+					c.Timeout = 180 * time.Second
+				}
+			}
+			cw := spec.ContextWindow
+			if cw <= 0 {
+				cw = GetModelContextWindow(spec.Provider, m)
+			}
 			candidates = append(candidates, RouterCandidate{
-				Name:     spec.Name,
-				Provider: spec.Provider,
-				Model:    m,
-				Client:   client,
+				Name:          spec.Name,
+				Provider:      spec.Provider,
+				Model:         m,
+				Client:        client,
+				ContextWindow: cw,
 			})
 		}
 	}
@@ -256,165 +318,6 @@ func (r *ResilientLLMRouter) buildCandidatesForRole(roleName string) []RouterCan
 	}
 
 	return candidates
-}
-
-func (r *ResilientLLMRouter) getRoleSetting(roleName string) config.RoleSetting {
-	if r.cfg != nil {
-		var agentRole config.AgentRoleConfig
-		switch strings.ToLower(roleName) {
-		case "orchestrator":
-			agentRole = r.cfg.Agents.Orchestrator
-		case "product_manager", "productmanager":
-			agentRole = r.cfg.Agents.ProductManager
-		case "planner":
-			agentRole = r.cfg.Agents.Planner
-		case "generator", "generators":
-			agentRole = r.cfg.Agents.Generators
-		case "tester", "testers":
-			agentRole = r.cfg.Agents.Testers
-		case "qa":
-			qa := r.cfg.Agents.QA
-			if len(qa.Providers) > 0 {
-				return config.RoleSetting{Model: qa.Model, Temperature: qa.Temperature, Profile: qa.Profile, Providers: qa.Providers}
-			}
-		case "auditor":
-			qa := r.cfg.Agents.QA
-			if len(qa.Providers) > 0 {
-				return config.RoleSetting{Model: qa.Model, Temperature: qa.Temperature, Profile: qa.Profile, Providers: qa.Providers}
-			}
-			pm := r.cfg.Agents.ProductManager
-			if len(pm.Providers) > 0 {
-				return config.RoleSetting{Model: pm.Model, Temperature: pm.Temperature, Profile: pm.Profile, Providers: pm.Providers}
-			}
-		case "unblocker":
-			agentRole = r.cfg.Agents.Unblocker
-		case "last_resort", "lastresort":
-			lr := r.cfg.Agents.LastResort
-			if len(lr.Providers) > 0 {
-				return config.RoleSetting{Model: lr.Model, Temperature: lr.Temperature, Profile: lr.Profile, Providers: lr.Providers}
-			}
-		}
-		if len(agentRole.Providers) > 0 {
-			return config.RoleSetting{
-				Model:       agentRole.Model,
-				Temperature: agentRole.Temperature,
-				Profile:     agentRole.Profile,
-				Providers:   agentRole.Providers,
-			}
-		}
-	}
-
-	switch strings.ToLower(roleName) {
-	case "orchestrator":
-		return r.roles.Orchestrator
-	case "product_manager", "productmanager":
-		return config.RoleSetting{}
-	case "planner":
-		return r.roles.Planner
-	case "generator", "generators":
-		return r.roles.Generator
-	case "tester", "testers":
-		return r.roles.Tester
-	case "qa":
-		return r.roles.QA
-	case "auditor":
-		if r.roles.QA.Model != "" || len(r.roles.QA.Providers) > 0 {
-			return r.roles.QA
-		}
-		return r.roles.Orchestrator
-	case "unblocker":
-		return r.roles.Unblocker
-	case "last_resort", "lastresort":
-		return r.roles.LastResort
-	default:
-		return config.RoleSetting{}
-	}
-}
-
-func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelOverride string) domain.LLMClient {
-	if spec.Provider == "" {
-		return nil
-	}
-
-	model := spec.Model
-	if modelOverride != "" {
-		model = modelOverride
-	}
-
-	apiKey := spec.APIKeyValue
-	if apiKey == "" && len(spec.APIKeys) > 0 {
-		apiKey = os.Getenv(spec.APIKeys[0])
-	}
-
-	maxRetries := spec.MaxRetries
-	if maxRetries == 0 && r.cfg != nil {
-		maxRetries = r.cfg.LLM.MaxRetries
-	}
-
-	retryBackoff := time.Duration(spec.RetryBackoff)
-	if retryBackoff == 0 && r.cfg != nil {
-		retryBackoff = time.Duration(r.cfg.LLM.RetryBackoff)
-	}
-
-	client := NewClient(spec.Provider, model, apiKey, maxRetries, retryBackoff, spec.URL)
-	if len(spec.APIKeyPool) > 0 {
-		client.APIKeys = spec.APIKeyPool
-	}
-	if spec.MaxTimeout > 0 {
-		client.Timeout = time.Duration(spec.MaxTimeout)
-	} else if r.cfg != nil && r.cfg.LLM.MaxTimeout > 0 {
-		client.Timeout = time.Duration(r.cfg.LLM.MaxTimeout)
-	}
-
-	if spec.IdleTimeout > 0 {
-		client.IdleTimeout = time.Duration(spec.IdleTimeout)
-	} else if r.cfg != nil && r.cfg.LLM.IdleTimeout > 0 {
-		client.IdleTimeout = time.Duration(r.cfg.LLM.IdleTimeout)
-	}
-
-	if spec.MaxTokens > 0 {
-		client.MaxTokens = spec.MaxTokens
-	} else if r.cfg != nil && r.cfg.LLM.MaxTokens > 0 {
-		client.MaxTokens = r.cfg.LLM.MaxTokens
-	}
-
-	if spec.Temperature != 0 {
-		client.Temperature = spec.Temperature
-	} else if r.cfg != nil && r.cfg.LLM.Temperature != 0 {
-		client.Temperature = r.cfg.LLM.Temperature
-	}
-
-	if spec.Streaming != nil {
-		client.Streaming = *spec.Streaming
-	} else if r.cfg != nil && r.cfg.LLM.Streaming != nil {
-		client.Streaming = *r.cfg.LLM.Streaming
-	}
-
-	if len(spec.ExtraParams) > 0 {
-		client.ExtraParams = spec.ExtraParams
-	}
-
-	if spec.DisableJSONMode {
-		client.DisableJSONMode = true
-	}
-
-	if spec.EnableThinking != nil {
-		client.EnableThinking = spec.EnableThinking
-	}
-
-	if spec.ThinkingBudget != nil {
-		client.ThinkingBudget = spec.ThinkingBudget
-	}
-
-	if r.cfg != nil {
-		client.Compaction = r.cfg.Context.GetCompactionMode()
-		client.CavemanCompaction = r.cfg.Context.CavemanCompaction
-		client.MaxPromptTokens = r.cfg.LLM.MaxPromptTokens
-	}
-
-	client.SkipOnCreditExhausted = r.cfg == nil || r.cfg.LLM.SkipOnCreditExhausted
-
-	return client
 }
 
 // Complete executes an LLM completion using role-aware multi-provider routing and fallbacks.
@@ -435,23 +338,71 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 		return nil, fmt.Errorf("no valid LLM candidates available for role '%s'", roleName)
 	}
 
+	promptTokens := estimatePromptTokens(prompt)
+	adaptive := r.cfg != nil && r.cfg.LLM.IsAdaptiveContextRoutingEnabled()
+	candidates = FilterAndPrioritizeCandidatesByContext(candidates, promptTokens, adaptive)
+	if r.latencyTracker != nil {
+		candidates = r.latencyTracker.ApplyDynamicDemotion(candidates)
+	}
+
+	if len(candidates) >= 2 && r.hedgeDelay >= 0 {
+		eligible := r.filterEligibleCandidates(candidates)
+		if len(eligible) >= 2 {
+			return r.completeWithHedging(ctx, roleName, eligible, prompt)
+		}
+	}
+
+	return r.completeSequentially(ctx, roleName, candidates, prompt)
+}
+
+func (r *ResilientLLMRouter) filterEligibleCandidates(candidates []RouterCandidate) []RouterCandidate {
+	var eligible []RouterCandidate
+	now := time.Now()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, c := range candidates {
+		if evictedUntil, isEvicted := r.evictedUntil[c.Name]; isEvicted && now.Before(evictedUntil) {
+			continue
+		}
+		if until, inCooldown := r.cooldowns[c.Name]; inCooldown && now.Before(until) {
+			continue
+		}
+		eligible = append(eligible, c)
+	}
+	return eligible
+}
+
+func (r *ResilientLLMRouter) completeSequentially(
+	ctx context.Context,
+	roleName string,
+	candidates []RouterCandidate,
+	prompt string,
+) (*domain.LLMResponse, error) {
 	var lastErr error
 	for _, c := range candidates {
 		// Check eviction & cooldown
 		r.mu.RLock()
 		evictedUntil, isEvicted := r.evictedUntil[c.Name]
-		until, inCooldown := r.cooldowns[c.Name]
 		r.mu.RUnlock()
 
 		if isEvicted && time.Now().Before(evictedUntil) {
 			continue
 		}
 
-		if inCooldown && time.Now().Before(until) {
+		if r.isCandidateInCooldown(c) {
 			continue
 		}
 
+		t0 := time.Now()
 		resp, err := c.Client.Complete(ctx, prompt)
+		callDur := time.Since(t0)
+		if r.latencyTracker != nil {
+			var candTimeout time.Duration
+			if spec, found := r.namedProviders[c.Name]; found && spec.MaxTimeout > 0 {
+				candTimeout = time.Duration(spec.MaxTimeout)
+			}
+			r.latencyTracker.RecordOutcome(c.Name, callDur, err, candTimeout)
+		}
 		if err == nil {
 			// Record estimated token usage if budget store is present, using
 			// the same prompt+completion estimation as FailoverClient so a
@@ -473,6 +424,8 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 			r.evictionReasons[c.Name] = err.Error()
 			r.mu.Unlock()
 			fmt.Fprintf(os.Stderr, "⚠️ [LLM Provider Evicted] Candidate '%s' (provider '%s') EVICTED for 30 minutes due to depleted credits / auth failure: %v\n", c.Name, c.Provider, err)
+		} else if isRateLimitOrQuota(err) {
+			r.handleRateLimitRotation(c, err)
 		} else if isTransientError(err) {
 			r.mu.Lock()
 			r.cooldowns[c.Name] = time.Now().Add(r.cooldownDuration)
@@ -482,6 +435,39 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 
 	if lastErr != nil {
 		return nil, fmt.Errorf("all LLM provider candidates for role '%s' failed: %w", roleName, lastErr)
+	}
+
+	// Emergency recovery: If all candidates were skipped due to active cooldown or eviction,
+	// do not deadlock the orchestrator. Attempt the candidate with the earliest cooldown expiry.
+	if len(candidates) > 0 {
+		var fallbackCandidate *RouterCandidate
+		var earliestTime time.Time
+		r.mu.RLock()
+		for _, c := range candidates {
+			until := r.cooldowns[c.Name]
+			if evictedUntil := r.evictedUntil[c.Name]; evictedUntil.After(until) {
+				until = evictedUntil
+			}
+			if fallbackCandidate == nil || until.Before(earliestTime) {
+				candidateCopy := c
+				fallbackCandidate = &candidateCopy
+				earliestTime = until
+			}
+		}
+		r.mu.RUnlock()
+
+		if fallbackCandidate != nil {
+			fmt.Fprintf(os.Stderr, "⚠️ [LLM Router Recovery] All candidates for role '%s' in cooldown/eviction. Attempting emergency recovery with '%s' (%s)...\n", roleName, fallbackCandidate.Name, fallbackCandidate.Provider)
+			resp, err := fallbackCandidate.Client.Complete(ctx, prompt)
+			if err == nil {
+				r.mu.Lock()
+				delete(r.cooldowns, fallbackCandidate.Name)
+				delete(r.evictedUntil, fallbackCandidate.Name)
+				r.mu.Unlock()
+				return resp, nil
+			}
+			return nil, fmt.Errorf("all LLM provider candidates for role '%s' in cooldown/eviction (emergency recovery on '%s' failed: %w)", roleName, fallbackCandidate.Name, err)
+		}
 	}
 
 	return nil, fmt.Errorf("all LLM provider candidates for role '%s' are currently in cooldown or evicted", roleName)

@@ -20,12 +20,41 @@ func ValidatePlannedTasks(tasks []domain.Task, projectPath ...string) error {
 	}
 	for i := range tasks {
 		task := &tasks[i]
-		if task.Title == "" || len(task.Description) < 15 {
+		if strings.TrimSpace(task.Title) == "" || len(strings.TrimSpace(task.Description)) < 15 {
 			return fmt.Errorf("planning failed: task '%s' ('%s') does not have a detailed title or description", task.ID, task.Title)
 		}
-		if len(task.TargetFiles) == 0 {
-			task.TargetFiles = []string{".gitignore"}
+		// Clean and filter TargetFiles: trim, remove empty strings and blacklisted paths
+		var cleanTargetFiles []string
+		seenFiles := make(map[string]bool)
+		for _, tf := range task.TargetFiles {
+			c := strings.TrimSpace(tf)
+			if c == "" || isBlacklistedPlannedFile(c) {
+				continue
+			}
+			if !seenFiles[c] {
+				seenFiles[c] = true
+				cleanTargetFiles = append(cleanTargetFiles, c)
+			}
 		}
+		if len(cleanTargetFiles) == 0 {
+			cleanTargetFiles = []string{".gitignore"}
+		}
+		task.TargetFiles = cleanTargetFiles
+
+		// Clean and deduplicate DependsOn: trim, remove empty strings and self-dependencies
+		var cleanDeps []string
+		seenDeps := make(map[string]bool)
+		for _, dep := range task.DependsOn {
+			d := strings.TrimSpace(dep)
+			if d == "" || d == task.ID || (task.Title != "" && d == task.Title) {
+				continue
+			}
+			if !seenDeps[d] {
+				seenDeps[d] = true
+				cleanDeps = append(cleanDeps, d)
+			}
+		}
+		task.DependsOn = cleanDeps
 	}
 	resolved, err := ResolveTaskDependencies(tasks, path)
 	if err != nil {
@@ -82,7 +111,34 @@ func ResolveTaskDependencies(tasks []domain.Task, projectPath string) ([]domain.
 				continue
 			}
 
-			// 2. Check if dependency is a user story reference (e.g., "US-001", "US-001.md", "roadmap/US-001.md")
+			// 2. Check if dependency is a valid cross-story task reference (e.g., "US-001-TASK-001")
+			if isTaskReference(depClean) {
+				storyID := ExtractStoryID(depClean)
+				if storyID != "" && storyExists(projectPath, storyID) {
+					// If task files for this story exist on disk, verify if depClean actually exists among them
+					storyTaskFiles, _ := filepath.Glob(filepath.Join(projectPath, "roadmap", "tasks", "*"+storyID+"*.md"))
+					if len(storyTaskFiles) > 0 {
+						found := false
+						cleanUpper := strings.ToUpper(depClean)
+						for _, f := range storyTaskFiles {
+							if strings.Contains(strings.ToUpper(filepath.Base(f)), cleanUpper) {
+								found = true
+								break
+							}
+						}
+						if !found {
+							// Parent story exists, but this specific task ID does not exist in roadmap/tasks/.
+							// Omit so story-level milestone barrier governs and prevents pipeline deadlock.
+							fmt.Fprintf(os.Stderr, "⚠ Warning: task %q referenced non-existent task %q in existing story %q; omitting so story barrier governs\n", task.ID, depClean, storyID)
+							continue
+						}
+					}
+					cleanDeps = append(cleanDeps, depClean)
+					continue
+				}
+			}
+
+			// 3. Check if dependency is a user story reference (e.g., "US-001", "US-001.md", "roadmap/US-001.md")
 			if isStoryReference(depClean) {
 				if storyExists(projectPath, depClean) {
 					// Referenced user story exists; prerequisite is satisfied. Omit from active task DAG dependencies.
@@ -92,7 +148,7 @@ func ResolveTaskDependencies(tasks []domain.Task, projectPath string) ([]domain.
 				continue
 			}
 
-			// 3. Dependency is neither a current task nor a valid story file (LLM hallucination)
+			// 4. Dependency is neither a current task nor a valid story file (LLM hallucination)
 			fmt.Fprintf(os.Stderr, "⚠ Warning: pruning unknown/hallucinated task dependency %q from task %q (%s)\n", depClean, task.ID, task.Title)
 		}
 
@@ -160,8 +216,19 @@ func IsSharedRootBuildFile(path string) bool {
 	return sharedRootBuildFiles[clean]
 }
 
+// isTaskReference checks if a dependency string looks like a task identifier (e.g. "US-001-TASK-001", "TASK-001", "task-1").
+func isTaskReference(dep string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(dep))
+	return strings.Contains(upper, "-TASK-") ||
+		strings.Contains(upper, "TASK-") ||
+		strings.HasPrefix(upper, "TASK-")
+}
+
 // isStoryReference checks if a dependency string looks like a user story identifier.
 func isStoryReference(dep string) bool {
+	if isTaskReference(dep) {
+		return false
+	}
 	upper := strings.ToUpper(dep)
 	return strings.HasPrefix(upper, "US-") ||
 		strings.Contains(upper, "US-") ||
@@ -196,4 +263,16 @@ func storyExists(projectPath, dep string) bool {
 	}
 
 	return false
+}
+
+func isBlacklistedPlannedFile(path string) bool {
+	clean := strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
+	parts := strings.Split(clean, "/")
+	for _, p := range parts {
+		if p == ".git" || p == ".noctifab" || p == "node_modules" || p == "__pycache__" || p == ".venv" || p == "target" || p == "vendor" {
+			return true
+		}
+	}
+	ext := filepath.Ext(clean)
+	return ext == ".o" || ext == ".a" || ext == ".so" || ext == ".dylib" || ext == ".exe" || ext == ".pyc"
 }

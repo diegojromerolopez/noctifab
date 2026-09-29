@@ -64,6 +64,18 @@ func TestCompactPromptUncompactableTail(t *testing.T) {
 			t.Error("expected the body vocabulary to be simplified")
 		}
 	})
+
+	t.Run("when using aggressive mode the body is compacted like caveman", func(t *testing.T) {
+		c := &Client{Compaction: "aggressive"}
+		ctx := domain.WithUncompactableTail(context.Background(), len(tail))
+		got := c.compactPrompt(ctx, body+tail)
+		if !strings.HasSuffix(got, tail) {
+			t.Errorf("expected the tail to survive aggressive compaction verbatim, got:\n%s", got)
+		}
+		if strings.Contains(got, "Please note that this body is compactable.") {
+			t.Error("expected the body to be compacted under aggressive mode")
+		}
+	})
 }
 
 func TestUncompactableTailContext(t *testing.T) {

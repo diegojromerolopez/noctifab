@@ -34,12 +34,17 @@ func WriteTaskMarkdown(projectPath, storyPath string, task domain.Task) error {
 		taskID = "task-001"
 	}
 
+	cleanTaskID := taskID
+	if strings.HasPrefix(strings.ToUpper(cleanTaskID), strings.ToUpper(storyID)+"-") {
+		cleanTaskID = cleanTaskID[len(storyID)+1:]
+	}
+
 	slug := ToSlug(task.Title)
 	if slug == "" {
 		slug = "task-item"
 	}
 
-	fileName := fmt.Sprintf("%s-%s-%s.md", storyID, taskID, slug)
+	fileName := fmt.Sprintf("%s-%s-%s.md", storyID, cleanTaskID, slug)
 	filePath := filepath.Join(tasksDir, fileName)
 
 	var sb strings.Builder

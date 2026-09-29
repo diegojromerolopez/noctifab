@@ -68,4 +68,65 @@ func TestPromptCompaction(t *testing.T) {
 			t.Errorf("expected code block preserved in parallel CompactCaveman")
 		}
 	})
+
+	t.Run("CompactMarkdownSpec", func(t *testing.T) {
+		spec := `# SPEC Title
+<!-- Internal comment that should be stripped -->
+![Architecture diagram](http://example.com/arch.png)
+
+You are a software factory automation agent operating in a restricted workspace sandbox.
+
+## Requirements
+- The system must process transactions.
+
+` + "```go\ntype Tx struct {\n    ID string\n}\n```\n"
+		compacted := CompactMarkdownSpec(spec)
+
+		if strings.Contains(compacted, "Internal comment") {
+			t.Errorf("expected HTML comment to be stripped")
+		}
+		if strings.Contains(compacted, "Architecture diagram") {
+			t.Errorf("expected markdown image to be stripped")
+		}
+		if strings.Contains(compacted, "You are a software factory automation agent") {
+			t.Errorf("expected conversational preamble to be stripped")
+		}
+		if !strings.Contains(compacted, "The system must process transactions.") {
+			t.Errorf("expected requirements to be preserved")
+		}
+		if !strings.Contains(compacted, "type Tx struct") {
+			t.Errorf("expected code block to be preserved")
+		}
+	})
+
+	t.Run("CollapsesConsecutiveBlankLines", func(t *testing.T) {
+		input := "Line 1\n\n\n\nLine 2\n\n\nLine 3"
+		compacted := CompactCaveman(input)
+		if strings.Contains(compacted, "\n\n\n") {
+			t.Errorf("expected 3+ consecutive blank lines to be collapsed, got: %q", compacted)
+		}
+	})
+
+	t.Run("CompactMarkdownSpecWithMode", func(t *testing.T) {
+		spec := `# SPEC Title
+<!-- comment -->
+In order to utilize the API, make sure to execute commands prior to shutdown.
+` + "```go\nfunc Run() {}\n```\n"
+
+		compactedSimple := CompactMarkdownSpecWithMode(spec, "simple_english")
+		if strings.Contains(compactedSimple, "utilize") || !strings.Contains(compactedSimple, "use") {
+			t.Errorf("expected utilize -> use in simple_english spec compaction: %s", compactedSimple)
+		}
+		if !strings.Contains(compactedSimple, "before shutdown") {
+			t.Errorf("expected prior to -> before in simple_english spec compaction: %s", compactedSimple)
+		}
+
+		compactedCaveman := CompactMarkdownSpecWithMode(spec, "caveman")
+		if strings.Contains(compactedCaveman, "make sure to") {
+			t.Errorf("expected 'make sure to' stripped in caveman spec compaction: %s", compactedCaveman)
+		}
+		if strings.Contains(compactedCaveman, "In order to") {
+			t.Errorf("expected 'In order to' stripped/replaced in caveman spec compaction: %s", compactedCaveman)
+		}
+	})
 }

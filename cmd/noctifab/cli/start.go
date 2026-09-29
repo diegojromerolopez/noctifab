@@ -21,18 +21,6 @@ var startCmd = &cobra.Command{
 	RunE:          runStartCommand,
 }
 
-func allTasksFinished(state *domain.State) bool {
-	if state == nil || len(state.Tasks) == 0 {
-		return false
-	}
-	for _, t := range state.Tasks {
-		if t.Status != domain.TaskSuccess && t.Status != domain.TaskFailed {
-			return false
-		}
-	}
-	return true
-}
-
 func allTasksSucceeded(state *domain.State) bool {
 	if state == nil || len(state.Tasks) == 0 {
 		return false

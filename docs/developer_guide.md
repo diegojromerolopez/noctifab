@@ -69,6 +69,10 @@ profiles:
   generator:
     allowed_tools:
       - "read_file"
+      - "write_file"
+      - "write_files"
+      - "edit_file"
+      - "apply_patch"
       - "run_tests"
       - "run_linter"
       - "noop"
@@ -84,34 +88,53 @@ profiles:
 ### 1. Running Unit Tests
 Unit tests are co-located in the packages they test and must run clean:
 ```bash
-go test -v ./...
+go test -v ./pkg/... ./cmd/...
+# Or with race detection:
+go test -race ./pkg/...
 ```
 
-### 2. Test-Driven Development (TDD) Specifications
-Tests are written by the Tester Agent before implementation. The Test Validator executes the workspace's tests:
-- **E2E tests** for happy paths.
-- **Unit tests** for input validation and simple edge cases.
-- **Integration tests** for complex internal validation flows and multi-component interactions.
+### 2. Test-Driven Development (TDD) & BDD Specifications
+Noctifab strictly adheres to the BDD context pattern: `when <scenario>, it <action happens>`:
+- **E2E acceptance tests** (`tests/e2e/`): Validate happy paths and critical cross-story orchestration scenarios end-to-end.
+- **Unit tests** (`*_test.go`): Validate input validation, boundary rules, error cascades, and edge cases.
+- **Integration tests**: Validate multi-component internal flows (e.g. database transactions, rebase queue, worktree isolation).
 
-### 3. E2E Integration Testing
-The E2E test suite validates the orchestration loop end-to-end under mock scenarios:
-- **Mock LLM**: A mock server simulating provider completions and custom tool actions.
-- **Mock VCS**: A CGI-based Git server simulating GitHub API and repository merges.
-- Run tests via the project `Makefile`:
-  ```bash
-  make test-e2e
-  ```
-
-### 4. Running Validation Projects (Local E2E Matrix)
-To validate the system implementing features autonomously within isolated target directories, run a validation project container:
+### 3. Running Local In-Process E2E Acceptance Tests
+Execute the hermetic, in-process E2E test suite locally using SQLite in-memory stores:
 ```bash
-make validate PROJECT=wc
+NOCTIFAB_E2E=true go test -v ./tests/e2e
+```
+
+### 4. Running Containerized E2E Integration Suite
+The containerized E2E test suite validates the orchestration loop with a dedicated PostgreSQL database container:
+```bash
+make test-e2e
+# Or directly with docker compose:
+docker compose -f tests/e2e/docker-compose.yml up --build --exit-code-from test-runner
+```
+
+### 5. Running Validation Projects (Local E2E Matrix)
+To validate the system implementing features autonomously within isolated target directories, run a validation project container (e.g. `ninline`, `wc`, `pyedis`, `t4`):
+```bash
+make validate PROJECT=ninline
 ```
 To run all validation projects in parallel:
 ```bash
 make validate-all
 ```
+For the recommended execution order, capability ladder, and tier classification, consult [`validation/README.md`](../validation/README.md).
 *Note: These E2E validation runs utilize host compiler and package manager mount caching (Go and Cargo) to speed up iterations and support near-instantaneous incremental testing.*
+
+### 6. E2E Acceptance Testing Architecture (`sandbox.e2e`)
+During story execution and the final Whole-Project Acceptance Gate, Noctifab automatically runs end-to-end acceptance tests via `pkg/services/e2e_detector.go`. This supports two primary architectural execution patterns configured via `.noctifab/config.yaml`:
+
+- **The Clean Docker Architecture Approach (`sandbox.e2e.mode: docker`, default)**:
+  Runs acceptance tests inside isolated Docker Compose services (`docker-compose.e2e.yml` or `docker-compose.yml`), ensuring zero pollution of host packages, global toolchains, or running daemons. Requires `"docker"` in `sandbox.allowed_commands`.
+- **Native Hermetic Execution (`sandbox.e2e.mode: native`)**:
+  Executes acceptance tests directly on the host using fast, isolated runners (such as `uv run pytest tests/e2e`, `cargo test --test e2e`, `go test -v ./tests/e2e/...`, or `npm run test:e2e`).
+  - **Docker Leak Guard**: In native mode, if a `Makefile` defines an `e2e:` target that delegates internally to `docker compose`, the `E2EDetector` automatically detects the container invocation and bypasses it to prevent unintended container spawns.
+- **Explicit Override (`sandbox.e2e.command: "..."`)**:
+  When set, overrides all auto-detection logic across both modes.
 
 ---
 

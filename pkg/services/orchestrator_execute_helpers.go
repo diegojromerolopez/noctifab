@@ -79,7 +79,7 @@ func (o *Orchestrator) updateTaskProgress(ctx context.Context, taskID string, pr
 				return nil
 			}
 		}
-		return fmt.Errorf("task %s not found in state", taskID)
+		return nil
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Orchestrator: failed to persist progress %d%% for task %s: %v\n", progress, taskID, err)

@@ -11,9 +11,12 @@ FROM noctifab-validation:base AS noctifab-artifacts
 
 FROM alpine:3.21
 
-# Build toolchain (gcc, make), formatter/linter (clang-format, clang-tidy), and
-# the harness tools (curl for black-box tests, docker-cli).
-RUN apk add --no-cache git bash docker-cli curl build-base clang clang-extra-tools coreutils
+# Build toolchain (gcc, make), formatter/linter (clang-format, clang-tidy),
+# ccache for cross-worktree compilation speedup, and harness tools.
+RUN apk add --no-cache git bash docker-cli curl build-base clang clang-extra-tools coreutils ccache
+
+ENV PATH="/usr/lib/ccache/bin:${PATH}"
+ENV CCACHE_DIR="/root/.cache/ccache"
 
 # Copy noctifab binary, validation projects, and the validate.sh harness
 # from the shared base image.
@@ -23,7 +26,7 @@ COPY --from=noctifab-artifacts /app/validate.sh /app/validate.sh
 RUN chmod +x /app/validate.sh
 
 # Sanity check the toolchain is callable.
-RUN gcc --version && make --version && clang-format --version
+RUN gcc --version && make --version && clang-format --version && ccache --version
 
 WORKDIR /app
 CMD ["/app/validate.sh"]

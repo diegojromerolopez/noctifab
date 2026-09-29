@@ -48,10 +48,22 @@ var parseGeminiModelProvider = NewModelParser(ParserConfig{
 })
 
 type geminiProviderClient struct {
-	url         string
-	timeout     time.Duration
-	idleTimeout time.Duration
-	streaming   bool
+	url            string
+	timeout        time.Duration
+	idleTimeout    time.Duration
+	streaming      bool
+	extraBody      map[string]interface{}
+	responseSchema map[string]any
+}
+
+// SetExtraBody attaches provider-specific extra parameters (such as disabling thinking).
+func (g *geminiProviderClient) SetExtraBody(params map[string]interface{}) {
+	g.extraBody = params
+}
+
+// SetResponseSchema attaches an optional explicit Gemini response schema.
+func (g *geminiProviderClient) SetResponseSchema(schema map[string]any) {
+	g.responseSchema = schema
 }
 
 // NewGeminiProviderClient creates a ProviderClient for Gemini API.
@@ -70,62 +82,85 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	headers := make(map[string]string)
 	headers["Content-Type"] = "application/json"
 
-	generationConfig := map[string]any{
-		"temperature":      tempOrDefault(temperature),
-		"responseMimeType": "application/json",
-	}
-	if maxTokens > 0 {
-		generationConfig["maxOutputTokens"] = maxTokens
-	}
-	payload := map[string]any{
-		"contents": []map[string]any{
-			{
-				"parts": []map[string]string{
-					{"text": prompt},
+	useResponseSchema := g.responseSchema != nil
+	var respBody []byte
+	var respStatusCode int
+	var respHeader http.Header
+
+	for attempt := 0; attempt < 2; attempt++ {
+		generationConfig := map[string]any{
+			"temperature":      tempOrDefault(temperature),
+			"responseMimeType": "application/json",
+		}
+		if useResponseSchema && g.responseSchema != nil {
+			generationConfig["responseSchema"] = g.responseSchema
+		}
+		if maxTokens > 0 {
+			generationConfig["maxOutputTokens"] = maxTokens
+		}
+		if g.extraBody != nil {
+			if tc, ok := g.extraBody["thinkingConfig"]; ok {
+				generationConfig["thinkingConfig"] = tc
+			}
+		}
+		payload := map[string]any{
+			"contents": []map[string]any{
+				{
+					"parts": []map[string]string{
+						{"text": prompt},
+					},
 				},
 			},
-		},
-		"generationConfig": generationConfig,
-	}
-	reqBody, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
+			"generationConfig": generationConfig,
+		}
+		reqBody, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
 
-	timeout := g.timeout
-	if timeout <= 0 {
-		timeout = 10 * time.Minute
-	}
+		timeout := g.timeout
+		if timeout <= 0 {
+			timeout = 10 * time.Minute
+		}
 
-	postCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+		postCtx, cancel := context.WithTimeout(ctx, timeout)
+		req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
+		if err != nil {
+			cancel()
+			return nil, err
+		}
 
-	req, err := http.NewRequestWithContext(postCtx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, err
-	}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
 
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
+		client := &http.Client{
+			Timeout:   timeout,
+			Transport: geminiTransport,
+		}
+		resp, err := client.Do(req)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
 
-	client := &http.Client{
-		Timeout:   timeout,
-		Transport: geminiTransport,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
+		respBody, err = io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		respStatusCode = resp.StatusCode
+		respHeader = resp.Header
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, &httpError{StatusCode: resp.StatusCode, Body: string(respBody), Header: resp.Header}
+		if respStatusCode == http.StatusOK {
+			break
+		}
+		bodyStr := strings.ToLower(string(respBody))
+		if respStatusCode == http.StatusBadRequest && useResponseSchema && (strings.Contains(bodyStr, "responseschema") || strings.Contains(bodyStr, "schema")) {
+			useResponseSchema = false
+			continue
+		}
+		return nil, &httpError{StatusCode: respStatusCode, Body: string(respBody), Header: respHeader}
 	}
 
 	var result map[string]any
@@ -240,4 +275,56 @@ func (g *geminiProviderClient) GetAvailableModels(ctx context.Context, apiKey st
 		}
 	}
 	return models, nil
+}
+
+func (g *geminiProviderClient) GetModelCapabilities(ctx context.Context, apiKey string) (map[string]ModelCapability, error) {
+	var url string
+	if g.url != "" {
+		if strings.Contains(g.url, "generateContent") {
+			idx := strings.Index(g.url, "/models/")
+			if idx != -1 {
+				url = g.url[:idx] + "/models"
+				if qIdx := strings.Index(g.url, "?"); qIdx != -1 {
+					url += g.url[qIdx:]
+				}
+			} else {
+				url = g.url
+			}
+		} else {
+			url = g.url + "/models?key=" + apiKey
+		}
+	} else {
+		url = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", apiKey)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch models (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Models []map[string]interface{} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	return parseDynamicModelCapabilities(result.Models), nil
 }

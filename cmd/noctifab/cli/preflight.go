@@ -6,10 +6,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 )
 
 const maxAllowedPingLatency = 10 * time.Second
@@ -61,6 +63,12 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		pDir = projectDir[0]
 	}
 
+	if err := services.EnsureProjectGitignore(pDir); err != nil {
+		fmt.Printf("⚠️  Warning: unable to ensure .gitignore guardrails: %v\n", err)
+	} else {
+		fmt.Println("- Project .gitignore guardrails: OK")
+	}
+
 	tools := []string{"go", "docker", "python3", "rustc", "make", "gcc"}
 	var foundTools []string
 	for _, t := range tools {
@@ -69,6 +77,50 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		}
 	}
 	fmt.Printf("- Sandbox build tools available: %s\n", strings.Join(foundTools, ", "))
+
+	preflightSys := services.NewPreflightSystem()
+	var preflightLinterCmd string
+	if cfg.Sandbox.Linter.Command != nil {
+		preflightLinterCmd = *cfg.Sandbox.Linter.Command
+	} else if cfg.Sandbox.LinterCommand != nil {
+		preflightLinterCmd = *cfg.Sandbox.LinterCommand
+	}
+	report, _ := preflightSys.PreflightWorkspace(context.Background(), pDir, []string{
+		cfg.Sandbox.TestCommand,
+		cfg.Sandbox.FormatterCommand,
+		preflightLinterCmd,
+	})
+	if report != nil {
+		if len(report.DetectedRuntimes) > 0 {
+			fmt.Printf("- Detected project runtimes: %s\n", strings.Join(report.DetectedRuntimes, ", "))
+		}
+		if len(report.MissingBinaries) > 0 {
+			fmt.Printf("⚠️  Warning: missing required runtimes on host: %s (recommended sandbox: %s)\n",
+				strings.Join(report.MissingBinaries, ", "), report.RecommendedStrategy)
+			if report.RecommendedStrategy == "docker" && (cfg.Sandbox.Mode == "" || cfg.Sandbox.Mode == "host") {
+				fmt.Printf("⚡ [Pre-Flight Auto-Switch] Automatically switching sandbox mode to 'docker' because required toolchain is missing on host.\n")
+				cfg.Sandbox.Mode = "docker"
+			}
+		}
+		if report.IsDaemon {
+			if len(report.DetectedPorts) > 0 {
+				var portStrs []string
+				for _, p := range report.DetectedPorts {
+					portStrs = append(portStrs, fmt.Sprintf("%d", p))
+				}
+				fmt.Printf("- Daemon/server project ports detected: %s\n", strings.Join(portStrs, ", "))
+				if len(report.PreemptedPorts) > 0 {
+					fmt.Printf("⚡ [Port Pre-Flight] Preempted port(s) %v, reaped orphan PID(s): %v\n", report.PreemptedPorts, report.ReapedPIDs)
+				}
+				if report.PortPreflightError != "" {
+					return fmt.Errorf("pre-flight port check failed for daemon project: %s", report.PortPreflightError)
+				}
+				fmt.Printf("✓ [Port Pre-Flight] Daemon port(s) verified clean\n")
+			}
+		} else {
+			fmt.Printf("- Daemon/server port pre-emption: skipped (non-daemon CLI/library project)\n")
+		}
+	}
 
 	requiredBinaries := getRequiredSandboxBinaries(cfg)
 	if len(requiredBinaries) > 0 {
@@ -118,25 +170,52 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		var activeProviders []config.ProviderSpec
 		var bannedNames []string
 
-		for _, p := range cfg.LLM.Providers {
+		type pingResult struct {
+			latency       time.Duration
+			resolvedModel string
+			err           error
+		}
+		results := make([]pingResult, len(cfg.LLM.Providers))
+		var wg sync.WaitGroup
+		for i, p := range cfg.LLM.Providers {
+			wg.Add(1)
+			go func(idx int, prov config.ProviderSpec) {
+				defer wg.Done()
+				lat, resModel, err := llm.PingAndResolveModel(context.Background(), prov.Provider, prov.APIKeyValue, prov.URL, prov.Model)
+				results[idx] = pingResult{latency: lat, resolvedModel: resModel, err: err}
+			}(i, p)
+		}
+		wg.Wait()
+
+		for i, p := range cfg.LLM.Providers {
+			res := results[i]
 			fmt.Printf("- LLM provider (%s / %s) ping: ", p.Name, p.Provider)
-			latency, err := llm.Ping(context.Background(), p.Provider, p.APIKeyValue, p.URL)
-			if err != nil {
-				low := strings.ToLower(err.Error())
+			if res.err != nil {
+				low := strings.ToLower(res.err.Error())
 				if strings.Contains(low, "401") || strings.Contains(low, "402") || strings.Contains(low, "credit") || strings.Contains(low, "unauthorized") {
-					fmt.Printf("BANNED ⚠️ (CREDIT EXHAUSTED / AUTH ERROR: %v)\n", err)
+					fmt.Printf("BANNED ⚠️ (CREDIT EXHAUSTED / AUTH ERROR: %v)\n", res.err)
 				} else {
-					fmt.Printf("BANNED (unreachable: %v)\n", err)
+					fmt.Printf("BANNED (unreachable: %v)\n", res.err)
 				}
 				bannedNames = append(bannedNames, p.Name)
 				continue
 			}
-			if latency > maxAllowedPingLatency {
-				fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", latency.Milliseconds())
+			if res.latency > maxAllowedPingLatency {
+				fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", res.latency.Milliseconds())
 				bannedNames = append(bannedNames, p.Name)
 				continue
 			}
-			fmt.Printf("OK (%dms)\n", latency.Milliseconds())
+			if res.resolvedModel != "" && !strings.EqualFold(res.resolvedModel, p.Model) && p.Model != "" {
+				fmt.Printf("OK (%dms) -> model '%s' resolved to: %s\n", res.latency.Milliseconds(), p.Model, res.resolvedModel)
+				p.Model = res.resolvedModel
+				cfg.LLM.Providers[i].Model = res.resolvedModel
+			} else if res.resolvedModel != "" && p.Model == "" {
+				fmt.Printf("OK (%dms) -> auto-selected model: %s\n", res.latency.Milliseconds(), res.resolvedModel)
+				p.Model = res.resolvedModel
+				cfg.LLM.Providers[i].Model = res.resolvedModel
+			} else {
+				fmt.Printf("OK (%dms)\n", res.latency.Milliseconds())
+			}
 			activeProviders = append(activeProviders, p)
 		}
 
@@ -163,18 +242,41 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		}
 	} else if len(cfg.LLMs) > 0 {
 		var activeLLMs []config.LLMConfig
-		for _, p := range cfg.LLMs {
+		type pingResult struct {
+			latency       time.Duration
+			resolvedModel string
+			err           error
+		}
+		results := make([]pingResult, len(cfg.LLMs))
+		var wg sync.WaitGroup
+		for i, p := range cfg.LLMs {
+			wg.Add(1)
+			go func(idx int, prov config.LLMConfig) {
+				defer wg.Done()
+				lat, resModel, err := llm.PingAndResolveModel(context.Background(), prov.Provider, prov.APIKeyValue, prov.URL, prov.Model)
+				results[idx] = pingResult{latency: lat, resolvedModel: resModel, err: err}
+			}(i, p)
+		}
+		wg.Wait()
+
+		for i, p := range cfg.LLMs {
+			res := results[i]
 			fmt.Printf("- LLM provider (%s) ping: ", p.Provider)
-			latency, err := llm.Ping(context.Background(), p.Provider, p.APIKeyValue, p.URL)
-			if err != nil {
-				fmt.Printf("BANNED (unreachable: %v)\n", err)
+			if res.err != nil {
+				fmt.Printf("BANNED (unreachable: %v)\n", res.err)
 				continue
 			}
-			if latency > maxAllowedPingLatency {
-				fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", latency.Milliseconds())
+			if res.latency > maxAllowedPingLatency {
+				fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", res.latency.Milliseconds())
 				continue
 			}
-			fmt.Printf("OK (%dms)\n", latency.Milliseconds())
+			if res.resolvedModel != "" && !strings.EqualFold(res.resolvedModel, p.Model) {
+				fmt.Printf("OK (%dms) -> resolved model: %s\n", res.latency.Milliseconds(), res.resolvedModel)
+				p.Model = res.resolvedModel
+				cfg.LLMs[i].Model = res.resolvedModel
+			} else {
+				fmt.Printf("OK (%dms)\n", res.latency.Milliseconds())
+			}
 			activeLLMs = append(activeLLMs, p)
 		}
 		if len(activeLLMs) == 0 {
@@ -183,7 +285,7 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 		cfg.LLMs = activeLLMs
 	} else {
 		fmt.Printf("- LLM provider (%s) ping: ", cfg.LLM.Provider)
-		latency, err := llm.Ping(context.Background(), cfg.LLM.Provider, cfg.LLM.APIKeyValue, cfg.LLM.URL)
+		latency, resolvedModel, err := llm.PingAndResolveModel(context.Background(), cfg.LLM.Provider, cfg.LLM.APIKeyValue, cfg.LLM.URL, cfg.LLM.Model)
 		if err != nil {
 			fmt.Printf("FAIL: %v\n", err)
 			return fmt.Errorf("pre-flight LLM provider ping failed: %w", err)
@@ -192,12 +294,46 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 			fmt.Printf("BANNED (latency %dms exceeds 10s threshold)\n", latency.Milliseconds())
 			return fmt.Errorf("pre-flight LLM provider %s banned: latency %dms exceeds 10s threshold", cfg.LLM.Provider, latency.Milliseconds())
 		}
-		fmt.Printf("OK (%dms)\n", latency.Milliseconds())
+		if resolvedModel != "" && !strings.EqualFold(resolvedModel, cfg.LLM.Model) {
+			fmt.Printf("OK (%dms) -> resolved model: %s\n", latency.Milliseconds(), resolvedModel)
+			cfg.LLM.Model = resolvedModel
+		} else {
+			fmt.Printf("OK (%dms)\n", latency.Milliseconds())
+		}
 	}
+	resolveRoleAgentModels(cfg)
 	fmt.Printf("- Sandbox mode (%s): OK\n", cfg.Sandbox.Mode)
 	if err := VerifyQualityAndReleaseGates(cfg, pDir); err != nil {
 		return err
 	}
 	fmt.Println("Pre-flight checks passed successfully.")
 	return nil
+}
+
+// resolveRoleAgentModels iterates through role-specific provider configs and dynamically resolves models
+func resolveRoleAgentModels(cfg *config.Config) {
+	providerSlices := [][]config.AgentProviderRef{
+		cfg.Agents.ProductManager.Providers,
+		cfg.Agents.Planner.Providers,
+		cfg.Agents.Generators.Providers,
+		cfg.Agents.Testers.Providers,
+		cfg.Agents.Auditor.Providers,
+		cfg.Agents.LastResort.Providers,
+	}
+	for _, providers := range providerSlices {
+		for i, ref := range providers {
+			if ref.Model == "" || strings.EqualFold(ref.Model, "auto") {
+				continue
+			}
+			for _, p := range cfg.LLM.Providers {
+				if strings.EqualFold(p.Name, ref.Name) || strings.EqualFold(p.Provider, ref.Name) {
+					_, resolved, err := llm.PingAndResolveModel(context.Background(), p.Provider, p.APIKeyValue, p.URL, ref.Model)
+					if err == nil && resolved != "" && !strings.EqualFold(resolved, ref.Model) {
+						providers[i].Model = resolved
+					}
+					break
+				}
+			}
+		}
+	}
 }

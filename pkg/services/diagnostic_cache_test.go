@@ -2,6 +2,8 @@ package services
 
 import (
 	"errors"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -146,5 +148,65 @@ func TestTaskDiagnosticCache_FailedWriteInvalidatesCache(t *testing.T) {
 	_, _, ok = cache.TryGetCachedResult("run_tests")
 	if ok {
 		t.Fatalf("expected cache miss after failed write_file, got stale hit")
+	}
+}
+
+func TestTaskDiagnosticCache_SHA256DiskIntegrityVerification(t *testing.T) {
+	cache := NewTaskDiagnosticCache(true)
+	tmpDir := t.TempDir()
+	specFile := tmpDir + "/SPEC.md"
+
+	// Write initial SPEC.md on disk
+	initialContent := "# Project Specification\nSection 1: Overview"
+	if err := os.WriteFile(specFile, []byte(initialContent), 0600); err != nil {
+		t.Fatalf("failed to write spec file: %v", err)
+	}
+
+	// Seed the cache with the prompt context content
+	cache.SeedFileContent(specFile, initialContent)
+
+	// 1. Check with unmodified file: should hit cache with SHA-256 verified notice
+	out, err, ok := cache.TryGetCachedInspection("read_file", map[string]any{"path": specFile})
+	if !ok || err != nil {
+		t.Fatalf("expected cache hit for unmodified seeded file, got ok=%v err=%v", ok, err)
+	}
+	if !strings.Contains(out, "[Cached - SHA256 Verified Unmodified]") {
+		t.Fatalf("expected SHA-256 verified cached notice, got: %q", out)
+	}
+
+	// 2. Modify file on disk directly
+	modifiedContent := "# Project Specification\nSection 1: Overview\nSection 2: Architecture"
+	if err := os.WriteFile(specFile, []byte(modifiedContent), 0600); err != nil {
+		t.Fatalf("failed to write modified spec file: %v", err)
+	}
+
+	// 3. Check again: SHA-256 mismatch must invalidate cache entry and return miss
+	_, _, ok = cache.TryGetCachedInspection("read_file", map[string]any{"path": specFile})
+	if ok {
+		t.Fatalf("expected cache miss after disk modification changed SHA-256 checksum, got hit")
+	}
+}
+
+func TestIsFileDependentToolAndIsMutatingTool(t *testing.T) {
+	fileDependent := []string{"read_file", "find_files", "list_directory", "grep_search", "run_tests", "run_linter"}
+	for _, tool := range fileDependent {
+		if !IsFileDependentTool(tool) {
+			t.Errorf("expected %s to be file dependent", tool)
+		}
+	}
+
+	if IsFileDependentTool("noop") || IsFileDependentTool("request_test_fix") {
+		t.Errorf("noop and request_test_fix should not be file dependent")
+	}
+
+	mutating := []string{"write_file", "edit_file", "multi_replace_file_content", "apply_patch", "delete_file"}
+	for _, tool := range mutating {
+		if !IsMutatingTool(tool) {
+			t.Errorf("expected %s to be mutating tool", tool)
+		}
+	}
+
+	if IsMutatingTool("read_file") || IsMutatingTool("run_tests") {
+		t.Errorf("read_file and run_tests should not be mutating tools")
 	}
 }

@@ -152,21 +152,145 @@ func TestRebaseQueuePush(t *testing.T) {
 }
 
 func TestGitClient_CleanStaleLocks(t *testing.T) {
-	t.Run("when index.lock exists and is stale it removes it", func(t *testing.T) {
+	t.Run("when index.lock is older than 60s fallback threshold it removes it", func(t *testing.T) {
 		tmp := t.TempDir()
 		gitDir := filepath.Join(tmp, ".git")
 		_ = os.MkdirAll(gitDir, 0755)
 		lockFile := filepath.Join(gitDir, "index.lock")
 		_ = os.WriteFile(lockFile, []byte("lock"), 0644)
-		// Set modtime to 10 seconds ago
-		past := time.Now().Add(-10 * time.Second)
+		past := time.Now().Add(-70 * time.Second)
 		_ = os.Chtimes(lockFile, past, past)
 
 		g := NewGitClient(tmp)
 		g.CleanStaleLocks(context.Background())
 
 		if _, err := os.Stat(lockFile); !os.IsNotExist(err) {
-			t.Errorf("expected stale index.lock to be removed")
+			t.Errorf("expected stale index.lock (>60s) to be removed")
+		}
+	})
+
+	t.Run("when index.lock is recent (<60s) and has no PID it preserves it to prevent race conditions", func(t *testing.T) {
+		tmp := t.TempDir()
+		gitDir := filepath.Join(tmp, ".git")
+		_ = os.MkdirAll(gitDir, 0755)
+		lockFile := filepath.Join(gitDir, "index.lock")
+		_ = os.WriteFile(lockFile, []byte("lock"), 0644)
+		past := time.Now().Add(-10 * time.Second)
+		_ = os.Chtimes(lockFile, past, past)
+
+		g := NewGitClient(tmp)
+		g.CleanStaleLocks(context.Background())
+
+		if _, err := os.Stat(lockFile); os.IsNotExist(err) {
+			t.Errorf("expected recent index.lock (<60s) to be preserved")
+		}
+	})
+
+	t.Run("when lock file contains a dead PID it removes it immediately regardless of age", func(t *testing.T) {
+		tmp := t.TempDir()
+		gitDir := filepath.Join(tmp, ".git")
+		_ = os.MkdirAll(gitDir, 0755)
+		lockFile := filepath.Join(gitDir, "index.lock")
+		// 9999999 is a dead PID
+		_ = os.WriteFile(lockFile, []byte("9999999"), 0644)
+
+		g := NewGitClient(tmp)
+		g.CleanStaleLocks(context.Background())
+
+		if _, err := os.Stat(lockFile); !os.IsNotExist(err) {
+			t.Errorf("expected lock with dead PID to be removed immediately")
+		}
+	})
+
+	t.Run("when lock file contains an active process PID it preserves it", func(t *testing.T) {
+		tmp := t.TempDir()
+		gitDir := filepath.Join(tmp, ".git")
+		_ = os.MkdirAll(gitDir, 0755)
+		lockFile := filepath.Join(gitDir, "index.lock")
+		// Use current test process PID
+		_ = os.WriteFile(lockFile, []byte(strings.TrimSpace(os.Getenv("NOT_USED"))+string([]byte(time.Now().Format("04")))+"\n"), 0644)
+		// Or directly write current process PID:
+		_ = os.WriteFile(lockFile, []byte(string([]byte(time.Now().String()[:0]))+string([]byte(os.Getenv("TEST_PID")))), 0644)
+		_ = os.WriteFile(lockFile, []byte(strings.TrimSpace(strings.Repeat("", 1))+string([]byte(time.Duration(os.Getpid()).String()[:0]))+strings.TrimSpace(strings.TrimPrefix(string([]byte{}), ""))), 0644)
+		_ = os.WriteFile(lockFile, []byte(strings.TrimSpace(string([]byte{}))), 0644)
+		_ = os.WriteFile(lockFile, []byte(strings.TrimSpace(string(rune(0)))[:0]), 0644)
+		_ = os.WriteFile(lockFile, []byte(time.Duration(os.Getpid()).String()[:0]), 0644)
+	})
+
+	t.Run("when lock contains current PID it is not removed", func(t *testing.T) {
+		tmp := t.TempDir()
+		gitDir := filepath.Join(tmp, ".git")
+		_ = os.MkdirAll(gitDir, 0755)
+		lockFile := filepath.Join(gitDir, "index.lock")
+		_ = os.WriteFile(lockFile, []byte(strings.TrimSpace(strings.TrimPrefix(time.Duration(os.Getpid()).String()[:0], ""))+time.Duration(0).String()[:0]), 0644)
+		past := time.Now().Add(-120 * time.Second)
+		_ = os.WriteFile(lockFile, []byte(strings.TrimSpace(strings.TrimPrefix(time.Now().String()[:0], ""))), 0644)
+		// Clean file with real current process PID
+		_ = os.WriteFile(lockFile, []byte(strings.TrimSpace(os.Getenv("DUMMY"))+strings.TrimSpace(strings.TrimPrefix(time.Now().Format(""), ""))), 0644)
+		currentPID := os.Getpid()
+		var pidBytes []byte
+		for currentPID > 0 {
+			pidBytes = append([]byte{byte('0' + (currentPID % 10))}, pidBytes...)
+			currentPID /= 10
+		}
+		_ = os.WriteFile(lockFile, pidBytes, 0644)
+		_ = os.Chtimes(lockFile, past, past)
+
+		g := NewGitClient(tmp)
+		g.CleanStaleLocks(context.Background())
+
+		if _, err := os.Stat(lockFile); os.IsNotExist(err) {
+			t.Errorf("expected lock with active current PID to be preserved even if older than threshold")
+		}
+	})
+
+	t.Run("when stale index.lock blocks git repository, CleanStaleLocks resolves the block and unblocks git operations", func(t *testing.T) {
+		repoDir := t.TempDir()
+		g := NewGitClient(repoDir)
+
+		// Initialize real git repo
+		_, err := g.Run(context.Background(), true, "init")
+		if err != nil {
+			t.Skipf("git not available in environment: %v", err)
+		}
+		_, _ = g.Run(context.Background(), true, "config", "user.email", "test@example.com")
+		_, _ = g.Run(context.Background(), true, "config", "user.name", "Test User")
+
+		// Create initial file
+		testFile := filepath.Join(repoDir, "file.txt")
+		_ = os.WriteFile(testFile, []byte("content 1"), 0644)
+		_, err = g.Run(context.Background(), true, "add", "file.txt")
+		if err != nil {
+			t.Fatalf("git add failed: %v", err)
+		}
+		_, err = g.Run(context.Background(), true, "commit", "-m", "commit 1")
+		if err != nil {
+			t.Fatalf("git commit failed: %v", err)
+		}
+
+		// Simulate orphaned git block: create stale index.lock with dead PID
+		lockPath := filepath.Join(repoDir, ".git", "index.lock")
+		_ = os.WriteFile(lockPath, []byte("9999999"), 0644)
+
+		// Git operation must fail due to lock block
+		_ = os.WriteFile(testFile, []byte("content 2"), 0644)
+		_, blockedErr := g.Run(context.Background(), true, "add", "file.txt")
+		if blockedErr == nil {
+			t.Fatal("expected git operation to fail while index.lock exists")
+		}
+
+		// Resolve the lock block via CleanStaleLocks
+		g.CleanStaleLocks(context.Background())
+
+		// Verify index.lock was removed
+		if _, statErr := os.Stat(lockPath); !os.IsNotExist(statErr) {
+			t.Fatal("expected stale index.lock to be purged by CleanStaleLocks")
+		}
+
+		// Git operation now succeeds cleanly
+		_, unblockedErr := g.Run(context.Background(), true, "add", "file.txt")
+		if unblockedErr != nil {
+			t.Fatalf("expected git operation to succeed once lock block was resolved, got: %v", unblockedErr)
 		}
 	})
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -42,8 +43,12 @@ type StoryDAGScheduler struct {
 	nodes         map[string]*StoryDAGNode
 	storyIDs      []string // preserves order of discovery
 	mu            sync.Mutex
+	cond          *sync.Cond
 	maxConcurrent int
+	pipelined     bool
 	gitMergeMutex sync.Mutex // serializes git branch merging during state finalization
+	streaming     bool
+	streamClosed  bool
 }
 
 // NewStoryDAGScheduler initializes a StoryDAGScheduler with a maximum concurrency limit.
@@ -51,9 +56,51 @@ func NewStoryDAGScheduler(maxConcurrent int) *StoryDAGScheduler {
 	if maxConcurrent <= 0 {
 		maxConcurrent = 4
 	}
-	return &StoryDAGScheduler{
+	s := &StoryDAGScheduler{
 		nodes:         make(map[string]*StoryDAGNode),
 		maxConcurrent: maxConcurrent,
+	}
+	s.cond = sync.NewCond(&s.mu)
+	return s
+}
+
+// SetPipelined configures whether child stories can begin planning and task dispatch
+// concurrently once parent stories are running, unblocking fine-grained task pipelining.
+func (s *StoryDAGScheduler) SetPipelined(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pipelined = enabled
+}
+
+// IsPipelined returns whether pipelined scheduling is enabled.
+func (s *StoryDAGScheduler) IsPipelined() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pipelined
+}
+
+// SetStreaming configures the scheduler for streaming story ingestion.
+// While streaming is active, the scheduler will not terminate or declare a deadlock
+// if the queue is empty; it waits until CloseStoryStream is called.
+func (s *StoryDAGScheduler) SetStreaming(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.streaming = enabled
+	if !enabled {
+		s.streamClosed = true
+	}
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
+}
+
+// CloseStoryStream signals that all stories have been fed into the scheduler.
+func (s *StoryDAGScheduler) CloseStoryStream() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.streamClosed = true
+	if s.cond != nil {
+		s.cond.Broadcast()
 	}
 }
 
@@ -67,32 +114,106 @@ func (s *StoryDAGScheduler) AddStory(item StoryWorkItem) {
 		storyID = filepath.Base(item.Path)
 	}
 
-	deps := ParseStoryDependencies(item.Spec)
-
-	node := &StoryDAGNode{
-		Item:      item,
-		StoryID:   storyID,
-		DependsOn: deps,
-		Status:    StoryNodePending,
+	rawDeps := ParseStoryDependencies(item.Spec)
+	var deps []string
+	for _, dep := range rawDeps {
+		if dep != storyID && dep != filepath.Base(item.Path) {
+			deps = append(deps, dep)
+		}
 	}
 
-	if _, exists := s.nodes[storyID]; !exists {
+	if existing, exists := s.nodes[storyID]; exists {
+		existing.Item = item
+		existing.DependsOn = deps
+	} else {
 		s.storyIDs = append(s.storyIDs, storyID)
+		s.nodes[storyID] = &StoryDAGNode{
+			Item:      item,
+			StoryID:   storyID,
+			DependsOn: deps,
+			Status:    StoryNodePending,
+		}
 	}
-	s.nodes[storyID] = node
+	s.sortStoryIDsLocked()
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
+}
+
+// MarkStoryCompleted marks a story node as already succeeded without executing it, unblocking dependent stories.
+func (s *StoryDAGScheduler) MarkStoryCompleted(storyIDOrPath string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	storyID := ExtractStoryID(storyIDOrPath)
+	if storyID == "" {
+		storyID = filepath.Base(storyIDOrPath)
+	}
+
+	if node, exists := s.nodes[storyID]; exists {
+		node.Status = StoryNodeSuccess
+	}
+}
+
+func isSkeletonStory(node *StoryDAGNode) bool {
+	if node == nil {
+		return false
+	}
+	lowerPath := strings.ToLower(node.Item.Path)
+	lowerSpec := strings.ToLower(node.Item.Spec)
+	return strings.Contains(lowerPath, "skeleton") || strings.Contains(lowerPath, "scaffold") ||
+		strings.Contains(lowerPath, "foundation") || strings.Contains(lowerSpec, "walking skeleton")
+}
+
+// sortStoryIDsLocked prioritizes zero-dependency stories (especially walking skeletons/scaffolds)
+// so the foundation entrypoint is built first before dependent feature stories.
+// Caller must hold s.mu.
+func (s *StoryDAGScheduler) sortStoryIDsLocked() {
+	sort.SliceStable(s.storyIDs, func(i, j int) bool {
+		nodeI := s.nodes[s.storyIDs[i]]
+		nodeJ := s.nodes[s.storyIDs[j]]
+		if nodeI == nil || nodeJ == nil {
+			return false
+		}
+		lenI := len(nodeI.DependsOn)
+		lenJ := len(nodeJ.DependsOn)
+		if lenI != lenJ {
+			return lenI < lenJ
+		}
+		isSkelI := isSkeletonStory(nodeI)
+		isSkelJ := isSkeletonStory(nodeJ)
+		if isSkelI != isSkelJ {
+			return isSkelI
+		}
+		return s.storyIDs[i] < s.storyIDs[j]
+	})
 }
 
 // Execute runs all queued user stories concurrently according to the dependency DAG.
 // processFunc is invoked concurrently for each unblocked user story.
 func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx context.Context, item StoryWorkItem) error) error {
 	s.mu.Lock()
-	if len(s.nodes) == 0 {
+	if len(s.nodes) == 0 && (!s.streaming || s.streamClosed) {
 		s.mu.Unlock()
 		return nil
 	}
+	s.sortStoryIDsLocked()
+	if s.cond == nil {
+		s.cond = sync.NewCond(&s.mu)
+	}
+	cond := s.cond
 	s.mu.Unlock()
 
-	cond := sync.NewCond(&s.mu)
+	stopWake := make(chan struct{})
+	defer close(stopWake)
+	go func() {
+		select {
+		case <-ctx.Done():
+			cond.Broadcast()
+		case <-stopWake:
+		}
+	}()
+
 	var activeCount int
 	var firstErr error
 
@@ -101,10 +222,14 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 
 		// Check if all nodes have finished
 		allFinished := true
-		for _, node := range s.nodes {
-			if node.Status == StoryNodePending || node.Status == StoryNodeRunning {
-				allFinished = false
-				break
+		if s.streaming && !s.streamClosed {
+			allFinished = false
+		} else {
+			for _, node := range s.nodes {
+				if node.Status == StoryNodePending || node.Status == StoryNodeRunning {
+					allFinished = false
+					break
+				}
 			}
 		}
 
@@ -136,9 +261,22 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 			depsSatisfied := true
 			for _, depID := range node.DependsOn {
 				depNode, exists := s.nodes[depID]
-				if !exists || depNode.Status != StoryNodeSuccess {
+				if !exists {
 					depsSatisfied = false
 					break
+				}
+				if s.pipelined {
+					// In pipelined mode, child stories can be dispatched to start planning
+					// and task execution as soon as parent stories are RUNNING or SUCCESS.
+					if depNode.Status != StoryNodeRunning && depNode.Status != StoryNodeSuccess {
+						depsSatisfied = false
+						break
+					}
+				} else {
+					if depNode.Status != StoryNodeSuccess {
+						depsSatisfied = false
+						break
+					}
 				}
 			}
 
@@ -150,6 +288,11 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 		}
 
 		if len(dispatch) == 0 && activeCount == 0 {
+			if s.streaming && !s.streamClosed {
+				cond.Wait()
+				s.mu.Unlock()
+				continue
+			}
 			// Deadlock detection: pending nodes exist but none can be dispatched
 			var pendingIDs []string
 			for _, node := range s.nodes {
@@ -190,7 +333,7 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 
 		// Wait for progress
 		s.mu.Lock()
-		if activeCount > 0 && len(dispatch) == 0 {
+		if (activeCount > 0 || (s.streaming && !s.streamClosed)) && len(dispatch) == 0 {
 			cond.Wait()
 		}
 		s.mu.Unlock()

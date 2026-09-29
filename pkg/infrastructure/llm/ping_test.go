@@ -29,6 +29,51 @@ func TestPing_Success(t *testing.T) {
 	}
 }
 
+func TestPingAndResolveModel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" || r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"gpt-4o"},{"id":"gpt-4o-mini"},{"id":"gpt-3.5-turbo"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	t.Run("exact model match", func(t *testing.T) {
+		latency, resolved, err := PingAndResolveModel(context.Background(), "openai", "test-key", server.URL+"/v1", "gpt-4o-mini")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if latency <= 0 {
+			t.Errorf("expected positive latency")
+		}
+		if resolved != "gpt-4o-mini" {
+			t.Errorf("expected gpt-4o-mini, got %s", resolved)
+		}
+	})
+
+	t.Run("missing model falls back to best available", func(t *testing.T) {
+		_, resolved, err := PingAndResolveModel(context.Background(), "openai", "test-key", server.URL+"/v1", "gemini-3.6-pro-deprecated")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resolved != "gpt-4o" {
+			t.Errorf("expected best model gpt-4o, got %s", resolved)
+		}
+	})
+
+	t.Run("empty alias resolves to top model", func(t *testing.T) {
+		_, resolved, err := PingAndResolveModel(context.Background(), "openai", "test-key", server.URL+"/v1", "latest")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resolved != "gpt-4o" {
+			t.Errorf("expected latest model gpt-4o, got %s", resolved)
+		}
+	})
+}
+
 func TestPing_UnsupportedProvider(t *testing.T) {
 	_, err := Ping(context.Background(), "bogus", "key", "")
 	if err == nil {

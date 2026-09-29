@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -82,6 +83,7 @@ func (n *NoopNotifier) Notify(ctx context.Context, kind NotificationKind, title,
 
 // MockNotifier captures notifications in memory for unit testing.
 type MockNotifier struct {
+	mu            sync.RWMutex
 	Notifications []MockNotification
 }
 
@@ -98,12 +100,22 @@ func NewMockNotifier() *MockNotifier {
 }
 
 func (m *MockNotifier) Notify(ctx context.Context, kind NotificationKind, title, message string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.Notifications = append(m.Notifications, MockNotification{
 		Kind:    kind,
 		Title:   title,
 		Message: message,
 	})
 	return nil
+}
+
+func (m *MockNotifier) GetNotifications() []MockNotification {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	cp := make([]MockNotification, len(m.Notifications))
+	copy(cp, m.Notifications)
+	return cp
 }
 
 func escapeAppleScript(s string) string {

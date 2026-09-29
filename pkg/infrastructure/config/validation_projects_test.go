@@ -51,6 +51,9 @@ func TestLoadValidationProjectConfigs(t *testing.T) {
 			if cfg == nil {
 				t.Fatal("Load returned nil config")
 			}
+			if cfg.Sandbox.GetE2EMode() != "docker" {
+				t.Errorf("project %s: expected E2E mode 'docker', got %q", project, cfg.Sandbox.GetE2EMode())
+			}
 		})
 	}
 }

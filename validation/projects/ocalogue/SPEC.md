@@ -36,6 +36,14 @@ Named as a portmanteau of **OCaml** and **Datalog** (*dialogue in logic*), `ocal
 > **RULE 5: IDIOMATIC OCAML & PURELY FUNCTIONAL ARCHITECTURE**
 > The core AST, Unification, Semi-Naive loop, and Stratification modules MUST be implemented using immutable data structures (persistent `Set`, `Map`, Algebraic Data Types, Tail Recursion, and Functors) without imperative side-effects in core evaluation algorithms.
 
+### 1.1 Minimal Project Skeleton (Walking Skeleton Priority for US-001)
+The first user story (`roadmap/US-001.md`) MUST establish a runnable minimal walking skeleton:
+1. `dune-project` and `dune` build files.
+2. `lib/ast.ml`: Minimal term, atom, fact, and rule AST type definitions.
+3. `bin/main.ml`: Basic CLI executable accepting an input file and exiting 0.
+4. Unit tests in `test/test_ocalogue.ml` ensuring `dune runtest` compiles cleanly and passes.
+Subsequent stories implement the lexer/parser, semi-naive fixpoint loop, stratification, and full test suite verification.
+
 ---
 
 ## 2. Datalog Grammar & Lexical Specification

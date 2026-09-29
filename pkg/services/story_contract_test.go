@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,6 +39,13 @@ func TestParseStoryContract(t *testing.T) {
 		require.Equal(t, []string{"./dist/example"}, contract.PublicContracts[0].AllowedExecutables)
 	})
 
+	t.Run("when exit_codes is formatted as a map or string array it unmarshals correctly", func(t *testing.T) {
+		markdown := strings.Replace(validStoryMarkdown(), `"exit_codes": [2]`, `"exit_codes": {"0": "success", "1": "error"}`, 1)
+		contract, err := services.ParseStoryContract("./roadmap/US-001.md", markdown)
+		require.NoError(t, err)
+		require.Equal(t, domain.ExitCodeList{0, 1}, contract.PublicContracts[0].ExitCodes)
+	})
+
 	tests := []struct {
 		name     string
 		markdown string
@@ -63,4 +72,40 @@ func TestParseStoryContract(t *testing.T) {
 			require.Contains(t, err.Error(), test.needle)
 		})
 	}
+
+	t.Run("when HTTP contract with embedded Bruno block is supplied it attaches BrunoBru", func(t *testing.T) {
+		httpStory := `# US-002: User Authentication
+
+` + "```noctifab-contract\n" + `{
+  "story_id": "US-002",
+  "public_contracts": [
+    {
+      "id": "post-login",
+      "interface": "http",
+      "http_method": "POST",
+      "http_path": "/api/v1/auth/login",
+      "expected_status": 200,
+      "expected_response_body": "token"
+    }
+  ]
+}
+` + "```\n\n" + "```bru\n" + `meta {
+  name: Login
+  type: http
+}
+post {
+  url: {{baseUrl}}/api/v1/auth/login
+}
+` + "```\n"
+
+		contract, err := services.ParseStoryContract("roadmap/US-002.md", httpStory)
+		require.NoError(t, err)
+		assert.Equal(t, "US-002", contract.StoryID)
+		require.Len(t, contract.PublicContracts, 1)
+		assert.Equal(t, "POST", contract.PublicContracts[0].HTTPMethod)
+		assert.Equal(t, 200, contract.PublicContracts[0].ExpectedStatus)
+		assert.Contains(t, contract.PublicContracts[0].BrunoBru, "meta {")
+
+		assert.NoError(t, services.ValidateStoryContract("roadmap/US-002.md", httpStory))
+	})
 }

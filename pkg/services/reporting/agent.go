@@ -26,6 +26,10 @@ type ReporterAgent struct {
 	flushTicker *time.Ticker
 	stopChan    chan struct{}
 	doneChan    chan struct{}
+
+	// Decoupled background event worker queue
+	eventQueue  chan domain.ExecutionEvent
+	flushSignal chan struct{}
 }
 
 func NewReporterAgent(
@@ -59,9 +63,11 @@ func NewReporterAgent(
 		flushTicker:     time.NewTicker(5 * time.Second),
 		stopChan:        make(chan struct{}),
 		doneChan:        make(chan struct{}),
+		eventQueue:      make(chan domain.ExecutionEvent, 2048),
+		flushSignal:     make(chan struct{}, 1),
 	}
 
-	go agent.flushLoop()
+	go agent.eventWorkerLoop()
 	return agent, nil
 }
 
@@ -80,11 +86,25 @@ func (a *ReporterAgent) EndStory(ctx context.Context, storyID string, outcome do
 	a.markDirtyAndFlush(ctx)
 }
 
+// Observe non-blockingly streams execution events into the background worker queue,
+// ensuring high-frequency telemetry never stalls agent execution turns.
 func (a *ReporterAgent) Observe(ctx context.Context, event domain.ExecutionEvent) {
-	a.collector.Observe(ctx, event)
 	a.mu.Lock()
-	a.dirty = true
+	if a.closed {
+		a.mu.Unlock()
+		return
+	}
 	a.mu.Unlock()
+
+	select {
+	case a.eventQueue <- event:
+	default:
+		// Queue saturated under burst: observe directly without blocking caller
+		a.collector.Observe(ctx, event)
+		a.mu.Lock()
+		a.dirty = true
+		a.mu.Unlock()
+	}
 }
 
 func (a *ReporterAgent) Finish(ctx context.Context, outcome domain.ExecutionOutcome) {
@@ -131,7 +151,9 @@ func (a *ReporterAgent) Finish(ctx context.Context, outcome domain.ExecutionOutc
 	// Render & write final atomic report
 	content := a.renderer.RenderMarkdown(&snapshot)
 	if err := a.writer.WriteAtomic(ctx, a.path, content); err != nil {
-		_, _ = fmt.Fprintf(a.warnings, "noctifab report write failed: %v\n", err)
+		if writeErr := os.WriteFile(a.path, content, 0644); writeErr != nil {
+			_, _ = fmt.Fprintf(a.warnings, "noctifab report write failed: %v (fallback failed: %v)\n", err, writeErr)
+		}
 	}
 }
 
@@ -139,18 +161,41 @@ func (a *ReporterAgent) markDirtyAndFlush(ctx context.Context) {
 	a.mu.Lock()
 	a.dirty = true
 	a.mu.Unlock()
-	_ = a.flushCheckpoint(ctx)
+	select {
+	case a.flushSignal <- struct{}{}:
+	default:
+	}
 }
 
-func (a *ReporterAgent) flushLoop() {
+// eventWorkerLoop coordinates decoupled background processing of streamed telemetry events
+// and coalesced asynchronous markdown report flushes.
+func (a *ReporterAgent) eventWorkerLoop() {
 	defer close(a.doneChan)
 
 	for {
 		select {
+		case ev := <-a.eventQueue:
+			a.collector.Observe(context.Background(), ev)
+			a.mu.Lock()
+			a.dirty = true
+			a.mu.Unlock()
+
+		case <-a.flushSignal:
+			_ = a.flushCheckpoint(context.Background())
+
 		case <-a.flushTicker.C:
 			_ = a.flushCheckpoint(context.Background())
+
 		case <-a.stopChan:
-			return
+			// Drain remaining events in queue
+			for {
+				select {
+				case ev := <-a.eventQueue:
+					a.collector.Observe(context.Background(), ev)
+				default:
+					return
+				}
+			}
 		}
 	}
 }

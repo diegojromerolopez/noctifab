@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,9 +17,12 @@ func TestFSWatcher_DetectsNewUserStory(t *testing.T) {
 	storiesDir := filepath.Join(tempDir, "roadmap", "user-stories")
 	require.NoError(t, os.MkdirAll(storiesDir, 0755))
 
+	var mu sync.Mutex
 	var detectedStory string
 	onStory := func(storyPath string) {
+		mu.Lock()
 		detectedStory = storyPath
+		mu.Unlock()
 	}
 
 	watcher := NewFSWatcher(FSWatcherConfig{
@@ -41,10 +45,12 @@ func TestFSWatcher_DetectsNewUserStory(t *testing.T) {
 	newStory := filepath.Join(storiesDir, "US-001-test.md")
 	require.NoError(t, os.WriteFile(newStory, []byte("# Test Story"), 0644))
 
-	// Allow debounce + poll time
-	time.Sleep(150 * time.Millisecond)
-
-	assert.Equal(t, newStory, detectedStory)
+	// Allow debounce + poll time with eventual check
+	assert.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return detectedStory == newStory
+	}, 1*time.Second, 20*time.Millisecond)
 }
 
 func TestFSWatcher_StopTerminatesCleanly(t *testing.T) {

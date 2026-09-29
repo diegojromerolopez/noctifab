@@ -76,9 +76,9 @@ validate:
 	fi; \
 	for proj in $(subst $(comma),$(space),$(PROJECT)); do \
 		if [ "$(SKIP_BUILD)" = "1" ]; then \
-			NOCTIFAB_SKIP_BUILD=1 ./validation/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
+			NOCTIFAB_SKIP_BUILD=1 ./validation/bin/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
 		else \
-			./validation/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
+			./validation/bin/run_one.sh $$INTERACTIVE_FLAG "$$proj" || exit 1; \
 		fi; \
 	done
 
@@ -91,7 +91,7 @@ validate-all:
 	if [ "$(SKIP_BUILD)" = "1" ]; then FLAGS="$$FLAGS --skip-build"; fi; \
 	if [ "$(SERIAL)" = "1" ]; then FLAGS="$$FLAGS --serial"; fi; \
 	if [ -n "$(PROJECT)" ]; then FLAGS="$$FLAGS --projects=$(PROJECT)"; fi; \
-	./validation/run_all.sh $$FLAGS
+	./validation/bin/run_all.sh $$FLAGS
 
 # Build base + all per-project validation Docker images
 validate-images:
@@ -102,6 +102,21 @@ validate-images:
 
 # Summarize performance and token consumption from execution reports
 validate-summary:
-	@./validation/summarize_reports.sh
+	@./validation/bin/summarize_reports.sh
+
+# Run autonomous feedback and improvement loop on pyedis (e.g. make pyedis-loop DURATION_HOURS=5 or make pyedis-loop ARGS="--duration-hours 5")
+pyedis-loop:
+	@FLAGS="$(ARGS)"; \
+	if [ -n "$(DURATION_HOURS)" ]; then FLAGS="$$FLAGS --duration-hours $(DURATION_HOURS)"; fi; \
+	if [ -n "$(MAX_ITERATIONS)" ]; then FLAGS="$$FLAGS --max-iterations $(MAX_ITERATIONS)"; fi; \
+	python3 validation/bin/validation_project_loop.py pyedis $$FLAGS
+
+# Run autonomous feedback and improvement loop on any specified PROJECT (e.g. make auto-improve PROJECT=thredis DURATION_HOURS=5)
+auto-improve:
+	@FLAGS="$(ARGS)"; \
+	if [ -n "$(DURATION_HOURS)" ]; then FLAGS="$$FLAGS --duration-hours $(DURATION_HOURS)"; fi; \
+	if [ -n "$(MAX_ITERATIONS)" ]; then FLAGS="$$FLAGS --max-iterations $(MAX_ITERATIONS)"; fi; \
+	python3 validation/bin/validation_project_loop.py $(PROJECT) $$FLAGS
+
 
 

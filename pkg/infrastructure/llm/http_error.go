@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -130,9 +131,65 @@ func isNonRetryableHTTPError(err error) bool {
 // the model. 404 (model not found) and invalid/deprecated model errors are
 // deliberately NOT skipped: falling back to another model in the catalog IS the
 // sensible reaction to an unknown model.
+// isRateLimitOrQuota reports whether an error represents an HTTP 429 rate limit or quota exhaustion.
+func isRateLimitOrQuota(err error) bool {
+	if err == nil {
+		return false
+	}
+	var he *httpError
+	if errors.As(err, &he) {
+		if he.StatusCode == http.StatusTooManyRequests {
+			return true
+		}
+		if he.StatusCode == http.StatusPaymentRequired {
+			return false
+		}
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "429") ||
+		strings.Contains(msg, "too many requests") ||
+		strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "ratelimit") ||
+		strings.Contains(msg, "resource_exhausted")
+}
+
+// isTimeoutOrNetworkError reports whether an error represents a context deadline,
+// network timeout, or connection failure that cannot be remedied by a cheaper model.
+func isTimeoutOrNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var he *httpError
+	if errors.As(err, &he) {
+		if he.StatusCode == http.StatusRequestTimeout ||
+			he.StatusCode == http.StatusGatewayTimeout ||
+			he.StatusCode == http.StatusBadGateway ||
+			he.StatusCode == http.StatusServiceUnavailable {
+			return true
+		}
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "deadline exceeded") ||
+		strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "timed out") ||
+		strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "network is unreachable")
+}
+
 func shouldSkipModelFallback(err error) bool {
 	if isModelNotFoundOrDeprecated(err) {
 		return false
+	}
+	if isRateLimitOrQuota(err) {
+		return true
+	}
+	if isTimeoutOrNetworkError(err) {
+		return true
 	}
 	var he *httpError
 	if !errors.As(err, &he) {
@@ -140,7 +197,8 @@ func shouldSkipModelFallback(err error) bool {
 	}
 	switch he.StatusCode {
 	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
-		http.StatusMethodNotAllowed, http.StatusUnprocessableEntity:
+		http.StatusMethodNotAllowed, http.StatusUnprocessableEntity,
+		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	}
 	return false

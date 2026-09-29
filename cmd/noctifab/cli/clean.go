@@ -107,6 +107,7 @@ func runDryClean(cfg *config.Config) error {
 	printDryRunItem(".noctifab/logs")
 	printDryRunItem(".noctifab/worktrees")
 	printDryRunItem(".noctifab/stories")
+	printDryRunItem(".noctifab/specs")
 
 	fmt.Println("[dry-run] No files were deleted.")
 	return nil
@@ -137,9 +138,23 @@ func runActualClean(cfg *config.Config) error {
 	removeLogs()
 	cleanWorktrees()
 	removeStories()
+	removeSpecs()
 
 	fmt.Println("✅ noctifab state cleared. Run 'noctifab init' and 'noctifab start' to begin fresh.")
 	return nil
+}
+
+func removeSpecs() {
+	specsDir := ".noctifab/specs"
+	if _, err := os.Stat(specsDir); err == nil {
+		if err := os.RemoveAll(specsDir); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Could not remove specs directory at %s: %v\n", specsDir, err)
+		} else {
+			fmt.Printf("Removed specs directory: %s\n", specsDir)
+		}
+	} else if !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "⚠ Could not access specs directory at %s: %v\n", specsDir, err)
+	}
 }
 
 func removeDataDirectory() {

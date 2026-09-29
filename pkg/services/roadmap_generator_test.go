@@ -2,8 +2,10 @@ package services_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -185,9 +187,15 @@ func TestGenerateRoadmap_DetectsLegacyCode(t *testing.T) {
 	err = os.WriteFile(specPath, []byte("# Project Spec"), 0644)
 	assert.NoError(t, err)
 
-	// Create a legacy source file
+	// Create a substantial legacy source file (>= 50 lines)
 	legacyFilePath := filepath.Join(tempDir, "calculator.py")
-	err = os.WriteFile(legacyFilePath, []byte("def add(a, b): return a + b"), 0644)
+	var pyLines []string
+	pyLines = append(pyLines, "class LegacyCalculator:")
+	for i := 1; i <= 26; i++ {
+		pyLines = append(pyLines, fmt.Sprintf("    def op_%d(self, x):", i))
+		pyLines = append(pyLines, fmt.Sprintf("        return x + %d", i))
+	}
+	err = os.WriteFile(legacyFilePath, []byte(strings.Join(pyLines, "\n")), 0644)
 	assert.NoError(t, err)
 
 	var capturedPrompt string
@@ -216,6 +224,45 @@ func TestGenerateRoadmap_DetectsLegacyCode(t *testing.T) {
 	assert.Contains(t, capturedPrompt, "Existing Legacy Code Files Detected in Workspace:")
 	assert.Contains(t, capturedPrompt, "calculator.py")
 	assert.Contains(t, capturedPrompt, "LEGACY STABILIZATION MANDATE")
+}
+
+func TestGenerateRoadmap_Greenfield_IgnoresStubsAndManifests(t *testing.T) {
+	tempDir := t.TempDir()
+	specPath := filepath.Join(tempDir, "SPEC.md")
+	err := os.WriteFile(specPath, []byte("# Greenfield Project"), 0644)
+	require.NoError(t, err)
+
+	// Manifests
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "Cargo.toml"), []byte("[package]\nname = \"calc\"\nversion = \"0.1.0\"\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "package.json"), []byte("{\"name\": \"calc\"}\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "go.mod"), []byte("module calc\n\ngo 1.22\n"), 0644))
+
+	// Small starter stub (< 5 lines)
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "main.py"), []byte("print('hello')\n"), 0644))
+
+	var capturedPrompt string
+	mockLLM := &mockCapturingRoadmapLLMClient{
+		onComplete: func(prompt string) {
+			capturedPrompt = prompt
+		},
+		Response: &domain.LLMResponse{
+			Reasoning: "Generating greenfield stories",
+			Actions: []domain.LLMAction{
+				{
+					Tool: "create_story",
+					Args: map[string]any{
+						"filename": "roadmap/user-stories/US-001-walking-skeleton.md",
+						"content":  "# US-001 Walking Skeleton",
+					},
+				},
+			},
+		},
+	}
+
+	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLM, nil)
+	require.NoError(t, err)
+	assert.NotContains(t, capturedPrompt, "LEGACY STABILIZATION MANDATE")
+	assert.NotContains(t, capturedPrompt, "Existing Legacy Code Files Detected in Workspace:")
 }
 
 func TestGenerateRoadmapWithPasses_MultiPass(t *testing.T) {
@@ -311,4 +358,131 @@ func TestGenerateRoadmap_RefineSpec(t *testing.T) {
 	updatedBytes, err := os.ReadFile(specPath)
 	assert.NoError(t, err)
 	assert.Equal(t, refinedSpec, string(updatedBytes))
+}
+
+func TestGenerateRoadmap_IgnoresInfrastructureInLegacyScan(t *testing.T) {
+	tempDir := t.TempDir()
+	specPath := filepath.Join(tempDir, "SPEC.md")
+	err := os.WriteFile(specPath, []byte("# Greenfield Project"), 0644)
+	require.NoError(t, err)
+
+	// Create infrastructure files that should NOT trigger legacy mode
+	err = os.WriteFile(filepath.Join(tempDir, "Dockerfile"), []byte("FROM alpine"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(tempDir, ".rubocop.yml"), []byte("AllCops: TargetRubyVersion: 3.2"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(tempDir, "docker-compose.yml"), []byte("version: '3'"), 0644)
+	require.NoError(t, err)
+
+	var capturedPrompt string
+	mockLLM := &mockCapturingRoadmapLLMClient{
+		onComplete: func(prompt string) {
+			capturedPrompt = prompt
+		},
+		Response: &domain.LLMResponse{
+			Reasoning: "Generating greenfield stories",
+			Actions: []domain.LLMAction{
+				{
+					Tool: "create_story",
+					Args: map[string]any{
+						"filename": "roadmap/user-stories/US-001-walking-skeleton.md",
+						"content":  "# US-001 Walking Skeleton",
+					},
+				},
+			},
+		},
+	}
+
+	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLM, nil)
+	assert.NoError(t, err)
+	assert.NotContains(t, capturedPrompt, "LEGACY FILES DETECTED IN WORKSPACE")
+}
+
+type mockCapturingRoadmapLLMClient struct {
+	onComplete func(prompt string)
+	Response   *domain.LLMResponse
+	Err        error
+}
+
+func (m *mockCapturingRoadmapLLMClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	if m.onComplete != nil {
+		m.onComplete(prompt)
+	}
+	return m.Response, m.Err
+}
+
+func TestResolveUserStoryCeiling(t *testing.T) {
+	// Standard small/medium spec with default (5)
+	assert.Equal(t, 5, services.ResolveUserStoryCeiling("short spec", 5))
+
+	// Unconfigured (0)
+	assert.Equal(t, 5, services.ResolveUserStoryCeiling("short spec", 0))
+
+	// Explicit user override (different from default 5)
+	assert.Equal(t, 7, services.ResolveUserStoryCeiling("short spec", 7))
+	assert.Equal(t, 3, services.ResolveUserStoryCeiling(strings.Repeat("a", 70000), 3))
+
+	// Large spec (>= 35000 bytes) with default (5)
+	largeSpec := strings.Repeat("a", 40000)
+	assert.Equal(t, 8, services.ResolveUserStoryCeiling(largeSpec, 5))
+	assert.Equal(t, 8, services.ResolveUserStoryCeiling(largeSpec, 0))
+
+	// Very large spec (>= 60000 bytes) like pyedis with default (5)
+	veryLargeSpec := strings.Repeat("a", 88000)
+	assert.Equal(t, 12, services.ResolveUserStoryCeiling(veryLargeSpec, 5))
+	assert.Equal(t, 12, services.ResolveUserStoryCeiling(veryLargeSpec, 0))
+}
+
+type mockStepRoadmapLLMClient struct {
+	step      int
+	responses []*domain.LLMResponse
+	errors    []error
+}
+
+func (m *mockStepRoadmapLLMClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	idx := m.step
+	m.step++
+	if idx < len(m.errors) && m.errors[idx] != nil {
+		return nil, m.errors[idx]
+	}
+	if idx < len(m.responses) {
+		return m.responses[idx], nil
+	}
+	return nil, fmt.Errorf("unexpected step %d", idx)
+}
+
+func TestGenerateRoadmap_GracefulDegradationOnLaterPassFailure(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "noctifab-graceful-roadmap-*")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	specPath := filepath.Join(tempDir, "SPEC.md")
+	require.NoError(t, os.WriteFile(specPath, []byte("# Spec"), 0644))
+
+	mockLLM := &mockStepRoadmapLLMClient{
+		responses: []*domain.LLMResponse{
+			{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "create_story",
+						Args: map[string]any{
+							"filename": "roadmap/user-stories/US-001-pass1.md",
+							"content":  "# US-001 Pass 1 Story\n\n```noctifab-contract\n{\"story_id\":\"US-001\",\"public_contracts\":[{\"id\":\"c1\",\"interface\":\"cli\",\"allowed_executables\":[\"run\"],\"exit_codes\":[0]}]}\n```",
+						},
+					},
+				},
+			},
+			nil, // Step 2 (Pass 2) fails with context deadline exceeded
+		},
+		errors: []error{
+			nil,
+			fmt.Errorf("context deadline exceeded"),
+		},
+	}
+
+	err = services.GenerateRoadmapWithPasses(context.Background(), tempDir, mockLLM, nil, 2)
+	assert.NoError(t, err, "expected graceful degradation to retain pass 1 stories without returning error")
+
+	stories, _ := filepath.Glob(filepath.Join(tempDir, "roadmap", "user-stories", "*.md"))
+	assert.Len(t, stories, 1, "pass 1 user story should be retained on disk")
 }

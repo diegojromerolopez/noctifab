@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,10 +17,13 @@ import (
 )
 
 type mockStandbyStateRepo struct {
+	mu    sync.Mutex
 	state *domain.State
 }
 
 func (m *mockStandbyStateRepo) Load(ctx context.Context) (*domain.State, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.state == nil {
 		m.state = &domain.State{
 			ID:          "mock-state",
@@ -30,8 +34,16 @@ func (m *mockStandbyStateRepo) Load(ctx context.Context) (*domain.State, error) 
 }
 
 func (m *mockStandbyStateRepo) Save(ctx context.Context, state *domain.State) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.state = state
 	return nil
+}
+
+func (m *mockStandbyStateRepo) getState() *domain.State {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.state
 }
 
 func (m *mockStandbyStateRepo) LoadAll(ctx context.Context) ([]*domain.State, error) {
@@ -89,7 +101,7 @@ func TestStandbyEngine_LifecycleAndOrderExecution(t *testing.T) {
 	// Wait for engine to start and set idle state
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, DaemonStatusIdle, engine.Status())
-	assert.Equal(t, domain.StoryIdle, repo.state.StoryStatus)
+	assert.Equal(t, domain.StoryIdle, repo.getState().StoryStatus)
 
 	// Enqueue a story order
 	enqueued := engine.Enqueue(StoryWorkItem{Path: "roadmap/user-stories/US-001.md"})
@@ -102,9 +114,10 @@ func TestStandbyEngine_LifecycleAndOrderExecution(t *testing.T) {
 	assert.Equal(t, DaemonStatusIdle, engine.Status())
 
 	// Verify desktop notification was dispatched
-	require.Len(t, mockNotif.Notifications, 1)
-	assert.Equal(t, notifier.NotifyStoryCompleted, mockNotif.Notifications[0].Kind)
-	assert.Contains(t, mockNotif.Notifications[0].Message, "US-001.md")
+	notifs := mockNotif.GetNotifications()
+	require.Len(t, notifs, 1)
+	assert.Equal(t, notifier.NotifyStoryCompleted, notifs[0].Kind)
+	assert.Contains(t, notifs[0].Message, "US-001.md")
 
 	// Cancel context to stop engine
 	cancel()
@@ -138,9 +151,10 @@ func TestStandbyEngine_FailureNotification(t *testing.T) {
 	engine.Enqueue(StoryWorkItem{Path: "roadmap/user-stories/US-002.md"})
 	time.Sleep(100 * time.Millisecond)
 
-	require.Len(t, mockNotif.Notifications, 1)
-	assert.Equal(t, notifier.NotifyBuildFailed, mockNotif.Notifications[0].Kind)
-	assert.Contains(t, mockNotif.Notifications[0].Message, "compilation failed")
+	notifs := mockNotif.GetNotifications()
+	require.Len(t, notifs, 1)
+	assert.Equal(t, notifier.NotifyBuildFailed, notifs[0].Kind)
+	assert.Contains(t, notifs[0].Message, "compilation failed")
 
 	assert.Equal(t, DaemonStatusIdle, engine.Status())
 }
@@ -165,9 +179,12 @@ func TestStandbyEngine_PendingOrderReconciliation(t *testing.T) {
 	}
 	mockNotif := notifier.NewMockNotifier()
 
+	var procMu sync.Mutex
 	var processedStory string
 	executor := func(ctx context.Context, sf string) error {
+		procMu.Lock()
 		processedStory = sf
+		procMu.Unlock()
 		return nil
 	}
 
@@ -186,6 +203,10 @@ func TestStandbyEngine_PendingOrderReconciliation(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 
-	assert.Equal(t, storyFile, processedStory)
-	assert.Equal(t, "COMPLETED", repo.state.Orders[0].Status)
+	procMu.Lock()
+	gotStory := processedStory
+	procMu.Unlock()
+
+	assert.Equal(t, storyFile, gotStory)
+	assert.Equal(t, "COMPLETED", repo.getState().Orders[0].Status)
 }

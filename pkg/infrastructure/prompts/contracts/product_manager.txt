@@ -1,5 +1,15 @@
 
-You may only use the 'create_story' and 'refine_spec' tools.
+You may only use the 'plan_roadmap', 'create_story', and 'refine_spec' tools.
+
+'plan_roadmap' tool arguments:
+- stories: Array of planned user stories, each with:
+    - id: Story ID (e.g. "US-001")
+    - title: Clear story title (e.g. "Walking Skeleton Thin TCP PING Entrypoint")
+    - slug: Kebab-case filename slug (e.g. "US-001-walking-skeleton-thin-tcp-ping-entrypoint")
+    - domain_slice: Domain capability or subsystem (e.g. "Core Networking & RESP Parser")
+    - depends_on: Array of predecessor story IDs (e.g. ["US-001"])
+    - complexity: Complexity Units (e.g. 25)
+    - summary: 2-3 sentence summary of scope, commands, and interfaces
 
 'create_story' tool arguments:
 - filename: Relative filepath under roadmap/user-stories/ (e.g. "roadmap/user-stories/US-001-title-slug.md")
@@ -10,19 +20,31 @@ You may only use the 'create_story' and 'refine_spec' tools.
 
 Return format:
 {
-  "reasoning": "Rationale for user story creation or spec refinement",
+  "reasoning": "Decomposed the system into progressive vertical slice user stories",
   "actions": [
     {
-      "tool": "refine_spec",
+      "tool": "plan_roadmap",
       "args": {
-        "content": "# Refined Specification\n..."
-      }
-    },
-    {
-      "tool": "create_story",
-      "args": {
-        "filename": "roadmap/user-stories/US-001-title-slug.md",
-        "content": "# User Story 001...\n"
+        "stories": [
+          {
+            "id": "US-001",
+            "title": "Walking Skeleton Thin Server Entrypoint",
+            "slug": "US-001-walking-skeleton-thin-server-entrypoint",
+            "domain_slice": "Core Protocol & Server",
+            "depends_on": [],
+            "complexity": 25,
+            "summary": "Implements thin server entrypoint and basic ping/echo handlers."
+          },
+          {
+            "id": "US-002",
+            "title": "Basic Key-Value Storage & Retrieval",
+            "slug": "US-002-basic-key-value-storage-and-retrieval",
+            "domain_slice": "Strings & Key Access",
+            "depends_on": ["US-001"],
+            "complexity": 30,
+            "summary": "Implements core string and key commands (GET, SET, DEL, EXISTS)."
+          }
+        ]
       }
     }
   ]

@@ -153,6 +153,10 @@ func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
 	_ = os.MkdirAll(storiesDir, 0755)
 	_ = os.WriteFile(filepath.Join(storiesDir, "order.md"), []byte("order"), 0644)
 
+	specsDir := filepath.Join(noctifabDir, "specs")
+	_ = os.MkdirAll(specsDir, 0755)
+	_ = os.WriteFile(filepath.Join(specsDir, "manifest.json"), []byte("{}"), 0644)
+
 	stdout, _, err := captureOutput(func() error {
 		RootCmd.SetArgs([]string{"clean", "--config", filepath.Join(noctifabDir, "config.yaml"), "--yes"})
 		return RootCmd.Execute()
@@ -176,6 +180,9 @@ func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
 	if !strings.Contains(stdout, "Removed steer stories:") {
 		t.Errorf("expected steer stories removal log, got: %s", stdout)
 	}
+	if !strings.Contains(stdout, "Removed specs directory:") {
+		t.Errorf("expected specs directory removal log, got: %s", stdout)
+	}
 
 	// Assert files are gone
 	if _, statErr := os.Stat(dbFile); !os.IsNotExist(statErr) {
@@ -192,6 +199,9 @@ func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
 	}
 	if _, statErr := os.Stat(patchFile); !os.IsNotExist(statErr) {
 		t.Errorf("expected patch file to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(specsDir); !os.IsNotExist(statErr) {
+		t.Errorf("expected specs directory to be deleted, stat error: %v", statErr)
 	}
 	if _, statErr := os.Stat(filepath.Join(noctifabDir, "data")); !os.IsNotExist(statErr) {
 		t.Errorf("expected data dir to be deleted, stat error: %v", statErr)

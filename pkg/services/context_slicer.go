@@ -18,10 +18,7 @@ type ContextSlicer struct {
 
 // NewContextSlicer initializes a ContextSlicer for the given mode and window settings.
 func NewContextSlicer(cfg config.ContextConfig) *ContextSlicer {
-	window := cfg.DiffWindowLines
-	if window <= 0 {
-		window = 15
-	}
+	window := cfg.GetWindowLines()
 	return &ContextSlicer{
 		mode:        cfg.GetMode(),
 		windowLines: window,

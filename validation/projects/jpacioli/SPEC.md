@@ -49,6 +49,14 @@ Named after **Luca Pacioli**—the 15th-century Franciscan friar and mathematici
 > All API endpoints (except `/actuator/health` and `/api/v1/auth/token`) MUST enforce stateless **JWT Bearer Token** authentication.
 > Authorization follows a strict Role-Based Access Control (RBAC) and Permission matrix. Missing/expired tokens return HTTP `401 Unauthorized`; insufficient permissions return HTTP `403 Forbidden`.
 
+### 1.1 Minimal Project Skeleton (Walking Skeleton Priority for US-001)
+The first user story (`roadmap/US-001.md`) MUST establish a runnable minimal walking skeleton:
+1. `build.gradle` (or `pom.xml`) with Java 21, Spring Boot 3.3+, and dependencies.
+2. Minimal Spring Boot application entrypoint (`JpacioliApplication.java`) exposing actuator health check (`/actuator/health`).
+3. Core domain entities (`Account`, `Money`) and baseline repository interfaces.
+4. Unit and smoke tests ensuring `gradle test` (or `mvn test`) compiles cleanly and passes 100%.
+Subsequent stories implement event store persistence, CQRS projections, and RBAC authentication.
+
 ---
 
 ## 2. Authentication, Roles & Permissions System

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,6 +113,29 @@ def test_another():
 		}
 		if !strings.Contains(formattedMsg, "test_vacuous.py") {
 			t.Errorf("expected file name in formatted rejection message: %s", formattedMsg)
+		}
+	})
+}
+
+func TestOrchestrator_ExecuteSurgicalRepairTurn_AlignmentGuard(t *testing.T) {
+	t.Run("reverts unaligned sycophantic changes in surgical repair", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		git := NewGitClient(tmpDir)
+		_, _ = git.Run(context.Background(), true, "init")
+		_ = os.WriteFile(filepath.Join(tmpDir, "file.txt"), []byte("initial"), 0644)
+		_, _ = git.Run(context.Background(), true, "add", "-A")
+		_, _ = git.Run(context.Background(), true, "commit", "-m", "init")
+
+		// Create an unaligned file modification
+		_ = os.WriteFile(filepath.Join(tmpDir, "unrelated.txt"), []byte("sycophantic edit"), 0644)
+
+		guard := NewRepairAlignmentGuard()
+		tracebackFiles := []string{"src/commands/strings.py"}
+		targetFiles := []string{"src/commands/strings.py"}
+
+		alignment := guard.ValidateRepairAlignment([]string{"unrelated.txt"}, tracebackFiles, targetFiles, "", nil)
+		if alignment.Allowed {
+			t.Errorf("expected sycophantic modification to be rejected")
 		}
 	})
 }

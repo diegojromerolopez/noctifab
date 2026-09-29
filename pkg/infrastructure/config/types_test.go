@@ -155,10 +155,40 @@ func TestContextConfig_GetMode(t *testing.T) {
 		}
 	})
 
+	t.Run("tree_sitter bool flag", func(t *testing.T) {
+		cc := ContextConfig{TreeSitter: true}
+		if cc.GetMode() != ContextModeTreeSitter {
+			t.Errorf("expected ContextModeTreeSitter via TreeSitter: true, got %v", cc.GetMode())
+		}
+	})
+
 	t.Run("invalid mode falls back to full", func(t *testing.T) {
 		cc := ContextConfig{Mode: "unknown_mode"}
 		if cc.GetMode() != ContextModeFull {
 			t.Errorf("expected fallback to ContextModeFull, got %v", cc.GetMode())
+		}
+	})
+}
+
+func TestContextConfig_GetWindowLines(t *testing.T) {
+	t.Run("when default empty, it returns 15", func(t *testing.T) {
+		cc := ContextConfig{}
+		if cc.GetWindowLines() != 15 {
+			t.Errorf("expected 15, got %d", cc.GetWindowLines())
+		}
+	})
+
+	t.Run("when diff_window_lines is set, it returns diff_window_lines", func(t *testing.T) {
+		cc := ContextConfig{DiffWindowLines: 30}
+		if cc.GetWindowLines() != 30 {
+			t.Errorf("expected 30, got %d", cc.GetWindowLines())
+		}
+	})
+
+	t.Run("when window_size is set, it prioritizes window_size", func(t *testing.T) {
+		cc := ContextConfig{DiffWindowLines: 30, WindowSize: 40}
+		if cc.GetWindowLines() != 40 {
+			t.Errorf("expected 40, got %d", cc.GetWindowLines())
 		}
 	})
 }

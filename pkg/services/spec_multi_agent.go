@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -57,39 +58,50 @@ func (p *SpecMultiAgentPipeline) ExecutePass(ctx context.Context, userPrompt str
 	}
 	currentSpec = draft
 
-	// Stage 2: Systems Architect / Generator (Architecture, Tech Stack, CLI/API Interfaces)
-	archClient := p.getClientForRole("generator")
-	draft, err = p.executeStage(ctx, archClient, "generator", "architect_enrich", prompts.SpecPromptData{
-		UserPrompt: userPrompt,
-		DraftSpec:  currentSpec,
-	})
-	if err != nil {
-		return "", fmt.Errorf("stage 2 (systems_architect) failed: %w", err)
-	}
-	currentSpec = draft
+	// Stages 2, 3, 4: Concurrent Multi-Agent Enrichment Burst
+	// Systems Architect (Arch & Interfaces), Test Architect (Verification & Testing),
+	// and QA Specialist (Definition of Done & Public Contracts) run concurrently.
+	var (
+		archDraft, testerDraft, qaDraft string
+		archErr, testerErr, qaErr       error
+		wg                              sync.WaitGroup
+	)
 
-	// Stage 3: Test Architect / Tester (Verification, Deterministic Clocks, Edge Cases)
-	testerClient := p.getClientForRole("tester")
-	draft, err = p.executeStage(ctx, testerClient, "tester", "tester_enrich", prompts.SpecPromptData{
-		UserPrompt: userPrompt,
-		DraftSpec:  currentSpec,
-	})
-	if err != nil {
-		return "", fmt.Errorf("stage 3 (test_architect) failed: %w", err)
-	}
-	currentSpec = draft
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		archClient := p.getClientForRole("generator")
+		archDraft, archErr = p.executeStage(ctx, archClient, "generator", "architect_enrich", prompts.SpecPromptData{
+			UserPrompt: userPrompt,
+			DraftSpec:  currentSpec,
+		})
+	}()
 
-	// Stage 4: QA Specialist (Definition of Done & Public Contracts)
-	qaClient := p.getClientForRole("qa")
-	draft, err = p.executeStage(ctx, qaClient, "qa", "qa_enrich", prompts.SpecPromptData{
-		UserPrompt: userPrompt,
-		DraftSpec:  currentSpec,
-	})
-	if err != nil {
-		return "", fmt.Errorf("stage 4 (qa_specialist) failed: %w", err)
-	}
-	currentSpec = draft
+	go func() {
+		defer wg.Done()
+		testerClient := p.getClientForRole("tester")
+		testerDraft, testerErr = p.executeStage(ctx, testerClient, "tester", "tester_enrich", prompts.SpecPromptData{
+			UserPrompt: userPrompt,
+			DraftSpec:  currentSpec,
+		})
+	}()
 
+	go func() {
+		defer wg.Done()
+		qaClient := p.getClientForRole("qa")
+		qaDraft, qaErr = p.executeStage(ctx, qaClient, "qa", "qa_enrich", prompts.SpecPromptData{
+			UserPrompt: userPrompt,
+			DraftSpec:  currentSpec,
+		})
+	}()
+
+	wg.Wait()
+
+	if archErr != nil && testerErr != nil && qaErr != nil {
+		return currentSpec, fmt.Errorf("all parallel enrichment stages failed: arch=%v, tester=%v, qa=%v", archErr, testerErr, qaErr)
+	}
+
+	currentSpec = mergeSpecEnrichments(currentSpec, archDraft, testerDraft, qaDraft)
 	return currentSpec, nil
 }
 
@@ -158,4 +170,106 @@ func (p *SpecMultiAgentPipeline) executeStage(ctx context.Context, client domain
 	}
 
 	return "", fmt.Errorf("stage execution failed after retries: %w", lastErr)
+}
+
+func mergeSpecEnrichments(baseSpec, archSpec, testerSpec, qaSpec string) string {
+	res := baseSpec
+	if archSpec != "" {
+		res = mergeSections(res, archSpec, []string{"2.", "4.", "Architecture", "Interfaces", "Command Contracts"})
+	}
+	if testerSpec != "" {
+		res = mergeSections(res, testerSpec, []string{"5.", "Verification", "Test Architecture"})
+	}
+	if qaSpec != "" {
+		res = mergeSections(res, qaSpec, []string{"6.", "Definition of Done", "Public Contracts"})
+	}
+	if res == baseSpec {
+		for _, draft := range []string{qaSpec, testerSpec, archSpec} {
+			if len(draft) > len(res) {
+				return draft
+			}
+		}
+	}
+	return res
+}
+
+func mergeSections(targetDoc, sourceDoc string, sectionKeywords []string) string {
+	for _, kw := range sectionKeywords {
+		secContent, secHeading := extractSection(sourceDoc, kw)
+		if secContent != "" {
+			targetDoc = replaceOrAppendSection(targetDoc, secHeading, secContent)
+		}
+	}
+	return targetDoc
+}
+
+func extractSection(doc, keyword string) (string, string) {
+	lines := strings.Split(doc, "\n")
+	startIdx := -1
+	headingLine := ""
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") && strings.Contains(strings.ToLower(trimmed), strings.ToLower(keyword)) {
+			startIdx = i
+			headingLine = trimmed
+			break
+		}
+	}
+
+	if startIdx == -1 {
+		return "", ""
+	}
+
+	endIdx := len(lines)
+	for i := startIdx + 1; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(trimmed, "## ") || (strings.HasPrefix(trimmed, "# ") && !strings.HasPrefix(trimmed, "### ")) {
+			endIdx = i
+			break
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(lines[startIdx:endIdx], "\n")), headingLine
+}
+
+func replaceOrAppendSection(doc, heading, content string) string {
+	if strings.TrimSpace(content) == "" {
+		return doc
+	}
+	lines := strings.Split(doc, "\n")
+	startIdx := -1
+	kw := strings.TrimPrefix(heading, "## ")
+	parts := strings.Fields(kw)
+	matchKw := kw
+	if len(parts) > 0 {
+		matchKw = parts[0]
+	}
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") && strings.Contains(strings.ToLower(trimmed), strings.ToLower(matchKw)) {
+			startIdx = i
+			break
+		}
+	}
+
+	if startIdx == -1 {
+		return strings.TrimSpace(doc) + "\n\n" + content
+	}
+
+	endIdx := len(lines)
+	for i := startIdx + 1; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(trimmed, "## ") || (strings.HasPrefix(trimmed, "# ") && !strings.HasPrefix(trimmed, "### ")) {
+			endIdx = i
+			break
+		}
+	}
+
+	var newLines []string
+	newLines = append(newLines, lines[:startIdx]...)
+	newLines = append(newLines, content)
+	newLines = append(newLines, lines[endIdx:]...)
+	return strings.TrimSpace(strings.Join(newLines, "\n"))
 }

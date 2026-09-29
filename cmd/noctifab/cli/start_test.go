@@ -168,7 +168,7 @@ func TestRunPreFlightChecks_UnreachableProvider(t *testing.T) {
 			Mode: "host",
 		},
 	}
-	err := runPreFlightChecks(cfg)
+	err := runPreFlightChecks(cfg, t.TempDir())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "pre-flight LLM provider ping failed")
 }

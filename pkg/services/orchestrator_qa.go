@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (o *Orchestrator) prepareQA(ctx context.Context, state *domain.State, task domain.Task) (domain.StoryContract, *QAReviewResult) {
@@ -165,6 +168,13 @@ func (o *Orchestrator) rerunQAAfterFix(ctx context.Context, state *domain.State,
 func (o *Orchestrator) runQAGate(ctx context.Context, state *domain.State, task domain.Task,
 	taskGit *GitClient, fileContexts []string,
 ) string {
+	ctx, span := telemetry.Tracer().Start(ctx, "runQAGate",
+		trace.WithAttributes(
+			attribute.String("task.id", task.ID),
+			attribute.String("story.id", task.StoryID),
+		))
+	defer span.End()
+
 	contract, precomputed := o.prepareQA(ctx, state, task)
 	if precomputed != nil {
 		if err := o.persistQAResult(ctx, contract, *precomputed); err != nil {
@@ -180,7 +190,7 @@ func (o *Orchestrator) runQAGate(ctx context.Context, state *domain.State, task 
 		return "artifact_changed"
 	}
 	clean, err := taskGit.Run(ctx, false, "status", "--porcelain")
-	if err != nil || strings.TrimSpace(clean) != "" {
+	if err != nil || hasMaterialGitChanges(clean) {
 		return "artifact_changed"
 	}
 	result := o.runInitialQA(ctx, state, task, taskGit, strings.TrimSpace(commit), contract, fileContexts)
@@ -311,6 +321,7 @@ func (o *Orchestrator) persistQAResult(ctx context.Context, contract domain.Stor
 		return nil
 	})
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ [QA] Failed to persist QA result for task %s: %v\n", result.Phase.TaskID, err)
 		return err
 	}
 	o.recordQAResultMetrics(result)
@@ -426,4 +437,30 @@ func relativeStoryPath(projectPath, sourcePath string) string {
 		return filepath.ToSlash(relative)
 	}
 	return filepath.Base(sourcePath)
+}
+
+func hasMaterialGitChanges(statusOutput string) bool {
+	lines := strings.Split(strings.TrimSpace(statusOutput), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		parts := strings.Fields(trimmed)
+		if len(parts) >= 2 {
+			path := parts[len(parts)-1]
+			lower := strings.ToLower(path)
+			if strings.Contains(lower, "__pycache__") ||
+				strings.HasSuffix(lower, ".pyc") ||
+				strings.Contains(lower, ".pytest_cache") ||
+				strings.Contains(lower, ".ruff_cache") ||
+				strings.Contains(lower, ".mypy_cache") ||
+				strings.Contains(lower, ".coverage") ||
+				strings.HasSuffix(lower, ".log") {
+				continue
+			}
+		}
+		return true
+	}
+	return false
 }

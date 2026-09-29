@@ -66,6 +66,29 @@ func TestOpenCodeProviderClient_Call(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 	})
+
+	t.Run("x-opencode-session header attached", func(t *testing.T) {
+		var receivedSession string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedSession = r.Header.Get("X-Opencode-Session")
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"choices": []map[string]any{
+					{"message": map[string]any{"content": "ok"}},
+				},
+			})
+		}))
+		defer server.Close()
+
+		client := NewOpenCodeClient(server.URL, 0, 0, false)
+		_, err := client.Call(context.Background(), "glm-5.2", "test-key", "hi", 100, 0.0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if receivedSession == "" {
+			t.Fatalf("expected non-empty x-opencode-session header")
+		}
+	})
 }
 
 func TestOpenCodeProviderClient_GetAvailableModels(t *testing.T) {

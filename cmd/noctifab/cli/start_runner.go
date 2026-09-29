@@ -2,12 +2,14 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +20,6 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/reportfs"
-	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/diegojromerolopez/noctifab/pkg/services/reporting"
 )
@@ -72,6 +73,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer initTelemetry(cfg, targetDir)()
 
 	// Reporter activation point (§2.7)
 	var executionReporter domain.ExecutionReporter = &services.NoopExecutionReporter{}
@@ -151,8 +153,36 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if closer, ok := repo.(io.Closer); ok {
+		defer func() { _ = closer.Close() }()
+	}
 
-	if _, err := services.NewQARecoveryService(repo, services.SystemQAClock{}).Recover(cmd.Context()); err != nil {
+	cmdCtx := cmd.Context()
+	if cmdCtx == nil {
+		cmdCtx = context.Background()
+	}
+	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+	go func() {
+		select {
+		case sig := <-sigChan:
+			fmt.Fprintf(os.Stderr, "\nReceived signal %v, flushing state and shutting down gracefully...\n", sig)
+			if executionReporter != nil {
+				executionReporter.Finish(context.Background(), domain.ExecutionCancelled)
+			}
+			if closer, ok := repo.(io.Closer); ok {
+				_ = closer.Close()
+			}
+			os.Exit(130)
+		case <-cmdCtx.Done():
+			return
+		}
+	}()
+
+	if _, err := services.NewQARecoveryService(repo, services.SystemQAClock{}).Recover(cmdCtx); err != nil {
 		return fmt.Errorf("recover interrupted QA phases: %w", err)
 	}
 
@@ -164,17 +194,22 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		if cfg.Sandbox.AutoInstallDeps {
 			depMgr = services.NewDependencyManager(cfg.Sandbox.PackageManagers)
 		}
-		sandboxRunner = services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
+		hostSandbox := services.NewHostSandbox(cfg.Sandbox.AllowedCommands, cfg.Sandbox.TestCommand, time.Duration(cfg.Sandbox.IdleTimeoutSeconds)*time.Second, depMgr)
+		if cfg.Sandbox.PerTestTimeoutSeconds > 0 {
+			hostSandbox.PerTestTimeout = time.Duration(cfg.Sandbox.PerTestTimeoutSeconds) * time.Second
+		}
+		sandboxRunner = hostSandbox
 	}
 
-	reg := initToolRegistry(cfg, sandboxRunner)
 	llmClient := llm.BuildFailoverClient(cfg, budgetStore)
+	reg := initToolRegistry(cfg, sandboxRunner, llmClient)
 
-	cmdCtx := cmd.Context()
-	if cmdCtx == nil {
-		cmdCtx = context.Background()
+	// Background cache pre-warming in dependency staging:
+	// Proactively fetch dependencies and warm toolchain caches while roadmap & specs initialize.
+	if targetDir != "" && sandboxRunner != nil {
+		preWarmMgr := services.NewDependencyManager(cfg.Sandbox.PackageManagers)
+		preWarmMgr.StartBackgroundPreWarm(cmdCtx, targetDir, sandboxRunner)
 	}
-	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
 
 	mailbox := services.NewCommandMailbox(repo)
 	go mailbox.Start(cmdCtx)
@@ -188,18 +223,9 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Warning: prompt template rendering initialization failed: %v\n", rendErr)
 	}
 
-	if hasExistingStories {
-		fmt.Printf("ℹ [Roadmap] Existing roadmap user stories found; skipping Product Manager Agent refinement to preserve existing roadmap files.\n")
-	} else {
-		fmt.Printf("No user stories found in %s/roadmap. Spawning Product Manager Agent to generate roadmap from SPEC.md...\n", targetDir)
-		if executionReporter != nil {
-			executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "roadmap_generation", At: time.Now().UTC()})
-		}
-		if genErr := services.GenerateRoadmapWithConfig(cmdCtx, targetDir, llmClient, promptRenderer, cfg.Agents.ProductManager.Passes, cfg.Agents.ProductManager.MaxUserStories); genErr != nil {
-			fmt.Printf("Warning: Product Manager Agent story generation failed: %v\n", genErr)
-		}
-		if executionReporter != nil {
-			executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseFinished, Name: "roadmap_generation", At: time.Now().UTC()})
+	if !hasExistingStories {
+		if _, spikeErr := services.ExecuteSpike(cmdCtx, targetDir, cfg, llmClient, promptRenderer, executionReporter); spikeErr != nil {
+			fmt.Printf("Warning: Spike prototyping phase failed: %v\n", spikeErr)
 		}
 	}
 
@@ -209,50 +235,29 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 	sort.Strings(storyFiles)
 
-	gitClient := services.NewGitClient(".")
-	rebaseQueue := services.NewRebaseQueue(gitClient)
-	go rebaseQueue.Start(cmdCtx)
+	executeStory, _, speculativePlanner, gitClient, _, evaluator := initStoryExecutionEnvironment(
+		cmdCtx, cfg, targetDir, storyFiles, repo, reg, llmClient, sandboxRunner, mailbox, executionReporter, promptRenderer,
+	)
 
-	profilesMap := make(map[string]services.ProfileConfig)
-	for role, prof := range cfg.Profiles {
-		profilesMap[role] = services.ProfileConfig{
-			AllowedTools:    prof.AllowedTools,
-			AllowedCommands: prof.AllowedCommands,
+	var streamingScheduler *services.StoryDAGScheduler
+	var roadmapDoneCh <-chan error
+
+	if hasExistingStories {
+		fmt.Printf("ℹ [Roadmap] Existing roadmap user stories found; skipping Product Manager Agent refinement to preserve existing roadmap files.\n")
+	} else {
+		fmt.Printf("No user stories found in %s/roadmap. Spawning Product Manager Agent to generate roadmap from SPEC.md in streaming mode...\n", targetDir)
+		storyConcurrency := cfg.Agents.Orchestrator.Number
+		if storyConcurrency <= 0 {
+			if cfg.VCS.UseWorktrees {
+				storyConcurrency = 2
+			} else {
+				storyConcurrency = 1
+			}
 		}
+		streamingScheduler = services.NewStoryDAGScheduler(storyConcurrency)
+		streamingScheduler.SetStreaming(true)
+		roadmapDoneCh = GenerateRoadmapStreaming(cmdCtx, targetDir, cfg, llmClient, promptRenderer, executionReporter, streamingScheduler)
 	}
-	validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
-	validator.ExcludePaths = cfg.Sandbox.ExcludePaths
-	validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
-	scheduler := services.NewScheduler(services.NewFileLockRegistry())
-	evaluator := services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
-	evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
-	if cfg.Sandbox.TimeoutSeconds > 0 {
-		evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
-	}
-	vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
-	repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
-
-	orchConfig := buildOrchestratorConfig(cfg)
-
-	executeStory := buildStoryExecutor(storyExecutorDeps{
-		cfg:               cfg,
-		targetDir:         targetDir,
-		storyFiles:        storyFiles,
-		gitClient:         gitClient,
-		rebaseQueue:       rebaseQueue,
-		repo:              repo,
-		reg:               reg,
-		llmClient:         llmClient,
-		validator:         validator,
-		scheduler:         scheduler,
-		evaluator:         evaluator,
-		vcsClient:         vcsClient,
-		orchConfig:        orchConfig,
-		mailbox:           mailbox,
-		repairHandler:     repairHandler,
-		promptRenderer:    promptRenderer,
-		executionReporter: executionReporter,
-	})
 
 	if executionReporter != nil {
 		executionReporter.Observe(cmdCtx, domain.ExecutionEvent{Kind: domain.EventPhaseStarted, Name: "story_execution", At: time.Now().UTC()})
@@ -276,121 +281,34 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	storyOutcomes := make(map[string]error)
-	for _, sf := range storyFiles {
-		storyOutcomes[sf] = errors.New("pending")
-	}
+	storyOutcomes, _ := runStoryIterationLoops(cmdCtx, StoryLoopOptions{
+		Cfg:                cfg,
+		TargetDir:          targetDir,
+		StoryFiles:         storyFiles,
+		Repo:               repo,
+		ExecutionReporter:  executionReporter,
+		ExecuteStory:       executeStory,
+		GitClient:          gitClient,
+		TotalLoops:         totalLoops,
+		ResumeRequested:    resumeRequested,
+		WebEnabled:         webEnabled,
+		WebHost:            webHost,
+		WebPort:            webPort,
+		SpeculativePlanner: speculativePlanner,
+		StreamingScheduler: streamingScheduler,
+	})
 
-	var prevGitHead string
-	var prevFailureSig string
-
-	for loopIdx := 1; loopIdx <= totalLoops; loopIdx++ {
-		loopStart := time.Now().UTC()
-		loopAttempted := 0
-		loopSucceeded := 0
-
-		if totalLoops > 1 {
-			fmt.Printf("\n🔁 [Loop %d/%d] Executing Noctifab iteration loop...\n", loopIdx, totalLoops)
-		}
-		for idx, currentStoryFile := range storyFiles {
-			storyID := fmt.Sprintf("story-%04d", idx+1)
-			featName := strings.TrimSuffix(filepath.Base(currentStoryFile), filepath.Ext(currentStoryFile))
-			storyTitle := extractStoryTitle(currentStoryFile)
-			storyMeta := domain.StoryMetadata{
-				StoryID:     storyID,
-				Source:      currentStoryFile,
-				FeatureName: filepath.Base(currentStoryFile),
-				Title:       storyTitle,
-				Sequence:    idx + 1,
-				StartedAt:   time.Now().UTC(),
-			}
-
-			if (loopIdx > 1 || resumeRequested) && isStoryCompletedSuccessfully(cmdCtx, repo, currentStoryFile, storyID, featName) {
-				fmt.Printf("ℹ [Loop %d] Verified story %s (%s) is completed successfully (all tasks passed) — skipping\n", loopIdx, storyID, storyTitle)
-				storyOutcomes[currentStoryFile] = nil
-				continue
-			}
-
-			loopAttempted++
-			executionReporter.BeginStory(cmdCtx, storyMeta)
-
-			if webEnabled {
-				fmt.Printf("\n🚀 Executing %s (%s)\n➜  Web Dashboard: http://%s:%d\n\n", storyID, storyTitle, webHost, webPort)
-			} else {
-				fmt.Printf("\n🚀 Executing %s (%s)\n\n", storyID, storyTitle)
-			}
-
-			storyErr := executeStory(cmdCtx, currentStoryFile)
-			if storyErr != nil {
-				storyOutcomes[currentStoryFile] = storyErr
-				executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionFailed)
-				if st, err := repo.Load(cmdCtx); err == nil && st != nil {
-					now := time.Now().UTC()
-					for i, s := range st.Stories {
-						if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
-							st.Stories[i].Status = domain.StoryFailed
-							st.Stories[i].CompletedAt = &now
-							st.Stories[i].UpdatedAt = now
-							break
-						}
-					}
-					_ = repo.Save(cmdCtx, st)
-				}
-				fmt.Printf("⚠️ Story %s (%s) encountered failure in Loop %d: %v (continuing loop pass)\n", storyID, storyTitle, loopIdx, storyErr)
-			} else {
-				loopSucceeded++
-				storyOutcomes[currentStoryFile] = nil
-				executionReporter.EndStory(cmdCtx, storyID, domain.ExecutionSuccess)
-				if st, err := repo.Load(cmdCtx); err == nil && st != nil {
-					now := time.Now().UTC()
-					for i, s := range st.Stories {
-						if s.ID == featName || s.ID == storyID || s.FilePath == currentStoryFile {
-							st.Stories[i].Status = domain.StorySuccess
-							st.Stories[i].CompletedAt = &now
-							st.Stories[i].UpdatedAt = now
-							break
-						}
-					}
-					_ = repo.Save(cmdCtx, st)
-				}
+	if roadmapDoneCh != nil {
+		<-roadmapDoneCh
+		generatedStories := discoverStoryFiles(targetDir)
+		if len(generatedStories) > 0 {
+			storyFiles = generatedStories
+			sort.Strings(storyFiles)
+			if gitClient != nil {
+				_, _ = gitClient.Run(cmdCtx, true, "add", "roadmap")
+				_, _ = gitClient.Run(cmdCtx, true, "commit", "-m", "docs(roadmap): generate user stories from SPEC.md")
 			}
 		}
-
-		allSucceeded := true
-		for _, sf := range storyFiles {
-			if storyOutcomes[sf] != nil {
-				allSucceeded = false
-				break
-			}
-		}
-
-		loopDurationMS := time.Since(loopStart).Milliseconds()
-		loopOutcome := domain.ExecutionSuccess
-		if !allSucceeded {
-			loopOutcome = domain.ExecutionFailed
-		}
-
-		if totalLoops > 1 {
-			fmt.Printf("\n📊 [Loop %d/%d Summary] Attempted: %d | Succeeded: %d | Duration: %v | Outcome: %s\n",
-				loopIdx, totalLoops, loopAttempted, loopSucceeded, time.Duration(loopDurationMS)*time.Millisecond, loopOutcome)
-		}
-
-		if allSucceeded {
-			if totalLoops > 1 && loopIdx < totalLoops {
-				fmt.Printf("\n✨ All %d user stories completed successfully in Loop %d. Completing run.\n", len(storyFiles), loopIdx)
-			}
-			break
-		}
-
-		// Loop Stagnation & Deadlock Circuit Breaker
-		currentGitHead, _ := gitClient.Run(cmdCtx, false, "rev-parse", "HEAD")
-		currentFailureSig := computeFailureSignature(storyOutcomes)
-		if loopIdx > 1 && currentGitHead == prevGitHead && currentFailureSig == prevFailureSig {
-			fmt.Printf("\n⚠️ [Stagnation Circuit Breaker] Loop %d produced zero codebase changes with identical failure signatures as Loop %d. Terminating loop iteration to prevent token exhaustion.\n", loopIdx, loopIdx-1)
-			break
-		}
-		prevGitHead = currentGitHead
-		prevFailureSig = currentFailureSig
 	}
 
 	if executionReporter != nil {
@@ -398,13 +316,53 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	var failedStories []string
-	for _, sf := range storyFiles {
+	for idx, sf := range storyFiles {
 		if err := storyOutcomes[sf]; err != nil {
+			storyID := fmt.Sprintf("story-%04d", idx+1)
+			featName := strings.TrimSuffix(filepath.Base(sf), filepath.Ext(sf))
+			if repo != nil && isStoryCompletedSuccessfully(cmdCtx, repo, sf, storyID, featName) {
+				storyOutcomes[sf] = nil
+				continue
+			}
 			failedStories = append(failedStories, fmt.Sprintf("%s (%v)", filepath.Base(sf), err))
 		}
 	}
 	if len(failedStories) > 0 {
-		return fmt.Errorf("execution finished with %d incomplete/failed stories across %d loops:\n - %s", len(failedStories), totalLoops, strings.Join(failedStories, "\n - "))
+		rescueOpts := SovereignRescueOptions{
+			TargetDir:     targetDir,
+			Cfg:           cfg,
+			Repo:          repo,
+			GitClient:     gitClient,
+			StoryFiles:    storyFiles,
+			FailedStories: failedStories,
+			LLMClient:     llmClient,
+			ToolRegistry:  reg,
+			Validator:     evaluator,
+			SandboxRunner: sandboxRunner,
+		}
+		if rescueErr := DispatchSovereignRescue(cmdCtx, rescueOpts); rescueErr == nil {
+			fmt.Printf("\n✨ [Sovereign Rescue Takeover] Sovereign rescue resolved all remaining roadblocks! All stories marked complete.\n")
+		} else {
+			return fmt.Errorf("execution finished with %d incomplete/failed stories across %d loops (sovereign rescue failed: %v):\n - %s", len(failedStories), totalLoops, rescueErr, strings.Join(failedStories, "\n - "))
+		}
+	}
+
+	// Whole-Project Acceptance Audit Gate:
+	// Verify that the completed codebase fulfills all functional contracts and has genuine black-box E2E tests.
+	gateOpts := AcceptanceGateOptions{
+		TargetDir:      targetDir,
+		Cfg:            cfg,
+		Repo:           repo,
+		LLMClient:      llmClient,
+		PromptRenderer: promptRenderer,
+		SandboxRunner:  sandboxRunner,
+		GitClient:      gitClient,
+		StoryFiles:     storyFiles,
+		ToolRegistry:   reg,
+		Validator:      evaluator,
+	}
+	if gateErr := RunWholeProjectAcceptanceGate(cmdCtx, gateOpts); gateErr != nil {
+		return gateErr
 	}
 
 	finalOutcome = domain.ExecutionSuccess
@@ -442,16 +400,44 @@ func isStoryCompletedSuccessfully(ctx context.Context, repo domain.StateReposito
 
 	for _, s := range st.Stories {
 		if s.ID == featName || s.ID == storyID || s.FilePath == storyFile {
-			if s.Status != domain.StorySuccess {
-				return false
-			}
-			if st.Metadata.InputPath == storyFile || st.Metadata.FeatureName == featName {
-				if !allTasksSucceeded(st) {
-					return false
+			if s.Status == domain.StorySuccess {
+				if st.Metadata.InputPath == storyFile || st.Metadata.FeatureName == featName {
+					if !allTasksSucceeded(st) {
+						return false
+					}
 				}
+				return true
 			}
-			return true
+			break
 		}
+	}
+
+	// If story status in st.Stories wasn't SUCCESS, verify whether all tasks associated
+	// with this story actually succeeded (e.g. if the story recovered after an initial failure).
+	matchingTasks := 0
+	passedTasks := 0
+	prefix := featName + "-"
+	for _, t := range st.Tasks {
+		if t.StoryID == storyID || t.StoryID == featName || strings.HasPrefix(t.ID, prefix) || strings.HasPrefix(t.ID, storyID+"-") {
+			matchingTasks++
+			if t.Status == domain.TaskSuccess {
+				passedTasks++
+			}
+		}
+	}
+
+	if matchingTasks > 0 && matchingTasks == passedTasks {
+		now := time.Now().UTC()
+		for i, s := range st.Stories {
+			if s.ID == featName || s.ID == storyID || s.FilePath == storyFile {
+				st.Stories[i].Status = domain.StorySuccess
+				st.Stories[i].CompletedAt = &now
+				st.Stories[i].UpdatedAt = now
+				break
+			}
+		}
+		_ = repo.Save(ctx, st)
+		return true
 	}
 
 	if (st.Metadata.InputPath == storyFile || st.Metadata.FeatureName == featName) && st.StoryStatus == domain.StorySuccess && allTasksSucceeded(st) {
@@ -459,15 +445,4 @@ func isStoryCompletedSuccessfully(ctx context.Context, repo domain.StateReposito
 	}
 
 	return false
-}
-
-func computeFailureSignature(outcomes map[string]error) string {
-	var entries []string
-	for k, v := range outcomes {
-		if v != nil {
-			entries = append(entries, fmt.Sprintf("%s:%v", filepath.Base(k), v))
-		}
-	}
-	sort.Strings(entries)
-	return strings.Join(entries, ";")
 }

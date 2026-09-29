@@ -131,6 +131,8 @@ suggest the minimal corrective action to restore forward progress.
 Available corrective actions:
 - "reset_task":   reset an IN_PROGRESS or stalled task back to PENDING so it can be re-dispatched.
   Use when: task is frozen but recoverable (not at max retries, not permanently broken).
+- "clear_agent":  mark an inconsistent or orphaned agent registration as COMPLETED without resetting the task.
+  Use when: stall reason is "agent_inconsistency" (agent is WORKING but task is already finished, pending, or transitioning).
 - "fail_task":    permanently mark a task as FAILED with a clear diagnostic reason.
   Use when: task is at max retries, appears unrecoverable, or is blocking the entire pipeline.
 - "log_message":  record an observation without changing task status.
@@ -165,6 +167,7 @@ Return format:
   "reasoning": "Explain your diagnosis of each stall and why you chose each action",
   "actions": [
     { "tool": "reset_task",   "args": { "task_id": "...", "reason": "..." } },
+    { "tool": "clear_agent",  "args": { "agent_id": "...", "reason": "..." } },
     { "tool": "fail_task",    "args": { "task_id": "...", "reason": "..." } },
     { "tool": "log_message",  "args": { "message": "..." } },
     { "tool": "noop",         "args": {} }

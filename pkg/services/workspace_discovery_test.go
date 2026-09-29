@@ -24,6 +24,33 @@ func TestIsPathExcluded(t *testing.T) {
 		}
 	})
 
+	t.Run("default build artifact directories and file extensions are excluded by default", func(t *testing.T) {
+		samples := []string{
+			"target/debug/mybinary",
+			"node_modules/express/index.js",
+			"__pycache__/module.cpython-310.pyc",
+			"build/libs/app.jar",
+			".venv/bin/activate",
+			"dist/bundle.js",
+			"bin/tool",
+			"main.pyc",
+			"object.o",
+			"libfoo.so",
+			"test.log",
+		}
+		for _, s := range samples {
+			if !IsPathExcluded(s, nil) {
+				t.Errorf("expected %q to be excluded by default guardrails", s)
+			}
+		}
+		if IsPathExcluded("src/main.rs", nil) {
+			t.Errorf("expected src/main.rs NOT to be excluded")
+		}
+		if IsPathExcluded("pkg/services/server.go", nil) {
+			t.Errorf("expected pkg/services/server.go NOT to be excluded")
+		}
+	})
+
 	t.Run("configured exclude paths and wildcards are excluded", func(t *testing.T) {
 		excludes := []string{"target/", "target_container/", "*.tmp", "build"}
 		if !IsPathExcluded("target", excludes) {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,17 +84,17 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.Agents.TaskExecutionOrder != "generator_first" {
 		t.Errorf("expected TaskExecutionOrder 'generator_first', got %q", cfg.Agents.TaskExecutionOrder)
 	}
-	if cfg.Agents.ProductManager.Number != 1 || cfg.Agents.ProductManager.Iterations != 2 || cfg.Agents.ProductManager.Passes != 2 || cfg.Agents.ProductManager.MaxUserStories != 5 {
+	if cfg.Agents.ProductManager.Number != 1 || cfg.Agents.ProductManager.Iterations != 2 || cfg.Agents.ProductManager.Passes != 2 || cfg.Agents.ProductManager.GetMaxUserStories() != 5 {
 		t.Errorf("expected ProductManager {1, 2, 2, 5}, got %+v", cfg.Agents.ProductManager)
 	}
 	if cfg.Agents.Planner.Number != 1 || cfg.Agents.Planner.Iterations != 5 {
 		t.Errorf("expected Planner {1, 5}, got %+v", cfg.Agents.Planner)
 	}
-	if cfg.Agents.Generators.Number != 3 || cfg.Agents.Generators.Iterations != 20 {
-		t.Errorf("expected Generators {3, 20}, got %+v", cfg.Agents.Generators)
+	if cfg.Agents.Generators.Number != 3 || cfg.Agents.Generators.Iterations != 8 {
+		t.Errorf("expected Generators {3, 8}, got %+v", cfg.Agents.Generators)
 	}
-	if cfg.Agents.Testers.Number != 2 || cfg.Agents.Testers.Iterations != 15 {
-		t.Errorf("expected Testers {2, 15}, got %+v", cfg.Agents.Testers)
+	if cfg.Agents.Testers.Number != 2 || cfg.Agents.Testers.Iterations != 6 {
+		t.Errorf("expected Testers {2, 6}, got %+v", cfg.Agents.Testers)
 	}
 	if cfg.Agents.QA.Enabled || cfg.Agents.QA.Iterations != 1 {
 		t.Errorf("expected QA {Enabled: false, Iterations: 1}, got %+v", cfg.Agents.QA)
@@ -130,11 +131,11 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if time.Duration(cfg.LLM.Failover.Cooldown) != 5*time.Minute {
 		t.Errorf("expected LLM.Failover.Cooldown 5m, got %v", time.Duration(cfg.LLM.Failover.Cooldown))
 	}
-	if time.Duration(cfg.LLM.MaxTimeout) != 60*time.Second {
-		t.Errorf("expected LLM.MaxTimeout 60s, got %v", time.Duration(cfg.LLM.MaxTimeout))
+	if time.Duration(cfg.LLM.MaxTimeout) != 180*time.Second {
+		t.Errorf("expected LLM.MaxTimeout 180s, got %v", time.Duration(cfg.LLM.MaxTimeout))
 	}
-	if time.Duration(cfg.LLM.IdleTimeout) != 15*time.Second {
-		t.Errorf("expected LLM.IdleTimeout 15s, got %v", time.Duration(cfg.LLM.IdleTimeout))
+	if time.Duration(cfg.LLM.IdleTimeout) != 30*time.Second {
+		t.Errorf("expected LLM.IdleTimeout 30s, got %v", time.Duration(cfg.LLM.IdleTimeout))
 	}
 	if cfg.LLM.Streaming == nil || !*cfg.LLM.Streaming {
 		t.Error("expected LLM.Streaming true")
@@ -175,6 +176,12 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	}
 	if cfg.Sandbox.FormatterCommand != "go fmt ./..." {
 		t.Errorf("expected Sandbox.FormatterCommand 'go fmt ./...', got %q", cfg.Sandbox.FormatterCommand)
+	}
+	if cfg.Sandbox.GetE2EMode() != "docker" {
+		t.Errorf("expected Sandbox.GetE2EMode 'docker', got %q", cfg.Sandbox.GetE2EMode())
+	}
+	if cfg.Sandbox.GetE2ECommand() != "" {
+		t.Errorf("expected Sandbox.GetE2ECommand '', got %q", cfg.Sandbox.GetE2ECommand())
 	}
 	if cfg.Sandbox.GetLinterCommand() != "golangci-lint run" {
 		t.Errorf("expected GetLinterCommand 'golangci-lint run', got %q", cfg.Sandbox.GetLinterCommand())
@@ -344,6 +351,51 @@ sandbox:
 		}
 		if cfg.Sandbox.GetMaxLinterRetries() != 6 {
 			t.Errorf("expected GetMaxLinterRetries 6, got %d", cfg.Sandbox.GetMaxLinterRetries())
+		}
+	})
+}
+
+func TestSandboxE2EConfig(t *testing.T) {
+	t.Run("default is docker mode with empty command", func(t *testing.T) {
+		cfg := DefaultConfig()
+		if cfg.Sandbox.GetE2EMode() != "docker" {
+			t.Errorf("expected default E2E mode 'docker', got %q", cfg.Sandbox.GetE2EMode())
+		}
+		if cfg.Sandbox.GetE2ECommand() != "" {
+			t.Errorf("expected default E2E command '', got %q", cfg.Sandbox.GetE2ECommand())
+		}
+	})
+
+	t.Run("unmarshals native mode and custom command", func(t *testing.T) {
+		yamlData := `
+sandbox:
+  e2e:
+    mode: native
+    command: make e2e
+`
+		cfg := DefaultConfig()
+		if err := yaml.Unmarshal([]byte(yamlData), cfg); err != nil {
+			t.Fatalf("unexpected yaml unmarshal error: %v", err)
+		}
+		if cfg.Sandbox.GetE2EMode() != "native" {
+			t.Errorf("expected E2E mode 'native', got %q", cfg.Sandbox.GetE2EMode())
+		}
+		if cfg.Sandbox.GetE2ECommand() != "make e2e" {
+			t.Errorf("expected E2E command 'make e2e', got %q", cfg.Sandbox.GetE2ECommand())
+		}
+	})
+
+	t.Run("validation rejects invalid e2e mode", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Sandbox.E2E.Mode = "kubernetes"
+		cfg.VCS.TokenValue = "token"
+		cfg.LLM.APIKeyValue = "dummy"
+		err := cfg.Validate()
+		if err == nil {
+			t.Fatal("expected validation error for invalid e2e mode, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid sandbox.e2e.mode") {
+			t.Errorf("unexpected error message: %v", err)
 		}
 	})
 }

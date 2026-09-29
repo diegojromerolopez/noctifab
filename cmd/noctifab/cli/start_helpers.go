@@ -2,12 +2,18 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/storage"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/telemetry"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 )
 
@@ -38,33 +44,59 @@ func initStorageRepo(cfg *config.Config) (domain.StateRepository, domain.BudgetS
 	return repo, budgetStore, nil
 }
 
-func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox) *services.ToolRegistry {
+func initToolRegistry(cfg *config.Config, sandboxRunner services.Sandbox, llmClient domain.LLMClient) *services.ToolRegistry {
 	reg := services.NewToolRegistry()
 	reg.Register(&services.AddTaskTool{})
 	reg.Register(&services.CompleteTaskTool{})
 	reg.Register(&services.LogMessageTool{})
 	reg.Register(&services.NoopTool{})
 	reg.Register(&services.ReadFileTool{})
-	reg.Register(&services.WriteFileTool{})
+	syntaxChecker := services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)
+	if _, ok := syntaxChecker.(*services.NoopSyntaxChecker); ok {
+		syntaxChecker = services.NewSyntaxValidator()
+	}
+	reg.Register(&services.WriteFileTool{SyntaxChecker: syntaxChecker})
+	reg.Register(&services.WriteFilesTool{SyntaxChecker: syntaxChecker})
 	reg.Register(&services.DeleteFileTool{})
-	reg.Register(&services.EditFileTool{})
-	reg.Register(&services.ListDirectoryTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-	reg.Register(&services.FindFilesTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
-	reg.Register(&services.GrepSearchTool{ExcludePaths: cfg.Sandbox.ExcludePaths})
+	reg.Register(&services.EditFileTool{SyntaxChecker: syntaxChecker})
+	reg.Register(&services.ApplyPatchTool{SyntaxChecker: syntaxChecker})
+	excludedPaths := cfg.GetExcludedPaths()
+	reg.Register(&services.ListDirectoryTool{ExcludePaths: excludedPaths})
+	reg.Register(&services.FindFilesTool{ExcludePaths: excludedPaths})
+	reg.Register(&services.GrepSearchTool{ExcludePaths: excludedPaths})
 
 	runTimeout := 5 * time.Minute
 	if cfg.Sandbox.TimeoutSeconds > 0 {
 		runTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 	}
-	reg.Register(&services.RunTestsTool{Runner: sandboxRunner, Timeout: runTimeout})
+	formatter := services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
+	reg.Register(&services.RunTestsTool{
+		Runner:           sandboxRunner,
+		Formatter:        formatter,
+		FormatterCommand: cfg.Sandbox.FormatterCommand,
+		Timeout:          runTimeout,
+		SyntaxChecker:    syntaxChecker,
+	})
+	reg.Register(&services.RunE2ETestsTool{
+		Runner:  sandboxRunner,
+		Timeout: runTimeout,
+		E2EMode: cfg.Sandbox.E2E.Mode,
+		E2ECmd:  cfg.Sandbox.E2E.Command,
+	})
 	reg.Register(&services.RunLinterTool{
 		Runner:           sandboxRunner,
 		LinterCommand:    cfg.Sandbox.GetLinterCommand(),
+		Formatter:        formatter,
 		FormatterCommand: cfg.Sandbox.FormatterCommand,
 		MaxLinterIssues:  cfg.Sandbox.GetMaxLinterIssues(),
 		Timeout:          runTimeout,
 	})
 	reg.Register(&services.RequestTestFixTool{})
+	depMgr := services.NewDependencyManager(cfg.Sandbox.PackageManagers)
+	reg.Register(&services.InstallPackageTool{DepMgr: depMgr, Runner: sandboxRunner})
+	reg.Register(&services.CheckSocketTool{})
+	reg.Register(&services.CheckHTTPTool{})
+	reg.Register(&services.ValidateManifestTool{})
 	return reg
 }
 
@@ -91,9 +123,132 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		MaxActions:             cfg.Runtime.MaxActions,
 		AutoCreatePR:           cfg.VCS.PullRequest.AutoCreate,
 		CreateBranch:           cfg.VCS.IsCreateBranchEnabled(),
-		ExcludePaths:           cfg.Sandbox.ExcludePaths,
+		ExcludePaths:           cfg.GetExcludedPaths(),
 		WorkspaceCache:         cfg.GetWorkspaceCache(),
 		QA:                     cfg.Agents.QA,
+		Fallback:               cfg.Agents.GetFallback(),
 		LastResort:             cfg.Agents.LastResort,
+		DefaultTestCommand:     cfg.Sandbox.TestCommand,
+		AllowedCommands:        cfg.Sandbox.AllowedCommands,
+		E2E:                    cfg.Sandbox.E2E,
+		SandboxTelemetry:       cfg.Sandbox.Telemetry,
 	}
+}
+
+func initTelemetry(cfg *config.Config, targetDir string) func() {
+	if cfg == nil || (!cfg.Telemetry.Enabled && !cfg.Sandbox.Telemetry.Inject) {
+		return func() {}
+	}
+	serviceName := cfg.Telemetry.ServiceName
+	if serviceName == "" {
+		serviceName = "noctifab"
+	}
+	endpoint := cfg.Telemetry.Endpoint
+	if endpoint == "" && cfg.Sandbox.Telemetry.Inject {
+		endpoint = telemetry.DefaultCollectorEndpoint
+	}
+	if cfg.Sandbox.Telemetry.Inject && endpoint != "" {
+		activeEndpoint, err := telemetry.EnsureCollectorOnline(context.Background(), endpoint)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Notice: collector auto-start skipped/unavailable: %v (falling back to local traces)\n", err)
+		} else {
+			endpoint = activeEndpoint
+		}
+	}
+	traceFile := ""
+	if cfg.Sandbox.Telemetry.Inject || cfg.Sandbox.Telemetry.TraceFormat == "jsonl" || cfg.Telemetry.Exporter == "jsonl" || cfg.Telemetry.Exporter == "file" || (endpoint == "" && cfg.Telemetry.Exporter != "stdout") {
+		traceFile = filepath.Join(targetDir, ".noctifab", "traces.jsonl")
+	}
+	tp, tpErr := telemetry.InitTracerWithFile(serviceName, endpoint, traceFile)
+	if tpErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: telemetry init failed: %v\n", tpErr)
+		return func() {}
+	}
+	return func() {
+		_ = tp.Shutdown(context.Background())
+	}
+}
+
+func computeFailureSignature(outcomes map[string]error) string {
+	var entries []string
+	for k, v := range outcomes {
+		if v != nil {
+			entries = append(entries, fmt.Sprintf("%s:%v", filepath.Base(k), v))
+		}
+	}
+	sort.Strings(entries)
+	return strings.Join(entries, ";")
+}
+
+func initStoryExecutionEnvironment(
+	cmdCtx context.Context,
+	cfg *config.Config,
+	targetDir string,
+	storyFiles []string,
+	repo domain.StateRepository,
+	reg *services.ToolRegistry,
+	llmClient domain.LLMClient,
+	sandboxRunner services.Sandbox,
+	mailbox *services.CommandMailbox,
+	executionReporter domain.ExecutionReporter,
+	promptRenderer services.PromptRenderer,
+) (
+	executeStory func(ctx context.Context, currentStoryFile string) error,
+	planStory func(ctx context.Context, currentStoryFile string) error,
+	speculativePlanner *SpeculativePlanner,
+	gitClient *services.GitClient,
+	rebaseQueue *services.RebaseQueue,
+	evaluator *services.TestValidator,
+) {
+	gitClient = services.NewGitClient(".")
+	rebaseQueue = services.NewRebaseQueue(gitClient)
+	go rebaseQueue.Start(cmdCtx)
+
+	profilesMap := make(map[string]services.ProfileConfig)
+	for role, prof := range cfg.Profiles {
+		profilesMap[role] = services.ProfileConfig{
+			AllowedTools:    prof.AllowedTools,
+			AllowedCommands: prof.AllowedCommands,
+		}
+	}
+	validator := services.NewPolicyValidator(cfg.Sandbox.AllowedCommands, cfg.VCS.BaseBranch, profilesMap)
+	validator.ExcludePaths = cfg.Sandbox.ExcludePaths
+	validator.SetForbiddenPatterns(cfg.Sandbox.ForbiddenPatterns)
+	scheduler := services.NewScheduler(services.NewFileLockRegistry())
+	evaluator = services.NewTestValidator(sandboxRunner, false, llmClient, reg.Tools())
+	evaluator.SetE2EConfig(cfg.Sandbox.E2E)
+	evaluator.Formatter = services.NewCommandFormatterWithLLM(cfg.Sandbox.FormatterCommand, sandboxRunner, llmClient)
+	evaluator.FormatterCommand = cfg.Sandbox.FormatterCommand
+	evaluator.SyntaxChecker = services.NewCommandSyntaxCheckerWithLLM(cfg.Sandbox.SyntaxCheckCommand, llmClient)
+	if cfg.Sandbox.TimeoutSeconds > 0 {
+		evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
+	}
+	vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
+	repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
+
+	orchConfig := buildOrchestratorConfig(cfg)
+
+	storyDeps := storyExecutorDeps{
+		cfg:               cfg,
+		targetDir:         targetDir,
+		storyFiles:        storyFiles,
+		gitClient:         gitClient,
+		rebaseQueue:       rebaseQueue,
+		repo:              repo,
+		reg:               reg,
+		llmClient:         llmClient,
+		validator:         validator,
+		scheduler:         scheduler,
+		evaluator:         evaluator,
+		vcsClient:         vcsClient,
+		orchConfig:        orchConfig,
+		mailbox:           mailbox,
+		repairHandler:     repairHandler,
+		promptRenderer:    promptRenderer,
+		executionReporter: executionReporter,
+	}
+	executeStory = buildStoryExecutor(storyDeps)
+	planStory = buildStoryPlanner(storyDeps)
+	speculativePlanner = NewSpeculativePlanner(repo, planStory)
+	return
 }

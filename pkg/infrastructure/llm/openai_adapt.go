@@ -19,6 +19,7 @@ import (
 // exactly one option per failed attempt so compliant models stay on the
 // strict path while non-compliant gateways remain usable.
 type completionOptions struct {
+	streaming   bool
 	enforceJSON bool
 	// disableJSONMode overrides enforceJSON: when true, response_format is
 	// never set, even if enforceJSON is true. Used for providers/models that
@@ -32,18 +33,91 @@ type completionOptions struct {
 	// extraBody holds provider-specific key-value pairs to include verbatim
 	// in the request body (e.g. enable_thinking for QwenCloud thinking mode).
 	extraBody map[string]interface{}
+	// jsonSchema optionally provides a specific strict JSON schema. When nil,
+	// enforceJSON defaults to universal json_object mode, avoiding unconstrained
+	// property stripping on dynamic tool arguments and diverse agent prompts.
+	jsonSchema *shared.ResponseFormatJSONSchemaJSONSchemaParam
+}
+
+func normalizeModelKey(model string) string {
+	low := strings.ToLower(strings.TrimSpace(model))
+	low = strings.TrimPrefix(low, "~")
+	low = strings.TrimPrefix(low, "models/")
+	if parts := strings.Split(low, "/"); len(parts) > 1 {
+		return parts[len(parts)-1]
+	}
+	return low
 }
 
 func isNoTemperatureModel(model string) bool {
-	low := strings.ToLower(model)
-	if parts := strings.Split(low, "/"); len(parts) > 1 {
-		low = parts[len(parts)-1]
-	}
+	low := normalizeModelKey(model)
 	if strings.Contains(low, "claude") {
 		return true
 	}
 	if strings.HasPrefix(low, "o1") || strings.HasPrefix(low, "o3") || strings.HasPrefix(low, "o4") {
 		return true
+	}
+	if strings.Contains(low, "luna") || strings.Contains(low, "gpt-5") {
+		return true
+	}
+	return false
+}
+
+var noctifabResponseSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"reasoning": map[string]any{
+			"type": "string",
+		},
+		"actions": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tool": map[string]any{
+						"type": "string",
+					},
+					"args": map[string]any{
+						"type": "object",
+					},
+				},
+				"required": []string{"tool", "args"},
+			},
+		},
+	},
+	"required": []string{"reasoning", "actions"},
+}
+
+var NoctifabResponseSchema = shared.ResponseFormatJSONSchemaJSONSchemaParam{
+	Name:        "noctifab_response",
+	Description: openai.String("Structured response conforming to Noctifab reasoning and actions contract"),
+	Schema:      noctifabResponseSchema,
+}
+
+// hasThinkingEnabled checks if thinking/reasoning parameters are active in extra_body.
+func hasThinkingEnabled(extra map[string]interface{}) bool {
+	if extra == nil {
+		return false
+	}
+	if v, ok := extra["enable_thinking"]; ok {
+		switch val := v.(type) {
+		case bool:
+			if val {
+				return true
+			}
+		case string:
+			if strings.ToLower(val) == "true" {
+				return true
+			}
+		}
+	}
+	if th, ok := extra["thinking"].(map[string]interface{}); ok {
+		if t, ok := th["type"].(string); ok && t == "enabled" {
+			return true
+		}
+		if _, ok := th["budget_tokens"]; ok {
+			return true
+		}
 	}
 	return false
 }
@@ -55,22 +129,34 @@ func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCo
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(prompt),
 		},
-		StreamOptions: openai.ChatCompletionStreamOptionsParam{
-			IncludeUsage: openai.Bool(true),
-		},
 	}
-	if opts.temperature != nil && !isNoTemperatureModel(model) && !globalCapabilityCache.isTemperatureUnsupported(model) {
+	if opts.streaming {
+		params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
+			IncludeUsage: openai.Bool(true),
+		}
+	}
+	if opts.temperature != nil && !isNoTemperatureModel(model) && !globalCapabilityCache.isTemperatureUnsupported(model) && !hasThinkingEnabled(opts.extraBody) {
 		params.Temperature = openai.Float(tempOrDefault(*opts.temperature))
 	}
 	if opts.maxTokens > 0 {
 		params.MaxCompletionTokens = openai.Int(int64(opts.maxTokens))
 	}
-	// response_format=json_object is suppressed when disableJSONMode is set.
+	// response_format=json_schema or json_object is suppressed when disableJSONMode is set.
 	// This is required for providers/models that cannot use forced JSON mode
 	// (e.g. QwenCloud thinking models). ExtractJSONBlock handles the parsing.
+	// When opts.jsonSchema is nil, default to json_object mode, preserving dynamic tool
+	// argument properties and diverse role prompts without schema constraint coercion.
 	if opts.enforceJSON && !opts.disableJSONMode {
-		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
-			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+		if opts.jsonSchema != nil && !globalCapabilityCache.isJSONSchemaUnsupported(model) {
+			params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+				OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
+					JSONSchema: *opts.jsonSchema,
+				},
+			}
+		} else {
+			params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+				OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+			}
 		}
 	}
 	return params
@@ -85,6 +171,15 @@ func ensureJSONKeyword(prompt string) string {
 		return prompt
 	}
 	return prompt + "\n\nRespond with a single JSON object only."
+}
+
+// looksLikeJSONSchemaRejection detects 400s caused by models or relays that do not support
+// response_format=json_schema. The retry falls back to response_format=json_object.
+func looksLikeJSONSchemaRejection(body string) bool {
+	low := strings.ToLower(body)
+	return strings.Contains(low, "json_schema") ||
+		strings.Contains(low, "structured outputs") ||
+		(strings.Contains(low, "response_format") && strings.Contains(low, "schema"))
 }
 
 // looksLikeRouterUnavailable detects gateway-side model routing failures such
@@ -126,61 +221,111 @@ func looksLikeExtraBodyRejection(body string, extra map[string]interface{}) stri
 }
 
 type providerCapabilityCache struct {
-	mu            sync.RWMutex
-	noTemperature map[string]bool
-	noMaxTokens   map[string]bool
-	noJSONMode    map[string]bool
+	mu                     sync.RWMutex
+	noTemperature          map[string]bool
+	noMaxTokens            map[string]bool
+	noJSONSchema           map[string]bool
+	noJSONMode             map[string]bool
+	unsupportedExtraParams map[string]map[string]bool
 }
 
 var globalCapabilityCache = &providerCapabilityCache{
-	noTemperature: make(map[string]bool),
-	noMaxTokens:   make(map[string]bool),
-	noJSONMode:    make(map[string]bool),
+	noTemperature:          make(map[string]bool),
+	noMaxTokens:            make(map[string]bool),
+	noJSONSchema:           make(map[string]bool),
+	noJSONMode:             make(map[string]bool),
+	unsupportedExtraParams: make(map[string]map[string]bool),
+}
+
+func (c *providerCapabilityCache) isJSONSchemaUnsupported(model string) bool {
+	key := normalizeModelKey(model)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.noJSONSchema[key]
+}
+
+func (c *providerCapabilityCache) markJSONSchemaUnsupported(model string) {
+	if model == "" {
+		return
+	}
+	key := normalizeModelKey(model)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.noJSONSchema[key] = true
 }
 
 func (c *providerCapabilityCache) isTemperatureUnsupported(model string) bool {
+	key := normalizeModelKey(model)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.noTemperature[model]
+	return c.noTemperature[key]
 }
 
 func (c *providerCapabilityCache) isMaxTokensUnsupported(model string) bool {
+	key := normalizeModelKey(model)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.noMaxTokens[model]
+	return c.noMaxTokens[key]
 }
 
 func (c *providerCapabilityCache) isJSONModeUnsupported(model string) bool {
+	key := normalizeModelKey(model)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.noJSONMode[model]
+	return c.noJSONMode[key]
+}
+
+func (c *providerCapabilityCache) isExtraParamUnsupported(model, param string) bool {
+	key := normalizeModelKey(model)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if params, ok := c.unsupportedExtraParams[key]; ok {
+		return params[param]
+	}
+	return false
 }
 
 func (c *providerCapabilityCache) markTemperatureUnsupported(model string) {
 	if model == "" {
 		return
 	}
+	key := normalizeModelKey(model)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.noTemperature[model] = true
+	c.noTemperature[key] = true
 }
 
 func (c *providerCapabilityCache) markMaxTokensUnsupported(model string) {
 	if model == "" {
 		return
 	}
+	key := normalizeModelKey(model)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.noMaxTokens[model] = true
+	c.noMaxTokens[key] = true
 }
 
 func (c *providerCapabilityCache) markJSONModeUnsupported(model string) {
 	if model == "" {
 		return
 	}
+	key := normalizeModelKey(model)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.noJSONMode[model] = true
+	c.noJSONMode[key] = true
+}
+
+func (c *providerCapabilityCache) markExtraParamUnsupported(model, param string) {
+	if model == "" || param == "" {
+		return
+	}
+	key := normalizeModelKey(model)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.unsupportedExtraParams[key] == nil {
+		c.unsupportedExtraParams[key] = make(map[string]bool)
+	}
+	c.unsupportedExtraParams[key][param] = true
 }
 
 // adaptOptionsForError inspects a provider error and, when the failure is
@@ -193,6 +338,11 @@ func adaptOptionsForError(opts completionOptions, err error, model string) (comp
 		return opts, false
 	}
 	switch {
+	case he.StatusCode == http.StatusBadRequest && opts.enforceJSON && looksLikeJSONSchemaRejection(he.Body):
+		fmt.Fprintln(os.Stderr, "⚠ Server rejected response_format=json_schema; retrying with json_object.")
+		globalCapabilityCache.markJSONSchemaUnsupported(model)
+		opts.jsonSchema = nil
+		return opts, true
 	case he.StatusCode == http.StatusBadRequest && opts.enforceJSON && looksLikeResponseFormatRejection(he.Body):
 		fmt.Fprintln(os.Stderr, "⚠ Server rejected response_format; retrying without JSON enforcement.")
 		opts.enforceJSON = false
@@ -218,6 +368,7 @@ func adaptOptionsForError(opts completionOptions, err error, model string) (comp
 	case he.StatusCode == http.StatusBadRequest && len(opts.extraBody) > 0:
 		if key := looksLikeExtraBodyRejection(he.Body, opts.extraBody); key != "" {
 			fmt.Fprintf(os.Stderr, "⚠ Server rejected parameter %q; retrying without it.\n", key)
+			globalCapabilityCache.markExtraParamUnsupported(model, key)
 			newExtra := make(map[string]interface{}, len(opts.extraBody)-1)
 			for k, v := range opts.extraBody {
 				if k != key {

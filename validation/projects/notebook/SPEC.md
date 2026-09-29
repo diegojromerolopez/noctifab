@@ -13,6 +13,14 @@ The project is structured into two explicit subfolders:
 >
 > **ID Precision Requirement**: PostgreSQL `BIGSERIAL` columns are returned by the `pg` driver as strings by default. The backend MUST parse `id` columns to JavaScript `number` (e.g. using `parseInt(row.id, 10)` or `pg.types.setTypeParser(20, val => parseInt(val, 10))`) so JSON payloads return `"id": 1` (number), NOT `"id": "1"` (string).
 
+### 1.1 Minimal Project Skeleton (Walking Skeleton Priority for US-001)
+The first user story (`roadmap/US-001.md`) MUST establish a runnable minimal walking skeleton:
+1. Root `Makefile` (`build`, `test`, `lint`) and workspace configs.
+2. `backend/`: Minimal Fastify server exposing healthcheck (`GET /api/v1/health`), basic user auth routes, and backend unit tests.
+3. `frontend/`: Minimal React Vite app shell with basic routing and test harness.
+4. `make test` executes and passes cleanly.
+Subsequent stories add real-time WebSockets, full note CRUD, and split-pane UI.
+
 ---
 
 ## 2. Pinned Directory Layout

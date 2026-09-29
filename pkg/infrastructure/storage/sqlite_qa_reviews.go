@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
@@ -25,14 +26,27 @@ func (r *SQLiteRepository) saveQAReviews(ctx context.Context, tx *sql.Tx, state 
 			return err
 		}
 	}
+	seenPhases := make(map[string]bool)
 	for _, phase := range state.ReviewPhases {
+		phaseKey := fmt.Sprintf("%s:%s:%s:%s:%d", phase.StoryID, phase.TaskID, phase.Role, phase.ArtifactID, phase.Attempt)
+		if seenPhases[phaseKey] {
+			continue
+		}
+		seenPhases[phaseKey] = true
+
 		manifest, err := json.Marshal(phase.ArtifactManifest)
 		if err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO review_phases
 			(id, state_id, story_id, task_id, role, artifact_id, artifact_manifest, attempt, status, terminal_reason, started_at, deadline_at, completed_at, tokens_used)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, phase.ID, state.ID, phase.StoryID, phase.TaskID,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(story_id, task_id, role, artifact_id, attempt) DO UPDATE SET
+				id = excluded.id,
+				status = excluded.status,
+				terminal_reason = excluded.terminal_reason,
+				completed_at = excluded.completed_at,
+				tokens_used = excluded.tokens_used`, phase.ID, state.ID, phase.StoryID, phase.TaskID,
 			phase.Role, phase.ArtifactID, string(manifest), phase.Attempt, string(phase.Status), phase.TerminalReason, phase.StartedAt,
 			phase.DeadlineAt, nullTime(phase.CompletedAt), phase.TokensUsed); err != nil {
 			return err
