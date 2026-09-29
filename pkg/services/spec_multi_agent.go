@@ -239,10 +239,7 @@ func replaceOrAppendSection(doc, heading, content string) string {
 	}
 	lines := strings.Split(doc, "\n")
 	startIdx := -1
-	kw := heading
-	if strings.HasPrefix(kw, "## ") {
-		kw = strings.TrimPrefix(kw, "## ")
-	}
+	kw := strings.TrimPrefix(heading, "## ")
 	parts := strings.Fields(kw)
 	matchKw := kw
 	if len(parts) > 0 {

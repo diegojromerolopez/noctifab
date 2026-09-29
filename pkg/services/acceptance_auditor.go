@@ -264,9 +264,7 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 			result.PredictedFailures = sqaResult.PredictedFailures
 			if !sqaResult.Passed {
 				result.Passed = false
-				for _, imm := range sqaResult.ImmediateErrors {
-					result.Gaps = append(result.Gaps, imm)
-				}
+				result.Gaps = append(result.Gaps, sqaResult.ImmediateErrors...)
 				for _, pred := range sqaResult.PredictedFailures {
 					if strings.ToLower(pred.RiskLevel) == "critical" || strings.ToLower(pred.RiskLevel) == "high" {
 						gapMsg := fmt.Sprintf("Predictive QA Failure Risk [%s] (%s): %s (Trigger: %s)", pred.RiskLevel, pred.AffectedFile, pred.Description, pred.TriggerScenario)

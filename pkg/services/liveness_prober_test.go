@@ -33,7 +33,7 @@ func TestLivenessProber_DiagnoseParallel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	tcpAddr := l.Addr().String()
 
 	runner := &mockScriptRunner{output: "probe script passed", err: nil}

@@ -252,8 +252,8 @@ func TestGenerateRoadmapWithFullConfig_TwoStageExecution(t *testing.T) {
 	}
 
 	// Stage 2 LLM responses for each story
-	story1MD := fmt.Sprintf("# US-001: Walking Skeleton\n\n```noctifab-contract\n{\"story_id\":\"US-001\",\"public_contracts\":[{\"id\":\"p1\",\"interface\":\"CLI\",\"allowed_executables\":[\"python3\"],\"exit_codes\":[0],\"stdout_contains\":[],\"stderr_prefixes\":[]}]}\n```\n")
-	story2MD := fmt.Sprintf("# US-002: Strings & TTL\n\n```noctifab-contract\n{\"story_id\":\"US-002\",\"public_contracts\":[{\"id\":\"p2\",\"interface\":\"CLI\",\"allowed_executables\":[\"python3\"],\"exit_codes\":[0],\"stdout_contains\":[],\"stderr_prefixes\":[]}]}\n```\n")
+	story1MD := "# US-001: Walking Skeleton\n\n```noctifab-contract\n{\"story_id\":\"US-001\",\"public_contracts\":[{\"id\":\"p1\",\"interface\":\"CLI\",\"allowed_executables\":[\"python3\"],\"exit_codes\":[0],\"stdout_contains\":[],\"stderr_prefixes\":[]}]}\n```\n"
+	story2MD := "# US-002: Strings & TTL\n\n```noctifab-contract\n{\"story_id\":\"US-002\",\"public_contracts\":[{\"id\":\"p2\",\"interface\":\"CLI\",\"allowed_executables\":[\"python3\"],\"exit_codes\":[0],\"stdout_contains\":[],\"stderr_prefixes\":[]}]}\n```\n"
 
 	stage2Story1Resp := &domain.LLMResponse{
 		Actions: []domain.LLMAction{

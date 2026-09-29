@@ -47,9 +47,9 @@ func (r *ProjectStructureReport) Summary() string {
 		return "Project structure and layout comply with standard community guidelines."
 	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Found %d project structure / layout defect(s):\n", len(r.Violations)))
+	fmt.Fprintf(&sb, "Found %d project structure / layout defect(s):\n", len(r.Violations))
 	for idx, v := range r.Violations {
-		sb.WriteString(fmt.Sprintf("%d. %s\n", idx+1, v.String()))
+		fmt.Fprintf(&sb, "%d. %s\n", idx+1, v.String())
 	}
 	return sb.String()
 }

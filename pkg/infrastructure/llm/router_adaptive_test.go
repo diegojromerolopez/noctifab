@@ -109,7 +109,7 @@ func TestRouter_AdaptiveContextRouting_Integration(t *testing.T) {
 
 	// 1. Small prompt: OpenAI is first in priority and selected
 	smallPrompt := "short prompt under token limit"
-	ctx := context.WithValue(context.Background(), "agent_role", "generator")
+	ctx := context.WithValue(context.Background(), stringKey("agent_role"), "generator")
 	resp1, err1 := router.Complete(ctx, smallPrompt)
 	require.NoError(t, err1)
 	assert.Equal(t, "OpenAI executed", resp1.Reasoning)

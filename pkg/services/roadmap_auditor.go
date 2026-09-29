@@ -34,8 +34,8 @@ func BuildRoadmapCatalogFromStories(stories []StoryAuditItem) string {
 		if len(depsList) > 0 {
 			deps = strings.Join(depsList, ", ")
 		}
-		sb.WriteString(fmt.Sprintf("- **%s: %s** (File: %s | DependsOn: [%s])\n",
-			s.ID, s.Title, s.Filename, deps))
+		fmt.Fprintf(&sb, "- **%s: %s** (File: %s | DependsOn: [%s])\n",
+			s.ID, s.Title, s.Filename, deps)
 	}
 	return sb.String()
 }
