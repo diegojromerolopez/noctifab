@@ -453,10 +453,13 @@ RUN apk add --no-cache git
 context:
   mode: full
   diff_window_lines: 15
+  dedup_mutated_files: true
   compaction: caveman
 workspace_cache:
   enabled: true
 llm:
+  thinking:
+    default_budget: 2048
   hedging:
     enabled: true
     delay: 25s
@@ -467,13 +470,19 @@ llm:
     body:
       cap: 12000
 agents:
+  fallback:
+    sovereign_rescue:
+      slice_spec: true
   product_manager:
     audit_mode: smart
 ```
 
 - **`context.mode: full`**: Provides the agent with full file context for accurate AST reasoning, avoiding truncation errors common with heuristic tree-sitter extractors.
+- **`context.dedup_mutated_files: true`**: Prunes pre-turn snapshots of already-mutated files on multi-turn prompts, replacing them with a lightweight omission reference marker.
 - **`compaction: caveman`**: Minimizes boilerplate in historical prompts to save up to 40% in prompt token overhead.
 - **`workspace_cache.enabled: true`**: Caches unmodified filesystem reads in memory, dramatically reducing host I/O.
+- **`llm.thinking.default_budget: 2048`**: Globally caps reasoning token budgets when thinking is active without an explicit per-provider budget, preventing models from consuming 8k–16k reasoning tokens on simple turns.
+- **`agents.fallback.sovereign_rescue.slice_spec: true`**: Slices oversized technical specifications (>12k chars) during emergency sovereign takeover, preventing 100 KB whole-spec spikes.
 - **`llm.hedging`**: Gated by SSE stream liveness tracking. While the primary provider actively streams tokens, hedging is deferred. For long-running batch roles (`product_manager`, `fallback`, `auditor`), `heavy_delay: 90s` prevents premature concurrent model calls. Speculative hedging can be completely disabled with `enabled: false`.
 - **`llm.json_reminder`**: Caps the original task prompt (`task.cap: 1500`) and rejected response tail (`body.cap: 12000`) on one-shot format reminder pullbacks, preventing redundant 80+ KB spec context re-transmissions.
 - **`agents.product_manager.audit_mode: smart`**: Automatically skips expensive Pass 2 LLM auditing on user stories that already pass deterministic contract validation (`ValidateStoryContract`), contain explicit Definitions of Done, and have non-synthetic contracts. Set to `exhaustive` to force LLM auditing across all stories.

@@ -28,3 +28,29 @@ func TestGetExcludedPaths_Nil(t *testing.T) {
 	var cfg *Config
 	assert.Nil(t, cfg.GetExcludedPaths())
 }
+
+func TestDedupMutatedFiles(t *testing.T) {
+	t.Run("defaults to true when unset or nil", func(t *testing.T) {
+		var cfg ContextConfig
+		assert.True(t, cfg.IsDedupMutatedFilesEnabled())
+
+		var nilCfg *ContextConfig
+		assert.True(t, nilCfg.IsDedupMutatedFilesEnabled())
+	})
+
+	t.Run("explicitly disabled", func(t *testing.T) {
+		disabled := false
+		cfg := ContextConfig{
+			DedupMutatedFiles: &disabled,
+		}
+		assert.False(t, cfg.IsDedupMutatedFilesEnabled())
+	})
+
+	t.Run("explicitly enabled", func(t *testing.T) {
+		enabled := true
+		cfg := ContextConfig{
+			DedupMutatedFiles: &enabled,
+		}
+		assert.True(t, cfg.IsDedupMutatedFilesEnabled())
+	})
+}

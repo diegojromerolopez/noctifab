@@ -67,6 +67,9 @@ func TestFallbackConfig_Defaults(t *testing.T) {
 	if sr.GetTimeout() != 5*time.Minute {
 		t.Errorf("expected SovereignRescue.GetTimeout to default to 5m, got %v", sr.GetTimeout())
 	}
+	if !sr.IsSliceSpecEnabled() {
+		t.Errorf("expected SovereignRescue.IsSliceSpecEnabled to default to true")
+	}
 }
 
 func TestSovereignRescueConfig_CustomAndResolution(t *testing.T) {
@@ -177,6 +180,22 @@ func TestSovereignRescueConfig_CustomAndResolution(t *testing.T) {
 		}
 		if sr.Providers[0].Temperature == nil || *sr.Providers[0].Temperature != 0.3 {
 			t.Errorf("expected provider temperature 0.3, got %v", sr.Providers[0].Temperature)
+		}
+	})
+
+	t.Run("slice_spec can be explicitly disabled", func(t *testing.T) {
+		cfg := DefaultConfig()
+		disabled := false
+		cfg.Fallback.SovereignRescue.SliceSpec = &disabled
+
+		sr := cfg.GetSovereignRescue()
+		if sr.IsSliceSpecEnabled() {
+			t.Errorf("expected IsSliceSpecEnabled to be false when explicitly disabled")
+		}
+
+		var zeroSR SovereignRescueConfig
+		if !zeroSR.IsSliceSpecEnabled() {
+			t.Errorf("expected zero-value SovereignRescueConfig to have IsSliceSpecEnabled default to true")
 		}
 	})
 }

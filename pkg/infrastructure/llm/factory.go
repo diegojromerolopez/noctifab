@@ -113,5 +113,13 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 	client.MaxPromptTokens = cfg.LLM.MaxPromptTokens
 	client.JSONReminderTaskCap = cfg.LLM.JSONReminder.GetTaskCap()
 	client.JSONReminderBodyCap = cfg.LLM.JSONReminder.GetBodyCap()
+	if cfg.LLM.Thinking != nil && cfg.LLM.Thinking.IsEnabled() {
+		client.EnableThinking = cfg.LLM.Thinking.Enabled
+		budget := cfg.LLM.Thinking.GetBudget()
+		if budget <= 0 {
+			budget = cfg.LLM.Thinking.GetDefaultBudget()
+		}
+		client.ThinkingBudget = &budget
+	}
 	return client
 }

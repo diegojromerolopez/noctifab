@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.111.0] - 2026-10-01
+
+### Added
+- **Extended Token Governance & Multi-Turn Context Pruning**:
+  - **Thinking Budget Cap (`llm.thinking.default_budget`)**: Introduced `default_budget` (default `2048`) under `llm.thinking`, capping reasoning tokens across all providers whenever chain-of-thought thinking is active without an explicit per-provider budget. Eliminates catastrophic 8k–16k token burn on internal model reasoning.
+  - **Sovereign Rescue Spec Slicing (`agents.fallback.sovereign_rescue.slice_spec`)**: Added `slice_spec` (boolean toggle, default `true`), automatically invoking `SliceSpecForRoadmap` on oversized `SPEC.md` files (>12,000 chars) during emergency sovereign takeover turns, preventing 100+ KB full-spec re-transmissions.
+  - **Mutated File Context Deduplication (`context.dedup_mutated_files`)**: Added `dedup_mutated_files` (boolean toggle, default `true`) in `context` and orchestrator turn loops (`pkg/services/prompt_utils.go`, `orchestrator_generator.go`, `orchestrator_helper.go`). Prunes pre-turn snapshots of files modified earlier in the current task, replacing stale code blocks with lightweight omission markers in subsequent turns to save thousands of redundant prompt tokens.
+  - **Prompt Template Densification (`pkg/infrastructure/prompts/defaults/`)**: Stripped verbose language-specific Git blacklist catalogues, redundant GCC C/Makefile guidelines, and bloated Docker paragraphs across 12 generator and tester templates, cutting prompt overhead by ~2,200–2,650 characters (~550–660 tokens) on every call.
+  - **Validation Projects & Pyedis Sync**: Propagated `thinking.default_budget: 2048`, `sovereign_rescue.slice_spec: true`, and `context.dedup_mutated_files: true` to all 20 validation projects and pyedis configuration files.
+  - **Documentation Synchronization**: Updated `SPEC.md`, `docs/configuration.md`, and `docs/configuration_guidelines.md` detailing the new configuration parameters and context pruning behaviors.
+
 ## [0.110.0] - 2026-10-01
 
 ### Added

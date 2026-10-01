@@ -112,6 +112,8 @@ agents:
     allow_spec_mutation: true
     allow_scope_reduction: true
     enforce_spec_quality: true
+    sovereign_rescue:
+      slice_spec: true
 fallback:
   enabled: true
   poll_interval: 30s
@@ -318,6 +320,7 @@ telemetry:
   metrics:
     enabled: true
 context:
+  dedup_mutated_files: true
   mode: tree_sitter
   tree_sitter: true
   diff_window_lines: 40

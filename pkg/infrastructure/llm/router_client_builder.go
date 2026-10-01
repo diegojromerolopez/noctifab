@@ -81,6 +81,12 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 
 	if tb := spec.GetThinkingBudget(); tb != nil {
 		client.ThinkingBudget = tb
+	} else if client.EnableThinking != nil && *client.EnableThinking {
+		defaultBudget := 2048
+		if r.cfg != nil && r.cfg.LLM.Thinking != nil {
+			defaultBudget = r.cfg.LLM.Thinking.GetDefaultBudget()
+		}
+		client.ThinkingBudget = &defaultBudget
 	}
 
 	if r.cfg != nil {

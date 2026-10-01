@@ -81,6 +81,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	currentPrompt := testPrompt
 	maxTurns := iterationsOrDefault(o.cfg.TestersIterations)
 	var lastErr error
+	mutatedFiles := make(map[string]bool)
 	runTestsCalled := false
 	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
 	diagCache.SeedContexts(fileContexts, readerContexts)
@@ -231,6 +232,9 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 						consecutiveLinterFailures = 0
 						seenFileDependentCalls = make(map[string]bool)
 						circuitBreaker.RecordAction(action.Tool, action.Args)
+						if p, ok := action.Args["path"].(string); ok && p != "" {
+							mutatedFiles[p] = true
+						}
 					}
 				}
 			}
@@ -285,8 +289,12 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 		// Append errors and tool outputs to the body for the next turn. The
 		// non-overridable output contract stays at the END of the prompt so
 		// the JSON schema is the last thing the model reads.
+		body := rendered.Body
+		if o.cfg.Context.IsDedupMutatedFilesEnabled() && len(mutatedFiles) > 0 {
+			body = pruneMutatedFileContexts(body, mutatedFiles)
+		}
 		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.\n%s",
-			rendered.Body, turn+1, maxTurns,
+			body, turn+1, maxTurns,
 			joinCappedToolOutputs(turnToolOutputs),
 			maxTurns-turn-1,
 			rendered.Contract)

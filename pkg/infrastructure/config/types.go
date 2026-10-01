@@ -295,6 +295,7 @@ type LLMConfig struct {
 	BypassPriorityByContext bool               `yaml:"bypass_priority_by_context,omitempty"`
 	Hedging                 HedgingConfig      `yaml:"hedging,omitempty"`
 	JSONReminder            JSONReminderConfig `yaml:"json_reminder,omitempty"`
+	Thinking                *ThinkingConfig    `yaml:"thinking,omitempty"`
 }
 
 func (l LLMConfig) IsAdaptiveContextRoutingEnabled() bool {

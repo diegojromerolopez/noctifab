@@ -188,6 +188,14 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		specContent = llm.CompactMarkdownSpecWithMode(specContent, rescueCtxCfg.GetCompactionMode())
 	}
 
+	sliceSpec := true
+	if opts.Cfg != nil {
+		sliceSpec = opts.Cfg.GetSovereignRescue().IsSliceSpecEnabled()
+	}
+	if sliceSpec && len(specContent) > 12000 {
+		specContent = services.SliceSpecForRoadmap(specContent)
+	}
+
 	// 3. Obtain initial failure diagnostics
 	dummyTask := domain.Task{
 		ID:          "sovereign-project-rescue",

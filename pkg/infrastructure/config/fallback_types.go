@@ -67,6 +67,14 @@ type SovereignRescueConfig struct {
 	Providers                []AgentProviderRef            `yaml:"providers,omitempty"`
 	SlidingWindow            int                           `yaml:"sliding_window,omitempty"`
 	Context                  *SovereignRescueContextConfig `yaml:"context,omitempty"`
+	SliceSpec                *bool                         `yaml:"slice_spec,omitempty"`
+}
+
+func (s SovereignRescueConfig) IsSliceSpecEnabled() bool {
+	if s.SliceSpec != nil {
+		return *s.SliceSpec
+	}
+	return true
 }
 
 func (s SovereignRescueConfig) GetSlidingWindow() int {
@@ -234,6 +242,9 @@ func (c *Config) GetSovereignRescue() SovereignRescueConfig {
 				}
 				if fbAgent.SovereignRescue.MissingToolchainStrategy != "" {
 					res.MissingToolchainStrategy = fbAgent.SovereignRescue.MissingToolchainStrategy
+				}
+				if fbAgent.SovereignRescue.SliceSpec != nil {
+					res.SliceSpec = fbAgent.SovereignRescue.SliceSpec
 				}
 				if len(fbAgent.SovereignRescue.Providers) > 0 {
 					res.Providers = fbAgent.SovereignRescue.Providers

@@ -259,6 +259,7 @@ agents:
   - **`thinking`** (Map): Structured chain-of-thought reasoning configuration:
     - **`enabled`** (Boolean): Enable reasoning mode (`true` or `false`). Defaults to `false` (disabled by default).
     - **`budget`** (Integer): Token budget cap for reasoning output (e.g. `8192`).
+    - **`default_budget`** (Integer): Default reasoning token budget cap applied globally when thinking is enabled without an explicit per-provider budget (default: `2048`). Prevents uncapped reasoning models from exhausting context budgets on internal thoughts.
   - **`enable_thinking`** / **`thinking_budget`**: Backward-compatible flat flags for reasoning mode and budget.
   - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when thinking is enabled, but can be explicitly set for third-party gateways that reject forced JSON schemas.
   - **`extra_params`** (Map of Strings): Custom key-value pairs merged verbatim into the provider request body for provider-specific extensions.
@@ -657,6 +658,7 @@ fallback:
       - `"docker"`: Instructs the agent to create a `Dockerfile` with the missing compiler/runtime and wire `Makefile` (`build`, `test`, `e2e`) to execute containerized via `docker run --rm -v $(PWD):/app -w /app ...`.
       - `"local"`: Instructs the agent to install missing tools onto the host machine via `install_package` (pip, brew, apt, npm, cargo, etc.).
       - `"off"`: Disables fallback recovery for missing toolchains.
+    - **`slice_spec`** (Boolean): Enable automatic section slicing of oversized `SPEC.md` (>12,000 characters) for sovereign rescue prompts (default: `true`). Slices exhaustive test matrices and raw harness catalogs while preserving core invariants and architecture, saving tens of thousands of tokens per emergency takeover turn.
     - **`sliding_window`** (Integer): Character budget cap for failure logs (default: `16000`). Overridable via `NOCTIFAB_RESCUE_SLIDING_WINDOW`.
     - **`context`**: Configures prompt context windowing and compaction for whole-project sovereign recovery turns (shares identical properties with `context` and `sandbox.context`):
       - **`mode`** (String): Context slicing mode (`"diff_window"`, `"tree_sitter"`, or `"full"`).
@@ -708,6 +710,7 @@ context:
   - `diff_window`: Extracts modified git diff lines and error stack traces (+/- context lines).
   - `tree_sitter`: Universal AST parsing extracting class/struct definitions and function signatures.
 - **`diff_window_lines`** (Integer): Number of context lines surrounding diff modifications in `diff_window` mode (default: `15`).
+- **`dedup_mutated_files`** (Boolean): When `true` (default), prunes full pre-turn snapshots of files that were already modified in earlier turns of the current task. Replaces their static file context with an omission marker in subsequent turns, saving thousands of redundant tokens and preventing models from being confused by stale code snapshots.
 - **`compaction`** (String): Prompt compaction strategy applied to prompt bodies, specification payloads (`SPEC.md`), and historical turn contexts. Options:
   - `none`: Sends full uncompacted prompt text (default).
   - `caveman`: Telegraphic compaction that strips polite filler, redundant conversational preambles, decorative dividers, HTML comments (`<!-- ... -->`), and markdown images while strictly preserving code blocks (` ``` `), JSON contracts, file paths, and CLI flags.
