@@ -20,10 +20,6 @@ Roadmap Catalog Overview (Cross-Story Dependencies & Scope Boundaries):
 Existing User Stories:
 {{.ExistingStories}}{{.LegacyFiles}}
 
-SPECIFICATION REVIEW & REFINEMENT MANDATE:
-1. Critical Specification Review: Inspect the root SPEC.md for contradictions, ambiguities, missing command specifications, unstated return formats, or undefined error envelopes.
-2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your user story creation actions.
-
 REFINEMENT & AUDIT MANDATE:
 {{if .TargetStory}}
 You are auditing and refining the single target user story provided above.
@@ -32,12 +28,16 @@ CRITICAL JSON ENVELOPE RULE: Your entire response MUST be a single raw JSON obje
 2. Fast No-Op Path for Valid Stories: If the target user story already contains an explicit Definition of Done (DoD), edge case matrix, modular file paths, valid 'depends_on' references, and a valid 'noctifab-contract' block (with no Contract Validation Error reported above), DO NOT rewrite or regurgitate the story — simply return `"actions": []` with a concise `"reasoning"` confirming the story is complete.
 3. Only if the target user story is missing required DoD criteria, has invalid 'depends_on' chaining, or has a Contract Validation Error, emit a 'create_story' tool action with the target filename under roadmap/user-stories/ in the form 'roadmap/user-stories/US-XXX-title-slug.md' containing the complete, repaired markdown content.
 {{else}}
+SPECIFICATION REVIEW & REFINEMENT MANDATE:
+1. Critical Specification Review: Inspect the root SPEC.md for contradictions, ambiguities, missing command specifications, unstated return formats, or undefined error envelopes.
+2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your user story creation actions.
+
 If existing user story files are provided in the prompt:
 1. Inspect each existing user story against the specification and requirements.
 2. If an existing user story is vague or lacks an explicit Definition of Done (DoD), edge case matrix, error handling rules, or interface contracts, REWRITE and ENRICH it with complete DoD criteria, edge cases, error prefixes, exit codes, and formatting rules.
 3. Emit 'create_story' tool actions with the target filename under roadmap/user-stories/ in the form 'roadmap/user-stories/US-XXX-title-slug.md' and the updated markdown content.
 {{end}}
-
+{{if not .TargetStory}}
 ROADMAP CONSOLIDATION & STORY LIMIT RULE:
 1. Unified Complexity Unit (CU) Metric: Evaluate specification size using Complexity Units: CU = Unadjusted Function Points (inputs/outputs/models) + (3 * UI/UX Components) + (3 * Infrastructure Seams).
 2. Small Spec Rule (CU < 35 or < 800 LOC): For concise applications, utilities, or specifications with CU < 35 (e.g. CLI tools like word count, echo, calculator, git diff tools), generate at most 1–2 comprehensive progressive vertical slice user stories covering all specification requirements, followed by the mandatory final hardening story.
@@ -72,6 +72,7 @@ TASK ENTITY & ATOMICITY MANDATE:
 1. Entity & Functional Value: Every task created or defined in user stories MUST have concrete functionality entity. NO test-only or coverage-only tasks are allowed.
 2. Co-located Code & Tests: Every task MUST pair concrete application functionality alongside its corresponding unit/integration tests in the SAME task. Never separate functionality from its tests.
 3. Maximum Atomicity: Tasks MUST be as atomic as possible—each task must target a single fine-grained file/module/feature alongside its co-located tests, implementable in 1-2 turns.
+{{end}}
 
 MODULAR FILE DECOMPOSITION & ANTI-MONOLITH MANDATE (SINGLE RESPONSIBILITY ARCHITECTURE):
 1. Single Responsibility & File Separation: Decompose source code files and test files by single responsibility, domain capability, and distinct command/entity (e.g. separate files/modules for individual commands, handlers, codecs, parsers, models, storage engines, controllers, endpoints, and utility functions). Under NO circumstances should an application, subsystem, or command suite be consolidated into a lone, gigantic monolithic file (e.g., a single massive commands.py, handlers.go, server.rs, or all-in-one test file).

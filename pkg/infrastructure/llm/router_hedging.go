@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -39,6 +40,15 @@ func (r *ResilientLLMRouter) completeWithHedging(
 
 	primary := candidates[0]
 	secondary := candidates[1]
+
+	// Heavy batch roles (Product Manager, Sovereign Rescue, QA, Spec Drafting)
+	// naturally take 40-90s to stream their full JSON payloads. Speculatively hedging at 25s
+	// for these roles needlessly doubles token spend. Scale minimum hedge delay to at least 90s.
+	cleanRole := strings.ToLower(strings.TrimSpace(roleName))
+	isHeavyBatchRole := cleanRole == "product_manager" || cleanRole == "fallback" || cleanRole == "sovereign_rescue" || cleanRole == "qa" || cleanRole == "spec"
+	if isHeavyBatchRole && hedgeDelay < 90*time.Second {
+		hedgeDelay = 90 * time.Second
+	}
 
 	// Adaptive Speculative Hedging: check dynamic demotion/timeout memory
 	if r.latencyTracker != nil {
@@ -78,12 +88,15 @@ func (r *ResilientLLMRouter) completeWithHedging(
 	parentCtx, parentCancel := context.WithCancel(ctx)
 	defer parentCancel()
 
+	tracker := domain.NewStreamLivenessTracker()
+	primaryCtx := domain.WithStreamLivenessTracker(parentCtx, tracker)
+
 	ch := make(chan hedgeResult, 2)
 
 	// Launch primary
 	t0Primary := time.Now()
 	go func() {
-		resp, err := primary.Client.Complete(parentCtx, prompt)
+		resp, err := primary.Client.Complete(primaryCtx, prompt)
 		ch <- hedgeResult{
 			candidate: primary,
 			resp:      resp,
@@ -102,7 +115,15 @@ func (r *ResilientLLMRouter) completeWithHedging(
 	for {
 		select {
 		case <-timer.C:
-			// Primary exceeded hedge delay: launch secondary hedge request
+			// Stream liveness check: if primary candidate is actively streaming chunks,
+			// do NOT launch a redundant secondary candidate and double token spend!
+			if tracker.IsActive(time.Now().Add(-15 * time.Second)) {
+				fmt.Fprintf(os.Stderr, "ℹ [LLM Speculative Hedging] Primary candidate '%s' is actively streaming (%d chunks received); postponing speculative hedge.\n", primary.Name, tracker.ChunkCount())
+				timer.Reset(10 * time.Second)
+				continue
+			}
+
+			// Primary exceeded hedge delay without active streaming: launch secondary hedge request
 			if !secondaryLaunched {
 				secondaryLaunched = true
 				t0Secondary = time.Now()
@@ -125,6 +146,14 @@ func (r *ResilientLLMRouter) completeWithHedging(
 				// We have a winner! Cancel the other candidate's context
 				parentCancel()
 				r.recordTokenUsage(ctx, prompt, res.candidate, res.resp)
+				if secondaryLaunched {
+					// Account for secondary hedged input tokens that were dispatched
+					otherCandidate := secondary
+					if res.candidate.Name == secondary.Name {
+						otherCandidate = primary
+					}
+					r.recordPromptTokenUsage(ctx, prompt, otherCandidate)
+				}
 				return res.resp, nil
 			}
 
@@ -188,6 +217,15 @@ func (r *ResilientLLMRouter) recordTokenUsage(ctx context.Context, prompt string
 	if r.budgetStore != nil && resp != nil {
 		today := time.Now().UTC().Format("2006-01-02")
 		tokens := estimateUsageTokens(prompt, resp)
+		_ = r.budgetStore.IncrementUsage(ctx, today, c.Provider, tokens)
+		_ = r.budgetStore.IncrementUsage(ctx, today, "total", tokens)
+	}
+}
+
+func (r *ResilientLLMRouter) recordPromptTokenUsage(ctx context.Context, prompt string, c RouterCandidate) {
+	if r.budgetStore != nil {
+		today := time.Now().UTC().Format("2006-01-02")
+		tokens := estimatePromptTokens(prompt)
 		_ = r.budgetStore.IncrementUsage(ctx, today, c.Provider, tokens)
 		_ = r.budgetStore.IncrementUsage(ctx, today, "total", tokens)
 	}

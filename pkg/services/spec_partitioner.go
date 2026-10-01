@@ -151,8 +151,18 @@ func PartitionSpecWithCompaction(specContent string, outputDir string, specHash 
 	sliceIndex := 1
 
 	for _, sec := range parsedSections {
+		titleLower := strings.ToLower(sec.title)
 		// If a section has commands or is a detailed sub-heading under features (e.g. 6.X or level 3 command group)
-		isDomainSlice := len(sec.commands) > 0 || (sec.level == 3 && strings.Contains(strings.ToLower(sec.title), "command"))
+		isDomainSlice := len(sec.commands) > 0 || (sec.level == 3 && strings.Contains(titleLower, "command"))
+		// Auxiliary non-core sections (exhaustive test matrices, documentation guides, phased roadmaps)
+		// are sliced out to keep 00_core_invariants.md lean (< 15 KB instead of 50 KB).
+		isAuxiliarySlice := sec.level == 2 && (strings.Contains(titleLower, "documentation") ||
+			strings.Contains(titleLower, "conformance") ||
+			strings.Contains(titleLower, "testing") ||
+			strings.Contains(titleLower, "verification") ||
+			strings.Contains(titleLower, "test matrix") ||
+			strings.Contains(titleLower, "phased implementation") ||
+			strings.Contains(titleLower, "user story roadmap"))
 
 		if isDomainSlice {
 			slug := sanitizeSlug(sec.title)
@@ -184,6 +194,16 @@ func PartitionSpecWithCompaction(specContent string, outputDir string, specHash 
 
 			// In core invariants, add a reference link rather than copying the entire domain table
 			coreLines = append(coreLines, fmt.Sprintf("### %s\n*(Detailed command matrix partitioned into `.noctifab/specs/%s` — %d commands)*\n", sec.title, fileName, len(sec.commands)))
+		} else if isAuxiliarySlice {
+			slug := sanitizeSlug(sec.title)
+			fileName := fmt.Sprintf("aux_%s.md", slug)
+			filePath := filepath.Join(outputDir, fileName)
+			sliceContent := strings.Join(sec.lines, "\n")
+			if cleanCompactionMode != "" && cleanCompactionMode != "none" {
+				sliceContent = llm.CompactMarkdownSpecWithMode(sliceContent, cleanCompactionMode)
+			}
+			_ = os.WriteFile(filePath, []byte(sliceContent), 0644)
+			coreLines = append(coreLines, fmt.Sprintf("## %s\n*(Details partitioned into `.noctifab/specs/%s`)*\n", sec.title, fileName))
 		} else {
 			coreLines = append(coreLines, sec.lines...)
 		}
@@ -192,6 +212,7 @@ func PartitionSpecWithCompaction(specContent string, outputDir string, specHash 
 	// Write 00_core_invariants.md
 	coreFilePath := filepath.Join(outputDir, manifest.CoreFile)
 	coreContent := strings.Join(coreLines, "\n")
+	coreContent = SliceSpecForRoadmap(coreContent)
 	if cleanCompactionMode != "" && cleanCompactionMode != "none" {
 		coreContent = llm.CompactMarkdownSpecWithMode(coreContent, cleanCompactionMode)
 	}
@@ -284,6 +305,9 @@ func BuildBasicAndFeatureSpec(projectPath string, domainSliceOrTitle string, fal
 		return fallbackSpec
 	}
 	basicContext := string(coreBytes)
+	if len(basicContext) > 15000 {
+		basicContext = SliceSpecForRoadmap(basicContext)
+	}
 
 	targetQuery := strings.ToLower(strings.TrimSpace(domainSliceOrTitle))
 	var matchedFile string
@@ -336,7 +360,11 @@ func BuildBasicAndFeatureSpec(projectPath string, domainSliceOrTitle string, fal
 	sb.WriteString(matchedTitle)
 	sb.WriteString("\n")
 	sb.WriteString(string(sliceBytes))
-	return sb.String()
+	result := sb.String()
+	if len(result) > 25000 {
+		result = SliceSpecForRoadmap(result)
+	}
+	return result
 }
 
 // BuildRoadmapOutlineSpec constructs a compact specification for Stage 1 roadmap planning.
@@ -361,8 +389,13 @@ func BuildRoadmapOutlineSpec(projectPath string, fallbackSpec string) string {
 		return fallbackSpec
 	}
 
+	coreStr := string(coreBytes)
+	if len(coreStr) > 15000 {
+		coreStr = SliceSpecForRoadmap(coreStr)
+	}
+
 	var sb strings.Builder
-	sb.WriteString(string(coreBytes))
+	sb.WriteString(coreStr)
 	sb.WriteString("\n\n## Specification Domain Subsystems Index\n")
 	sb.WriteString("The specification has been partitioned into the following domain subsystems. When planning user stories (via 'plan_roadmap'), create dedicated vertical slice stories aligned with these domain slices:\n\n")
 

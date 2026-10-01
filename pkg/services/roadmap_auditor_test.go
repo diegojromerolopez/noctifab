@@ -189,3 +189,43 @@ func TestAuditRoadmapStoriesPerStory_PartialFailure_GracefulRetain(t *testing.T)
 	require.NoError(t, err)
 	assert.Contains(t, string(d2), "Original S2")
 }
+
+func TestAuditRoadmapStoriesPerStory_SkipValidStory(t *testing.T) {
+	tempDir := t.TempDir()
+	storiesDir := filepath.Join(tempDir, "roadmap", "user-stories")
+	require.NoError(t, os.MkdirAll(storiesDir, 0755))
+
+	s1 := filepath.Join(storiesDir, "US-001-valid.md")
+	s1Content := `# US-001: Valid Story
+
+## Definition of Done
+1. Real working implementation.
+2. Exit code 0 for success.
+
+` + "```noctifab-contract\n" + `{"story_id":"US-001","public_contracts":[{"id":"c1","interface":"cli","allowed_executables":["./app"],"exit_codes":[0]}]}
+` + "```\n"
+	require.NoError(t, os.WriteFile(s1, []byte(s1Content), 0644))
+
+	mock := &mockRoadmapAuditorLLM{}
+	renderer, err := prompts.NewRenderer(tempDir, nil)
+	require.NoError(t, err)
+
+	readyCalled := false
+	refinedCount, err := AuditRoadmapStoriesPerStory(
+		context.Background(),
+		tempDir,
+		[]string{s1},
+		"# Spec",
+		"",
+		mock,
+		renderer,
+		func(path, content string) {
+			readyCalled = true
+		},
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, refinedCount, "already valid story should produce 0 refinements")
+	assert.Equal(t, 0, mock.calls, "LLM should not be called when story satisfies validation")
+	assert.True(t, readyCalled, "onStoryReady callback should be invoked for verified story")
+}

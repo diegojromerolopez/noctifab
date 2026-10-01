@@ -405,9 +405,13 @@ func (o *baseOpenAIClient) sendCompletionStreaming(ctx context.Context, model, a
 	var reasoning strings.Builder
 	var usage domain.TokenUsage
 	streamStart := time.Now()
+	tracker := domain.StreamLivenessTrackerFromContext(ctx)
 	for stream.Next() {
 		if idleTimer != nil {
 			idleTimer.Reset(idleTimeout)
+		}
+		if tracker != nil {
+			tracker.RecordChunk()
 		}
 		chunk := stream.Current()
 		acc.AddChunk(chunk)

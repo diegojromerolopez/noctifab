@@ -137,16 +137,19 @@ func parseAndUnmarshal(body []byte) (*domain.LLMResponse, error) {
 
 // buildJSONReminderPrompt returns a single user-message prompt that re-states
 // the JSON envelope demand and includes a truncated tail of the model's
-// previous non-JSON answer. The model is asked to return ONLY the JSON
-// envelope now. The tail is capped to keep the request under typical context
-// limits while still surfacing enough context for the model to recognise its
-// mistake and self-correct in a single turn.
-const jsonReminderTailCap = 1500
+// previous non-JSON answer. The original prompt is capped to a task summary
+// to prevent re-transmitting 50-100 KB of spec context on format pullbacks.
+const jsonReminderTaskCap = 1500
+const jsonReminderBodyCap = 12000
 
 func buildJSONReminderPrompt(originalPrompt string, prevBody []byte) string {
+	taskSummary := strings.TrimSpace(originalPrompt)
+	if len(taskSummary) > jsonReminderTaskCap {
+		taskSummary = taskSummary[:jsonReminderTaskCap] + "\n...[spec/context truncated for format reminder]..."
+	}
 	tail := string(prevBody)
-	if len(tail) > jsonReminderTailCap {
-		tail = "...[truncated]...\n" + tail[len(tail)-jsonReminderTailCap:]
+	if len(tail) > jsonReminderBodyCap {
+		tail = "...[truncated]...\n" + tail[len(tail)-jsonReminderBodyCap:]
 	}
 	return fmt.Sprintf(`Your previous response did NOT contain the structured JSON envelope that this system requires. The system cannot continue without a single valid JSON object.
 
@@ -167,7 +170,7 @@ Schema:
   ]
 }
 
-Return the valid JSON block now and nothing else.`, originalPrompt, tail)
+Return the valid JSON block now and nothing else.`, taskSummary, tail)
 }
 
 func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Duration, url string) *Client {

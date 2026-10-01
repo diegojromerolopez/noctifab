@@ -379,3 +379,45 @@ Global server and protocol invariants.
 	fbOutline := BuildRoadmapOutlineSpec(emptyDir, "my-fallback-outline")
 	assert.Equal(t, "my-fallback-outline", fbOutline)
 }
+
+func TestPartitionSpec_AuxiliarySectionsExcludedFromCore(t *testing.T) {
+	tempDir := t.TempDir()
+	outDir := filepath.Join(tempDir, ".noctifab", "specs")
+
+	sampleSpec := `# Large Architecture Spec
+
+## 1. Core Overview
+Core system architecture and operational contracts.
+
+## 2. Command Family
+Command details and wire formats.
+
+## 7. Testing Strategy and Verification Matrix
+Extensive test matrices and test case inventories that should not bloat core invariants.
+- Test case 1
+- Test case 2
+
+## 8. Documentation Guidelines
+User manuals and doc instructions.
+`
+	manifest, err := PartitionSpec(sampleSpec, outDir, "hash999")
+	require.NoError(t, err)
+	require.NotNil(t, manifest)
+
+	// Verify 00_core_invariants.md does not contain auxiliary section bodies
+	coreBytes, err := os.ReadFile(filepath.Join(outDir, "00_core_invariants.md"))
+	require.NoError(t, err)
+	coreStr := string(coreBytes)
+	assert.Contains(t, coreStr, "Core system architecture")
+	assert.NotContains(t, coreStr, "Extensive test matrices and test case inventories")
+	assert.NotContains(t, coreStr, "User manuals and doc instructions")
+
+	// Verify auxiliary files were written
+	auxTestBytes, err := os.ReadFile(filepath.Join(outDir, "aux_7_testing_strategy_and_verification_matrix.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(auxTestBytes), "Extensive test matrices and test case inventories")
+
+	auxDocBytes, err := os.ReadFile(filepath.Join(outDir, "aux_8_documentation_guidelines.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(auxDocBytes), "User manuals and doc instructions")
+}

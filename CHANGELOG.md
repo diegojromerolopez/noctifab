@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.109.1] - 2026-10-01
+
+### Fixed
+- **LLM Token Overconsumption Elimination & Context Optimization**:
+  - **Stream Liveness Gated Speculative Hedging (`pkg/domain/llm_client.go`, `pkg/infrastructure/llm/router_hedging.go`, `pkg/infrastructure/llm/openai.go`)**: Introduced `StreamLivenessTracker` to detect active SSE token streaming on primary candidates. When a primary candidate is actively streaming chunks, speculative hedging is postponed rather than firing duplicate concurrent LLM requests, saving ~40%–50% of total tokens. Scaled minimum hedge delay to 90s for heavy batch roles (`product_manager`, `fallback`, `sovereign_rescue`, `qa`, `spec`).
+  - **Lean Core Invariants & Spec Slicing Enforcement (`pkg/services/spec_partitioner.go`, `pkg/services/roadmap_auditor.go`)**: Sliced exhaustive test matrices, conformance verification suites, and documentation guidelines into dedicated auxiliary files (`aux_*.md`), reducing `00_core_invariants.md` from ~50 KB to ~12 KB. Fixed `BuildBasicAndFeatureSpec` and `roadmap_auditor.go` to enforce `SliceSpecForRoadmap`, preventing outline expansion from bypassing domain slicing.
+  - **Deterministic Fast-Path Story Audit Bypass (`pkg/services/roadmap_auditor.go`)**: User stories that already satisfy `ValidateStoryContract`, contain explicit Definitions of Done, and have non-synthetic contracts now bypass Pass 2 LLM auditing entirely, saving 50%–100% of Pass 2 audit tokens.
+  - **Capped Prompt in JSON Format Reminders (`pkg/infrastructure/llm/client.go`)**: Capped original prompt context in `buildJSONReminderPrompt` to a 1,500-byte task summary (while expanding previous answer tail to 12,000 bytes), eliminating redundant re-transmission of 85+ KB specifications on schema pullbacks.
+  - **Enhanced CompactCaveman & Template Trimming (`pkg/infrastructure/llm/prompt_templates.go`, `audit.tmpl`, `generate.tmpl`)**: Upgraded `CompactCaveman` to extract list prefixes (`- `, `* `, `1. `) before evaluating filler prefixes, compact Markdown table column padding (`| --- |` and cell whitespace), collapse multi-space runs, and expand telegraphic replacements. Wrapped whole-roadmap sizing rules in `audit.tmpl` with `{{if not .TargetStory}}`, cutting per-story audit prompt boilerplate by ~68%.
+
 ## [0.109.0] - 2026-09-30
 
 ### Added

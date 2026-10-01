@@ -284,6 +284,16 @@ func TestBuildJSONReminderPrompt(t *testing.T) {
 	if !strings.Contains(p2, "...[truncated]...") {
 		t.Error("reminder prompt for large body should include a truncation marker")
 	}
+
+	// Truncation: huge original prompt must be capped to prevent re-sending 85KB specs.
+	hugePrompt := strings.Repeat("Detailed spec content line here\n", 500)
+	p3 := buildJSONReminderPrompt(hugePrompt, body)
+	if !strings.Contains(p3, "...[spec/context truncated for format reminder]...") {
+		t.Error("reminder prompt for large original prompt should include a truncation marker")
+	}
+	if len(p3) > 10_000 {
+		t.Errorf("reminder prompt unexpectedly large (%d bytes)", len(p3))
+	}
 }
 
 func TestParseAndUnmarshal(t *testing.T) {

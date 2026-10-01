@@ -129,4 +129,33 @@ In order to utilize the API, make sure to execute commands prior to shutdown.
 			t.Errorf("expected 'In order to' stripped/replaced in caveman spec compaction: %s", compactedCaveman)
 		}
 	})
+
+	t.Run("CompactCaveman_ListPrefixAndTableCompaction", func(t *testing.T) {
+		input := `- Please ensure that you implement the feature
+* Make sure to write tests
+1. You must verify all exit codes
+|   Command   |   Arguments   |   Exit Code   |
+| ----------- | ------------- | ------------- |
+|   ping      |   none        |   0           |`
+		compacted := CompactCaveman(input)
+
+		if strings.Contains(compacted, "Please ensure that you") {
+			t.Errorf("expected bullet prefix filler to be stripped, got: %s", compacted)
+		}
+		if !strings.Contains(compacted, "- Implement the feature") {
+			t.Errorf("expected '- Implement the feature', got: %s", compacted)
+		}
+		if !strings.Contains(compacted, "* Write tests") {
+			t.Errorf("expected '* Write tests', got: %s", compacted)
+		}
+		if !strings.Contains(compacted, "1. Verify all exit codes") {
+			t.Errorf("expected '1. Verify all exit codes', got: %s", compacted)
+		}
+		if !strings.Contains(compacted, "| Command | Arguments | Exit Code |") {
+			t.Errorf("expected table row whitespace compacted, got: %s", compacted)
+		}
+		if !strings.Contains(compacted, "| --- | --- | --- |") {
+			t.Errorf("expected table separator collapsed, got: %s", compacted)
+		}
+	})
 }

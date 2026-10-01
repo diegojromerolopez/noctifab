@@ -11,12 +11,8 @@ INPUT CONTEXT:
 
 TWO-STAGE ROADMAP GENERATION MANDATE:
 1. Two-Stage Roadmap Planning: To guarantee complete, high-precision user story contracts without token truncation or timeout errors, emit a 'plan_roadmap' action outlining the planned user stories catalog (with id, title, slug, domain_slice, depends_on, complexity, and summary). The platform will then execute Stage 2 to expand each story individually with complete Definitions of Done and executable contracts.
-2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your 'plan_roadmap' action.
+2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies, ambiguities, missing command specifications, or unstated return formats, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your 'plan_roadmap' action.
 3. Direct Story Creation: For small specifications (1-2 stories), you may optionally emit 'create_story' actions directly alongside or instead of 'plan_roadmap'.
-
-SPECIFICATION REVIEW & REFINEMENT MANDATE:
-1. Critical Specification Review: Inspect the root SPEC.md for contradictions, ambiguities, missing command specifications, unstated return formats, or undefined error envelopes.
-2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your user story creation actions.
 
 REFINEMENT & AUDIT MANDATE:
 If existing user story files are provided in the prompt:
