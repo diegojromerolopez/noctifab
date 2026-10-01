@@ -6,6 +6,7 @@ agents:
     number: 3
     iterations: 2
   product_manager:
+    audit_mode: smart
     number: 1
     iterations: 2
     user_stories:
@@ -177,6 +178,15 @@ storage:
     backoff_base: 100ms
     backoff_factor: 2
 llm:
+  hedging:
+    enabled: true
+    delay: 25s
+    heavy_delay: 90s
+  json_reminder:
+    task:
+      cap: 1500
+    body:
+      cap: 12000
   token_usage_limit: 0
   priority:
   - gemini-flash
