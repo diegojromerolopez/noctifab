@@ -434,6 +434,11 @@ func emitLLMEvent(ctx context.Context, provider, model string, duration time.Dur
 	if cTokens <= 0 {
 		cTokens = estimateCompletionTokens(resp)
 	}
+	var cachedTokens *int64
+	if usage.CachedTokens > 0 {
+		c := usage.CachedTokens
+		cachedTokens = &c
+	}
 	event := domain.ExecutionEvent{
 		Kind:             domain.EventLLMCallFinished,
 		At:               time.Now().UTC(),
@@ -442,6 +447,7 @@ func emitLLMEvent(ctx context.Context, provider, model string, duration time.Dur
 		DurationMillis:   &durMS,
 		PromptTokens:     &pTokens,
 		CompletionTokens: &cTokens,
+		CachedTokens:     cachedTokens,
 		Outcome:          outcome,
 	}
 	obs.Observe(ctx, event)

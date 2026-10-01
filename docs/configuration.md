@@ -193,6 +193,16 @@ llm:
     - "anthropic-backup"
     - "deepseek-coder"
 
+  # Prompt Caching & Provider Session Affinity:
+  # Noctifab automatically injects official API caching parameters and session routing headers:
+  # - OpenAI, Mistral, Cerebras, xAI: prompt_cache_key routing affinity
+  # - Moonshot / Kimi: prompt_cache_options (ttl: 1h)
+  # - OpenRouter: x-session-id, session_id, and X-OpenRouter-Cache: true
+  # - Fireworks: x-session-affinity, user
+  # - Anthropic & Qwen: cache_control: {"type": "ephemeral"} on message content
+  # - Google Gemini: cachedContent resource reference and systemInstruction prefix caching
+
+
   # Named LLM Provider Registry
   providers:
     - name: "openai-primary"

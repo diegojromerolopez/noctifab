@@ -75,6 +75,23 @@ func CacheablePrefixLen(ctx context.Context) int {
 	return 0
 }
 
+// cacheSessionIDKey carries an application session or task identifier to
+// route related LLM requests to warm cache nodes.
+type cacheSessionIDKey struct{}
+
+// WithCacheSessionID attaches a stable session/task ID to ctx for routing affinity.
+func WithCacheSessionID(ctx context.Context, sessionID string) context.Context {
+	return context.WithValue(ctx, cacheSessionIDKey{}, sessionID)
+}
+
+// CacheSessionID returns the session ID recorded in ctx, or "" when none was set.
+func CacheSessionID(ctx context.Context) string {
+	if s, ok := ctx.Value(cacheSessionIDKey{}).(string); ok && s != "" {
+		return s
+	}
+	return ""
+}
+
 // RoleContextKey is the typed context key for passing the active agent role.
 type RoleContextKey struct{}
 

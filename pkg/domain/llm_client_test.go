@@ -63,4 +63,9 @@ func TestContextHelpers(t *testing.T) {
 	assert.Equal(t, 0, CacheablePrefixLen(ctx))
 	ctxWithCache := WithCacheablePrefix(ctx, 100)
 	assert.Equal(t, 100, CacheablePrefixLen(ctxWithCache))
+
+	// CacheSessionID
+	assert.Equal(t, "", CacheSessionID(ctx))
+	ctxWithSession := WithCacheSessionID(ctx, "session-123")
+	assert.Equal(t, "session-123", CacheSessionID(ctxWithSession))
 }

@@ -791,3 +791,30 @@ noctifab init --profile openai-compat
 
 ### Automatic `<think>` Reasoning Tag Stripping
 Reasoning models like DeepSeek-R1 and Qwen-Thinking output chain-of-thought blocks wrapped in `<think>...</think>` tags before their actual JSON action envelope. Noctifab's response parser automatically intercepts and strips `<think>` blocks before JSON unmarshaling, allowing reasoning models to execute structured tool calling seamlessly without formatting errors.
+
+---
+
+## LLM Provider Prompt Caching & Routing Affinity Matrix
+
+To minimize input token consumption and round-trip latency across iterative agentic coding turns, Noctifab supports official caching parameters and routing headers across all registered providers:
+
+| Provider | Official Cache Parameter / Header | Type | Description |
+|---|---|---|---|
+| **Anthropic** | `cache_control: {"type": "ephemeral"}` | Body (Message Parts) | Multi-block prompt caching breakpoints on static instructions & context |
+| **OpenAI** | `prompt_cache_key: string` | Body (Top-level) | Cluster routing hint for prompt prefix cache reuse (>= 1,024 tokens) |
+| **Mistral** | `prompt_cache_key: string` | Body (Top-level) | Affinity key routing repeated prompt prefixes to warm GPU nodes (10% token cost) |
+| **Cerebras** | `prompt_cache_key: string` | Body (Top-level) | Cache affinity key routing related requests to the same KV cache |
+| **xAI (Grok)** | `x-grok-conv-id: string`, `prompt_cache_key: string` | Header / Body | Sticky routing pinning conversation requests to the same server node |
+| **OpenRouter** | `x-session-id: string`, `session_id: string`, `X-OpenRouter-Cache: true` | Header / Body | Sticky session routing for provider prompt cache warmth & edge response caching |
+| **Fireworks AI** | `x-session-affinity: string`, `user: string` | Header / Body | Replica affinity routing requests to warm prompt cache instances (50% discount) |
+| **Moonshot (Kimi)** | `prompt_cache_options: {"ttl": "1h"}` | Body (Top-level) | Extended context cache TTL preventing repeated write charges |
+| **Google Gemini** | `cachedContent: string`, `systemInstruction` | Body (Top-level) | Explicit CachedContent resource reference and prefix caching |
+| **Alibaba Qwen** | `cache_control: {"type": "ephemeral"}` | Body (Message Parts) | Explicit context caching breakpoints for DashScope models |
+| **DeepSeek / Groq / Together** | None (Automatic) | Implicit | Automatic prefix caching handled on server; no unsupported parameters sent |
+
+### Cache Observability & Telemetry
+Cached token counts are extracted from API response metadata (`PromptTokensDetails.CachedTokens`, `prompt_cache_hit_tokens`, `cachedContentTokenCount`) and propagated into:
+- `domain.TokenUsage.CachedTokens`
+- `domain.ExecutionEvent.CachedTokens` (logged in structured JSON events)
+- OpenTelemetry span attribute `gen_ai.usage.cached_tokens`
+

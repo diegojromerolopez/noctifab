@@ -39,14 +39,15 @@
 
 Token usage is extracted directly from the response payloads of all supported LLM provider clients:
 
-* **OpenAI & OpenAI-Compatible (OpenCode, OpenRouter, DeepSeek, Qwen)**:
+* **OpenAI & OpenAI-Compatible (OpenCode, OpenRouter, DeepSeek, Qwen, Mistral, xAI, Cerebras, Fireworks, Moonshot)**:
   - Streaming requests specify `StreamOptions: { IncludeUsage: true }`.
-  - Usage headers and final SSE stream chunks extract `PromptTokens` and `CompletionTokens`.
+  - Usage headers and final SSE stream chunks extract `PromptTokens`, `CompletionTokens`, `CompletionTokensDetails.ReasoningTokens`, and `PromptTokensDetails.CachedTokens`.
+  - DeepSeek and OpenAI-compatible relays returning `prompt_cache_hit_tokens` in usage extra fields are automatically parsed and counted towards `CachedTokens`.
 * **Anthropic Client**:
   - Extracts `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `output_tokens` from response objects.
-  - Combines prompt tokens with cached read and creation tokens for accurate total input accountability (`InputTokens = input_tokens + cache_read_input_tokens + cache_creation_input_tokens`).
+  - Combines prompt tokens with cached read and creation tokens for accurate total input accountability (`InputTokens = input_tokens + cache_read_input_tokens + cache_creation_input_tokens`), recording `cache_read_input_tokens` as `CachedTokens`.
 * **Gemini Client**:
-  - Extracts `promptTokenCount`, `candidatesTokenCount`, and `cachedContentTokenCount` from `usageMetadata`.
+  - Extracts `promptTokenCount`, `candidatesTokenCount`, and `cachedContentTokenCount` (with fallback to `totalCachedTokens` / `total_cached_tokens`) from `usageMetadata`.
 * **Fallback Token Estimation**:
   - For non-standard or unmetered mock endpoints, `FallbackTokenUsage` estimates prompt tokens at ~4 characters per token and completion tokens based on response body length.
 
@@ -58,6 +59,8 @@ All provider client completions emit standardized OpenTelemetry trace span attri
 
 - `gen_ai.usage.input_tokens`: Number of prompt tokens sent to the LLM.
 - `gen_ai.usage.output_tokens`: Number of completion/candidate tokens generated.
+- `gen_ai.usage.cached_tokens`: Number of prompt tokens served from prefix/context cache.
+- `gen_ai.usage.reasoning_tokens`: Number of internal chain-of-thought reasoning tokens generated.
 - `gen_ai.response.model`: Model identifier used for the completion.
 - `gen_ai.provider`: LLM infrastructure provider name.
 

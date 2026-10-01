@@ -616,12 +616,18 @@ To preserve LLM context economics and minimize Time-To-First-Token (TTFT):
 - **Pre-E2E Teardown Enforcement**: Prior to executing the E2E verification gate, `ContainerTeardownGuard` purges any lingering Docker containers (including explicit `container_name:` definitions via `docker rm -f`) and issues `docker compose down -v --remove-orphans`, guaranteeing clean network sockets and preventing container name collisions across turns.
 - **Zero-Block Guarantee**: Eliminates over-specialization paralysis, guaranteeing that the pipeline never deadlocks or terminates with an incomplete build while an autonomous LLM turn can deliver a working program.
 
-### 21. Aggressive Multi-Block Prompt Prefix Caching (`pkg/infrastructure/llm/anthropic.go`, `pkg/domain/llm_client.go`)
-- **Structured Multi-Block Breakpoints**: Splits prompt payloads into distinct content blocks with ephemeral cache control markers (`cache_control: {"type": "ephemeral"}`):
-  - **Block 0 (Static System & Template Instructions)**: Cached across all tasks and user stories in a project.
-  - **Block 1 (Task Details & File Contexts)**: Cached across continuation turns 1..N of a task.
-  - **Block 2 (Dynamic Turn Outputs & Contract)**: Dynamic tail processed with minimal input token cost.
+### 21. Multi-Provider Prompt Prefix Caching & Session Affinity (`pkg/infrastructure/llm/openai_cache.go`, `anthropic.go`, `gemini.go`, `pkg/domain/llm_client.go`)
+- **Official Parameter & Header Injection**: To eliminate redundant prefill compute and reduce input token expenses by up to 90%, Noctifab injects official caching parameters and routing headers per provider:
+  - **Anthropic & Qwen**: Structured multi-block breakpoints with `cache_control: {"type": "ephemeral"}` on static template instructions and file contexts.
+  - **OpenAI, Mistral & Cerebras**: `prompt_cache_key` routing affinity key derived from session context or deterministic prefix hash (`derivePromptCacheKey`), routing requests to warm GPU cluster nodes.
+  - **xAI Grok**: `x-grok-conv-id` header and `prompt_cache_key` parameter for conversation instance affinity.
+  - **OpenRouter**: `x-session-id` header and `session_id` parameter for prompt cache session pinning, plus `X-OpenRouter-Cache: true` for edge response caching.
+  - **Fireworks AI**: `x-session-affinity` header and `user` parameter to route consecutive turns to identical inference replicas.
+  - **Moonshot (Kimi)**: `prompt_cache_options: {"ttl": "1h"}` preventing premature context evictions.
+  - **Google Gemini**: Supports explicit `cachedContent` parameter, plus automatic separation of static prompt prefixes into `systemInstruction` to maximize Gemini implicit context cache hits.
 - **Context-Directed & Auto-Detected Boundaries**: Leverages `domain.WithCacheablePrefix` and auto-detects continuation turn boundaries (`\n\nTOOL OUTPUTS FROM PREVIOUS TURN`), achieving high prompt cache hit rates and sub-second Time-to-First-Token (TTFT).
+- **Comprehensive Cache Observability**: Extracted cache hits (`PromptTokensDetails.CachedTokens`, `prompt_cache_hit_tokens`, `cachedContentTokenCount`) populate `domain.TokenUsage.CachedTokens`, log in `domain.ExecutionEvent`, and export to OpenTelemetry traces as `gen_ai.usage.cached_tokens`.
+
 
 ### 22. Docker Layer Caching & BuildKit Acceleration (`pkg/services/worktree_cache.go`, agent prompt templates)
 - **Automatic BuildKit Activation**: Injects `DOCKER_BUILDKIT=1` and `COMPOSE_DOCKER_CLI_BUILD=1` into all sandbox executions via `BuildSharedCacheEnv`.

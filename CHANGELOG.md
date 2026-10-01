@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.112.0] - 2026-10-01
+
+### Added
+- **Official LLM Provider Caching Features & Routing Affinity**:
+  - **OpenAI, Mistral & Cerebras (`prompt_cache_key`)**: Added automatic routing affinity key injection (`prompt_cache_key`) derived from session context or deterministic prefix hash, ensuring multi-turn requests land on warm GPU nodes for prompt prefix reuse.
+  - **Moonshot / Kimi (`prompt_cache_options`)**: Added request body parameter `prompt_cache_options: {"ttl": "1h"}` to ensure developer task contexts remain warm across calls.
+  - **xAI Grok (`x-grok-conv-id` & `prompt_cache_key`)**: Passed `x-grok-conv-id` header and `prompt_cache_key` body parameter for session affinity caching.
+  - **OpenRouter (`x-session-id`, `session_id`, `X-OpenRouter-Cache`)**: Added `x-session-id` header and `session_id` parameter for sticky prompt cache routing, plus `X-OpenRouter-Cache: true` for edge response caching.
+  - **Fireworks AI (`x-session-affinity` & `user`)**: Added session affinity routing parameters for Fireworks prompt cache reuse.
+  - **Google Gemini (`cachedContent` & `systemInstruction` prefix caching)**: Implemented support for the official `cachedContent` parameter, plus automatic separation of static prompt prefixes into `systemInstruction` to maximize Gemini implicit context cache hits.
+  - **Usage Token Extraction & Telemetry**: Updated `ExtractOpenAITokenUsage` to extract `PromptTokensDetails.CachedTokens` (and `prompt_cache_hit_tokens` for DeepSeek/relays), expanded `ExtractGeminiTokenUsage` with alternative `totalCachedTokens` field support, and propagated `CachedTokens` into `domain.ExecutionEvent` and OpenTelemetry traces (`gen_ai.usage.cached_tokens`).
+
 ## [0.111.0] - 2026-10-01
 
 ### Added
