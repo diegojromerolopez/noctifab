@@ -24,6 +24,7 @@ agents:
     number: 1      # Task orchestration & state sync
     iterations: 2
   product_manager:
+    audit_mode: "smart"
     number: 1      # Spec hardening & user story generation
     iterations: 2
   planner:
@@ -58,6 +59,15 @@ llm:
   max_timeout: "60s"
   idle_timeout: "15s"
   streaming: true
+  hedging:
+    enabled: true
+    delay: "25s"
+    heavy_delay: "90s"
+  json_reminder:
+    task:
+      cap: 1500
+    body:
+      cap: 12000
 
 vcs:
   provider: "github"

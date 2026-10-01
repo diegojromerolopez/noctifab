@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Product Manager Story Audit Mode (`agents.product_manager.audit_mode`)**: Introduced `audit_mode` (`smart` (default) to bypass Pass 2 LLM audit on already-valid stories with working DoD and non-synthetic contracts, or `exhaustive` to force re-audits on all user stories).
   - **JSON Format Reminder Caps (`llm.json_reminder.task.cap` & `llm.json_reminder.body.cap`)**: Added configurable context limits (`task.cap` default `1500`, `body.cap` default `12000`) for one-shot format reminder pullbacks.
   - **Validation Projects & Pyedis Configuration Updates**: Propagated speculative hedging controls, product manager smart audit mode, and format reminder cap settings across all 20 validation projects and pyedis configuration files.
+  - **Documentation Synchronization**: Updated `SPEC.md`, `docs/configuration.md`, `docs/configuration_examples.md`, and `docs/configuration_guidelines.md` detailing speculative hedging controls, story audit mode options, and JSON format reminder caps.
 
 ## [0.109.1] - 2026-10-01
 

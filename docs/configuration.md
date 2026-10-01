@@ -78,6 +78,7 @@ agents:
     iterations: 2
 
   product_manager:
+    audit_mode: smart
     number: 1
     iterations: 2
     passes: 2
@@ -173,6 +174,19 @@ Defines named LLM provider registries, global default failover priorities, and p
 
 ```yaml
 llm:
+  # Speculative Fallback Hedging Controls
+  hedging:
+    enabled: true
+    delay: 25s
+    heavy_delay: 90s
+
+  # Context Caps for Format Reminder Pullbacks
+  json_reminder:
+    task:
+      cap: 1500
+    body:
+      cap: 12000
+
   # Global Default Failover Priority Chain
   priority:
     - "openai-primary"
