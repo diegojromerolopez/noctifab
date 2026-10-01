@@ -46,8 +46,12 @@ func (r *ResilientLLMRouter) completeWithHedging(
 	// for these roles needlessly doubles token spend. Scale minimum hedge delay to at least 90s.
 	cleanRole := strings.ToLower(strings.TrimSpace(roleName))
 	isHeavyBatchRole := cleanRole == "product_manager" || cleanRole == "fallback" || cleanRole == "sovereign_rescue" || cleanRole == "qa" || cleanRole == "spec"
-	if isHeavyBatchRole && hedgeDelay < 90*time.Second {
-		hedgeDelay = 90 * time.Second
+	heavyDelay := 90 * time.Second
+	if r.cfg != nil && r.cfg.LLM.Hedging.GetHeavyDelay() > 0 {
+		heavyDelay = r.cfg.LLM.Hedging.GetHeavyDelay()
+	}
+	if isHeavyBatchRole && hedgeDelay < heavyDelay {
+		hedgeDelay = heavyDelay
 	}
 
 	// Adaptive Speculative Hedging: check dynamic demotion/timeout memory

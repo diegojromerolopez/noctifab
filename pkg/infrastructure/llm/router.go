@@ -86,8 +86,14 @@ func NewResilientLLMRouter(cfg *config.Config, budgetStore domain.BudgetStore) *
 	}
 
 	var tokenLimit int64
+	var hedgeDelay time.Duration
 	if cfg != nil {
 		tokenLimit = cfg.LLM.TokenUsageLimit
+		if !cfg.LLM.Hedging.IsEnabled() {
+			hedgeDelay = -1
+		} else {
+			hedgeDelay = cfg.LLM.Hedging.GetDelay()
+		}
 	}
 
 	return &ResilientLLMRouter{
@@ -98,6 +104,7 @@ func NewResilientLLMRouter(cfg *config.Config, budgetStore domain.BudgetStore) *
 		defaultClient:    defaultClient,
 		budgetStore:      budgetStore,
 		tokenUsageLimit:  tokenLimit,
+		hedgeDelay:       hedgeDelay,
 		cooldowns:        make(map[string]time.Time),
 		cooldownDuration: cooldown,
 		candidateCache:   make(map[string][]RouterCandidate),

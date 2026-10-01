@@ -42,6 +42,8 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 				client.Streaming = *cfg.LLM.Streaming
 			}
 			client.MaxPromptTokens = cfg.LLM.MaxPromptTokens
+			client.JSONReminderTaskCap = cfg.LLM.JSONReminder.GetTaskCap()
+			client.JSONReminderBodyCap = cfg.LLM.JSONReminder.GetBodyCap()
 			backends = append(backends, NamedClient{
 				Name:   b.Provider + "/" + b.Model,
 				Model:  b.Model,
@@ -82,6 +84,8 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 				client.Streaming = *cfg.LLM.Streaming
 			}
 			client.MaxPromptTokens = cfg.LLM.MaxPromptTokens
+			client.JSONReminderTaskCap = cfg.LLM.JSONReminder.GetTaskCap()
+			client.JSONReminderBodyCap = cfg.LLM.JSONReminder.GetBodyCap()
 			backends = append(backends, NamedClient{
 				Name:   b.Provider + "/" + b.Model,
 				Model:  b.Model,
@@ -107,5 +111,7 @@ func BuildFailoverClient(cfg *config.Config, budgetStore domain.BudgetStore) dom
 		client.Streaming = *cfg.LLM.Streaming
 	}
 	client.MaxPromptTokens = cfg.LLM.MaxPromptTokens
+	client.JSONReminderTaskCap = cfg.LLM.JSONReminder.GetTaskCap()
+	client.JSONReminderBodyCap = cfg.LLM.JSONReminder.GetBodyCap()
 	return client
 }

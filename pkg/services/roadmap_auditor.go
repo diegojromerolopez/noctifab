@@ -153,9 +153,11 @@ func AuditRoadmapStoriesParallel(
 				relCheck = filepath.Join("roadmap", "user-stories", stItem.Filename)
 			}
 			cErr := ValidateStoryContract(relCheck, stItem.Content)
+			auditMode := domain.AuditModeFromContext(ctx)
+			isSmart := auditMode == "" || strings.EqualFold(auditMode, "smart") || strings.EqualFold(auditMode, "adaptive")
 			if cErr != nil {
 				targetStoryPayload = stItem.Content + "\n\n[Contract Validation Error Requiring Repair: " + cErr.Error() + "]"
-			} else if strings.Contains(stItem.Content, "Definition of Done") && !IsSyntheticStoryContent(stItem.Content) {
+			} else if isSmart && strings.Contains(stItem.Content, "Definition of Done") && !IsSyntheticStoryContent(stItem.Content) {
 				// Fast path: story already satisfies contract and DoD validation without placeholders.
 				// Skip expensive LLM call and retain the verified story as-is.
 				fmt.Printf("ℹ [Product Manager] Story %s already satisfies contract & DoD validation; skipping LLM audit (%d/%d)\n", stItem.ID, idx+1, len(items))

@@ -135,6 +135,7 @@ type AgentRoleConfig struct {
 	Ensemble       EnsembleConfig     `yaml:"ensemble,omitempty"`
 	Pipelined      *bool              `yaml:"pipelined,omitempty"`
 	Timeout        Duration           `yaml:"timeout,omitempty"`
+	AuditMode      string             `yaml:"audit_mode,omitempty"`
 }
 
 func (a AgentRoleConfig) GetTimeout() time.Duration {
@@ -291,7 +292,9 @@ type LLMConfig struct {
 	// to prioritize models with sufficient context window capacity.
 	AdaptiveContextRouting bool `yaml:"adaptive_context_routing,omitempty"`
 	// BypassPriorityByContext is an alias for AdaptiveContextRouting.
-	BypassPriorityByContext bool `yaml:"bypass_priority_by_context,omitempty"`
+	BypassPriorityByContext bool               `yaml:"bypass_priority_by_context,omitempty"`
+	Hedging                 HedgingConfig      `yaml:"hedging,omitempty"`
+	JSONReminder            JSONReminderConfig `yaml:"json_reminder,omitempty"`
 }
 
 func (l LLMConfig) IsAdaptiveContextRoutingEnabled() bool {

@@ -53,6 +53,10 @@ type Client struct {
 	EnableThinking *bool
 	// ThinkingBudget caps the reasoning token budget.
 	ThinkingBudget *int
+	// JSONReminderTaskCap caps the original task prompt in format reminders (default: 1500).
+	JSONReminderTaskCap int
+	// JSONReminderBodyCap caps the rejected response tail in format reminders (default: 12000).
+	JSONReminderBodyCap int
 	// catalogMu guards catalogCache: a small TTL cache of provider model
 	// catalogs so the fallback ladder and latest-alias resolution do not
 	// re-hit GetAvailableModels (a network call) on every invocation.
@@ -133,44 +137,6 @@ func parseAndUnmarshal(body []byte) (*domain.LLMResponse, error) {
 		return nil, err
 	}
 	return LenientUnmarshal(extracted)
-}
-
-// buildJSONReminderPrompt returns a single user-message prompt that re-states
-// the JSON envelope demand and includes a truncated tail of the model's
-// previous non-JSON answer. The original prompt is capped to a task summary
-// to prevent re-transmitting 50-100 KB of spec context on format pullbacks.
-const jsonReminderTaskCap = 1500
-const jsonReminderBodyCap = 12000
-
-func buildJSONReminderPrompt(originalPrompt string, prevBody []byte) string {
-	taskSummary := strings.TrimSpace(originalPrompt)
-	if len(taskSummary) > jsonReminderTaskCap {
-		taskSummary = taskSummary[:jsonReminderTaskCap] + "\n...[spec/context truncated for format reminder]..."
-	}
-	tail := string(prevBody)
-	if len(tail) > jsonReminderBodyCap {
-		tail = "...[truncated]...\n" + tail[len(tail)-jsonReminderBodyCap:]
-	}
-	return fmt.Sprintf(`Your previous response did NOT contain the structured JSON envelope that this system requires. The system cannot continue without a single valid JSON object.
-
-Original task:
-%s
-
-Your previous (rejected) response:
-%s
-
-CRITICAL INSTRUCTION (overrides anything above):
-Respond with ONLY a single JSON object matching this schema. Ensure the JSON starts with an opening brace '{' and ends with a closing brace '}'. No markdown, no code fences, no prose before or after the JSON. Keys and string values must use double quotes.
-
-Schema:
-{
-  "reasoning": "your reasoning",
-  "actions": [
-    { "tool": "write_file", "args": { "path": "...", "content": "..." } }
-  ]
-}
-
-Return the valid JSON block now and nothing else.`, taskSummary, tail)
 }
 
 func NewClient(provider, model, apiKey string, maxRetries int, backoff time.Duration, url string) *Client {
@@ -370,7 +336,7 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 			// a single pullback prompt that re-states the JSON envelope
 			// demand, append the offending tail, and try once more.
 			fmt.Fprintf(os.Stderr, "⚠ LLM response was not a valid JSON envelope (%v). Sending a one-shot format reminder and retrying...\n", parseErr)
-			reminderPrompt := buildJSONReminderPrompt(prompt, responseBody)
+			reminderPrompt := c.buildJSONReminderPrompt(prompt, responseBody)
 			reminderCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 			reminderRes, rErr := pClient.Call(reminderCtx, activeModel, apiKey, reminderPrompt, c.MaxTokens, c.Temperature)
 			cancel()

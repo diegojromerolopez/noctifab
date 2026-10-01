@@ -87,6 +87,8 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 		client.Compaction = r.cfg.Context.GetCompactionMode()
 		client.CavemanCompaction = r.cfg.Context.CavemanCompaction
 		client.MaxPromptTokens = r.cfg.LLM.MaxPromptTokens
+		client.JSONReminderTaskCap = r.cfg.LLM.JSONReminder.GetTaskCap()
+		client.JSONReminderBodyCap = r.cfg.LLM.JSONReminder.GetBodyCap()
 	}
 
 	client.SkipOnCreditExhausted = r.cfg == nil || r.cfg.LLM.SkipOnCreditExhausted

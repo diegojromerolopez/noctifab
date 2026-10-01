@@ -27,8 +27,9 @@ func DefaultConfig() *Config {
 						Max: 35,
 					},
 				},
-				Passes:  2,
-				Timeout: Duration(180 * time.Second),
+				Passes:    2,
+				Timeout:   Duration(180 * time.Second),
+				AuditMode: "smart",
 			},
 			Planner: AgentRoleConfig{
 				Number:     1,
@@ -139,6 +140,15 @@ func DefaultConfig() *Config {
 			// burning wall-clock time on retries and lower-model fallbacks that
 			// cannot succeed without a funded key.
 			SkipOnCreditExhausted: true,
+			Hedging: HedgingConfig{
+				Enabled:    boolPtr(true),
+				Delay:      Duration(25 * time.Second),
+				HeavyDelay: Duration(90 * time.Second),
+			},
+			JSONReminder: JSONReminderConfig{
+				Task: JSONReminderCapConfig{Cap: 1500},
+				Body: JSONReminderCapConfig{Cap: 12000},
+			},
 		},
 		VCS: VCSConfig{
 			Provider:     "github",

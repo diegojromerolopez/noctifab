@@ -163,3 +163,21 @@ func StreamLivenessTrackerFromContext(ctx context.Context) *StreamLivenessTracke
 	}
 	return nil
 }
+
+type auditModeKey struct{}
+
+// WithAuditMode attaches an audit mode (e.g. "smart" or "exhaustive") to the context.
+func WithAuditMode(ctx context.Context, mode string) context.Context {
+	return context.WithValue(ctx, auditModeKey{}, mode)
+}
+
+// AuditModeFromContext retrieves the audit mode from context (default: "smart").
+func AuditModeFromContext(ctx context.Context) string {
+	if mode, ok := ctx.Value(auditModeKey{}).(string); ok && mode != "" {
+		return strings.ToLower(strings.TrimSpace(mode))
+	}
+	if mode, ok := ctx.Value("audit_mode").(string); ok && mode != "" {
+		return strings.ToLower(strings.TrimSpace(mode))
+	}
+	return "smart"
+}
