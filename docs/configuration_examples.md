@@ -559,9 +559,12 @@ agents:
 context:
   mode: "diff_window"
   diff_window_lines: 15
+  dedup_mutated_files: true # Prunes pre-turn snapshots of already-modified files on multi-turn prompts
   compaction: "caveman" # Strips fluff and decorative formatting for lean prompts
 
 llm:
+  thinking:
+    default_budget: 2048 # Bounds reasoning models to prevent 8k–16k reasoning token blowouts
   priority:
     - "gemini-flash"
     - "claude"
@@ -631,6 +634,7 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
+    slice_spec: true                   # Slices oversized specifications (>12k chars) during emergency takeover
     max_turns: 10      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
     timeout: "5m"
     missing_toolchain_strategy: auto # "auto" | "docker" | "local" | "off"

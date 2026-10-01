@@ -181,6 +181,8 @@ storage:
     backoff_base: 100ms
     backoff_factor: 2
 llm:
+  thinking:
+    default_budget: 2048
   hedging:
     enabled: true
     delay: 25s
