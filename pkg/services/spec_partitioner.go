@@ -50,13 +50,13 @@ func PartitionSpecIfNeeded(projectPath string) (*SpecManifest, error) {
 // PartitionSpecIfNeededWithCompaction checks if projectPath/SPEC.md exists and partitions it into .noctifab/specs/
 // using the specified compaction strategy across all chunk files.
 func PartitionSpecIfNeededWithCompaction(projectPath string, compactionMode string) (*SpecManifest, error) {
-	specPath := filepath.Join(projectPath, "SPEC.md")
+	specPath := ResolveSpecPath(projectPath)
 	data, err := os.ReadFile(specPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("reading SPEC.md: %w", err)
+		return nil, fmt.Errorf("reading spec %s: %w", specPath, err)
 	}
 
 	specsDir := filepath.Join(projectPath, ".noctifab", "specs")

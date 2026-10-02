@@ -122,7 +122,7 @@ func AuditRoadmapStoriesParallel(
 	}
 
 	catalog := BuildRoadmapCatalogFromStories(items)
-	specPath := filepath.Join(projectPath, "SPEC.md")
+	specPath := ResolveSpecPath(projectPath)
 	specBytes, _ := os.ReadFile(specPath)
 
 	pmCtx := context.WithValue(ctx, "agent_role", "product_manager") //nolint:staticcheck
@@ -195,9 +195,10 @@ func AuditRoadmapStoriesParallel(
 						}
 						mu.Lock()
 						if strings.TrimSpace(content) != "" && strings.TrimSpace(content) != strings.TrimSpace(string(specBytes)) {
-							if wErr := os.WriteFile(specPath, []byte(content), 0644); wErr == nil {
+							stePath := filepath.Join(projectPath, "SPEC.ste.md")
+							if wErr := os.WriteFile(stePath, []byte(content), 0644); wErr == nil {
 								specBytes = []byte(content)
-								fmt.Printf("ℹ [Product Manager] Refined and updated SPEC.md with resolved inconsistencies/missing details\n")
+								fmt.Printf("ℹ [Product Manager] Refined and updated SPEC.ste.md with resolved inconsistencies/missing details\n")
 							}
 						}
 						mu.Unlock()

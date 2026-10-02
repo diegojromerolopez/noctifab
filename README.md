@@ -73,6 +73,7 @@ The autonomy level is controlled by the VCS `pull_request` settings in `.noctifa
 4. **Test-Driven Quality Gates**: Employs a multi-stage sequential execution cycle between the generator and test-writer agents. The Test Validator executes the test suite 3 times, requiring a majority vote consensus (at least 2/3 passing runs) to approve changes, preventing regression and flaky builds.
 5. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers, restricted by role-based authorization profiles.
 6. **Greenfield Spike & Lean Compaction**: Instant walking skeleton generation for uninitialized repositories (`spike`) with compiler-gated early acceptance (**Fast Exit on Green**), speculative local pre-validation, and telegraphic prompt compaction (`caveman`) for minimal Time-To-First-Token.
+7. **ASD-STE100 Specification & Language Mandate**: Strictly preserves the human-authored `SPEC.md` as immutable ground truth. The Product Manager translates `SPEC.md` into [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/) (`SPEC.ste.md`) as its first task upon startup. All downstream natural language generated across user stories and tasks adheres strictly to ASD-STE100 rules for deterministic, unambiguous clarity.
 
 ---
 
@@ -503,9 +504,9 @@ Key features of Interactive Mode:
 - **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Auto-generates user stories in `roadmap/user-stories/` from `SPEC.md` if missing, and executes stories concurrently via the Story DAG Scheduler. Pass `-w` / `--web` to launch the concurrent live Visual Web Dashboard, `--web-open` to auto-open in browser, `-i` for interactive TUI, `--standby` for persistent always-on dark factory mode, and `--resume` to skip completed stories.
 - **`resume`**: Resumes execution of an interrupted or partially completed workspace, skipping already completed user stories (`StorySuccess`) and picking up execution at the first incomplete story (supports `-w` / `--web` and `--web-open` for concurrent web dashboard).
 - **`serve`**: Runs the long-running headless orchestrator daemon loop, polling and executing tasks in the background with local loopback REST API endpoints.
-- **`prompts`**: Inspects, customizes, initializes, and validates per-agent prompt templates (`list`, `show`, `init`, `validate`). Supports all 23 prompt templates across 7 agent roles.
+- **`prompts`**: Inspects, customizes, initializes, and validates per-agent prompt templates (`list`, `show`, `init`, `validate`). Supports all 27 prompt templates across 9 agent roles.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
-- **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
+- **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files, unlinks generated `SPEC.ste.md` [ASD-STE100](https://www.asd-ste100.org/) specification). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
 - **`version`**: Displays Noctifab release version, Git commit hash, and commit date. Supports `--short` / `-s`, `--verbose` / `-v`, and `--json`. Also accessible via `noctifab --version`.
 

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.113.0] - 2026-10-02
+
+### Added
+- **ASD-STE100 Simplified Technical English Specification & Natural Language Mandate**:
+  - **Ground Truth Specification Immutability (`SPEC.md`)**: Human-authored `SPEC.md` is strictly immutable during execution and is never overwritten or mutated by Noctifab.
+  - **Product Manager First Task (`translate_ste` / `SPEC.ste.md`)**: On startup (`noctifab start`), the Product Manager Agent executes its first task (`translate_ste`), translating `SPEC.md` into [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/) and writing the output to `SPEC.ste.md`.
+  - **Transparent Specification Resolution (`ResolveSpecPath`)**: Downstream services, prompt assemblers, partitioners, and planners resolve `SPEC.ste.md` when present, falling back to `SPEC.md` only prior to translation. Specification refinements (`refine_spec`) write exclusively to `SPEC.ste.md`.
+  - **Universal Natural Language Compliance**: All generated natural language across user stories (`roadmap/user-stories/*.md`) and tasks (`roadmap/tasks/*.md`) strictly adheres to ASD-STE100 rules (max 20 words for instructions, 25 for descriptions, active voice, imperative mood, unambiguous terminology, max 3-noun clusters).
+  - **Clean Command Lifecycle**: Running `noctifab clean` unlinks `SPEC.ste.md` alongside runtime state.
+  - **Prompt Catalog Expansion**: Added `translate_ste` to the Product Manager catalog, bringing the prompt system to 27 customizable templates across 9 agents.
+
 ## [0.112.0] - 2026-10-01
 
 ### Added

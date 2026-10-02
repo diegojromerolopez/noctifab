@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -86,7 +85,7 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		}
 
 		newTasks := state.Tasks[initialTaskCount:]
-		specBytes, _ := os.ReadFile(filepath.Join(state.ProjectPath, "SPEC.md"))
+		specBytes, _ := os.ReadFile(ResolveSpecPath(state.ProjectPath))
 		storyTitle := ""
 		storyPath := ""
 		for _, s := range state.Stories {
