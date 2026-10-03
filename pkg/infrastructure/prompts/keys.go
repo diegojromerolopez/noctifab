@@ -32,9 +32,9 @@ const (
 )
 
 // catalog maps each agent to its customizable actions. It is the single
-// source of truth for the (agent, action) key space: 23 keys across 9 agents.
+// source of truth for the (agent, action) key space: 27 keys across 9 agents.
 var catalog = map[string][]string{
-	AgentProductManager: {"generate", "audit", "expand"},
+	AgentProductManager: {"generate", "audit", "expand", "translate_ste"},
 	AgentPlanner:        {"decompose"},
 	AgentQA:             {"acceptance"},
 	AgentAuditor:        {"acceptance_audit"},

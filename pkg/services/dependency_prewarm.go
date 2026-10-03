@@ -57,13 +57,17 @@ func GetPreWarmCommand(manifest, projectPath string) (manager string, cmdStr str
 	case "package.json":
 		return "npm", "npm install --package-lock-only"
 	case "requirements.txt":
-		venvPip := filepath.Join(projectPath, ".venv", "bin", "pip")
+		venvDir := filepath.Join(projectPath, ".venv")
+		EnsureVenvPip(venvDir)
+		venvPip := filepath.Join(venvDir, "bin", "pip")
 		if _, err := os.Stat(venvPip); err == nil {
 			return "pip", venvPip + " download -r requirements.txt"
 		}
 		return "pip", "pip download -r requirements.txt"
 	case "pyproject.toml":
-		venvPip := filepath.Join(projectPath, ".venv", "bin", "pip")
+		venvDir := filepath.Join(projectPath, ".venv")
+		EnsureVenvPip(venvDir)
+		venvPip := filepath.Join(venvDir, "bin", "pip")
 		if _, err := os.Stat(venvPip); err == nil {
 			return "pip", venvPip + " install --dry-run ."
 		}

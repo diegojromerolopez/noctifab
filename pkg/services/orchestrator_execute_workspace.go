@@ -129,27 +129,29 @@ func (o *Orchestrator) setupTaskWorkspace(
 	return state.ProjectPath, taskGit, cleanup, nil
 }
 
-// CleanConflictMarkers resolves standard Git conflict markers (<<<<<<<, =======, >>>>>>>)
-// by deterministically preserving the incoming worker changes (between ======= and >>>>>>>).
+// CleanConflictMarkers resolves standard Git conflict markers (<<<<<<<, =======, >>>>>>>, |||||||)
+// by deterministically preserving the incoming worker changes (between ======= and >>>>>>>)
+// and unconditionally dropping any conflict marker lines, including diff3 or stray boundary markers.
 func CleanConflictMarkers(content string) string {
 	lines := strings.Split(content, "\n")
 	var cleaned []string
 	inOurs := false
-	inTheirs := false
 	for _, line := range lines {
-		if strings.HasPrefix(line, "<<<<<<<") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "<<<<<<<") {
 			inOurs = true
-			inTheirs = false
 			continue
 		}
-		if inOurs && strings.HasPrefix(line, "=======") {
-			inOurs = false
-			inTheirs = true
+		if strings.HasPrefix(trimmed, "|||||||") {
+			inOurs = true
 			continue
 		}
-		if inTheirs && strings.HasPrefix(line, ">>>>>>>") {
+		if strings.HasPrefix(trimmed, "=======") {
 			inOurs = false
-			inTheirs = false
+			continue
+		}
+		if strings.HasPrefix(trimmed, ">>>>>>>") {
+			inOurs = false
 			continue
 		}
 		if inOurs {
@@ -159,6 +161,21 @@ func CleanConflictMarkers(content string) string {
 		cleaned = append(cleaned, line)
 	}
 	return strings.Join(cleaned, "\n")
+}
+
+// ContainsConflictMarkers returns true if content contains any raw Git conflict markers.
+func ContainsConflictMarkers(content string) bool {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "<<<<<<<") ||
+			strings.HasPrefix(trimmed, "=======") ||
+			strings.HasPrefix(trimmed, ">>>>>>>") ||
+			strings.HasPrefix(trimmed, "|||||||") {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveGitRebaseConflict automatically resolves Git merge conflicts using the Generator Agent
@@ -207,9 +224,14 @@ func (o *Orchestrator) resolveGitRebaseConflict(ctx context.Context, branch, bas
 					}
 				}
 				if strings.TrimSpace(code) != "" {
-					_ = os.WriteFile(fullPath, []byte(code), 0644)
-					synthesized = true
-					fmt.Printf("✨ [Generator Synthesis] Synthesized unified %q incorporating features from both branches\n", file)
+					code = CleanConflictMarkers(code)
+					if !ContainsConflictMarkers(code) {
+						_ = os.WriteFile(fullPath, []byte(code), 0644)
+						synthesized = true
+						fmt.Printf("✨ [Generator Synthesis] Synthesized unified %q incorporating features from both branches\n", file)
+					} else {
+						fmt.Printf("⚠️  [Generator Synthesis] Synthesized code for %q still contains conflict markers; skipping\n", file)
+					}
 				}
 			}
 		}

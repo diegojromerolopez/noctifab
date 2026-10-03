@@ -6,16 +6,16 @@ and one action; the effective template is resolved per `(agent, action)` key.
 
 ## The (agent, action) catalog
 
-There are **24 customizable templates across 8 agents**:
+There are **27 customizable templates across 9 agents**:
 
 | Agent | Actions |
 | --- | --- |
-| `product_manager` | `generate`, `audit` |
+| `product_manager` | `generate`, `audit`, `expand`, `translate_ste` |
 | `planner` | `decompose` |
 | `tester` | `write`, `fix`, `refactor`, `write_breadth_first` |
 | `generator` | `implement`, `refactor`, `fix`, `single_pass`, `single_pass_fix`, `implement_breadth_first`, `implement_breadth_first_fix`, `surgical_repair` |
 | `qa` | `acceptance` |
-| `auditor` | `audit` |
+| `auditor` | `acceptance_audit` |
 | `fallback` | `repair` |
 | `spike` | `generate` |
 | `spec` | `pm_draft`, `architect_enrich`, `tester_enrich`, `qa_enrich`, `consensus_audit`, `refine` |
@@ -207,6 +207,33 @@ All embedded default templates for `generator/*` and `tester/*` include a built-
 1. **Manifest Declarations**: Generator agents **can** update manifest files (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) to declare packages specified in `SPEC.md` or pre-baked in the container.
 2. **No Terminal Package Installation (`exec` Disabled)**: Agents cannot run shell package managers (`pip install`, `npm install`, `cargo add`, `go get`) directly because `exec` is forbidden by policy sandbox (`pkg/services/validator.go`).
 3. **Immediate Fallback on Import Errors**: If `run_tests` fails because an imported package is not available in the environment, the agent must immediately rewrite the code using standard library primitives (`asyncio`, `socket`, `net/http`, `node:fs`, etc.) instead of burning retries on un-fetchable imports.
+
+---
+
+## ASD-STE100 Simplified Technical English Mandate
+
+Noctifab enforces the [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/) international standard across prompt templates and generated artifacts.
+
+### Key Rules:
+1. **First Task Translation (`product_manager/translate_ste`)**: When Noctifab starts, the Product Manager translates `SPEC.md` into `SPEC.ste.md` following [ASD-STE100](https://www.asd-ste100.org/). `SPEC.md` is preserved as human ground truth and is never modified.
+2. **Deterministic Clarity**: Natural language generated in user stories (`roadmap/user-stories/*.md`) and tasks (`roadmap/tasks/*.md`) strictly adheres to ASD-STE100 rules:
+   - Maximum 20 words per sentence for procedural instructions.
+   - Maximum 25 words per sentence for descriptive explanations.
+   - Active voice and imperative mood for instructions.
+   - Standardized, unambiguous terms restricted to their approved meanings.
+   - Noun clusters capped at three consecutive nouns.
+   - Short paragraphs limited to a maximum of six sentences.
+3. **Template Pruning & De-duplication**: All built-in default agent templates (`generator/*`, `tester/*`) adhere strictly to ASD-STE100. Redundant instructions and duplicate paragraphs are eliminated, reducing static template token overhead by 60%–75% while preserving all contractual needles.
+4. **Cleanup**: Running `noctifab clean` unlinks the generated `SPEC.ste.md` artifact.
+
+---
+
+## Prompt Prefix Caching & Append-Only Continuation
+
+To maximize prompt caching on LLM providers (Anthropic prompt caching, OpenAI prefix caching, Gemini context caching):
+- **Append-Only Multi-Turn Continuation**: When an agent executes multiple turns on a task, Noctifab appends tool outputs under an append-only `TOOL OUTPUTS FROM PREVIOUS TURN(S):` section (`--- Turn N ---`). The base prompt prefix (`rendered.Body`) is never rewritten or mutated across turns.
+- **Session Routing Affinity (`domain.WithCacheSessionID`)**: Multi-turn requests within the same task share a stable session identifier, routing requests to the same physical provider backend worker.
+- **Zero-Mutation File Context**: With `context.dedup_mutated_files: false` (default), pre-turn file contexts remain unchanged, boosting cache hit rates to **80%–90%**.
 
 ---
 

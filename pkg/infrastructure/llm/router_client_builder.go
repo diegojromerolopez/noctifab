@@ -2,7 +2,6 @@ package llm
 
 import (
 	"os"
-	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
@@ -23,48 +22,28 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 		apiKey = os.Getenv(spec.APIKeys[0])
 	}
 
-	maxRetries := spec.MaxRetries
-	if maxRetries == 0 && r.cfg != nil {
-		maxRetries = r.cfg.LLM.MaxRetries
+	llmCfg := config.LLMConfig{}
+	if r.cfg != nil {
+		llmCfg = r.cfg.LLM
 	}
+	tr := llmCfg.ResolveTransport(spec)
 
-	retryBackoff := time.Duration(spec.RetryBackoff)
-	if retryBackoff == 0 && r.cfg != nil {
-		retryBackoff = time.Duration(r.cfg.LLM.RetryBackoff)
-	}
-
-	client := NewClient(spec.Provider, model, apiKey, maxRetries, retryBackoff, spec.URL)
+	client := NewClient(spec.Provider, model, apiKey, tr.MaxRetries, tr.RetryBackoff, spec.URL)
 	if len(spec.APIKeyPool) > 0 {
 		client.APIKeys = spec.APIKeyPool
 	}
-	if spec.MaxTimeout > 0 {
-		client.Timeout = time.Duration(spec.MaxTimeout)
-	} else if r.cfg != nil && r.cfg.LLM.MaxTimeout > 0 {
-		client.Timeout = time.Duration(r.cfg.LLM.MaxTimeout)
+	if tr.MaxTimeout > 0 {
+		client.Timeout = tr.MaxTimeout
 	}
-
-	if spec.IdleTimeout > 0 {
-		client.IdleTimeout = time.Duration(spec.IdleTimeout)
-	} else if r.cfg != nil && r.cfg.LLM.IdleTimeout > 0 {
-		client.IdleTimeout = time.Duration(r.cfg.LLM.IdleTimeout)
+	if tr.IdleTimeout > 0 {
+		client.IdleTimeout = tr.IdleTimeout
 	}
-
-	if spec.MaxTokens > 0 {
-		client.MaxTokens = spec.MaxTokens
-	} else if r.cfg != nil && r.cfg.LLM.MaxTokens > 0 {
-		client.MaxTokens = r.cfg.LLM.MaxTokens
+	client.MaxTokens = tr.MaxTokens
+	if tr.TemperatureSet {
+		client.Temperature = tr.Temperature
 	}
-
-	if spec.Temperature != 0 {
-		client.Temperature = spec.Temperature
-	} else if r.cfg != nil && r.cfg.LLM.Temperature != 0 {
-		client.Temperature = r.cfg.LLM.Temperature
-	}
-
-	if spec.Streaming != nil {
-		client.Streaming = *spec.Streaming
-	} else if r.cfg != nil && r.cfg.LLM.Streaming != nil {
-		client.Streaming = *r.cfg.LLM.Streaming
+	if tr.StreamingSet {
+		client.Streaming = tr.Streaming
 	}
 
 	if len(spec.ExtraParams) > 0 {
@@ -75,13 +54,13 @@ func (r *ResilientLLMRouter) buildClientForSpec(spec config.ProviderSpec, modelO
 		client.DisableJSONMode = true
 	}
 
-	if th := spec.GetEnableThinking(); th != nil {
-		client.EnableThinking = th
-	}
+	client.EnableThinking = llmCfg.ResolveThinkingEnabled(spec)
+	thinkingOn := client.EnableThinking != nil && *client.EnableThinking
+	client.ThinkingBudget = llmCfg.ResolveThinkingBudget(spec, thinkingOn)
 
-	if tb := spec.GetThinkingBudget(); tb != nil {
-		client.ThinkingBudget = tb
-	}
+	reminder := llmCfg.ResolveJSONReminder(spec)
+	client.JSONReminderTaskCap = reminder.GetTaskCap()
+	client.JSONReminderBodyCap = reminder.GetBodyCap()
 
 	if r.cfg != nil {
 		client.Compaction = r.cfg.Context.GetCompactionMode()

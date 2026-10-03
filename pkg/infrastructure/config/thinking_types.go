@@ -2,8 +2,9 @@ package config
 
 // ThinkingConfig controls chain-of-thought / extended reasoning settings for LLM models.
 type ThinkingConfig struct {
-	Enabled *bool `yaml:"enabled,omitempty"`
-	Budget  *int  `yaml:"budget,omitempty"`
+	Enabled       *bool `yaml:"enabled,omitempty"`
+	Budget        *int  `yaml:"budget,omitempty"`
+	DefaultBudget *int  `yaml:"default_budget,omitempty"`
 }
 
 // IsEnabled returns true if thinking is explicitly enabled.
@@ -18,6 +19,14 @@ func (t *ThinkingConfig) GetBudget() int {
 		return *t.Budget
 	}
 	return 0
+}
+
+// GetDefaultBudget returns the default thinking token budget cap (default: 2048).
+func (t *ThinkingConfig) GetDefaultBudget() int {
+	if t != nil && t.DefaultBudget != nil && *t.DefaultBudget > 0 {
+		return *t.DefaultBudget
+	}
+	return 2048
 }
 
 // GetEnableThinking resolves enable_thinking preference from ThinkingConfig or fallback EnableThinking.

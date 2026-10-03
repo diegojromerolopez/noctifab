@@ -73,6 +73,7 @@ The autonomy level is controlled by the VCS `pull_request` settings in `.noctifa
 4. **Test-Driven Quality Gates**: Employs a multi-stage sequential execution cycle between the generator and test-writer agents. The Test Validator executes the test suite 3 times, requiring a majority vote consensus (at least 2/3 passing runs) to approve changes, preventing regression and flaky builds.
 5. **Sandboxed Action Isolation**: Safely edits files and runs test commands inside host path jails or isolated Docker containers, restricted by role-based authorization profiles.
 6. **Greenfield Spike & Lean Compaction**: Instant walking skeleton generation for uninitialized repositories (`spike`) with compiler-gated early acceptance (**Fast Exit on Green**), speculative local pre-validation, and telegraphic prompt compaction (`caveman`) for minimal Time-To-First-Token.
+7. **ASD-STE100 Specification & Language Mandate**: Strictly preserves the human-authored `SPEC.md` as immutable ground truth. The Product Manager translates `SPEC.md` into [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/) (`SPEC.ste.md`) as its first task upon startup. All downstream natural language generated across user stories and tasks adheres strictly to ASD-STE100 rules for deterministic, unambiguous clarity.
 
 ---
 
@@ -158,7 +159,7 @@ The core engine runs a continuous polling event loop that drives all development
    - **Stall Recovery Directives (`[STALL RECOVERY DIRECTIVE]`)**: Attaches recovery directives to task state upon reset and injects `[STALL RECOVERY DIRECTIVE]` into `Generator` and `Tester` prompts on retry attempts to prevent repeating the hanging command.
 2. **Legacy Codebase Characterization & Stabilization Prompts**: When `noctifab` runs in a workspace containing existing code, `scanLegacyFiles` detects pre-existing source files and dynamically injects a `LEGACY CODEBASE STABILIZATION & REFACTORING MANDATE` into the Product Manager prompt. The PM automatically generates `roadmap/user-stories/US-001.md` titled `"Legacy Codebase Characterization & Stabilization"`, requiring unit/integration characterization tests before refactoring or feature additions. Planner, Generator, and Tester prompts dynamically adapt with characterization testing and surgical refactoring (`edit_file`, `apply_patch`) directives.
 3. **Pre-Flight LLM Provider Capability Caching (`providerCapabilityCache`)**: Dynamically learns provider model parameter rejections (`temperature`, `max_tokens`, `response_format` for reasoning models like OpenAI O-series) upon the first HTTP 400 rejection. Caches capabilities per model in a thread-safe cache and automatically omits unsupported parameters on subsequent calls without error roundtrips.
-4. **Intra-Turn Iterative Self-Healing**: Generator and Tester agents execute in a multi-turn feedback loop (up to **5 turns** per task). If verification tools like `run_tests` or `run_linter` fail, the orchestrator appends compiler, syntax, or test failure outputs directly back into the prompt context. The agent receives this output as direct feedback to repair the code dynamically in the next turn before finalizing its work.
+4. **Intra-Turn Iterative Self-Healing**: Generator and Tester agents execute in a multi-turn feedback loop (up to **8 turns** for generators and **6 turns** for testers per task by default). If verification tools like `run_tests` or `run_linter` fail, the orchestrator appends compiler, syntax, or test failure outputs directly back into the prompt context. The agent receives this output as direct feedback to repair the code dynamically in the next turn before finalizing its work.
 5. **Watchdog Self-Repair (Inter-Turn)**: If a completed task fails the final verification gate, the orchestrator intercepts the failure and invokes a dedicated `WatchdogRepair` handler across three repair contexts:
    - **Timeout**: Fixes infinite loops, deadlock hangs, and thread leaks.
    - **Compile**: Solves syntax issues, missing imports, and compile failures.
@@ -214,6 +215,21 @@ The core engine runs a continuous polling event loop that drives all development
 32. **Multi-Story Parallel Concurrency (`orchestrator.number: 2-3`)**: Enables concurrent story orchestration where up to $N$ stories execute simultaneously across isolated worker pipelines, maximizing hardware and LLM provider concurrency.
 33. **Validation Project Autonomous Feedback & Improvement Loop (`validation/bin/validation_project_loop.py`)**: Closed-loop diagnostic and self-healing micro-loop that executes any target validation project (e.g. `pyedis`, `thredis`, `calculator`), harvests multi-channel telemetry (SQLite state database, per-agent token accounting, failed tool actions, compiler/mypy/linter errors), analyzes root causes, recompiles Noctifab, and re-tests in rapid 10–25 minute cycles (`make pyedis-loop`, `make auto-improve PROJECT=<name>`).
 34. **Configurable E2E Acceptance Testing Architecture (`sandbox.e2e`)**: Dual-mode acceptance test runner supporting both the **Clean Docker Architecture** (`mode: docker`, utilizing isolated Docker Compose services with zero host environment pollution) and **Native Hermetic Execution** (`mode: native`, with sub-second startup using isolated tools like `uv`, `mise`, `cargo`, and `go test`). Includes automated multi-runtime target detection (`E2EDetector`) and a Docker leak guard that prevents accidental container launches in native mode.
+35. **Official LLM Provider Prompt Caching & Routing Affinity**: Injects provider-native session affinity headers and caching keys (`prompt_cache_key` for OpenAI, Mistral, Cerebras, xAI; `prompt_cache_options: {"ttl": "1h"}` for Moonshot / Kimi; `x-session-id`, `session_id`, and `X-OpenRouter-Cache: true` for OpenRouter; `x-session-affinity` and `user` for Fireworks; `cachedContent` and `systemInstruction` prefix separation for Google Gemini; `cache_control` ephemeral headers for Anthropic). Persists `domain.TokenUsage.CachedTokens` and exports metrics to OpenTelemetry spans (`gen_ai.usage.cached_tokens`).
+36. **Extended Thinking Budget Governance (`llm.thinking.default_budget`)**: Enforces a global reasoning token budget ceiling (default: `2048`) across all providers whenever chain-of-thought is active without an explicit per-provider budget, completely eliminating catastrophic 8k–16k token burn on routine scaffolding or syntax repair tasks.
+37. **Adaptive Speculative Hedging with Stream Liveness Gating (`llm.hedging`)**: Dispatches speculative secondary provider requests when the primary provider encounters delays (configurable `delay: 25s`, `heavy_delay: 90s` for batch roles). Gated by `StreamLivenessTracker` to postpone speculative hedges when the primary candidate is actively streaming tokens, preventing duplicate LLM requests and saving 40%–50% of tokens.
+38. **Deterministic Anti-Hallucination & Anti-Stall Guard Suite (`pkg/services`)**:
+   - **Diff Oscillation & Ping-Pong Guard (`diff_oscillation_guard.go`)**: Tracks SHA-256 diff digests across turns to detect and immediately halt cyclic state reversion loops ($S_t == S_{t-2}$).
+   - **Regression Barrier & Pass-Loss Guard (`regression_barrier_guard.go`)**: Enforces a monotonic watermark of passing tests, rejecting mutations that break previously passing tests ("fixing test A by breaking test B").
+   - **Semantic Mutation vs. No-Op Guard (`semantic_mutation_guard.go`)**: AST normalizer stripping comments, docstrings, and debug logs across Go, Python, TypeScript, and Rust to reject superficial changes with zero structural logic alterations.
+   - **Undeclared Import Guard (`undeclared_import_guard.go`)**: Pre-compilation AST validation inspecting imports against language manifests (`go.mod`, `pyproject.toml`, `requirements.txt`, `Cargo.toml`, `package.json`).
+   - **Relative Module Anchoring Guard (`relative_module_anchor_guard.go`)**: Resolves relative imports against the physical filesystem tree to prevent phantom directory hallucinations.
+   - **Test Case Count Monotonicity & Discovery Parity Guards (`test_count_monotonicity_guard.go`, `test_discovery_parity_guard.go`)**: Rejects deletions of active test cases and flags 0-test discovery discrepancies.
+   - **Error Fingerprinting & Sycophantic Loop Detector (`error_fingerprinter.go`)**: SHA-256 normalized error signatures detecting repetitive compiler errors and forcing mandatory strategy shift directives.
+39. **Mutated File Context Deduplication (`context.dedup_mutated_files`)**: Automatically prunes pre-turn static snapshots of files that were modified earlier in the current task, replacing redundant code blocks with lightweight omission markers in subsequent turns to save thousands of tokens.
+40. **Smart Product Manager Story Auditing (`agents.product_manager.audit_mode`)**: Fast-path deterministic bypass (`smart` mode default) for stories already satisfying contract validation, explicit Definitions of Done, and non-synthetic contracts, skipping Pass 2 LLM audit overhead.
+41. **Defensive Format Reminder Caps (`llm.json_reminder.task.cap` & `body.cap`)**: Caps original prompt context (1,500 chars) and previous answer tail (12,000 chars) on format pullbacks, eliminating 85+ KB specification re-transmissions.
+42. **Whole-Project Sovereign Rescue Slicing & Sliding Window (`fallback.sovereign_rescue.slice_spec`, `context.sliding_window`)**: Automatically invokes `SliceSpecForRoadmap` on oversized `SPEC.md` (>12,000 chars) and bounds failure logs to sliding window budgets during emergency sovereign recovery.
 
 ---
 
@@ -293,7 +309,7 @@ Report paths are resolved strictly within workspace boundaries, timestamped with
 2. **Tier 2 (User Story Level)**: Tracks accumulated input and output tokens for individual user story milestones (`US-001`, `US-002`, etc.) and renders them in execution reports as the `### Story Token Breakdown` table.
 3. **Tier 3 (Task & Agent Worker Level)**: Tracks input/output tokens per task attempt and agent worker goroutine.
 
-Token extraction is integrated natively across OpenAI (stream options `IncludeUsage`), Anthropic (`cache_read_input_tokens`, `input_tokens`, `output_tokens`), Gemini (`usageMetadata`), and OpenOTel GenAI telemetry attributes (`gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`). For detailed documentation, see [docs/token_accountability.md](file:///Users/diegoj/repos/noctifab/docs/token_accountability.md).
+Token extraction is integrated natively across OpenAI (stream options `IncludeUsage`, `PromptTokensDetails.CachedTokens`), Anthropic (`cache_read_input_tokens`, `input_tokens`, `output_tokens`), Gemini (`usageMetadata`, `cachedContentTokenCount`), DeepSeek (`prompt_cache_hit_tokens`), and OpenOTel GenAI telemetry attributes (`gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.usage.cached_tokens`). For detailed documentation, see [docs/token_accountability.md](file:///Users/diegoj/repos/noctifab/docs/token_accountability.md).
 
 ---
 
@@ -315,15 +331,15 @@ agents:
 
   planner:
     number: 1      # Task DAG decomposition (default: 1)
-    iterations: 2
+    iterations: 5  # Maximum LLM planning turns (default: 5)
 
   generators:
     number: 3      # Number of parallel Generator agents (default: 3)
-    iterations: 5  # Maximum LLM repair turns per task (default: 5)
+    iterations: 8  # Maximum LLM repair turns per task (default: 8)
 
   testers:
     number: 2      # Number of parallel Tester agents (default: 2)
-    iterations: 3  # Maximum LLM turns per task (default: 3)
+    iterations: 6  # Maximum LLM turns per task (default: 6)
 
   qa:
     enabled: false # Experimental; no QA runtime is active in Phase 0
@@ -421,11 +437,22 @@ To maximize autonomous throughput on greenfield projects and rapid iterations, e
 ```yaml
 context:
   compaction: "caveman"         # Telegraphic prompt compaction: "caveman" or "simple_english"
+  dedup_mutated_files: true     # Deduplicate pre-turn file snapshots across task turns
+
+llm:
+  thinking:
+    default_budget: 2048        # Cap reasoning tokens across thinking models
+  hedging:
+    enabled: true               # Speculative backup requests on sluggish connections
+    delay: 25s
+    heavy_delay: 90s
 
 agents:
   architecture: "single_pass"   # Fast-path single-turn co-synthesis
   orchestrator:
     number: 3                   # Multi-story parallel concurrency (default: 1)
+  product_manager:
+    audit_mode: "smart"         # Fast-path deterministic contract validation bypass
   spike:
     enabled: true               # Autonomous walking skeleton scaffolding
   fast_exit_on_green: true      # Exit story turns early as soon as tests pass
@@ -499,13 +526,13 @@ Key features of Interactive Mode:
   - **Visual Spec Studio**: Side-by-side specification editor with time-travel revision scrubber, multi-model consensus review, and decomposed user story roadmap with completion meters.
 - **`steer`**: Injects a mid-flight human-in-the-loop steering directive into the active task (`noctifab steer "Use PostgreSQL instead of SQLite"`).
 - **`order`**: Enqueues an ad-hoc user story / feature prompt order into the autonomous execution queue (`noctifab order "Add JWT authentication middleware"`).
-- **`validate`**: Checks configuration files, databases, and sandbox settings.
-- **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Auto-generates user stories in `roadmap/user-stories/` from `SPEC.md` if missing, and executes stories concurrently via the Story DAG Scheduler. Pass `-w` / `--web` to launch the concurrent live Visual Web Dashboard, `--web-open` to auto-open in browser, `-i` for interactive TUI, `--standby` for persistent always-on dark factory mode, and `--resume` to skip completed stories.
-- **`resume`**: Resumes execution of an interrupted or partially completed workspace, skipping already completed user stories (`StorySuccess`) and picking up execution at the first incomplete story (supports `-w` / `--web` and `--web-open` for concurrent web dashboard).
+- **`validate`**: Checks configuration files, databases, and sandbox settings. Use `--fix` / `-f` to automatically diagnose and repair configuration errors using AI (`noctifab validate --fix`).
+- **`start`**: Plans and executes a software specification end-to-end for a target directory (defaults to current directory `.`). Auto-generates user stories in `roadmap/user-stories/` from `SPEC.md` (or translated `SPEC.ste.md`) if missing, and executes stories concurrently via the Story DAG Scheduler. Pass `-w` / `--web` to launch the concurrent live Visual Web Dashboard, `--web-open` to auto-open in browser, `-i` for interactive TUI, `--standby` for persistent always-on dark factory mode, `--resume` to skip completed stories, and `-L` / `--loops <n>` to control iterative self-healing loops.
+- **`resume`**: Resumes execution of an interrupted or partially completed workspace, skipping already completed user stories (`StorySuccess`) and picking up execution at the first incomplete story (supports `-w` / `--web`, `--web-open` for concurrent web dashboard, and `-L` / `--loops <n>`).
 - **`serve`**: Runs the long-running headless orchestrator daemon loop, polling and executing tasks in the background with local loopback REST API endpoints.
-- **`prompts`**: Inspects, customizes, initializes, and validates per-agent prompt templates (`list`, `show`, `init`, `validate`). Supports all 23 prompt templates across 7 agent roles.
+- **`prompts`**: Inspects, customizes, initializes, and validates per-agent prompt templates (`list`, `show`, `init`, `validate`). Supports all 27 prompt templates across 9 agent roles.
 - **`stop`**: Gracefully stops the background daemon process and saves state.
-- **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
+- **`clean`**: Resets all noctifab state (wipes the database, removes PID and log files, cleans temporary worktrees, and unlinks generated `SPEC.ste.md` [ASD-STE100](https://www.asd-ste100.org/) specification). Use `--dry-run` to preview, `--yes` / `-y` to skip confirmation.
 - **`maintenance`**: Cleans up completed branches, orphaned worktrees, and runs database schema migrations.
 - **`version`**: Displays Noctifab release version, Git commit hash, and commit date. Supports `--short` / `-s`, `--verbose` / `-v`, and `--json`. Also accessible via `noctifab --version`.
 
@@ -547,7 +574,7 @@ vcs:
 | **Kimi (Moonshot AI)** | `kimi`, `moonshot` | `KIMI_API_KEY`, `MOONSHOT_API_KEY` | `https://api.moonshot.ai/v1` |
 | **Groq** | `groq` | `GROQ_API_KEY` | `https://api.groq.com/openai/v1` |
 | **OpenRouter** | `openrouter` | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` |
-| **Qwen (DashScope)** | `qwen`, `dashscope` | `DASHSCOPE_API_KEY`, `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| **Qwen (DashScope)** | `qwen`, `dashscope`, `qwencloud` | `DASHSCOPE_API_KEY`, `QWEN_API_KEY`, `QWENCLOUD_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | **Together AI** | `together` | `TOGETHER_API_KEY` | `https://api.together.xyz/v1` |
 | **Meta (Llama)** | `llama`, `meta` | `LLAMA_API_KEY`, `META_API_KEY` | `https://api.together.xyz/v1` |
 | **HuggingFace** | `huggingface` | `HUGGINGFACE_API_KEY` | `https://api-inference.huggingface.co/v1` |
@@ -560,6 +587,10 @@ vcs:
 | **Fireworks AI** | `fireworks` | `FIREWORKS_API_KEY` | `https://api.fireworks.ai/inference/v1` |
 | **SambaNova** | `sambanova` | `SAMBANOVA_API_KEY` | `https://api.sambanova.ai/v1` |
 | **Cohere** | `cohere` | `COHERE_API_KEY`, `CO_API_KEY` | `https://api.cohere.com/v2` |
+| **Cerebras** | `cerebras` | `CEREBRAS_API_KEY` | `https://api.cerebras.ai/v1` |
+| **NVIDIA NIM** | `nvidia` | `NVIDIA_API_KEY` | `https://integrate.api.nvidia.com/v1` |
+| **AI21 Labs** | `ai21` | `AI21_API_KEY` | `https://api.ai21.com/studio/v1` |
+| **Upstage** | `upstage` | `UPSTAGE_API_KEY` | `https://api.upstage.ai/v1/solar` |
 
 ---
 
@@ -598,15 +629,38 @@ profiles:
 
 Control how workspace source files are formatted into LLM prompt contexts to optimize speed and token consumption:
 
-* **`full`** (default): Sends complete source file contents. Maximum context, best for small projects.
+* **`tree_sitter`** (default): Uses universal AST parsing to extract function signatures, struct/class definitions, and symbol maps while omitting implementation bodies of non-target files.
 * **`diff_window`**: Extracts modified git diff lines and error stack traces (+/- 15 context lines), cutting token usage by ~80%.
-* **`tree_sitter`**: Uses universal AST parsing to extract function signatures, struct/class definitions, and symbol maps.
+* **`full`**: Sends complete source file contents. Maximum context, best for small projects.
 
 ```yaml
 context:
-  mode: "full"            # Options: "full" (default), "diff_window", "tree_sitter"
-  diff_window_lines: 15   # Surrounding context lines for diff_window mode
+  mode: "tree_sitter"         # Options: "tree_sitter" (default), "diff_window", "full"
+  diff_window_lines: 15       # Surrounding context lines for diff_window mode (default: 15)
+  dedup_mutated_files: false  # Preserves byte-identical pre-turn context across turns to maximize prompt prefix cache hit rates (default: false)
 ```
+
+### Eliminating Double Reasoning for Thinking Models
+
+To disable model chain-of-thought (thinking) tokens and avoid paying for double reasoning (hidden CoT tokens + JSON contract `"reasoning"` field), configure `llm.thinking.enabled: false`:
+
+```yaml
+llm:
+  thinking:
+    enabled: false            # Global default: models run in normal mode
+  providers:
+    - name: claude
+      provider: anthropic
+      thinking:
+        enabled: true         # A lone provider can still think
+        budget: 8192
+```
+
+Each provider entry can override the common `llm.*` settings `thinking`, `hedging`, `json_reminder`, `token_usage_limit` (a per-provider daily token cap), and transport defaults (`max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, `streaming`). Unset fields inherit the global value. See [docs/configuration.md](docs/configuration.md).
+
+### Prompt Prefix Caching & Session Affinity
+
+Noctifab formats multi-turn continuation prompts with an append-only turn log under a stable header, ensuring the base prefix remains 100% byte-identical across turns. Combined with `domain.WithCacheSessionID` for backend cluster affinity, this achieves **80%–90% prompt cache hit rates** on Anthropic, Gemini, and OpenAI.
 
 ### Workspace Inspection Caching (`workspace_cache.enabled`)
 
@@ -690,13 +744,16 @@ agents:
 
 `noctifab` supports multiple LLM providers via a pluggable `llm.ProviderClient` interface. The active provider, model, and API key are set in `.noctifab/config.yaml`.
 
-### Resilience Features
+### Resilience & Efficiency Features
 
-All providers benefit from the same resilience layer automatically:
+All providers benefit from the same resilience and token efficiency layers automatically:
 
-* **Automatic retry with backoff** – transient errors (HTTP 5xx, network timeouts) are retried up to 3 times with exponential back-off.
+* **Automatic retry with backoff** – transient errors (HTTP 5xx, network timeouts) are retried up to 5 times with exponential back-off.
 * **Rate-limit awareness (HTTP 429)** – when a `429 Too Many Requests` response is received, `noctifab` warns the user, parses the provider's `retryDelay` field from the response body, and sleeps for exactly that duration before retrying.
 * **Automatic model fallback** – if the chosen model is unavailable, `noctifab` first queries the provider for its live model list and falls back to the next smaller model in the static hierarchy below. The fallback continues down the chain until a working model is found or all options are exhausted.
+* **Official Prompt Caching & Routing Affinity** – automatically injects provider-native cache headers and keys (`prompt_cache_key`, `cachedContent`, `systemInstruction`, `prompt_cache_options`, `cache_control`), routing multi-turn requests to warm GPU instances and tracking cached token savings in execution reports.
+* **Stream-Gated Speculative Hedging** – launches speculative secondary completions when primary connections lag, but postpones duplicate calls when tokens are actively streaming via SSE, cutting token waste by ~50%.
+* **Extended Thinking Budget Caps** – caps chain-of-thought reasoning tokens (`llm.thinking.default_budget: 2048`) across reasoning models to eliminate multi-thousand token burns on routine edits.
 
 ### Provider Configuration Reference
 
@@ -706,7 +763,7 @@ All providers benefit from the same resilience layer automatically:
 # .noctifab/config.yaml
 llm:
   provider: gemini
-  model: gemini-3.6-pro          # fallback chain: → gemini-3.6-flash
+  model: gemini-3.1-pro-preview   # fallback chain: → gemini-3.8-flash
   api_key: "secret:GEMINI_API_KEY"
   max_timeout: 60s               # Overall request hard timeout
   idle_timeout: 15s              # Socket stream inactivity timeout before failover
@@ -797,9 +854,9 @@ llm:
 
 | Provider | Model priority (high → low) |
 |---|---|
-| **Gemini** | `gemini-3.6-pro` → `gemini-3.6-flash` |
+| **Gemini** | `gemini-3.1-pro-preview` → `gemini-3.8-flash` |
 | **OpenAI** | `gpt-4o` → `gpt-4o-mini` |
-| **Anthropic** | `claude-3-5-sonnet-latest` → `claude-3-5-haiku-latest` |
+| **Anthropic** | `claude-sonnet-5` → `claude-3-5-sonnet-latest` → `claude-3-5-haiku-latest` |
 | **Mistral** | `mistral-large-latest` → `mistral-medium-latest` → `mistral-small-latest` → `open-mistral-7b` |
 | **DeepSeek** | `deepseek-coder` → `deepseek-chat` |
 | **Hermes** | `hermes-3-llama-3.1-405b` → `hermes-3-llama-3.1-70b` → `hermes-3-llama-3.1-8b` |

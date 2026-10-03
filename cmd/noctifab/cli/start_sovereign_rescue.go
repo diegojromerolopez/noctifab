@@ -53,8 +53,12 @@ func DispatchSovereignRescue(ctx context.Context, opts SovereignRescueOptions) e
 			fmt.Fprintf(os.Stderr, "ℹ [Sovereign Rescue] Sovereign rescue is disabled in configuration.\n")
 			return errors.New("sovereign rescue is disabled in configuration")
 		}
+		configuredMax := rescueCfg.GetMaxTurns()
+		if configuredMax <= 0 {
+			configuredMax = 15
+		}
 		if opts.MaxTurns <= 0 {
-			opts.MaxTurns = rescueCfg.GetMaxTurns()
+			opts.MaxTurns = configuredMax
 		}
 		if len(opts.AcceptanceGaps) > 0 {
 			gapTurns := len(opts.AcceptanceGaps)
@@ -64,6 +68,9 @@ func DispatchSovereignRescue(ctx context.Context, opts SovereignRescueOptions) e
 			if gapTurns > opts.MaxTurns {
 				opts.MaxTurns = gapTurns
 			}
+		}
+		if opts.MaxTurns > configuredMax {
+			opts.MaxTurns = configuredMax
 		}
 		if opts.TurnTimeout <= 0 {
 			opts.TurnTimeout = rescueCfg.GetTimeout()
@@ -72,8 +79,9 @@ func DispatchSovereignRescue(ctx context.Context, opts SovereignRescueOptions) e
 			opts.ToolchainStrategy = rescueCfg.GetMissingToolchainStrategy()
 		}
 	} else {
+		configuredMax := 15
 		if opts.MaxTurns <= 0 {
-			opts.MaxTurns = 10
+			opts.MaxTurns = configuredMax
 		}
 		if len(opts.AcceptanceGaps) > 0 {
 			gapTurns := len(opts.AcceptanceGaps)
@@ -83,6 +91,9 @@ func DispatchSovereignRescue(ctx context.Context, opts SovereignRescueOptions) e
 			if gapTurns > opts.MaxTurns {
 				opts.MaxTurns = gapTurns
 			}
+		}
+		if opts.MaxTurns > configuredMax {
+			opts.MaxTurns = configuredMax
 		}
 		if opts.TurnTimeout <= 0 {
 			opts.TurnTimeout = 5 * time.Minute
@@ -129,7 +140,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 
 	maxTurns := opts.MaxTurns
 	if maxTurns <= 0 {
-		maxTurns = 10
+		maxTurns = 15
 	}
 
 	turnTimeout := opts.TurnTimeout
@@ -149,8 +160,11 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		opts.GitClient.CleanStaleLocks(ctx)
 	}
 
-	// Register diagnostic tools if missing
+	// Register diagnostic and file deletion tools if missing
 	if opts.ToolRegistry != nil {
+		if _, ok := opts.ToolRegistry.Get("delete_file"); !ok {
+			opts.ToolRegistry.Register(&services.DeleteFileTool{})
+		}
 		if _, ok := opts.ToolRegistry.Get("check_socket"); !ok {
 			opts.ToolRegistry.Register(&services.CheckSocketTool{})
 		}
@@ -188,6 +202,14 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		specContent = llm.CompactMarkdownSpecWithMode(specContent, rescueCtxCfg.GetCompactionMode())
 	}
 
+	sliceSpec := true
+	if opts.Cfg != nil {
+		sliceSpec = opts.Cfg.GetSovereignRescue().IsSliceSpecEnabled()
+	}
+	if sliceSpec && len(specContent) > 12000 {
+		specContent = services.SliceSpecForRoadmap(specContent)
+	}
+
 	// 3. Obtain initial failure diagnostics
 	dummyTask := domain.Task{
 		ID:          "sovereign-project-rescue",
@@ -215,6 +237,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	}
 	resolvedStrategy := ResolveToolchainStrategyForSandbox(ctx, opts.ToolchainStrategy, sandboxMode, nil)
 	bestCommit := captureSovereignBaselineCommit(ctx, opts.GitClient)
+	circuitBreaker := services.NewOscillationCircuitBreaker()
 
 	// 4. Multi-Turn Sovereign Rescue Loop
 	graceRefunds := 0
@@ -294,7 +317,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 					fmt.Sprintf("fix(sovereign-rescue): direct unblock turn %d/%d", turn, maxTurns))
 			}
 		} else {
-			toolErrors = append(toolErrors, "response contained 0 actionable tool invocations; you must invoke write_file, write_files, edit_file, or diagnostic probe tools")
+			toolErrors = append(toolErrors, "response contained 0 actionable tool invocations; you must invoke write_file, write_files, edit_file, delete_file, or diagnostic probe tools")
 		}
 
 		// Log and persist corrective step in database
@@ -368,6 +391,18 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		}
 
 		lastFailureLog = newLog
+
+		// Oscillation & Cycle Detection Circuit Breaker
+		oscDecision := circuitBreaker.RecordFailure(turn, newLog)
+		if oscDecision.Action == services.OscillationActionTrip {
+			fmt.Fprintf(os.Stderr, "🚨 [OSCILLATION CIRCUIT BREAKER TRIPPED] %s\n", oscDecision.Reason)
+			return fmt.Errorf("sovereign rescue halted by oscillation circuit breaker: %s", oscDecision.Reason)
+		}
+		if oscDecision.Action == services.OscillationActionReconcile {
+			fmt.Fprintf(os.Stderr, "⚠️  [OSCILLATION DETECTED] %s. Injecting reconciliation directive into Turn %d...\n", oscDecision.Reason, turn+1)
+			lastFailureLog = oscDecision.Directive + "\n" + lastFailureLog
+		}
+
 		var feedbackParts []string
 		if len(toolOutputs) > 0 {
 			feedbackParts = append(feedbackParts, fmt.Sprintf("WORKSPACE TOOL EXECUTION RESULTS IN TURN %d:\n%s", turn, strings.Join(toolOutputs, "\n---\n")))

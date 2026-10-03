@@ -61,11 +61,14 @@ func TestFallbackConfig_Defaults(t *testing.T) {
 	if !sr.IsEnabled() {
 		t.Errorf("expected SovereignRescue to be enabled by default")
 	}
-	if sr.GetMaxTurns() != 10 {
-		t.Errorf("expected SovereignRescue.GetMaxTurns to default to 10, got %d", sr.GetMaxTurns())
+	if sr.GetMaxTurns() != 15 {
+		t.Errorf("expected SovereignRescue.GetMaxTurns to default to 15, got %d", sr.GetMaxTurns())
 	}
 	if sr.GetTimeout() != 5*time.Minute {
 		t.Errorf("expected SovereignRescue.GetTimeout to default to 5m, got %v", sr.GetTimeout())
+	}
+	if !sr.IsSliceSpecEnabled() {
+		t.Errorf("expected SovereignRescue.IsSliceSpecEnabled to default to true")
 	}
 }
 
@@ -95,11 +98,11 @@ func TestSovereignRescueConfig_CustomAndResolution(t *testing.T) {
 		}
 	})
 
-	t.Run("nil config returns safe default MaxTurns of 10", func(t *testing.T) {
+	t.Run("nil config returns safe default MaxTurns of 15", func(t *testing.T) {
 		var cfg *Config
 		sr := cfg.GetSovereignRescue()
-		if sr.GetMaxTurns() != 10 {
-			t.Errorf("expected default MaxTurns 10, got %d", sr.GetMaxTurns())
+		if sr.GetMaxTurns() != 15 {
+			t.Errorf("expected default MaxTurns 15, got %d", sr.GetMaxTurns())
 		}
 	})
 
@@ -177,6 +180,22 @@ func TestSovereignRescueConfig_CustomAndResolution(t *testing.T) {
 		}
 		if sr.Providers[0].Temperature == nil || *sr.Providers[0].Temperature != 0.3 {
 			t.Errorf("expected provider temperature 0.3, got %v", sr.Providers[0].Temperature)
+		}
+	})
+
+	t.Run("slice_spec can be explicitly disabled", func(t *testing.T) {
+		cfg := DefaultConfig()
+		disabled := false
+		cfg.Fallback.SovereignRescue.SliceSpec = &disabled
+
+		sr := cfg.GetSovereignRescue()
+		if sr.IsSliceSpecEnabled() {
+			t.Errorf("expected IsSliceSpecEnabled to be false when explicitly disabled")
+		}
+
+		var zeroSR SovereignRescueConfig
+		if !zeroSR.IsSliceSpecEnabled() {
+			t.Errorf("expected zero-value SovereignRescueConfig to have IsSliceSpecEnabled default to true")
 		}
 	})
 }

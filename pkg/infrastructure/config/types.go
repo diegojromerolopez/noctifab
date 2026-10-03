@@ -135,6 +135,7 @@ type AgentRoleConfig struct {
 	Ensemble       EnsembleConfig     `yaml:"ensemble,omitempty"`
 	Pipelined      *bool              `yaml:"pipelined,omitempty"`
 	Timeout        Duration           `yaml:"timeout,omitempty"`
+	AuditMode      string             `yaml:"audit_mode,omitempty"`
 }
 
 func (a AgentRoleConfig) GetTimeout() time.Duration {
@@ -260,6 +261,12 @@ type ProviderSpec struct {
 	// ContextWindow specifies the maximum input context window size in tokens for this provider/model.
 	// When 0, the built-in heuristic (GetModelContextWindow) is used.
 	ContextWindow int64 `yaml:"context_window,omitempty"`
+	// Per-provider overrides of common llm.* settings (nil = inherit global).
+	Hedging         *HedgingConfig      `yaml:"hedging,omitempty"`
+	JSONReminder    *JSONReminderConfig `yaml:"json_reminder,omitempty"`
+	TokenUsageLimit *int64              `yaml:"token_usage_limit,omitempty"`
+	// explicitKeys records the YAML keys written for this entry (see UnmarshalYAML).
+	explicitKeys map[string]bool
 }
 
 type LLMConfig struct {
@@ -291,7 +298,10 @@ type LLMConfig struct {
 	// to prioritize models with sufficient context window capacity.
 	AdaptiveContextRouting bool `yaml:"adaptive_context_routing,omitempty"`
 	// BypassPriorityByContext is an alias for AdaptiveContextRouting.
-	BypassPriorityByContext bool `yaml:"bypass_priority_by_context,omitempty"`
+	BypassPriorityByContext bool               `yaml:"bypass_priority_by_context,omitempty"`
+	Hedging                 HedgingConfig      `yaml:"hedging,omitempty"`
+	JSONReminder            JSONReminderConfig `yaml:"json_reminder,omitempty"`
+	Thinking                *ThinkingConfig    `yaml:"thinking,omitempty"`
 }
 
 func (l LLMConfig) IsAdaptiveContextRoutingEnabled() bool {

@@ -11,12 +11,8 @@ INPUT CONTEXT:
 
 TWO-STAGE ROADMAP GENERATION MANDATE:
 1. Two-Stage Roadmap Planning: To guarantee complete, high-precision user story contracts without token truncation or timeout errors, emit a 'plan_roadmap' action outlining the planned user stories catalog (with id, title, slug, domain_slice, depends_on, complexity, and summary). The platform will then execute Stage 2 to expand each story individually with complete Definitions of Done and executable contracts.
-2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your 'plan_roadmap' action.
+2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies, ambiguities, missing command specifications, or unstated return formats, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your 'plan_roadmap' action.
 3. Direct Story Creation: For small specifications (1-2 stories), you may optionally emit 'create_story' actions directly alongside or instead of 'plan_roadmap'.
-
-SPECIFICATION REVIEW & REFINEMENT MANDATE:
-1. Critical Specification Review: Inspect the root SPEC.md for contradictions, ambiguities, missing command specifications, unstated return formats, or undefined error envelopes.
-2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your user story creation actions.
 
 REFINEMENT & AUDIT MANDATE:
 If existing user story files are provided in the prompt:
@@ -100,3 +96,10 @@ Every user story content generated or refined MUST include an explicit, language
 14. Mandatory Makefile Targets (Build, Test, E2E): When a project specifies or generates a Makefile, the Definition of Done MUST mandate three standard recipes: `build` (compiles the binary), `test` (compiles and runs unit tests, strictly exiting with code 1 if 0 tests are found), and `e2e` (physically executes real black-box E2E test scenarios against the running application covering at least one specific scenario for EACH feature, command, and flag declared in SPEC.md, asserting real domain responses and exit code 0; never author empty or tautological e2e recipes). Every Makefile MUST include an `e2e` recipe with per-feature test scenarios.
 15. Negative Specification Constraints & Forbidden Tools Mandate: Carefully inspect SPEC.md for any negative constraints, forbidden frameworks, disallowed libraries, or prohibited tools (e.g. 'pytest is strictly forbidden', 'no external web frameworks', 'use only standard library unittest'). The Definition of Done and Acceptance Criteria in EVERY user story MUST explicitly declare these prohibitions and mandate the approved alternative, so downstream generators, planners, and testers never import, configure, or invoke forbidden tools.
 16. Structured Data & Script-First Mandate: For any story or task dealing with structured data (JSON, YAML, TOML, CSV, schemas, ASTs, SQL fixtures/migrations, or tabular data), mandate in the story instructions that downstream agents ask themselves if authoring and running an automated script (in Python for example) wouldn't be significantly better, faster, and more reliable than manual line-by-line editing.
+17. ASD-STE100 SIMPLIFIED TECHNICAL ENGLISH MANDATE:
+All natural language in generated user stories (titles, descriptions, acceptance criteria, scenario narratives, notes) MUST strictly comply with ASD-STE100 Simplified Technical English rules (https://www.asd-ste100.org/):
+- Short Sentences: Keep sentences short and direct. Maximum 20 words for instructions and procedural steps; maximum 25 words for descriptions.
+- Active Voice: Use active voice. Do NOT use passive voice.
+- Imperative Mood: Use imperative verbs for instructions, test procedures, and acceptance criteria steps (e.g. "Create module", "Verify exit status", "Parse request").
+- One Word, One Meaning: Use standardized, approved technical words. Avoid synonyms, ambiguous jargon, idioms, and colloquialisms.
+- Limit Noun Clusters: Restrict noun strings to at most 3 consecutive nouns.

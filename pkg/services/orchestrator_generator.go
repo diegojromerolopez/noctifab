@@ -39,12 +39,13 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		readerContexts = o.RunReaderPhase(ctx, "generator", task, state)
 	}
 
+	cleanFileContexts, cleanReaderContexts := DeduplicateFileAndReaderContexts(fileContexts, readerContexts)
 	var promptContext []string
-	if len(fileContexts) > 0 {
-		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(fileContexts, "\n\n")))
+	if len(cleanFileContexts) > 0 {
+		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(cleanFileContexts, "\n\n")))
 	}
-	if len(readerContexts) > 0 {
-		promptContext = append(promptContext, fmt.Sprintf("Inspection context gathered:\n%s", strings.Join(readerContexts, "\n\n")))
+	if len(cleanReaderContexts) > 0 {
+		promptContext = append(promptContext, fmt.Sprintf("Inspection context gathered:\n%s", strings.Join(cleanReaderContexts, "\n\n")))
 	}
 	if recentTestsContext != "" {
 		promptContext = append(promptContext, recentTestsContext)
@@ -123,14 +124,19 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	// Compaction must never rewrite the output contract at the end of the prompt.
 	genCtx = domain.WithUncompactableTail(genCtx, len(rendered.Contract))
 	genCtx = domain.WithCacheablePrefix(genCtx, len(rendered.Body))
+	genCtx = domain.WithCacheSessionID(genCtx, "task-"+task.ID)
 	o.registerAgentStart(ctx, "generator", task.ID)
 
 	currentPrompt := genPrompt
 	maxTurns := iterationsOrDefault(o.cfg.GeneratorsIterations)
 	if action == "surgical_repair" {
 		maxTurns = 2
+	} else if (action == "single_pass" || action == "single_pass_fix") && maxTurns > 8 {
+		maxTurns = 8
 	}
 	var lastErr error
+	var allTurnOutputsHistory []string
+	mutatedFiles := make(map[string]bool)
 	runTestsCalled := false
 	testFixRequestCount := 0
 	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
@@ -320,6 +326,9 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 						circuitBreaker.RecordAction(action.Tool, action.Args)
 						consecutiveLinterFailures = 0
 						seenFileDependentCalls = make(map[string]bool)
+						if p, ok := action.Args["path"].(string); ok && p != "" {
+							mutatedFiles[p] = true
+						}
 					}
 				}
 			}
@@ -426,13 +435,17 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 			}
 		}
 
-		// Append errors and tool outputs to the body for the next turn. The
-		// non-overridable output contract stays at the END of the prompt so
-		// the JSON schema is the last thing the model reads.
-		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.\n%s",
-			rendered.Body, turn+1, maxTurns,
-			joinCappedToolOutputs(turnToolOutputs),
-			maxTurns-turn-1,
+		// Append errors and tool outputs to maintain byte-for-byte prefix cache stability
+		// across turns. The output contract stays at the END of the prompt so the
+		// JSON schema is the last thing the model reads.
+		// Maintain byte-for-byte prefix cache stability across turns by preserving rendered.Body verbatim.
+		turnMsg := fmt.Sprintf("--- Turn %d (Turns remaining: %d) ---\n%s", turn+1, maxTurns-turn-1, joinCappedToolOutputs(turnToolOutputs))
+		allTurnOutputsHistory = append(allTurnOutputsHistory, turnMsg)
+		windowedHistory := PruneAndWindowToolOutputs(allTurnOutputsHistory, 2)
+
+		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN(S):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop.\n%s",
+			rendered.Body,
+			strings.Join(windowedHistory, "\n\n"),
 			rendered.Contract)
 	}
 

@@ -5,6 +5,201 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.3] - 2026-10-04
+
+### Changed
+- **Upgrade Google Gemini Configurations to Concrete Releases**:
+  - Upgraded Flash model configuration from `gemini-3.6-flash` to Google's newest release `gemini-3.8-flash` across all validation project configurations (`validation/projects/*/.noctifab/config.yaml`) and documentation.
+  - Upgraded Pro model configuration from `gemini-3.6-pro` to Google's latest available Pro model `gemini-3.1-pro-preview` across all validation project configurations and documentation, replacing floating model aliases with concrete, pinned releases.
+
+## [0.117.2] - 2026-10-04
+
+### Fixed
+- **Story ID & Filename Collision Deduplication in Parallel Roadmap Generation**:
+  - Enhanced `ParseStoryOutlines` in `pkg/services/roadmap_two_stage.go` to track seen story IDs and filename slugs. If duplicate story IDs (e.g. duplicate `US-006` blocks emitted by LLM) or duplicate slugs occur, Noctifab automatically renumbers them sequentially (`US-007`, `US-008`, etc.) and disambiguates filenames with numeric suffixes, preventing worktree race conditions and roadmap file collisions.
+- **Sovereign Rescue Prompt Context Bloat Mitigation**:
+  - Capped `summarizeFailureLog` in `pkg/services/orchestrator_log_summary.go` to at most 80 lines (30 start + 50 tail) and a maximum of 4,000 characters, preventing unbounded multi-thousand-line failure cascades from entering rescue prompts.
+  - Capped git diff context in `pkg/services/orchestrator_fallback.go` to 6,000 characters (down from 16,000), drastically reducing token consumption and preventing 40k+ token rescue prompts.
+- **Python Virtual Environment Missing pip Auto-Seeding**:
+  - Implemented `EnsureVenvPip` in `pkg/services/worktree_cache.go` to detect missing `bin/pip` in Python virtual environments (e.g. created by minimal Python 3.13 or default `uv venv`) and automatically seed pip via `uv pip install pip --python <bin>` or `python -m ensurepip --upgrade`.
+  - Integrated pip auto-seeding across `BuildSharedCacheEnv`, `dependency_prewarm.go`, and `dependency_tools.go`.
+  - Updated planner prompt template `pkg/infrastructure/prompts/defaults/planner/decompose.tmpl` to mandate `uv venv --seed .venv` when creating virtualenvs.
+- **Parallel Integration Test Dynamic TCP Port Allocation**:
+  - Implemented dynamic ephemeral TCP port discovery (`allocateWorktreePort`) in `pkg/services/worktree_cache.go` and injected dynamic `PORT`, `TEST_PORT`, `REDIS_PORT`, `SERVER_PORT`, and `NOCTIFAB_PORT` environment variables into all task worktrees.
+  - Added dynamic port binding guidelines to generator and planner prompt templates (`implement.tmpl` and `decompose.tmpl`) instructing agents to bind to port 0 or use dynamic port variables rather than hardcoding static ports like `6379`.
+
+## [0.117.1] - 2026-10-04
+
+### Fixed
+- **Conflict Marker Leak Prevention in Rebase Queue & Generator Synthesis**:
+  - `CleanConflictMarkers` in `pkg/services/orchestrator_execute_workspace.go` unconditionally strips all conflict marker lines (`<<<<<<<`, `=======`, `>>>>>>>`, and diff3 `|||||||`), resolving stray or unmatched markers.
+  - Added `ContainsConflictMarkers` and `hasStagedConflictMarkers` in `pkg/services/rebase_queue.go` to inspect the git index before committing in Tiers 2, 3, and 4. If any staged file contains conflict markers, the commit is safely rejected and execution cascades to Tier 5 (clean overlay fallback).
+- **Anti-Stub Validator False-Positive Whitelist for Shell Exit Traps**:
+  - Whitelisted standard shell trap lines (e.g. `trap 'kill "$PID" 2>/dev/null || true' EXIT`) in `pkg/services/anti_stub_validator.go` from being flagged as error-suppression or exit masking.
+- **Thinking-Only Gemini Models `thinkingBudget: 0` Guard**:
+  - Added `isThinkingOnlyModel` in `pkg/infrastructure/llm/model_capabilities.go` to identify models that strictly require thinking mode (`gemini-3.1-pro-preview`, `gemini-3.6-pro`, `gemini-2.5-pro`).
+  - Prevented sending `thinkingBudget: 0` in `pkg/infrastructure/llm/gemini.go`, eliminating HTTP 400 rejection errors.
+- **Story Public Contract Protocol & Socket Fields Support**:
+  - Added `RequestFormat`, `RequestFrames`, and `RequestExamples` to `PublicContract` in `pkg/domain/qa_contract.go`.
+  - Updated `pkg/services/story_contract.go` to accept socket/protocol interface contracts without requiring CLI executable or HTTP definitions.
+- **Execution Report Path Flexibility**:
+  - Allowed both `.noctifab/reports` and `.noctifab/report` subdirectories for in-workspace execution reports in `pkg/infrastructure/config/report_path.go`.
+- **Planner Prompt Task Scope Ceiling**:
+  - Sharpened Item 14 in `pkg/infrastructure/prompts/defaults/planner/decompose.tmpl` with an explicit hard ceiling of at most 8 commands or operations per task.
+- **Staticcheck Linter Formatting**:
+  - Fixed QF1012 string formatting warnings in `pkg/services/orchestrator_reader_phase.go`.
+
+## [0.117.0] - 2026-10-03
+
+### Added
+- **Context Deduplication Across File and Reader Phases**:
+  - Implemented `DeduplicateFileAndReaderContexts` in `pkg/services/orchestrator_context_pruner.go` to eliminate redundant file context injection when files are loaded both by direct target file slicing and by the AST/ImportGraphWalker.
+  - Sliced and full-file representations are now deduplicated, saving 15%–30% prompt tokens per turn on tasks touching existing files.
+- **Sliding Window & Superseded Diagnostic Tool Output Pruning**:
+  - Implemented `PruneAndWindowToolOutputs` in `pkg/services/orchestrator_context_pruner.go` to automatically condense older turns and replace superseded `run_tests` and `run_linter` failure logs with compact single-line references.
+  - Prevents multi-turn prompt accumulation from exploding context on turns 3+, reducing multi-turn prompt overhead by 30%–50%.
+- **Relevant Subtree Workspace File Tree Formatting**:
+  - Added `formatWorkspaceFileTree` in `pkg/services/orchestrator_reader_phase.go` to prioritize root build files and subtrees containing task target files when repository size exceeds 60 files.
+  - Collapses unrelated directories into concise file count summaries, saving thousands of prompt tokens per turn on medium and large repositories.
+- **Blank-Line-Tolerant & Normalized Incremental Editing**:
+  - Enhanced `pkg/services/edit_file_helper.go` with `matchNormalizedLines` fallback, matching contiguous blocks regardless of missing or extra internal blank lines.
+  - Drastically increases `edit_file` success rates, preventing unnecessary fallbacks to multi-hundred-line `write_file` overwrites.
+- **Context-Aware Prompt-Scaled Hedging Delay**:
+  - Enhanced `pkg/infrastructure/llm/router_hedging.go` to scale speculative hedge delays proportionally for prompts exceeding 4,000 tokens (`+1s` per 2,000 tokens), preventing premature concurrent hedging during large prompt KV cache evaluation and time-to-first-token.
+
+### Changed
+- **Strict Static Prefix Locking for 100% KV Cache Stability**:
+  - Preserved `rendered.Body` completely invariant across turns 1..N in `orchestrator_generator.go` and `orchestrator_helper.go`, keeping the exact byte prefix stable for Anthropic, OpenAI, DeepSeek, and Gemini KV caches.
+  - Relocated dynamic turn counter (`Turns remaining: %d`) into turn headers, ensuring output contracts remain at a stable, non-shifting suffix.
+- **Ghost Reasoning Elimination in Execution Contracts**:
+  - Trimmed execution role contract prompts (`contracts/generator.txt` and `contracts/tester.txt`) from requesting verbose multi-paragraph rationale to a concise 1-sentence technical intent, saving 200–600 output tokens and 5–15 seconds per turn.
+- **Dynamic Turn Budgeting for Single-Pass Tasks**:
+  - Capped default generator turns for single-pass tasks to 8 iterations (down from 20), combined with immediate fast-path exit when explicit test execution passes cleanly.
+
+## [0.116.0] - 2026-10-03
+
+### Added
+- **Per-Provider Overrides of Common LLM Settings**:
+  - `llm.providers[]` entries can now override `thinking`, `hedging`, `json_reminder`, `token_usage_limit`, as well as transport settings: `max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, and `streaming`. Unset fields inherit the global `llm.*` value field by field (`pkg/infrastructure/config/provider_overrides.go`).
+  - Promoted common transport defaults (`max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, `streaming`) to the top-level `llm:` block, eliminating redundant per-provider configuration blocks across all 20 validation projects (`validation/projects/*/.noctifab/config.yaml`) and the host pyedis repository (`$HOME/repos/pyedis/.noctifab/config.yaml`).
+  - Standardized all validation projects with `llm.thinking.enabled: false`, disabled Qwen thinking (`enable_thinking: false`, `thinking_budget: 0`), top-level `workspace_cache.enabled: true`, and optimized cache-preserving context settings (`dedup_mutated_files: false`, `diff_window_lines: 15`).
+  - Implemented explicit YAML key tracking (`ProviderSpec.UnmarshalYAML` in `pkg/infrastructure/config/provider_spec_yaml.go`) to distinguish explicit zero values (e.g. `temperature: 0.0` or `max_tokens: -1` -> 0) from unset fields, ensuring explicit provider overrides always win over non-zero globals.
+  - A lone provider can enable thinking while `llm.thinking.enabled: false`. A global `true` is now inherited by providers that do not set their own value.
+  - Hedging uses the primary candidate's effective delay, so one provider can disable or tune speculative hedging.
+  - `token_usage_limit` on a provider is a daily cap for that provider entry only. Capped providers are skipped. Usage is recorded under a `named:<provider>` budget key (`pkg/infrastructure/llm/router_provider_overrides.go`).
+- **Context Slicing Default & Diff Window Configuration**:
+  - Set default `context.mode` to `"tree_sitter"` (upgraded from `"full"`), ensuring AST/symbol signature pruning is the factory default.
+  - Added and documented `diff_window_lines` configuration setting (default: 15) to control the surrounding context line window when operating in `diff_window` mode.
+  - Verified non-destructive context behavior with `context.dedup_mutated_files` defaulting to `false` to preserve prefix stability.
+- **Incremental Diff Tooling Reliability (`apply_patch` & `edit_file`)**:
+  - Enhanced `apply_patch` in `pkg/services/apply_patch_tool.go` with whitespace-trimmed fuzzy matching fallback (`matchAtTrimmed`), preventing hunk rejections caused by subtle indentation or line ending variations.
+  - Enhanced `edit_file` in `pkg/services/edit_file_helper.go` with search window expansion (`[start-16, end+15]`) and indentation preservation (`extractLeadingWhitespace`), ensuring surgical edits match even when preceding edits shift line indices.
+
+### Changed
+- **ASD-STE100 Prompt Template Standardization & Token Pruning**:
+  - Re-authored default generator and tester prompt templates (`implement`, `fix`, `refactor`, `single_pass`, `single_pass_fix`, `surgical_repair`, `write`, `write_breadth_first`) to comply with the ASD-STE100 standard (max 20 words for instructions, 25 for descriptions, active voice, imperative mood).
+  - Eliminated redundant paragraphs and duplicate instructions, achieving a 60%–75% reduction in static prompt overhead while strictly retaining all required contract needles.
+- **Prefix Cache Optimization for Multi-Turn Continuations**:
+  - Replaced destructive per-turn prompt overwrites with append-only history continuation blocks (`--- Turn N ---`) under stable headers.
+  - Attached persistent `domain.WithCacheSessionID` metadata across task generation turns for Anthropic/Gemini/OpenAI routing affinity.
+  - Boosted multi-turn prompt cache hit rates from <20% to 80%–90%.
+
+## [0.115.0] - 2026-10-03
+
+### Added
+- **Oscillation & Cycle Detection Circuit Breaker**:
+  - Implemented `OscillationCircuitBreaker` in `pkg/services/oscillation_circuit_breaker.go` to detect repetitive alternating failure cycles (period 2, 3, or 4) during rescue sessions.
+  - Generates deterministic failure fingerprints by stripping volatile line numbers, memory pointers, and execution durations.
+  - Automatically injects an urgent `Conflict Reconciliation Directive` into rescue agent turns upon cycle detection, instructing the agent to eliminate conflicting requirements.
+  - Trips the circuit breaker and aborts execution early when repeated cycles persist, preventing infinite repair loops and token overconsumption.
+- **Shadow Test File Preflight Gate**:
+  - Implemented `DetectShadowTestFiles` and `FormatShadowTestCollisions` in `pkg/services/test_validator_shadow.go`.
+  - Automatically identifies duplicate test basenames across nested depths and flags root test files coexisting with partitioned test suites (`tests/unit/`, `tests/integration/`, `tests/e2e/`).
+  - Integrated into `pkg/services/test_validator.go` to block test runs and alert agents immediately when legacy test files shadow modular suites.
+- **Sovereign Rescue `delete_file` Tool Capability**:
+  - Registered `DeleteFileTool` in `start_sovereign_rescue.go` and exposed its mandate in rescue prompts, allowing rescue agents to remove obsolete or conflicting legacy test files.
+- **Cross-Layer Test Coupling Preflight Gate**:
+  - Implemented `DetectTestCouplingViolations` and `FormatTestCouplingViolations` in `pkg/services/test_validator_coupling.go`.
+  - Automatically scans test files in `tests/unit/`, `tests/integration/`, and `tests/e2e/` for illegal cross-tier imports (e.g. unit tests importing from `tests.e2e` or `tests.integration`, integration tests depending on black-box E2E harnesses).
+  - Wired into `pkg/services/test_validator.go` to block test runs and alert agents immediately during preflight when test hermeticity is violated.
+- **Surgical Edit Prioritization in Sovereign Rescue**:
+  - Prioritized `edit_file` over `write_files` in the Sovereign Rescue prompt and tool list (`cmd/noctifab/cli/start_sovereign_rescue_prompt.go`).
+  - Formulated direct mandate instructing the rescue agent to prioritize surgical single-file modifications and reserve `write_files` as a fallback only when `edit_file` fails or when multi-file structural migration is strictly necessary, eliminating wide-mutation regressions.
+- **Configurable Sovereign Rescue Turn Limit**:
+  - Added `max_turns` configuration option under `fallback.sovereign_rescue` with a default of 15 turns (down from unbounded acceptance-gap scaling).
+  - Clamped sovereign rescue turn execution to `cfg.GetFallback().GetSovereignRescue().GetMaxTurns()` across both `start_sovereign_rescue.go` and `start_acceptance_gate.go`.
+
+## [0.114.0] - 2026-10-03
+
+### Fixed
+- **LLM Profile Presets Schema Synchronization (`AvailableProfiles`)**:
+  - Corrected YAML templates for all profile presets (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) in `pkg/infrastructure/config/profiles.go` to conform strictly to Noctifab's `Config` schema.
+  - Replaced obsolete fields (`base_url` -> `url`, `timeout` -> `max_timeout`, removed invalid root `orchestrator:` and unmapped `parser:`), eliminating unmarshal failures caused by strict `decoder.KnownFields(true)` validation.
+  - Added `ApplyProfile` helper to cleanly apply presets onto base configurations without field loss.
+
+### Added
+- **Intelligent Project Manifest & Toolchain Adaptation on `init`**:
+  - `noctifab init` now dynamically detects existing project languages and build manifests (`pyproject.toml`, `requirements.txt`, `Cargo.toml`, `package.json`, `go.mod`, `Makefile`).
+  - Pre-populates `.noctifab/config.yaml` with the correct test and format commands (`cargo test` & `cargo fmt` for Rust, `python3 -m unittest discover -s tests` for Python, `npm test` & `npm run format` for Node.js, `make test` for Makefiles) instead of hardcoding `go test -v ./...`.
+  - Automatically adjusts the default `SPEC.md` template technology stack and test framework guidelines to match the detected language.
+- **Git Remote Origin Auto-Resolution**:
+  - Added `vcs.DetectGitRepository` and `vcs.ParseGitRemoteSlug` in `pkg/infrastructure/vcs/detect.go`.
+  - Automatically extracts the `owner/repo` repository slug from the Git remote origin (`git config --get remote.origin.url` and `.git/config` fallback) during workspace initialization instead of defaulting blindly to `"local/repo"`.
+
+## [0.113.0] - 2026-10-02
+
+### Added
+- **ASD-STE100 Simplified Technical English Specification & Natural Language Mandate**:
+  - **Ground Truth Specification Immutability (`SPEC.md`)**: Human-authored `SPEC.md` is strictly immutable during execution and is never overwritten or mutated by Noctifab.
+  - **Product Manager First Task (`translate_ste` / `SPEC.ste.md`)**: On startup (`noctifab start`), the Product Manager Agent executes its first task (`translate_ste`), translating `SPEC.md` into [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/) and writing the output to `SPEC.ste.md`.
+  - **Transparent Specification Resolution (`ResolveSpecPath`)**: Downstream services, prompt assemblers, partitioners, and planners resolve `SPEC.ste.md` when present, falling back to `SPEC.md` only prior to translation. Specification refinements (`refine_spec`) write exclusively to `SPEC.ste.md`.
+  - **Universal Natural Language Compliance**: All generated natural language across user stories (`roadmap/user-stories/*.md`) and tasks (`roadmap/tasks/*.md`) strictly adheres to ASD-STE100 rules (max 20 words for instructions, 25 for descriptions, active voice, imperative mood, unambiguous terminology, max 3-noun clusters).
+  - **Clean Command Lifecycle**: Running `noctifab clean` unlinks `SPEC.ste.md` alongside runtime state.
+  - **Prompt Catalog Expansion**: Added `translate_ste` to the Product Manager catalog, bringing the prompt system to 27 customizable templates across 9 agents.
+
+## [0.112.0] - 2026-10-01
+
+### Added
+- **Official LLM Provider Caching Features & Routing Affinity**:
+  - **OpenAI, Mistral & Cerebras (`prompt_cache_key`)**: Added automatic routing affinity key injection (`prompt_cache_key`) derived from session context or deterministic prefix hash, ensuring multi-turn requests land on warm GPU nodes for prompt prefix reuse.
+  - **Moonshot / Kimi (`prompt_cache_options`)**: Added request body parameter `prompt_cache_options: {"ttl": "1h"}` to ensure developer task contexts remain warm across calls.
+  - **xAI Grok (`x-grok-conv-id` & `prompt_cache_key`)**: Passed `x-grok-conv-id` header and `prompt_cache_key` body parameter for session affinity caching.
+  - **OpenRouter (`x-session-id`, `session_id`, `X-OpenRouter-Cache`)**: Added `x-session-id` header and `session_id` parameter for sticky prompt cache routing, plus `X-OpenRouter-Cache: true` for edge response caching.
+  - **Fireworks AI (`x-session-affinity` & `user`)**: Added session affinity routing parameters for Fireworks prompt cache reuse.
+  - **Google Gemini (`cachedContent` & `systemInstruction` prefix caching)**: Implemented support for the official `cachedContent` parameter, plus automatic separation of static prompt prefixes into `systemInstruction` to maximize Gemini implicit context cache hits.
+  - **Usage Token Extraction & Telemetry**: Updated `ExtractOpenAITokenUsage` to extract `PromptTokensDetails.CachedTokens` (and `prompt_cache_hit_tokens` for DeepSeek/relays), expanded `ExtractGeminiTokenUsage` with alternative `totalCachedTokens` field support, and propagated `CachedTokens` into `domain.ExecutionEvent` and OpenTelemetry traces (`gen_ai.usage.cached_tokens`).
+
+## [0.111.0] - 2026-10-01
+
+### Added
+- **Extended Token Governance & Multi-Turn Context Pruning**:
+  - **Thinking Budget Cap (`llm.thinking.default_budget`)**: Introduced `default_budget` (default `2048`) under `llm.thinking`, capping reasoning tokens across all providers whenever chain-of-thought thinking is active without an explicit per-provider budget. Eliminates catastrophic 8k–16k token burn on internal model reasoning.
+  - **Sovereign Rescue Spec Slicing (`agents.fallback.sovereign_rescue.slice_spec`)**: Added `slice_spec` (boolean toggle, default `true`), automatically invoking `SliceSpecForRoadmap` on oversized `SPEC.md` files (>12,000 chars) during emergency sovereign takeover turns, preventing 100+ KB full-spec re-transmissions.
+  - **Mutated File Context Deduplication (`context.dedup_mutated_files`)**: Added `dedup_mutated_files` (boolean toggle, default `true`) in `context` and orchestrator turn loops (`pkg/services/prompt_utils.go`, `orchestrator_generator.go`, `orchestrator_helper.go`). Prunes pre-turn snapshots of files modified earlier in the current task, replacing stale code blocks with lightweight omission markers in subsequent turns to save thousands of redundant prompt tokens.
+  - **Prompt Template Densification (`pkg/infrastructure/prompts/defaults/`)**: Stripped verbose language-specific Git blacklist catalogues, redundant GCC C/Makefile guidelines, and bloated Docker paragraphs across 12 generator and tester templates, cutting prompt overhead by ~2,200–2,650 characters (~550–660 tokens) on every call.
+  - **Validation Projects & Pyedis Sync**: Propagated `thinking.default_budget: 2048`, `sovereign_rescue.slice_spec: true`, and `context.dedup_mutated_files: true` to all 20 validation projects and pyedis configuration files.
+  - **Documentation Synchronization**: Updated `SPEC.md`, `docs/configuration.md`, and `docs/configuration_guidelines.md` detailing the new configuration parameters and context pruning behaviors.
+
+## [0.110.0] - 2026-10-01
+
+### Added
+- **Configurable Speculative Hedging & Context Optimization Controls**:
+  - **Speculative Hedging Configuration (`llm.hedging`)**: Added `enabled` (boolean toggle), `delay` (base hedge delay duration, default `25s`), and `heavy_delay` (heavy role delay floor, default `90s`) to configure speculative hedging behavior or disable it entirely via YAML.
+  - **Product Manager Story Audit Mode (`agents.product_manager.audit_mode`)**: Introduced `audit_mode` (`smart` (default) to bypass Pass 2 LLM audit on already-valid stories with working DoD and non-synthetic contracts, or `exhaustive` to force re-audits on all user stories).
+  - **JSON Format Reminder Caps (`llm.json_reminder.task.cap` & `llm.json_reminder.body.cap`)**: Added configurable context limits (`task.cap` default `1500`, `body.cap` default `12000`) for one-shot format reminder pullbacks.
+  - **Validation Projects & Pyedis Configuration Updates**: Propagated speculative hedging controls, product manager smart audit mode, and format reminder cap settings across all 20 validation projects and pyedis configuration files.
+  - **Documentation Synchronization**: Updated `SPEC.md`, `docs/configuration.md`, `docs/configuration_examples.md`, and `docs/configuration_guidelines.md` detailing speculative hedging controls, story audit mode options, and JSON format reminder caps.
+
+## [0.109.1] - 2026-10-01
+
+### Fixed
+- **LLM Token Overconsumption Elimination & Context Optimization**:
+  - **Stream Liveness Gated Speculative Hedging (`pkg/domain/llm_client.go`, `pkg/infrastructure/llm/router_hedging.go`, `pkg/infrastructure/llm/openai.go`)**: Introduced `StreamLivenessTracker` to detect active SSE token streaming on primary candidates. When a primary candidate is actively streaming chunks, speculative hedging is postponed rather than firing duplicate concurrent LLM requests, saving ~40%–50% of total tokens. Scaled minimum hedge delay to 90s for heavy batch roles (`product_manager`, `fallback`, `sovereign_rescue`, `qa`, `spec`).
+  - **Lean Core Invariants & Spec Slicing Enforcement (`pkg/services/spec_partitioner.go`, `pkg/services/roadmap_auditor.go`)**: Sliced exhaustive test matrices, conformance verification suites, and documentation guidelines into dedicated auxiliary files (`aux_*.md`), reducing `00_core_invariants.md` from ~50 KB to ~12 KB. Fixed `BuildBasicAndFeatureSpec` and `roadmap_auditor.go` to enforce `SliceSpecForRoadmap`, preventing outline expansion from bypassing domain slicing.
+  - **Deterministic Fast-Path Story Audit Bypass (`pkg/services/roadmap_auditor.go`)**: User stories that already satisfy `ValidateStoryContract`, contain explicit Definitions of Done, and have non-synthetic contracts now bypass Pass 2 LLM auditing entirely, saving 50%–100% of Pass 2 audit tokens.
+  - **Capped Prompt in JSON Format Reminders (`pkg/infrastructure/llm/client.go`)**: Capped original prompt context in `buildJSONReminderPrompt` to a 1,500-byte task summary (while expanding previous answer tail to 12,000 bytes), eliminating redundant re-transmission of 85+ KB specifications on schema pullbacks.
+  - **Enhanced CompactCaveman & Template Trimming (`pkg/infrastructure/llm/prompt_templates.go`, `audit.tmpl`, `generate.tmpl`)**: Upgraded `CompactCaveman` to extract list prefixes (`- `, `* `, `1. `) before evaluating filler prefixes, compact Markdown table column padding (`| --- |` and cell whitespace), collapse multi-space runs, and expand telegraphic replacements. Wrapped whole-roadmap sizing rules in `audit.tmpl` with `{{if not .TargetStory}}`, cutting per-story audit prompt boilerplate by ~68%.
+
 ## [0.109.0] - 2026-09-30
 
 ### Added

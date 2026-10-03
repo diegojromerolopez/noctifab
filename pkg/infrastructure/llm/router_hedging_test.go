@@ -168,3 +168,57 @@ func TestCompleteWithHedging_AdaptiveSpeculativeHedging(t *testing.T) {
 	// With 2 timeouts, hedge delay drops to 20ms, completing around 30ms (well under 150ms)
 	assert.Less(t, elapsed, 100*time.Millisecond)
 }
+
+type streamingMockLLM struct {
+	chunks   int
+	interval time.Duration
+	resp     *domain.LLMResponse
+	err      error
+}
+
+func (m *streamingMockLLM) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	tracker := domain.StreamLivenessTrackerFromContext(ctx)
+	for i := 0; i < m.chunks; i++ {
+		select {
+		case <-time.After(m.interval):
+			if tracker != nil {
+				tracker.RecordChunk()
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return m.resp, m.err
+}
+
+func TestCompleteWithHedging_StreamLivenessPostponesHedge(t *testing.T) {
+	t.Parallel()
+	primary := RouterCandidate{
+		Name:     "primary-streaming",
+		Provider: "provider1",
+		Client: &streamingMockLLM{
+			chunks:   4,
+			interval: 15 * time.Millisecond, // Total 60ms, emits chunk every 15ms
+			resp:     &domain.LLMResponse{Reasoning: "primary streaming finished"},
+		},
+	}
+	secondary := RouterCandidate{
+		Name:     "secondary-fast",
+		Provider: "provider2",
+		Client: &delayMockLLM{
+			delay: 5 * time.Millisecond,
+			resp:  &domain.LLMResponse{Reasoning: "from secondary"},
+		},
+	}
+
+	router := &ResilientLLMRouter{
+		hedgeDelay: 20 * time.Millisecond, // Would fire at 20ms if not streaming
+		cooldowns:  make(map[string]time.Time),
+	}
+
+	resp, err := router.completeWithHedging(context.Background(), "generator", []RouterCandidate{primary, secondary}, "prompt")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	// Primary should win because active streaming postponed the hedge
+	assert.Equal(t, "primary streaming finished", resp.Reasoning)
+}

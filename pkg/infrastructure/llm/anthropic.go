@@ -217,6 +217,20 @@ func (a *anthropicProviderClient) parseResponse(respBody []byte) (*ProviderCallR
 	}
 	content, ok := result["content"].([]any)
 	if !ok || len(content) == 0 {
+		if stopReason, _ := result["stop_reason"].(string); stopReason == "refusal" {
+			var explanation string
+			if stopDetails, ok := result["stop_details"].(map[string]any); ok {
+				if exp, ok := stopDetails["explanation"].(string); ok && exp != "" {
+					explanation = exp
+				} else if cat, ok := stopDetails["category"].(string); ok && cat != "" {
+					explanation = cat
+				}
+			}
+			if explanation != "" {
+				return nil, fmt.Errorf("anthropic refusal (%s): %s", stopReason, explanation)
+			}
+			return nil, fmt.Errorf("anthropic refusal: stop_reason is %s", stopReason)
+		}
 		return nil, fmt.Errorf("unexpected Anthropic response: %s", string(respBody))
 	}
 

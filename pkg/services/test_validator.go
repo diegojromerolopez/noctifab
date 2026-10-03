@@ -170,6 +170,16 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		return false, sb.String(), nil
 	}
 
+	// Shadow / Duplicate Test File Collision Gate:
+	if collisions := DetectShadowTestFiles(state.ProjectPath); len(collisions) > 0 {
+		return false, FormatShadowTestCollisions(collisions), nil
+	}
+
+	// Cross-Layer Test Coupling Gate:
+	if couplings := DetectTestCouplingViolations(state.ProjectPath); len(couplings) > 0 {
+		return false, FormatTestCouplingViolations(couplings), nil
+	}
+
 	// Fast-Path Syntax Pre-Gating:
 	if v.SyntaxChecker != nil {
 		if syntaxErr := v.SyntaxChecker.Check(ctx, state.ProjectPath); syntaxErr != nil {

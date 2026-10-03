@@ -223,6 +223,10 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Warning: prompt template rendering initialization failed: %v\n", rendErr)
 	}
 
+	if _, steErr := services.EnsureSTESpecification(cmdCtx, targetDir, llmClient, promptRenderer); steErr != nil {
+		fmt.Printf("Warning: Product Manager ASD-STE100 specification generation failed: %v\n", steErr)
+	}
+
 	if !hasExistingStories {
 		if _, spikeErr := services.ExecuteSpike(cmdCtx, targetDir, cfg, llmClient, promptRenderer, executionReporter); spikeErr != nil {
 			fmt.Printf("Warning: Spike prototyping phase failed: %v\n", spikeErr)
@@ -231,7 +235,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	storyFiles := discoverStoryFiles(targetDir)
 	if len(storyFiles) == 0 {
-		storyFiles = []string{specFile}
+		storyFiles = []string{services.ResolveSpecPath(targetDir)}
 	}
 	sort.Strings(storyFiles)
 

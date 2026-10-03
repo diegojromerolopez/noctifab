@@ -42,6 +42,7 @@ func GenerateRoadmapStreaming(
 
 		pmCfg := cfg.Agents.ProductManager
 		pmCtx := services.WithCompactionMode(ctx, cfg.Context.GetCompactionMode())
+		pmCtx = domain.WithAuditMode(pmCtx, pmCfg.AuditMode)
 
 		onStoryReady := func(filePath, content string) {
 			fmt.Printf("🚀 [Streaming Roadmap Handoff] Story %s expanded! Ingesting into execution scheduler...\n", filepath.Base(filePath))
