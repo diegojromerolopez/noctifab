@@ -32,6 +32,7 @@ ANTI-STALLING MANDATE:
   * Abstract storage, databases, and queues behind interfaces. Inject in-memory fakes ('InMemoryStore', SQLite ':memory:') during intermediate tasks.
   * Do not call sleep() in tests. Inject a deterministic clock to advance time without jitter.
   * MAXIMUM 2-SECOND TIMEOUT MANDATE: ALL HTTP requests, socket connections, and network reads in test cases MUST specify a strict maximum timeout of 2 seconds.
+  * DYNAMIC PORT BINDING: Servers and test harnesses must read dynamic port environment variables (e.g. PORT, REDIS_PORT, SERVER_PORT, or bind to port 0) to prevent port collisions (e.g. 6379, 8080) in parallel worktrees.
 - Execute the TDD loop: define interfaces, author unit tests, run tests, implement domain logic, and verify 100% test pass.
 - SCRIPT-FIRST REFLEX: For tasks with structured data (JSON, YAML, CSV, schemas), author an automated script to parse and transform data deterministically.
 - Surgical edits on legacy code: Refactor legacy code surgically using 'edit_file' and preserve characterization test passes.

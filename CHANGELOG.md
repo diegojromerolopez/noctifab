@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.2] - 2026-10-04
+
+### Fixed
+- **Story ID & Filename Collision Deduplication in Parallel Roadmap Generation**:
+  - Enhanced `ParseStoryOutlines` in `pkg/services/roadmap_two_stage.go` to track seen story IDs and filename slugs. If duplicate story IDs (e.g. duplicate `US-006` blocks emitted by LLM) or duplicate slugs occur, Noctifab automatically renumbers them sequentially (`US-007`, `US-008`, etc.) and disambiguates filenames with numeric suffixes, preventing worktree race conditions and roadmap file collisions.
+- **Sovereign Rescue Prompt Context Bloat Mitigation**:
+  - Capped `summarizeFailureLog` in `pkg/services/orchestrator_log_summary.go` to at most 80 lines (30 start + 50 tail) and a maximum of 4,000 characters, preventing unbounded multi-thousand-line failure cascades from entering rescue prompts.
+  - Capped git diff context in `pkg/services/orchestrator_fallback.go` to 6,000 characters (down from 16,000), drastically reducing token consumption and preventing 40k+ token rescue prompts.
+- **Python Virtual Environment Missing pip Auto-Seeding**:
+  - Implemented `EnsureVenvPip` in `pkg/services/worktree_cache.go` to detect missing `bin/pip` in Python virtual environments (e.g. created by minimal Python 3.13 or default `uv venv`) and automatically seed pip via `uv pip install pip --python <bin>` or `python -m ensurepip --upgrade`.
+  - Integrated pip auto-seeding across `BuildSharedCacheEnv`, `dependency_prewarm.go`, and `dependency_tools.go`.
+  - Updated planner prompt template `pkg/infrastructure/prompts/defaults/planner/decompose.tmpl` to mandate `uv venv --seed .venv` when creating virtualenvs.
+- **Parallel Integration Test Dynamic TCP Port Allocation**:
+  - Implemented dynamic ephemeral TCP port discovery (`allocateWorktreePort`) in `pkg/services/worktree_cache.go` and injected dynamic `PORT`, `TEST_PORT`, `REDIS_PORT`, `SERVER_PORT`, and `NOCTIFAB_PORT` environment variables into all task worktrees.
+  - Added dynamic port binding guidelines to generator and planner prompt templates (`implement.tmpl` and `decompose.tmpl`) instructing agents to bind to port 0 or use dynamic port variables rather than hardcoding static ports like `6379`.
+
 ## [0.117.1] - 2026-10-04
 
 ### Fixed

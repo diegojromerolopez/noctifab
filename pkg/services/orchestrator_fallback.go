@@ -281,8 +281,8 @@ func buildFallbackContext(failureLog, diffContext, triggerReason string, turn, m
 	if strings.TrimSpace(diffContext) != "" {
 		sanitizedDiff := SanitizeLog(diffContext)
 		sb.WriteString("#### Recent Git Diff Context:\n```diff\n")
-		if len(sanitizedDiff) > 16000 {
-			sanitizedDiff = sanitizedDiff[:16000] + "\n...[diff truncated]..."
+		if len(sanitizedDiff) > 6000 {
+			sanitizedDiff = sanitizedDiff[:6000] + "\n...[diff truncated]..."
 		}
 		sb.WriteString(sanitizedDiff)
 		sb.WriteString("\n```\n\n")
