@@ -168,9 +168,9 @@ func formatWorkspaceFileTree(files []string, targetFiles []string, maxFiles int)
 	sort.Strings(otherDirs)
 
 	for _, d := range otherDirs {
-		sb.WriteString(fmt.Sprintf("%s/ (%d files omitted)\n", d, dirCounts[d]))
+		fmt.Fprintf(&sb, "%s/ (%d files omitted)\n", d, dirCounts[d])
 	}
-	sb.WriteString(fmt.Sprintf("... (%d total files in workspace; call find_files or list_directory to inspect additional paths)", len(files)))
+	fmt.Fprintf(&sb, "... (%d total files in workspace; call find_files or list_directory to inspect additional paths)", len(files))
 
 	return sb.String()
 }

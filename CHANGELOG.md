@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.1] - 2026-10-04
+
+### Fixed
+- **Conflict Marker Leak Prevention in Rebase Queue & Generator Synthesis**:
+  - `CleanConflictMarkers` in `pkg/services/orchestrator_execute_workspace.go` unconditionally strips all conflict marker lines (`<<<<<<<`, `=======`, `>>>>>>>`, and diff3 `|||||||`), resolving stray or unmatched markers.
+  - Added `ContainsConflictMarkers` and `hasStagedConflictMarkers` in `pkg/services/rebase_queue.go` to inspect the git index before committing in Tiers 2, 3, and 4. If any staged file contains conflict markers, the commit is safely rejected and execution cascades to Tier 5 (clean overlay fallback).
+- **Anti-Stub Validator False-Positive Whitelist for Shell Exit Traps**:
+  - Whitelisted standard shell trap lines (e.g. `trap 'kill "$PID" 2>/dev/null || true' EXIT`) in `pkg/services/anti_stub_validator.go` from being flagged as error-suppression or exit masking.
+- **Thinking-Only Gemini Models `thinkingBudget: 0` Guard**:
+  - Added `isThinkingOnlyModel` in `pkg/infrastructure/llm/model_capabilities.go` to identify models that strictly require thinking mode (`gemini-3.1-pro-preview`, `gemini-3.6-pro`, `gemini-2.5-pro`).
+  - Prevented sending `thinkingBudget: 0` in `pkg/infrastructure/llm/gemini.go`, eliminating HTTP 400 rejection errors.
+- **Story Public Contract Protocol & Socket Fields Support**:
+  - Added `RequestFormat`, `RequestFrames`, and `RequestExamples` to `PublicContract` in `pkg/domain/qa_contract.go`.
+  - Updated `pkg/services/story_contract.go` to accept socket/protocol interface contracts without requiring CLI executable or HTTP definitions.
+- **Execution Report Path Flexibility**:
+  - Allowed both `.noctifab/reports` and `.noctifab/report` subdirectories for in-workspace execution reports in `pkg/infrastructure/config/report_path.go`.
+- **Planner Prompt Task Scope Ceiling**:
+  - Sharpened Item 14 in `pkg/infrastructure/prompts/defaults/planner/decompose.tmpl` with an explicit hard ceiling of at most 8 commands or operations per task.
+- **Staticcheck Linter Formatting**:
+  - Fixed QF1012 string formatting warnings in `pkg/services/orchestrator_reader_phase.go`.
+
 ## [0.117.0] - 2026-10-03
 
 ### Added

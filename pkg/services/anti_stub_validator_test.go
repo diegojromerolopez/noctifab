@@ -95,6 +95,18 @@ echo "Hello"
 		assert.Len(t, violations, 1)
 		assert.Equal(t, "shell_missing_errexit", violations[0].Rule)
 	})
+
+	t.Run("when shell script contains exit trap with || true, it allows cleanup handlers without violation", func(t *testing.T) {
+		script := `#!/bin/bash
+set -e
+trap 'kill "$PID" 2>/dev/null || true' EXIT
+python3 -m pyedis &
+PID=$!
+pytest tests/
+`
+		violations := v.ValidateContent("tests/e2e/run_tests.sh", script)
+		assert.Empty(t, violations)
+	})
 }
 
 func TestAntiStubValidator_OtherLanguages(t *testing.T) {

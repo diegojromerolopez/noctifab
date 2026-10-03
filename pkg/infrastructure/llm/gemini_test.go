@@ -185,4 +185,44 @@ func TestGeminiProviderClient_CacheParameters(t *testing.T) {
 			t.Errorf("expected 250 cached tokens, got %d", res.Usage.CachedTokens)
 		}
 	})
+
+	t.Run("thinking-only models omit thinkingConfig with budget 0", func(t *testing.T) {
+		var receivedReq map[string]any
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewDecoder(r.Body).Decode(&receivedReq)
+			w.Header().Set("Content-Type", "application/json")
+			resp := map[string]any{
+				"candidates": []map[string]any{
+					{
+						"content": map[string]any{
+							"parts": []map[string]any{{"text": "ok"}},
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		client := NewGeminiProviderClient(server.URL, 0, 0, false)
+		if setter, ok := client.(extraBodySetter); ok {
+			setter.SetExtraBody(map[string]interface{}{
+				"thinkingConfig": map[string]any{"thinkingBudget": 0},
+			})
+		} else {
+			t.Fatalf("client does not implement extraBodySetter")
+		}
+
+		_, err := client.Call(context.Background(), "gemini-3.1-pro-preview", "test-key", "hello", 100, 0.0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		genConfig, ok := receivedReq["generationConfig"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected generationConfig in request payload")
+		}
+		if _, hasThinkingConfig := genConfig["thinkingConfig"]; hasThinkingConfig {
+			t.Errorf("expected thinkingConfig to be omitted for thinking-only model with budget 0, but was present: %v", genConfig["thinkingConfig"])
+		}
+	})
 }

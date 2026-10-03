@@ -335,3 +335,28 @@ func TestRebaseQueue_TotalFailure_ReturnsExplicitError(t *testing.T) {
 		}
 	})
 }
+
+func TestRebaseQueue_HasStagedConflictMarkers(t *testing.T) {
+	t.Run("it detects staged files containing conflict markers", func(t *testing.T) {
+		repoDir, _, cleanup := setupTestGitRepo(t)
+		defer cleanup()
+
+		git := NewGitClient(repoDir)
+		q := NewRebaseQueue(git)
+
+		testFile := filepath.Join(repoDir, "conflict.txt")
+		_ = os.WriteFile(testFile, []byte("clean content"), 0644)
+		_, _ = git.Run(context.Background(), true, "add", "conflict.txt")
+
+		if q.hasStagedConflictMarkers(context.Background()) {
+			t.Errorf("expected no conflict markers in clean file")
+		}
+
+		_ = os.WriteFile(testFile, []byte("<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n"), 0644)
+		_, _ = git.Run(context.Background(), true, "add", "conflict.txt")
+
+		if !q.hasStagedConflictMarkers(context.Background()) {
+			t.Errorf("expected conflict markers to be detected in staged file")
+		}
+	})
+}

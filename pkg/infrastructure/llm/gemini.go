@@ -110,7 +110,26 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 		}
 		if g.extraBody != nil {
 			if tc, ok := g.extraBody["thinkingConfig"]; ok {
-				generationConfig["thinkingConfig"] = tc
+				var skipThinkingConfig bool
+				if isThinkingOnlyModel(model) {
+					if tcMap, isMap := tc.(map[string]any); isMap {
+						if b, hasBudget := tcMap["thinkingBudget"]; hasBudget {
+							switch v := b.(type) {
+							case int:
+								if v == 0 {
+									skipThinkingConfig = true
+								}
+							case float64:
+								if v == 0 {
+									skipThinkingConfig = true
+								}
+							}
+						}
+					}
+				}
+				if !skipThinkingConfig {
+					generationConfig["thinkingConfig"] = tc
+				}
 			}
 		}
 

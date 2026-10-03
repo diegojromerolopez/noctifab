@@ -436,4 +436,42 @@ func TestCleanConflictMarkers_DeterministicResolution(t *testing.T) {
 
 	resolved := CleanConflictMarkers(input)
 	assert.Equal(t, expected, resolved, "CleanConflictMarkers must keep incoming changes deterministically without duplicating blocks")
+	assert.False(t, ContainsConflictMarkers(resolved))
+
+	t.Run("diff3 style conflict markers with base section", func(t *testing.T) {
+		diff3Input := `def ping():
+<<<<<<< HEAD
+    return "base"
+||||||| merged common ancestors
+    return "ancestor"
+=======
+    return "worker"
+>>>>>>> branch
+`
+		diff3Expected := `def ping():
+    return "worker"
+`
+		cleanDiff3 := CleanConflictMarkers(diff3Input)
+		assert.Equal(t, diff3Expected, cleanDiff3)
+		assert.False(t, ContainsConflictMarkers(cleanDiff3))
+	})
+
+	t.Run("stray conflict marker lines are stripped unconditionally", func(t *testing.T) {
+		strayInput := `def echo():
+=======
+    return "pong"
+>>>>>>> branch
+`
+		strayCleaned := CleanConflictMarkers(strayInput)
+		assert.Equal(t, "def echo():\n    return \"pong\"\n", strayCleaned)
+		assert.False(t, ContainsConflictMarkers(strayCleaned))
+	})
+
+	t.Run("contains conflict markers detection", func(t *testing.T) {
+		assert.True(t, ContainsConflictMarkers("<<<<<<< HEAD\ncode\n=======\ncode\n>>>>>>> branch"))
+		assert.True(t, ContainsConflictMarkers("code\n=======\nother"))
+		assert.True(t, ContainsConflictMarkers("code\n>>>>>>> branch"))
+		assert.True(t, ContainsConflictMarkers("code\n||||||| base"))
+		assert.False(t, ContainsConflictMarkers("clean code with no markers"))
+	})
 }
