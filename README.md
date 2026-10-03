@@ -629,16 +629,38 @@ profiles:
 
 Control how workspace source files are formatted into LLM prompt contexts to optimize speed and token consumption:
 
-* **`full`** (default): Sends complete source file contents. Maximum context, best for small projects.
+* **`tree_sitter`** (default): Uses universal AST parsing to extract function signatures, struct/class definitions, and symbol maps while omitting implementation bodies of non-target files.
 * **`diff_window`**: Extracts modified git diff lines and error stack traces (+/- 15 context lines), cutting token usage by ~80%.
-* **`tree_sitter`**: Uses universal AST parsing to extract function signatures, struct/class definitions, and symbol maps.
+* **`full`**: Sends complete source file contents. Maximum context, best for small projects.
 
 ```yaml
 context:
-  mode: "full"                # Options: "full" (default), "diff_window", "tree_sitter"
-  diff_window_lines: 15       # Surrounding context lines for diff_window mode
-  dedup_mutated_files: true   # Prunes stale pre-turn snapshots of already-modified files (default: true)
+  mode: "tree_sitter"         # Options: "tree_sitter" (default), "diff_window", "full"
+  diff_window_lines: 15       # Surrounding context lines for diff_window mode (default: 15)
+  dedup_mutated_files: false  # Preserves byte-identical pre-turn context across turns to maximize prompt prefix cache hit rates (default: false)
 ```
+
+### Eliminating Double Reasoning for Thinking Models
+
+To disable model chain-of-thought (thinking) tokens and avoid paying for double reasoning (hidden CoT tokens + JSON contract `"reasoning"` field), configure `llm.thinking.enabled: false`:
+
+```yaml
+llm:
+  thinking:
+    enabled: false            # Global default: models run in normal mode
+  providers:
+    - name: claude
+      provider: anthropic
+      thinking:
+        enabled: true         # A lone provider can still think
+        budget: 8192
+```
+
+Each provider entry can override the common `llm.*` settings `thinking`, `hedging`, `json_reminder`, `token_usage_limit` (a per-provider daily token cap), and transport defaults (`max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, `streaming`). Unset fields inherit the global value. See [docs/configuration.md](docs/configuration.md).
+
+### Prompt Prefix Caching & Session Affinity
+
+Noctifab formats multi-turn continuation prompts with an append-only turn log under a stable header, ensuring the base prefix remains 100% byte-identical across turns. Combined with `domain.WithCacheSessionID` for backend cluster affinity, this achieves **80%–90% prompt cache hit rates** on Anthropic, Gemini, and OpenAI.
 
 ### Workspace Inspection Caching (`workspace_cache.enabled`)
 

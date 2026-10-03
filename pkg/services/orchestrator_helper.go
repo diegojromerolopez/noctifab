@@ -76,11 +76,13 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	// Compaction must never rewrite the output contract at the end of the prompt.
 	testerCtx = domain.WithUncompactableTail(testerCtx, len(rendered.Contract))
 	testerCtx = domain.WithCacheablePrefix(testerCtx, len(rendered.Body))
+	testerCtx = domain.WithCacheSessionID(testerCtx, "task-"+task.ID)
 	o.registerAgentStart(ctx, "tester", task.ID)
 
 	currentPrompt := testPrompt
 	maxTurns := iterationsOrDefault(o.cfg.TestersIterations)
 	var lastErr error
+	var allTurnOutputsHistory []string
 	mutatedFiles := make(map[string]bool)
 	runTestsCalled := false
 	diagCache := NewTaskDiagnosticCache(o.cfg.GetWorkspaceCache().IsEnabled())
@@ -286,16 +288,19 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 			}
 		}
 
-		// Append errors and tool outputs to the body for the next turn. The
-		// non-overridable output contract stays at the END of the prompt so
-		// the JSON schema is the last thing the model reads.
+		// Append errors and tool outputs to maintain byte-for-byte prefix cache stability
+		// across turns. The output contract stays at the END of the prompt so the
+		// JSON schema is the last thing the model reads.
 		body := rendered.Body
 		if o.cfg.Context.IsDedupMutatedFilesEnabled() && len(mutatedFiles) > 0 {
 			body = pruneMutatedFileContexts(body, mutatedFiles)
 		}
-		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN (turn %d/%d):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.\n%s",
-			body, turn+1, maxTurns,
-			joinCappedToolOutputs(turnToolOutputs),
+		turnMsg := fmt.Sprintf("--- Turn %d ---\n%s", turn+1, joinCappedToolOutputs(turnToolOutputs))
+		allTurnOutputsHistory = append(allTurnOutputsHistory, turnMsg)
+
+		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN(S):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.\n%s",
+			body,
+			strings.Join(allTurnOutputsHistory, "\n\n"),
 			maxTurns-turn-1,
 			rendered.Contract)
 	}

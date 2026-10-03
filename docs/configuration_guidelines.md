@@ -451,15 +451,23 @@ RUN apk add --no-cache git
 
 ```yaml
 context:
-  mode: full
+  mode: tree_sitter
   diff_window_lines: 15
-  dedup_mutated_files: true
+  dedup_mutated_files: false
   compaction: caveman
 workspace_cache:
   enabled: true
 llm:
   thinking:
+    enabled: false # global default: models run in normal mode
     default_budget: 2048
+  max_retries: 3
+  retry_backoff: 500ms
+  max_timeout: 60s
+  idle_timeout: 60s
+  max_tokens: -1
+  temperature: 0.3
+  streaming: true
   hedging:
     enabled: true
     delay: 25s
@@ -477,11 +485,12 @@ agents:
     audit_mode: smart
 ```
 
-- **`context.mode: full`**: Provides the agent with full file context for accurate AST reasoning, avoiding truncation errors common with heuristic tree-sitter extractors.
-- **`context.dedup_mutated_files: true`**: Prunes pre-turn snapshots of already-mutated files on multi-turn prompts, replacing them with a lightweight omission reference marker.
+- **`context.mode: tree_sitter`** (default): Universal AST symbol map and signature extraction omitting implementation bodies of non-target files, reducing prompt tokens by 70%–90%. Use `diff_window` (+/- 15 lines) for localized edits, or `full` for small projects requiring complete file contents.
+- **`context.dedup_mutated_files: false`** (default): Preserves stable pre-turn file context across turns so the static prompt prefix remains 100% byte-identical, achieving 80%–90% prompt cache hit rates on LLM providers. Setting to `true` deduplicates mutated files but invalidates the byte prefix.
 - **`compaction: caveman`**: Minimizes boilerplate in historical prompts to save up to 40% in prompt token overhead.
 - **`workspace_cache.enabled: true`**: Caches unmodified filesystem reads in memory, dramatically reducing host I/O.
-- **`llm.thinking.default_budget: 2048`**: Globally caps reasoning token budgets when thinking is active without an explicit per-provider budget, preventing models from consuming 8k–16k reasoning tokens on simple turns.
+- **`llm.thinking.enabled: false`**: Disables model chain-of-thought (thinking) tokens to avoid double reasoning costs. Individual providers can override with `thinking.enabled: true`.
+- **`llm.max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, `streaming`**: Common transport settings declared globally at the `llm:` level and inherited by all providers, with per-provider overrides supported.
 - **`agents.fallback.sovereign_rescue.slice_spec: true`**: Slices oversized technical specifications (>12k chars) during emergency sovereign takeover, preventing 100 KB whole-spec spikes.
 - **`llm.hedging`**: Gated by SSE stream liveness tracking. While the primary provider actively streams tokens, hedging is deferred. For long-running batch roles (`product_manager`, `fallback`, `auditor`), `heavy_delay: 90s` prevents premature concurrent model calls. Speculative hedging can be completely disabled with `enabled: false`.
 - **`llm.json_reminder`**: Caps the original task prompt (`task.cap: 1500`) and rejected response tail (`body.cap: 12000`) on one-shot format reminder pullbacks, preventing redundant 80+ KB spec context re-transmissions.

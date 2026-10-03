@@ -29,11 +29,13 @@ func (r *ResilientLLMRouter) completeWithHedging(
 	candidates []RouterCandidate,
 	prompt string,
 ) (*domain.LLMResponse, error) {
-	if len(candidates) < 2 || r.hedgeDelay < 0 {
+	if len(candidates) < 2 {
 		return r.completeSequentially(ctx, roleName, candidates, prompt)
 	}
-
-	hedgeDelay := r.hedgeDelay
+	hedgeDelay := r.hedgeDelayFor(candidates[0].Name)
+	if hedgeDelay < 0 {
+		return r.completeSequentially(ctx, roleName, candidates, prompt)
+	}
 	if hedgeDelay == 0 {
 		hedgeDelay = DefaultHedgeDelay
 	}
@@ -46,10 +48,7 @@ func (r *ResilientLLMRouter) completeWithHedging(
 	// for these roles needlessly doubles token spend. Scale minimum hedge delay to at least 90s.
 	cleanRole := strings.ToLower(strings.TrimSpace(roleName))
 	isHeavyBatchRole := cleanRole == "product_manager" || cleanRole == "fallback" || cleanRole == "sovereign_rescue" || cleanRole == "qa" || cleanRole == "spec"
-	heavyDelay := 90 * time.Second
-	if r.cfg != nil && r.cfg.LLM.Hedging.GetHeavyDelay() > 0 {
-		heavyDelay = r.cfg.LLM.Hedging.GetHeavyDelay()
-	}
+	heavyDelay := r.heavyHedgeDelayFor(primary.Name)
 	if isHeavyBatchRole && hedgeDelay < heavyDelay {
 		hedgeDelay = heavyDelay
 	}
@@ -214,23 +213,5 @@ func (r *ResilientLLMRouter) recordCandidateOutcome(c RouterCandidate, dur time.
 		r.mu.Lock()
 		r.cooldowns[c.Name] = time.Now().Add(r.cooldownDuration)
 		r.mu.Unlock()
-	}
-}
-
-func (r *ResilientLLMRouter) recordTokenUsage(ctx context.Context, prompt string, c RouterCandidate, resp *domain.LLMResponse) {
-	if r.budgetStore != nil && resp != nil {
-		today := time.Now().UTC().Format("2006-01-02")
-		tokens := estimateUsageTokens(prompt, resp)
-		_ = r.budgetStore.IncrementUsage(ctx, today, c.Provider, tokens)
-		_ = r.budgetStore.IncrementUsage(ctx, today, "total", tokens)
-	}
-}
-
-func (r *ResilientLLMRouter) recordPromptTokenUsage(ctx context.Context, prompt string, c RouterCandidate) {
-	if r.budgetStore != nil {
-		today := time.Now().UTC().Format("2006-01-02")
-		tokens := estimatePromptTokens(prompt)
-		_ = r.budgetStore.IncrementUsage(ctx, today, c.Provider, tokens)
-		_ = r.budgetStore.IncrementUsage(ctx, today, "total", tokens)
 	}
 }

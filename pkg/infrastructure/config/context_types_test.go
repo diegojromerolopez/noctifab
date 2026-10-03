@@ -54,3 +54,21 @@ func TestDedupMutatedFiles(t *testing.T) {
 		assert.True(t, cfg.IsDedupMutatedFilesEnabled())
 	})
 }
+
+func TestContextConfig_DiffWindowAndTreeSitter(t *testing.T) {
+	t.Run("configures diff_window mode and custom window lines", func(t *testing.T) {
+		cfg := ContextConfig{
+			Mode:            "diff_window",
+			DiffWindowLines: 25,
+		}
+		assert.Equal(t, ContextModeDiffWindow, cfg.GetMode())
+		assert.Equal(t, 25, cfg.GetWindowLines())
+	})
+
+	t.Run("configures tree_sitter mode", func(t *testing.T) {
+		cfg := ContextConfig{
+			Mode: "tree_sitter",
+		}
+		assert.Equal(t, ContextModeTreeSitter, cfg.GetMode())
+	})
+}

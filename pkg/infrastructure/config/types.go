@@ -261,6 +261,12 @@ type ProviderSpec struct {
 	// ContextWindow specifies the maximum input context window size in tokens for this provider/model.
 	// When 0, the built-in heuristic (GetModelContextWindow) is used.
 	ContextWindow int64 `yaml:"context_window,omitempty"`
+	// Per-provider overrides of common llm.* settings (nil = inherit global).
+	Hedging         *HedgingConfig      `yaml:"hedging,omitempty"`
+	JSONReminder    *JSONReminderConfig `yaml:"json_reminder,omitempty"`
+	TokenUsageLimit *int64              `yaml:"token_usage_limit,omitempty"`
+	// explicitKeys records the YAML keys written for this entry (see UnmarshalYAML).
+	explicitKeys map[string]bool
 }
 
 type LLMConfig struct {

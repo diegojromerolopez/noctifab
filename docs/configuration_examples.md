@@ -559,12 +559,20 @@ agents:
 context:
   mode: "diff_window"
   diff_window_lines: 15
-  dedup_mutated_files: true # Prunes pre-turn snapshots of already-modified files on multi-turn prompts
+  dedup_mutated_files: false # Preserves byte-identical pre-turn context across turns to maximize prompt prefix cache hit rates
   compaction: "caveman" # Strips fluff and decorative formatting for lean prompts
 
 llm:
   thinking:
-    default_budget: 2048 # Bounds reasoning models to prevent 8k–16k reasoning token blowouts
+    enabled: false # Global default: models run in normal mode
+    default_budget: 2048 # Bounds reasoning models when thinking is explicitly activated
+  max_retries: 3
+  retry_backoff: 500ms
+  max_timeout: 60s
+  idle_timeout: 60s
+  max_tokens: -1
+  temperature: 0.3
+  streaming: true
   priority:
     - "gemini-flash"
     - "claude"

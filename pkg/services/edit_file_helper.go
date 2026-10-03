@@ -29,6 +29,16 @@ func ExtractEditStrings(args map[string]any) (string, string, bool) {
 	return "", "", false
 }
 
+func extractLeadingWhitespace(s string) string {
+	idx := strings.IndexFunc(s, func(r rune) bool {
+		return r != ' ' && r != '\t'
+	})
+	if idx > 0 {
+		return s[:idx]
+	}
+	return ""
+}
+
 // matchTrimmedLines finds a unique contiguous block of lines in fileLines matching targetLines ignoring leading/trailing whitespace.
 func matchTrimmedLines(fileLines []string, targetLines []string) (int, int, bool) {
 	if len(targetLines) == 0 || len(fileLines) < len(targetLines) {
@@ -102,6 +112,28 @@ func ApplyFileEdits(content string, edits []ReplacementChunk, relPath string) (s
 			continue
 		}
 
+		// Expand search window slightly (+/- 15 lines) around given start/end range
+		windowStart := start - 16
+		if windowStart < 0 {
+			windowStart = 0
+		}
+		windowEnd := end + 15
+		if windowEnd > len(lines) {
+			windowEnd = len(lines)
+		}
+		windowSlice := lines[windowStart:windowEnd]
+		windowJoined := strings.Join(windowSlice, "\n")
+		if strings.Contains(windowJoined, edit.TargetContent) {
+			replacedJoined := strings.Replace(windowJoined, edit.TargetContent, edit.ReplacementContent, 1)
+			replacedLines := strings.Split(replacedJoined, "\n")
+
+			newLines := append([]string{}, lines[:windowStart]...)
+			newLines = append(newLines, replacedLines...)
+			newLines = append(newLines, lines[windowEnd:]...)
+			lines = newLines
+			continue
+		}
+
 		// Resilient Fallback 1: Check if target_content exists exactly once in the entire file
 		currentJoined := strings.Join(lines, "\n")
 		if strings.Count(currentJoined, edit.TargetContent) == 1 {
@@ -118,10 +150,37 @@ func ApplyFileEdits(content string, edits []ReplacementChunk, relPath string) (s
 			continue
 		}
 
-		// Resilient Fallback 3: Indentation-tolerant contiguous line block match
+		// Resilient Fallback 3: Indentation-tolerant line block match (first in window, then file-wide)
 		targetLines := strings.Split(edit.TargetContent, "\n")
-		if startIdx, endIdx, ok := matchTrimmedLines(lines, targetLines); ok {
+		if wStart, wEnd, ok := matchTrimmedLines(windowSlice, targetLines); ok {
+			absStart := windowStart + wStart
+			absEnd := windowStart + wEnd
+			leadIndent := extractLeadingWhitespace(lines[absStart])
 			replLines := strings.Split(edit.ReplacementContent, "\n")
+			if leadIndent != "" && len(replLines) > 0 && strings.TrimLeft(replLines[0], " \t") == replLines[0] {
+				for i := range replLines {
+					if strings.TrimSpace(replLines[i]) != "" {
+						replLines[i] = leadIndent + replLines[i]
+					}
+				}
+			}
+			newLines := append([]string{}, lines[:absStart]...)
+			newLines = append(newLines, replLines...)
+			newLines = append(newLines, lines[absEnd+1:]...)
+			lines = newLines
+			continue
+		}
+
+		if startIdx, endIdx, ok := matchTrimmedLines(lines, targetLines); ok {
+			leadIndent := extractLeadingWhitespace(lines[startIdx])
+			replLines := strings.Split(edit.ReplacementContent, "\n")
+			if leadIndent != "" && len(replLines) > 0 && strings.TrimLeft(replLines[0], " \t") == replLines[0] {
+				for i := range replLines {
+					if strings.TrimSpace(replLines[i]) != "" {
+						replLines[i] = leadIndent + replLines[i]
+					}
+				}
+			}
 			newLines := append([]string{}, lines[:startIdx]...)
 			newLines = append(newLines, replLines...)
 			newLines = append(newLines, lines[endIdx+1:]...)

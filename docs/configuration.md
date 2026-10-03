@@ -273,6 +273,47 @@ agents:
   - **`enable_thinking`** / **`thinking_budget`**: Backward-compatible flat flags for reasoning mode and budget.
   - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when thinking is enabled, but can be explicitly set for third-party gateways that reject forced JSON schemas.
   - **`extra_params`** (Map of Strings): Custom key-value pairs merged verbatim into the provider request body for provider-specific extensions.
+  - **Per-provider overrides of common `llm.*` settings**: Each provider entry can override `thinking`, `hedging`, `json_reminder`, `token_usage_limit`, as well as transport settings: `max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, and `streaming`. A provider value always wins. A field that the provider does not set is inherited from the global `llm.*` block (field by field, e.g. a provider can set only `hedging.delay` or a custom `temperature: 0.0`).
+    - **`thinking`**: When the provider sets nothing, it inherits `llm.thinking.enabled` only when that value is `true`. A global `false` is the built-in default, so no explicit flag is sent (some APIs reject unknown thinking parameters). Set `thinking.enabled: false` on a provider whose model thinks by default (for example Qwen) to turn it off explicitly.
+    - **`hedging`**: Applies when this provider is the primary candidate. `enabled: false` stops speculative backup requests while this provider answers. `enabled: true` with a `delay` turns hedging on for this provider even if `llm.hedging.enabled` is `false`.
+    - **`json_reminder`**: Caps for the format-repair reminder prompt that this provider receives.
+    - **`token_usage_limit`**: Daily token cap for this provider entry only (UTC day, estimated prompt + completion tokens). When the cap is reached, the router skips this provider and uses the next candidate. If every candidate is capped, the call fails with a budget-exhausted error.
+    - **`max_retries`** / **`retry_backoff`**: Per-provider retry attempts and initial exponential backoff.
+    - **`max_timeout`** / **`idle_timeout`**: Per-provider overall request and streaming socket idle timeouts.
+    - **`max_tokens`**: Maximum tokens for the provider completion (`-1` or `0` resolves to provider default/unlimited).
+    - **`temperature`**: Per-provider sampling temperature (explicit `0.0` overrides any global non-zero temperature).
+    - **`streaming`**: Per-provider toggle for Server-Sent Events (SSE) token streaming.
+
+    ```yaml
+    llm:
+      thinking:
+        enabled: false          # global default: no thinking
+      max_retries: 3            # global transport defaults
+      retry_backoff: 500ms
+      max_timeout: 60s
+      idle_timeout: 60s
+      max_tokens: -1            # unlimited
+      temperature: 0.3
+      streaming: true
+      token_usage_limit: 20000000  # daily cap on the SUM of all providers (0 = unlimited)
+      providers:
+        - name: claude
+          provider: anthropic
+          thinking:
+            enabled: true       # only this provider thinks
+            budget: 8192
+          hedging:
+            enabled: false      # never race a backup against claude
+          token_usage_limit: 2000000  # daily cap for claude only
+        - name: gemini-flash
+          provider: gemini
+          temperature: 0.0      # override global 0.3 with deterministic temperature
+          hedging:
+            delay: 10s          # hedge sooner when gemini-flash is primary
+          json_reminder:
+            task:
+              cap: 800
+    ```
 - **`roles.<agent>.providers`** / **`agents.<role>.providers`** (List of Agent Provider Refs): Role-specific provider or ensemble model references:
   - **`name`** (String): References a provider declared in `llm.providers`.
   - **`count`** (Integer): Number of independent model instances/samples to spawn for this provider spec (default: `1`).
@@ -709,18 +750,19 @@ Controls how target workspace source files are formatted, sliced, and compacted 
 
 ```yaml
 context:
-  mode: full
-  diff_window_lines: 15
+  mode: "tree_sitter" # "tree_sitter" (default), "diff_window", "full"
+  diff_window_lines: 15 # default: 15
+  dedup_mutated_files: false # default: false (preserves prompt prefix cache hit rates across turns)
   compaction: "none" # "none" (default), "caveman", "simple_english"
   caveman_compaction: false # legacy boolean alias for compaction: "caveman"
 ```
 
 - **`mode`** (String): Context formatting strategy for task target files. Options:
-  - `full`: Sends complete source file contents (default).
+  - `tree_sitter`: Universal AST parsing extracting class/struct definitions and function signatures while omitting non-target function bodies (default).
   - `diff_window`: Extracts modified git diff lines and error stack traces (+/- context lines).
-  - `tree_sitter`: Universal AST parsing extracting class/struct definitions and function signatures.
+  - `full`: Sends complete source file contents.
 - **`diff_window_lines`** (Integer): Number of context lines surrounding diff modifications in `diff_window` mode (default: `15`).
-- **`dedup_mutated_files`** (Boolean): When `true` (default), prunes full pre-turn snapshots of files that were already modified in earlier turns of the current task. Replaces their static file context with an omission marker in subsequent turns, saving thousands of redundant tokens and preventing models from being confused by stale code snapshots.
+- **`dedup_mutated_files`** (Boolean): When `false` (default), preserves stable pre-turn file context across turns so that the static prompt prefix remains 100% byte-identical, achieving 80%–90% prompt cache hit rates on LLM providers. When set to `true`, prunes full pre-turn snapshots of files modified in earlier turns of the task.
 - **`compaction`** (String): Prompt compaction strategy applied to prompt bodies, specification payloads (`SPEC.md`), and historical turn contexts. Options:
   - `none`: Sends full uncompacted prompt text (default).
   - `caveman`: Telegraphic compaction that strips polite filler, redundant conversational preambles, decorative dividers, HTML comments (`<!-- ... -->`), and markdown images while strictly preserving code blocks (` ``` `), JSON contracts, file paths, and CLI flags.
@@ -729,14 +771,13 @@ context:
 
 ---
 
-## Workspace Inspection Caching Settings (`agents.workspace_cache`)
+## Workspace Inspection Caching Settings (`workspace_cache`)
 
 Controls in-memory deduplication of read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent task execution loop. The cache is automatically invalidated when any file mutation (`write_file`, `write_files`, `edit_file`, `delete_file`, `apply_patch`) occurs.
 
 ```yaml
-agents:
-  workspace_cache:
-    enabled: true
+workspace_cache:
+  enabled: true # top-level key (agents.workspace_cache supported as alias)
 ```
 
 - **`enabled`** (Boolean): Enable in-memory workspace inspection and diagnostic tool caching (default: `true`).
@@ -848,7 +889,7 @@ storage:
     backoff_factor: 2.0
 
 llm:
-  token_usage_limit: 0
+  token_usage_limit: 0   # daily (UTC) cap on estimated tokens across ALL providers; 0 = unlimited
   provider: "opencode"
   model: "opencode-v1"
   temperature: 0.0

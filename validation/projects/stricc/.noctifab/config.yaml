@@ -14,7 +14,6 @@ agents:
       complexity:
         min: 15
         max: 35
-    max_tokens: -1
     ensemble:
       strategy: parallel
       timeout_seconds: 45
@@ -45,7 +44,6 @@ agents:
   generators:
     number: 6
     iterations: 20
-    max_tokens: -1
     ensemble:
       strategy: adaptive
       timeout_seconds: 45
@@ -69,7 +67,6 @@ agents:
   testers:
     number: 2
     iterations: 15
-    max_tokens: -1
     ensemble:
       strategy: best_of_n_scored
       timeout_seconds: 30
@@ -101,7 +98,6 @@ agents:
   auditor:
     number: 1
     iterations: 2
-    max_tokens: -1
     ensemble:
       strategy: consensus
       timeout_seconds: 30
@@ -121,7 +117,6 @@ agents:
   unblocker:
     number: 1
     iterations: 2
-    max_tokens: -1
   fallback:
     enabled: true
     temperature: 0.1
@@ -165,7 +160,6 @@ fallback:
     missing_toolchain_strategy: auto
     providers:
       - name: gemini
-        temperature: 0.3
 workspace_cache:
   enabled: true
 poll_interval: 1s
@@ -181,7 +175,7 @@ storage:
     backoff_factor: 2
 llm:
   thinking:
-    default_budget: 2048
+    enabled: false   # global default; any provider can set thinking.enabled: true
   hedging:
     enabled: true
     delay: 25s
@@ -192,6 +186,13 @@ llm:
     body:
       cap: 12000
   token_usage_limit: 0
+  max_retries: 3
+  retry_backoff: 500ms
+  max_timeout: 60s
+  idle_timeout: 60s
+  max_tokens: -1
+  temperature: 0.3
+  streaming: true
   priority:
   - gemini-flash
   - claude
@@ -206,92 +207,36 @@ llm:
     provider: anthropic
     model: claude-sonnet-5
     api_keys: CLAUDE_API_KEY
-    max_retries: 3
-    retry_backoff: 500ms
-    max_timeout: 60s
-    idle_timeout: 60s
-    max_tokens: -1
-    temperature: 0.3
-    streaming: true
   - name: openai
     provider: openai
     model: gpt-5.6-luna
     api_keys: OPENAI_API_KEY
-    max_retries: 3
-    retry_backoff: 500ms
-    max_timeout: 60s
-    idle_timeout: 60s
-    max_tokens: -1
-    temperature: 0.3
-    streaming: true
   - name: gemini-flash
     provider: gemini
     model: gemini-3.6-flash
     api_keys: GEMINI_API_KEY
-    max_retries: 3
-    retry_backoff: 500ms
-    max_timeout: 60s
-    idle_timeout: 60s
-    max_tokens: -1
-    temperature: 0.3
-    streaming: true
   - name: gemini
     provider: gemini
     model: gemini-3.6-pro
     api_keys: GEMINI_API_KEY
-    max_retries: 3
-    retry_backoff: 500ms
-    max_timeout: 60s
-    idle_timeout: 60s
-    max_tokens: -1
-    temperature: 0.3
-    streaming: true
   - name: deepseek-pro
     provider: qwencloud
     model: deepseek-v4-pro
     api_keys: QWENCLOUD_API_KEY
-    max_retries: 3
-    retry_backoff: 500ms
-    max_timeout: 60s
-    idle_timeout: 60s
-    max_tokens: -1
-    temperature: 0.3
-    streaming: true
   - name: qwen
     provider: qwencloud
     model: qwen3.8-max
     api_keys: QWENCLOUD_API_KEY
-    max_retries: 3
-    retry_backoff: 500ms
-    max_timeout: 60s
-    idle_timeout: 60s
-    max_tokens: -1
-    temperature: 0.3
-    streaming: true
-    enable_thinking: true
-    thinking_budget: 2048
+    enable_thinking: false
+    thinking_budget: 0
   - name: opencode
     provider: opencode
     model: glm-5.2
     api_keys: OPENCODE_ZEN_API_KEY
-    max_retries: 3
-    retry_backoff: 500ms
-    max_timeout: 60s
-    idle_timeout: 60s
-    max_tokens: -1
-    temperature: 0.3
-    streaming: true
   - name: openrouter
     provider: openrouter
     model: deepseek/deepseek-v4-flash-0731
     api_keys: OPENROUTER_API_KEY
-    max_retries: 3
-    retry_backoff: 500ms
-    max_timeout: 60s
-    idle_timeout: 60s
-    max_tokens: -1
-    temperature: 0.3
-    streaming: true
 vcs:
   provider: github
   repository: diegojromerolopez/stricc
@@ -310,7 +255,6 @@ sandbox:
     command: cargo fmt --check && cargo clippy -- -D warnings
     max_issues: 100
     consecutive_failures: 2
-    max_retries: 3
   e2e:
     mode: docker
   telemetry:
@@ -353,9 +297,9 @@ telemetry:
   metrics:
     enabled: true
 context:
-  dedup_mutated_files: true
+  dedup_mutated_files: false
   mode: tree_sitter
   tree_sitter: true
-  diff_window_lines: 40
-  window_size: 40
+  diff_window_lines: 15
+  window_size: 15
   compaction: none

@@ -133,3 +133,19 @@ func TestApplyFileEdits_CRLFNormalization(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, res, "modified 2")
 }
+
+func TestApplyFileEdits_WindowedFuzzyMatch(t *testing.T) {
+	orig := "header\nline 1\nline 2\nfunc calculate() int {\n    return 42\n}\nfooter"
+	// Agent passes start line 2, end line 3 (slightly off from line 4)
+	chunk := ReplacementChunk{
+		StartLine:          2,
+		EndLine:            3,
+		TargetContent:      "func calculate() int {\n    return 42\n}",
+		ReplacementContent: "func calculate() int {\n    return 100\n}",
+	}
+
+	res, err := ApplyFileEdits(orig, []ReplacementChunk{chunk}, "calc.go")
+	require.NoError(t, err)
+	assert.Contains(t, res, "return 100")
+	assert.NotContains(t, res, "return 42")
+}

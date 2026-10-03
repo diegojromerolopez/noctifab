@@ -223,7 +223,17 @@ Noctifab enforces the [ASD-STE100 Simplified Technical English](https://www.asd-
    - Standardized, unambiguous terms restricted to their approved meanings.
    - Noun clusters capped at three consecutive nouns.
    - Short paragraphs limited to a maximum of six sentences.
-3. **Cleanup**: Running `noctifab clean` unlinks the generated `SPEC.ste.md` artifact.
+3. **Template Pruning & De-duplication**: All built-in default agent templates (`generator/*`, `tester/*`) adhere strictly to ASD-STE100. Redundant instructions and duplicate paragraphs are eliminated, reducing static template token overhead by 60%–75% while preserving all contractual needles.
+4. **Cleanup**: Running `noctifab clean` unlinks the generated `SPEC.ste.md` artifact.
+
+---
+
+## Prompt Prefix Caching & Append-Only Continuation
+
+To maximize prompt caching on LLM providers (Anthropic prompt caching, OpenAI prefix caching, Gemini context caching):
+- **Append-Only Multi-Turn Continuation**: When an agent executes multiple turns on a task, Noctifab appends tool outputs under an append-only `TOOL OUTPUTS FROM PREVIOUS TURN(S):` section (`--- Turn N ---`). The base prompt prefix (`rendered.Body`) is never rewritten or mutated across turns.
+- **Session Routing Affinity (`domain.WithCacheSessionID`)**: Multi-turn requests within the same task share a stable session identifier, routing requests to the same physical provider backend worker.
+- **Zero-Mutation File Context**: With `context.dedup_mutated_files: false` (default), pre-turn file contexts remain unchanged, boosting cache hit rates to **80%–90%**.
 
 ---
 

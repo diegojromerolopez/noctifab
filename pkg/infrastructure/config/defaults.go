@@ -275,11 +275,11 @@ func DefaultConfig() *Config {
 			},
 		},
 		Context: ContextConfig{
-			Mode:              "full",
+			Mode:              "tree_sitter",
 			DiffWindowLines:   15,
 			Compaction:        "none",
 			SkipFolders:       []string{},
-			DedupMutatedFiles: boolPtr(true),
+			DedupMutatedFiles: boolPtr(false),
 		},
 	}
 }

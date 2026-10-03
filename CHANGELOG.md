@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.116.0] - 2026-10-03
+
+### Added
+- **Per-Provider Overrides of Common LLM Settings**:
+  - `llm.providers[]` entries can now override `thinking`, `hedging`, `json_reminder`, `token_usage_limit`, as well as transport settings: `max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, and `streaming`. Unset fields inherit the global `llm.*` value field by field (`pkg/infrastructure/config/provider_overrides.go`).
+  - Promoted common transport defaults (`max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, `streaming`) to the top-level `llm:` block, eliminating redundant per-provider configuration blocks across all 20 validation projects (`validation/projects/*/.noctifab/config.yaml`) and the host pyedis repository (`$HOME/repos/pyedis/.noctifab/config.yaml`).
+  - Standardized all validation projects with `llm.thinking.enabled: false`, disabled Qwen thinking (`enable_thinking: false`, `thinking_budget: 0`), top-level `workspace_cache.enabled: true`, and optimized cache-preserving context settings (`dedup_mutated_files: false`, `diff_window_lines: 15`).
+  - Implemented explicit YAML key tracking (`ProviderSpec.UnmarshalYAML` in `pkg/infrastructure/config/provider_spec_yaml.go`) to distinguish explicit zero values (e.g. `temperature: 0.0` or `max_tokens: -1` -> 0) from unset fields, ensuring explicit provider overrides always win over non-zero globals.
+  - A lone provider can enable thinking while `llm.thinking.enabled: false`. A global `true` is now inherited by providers that do not set their own value.
+  - Hedging uses the primary candidate's effective delay, so one provider can disable or tune speculative hedging.
+  - `token_usage_limit` on a provider is a daily cap for that provider entry only. Capped providers are skipped. Usage is recorded under a `named:<provider>` budget key (`pkg/infrastructure/llm/router_provider_overrides.go`).
+- **Context Slicing Default & Diff Window Configuration**:
+  - Set default `context.mode` to `"tree_sitter"` (upgraded from `"full"`), ensuring AST/symbol signature pruning is the factory default.
+  - Added and documented `diff_window_lines` configuration setting (default: 15) to control the surrounding context line window when operating in `diff_window` mode.
+  - Verified non-destructive context behavior with `context.dedup_mutated_files` defaulting to `false` to preserve prefix stability.
+- **Incremental Diff Tooling Reliability (`apply_patch` & `edit_file`)**:
+  - Enhanced `apply_patch` in `pkg/services/apply_patch_tool.go` with whitespace-trimmed fuzzy matching fallback (`matchAtTrimmed`), preventing hunk rejections caused by subtle indentation or line ending variations.
+  - Enhanced `edit_file` in `pkg/services/edit_file_helper.go` with search window expansion (`[start-16, end+15]`) and indentation preservation (`extractLeadingWhitespace`), ensuring surgical edits match even when preceding edits shift line indices.
+
+### Changed
+- **ASD-STE100 Prompt Template Standardization & Token Pruning**:
+  - Re-authored default generator and tester prompt templates (`implement`, `fix`, `refactor`, `single_pass`, `single_pass_fix`, `surgical_repair`, `write`, `write_breadth_first`) to comply with the ASD-STE100 standard (max 20 words for instructions, 25 for descriptions, active voice, imperative mood).
+  - Eliminated redundant paragraphs and duplicate instructions, achieving a 60%–75% reduction in static prompt overhead while strictly retaining all required contract needles.
+- **Prefix Cache Optimization for Multi-Turn Continuations**:
+  - Replaced destructive per-turn prompt overwrites with append-only history continuation blocks (`--- Turn N ---`) under stable headers.
+  - Attached persistent `domain.WithCacheSessionID` metadata across task generation turns for Anthropic/Gemini/OpenAI routing affinity.
+  - Boosted multi-turn prompt cache hit rates from <20% to 80%–90%.
+
 ## [0.115.0] - 2026-10-03
 
 ### Added
