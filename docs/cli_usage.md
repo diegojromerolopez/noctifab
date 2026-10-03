@@ -39,7 +39,7 @@ noctifab init [target_dir] [--profile <preset>] [--spec <prompt>] [-i]
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--profile` | | Pre-configured LLM profile preset (`ollama-qwen`, `ollama-deepseek`, `vllm-local`) |
+| `--profile` | | Pre-configured LLM profile preset (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) |
 | `--spec` | | Initial prompt to bootstrap and immediately enter interactive `SPEC.md` review session |
 | `--interactive` | `-i` | Launch interactive spec generator wizard upon initialization |
 

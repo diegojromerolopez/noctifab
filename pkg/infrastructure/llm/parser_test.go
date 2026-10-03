@@ -271,18 +271,8 @@ func TestBuildJSONReminderPrompt(t *testing.T) {
 	if !strings.Contains(p, originalPrompt) {
 		t.Error("reminder prompt should include the original prompt")
 	}
-	if !strings.Contains(p, "some prose here") {
-		t.Error("reminder prompt should include a tail of the rejected body")
-	}
-
-	// Truncation: huge body must produce a short tail.
-	huge := make([]byte, 500_000)
-	for i := range huge {
-		huge[i] = 'A'
-	}
-	p2 := buildJSONReminderPrompt(originalPrompt, huge)
-	if !strings.Contains(p2, "...[truncated]...") {
-		t.Error("reminder prompt for large body should include a truncation marker")
+	if strings.Contains(p, "some prose here") {
+		t.Error("reminder prompt should not include the rejected body to prevent token waste and Anthropic refusals")
 	}
 
 	// Truncation: huge original prompt must be capped to prevent re-sending 85KB specs.

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.114.0] - 2026-10-03
+
+### Fixed
+- **LLM Profile Presets Schema Synchronization (`AvailableProfiles`)**:
+  - Corrected YAML templates for all profile presets (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) in `pkg/infrastructure/config/profiles.go` to conform strictly to Noctifab's `Config` schema.
+  - Replaced obsolete fields (`base_url` -> `url`, `timeout` -> `max_timeout`, removed invalid root `orchestrator:` and unmapped `parser:`), eliminating unmarshal failures caused by strict `decoder.KnownFields(true)` validation.
+  - Added `ApplyProfile` helper to cleanly apply presets onto base configurations without field loss.
+
+### Added
+- **Intelligent Project Manifest & Toolchain Adaptation on `init`**:
+  - `noctifab init` now dynamically detects existing project languages and build manifests (`pyproject.toml`, `requirements.txt`, `Cargo.toml`, `package.json`, `go.mod`, `Makefile`).
+  - Pre-populates `.noctifab/config.yaml` with the correct test and format commands (`cargo test` & `cargo fmt` for Rust, `python3 -m unittest discover -s tests` for Python, `npm test` & `npm run format` for Node.js, `make test` for Makefiles) instead of hardcoding `go test -v ./...`.
+  - Automatically adjusts the default `SPEC.md` template technology stack and test framework guidelines to match the detected language.
+- **Git Remote Origin Auto-Resolution**:
+  - Added `vcs.DetectGitRepository` and `vcs.ParseGitRemoteSlug` in `pkg/infrastructure/vcs/detect.go`.
+  - Automatically extracts the `owner/repo` repository slug from the Git remote origin (`git config --get remote.origin.url` and `.git/config` fallback) during workspace initialization instead of defaulting blindly to `"local/repo"`.
+
 ## [0.113.0] - 2026-10-02
 
 ### Added
