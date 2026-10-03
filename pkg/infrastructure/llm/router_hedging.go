@@ -53,6 +53,16 @@ func (r *ResilientLLMRouter) completeWithHedging(
 		hedgeDelay = heavyDelay
 	}
 
+	// Scale hedge delay with prompt tokens so large prompts have adequate TTFT before hedging
+	promptTokens := estimatePromptTokens(prompt)
+	if promptTokens > 4000 {
+		extraDelay := time.Duration((promptTokens-4000)/2000) * time.Second
+		if extraDelay > 60*time.Second {
+			extraDelay = 60 * time.Second
+		}
+		hedgeDelay += extraDelay
+	}
+
 	// Adaptive Speculative Hedging: check dynamic demotion/timeout memory
 	if r.latencyTracker != nil {
 		penalty := r.latencyTracker.GetPenaltyScore(primary.Name)

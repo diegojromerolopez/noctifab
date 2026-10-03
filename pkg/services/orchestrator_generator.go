@@ -39,12 +39,13 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		readerContexts = o.RunReaderPhase(ctx, "generator", task, state)
 	}
 
+	cleanFileContexts, cleanReaderContexts := DeduplicateFileAndReaderContexts(fileContexts, readerContexts)
 	var promptContext []string
-	if len(fileContexts) > 0 {
-		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(fileContexts, "\n\n")))
+	if len(cleanFileContexts) > 0 {
+		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(cleanFileContexts, "\n\n")))
 	}
-	if len(readerContexts) > 0 {
-		promptContext = append(promptContext, fmt.Sprintf("Inspection context gathered:\n%s", strings.Join(readerContexts, "\n\n")))
+	if len(cleanReaderContexts) > 0 {
+		promptContext = append(promptContext, fmt.Sprintf("Inspection context gathered:\n%s", strings.Join(cleanReaderContexts, "\n\n")))
 	}
 	if recentTestsContext != "" {
 		promptContext = append(promptContext, recentTestsContext)
@@ -130,6 +131,8 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	maxTurns := iterationsOrDefault(o.cfg.GeneratorsIterations)
 	if action == "surgical_repair" {
 		maxTurns = 2
+	} else if (action == "single_pass" || action == "single_pass_fix") && maxTurns > 8 {
+		maxTurns = 8
 	}
 	var lastErr error
 	var allTurnOutputsHistory []string
@@ -435,17 +438,14 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		// Append errors and tool outputs to maintain byte-for-byte prefix cache stability
 		// across turns. The output contract stays at the END of the prompt so the
 		// JSON schema is the last thing the model reads.
-		body := rendered.Body
-		if o.cfg.Context.IsDedupMutatedFilesEnabled() && len(mutatedFiles) > 0 {
-			body = pruneMutatedFileContexts(body, mutatedFiles)
-		}
-		turnMsg := fmt.Sprintf("--- Turn %d ---\n%s", turn+1, joinCappedToolOutputs(turnToolOutputs))
+		// Maintain byte-for-byte prefix cache stability across turns by preserving rendered.Body verbatim.
+		turnMsg := fmt.Sprintf("--- Turn %d (Turns remaining: %d) ---\n%s", turn+1, maxTurns-turn-1, joinCappedToolOutputs(turnToolOutputs))
 		allTurnOutputsHistory = append(allTurnOutputsHistory, turnMsg)
+		windowedHistory := PruneAndWindowToolOutputs(allTurnOutputsHistory, 2)
 
-		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN(S):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop. You have %d turns remaining.\n%s",
-			body,
-			strings.Join(allTurnOutputsHistory, "\n\n"),
-			maxTurns-turn-1,
+		currentPrompt = fmt.Sprintf("%s\n\nTOOL OUTPUTS FROM PREVIOUS TURN(S):\n%s\n\nBased on these outputs, take your next actions. If everything is done and verified, call noop.\n%s",
+			rendered.Body,
+			strings.Join(windowedHistory, "\n\n"),
 			rendered.Contract)
 	}
 

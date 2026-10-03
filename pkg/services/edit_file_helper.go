@@ -75,6 +75,60 @@ func matchTrimmedLines(fileLines []string, targetLines []string) (int, int, bool
 	return -1, -1, false
 }
 
+// matchNormalizedLines matches contiguous blocks ignoring blank/empty lines differences.
+func matchNormalizedLines(fileLines []string, targetLines []string) (int, int, bool) {
+	type lineRef struct {
+		index int
+		text  string
+	}
+	var nonBlankTarget []string
+	for _, l := range targetLines {
+		t := strings.TrimSpace(l)
+		if t != "" {
+			nonBlankTarget = append(nonBlankTarget, t)
+		}
+	}
+	if len(nonBlankTarget) == 0 {
+		return -1, -1, false
+	}
+
+	var nonBlankFile []lineRef
+	for i, l := range fileLines {
+		t := strings.TrimSpace(l)
+		if t != "" {
+			nonBlankFile = append(nonBlankFile, lineRef{index: i, text: t})
+		}
+	}
+	if len(nonBlankFile) < len(nonBlankTarget) {
+		return -1, -1, false
+	}
+
+	matchCount := 0
+	matchStart := -1
+	matchEnd := -1
+	n := len(nonBlankTarget)
+
+	for i := 0; i <= len(nonBlankFile)-n; i++ {
+		matched := true
+		for j := 0; j < n; j++ {
+			if nonBlankFile[i+j].text != nonBlankTarget[j] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			matchCount++
+			matchStart = nonBlankFile[i].index
+			matchEnd = nonBlankFile[i+n-1].index
+		}
+	}
+
+	if matchCount == 1 {
+		return matchStart, matchEnd, true
+	}
+	return -1, -1, false
+}
+
 // ApplyFileEdits applies a list of replacement chunks to file content with resilient
 // fallback matching (e.g. single-occurrence file-wide search) and clear small-file write_file guidance.
 func ApplyFileEdits(content string, edits []ReplacementChunk, relPath string) (string, error) {
@@ -172,6 +226,24 @@ func ApplyFileEdits(content string, edits []ReplacementChunk, relPath string) (s
 		}
 
 		if startIdx, endIdx, ok := matchTrimmedLines(lines, targetLines); ok {
+			leadIndent := extractLeadingWhitespace(lines[startIdx])
+			replLines := strings.Split(edit.ReplacementContent, "\n")
+			if leadIndent != "" && len(replLines) > 0 && strings.TrimLeft(replLines[0], " \t") == replLines[0] {
+				for i := range replLines {
+					if strings.TrimSpace(replLines[i]) != "" {
+						replLines[i] = leadIndent + replLines[i]
+					}
+				}
+			}
+			newLines := append([]string{}, lines[:startIdx]...)
+			newLines = append(newLines, replLines...)
+			newLines = append(newLines, lines[endIdx+1:]...)
+			lines = newLines
+			continue
+		}
+
+		// Resilient Fallback 5: Blank-line-tolerant normalized matching
+		if startIdx, endIdx, ok := matchNormalizedLines(lines, targetLines); ok {
 			leadIndent := extractLeadingWhitespace(lines[startIdx])
 			replLines := strings.Split(edit.ReplacementContent, "\n")
 			if leadIndent != "" && len(replLines) > 0 && strings.TrimLeft(replLines[0], " \t") == replLines[0] {

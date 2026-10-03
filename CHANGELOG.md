@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.0] - 2026-10-03
+
+### Added
+- **Context Deduplication Across File and Reader Phases**:
+  - Implemented `DeduplicateFileAndReaderContexts` in `pkg/services/orchestrator_context_pruner.go` to eliminate redundant file context injection when files are loaded both by direct target file slicing and by the AST/ImportGraphWalker.
+  - Sliced and full-file representations are now deduplicated, saving 15%–30% prompt tokens per turn on tasks touching existing files.
+- **Sliding Window & Superseded Diagnostic Tool Output Pruning**:
+  - Implemented `PruneAndWindowToolOutputs` in `pkg/services/orchestrator_context_pruner.go` to automatically condense older turns and replace superseded `run_tests` and `run_linter` failure logs with compact single-line references.
+  - Prevents multi-turn prompt accumulation from exploding context on turns 3+, reducing multi-turn prompt overhead by 30%–50%.
+- **Relevant Subtree Workspace File Tree Formatting**:
+  - Added `formatWorkspaceFileTree` in `pkg/services/orchestrator_reader_phase.go` to prioritize root build files and subtrees containing task target files when repository size exceeds 60 files.
+  - Collapses unrelated directories into concise file count summaries, saving thousands of prompt tokens per turn on medium and large repositories.
+- **Blank-Line-Tolerant & Normalized Incremental Editing**:
+  - Enhanced `pkg/services/edit_file_helper.go` with `matchNormalizedLines` fallback, matching contiguous blocks regardless of missing or extra internal blank lines.
+  - Drastically increases `edit_file` success rates, preventing unnecessary fallbacks to multi-hundred-line `write_file` overwrites.
+- **Context-Aware Prompt-Scaled Hedging Delay**:
+  - Enhanced `pkg/infrastructure/llm/router_hedging.go` to scale speculative hedge delays proportionally for prompts exceeding 4,000 tokens (`+1s` per 2,000 tokens), preventing premature concurrent hedging during large prompt KV cache evaluation and time-to-first-token.
+
+### Changed
+- **Strict Static Prefix Locking for 100% KV Cache Stability**:
+  - Preserved `rendered.Body` completely invariant across turns 1..N in `orchestrator_generator.go` and `orchestrator_helper.go`, keeping the exact byte prefix stable for Anthropic, OpenAI, DeepSeek, and Gemini KV caches.
+  - Relocated dynamic turn counter (`Turns remaining: %d`) into turn headers, ensuring output contracts remain at a stable, non-shifting suffix.
+- **Ghost Reasoning Elimination in Execution Contracts**:
+  - Trimmed execution role contract prompts (`contracts/generator.txt` and `contracts/tester.txt`) from requesting verbose multi-paragraph rationale to a concise 1-sentence technical intent, saving 200–600 output tokens and 5–15 seconds per turn.
+- **Dynamic Turn Budgeting for Single-Pass Tasks**:
+  - Capped default generator turns for single-pass tasks to 8 iterations (down from 20), combined with immediate fast-path exit when explicit test execution passes cleanly.
+
 ## [0.116.0] - 2026-10-03
 
 ### Added

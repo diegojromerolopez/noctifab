@@ -149,3 +149,15 @@ func TestApplyFileEdits_WindowedFuzzyMatch(t *testing.T) {
 	assert.Contains(t, res, "return 100")
 	assert.NotContains(t, res, "return 42")
 }
+
+func TestApplyFileEdits_BlankLineTolerantMatch(t *testing.T) {
+	orig := "def handle():\n    x = 1\n\n    y = 2\n\n    return x + y\n"
+	// Agent passed target content without the internal blank lines
+	target := "def handle():\n    x = 1\n    y = 2\n    return x + y"
+	repl := "def handle():\n    return 42"
+
+	res, err := ApplyFileEdits(orig, []ReplacementChunk{{TargetContent: target, ReplacementContent: repl}}, "handler.py")
+	require.NoError(t, err)
+	assert.Contains(t, res, "return 42")
+	assert.NotContains(t, res, "x + y")
+}
