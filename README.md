@@ -763,7 +763,7 @@ All providers benefit from the same resilience and token efficiency layers autom
 # .noctifab/config.yaml
 llm:
   provider: gemini
-  model: gemini-3.6-pro          # fallback chain: → gemini-3.6-flash
+  model: gemini-3.1-pro-preview   # fallback chain: → gemini-3.8-flash
   api_key: "secret:GEMINI_API_KEY"
   max_timeout: 60s               # Overall request hard timeout
   idle_timeout: 15s              # Socket stream inactivity timeout before failover
@@ -854,7 +854,7 @@ llm:
 
 | Provider | Model priority (high → low) |
 |---|---|
-| **Gemini** | `gemini-3.6-pro` → `gemini-3.6-flash` |
+| **Gemini** | `gemini-3.1-pro-preview` → `gemini-3.8-flash` |
 | **OpenAI** | `gpt-4o` → `gpt-4o-mini` |
 | **Anthropic** | `claude-sonnet-5` → `claude-3-5-sonnet-latest` → `claude-3-5-haiku-latest` |
 | **Mistral** | `mistral-large-latest` → `mistral-medium-latest` → `mistral-small-latest` → `open-mistral-7b` |

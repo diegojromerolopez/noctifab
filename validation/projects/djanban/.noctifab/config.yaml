@@ -208,11 +208,11 @@ llm:
     api_keys: CLAUDE_API_KEY
   - name: gemini-flash
     provider: gemini
-    model: gemini-3.6-flash
+    model: gemini-3.8-flash
     api_keys: GEMINI_API_KEY
   - name: gemini
     provider: gemini
-    model: gemini-3.6-pro
+    model: gemini-3.1-pro-preview
     api_keys: GEMINI_API_KEY
   - name: openai
     provider: openai

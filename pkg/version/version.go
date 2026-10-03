@@ -10,7 +10,7 @@ import (
 
 const (
 	// DefaultVersion is the fallback version when not injected at build time.
-	DefaultVersion = "0.117.2"
+	DefaultVersion = "0.117.3"
 )
 
 var (

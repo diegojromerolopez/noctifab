@@ -148,7 +148,7 @@ storage:
 
 llm:
   provider: "gemini"
-  model: "gemini-3.6-pro"
+  model: "gemini-3.1-pro-preview"
   api_key: "secret:GEMINI_API_KEY"
 
 vcs:
@@ -213,7 +213,7 @@ llm:
         model: "gpt-4o"
         api_keys: "OPENAI_API_KEY"
       - provider: "gemini"
-        model: "gemini-3.6-flash"
+        model: "gemini-3.8-flash"
         api_keys: "GEMINI_API_KEY"
 
 vcs:
@@ -486,7 +486,7 @@ llm:
       api_keys: "QWENCLOUD_API_KEY"
     - name: "gemini-flash"
       provider: "gemini"
-      model: "gemini-3.6-flash"
+      model: "gemini-3.8-flash"
       api_keys: "GEMINI_API_KEY"
 
 sandbox:
@@ -585,7 +585,7 @@ llm:
   providers:
     - name: "gemini-flash"
       provider: "gemini"
-      model: "gemini-3.6-flash"
+      model: "gemini-3.8-flash"
       api_keys: "GEMINI_API_KEY"
     - name: "claude"
       provider: "anthropic"

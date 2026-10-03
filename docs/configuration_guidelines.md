@@ -127,7 +127,7 @@ llm:
 
     - name: gemini-flash
       provider: gemini
-      model: gemini-3.6-flash
+      model: gemini-3.8-flash
       api_keys: GEMINI_API_KEY
       max_retries: 3
       retry_backoff: 500ms

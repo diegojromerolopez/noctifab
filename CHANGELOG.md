@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.3] - 2026-10-04
+
+### Changed
+- **Upgrade Google Gemini Configurations to Concrete Releases**:
+  - Upgraded Flash model configuration from `gemini-3.6-flash` to Google's newest release `gemini-3.8-flash` across all validation project configurations (`validation/projects/*/.noctifab/config.yaml`) and documentation.
+  - Upgraded Pro model configuration from `gemini-3.6-pro` to Google's latest available Pro model `gemini-3.1-pro-preview` across all validation project configurations and documentation, replacing floating model aliases with concrete, pinned releases.
+
 ## [0.117.2] - 2026-10-04
 
 ### Fixed

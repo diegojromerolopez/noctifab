@@ -462,7 +462,7 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 		cfg := &config.Config{
 			LLM: config.LLMConfig{
 				Providers: []config.ProviderSpec{
-					{Name: "gemini", Provider: "gemini", Model: "gemini-3.6-pro"},
+					{Name: "gemini", Provider: "gemini", Model: "gemini-3.1-pro-preview"},
 					{Name: "openai", Provider: "openai", Model: "gpt-5.6-luna"},
 				},
 			},
@@ -485,7 +485,7 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 
 		require.Len(t, candidates, 1)
 		assert.Equal(t, "gemini", candidates[0].Name)
-		assert.Equal(t, "gemini-3.6-pro", candidates[0].Model)
+		assert.Equal(t, "gemini-3.1-pro-preview", candidates[0].Model)
 		if c, ok := candidates[0].Client.(*Client); ok {
 			assert.Equal(t, 0.3, c.Temperature)
 		}
