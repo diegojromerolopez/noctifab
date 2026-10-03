@@ -61,8 +61,8 @@ func TestFallbackConfig_Defaults(t *testing.T) {
 	if !sr.IsEnabled() {
 		t.Errorf("expected SovereignRescue to be enabled by default")
 	}
-	if sr.GetMaxTurns() != 10 {
-		t.Errorf("expected SovereignRescue.GetMaxTurns to default to 10, got %d", sr.GetMaxTurns())
+	if sr.GetMaxTurns() != 15 {
+		t.Errorf("expected SovereignRescue.GetMaxTurns to default to 15, got %d", sr.GetMaxTurns())
 	}
 	if sr.GetTimeout() != 5*time.Minute {
 		t.Errorf("expected SovereignRescue.GetTimeout to default to 5m, got %v", sr.GetTimeout())
@@ -98,11 +98,11 @@ func TestSovereignRescueConfig_CustomAndResolution(t *testing.T) {
 		}
 	})
 
-	t.Run("nil config returns safe default MaxTurns of 10", func(t *testing.T) {
+	t.Run("nil config returns safe default MaxTurns of 15", func(t *testing.T) {
 		var cfg *Config
 		sr := cfg.GetSovereignRescue()
-		if sr.GetMaxTurns() != 10 {
-			t.Errorf("expected default MaxTurns 10, got %d", sr.GetMaxTurns())
+		if sr.GetMaxTurns() != 15 {
+			t.Errorf("expected default MaxTurns 15, got %d", sr.GetMaxTurns())
 		}
 	})
 

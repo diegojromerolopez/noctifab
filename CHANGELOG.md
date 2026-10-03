@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.115.0] - 2026-10-03
+
+### Added
+- **Oscillation & Cycle Detection Circuit Breaker**:
+  - Implemented `OscillationCircuitBreaker` in `pkg/services/oscillation_circuit_breaker.go` to detect repetitive alternating failure cycles (period 2, 3, or 4) during rescue sessions.
+  - Generates deterministic failure fingerprints by stripping volatile line numbers, memory pointers, and execution durations.
+  - Automatically injects an urgent `Conflict Reconciliation Directive` into rescue agent turns upon cycle detection, instructing the agent to eliminate conflicting requirements.
+  - Trips the circuit breaker and aborts execution early when repeated cycles persist, preventing infinite repair loops and token overconsumption.
+- **Shadow Test File Preflight Gate**:
+  - Implemented `DetectShadowTestFiles` and `FormatShadowTestCollisions` in `pkg/services/test_validator_shadow.go`.
+  - Automatically identifies duplicate test basenames across nested depths and flags root test files coexisting with partitioned test suites (`tests/unit/`, `tests/integration/`, `tests/e2e/`).
+  - Integrated into `pkg/services/test_validator.go` to block test runs and alert agents immediately when legacy test files shadow modular suites.
+- **Sovereign Rescue `delete_file` Tool Capability**:
+  - Registered `DeleteFileTool` in `start_sovereign_rescue.go` and exposed its mandate in rescue prompts, allowing rescue agents to remove obsolete or conflicting legacy test files.
+- **Cross-Layer Test Coupling Preflight Gate**:
+  - Implemented `DetectTestCouplingViolations` and `FormatTestCouplingViolations` in `pkg/services/test_validator_coupling.go`.
+  - Automatically scans test files in `tests/unit/`, `tests/integration/`, and `tests/e2e/` for illegal cross-tier imports (e.g. unit tests importing from `tests.e2e` or `tests.integration`, integration tests depending on black-box E2E harnesses).
+  - Wired into `pkg/services/test_validator.go` to block test runs and alert agents immediately during preflight when test hermeticity is violated.
+- **Surgical Edit Prioritization in Sovereign Rescue**:
+  - Prioritized `edit_file` over `write_files` in the Sovereign Rescue prompt and tool list (`cmd/noctifab/cli/start_sovereign_rescue_prompt.go`).
+  - Formulated direct mandate instructing the rescue agent to prioritize surgical single-file modifications and reserve `write_files` as a fallback only when `edit_file` fails or when multi-file structural migration is strictly necessary, eliminating wide-mutation regressions.
+- **Configurable Sovereign Rescue Turn Limit**:
+  - Added `max_turns` configuration option under `fallback.sovereign_rescue` with a default of 15 turns (down from unbounded acceptance-gap scaling).
+  - Clamped sovereign rescue turn execution to `cfg.GetFallback().GetSovereignRescue().GetMaxTurns()` across both `start_sovereign_rescue.go` and `start_acceptance_gate.go`.
+
 ## [0.114.0] - 2026-10-03
 
 ### Fixed

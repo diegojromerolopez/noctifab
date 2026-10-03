@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -373,7 +374,7 @@ func TestSovereignProjectRescue(t *testing.T) {
 		assert.Contains(t, prompt, "MISSING HOST TOOLCHAIN & CONTAINERIZED DOCKER FALLBACK")
 	})
 
-	t.Run("when DispatchSovereignRescue is called without MaxTurns it defaults to 10 turns", func(t *testing.T) {
+	t.Run("when DispatchSovereignRescue is called without MaxTurns it defaults to 15 turns", func(t *testing.T) {
 		tempDir := t.TempDir()
 		mockRepo := &mockDAGStateRepo{
 			state: &domain.State{ProjectPath: tempDir},
@@ -401,13 +402,55 @@ func TestSovereignProjectRescue(t *testing.T) {
 			LLMClient:    mockLLM,
 			ToolRegistry: reg,
 			Validator:    validator,
-			MaxTurns:     0, // Unset, should default to 10
+			MaxTurns:     0, // Unset, should default to 15
 		}
 
 		err := DispatchSovereignRescue(context.Background(), opts)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "sovereign rescue exhausted 10 turns")
-		assert.Equal(t, 10, mockLLM.calls, "expected exactly 10 turns from default configuration")
+		assert.Contains(t, err.Error(), "sovereign rescue exhausted 15 turns")
+		assert.Equal(t, 15, mockLLM.calls, "expected exactly 15 turns from default configuration")
+	})
+
+	t.Run("when AcceptanceGaps exceeds configured max turns it is clamped to configured max turns", func(t *testing.T) {
+		tempDir := t.TempDir()
+		mockRepo := &mockDAGStateRepo{
+			state: &domain.State{ProjectPath: tempDir},
+		}
+
+		mockLLM := &mockRescueLLM{
+			responses: []*domain.LLMResponse{
+				{Actions: []domain.LLMAction{{Tool: "noop"}}},
+			},
+		}
+		reg := services.NewToolRegistry()
+		reg.Register(&services.NoopTool{})
+
+		sandbox := &mockRescueSandbox{
+			runFunc: func(ctx context.Context, dir string, cmd string, pkg string) (string, error) {
+				return "FAIL", errors.New("exit status 1")
+			},
+		}
+		validator := services.NewTestValidator(sandbox, false, mockLLM, reg.Tools())
+
+		gaps := make([]string, 109)
+		for i := range gaps {
+			gaps[i] = fmt.Sprintf("Gap %d", i+1)
+		}
+
+		opts := SovereignRescueOptions{
+			TargetDir:      tempDir,
+			Cfg:            config.DefaultConfig(),
+			Repo:           mockRepo,
+			LLMClient:      mockLLM,
+			ToolRegistry:   reg,
+			Validator:      validator,
+			AcceptanceGaps: gaps,
+		}
+
+		err := DispatchSovereignRescue(context.Background(), opts)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "sovereign rescue exhausted 15 turns")
+		assert.Equal(t, 15, mockLLM.calls, "expected exactly 15 turns clamped from 109 gaps")
 	})
 
 	t.Run("when sovereign rescue calls Complete it passes fallback role in context", func(t *testing.T) {

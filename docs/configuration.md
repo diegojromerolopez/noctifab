@@ -638,7 +638,7 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
-    max_turns: 10
+    max_turns: 15
     timeout: "5m"
     missing_toolchain_strategy: "auto"
     providers:
@@ -661,7 +661,7 @@ fallback:
   - **`stall_count_threshold`** (Integer): Number of cumulative stall cycles before summoning sovereign repair (default: `4`).
   - **`sovereign_rescue`**: Configures the whole-project emergency sovereign takeover engine (TR-16):
     - **`enabled`** (Boolean): Enable autonomous sovereign rescue takeover upon loop exhaustion (default: `true`).
-    - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `10`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
+    - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `15`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
     - **`timeout`** (Duration): Per-turn execution timeout limit for sovereign LLM completions (default: `5m`).
     - **`missing_toolchain_strategy`** (String): Strategy for handling missing host toolchains or compilers during sovereign recovery (default: `"auto"`). Configurable via environment variable `NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY`. Options:
       - `"auto"`: Probes for Docker daemon availability. If Docker is running, uses `"docker"`; otherwise falls back to `"local"`.
@@ -836,7 +836,7 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
-    max_turns: 10
+    max_turns: 15
     timeout: "5m"
 
 storage:

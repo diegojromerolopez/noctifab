@@ -121,7 +121,7 @@ func (s SovereignRescueConfig) GetMaxTurns() int {
 	if s.MaxAttempts > 0 {
 		return s.MaxAttempts
 	}
-	return 10
+	return 15
 }
 
 func (s SovereignRescueConfig) GetTimeout() time.Duration {
@@ -210,7 +210,7 @@ func (a AgentsConfig) GetFallback() FallbackAgentConfig {
 // The NOCTIFAB_RESCUE_MAX_TURNS environment variable takes highest precedence if set.
 func (c *Config) GetSovereignRescue() SovereignRescueConfig {
 	if c == nil {
-		res := SovereignRescueConfig{MaxTurns: 10, Timeout: Duration(5 * time.Minute), MissingToolchainStrategy: "auto"}
+		res := SovereignRescueConfig{MaxTurns: 15, Timeout: Duration(5 * time.Minute), MissingToolchainStrategy: "auto"}
 		if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_MAX_TURNS"); ok {
 			if i, err := strconv.Atoi(val); err == nil && i > 0 {
 				res.MaxTurns = i
@@ -278,7 +278,7 @@ func (c *Config) GetSovereignRescue() SovereignRescueConfig {
 		res.MissingToolchainStrategy = "auto"
 	}
 	if res.MaxTurns <= 0 {
-		res.MaxTurns = 10
+		res.MaxTurns = 15
 	}
 	if res.Timeout <= 0 {
 		res.Timeout = Duration(5 * time.Minute)

@@ -245,7 +245,7 @@ func DefaultConfig() *Config {
 			},
 			SovereignRescue: SovereignRescueConfig{
 				Enabled:                  boolPtr(true),
-				MaxTurns:                 10,
+				MaxTurns:                 15,
 				Timeout:                  Duration(5 * time.Minute),
 				MissingToolchainStrategy: "auto",
 			},
@@ -268,7 +268,7 @@ func DefaultConfig() *Config {
 			},
 			SovereignRescue: SovereignRescueConfig{
 				Enabled:                  boolPtr(true),
-				MaxTurns:                 10,
+				MaxTurns:                 15,
 				Timeout:                  Duration(5 * time.Minute),
 				MissingToolchainStrategy: "auto",
 				SliceSpec:                boolPtr(true),

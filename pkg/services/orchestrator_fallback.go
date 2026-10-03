@@ -116,6 +116,7 @@ func (o *Orchestrator) RunFallbackAgent(
 	currentLog := failureLog
 	fallbackNoopStrikes := 0
 	maxFallbackNoopStrikes := 2
+	circuitBreaker := NewOscillationCircuitBreaker()
 
 	for turn := 1; turn <= maxTurns; turn++ {
 		fmt.Printf("🔧 [Fallback Agent] Starting sovereign turn %d/%d for task %s...\n", turn, maxTurns, effectiveTask.ID)
@@ -206,6 +207,18 @@ func (o *Orchestrator) RunFallbackAgent(
 		} else {
 			fallbackNoopStrikes = 0
 		}
+
+		// Oscillation & Cycle Detection Circuit Breaker
+		oscDecision := circuitBreaker.RecordFailure(turn, newLogMsg)
+		if oscDecision.Action == OscillationActionTrip {
+			fmt.Fprintf(os.Stderr, "🚨 [Fallback Agent Circuit Tripped] %s\n", oscDecision.Reason)
+			currentLog = fmt.Sprintf("Circuit Breaker Tripped: %s\n%s", oscDecision.Reason, newLogMsg)
+			break
+		} else if oscDecision.Action == OscillationActionReconcile {
+			fmt.Fprintf(os.Stderr, "⚠️  [Fallback Agent Oscillation Detected] %s. Injecting reconciliation directive.\n", oscDecision.Reason)
+			newLogMsg = oscDecision.Directive + "\n" + newLogMsg
+		}
+
 		currentLog = newLogMsg
 	}
 

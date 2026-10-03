@@ -130,7 +130,7 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
-    max_turns: 10
+    max_turns: 15
     timeout: 5m
     missing_toolchain_strategy: auto
     providers:

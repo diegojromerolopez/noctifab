@@ -57,6 +57,7 @@ To maintain modularity and high context compatibility, the following guidelines 
             ```bash
             docker compose -f tests/e2e/docker-compose.yml up --build --exit-code-from test-runner
             ```
+    *   **Hermetic Test Partitioning & Cross-Layer Isolation:** All automated tests must reside strictly within partitioned subdirectories: `tests/unit/`, `tests/integration/`, or `tests/e2e/`. Tests in one tier MUST NOT import from or depend on sibling test tiers (e.g. unit tests must never import from `tests/e2e` or `tests/integration`). Unit tests must be hermetic and self-contained; any shared fixtures or mock data must be placed in `tests/fixtures/`, `tests/helpers/`, or within production packages.
     *   **BDD Specifications:** Acceptance tests must always run under a test runner using BDD format with the context pattern: `when <scenario>`, `it <action happens>`. Generated tests must be e2e as much as possible for the happy paths, input validations/edge cases must be unit tests, and complex internal validation flows must be integration tests.
 4.  **Formatting & Linting:**
     *   **Formatting:** All Go source code must strictly follow the standard `go fmt` format. Ensure `go fmt ./...` runs clean.
