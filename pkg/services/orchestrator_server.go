@@ -56,7 +56,10 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 	if o.cfg.Context.GetCompactionMode() != "none" {
 		specToPlan = llm.CompactMarkdownSpecWithMode(specToPlan, o.cfg.Context.GetCompactionMode())
 	}
-	rendered, err := o.promptRenderer.Render(prompts.AgentPlanner, "decompose", prompts.PlannerPromptData{Spec: specToPlan})
+	rendered, err := o.promptRenderer.Render(prompts.AgentPlanner, "decompose", prompts.PlannerPromptData{
+		Spec:    specToPlan,
+		StoryID: storyID,
+	})
 	if err != nil {
 		return fmt.Errorf("planner prompt rendering failed: %w", err)
 	}
@@ -85,6 +88,9 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 		}
 
 		newTasks := state.Tasks[initialTaskCount:]
+		newTasks = NormalizeAndDeduplicateTasks(newTasks, storyID, state.Tasks[:initialTaskCount])
+		state.Tasks = append(state.Tasks[:initialTaskCount], newTasks...)
+
 		specBytes, _ := os.ReadFile(ResolveSpecPath(state.ProjectPath))
 		storyTitle := ""
 		storyPath := ""

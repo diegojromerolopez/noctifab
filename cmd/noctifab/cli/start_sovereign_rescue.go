@@ -191,8 +191,15 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	}
 	slidingWindow := 0
 	if opts.Cfg != nil {
-		rescueCtxCfg = opts.Cfg.Fallback.SovereignRescue.GetContextConfig()
-		slidingWindow = opts.Cfg.Fallback.SovereignRescue.GetSlidingWindow()
+		rescueCtxCfg = opts.Cfg.GetSovereignRescue().GetContextConfig()
+		slidingWindow = opts.Cfg.GetSovereignRescue().GetSlidingWindow()
+	}
+	if rescueCtxCfg.GetMode() == "" || rescueCtxCfg.GetMode() == "full" {
+		rescueCtxCfg.Mode = "diff_window"
+	}
+	if rescueCtxCfg.GetCompactionMode() == "none" || rescueCtxCfg.GetCompactionMode() == "" {
+		rescueCtxCfg.Compaction = "caveman"
+		rescueCtxCfg.CavemanCompaction = true
 	}
 	if slidingWindow <= 0 {
 		slidingWindow = 16000
@@ -206,7 +213,7 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 	if opts.Cfg != nil {
 		sliceSpec = opts.Cfg.GetSovereignRescue().IsSliceSpecEnabled()
 	}
-	if sliceSpec && len(specContent) > 12000 {
+	if sliceSpec && len(specContent) > 8000 {
 		specContent = services.SliceSpecForRoadmap(specContent)
 	}
 

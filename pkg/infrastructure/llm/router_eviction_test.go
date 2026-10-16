@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
@@ -90,5 +91,45 @@ func TestResilientLLMRouter_AnthropicCreditEviction(t *testing.T) {
 	}
 	if !isCreditExhausted(anthropicErr) {
 		t.Errorf("expected Anthropic credit balance error to satisfy isCreditExhausted")
+	}
+}
+
+func TestResilientLLMRouter_EmergencyRecoverySkipsEvicted(t *testing.T) {
+	cfg := &config.Config{
+		LLM: config.LLMConfig{
+			Providers: []config.ProviderSpec{
+				{Name: "claude", Provider: "anthropic"},
+				{Name: "gemini", Provider: "gemini"},
+			},
+			Priority: []string{"claude", "gemini"},
+		},
+	}
+
+	router := NewResilientLLMRouter(cfg, nil)
+	now := time.Now()
+
+	candidates := []RouterCandidate{
+		{Name: "claude", Provider: "anthropic", Client: &mockFailingClient{err: fmt.Errorf("credit exhausted")}},
+		{Name: "gemini", Provider: "gemini", Client: &mockFailingClient{err: fmt.Errorf("rate limited")}},
+	}
+
+	// Claude is evicted for 10 minutes (due to Anthropic credit exhaustion)
+	router.evictedUntil["claude"] = now.Add(10 * time.Minute)
+	// Gemini is on transient cooldown for 1 minute
+	router.cooldowns["gemini"] = now.Add(1 * time.Minute)
+
+	chosen := router.selectEmergencyRecoveryCandidate(candidates)
+	if chosen == nil {
+		t.Fatalf("expected emergency recovery to choose non-evicted candidate gemini, got nil")
+	}
+	if chosen.Name != "gemini" {
+		t.Errorf("expected gemini to be chosen, got: %s", chosen.Name)
+	}
+
+	// If all candidates are evicted, it should return nil
+	router.evictedUntil["gemini"] = now.Add(10 * time.Minute)
+	chosenAllEvicted := router.selectEmergencyRecoveryCandidate(candidates)
+	if chosenAllEvicted != nil {
+		t.Errorf("expected nil when all candidates are evicted, got: %s", chosenAllEvicted.Name)
 	}
 }

@@ -3,7 +3,12 @@ You must respond ONLY with a single JSON block. Do not include conversational ma
 
 You are acting as the Planner Agent.
 Your task is to decompose the following specification into a Directed Acyclic Graph (DAG) of small, testable tasks.
-
+{{if .StoryID}}
+ACTIVE STORY IDENTIFIER: {{.StoryID}}
+CRITICAL TASK ID NAMING MANDATE:
+The active story ID being planned is strictly "{{.StoryID}}". Every task ID generated MUST strictly start with '{{.StoryID}}-TASK-' followed by a 3-digit sequence number (e.g. '{{.StoryID}}-TASK-001', '{{.StoryID}}-TASK-002').
+NEVER use SPEC section numbers (such as Section 5, Section 13) as the story ID prefix. You are planning tasks exclusively for {{.StoryID}}.
+{{end}}
 Specification:
 
 

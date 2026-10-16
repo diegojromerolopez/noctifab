@@ -86,6 +86,10 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 	}
 
 	fmt.Fprintf(&sb, "=== CURRENT FAILURE DIAGNOSTICS (Turn %d of %d) ===\n", turn, maxTurns)
+	const maxFailureLog = 12000
+	if len(failureLog) > maxFailureLog {
+		failureLog = "... [earlier diagnostics truncated] ...\n" + failureLog[len(failureLog)-maxFailureLog:]
+	}
 	sb.WriteString(failureLog)
 	sb.WriteString("\n\n")
 
@@ -119,6 +123,11 @@ func buildSovereignRescuePrompt(specContent string, failedStories, acceptanceGap
 		headStr = llm.CompactCaveman(headStr)
 	case "simple_english":
 		headStr = llm.CompactSimpleEnglish(headStr)
+	}
+
+	const maxHeadLen = 28000
+	if len(headStr) > maxHeadLen {
+		headStr = headStr[:maxHeadLen] + "\n... [prompt context truncated to avoid token overflow] ...\n"
 	}
 
 	return headStr + sovereignRescuePromptTail

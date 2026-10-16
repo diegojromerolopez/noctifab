@@ -299,4 +299,56 @@ func TestStoryDAGScheduler_InputValidationAndEdgeCases(t *testing.T) {
 		assert.Equal(t, "US-001", executed[0])
 		assert.Equal(t, "US-002", executed[1])
 	})
+
+	t.Run("handles stream arrival race when US-002 arrives before US-001 and executes US-001 first", func(t *testing.T) {
+		scheduler := services.NewStoryDAGScheduler(2)
+		scheduler.SetStreaming(true)
+
+		var executedMu sync.Mutex
+		var executed []string
+
+		doneCh := make(chan error, 1)
+		go func() {
+			err := scheduler.Execute(context.Background(), func(ctx context.Context, item services.StoryWorkItem) error {
+				executedMu.Lock()
+				executed = append(executed, services.ExtractStoryID(item.Path))
+				executedMu.Unlock()
+				time.Sleep(20 * time.Millisecond)
+				return nil
+			})
+			doneCh <- err
+		}()
+
+		// Wait for Execute() loop to start
+		time.Sleep(20 * time.Millisecond)
+
+		// Race condition simulation: US-002 expands and arrives BEFORE US-001, with no explicit depends_on
+		scheduler.AddStory(services.StoryWorkItem{Path: "roadmap/user-stories/US-002-feature.md", Spec: "# US-002\nNo dependencies specified.\n"})
+
+		// Wait briefly: US-002 must NOT start because US-001 has not arrived
+		time.Sleep(30 * time.Millisecond)
+		executedMu.Lock()
+		assert.Empty(t, executed, "US-002 must not start before US-001 arrives")
+		executedMu.Unlock()
+
+		// Now US-001 arrives
+		scheduler.AddStory(services.StoryWorkItem{Path: "roadmap/user-stories/US-001-scaffolding.md", Spec: "# US-001\ndepends_on: []\n"})
+
+		// Close stream
+		time.Sleep(50 * time.Millisecond)
+		scheduler.CloseStoryStream()
+
+		select {
+		case err := <-doneCh:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for scheduler to complete")
+		}
+
+		executedMu.Lock()
+		defer executedMu.Unlock()
+		require.Len(t, executed, 2)
+		assert.Equal(t, "US-001", executed[0])
+		assert.Equal(t, "US-002", executed[1])
+	})
 }

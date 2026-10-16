@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.4] - 2026-10-04
+
+### Fixed
+- **Bottleneck 1: Parallel Stream Arrival Race & Inter-Story Dependency Deadlock**:
+  - Implemented `ExtractStorySequence` and arrival-order dependency enforcement in `pkg/services/story_dag_scheduler.go` so that whenever story outlines arrive out of sequence (e.g. `US-002` stream finishes before `US-001`), subsequent stories depend on prior stories, eliminating the parallel race.
+  - Disabled story pipelining during active streaming and when story concurrency is 1 in `cmd/noctifab/cli/start_dag_loop.go`.
+- **Bottleneck 2: Global Task ID Collisions across Stories in Database**:
+  - Created `NormalizeAndDeduplicateTasks` in `pkg/services/task_normalizer.go` and integrated into `OrchestratorServer.PlanStory`.
+  - Normalizes task IDs with mismatched story prefixes and rewrites colliding task IDs deterministically before validation and storage persistence, preventing SQLite UNIQUE constraint failures on `tasks.id`.
+- **Bottleneck 3: Section Number vs. Story Number Aliasing by the Planner**:
+  - Added `StoryID` field to `PlannerPromptData` in `pkg/infrastructure/prompts/data.go` and wired through `OrchestratorServer`.
+  - Updated `pkg/infrastructure/prompts/defaults/planner/decompose.tmpl` with strict directives mandating task IDs adhere to `{{.StoryID}}-TASK-`, explicitly forbidding section number aliasing.
+- **Bottleneck 4: Spike Prototyping Timeout Extension**:
+  - Configured `spike.enabled: true` and `timeout_seconds: 180` in `.noctifab/config.yaml` across project templates and `pyedis`, eliminating 45-second premature timeouts on complex spike discovery.
+- **Bottleneck 5: Context Bloat & Cooldown Lockout during Sovereign Rescue (Turns 2–15)**:
+  - Enhanced LLM router emergency recovery via `selectEmergencyRecoveryCandidate` in `pkg/infrastructure/llm/router_eviction.go` to strictly filter out permanently evicted candidates (credit exhaustion, 401/402, 404), preventing cooldown lockouts from cyclic fallback retries.
+  - Enforced `diff_window` context mode and default `caveman` compaction in `cmd/noctifab/cli/start_sovereign_rescue.go`, slicing specification content when exceeding 8,000 characters.
+  - Bounded recent state actions to the last 5 in `cmd/noctifab/cli/start_sovereign_diagnostics.go` and capped offending files to 4.
+  - Enforced a 12,000-character ceiling on diagnostic failure logs and capped total prompt head to 28,000 characters in `cmd/noctifab/cli/start_sovereign_rescue_prompt.go`, keeping sovereign rescue requests safely within 8,000 tokens / 32k context windows.
+- **Bottleneck 6: Execution Report Path Mismatch**:
+  - Standardized execution report path to `.noctifab/reports/execution_report.md` (plural directory) in project configuration templates.
+
 ## [0.117.3] - 2026-10-04
 
 ### Changed

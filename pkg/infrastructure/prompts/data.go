@@ -52,6 +52,8 @@ type ProductManagerPromptData struct {
 type PlannerPromptData struct {
 	// Spec is the user story / specification content to decompose.
 	Spec string
+	// StoryID is the specific user story identifier being decomposed (e.g. "US-001", "US-002").
+	StoryID string
 }
 
 // SpikePromptData backs the spike/generate action template.

@@ -78,9 +78,12 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 
 		if opts.StreamingScheduler != nil {
 			dagScheduler := opts.StreamingScheduler
-			isPipelined := true
+			isPipelined := false
 			if opts.Cfg != nil {
 				isPipelined = opts.Cfg.Agents.Orchestrator.IsPipelined()
+				if opts.Cfg.Agents.Orchestrator.Number <= 1 {
+					isPipelined = false
+				}
 			}
 			dagScheduler.SetPipelined(isPipelined)
 

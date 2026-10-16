@@ -87,7 +87,11 @@ func CollectSovereignDiagnosticsWithConfig(targetDir string, state *domain.State
 		}
 
 		// Collect recent failed actions and diagnostic probe outputs from state
-		for _, act := range state.LastActions {
+		recentActions := state.LastActions
+		if len(recentActions) > 5 {
+			recentActions = recentActions[len(recentActions)-5:]
+		}
+		for _, act := range recentActions {
 			if !act.Success {
 				bundle.ActionErrors = append(bundle.ActionErrors, fmt.Sprintf("- [%s] Tool %s failed: %s (Output: %s)", act.Timestamp.Format("15:04:05"), act.Tool, act.Reasoning, act.Result))
 			} else if act.Tool == "check_socket" || act.Tool == "check_http" || act.Tool == "validate_manifest" {
@@ -102,7 +106,7 @@ func CollectSovereignDiagnosticsWithConfig(targetDir string, state *domain.State
 	discoveredFiles := extractOffendingFilePaths(targetDir, combinedLogs, relevantTargetFiles)
 	count := 0
 	for filePath, targetLine := range discoveredFiles {
-		if count >= 6 {
+		if count >= 4 {
 			break
 		}
 		snippet := extractFileSnippetWithConfig(targetDir, filePath, targetLine, ctxCfg)

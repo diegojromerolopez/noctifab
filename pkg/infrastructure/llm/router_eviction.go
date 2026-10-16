@@ -115,3 +115,31 @@ func (r *ResilientLLMRouter) GetEvictedProviders() map[string]string {
 	}
 	return res
 }
+
+// selectEmergencyRecoveryCandidate selects a candidate for emergency recovery when all candidates are in cooldown.
+// It strictly excludes unrecoverably evicted candidates (credit exhausted, 401/402, model not found),
+// selecting the candidate with the earliest cooldown expiry.
+func (r *ResilientLLMRouter) selectEmergencyRecoveryCandidate(candidates []RouterCandidate) *RouterCandidate {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	now := time.Now()
+	var bestCandidate *RouterCandidate
+	var earliestTime time.Time
+
+	for _, c := range candidates {
+		// Strictly skip unrecoverably evicted candidates (e.g. Anthropic credit exhaustion)
+		if evictedUntil, ok := r.evictedUntil[c.Name]; ok && now.Before(evictedUntil) {
+			continue
+		}
+
+		until := r.cooldowns[c.Name]
+		if bestCandidate == nil || until.Before(earliestTime) {
+			cCopy := c
+			bestCandidate = &cCopy
+			earliestTime = until
+		}
+	}
+
+	return bestCandidate
+}
