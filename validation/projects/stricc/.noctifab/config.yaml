@@ -129,7 +129,7 @@ agents:
       slice_spec: true
   spike:
     enabled: true
-    timeout_seconds: 45
+    timeout_seconds: 180
     providers:
     - name: gemini-flash
     - name: claude

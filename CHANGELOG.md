@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.5] - 2026-10-16
+
+### Fixed
+- **Spike Discovery Timeout Standardization Across All Validation Projects**:
+  - Configured `agents.spike.timeout_seconds: 180` across all 19 validation project configurations (`actodis`, `auth-vault`, `buffonstream`, `calculator`, `djanban`, `dotchess`, `echo`, `fortune`, `frontpunch`, `jpacioli`, `ninline`, `notebook`, `ocalogue`, `searchthedocs`, `stricc`, `t4`, `thredis`, `todo-cli`, `wc`), matching `pyedis`.
+  - Eliminates premature 45-second timeouts during complex exploratory prototyping and prevents cascading multi-provider failover chains that needlessly re-transmit entire specification contexts.
+- **Speculative Hedging Stream Liveness Test Timing Robustness**:
+  - Adjusted chunk interval and hedge delay safety margins in `pkg/infrastructure/llm/router_hedging_test.go` to eliminate thread scheduling jitter during heavy parallel test executions.
+
 ## [0.117.4] - 2026-10-04
 
 ### Fixed

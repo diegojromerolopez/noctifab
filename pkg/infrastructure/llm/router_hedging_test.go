@@ -198,7 +198,7 @@ func TestCompleteWithHedging_StreamLivenessPostponesHedge(t *testing.T) {
 		Provider: "provider1",
 		Client: &streamingMockLLM{
 			chunks:   4,
-			interval: 15 * time.Millisecond, // Total 60ms, emits chunk every 15ms
+			interval: 8 * time.Millisecond, // Total 32ms, emits chunk every 8ms
 			resp:     &domain.LLMResponse{Reasoning: "primary streaming finished"},
 		},
 	}
@@ -212,7 +212,7 @@ func TestCompleteWithHedging_StreamLivenessPostponesHedge(t *testing.T) {
 	}
 
 	router := &ResilientLLMRouter{
-		hedgeDelay: 20 * time.Millisecond, // Would fire at 20ms if not streaming
+		hedgeDelay: 30 * time.Millisecond, // Would fire at 30ms if not streaming
 		cooldowns:  make(map[string]time.Time),
 	}
 
