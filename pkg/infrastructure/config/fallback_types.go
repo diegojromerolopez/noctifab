@@ -227,40 +227,39 @@ func (c *Config) GetSovereignRescue() SovereignRescueConfig {
 	}
 	fb := c.GetFallback()
 	res := fb.SovereignRescue
-	if res.MaxTurns <= 0 {
-		if res.MaxAttempts > 0 {
-			res.MaxTurns = res.MaxAttempts
-		} else {
-			fbAgent := c.Agents.GetFallback()
-			if fbAgent.SovereignRescue != nil && fbAgent.SovereignRescue.MaxTurns > 0 {
+	fbAgent := c.Agents.GetFallback()
+	if fbAgent.SovereignRescue != nil {
+		if res.MaxTurns <= 0 {
+			if fbAgent.SovereignRescue.MaxTurns > 0 {
 				res.MaxTurns = fbAgent.SovereignRescue.MaxTurns
-				if fbAgent.SovereignRescue.Timeout > 0 {
-					res.Timeout = fbAgent.SovereignRescue.Timeout
-				}
-				if fbAgent.SovereignRescue.Enabled != nil {
-					res.Enabled = fbAgent.SovereignRescue.Enabled
-				}
-				if fbAgent.SovereignRescue.MissingToolchainStrategy != "" {
-					res.MissingToolchainStrategy = fbAgent.SovereignRescue.MissingToolchainStrategy
-				}
-				if fbAgent.SovereignRescue.SliceSpec != nil {
-					res.SliceSpec = fbAgent.SovereignRescue.SliceSpec
-				}
-				if len(fbAgent.SovereignRescue.Providers) > 0 {
-					res.Providers = fbAgent.SovereignRescue.Providers
-				}
 			} else if fbAgent.RescueMaxTurns > 0 {
 				res.MaxTurns = fbAgent.RescueMaxTurns
 			}
 		}
-	}
-	if len(res.Providers) == 0 {
-		fbAgent := c.Agents.GetFallback()
-		if fbAgent.SovereignRescue != nil && len(fbAgent.SovereignRescue.Providers) > 0 {
-			res.Providers = fbAgent.SovereignRescue.Providers
-		} else if len(fbAgent.Providers) > 0 {
-			res.Providers = fbAgent.Providers
+		if res.Timeout == 0 && fbAgent.SovereignRescue.Timeout > 0 {
+			res.Timeout = fbAgent.SovereignRescue.Timeout
 		}
+		if res.Enabled == nil && fbAgent.SovereignRescue.Enabled != nil {
+			res.Enabled = fbAgent.SovereignRescue.Enabled
+		}
+		if res.MissingToolchainStrategy == "" && fbAgent.SovereignRescue.MissingToolchainStrategy != "" {
+			res.MissingToolchainStrategy = fbAgent.SovereignRescue.MissingToolchainStrategy
+		}
+		if res.SliceSpec == nil && fbAgent.SovereignRescue.SliceSpec != nil {
+			res.SliceSpec = fbAgent.SovereignRescue.SliceSpec
+		}
+		if len(res.Providers) == 0 && len(fbAgent.SovereignRescue.Providers) > 0 {
+			res.Providers = fbAgent.SovereignRescue.Providers
+		}
+	} else if res.MaxTurns <= 0 {
+		if res.MaxAttempts > 0 {
+			res.MaxTurns = res.MaxAttempts
+		} else if fbAgent.RescueMaxTurns > 0 {
+			res.MaxTurns = fbAgent.RescueMaxTurns
+		}
+	}
+	if len(res.Providers) == 0 && len(fbAgent.Providers) > 0 {
+		res.Providers = fbAgent.Providers
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_MAX_TURNS"); ok {
 		if i, err := strconv.Atoi(val); err == nil && i > 0 {

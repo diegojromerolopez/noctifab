@@ -198,4 +198,22 @@ func TestSovereignRescueConfig_CustomAndResolution(t *testing.T) {
 			t.Errorf("expected zero-value SovereignRescueConfig to have IsSliceSpecEnabled default to true")
 		}
 	})
+
+	t.Run("agents.fallback.sovereign_rescue.slice_spec is inherited when top-level fallback defines max_turns", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Fallback.SovereignRescue.SliceSpec = nil
+		cfg.Fallback.SovereignRescue.MaxTurns = 10
+		enabled := true
+		cfg.Agents.Fallback.SovereignRescue = &SovereignRescueConfig{
+			SliceSpec: &enabled,
+		}
+
+		sr := cfg.GetSovereignRescue()
+		if !sr.IsSliceSpecEnabled() {
+			t.Errorf("expected IsSliceSpecEnabled to be true inherited from agents.fallback.sovereign_rescue")
+		}
+		if sr.SliceSpec == nil || !*sr.SliceSpec {
+			t.Errorf("expected sr.SliceSpec to be non-nil and true")
+		}
+	})
 }

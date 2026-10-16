@@ -130,6 +130,7 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
+    slice_spec: true
     max_turns: 15
     timeout: 5m
     missing_toolchain_strategy: auto

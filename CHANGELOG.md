@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.6] - 2026-10-16
+
+### Fixed
+- **Sovereign Rescue Spec Slicing Enforcement Across All Validation Projects**:
+  - Enforced `sovereign_rescue.slice_spec: true` in both top-level `fallback.sovereign_rescue` and `agents.fallback.sovereign_rescue` across all 20 validation project configurations.
+  - Enhanced `Config.GetSovereignRescue()` resolution in `pkg/infrastructure/config/fallback_types.go` to safely inherit `SliceSpec`, `Timeout`, `MissingToolchainStrategy`, and `Providers` from `agents.fallback.sovereign_rescue` when top-level fallback only declares `max_turns`, preventing multi-thousand-token specification context bloat on emergency rescue turns.
+
 ## [0.117.5] - 2026-10-16
 
 ### Fixed
