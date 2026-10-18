@@ -15,9 +15,10 @@ func TestExtractOpenAITokenUsage(t *testing.T) {
 		TotalTokens:      150,
 	}
 	usage.CompletionTokensDetails.ReasoningTokens = 20
+	usage.PromptTokensDetails.CachedTokens = 40
 
 	tu := llm.ExtractOpenAITokenUsage(usage)
-	if tu.InputTokens != 100 || tu.OutputTokens != 50 || tu.ReasoningTokens != 20 || tu.TotalTokens != 150 {
+	if tu.InputTokens != 100 || tu.OutputTokens != 50 || tu.ReasoningTokens != 20 || tu.CachedTokens != 40 || tu.TotalTokens != 150 {
 		t.Errorf("unexpected OpenAI TokenUsage extraction: %+v", tu)
 	}
 }

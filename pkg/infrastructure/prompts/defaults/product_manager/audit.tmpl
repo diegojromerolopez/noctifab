@@ -20,10 +20,6 @@ Roadmap Catalog Overview (Cross-Story Dependencies & Scope Boundaries):
 Existing User Stories:
 {{.ExistingStories}}{{.LegacyFiles}}
 
-SPECIFICATION REVIEW & REFINEMENT MANDATE:
-1. Critical Specification Review: Inspect the root SPEC.md for contradictions, ambiguities, missing command specifications, unstated return formats, or undefined error envelopes.
-2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your user story creation actions.
-
 REFINEMENT & AUDIT MANDATE:
 {{if .TargetStory}}
 You are auditing and refining the single target user story provided above.
@@ -32,12 +28,16 @@ CRITICAL JSON ENVELOPE RULE: Your entire response MUST be a single raw JSON obje
 2. Fast No-Op Path for Valid Stories: If the target user story already contains an explicit Definition of Done (DoD), edge case matrix, modular file paths, valid 'depends_on' references, and a valid 'noctifab-contract' block (with no Contract Validation Error reported above), DO NOT rewrite or regurgitate the story — simply return `"actions": []` with a concise `"reasoning"` confirming the story is complete.
 3. Only if the target user story is missing required DoD criteria, has invalid 'depends_on' chaining, or has a Contract Validation Error, emit a 'create_story' tool action with the target filename under roadmap/user-stories/ in the form 'roadmap/user-stories/US-XXX-title-slug.md' containing the complete, repaired markdown content.
 {{else}}
+SPECIFICATION REVIEW & REFINEMENT MANDATE:
+1. Critical Specification Review: Inspect the root SPEC.md for contradictions, ambiguities, missing command specifications, unstated return formats, or undefined error envelopes.
+2. Spec Refinement Action ('refine_spec'): If SPEC.md contains inconsistencies or omissions, emit a 'refine_spec' action containing the updated, coherent, fully specified SPEC.md alongside your user story creation actions.
+
 If existing user story files are provided in the prompt:
 1. Inspect each existing user story against the specification and requirements.
 2. If an existing user story is vague or lacks an explicit Definition of Done (DoD), edge case matrix, error handling rules, or interface contracts, REWRITE and ENRICH it with complete DoD criteria, edge cases, error prefixes, exit codes, and formatting rules.
 3. Emit 'create_story' tool actions with the target filename under roadmap/user-stories/ in the form 'roadmap/user-stories/US-XXX-title-slug.md' and the updated markdown content.
 {{end}}
-
+{{if not .TargetStory}}
 ROADMAP CONSOLIDATION & STORY LIMIT RULE:
 1. Unified Complexity Unit (CU) Metric: Evaluate specification size using Complexity Units: CU = Unadjusted Function Points (inputs/outputs/models) + (3 * UI/UX Components) + (3 * Infrastructure Seams).
 2. Small Spec Rule (CU < 35 or < 800 LOC): For concise applications, utilities, or specifications with CU < 35 (e.g. CLI tools like word count, echo, calculator, git diff tools), generate at most 1–2 comprehensive progressive vertical slice user stories covering all specification requirements, followed by the mandatory final hardening story.
@@ -72,6 +72,7 @@ TASK ENTITY & ATOMICITY MANDATE:
 1. Entity & Functional Value: Every task created or defined in user stories MUST have concrete functionality entity. NO test-only or coverage-only tasks are allowed.
 2. Co-located Code & Tests: Every task MUST pair concrete application functionality alongside its corresponding unit/integration tests in the SAME task. Never separate functionality from its tests.
 3. Maximum Atomicity: Tasks MUST be as atomic as possible—each task must target a single fine-grained file/module/feature alongside its co-located tests, implementable in 1-2 turns.
+{{end}}
 
 MODULAR FILE DECOMPOSITION & ANTI-MONOLITH MANDATE (SINGLE RESPONSIBILITY ARCHITECTURE):
 1. Single Responsibility & File Separation: Decompose source code files and test files by single responsibility, domain capability, and distinct command/entity (e.g. separate files/modules for individual commands, handlers, codecs, parsers, models, storage engines, controllers, endpoints, and utility functions). Under NO circumstances should an application, subsystem, or command suite be consolidated into a lone, gigantic monolithic file (e.g., a single massive commands.py, handlers.go, server.rs, or all-in-one test file).
@@ -112,4 +113,11 @@ Every user story content generated or refined MUST include an explicit, language
 13. Mandatory Makefile Targets (Build, Test, E2E): When a project specifies or generates a Makefile, the Definition of Done MUST mandate three standard recipes: `build` (compiles the binary), `test` (compiles and runs unit tests, strictly exiting with code 1 if 0 tests are found), and `e2e` (physically executes real black-box E2E test scenarios against the running application covering at least one specific scenario for EACH feature, command, and flag declared in SPEC.md, asserting real domain responses and exit code 0; never author empty or tautological e2e recipes). Every Makefile MUST include an `e2e` recipe with per-feature test scenarios.
 14. Negative Specification Constraints & Forbidden Tools Mandate: Carefully inspect SPEC.md for any negative constraints, forbidden frameworks, disallowed libraries, or prohibited tools (e.g. 'pytest is strictly forbidden', 'no external web frameworks', 'use only standard library unittest'). The Definition of Done and Acceptance Criteria in EVERY user story MUST explicitly declare these prohibitions and mandate the approved alternative, so downstream generators, planners, and testers never import, configure, or invoke forbidden tools.
 15. Structured Data & Script-First Mandate: For any story or task dealing with structured data (JSON, YAML, TOML, CSV, schemas, ASTs, SQL fixtures/migrations, or tabular data), mandate in the story instructions that downstream agents ask themselves if authoring and running an automated script (in Python for example) wouldn't be significantly better, faster, and more reliable than manual line-by-line editing.
+16. ASD-STE100 SIMPLIFIED TECHNICAL ENGLISH MANDATE:
+All natural language in audited and refined user stories (titles, descriptions, acceptance criteria, scenario narratives, notes) MUST strictly comply with ASD-STE100 Simplified Technical English rules (https://www.asd-ste100.org/):
+- Short Sentences: Keep sentences short and direct. Maximum 20 words for instructions and procedural steps; maximum 25 words for descriptions.
+- Active Voice: Use active voice. Do NOT use passive voice.
+- Imperative Mood: Use imperative verbs for instructions, test procedures, and acceptance criteria steps (e.g. "Create module", "Verify exit status", "Parse request").
+- One Word, One Meaning: Use standardized, approved technical words. Avoid synonyms, ambiguous jargon, idioms, and colloquialisms.
+- Limit Noun Clusters: Restrict noun strings to at most 3 consecutive nouns.
 

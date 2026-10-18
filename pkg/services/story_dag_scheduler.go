@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -122,6 +123,20 @@ func (s *StoryDAGScheduler) AddStory(item StoryWorkItem) {
 		}
 	}
 
+	storySeq := ExtractStorySequence(storyID)
+	if storySeq > 1 && (s.streaming || s.nodes["US-001"] != nil) {
+		hasUS1 := false
+		for _, dep := range deps {
+			if dep == "US-001" {
+				hasUS1 = true
+				break
+			}
+		}
+		if !hasUS1 {
+			deps = append([]string{"US-001"}, deps...)
+		}
+	}
+
 	if existing, exists := s.nodes[storyID]; exists {
 		existing.Item = item
 		existing.DependsOn = deps
@@ -184,6 +199,11 @@ func (s *StoryDAGScheduler) sortStoryIDsLocked() {
 		isSkelJ := isSkeletonStory(nodeJ)
 		if isSkelI != isSkelJ {
 			return isSkelI
+		}
+		seqI := ExtractStorySequence(s.storyIDs[i])
+		seqJ := ExtractStorySequence(s.storyIDs[j])
+		if seqI != seqJ && seqI > 0 && seqJ > 0 {
+			return seqI < seqJ
 		}
 		return s.storyIDs[i] < s.storyIDs[j]
 	})
@@ -266,8 +286,6 @@ func (s *StoryDAGScheduler) Execute(ctx context.Context, processFunc func(ctx co
 					break
 				}
 				if s.pipelined {
-					// In pipelined mode, child stories can be dispatched to start planning
-					// and task execution as soon as parent stories are RUNNING or SUCCESS.
 					if depNode.Status != StoryNodeRunning && depNode.Status != StoryNodeSuccess {
 						depsSatisfied = false
 						break
@@ -357,6 +375,17 @@ func ExtractStoryID(path string) string {
 		return fmt.Sprintf("US-%03s", matches[1])
 	}
 	return ""
+}
+
+// ExtractStorySequence parses the numeric index from a user story identifier (e.g. "US-002" -> 2).
+func ExtractStorySequence(pathOrID string) int {
+	matches := storyIDFromPathRE.FindStringSubmatch(filepath.Base(pathOrID))
+	if len(matches) > 1 {
+		if seq, err := strconv.Atoi(matches[1]); err == nil {
+			return seq
+		}
+	}
+	return 0
 }
 
 // ParseStoryDependencies extracts declared parent story IDs (e.g. ["US-001"]) from markdown content.

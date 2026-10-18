@@ -74,12 +74,14 @@ func ResolveReportPathWithTime(projectPath, configured string, now time.Time) (s
 
 	// Lexical workspace boundary checks
 	reportsDir := filepath.Join(cleanProjectPath, ".noctifab", "reports")
+	reportDir := filepath.Join(cleanProjectPath, ".noctifab", "report")
 
 	inWorkspace := resolvedPath == cleanProjectPath || strings.HasPrefix(resolvedPath, cleanProjectPath+string(filepath.Separator))
 	if inWorkspace {
 		inReportsDir := resolvedPath == reportsDir || strings.HasPrefix(resolvedPath, reportsDir+string(filepath.Separator))
-		if !inReportsDir {
-			return "", false, fmt.Errorf("in-workspace execution report path must be inside %s", reportsDir)
+		inReportDir := resolvedPath == reportDir || strings.HasPrefix(resolvedPath, reportDir+string(filepath.Separator))
+		if !inReportsDir && !inReportDir {
+			return "", false, fmt.Errorf("in-workspace execution report path must be inside %s or %s", reportsDir, reportDir)
 		}
 	}
 

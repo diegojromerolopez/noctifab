@@ -3,6 +3,8 @@ package domain
 import (
 	"context"
 	"strings"
+	"sync"
+	"time"
 )
 
 // LLMAction represents a specific tool call request produced by the LLM.
@@ -73,6 +75,23 @@ func CacheablePrefixLen(ctx context.Context) int {
 	return 0
 }
 
+// cacheSessionIDKey carries an application session or task identifier to
+// route related LLM requests to warm cache nodes.
+type cacheSessionIDKey struct{}
+
+// WithCacheSessionID attaches a stable session/task ID to ctx for routing affinity.
+func WithCacheSessionID(ctx context.Context, sessionID string) context.Context {
+	return context.WithValue(ctx, cacheSessionIDKey{}, sessionID)
+}
+
+// CacheSessionID returns the session ID recorded in ctx, or "" when none was set.
+func CacheSessionID(ctx context.Context) string {
+	if s, ok := ctx.Value(cacheSessionIDKey{}).(string); ok && s != "" {
+		return s
+	}
+	return ""
+}
+
 // RoleContextKey is the typed context key for passing the active agent role.
 type RoleContextKey struct{}
 
@@ -99,4 +118,83 @@ func GetRoleFromContext(ctx context.Context) string {
 		}
 	}
 	return ""
+}
+
+// StreamLivenessTracker tracks real-time streaming chunk arrivals to prevent
+// redundant speculative hedging when a primary candidate is actively streaming tokens.
+type StreamLivenessTracker struct {
+	mu           sync.Mutex
+	started      bool
+	chunkCount   int
+	lastActivity time.Time
+}
+
+// NewStreamLivenessTracker creates a new StreamLivenessTracker.
+func NewStreamLivenessTracker() *StreamLivenessTracker {
+	return &StreamLivenessTracker{}
+}
+
+// RecordChunk records the arrival of a streaming data chunk.
+func (s *StreamLivenessTracker) RecordChunk() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.started = true
+	s.chunkCount++
+	s.lastActivity = time.Now()
+}
+
+// IsActive returns whether chunks have been received at or after since.
+func (s *StreamLivenessTracker) IsActive(since time.Time) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.started && (s.lastActivity.After(since) || s.lastActivity.Equal(since))
+}
+
+// ChunkCount returns the total number of chunks received so far.
+func (s *StreamLivenessTracker) ChunkCount() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.chunkCount
+}
+
+type streamLivenessKey struct{}
+
+// WithStreamLivenessTracker attaches a StreamLivenessTracker to the context.
+func WithStreamLivenessTracker(ctx context.Context, tracker *StreamLivenessTracker) context.Context {
+	return context.WithValue(ctx, streamLivenessKey{}, tracker)
+}
+
+// StreamLivenessTrackerFromContext retrieves the StreamLivenessTracker from context, or nil.
+func StreamLivenessTrackerFromContext(ctx context.Context) *StreamLivenessTracker {
+	if tracker, ok := ctx.Value(streamLivenessKey{}).(*StreamLivenessTracker); ok {
+		return tracker
+	}
+	return nil
+}
+
+type auditModeKey struct{}
+
+// WithAuditMode attaches an audit mode (e.g. "smart" or "exhaustive") to the context.
+func WithAuditMode(ctx context.Context, mode string) context.Context {
+	return context.WithValue(ctx, auditModeKey{}, mode)
+}
+
+// AuditModeFromContext retrieves the audit mode from context (default: "smart").
+func AuditModeFromContext(ctx context.Context) string {
+	if mode, ok := ctx.Value(auditModeKey{}).(string); ok && mode != "" {
+		return strings.ToLower(strings.TrimSpace(mode))
+	}
+	if mode, ok := ctx.Value("audit_mode").(string); ok && mode != "" {
+		return strings.ToLower(strings.TrimSpace(mode))
+	}
+	return "smart"
 }

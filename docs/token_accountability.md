@@ -39,14 +39,15 @@
 
 Token usage is extracted directly from the response payloads of all supported LLM provider clients:
 
-* **OpenAI & OpenAI-Compatible (OpenCode, OpenRouter, DeepSeek, Qwen)**:
+* **OpenAI & OpenAI-Compatible (OpenCode, OpenRouter, DeepSeek, Qwen, Mistral, xAI, Cerebras, Fireworks, Moonshot)**:
   - Streaming requests specify `StreamOptions: { IncludeUsage: true }`.
-  - Usage headers and final SSE stream chunks extract `PromptTokens` and `CompletionTokens`.
+  - Usage headers and final SSE stream chunks extract `PromptTokens`, `CompletionTokens`, `CompletionTokensDetails.ReasoningTokens`, and `PromptTokensDetails.CachedTokens`.
+  - DeepSeek and OpenAI-compatible relays returning `prompt_cache_hit_tokens` in usage extra fields are automatically parsed and counted towards `CachedTokens`.
 * **Anthropic Client**:
   - Extracts `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `output_tokens` from response objects.
-  - Combines prompt tokens with cached read and creation tokens for accurate total input accountability (`InputTokens = input_tokens + cache_read_input_tokens + cache_creation_input_tokens`).
+  - Combines prompt tokens with cached read and creation tokens for accurate total input accountability (`InputTokens = input_tokens + cache_read_input_tokens + cache_creation_input_tokens`), recording `cache_read_input_tokens` as `CachedTokens`.
 * **Gemini Client**:
-  - Extracts `promptTokenCount`, `candidatesTokenCount`, and `cachedContentTokenCount` from `usageMetadata`.
+  - Extracts `promptTokenCount`, `candidatesTokenCount`, and `cachedContentTokenCount` (with fallback to `totalCachedTokens` / `total_cached_tokens`) from `usageMetadata`.
 * **Fallback Token Estimation**:
   - For non-standard or unmetered mock endpoints, `FallbackTokenUsage` estimates prompt tokens at ~4 characters per token and completion tokens based on response body length.
 
@@ -58,6 +59,8 @@ All provider client completions emit standardized OpenTelemetry trace span attri
 
 - `gen_ai.usage.input_tokens`: Number of prompt tokens sent to the LLM.
 - `gen_ai.usage.output_tokens`: Number of completion/candidate tokens generated.
+- `gen_ai.usage.cached_tokens`: Number of prompt tokens served from prefix/context cache.
+- `gen_ai.usage.reasoning_tokens`: Number of internal chain-of-thought reasoning tokens generated.
 - `gen_ai.response.model`: Model identifier used for the completion.
 - `gen_ai.provider`: LLM infrastructure provider name.
 
@@ -89,3 +92,31 @@ Renders exact input, output, and total token breakdowns for the overall run and 
 
 ### Web Dashboard & Telemetry API (`/api/v1/metrics`)
 Returns structured JSON metrics including `total_input_tokens`, `total_output_tokens`, and `total_tokens`.
+
+---
+
+## 5. Token Reduction & Generation Speed Optimizations
+
+To maximize token economics and reduce wall-clock generation latency, Noctifab enforces several architectural controls across prompt construction and agent execution:
+
+### 1. Context Deduplication Across File and Reader Phases
+Source files sliced directly from `task.TargetFiles` and files resolved via the AST/ImportGraphWalker in `RunReaderPhase` are deduplicated via `DeduplicateFileAndReaderContexts`. Files are injected at most once into prompt context, eliminating 15%–30% of redundant input tokens per turn.
+
+### 2. Sliding Window & Superseded Diagnostic Pruning
+In multi-turn agent sessions (`allTurnOutputsHistory`), diagnostic failure outputs from `run_tests` and `run_linter` are pruned and superseded once subsequent test or linter runs take place. In addition, turns older than the configured window (default: 2 turns) have verbose output bodies condensed to single-line summaries via `PruneAndWindowToolOutputs`, preventing exponential context growth on turns 3+.
+
+### 3. Relevant Subtree Workspace Tree Formatting
+When the repository exceeds 60 files, `RunReaderPhase` formats the workspace file tree by including root build files and complete file listings for directories containing `task.TargetFiles`, while summarizing unrelated directories into concise file counts (e.g. `tests/e2e/ (15 files omitted)`).
+
+### 4. Strict Static Prefix Locking for KV Cache Stability
+`rendered.Body` remains completely invariant across all turns of a task session, guaranteeing that prompt prefixes match byte-for-byte across turns 1..N. Dynamic counters (`Turns remaining: %d`) are embedded within turn headers rather than splitting the trailing JSON output contract.
+
+### 5. Elimination of Ghost Reasoning Output Tokens
+Execution contracts for generator and tester roles restrict the `"reasoning"` requirement to a concise 1-sentence technical intent rather than requesting detailed essays, saving 200–600 output tokens and 5–15 seconds per turn.
+
+### 6. Dynamic Turn Budgeting for Single-Pass Tasks
+Single-pass generation tasks are capped at 8 turns (down from 20), combined with immediate fast-exit as soon as explicit test execution passes cleanly after file mutations.
+
+### 7. Context-Aware Prompt-Scaled Hedging
+Speculative hedging delays scale dynamically with prompt size (`+1s` per 2,000 tokens above 4,000 tokens), preventing premature concurrent hedging during large prompt KV cache evaluation.
+

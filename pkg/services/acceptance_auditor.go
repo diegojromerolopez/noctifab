@@ -143,7 +143,7 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		))
 	defer span.End()
 
-	specPath := filepath.Join(state.ProjectPath, "SPEC.md")
+	specPath := ResolveSpecPath(state.ProjectPath)
 	specData, err := os.ReadFile(specPath)
 	if err != nil {
 		// If SPEC.md does not exist, acceptance audit passes gracefully

@@ -215,8 +215,8 @@ func TestDefaultConfig_Exhaustive(t *testing.T) {
 	if cfg.Context.GetCompactionMode() != "none" {
 		t.Errorf("expected Context.GetCompactionMode 'none', got %q", cfg.Context.GetCompactionMode())
 	}
-	if cfg.Context.GetMode() != "full" {
-		t.Errorf("expected Context.GetMode 'full', got %q", cfg.Context.GetMode())
+	if cfg.Context.GetMode() != ContextModeTreeSitter {
+		t.Errorf("expected Context.GetMode 'tree_sitter', got %q", cfg.Context.GetMode())
 	}
 }
 

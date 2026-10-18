@@ -3,6 +3,7 @@ package services_test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -205,4 +206,43 @@ func TestPrecreateSharedCacheDirs(t *testing.T) {
 		require.NoError(t, err, "expected %s to be created", sub)
 		assert.True(t, info.IsDir())
 	}
+}
+
+func TestBuildSharedCacheEnv_DynamicPorts(t *testing.T) {
+	tempDir := t.TempDir()
+	env := services.BuildSharedCacheEnv(tempDir)
+	envMap := make(map[string]string)
+	for _, e := range env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	for _, key := range []string{"PORT", "TEST_PORT", "REDIS_PORT", "SERVER_PORT", "NOCTIFAB_PORT"} {
+		val, exists := envMap[key]
+		assert.True(t, exists, "expected key %s to exist in env", key)
+		port, err := strconv.Atoi(val)
+		assert.NoError(t, err, "expected %s to be a valid integer", key)
+		assert.Greater(t, port, 1024, "expected port to be > 1024")
+	}
+}
+
+func TestEnsureVenvPip(t *testing.T) {
+	t.Run("when venv has pip already, it does not re-install", func(t *testing.T) {
+		tempDir := t.TempDir()
+		binDir := filepath.Join(tempDir, "bin")
+		require.NoError(t, os.MkdirAll(binDir, 0755))
+		pipPath := filepath.Join(binDir, "pip")
+		require.NoError(t, os.WriteFile(pipPath, []byte("#!/bin/sh\n"), 0755))
+
+		// Should return immediately without modifying or failing
+		services.EnsureVenvPip(tempDir)
+		assert.FileExists(t, pipPath)
+	})
+
+	t.Run("when path is not a python venv, it returns gracefully", func(t *testing.T) {
+		tempDir := t.TempDir()
+		services.EnsureVenvPip(tempDir)
+	})
 }

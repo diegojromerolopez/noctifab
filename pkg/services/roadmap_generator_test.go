@@ -354,10 +354,16 @@ func TestGenerateRoadmap_RefineSpec(t *testing.T) {
 	err = services.GenerateRoadmap(context.Background(), tempDir, mockLLM, nil)
 	assert.NoError(t, err)
 
-	// Verify SPEC.md on disk was updated with the refined content
-	updatedBytes, err := os.ReadFile(specPath)
+	// Verify SPEC.ste.md on disk was created/updated with the refined content
+	stePath := filepath.Join(tempDir, "SPEC.ste.md")
+	updatedBytes, err := os.ReadFile(stePath)
 	assert.NoError(t, err)
 	assert.Equal(t, refinedSpec, string(updatedBytes))
+
+	// Verify SPEC.md ground truth was NOT overwritten
+	origBytes, err := os.ReadFile(specPath)
+	assert.NoError(t, err)
+	assert.Equal(t, "# Incomplete Spec\nMissing commands", string(origBytes))
 }
 
 func TestGenerateRoadmap_IgnoresInfrastructureInLegacyScan(t *testing.T) {
@@ -464,6 +470,14 @@ func TestGenerateRoadmap_GracefulDegradationOnLaterPassFailure(t *testing.T) {
 			{
 				Actions: []domain.LLMAction{
 					{
+						Tool: "translate_ste",
+						Args: map[string]any{"content": "# STE Spec"},
+					},
+				},
+			},
+			{
+				Actions: []domain.LLMAction{
+					{
 						Tool: "create_story",
 						Args: map[string]any{
 							"filename": "roadmap/user-stories/US-001-pass1.md",
@@ -475,6 +489,7 @@ func TestGenerateRoadmap_GracefulDegradationOnLaterPassFailure(t *testing.T) {
 			nil, // Step 2 (Pass 2) fails with context deadline exceeded
 		},
 		errors: []error{
+			nil,
 			nil,
 			fmt.Errorf("context deadline exceeded"),
 		},

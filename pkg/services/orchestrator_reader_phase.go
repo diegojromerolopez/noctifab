@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -96,7 +97,7 @@ func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task dom
 
 	filteredWorkspaceFiles := FilterRelevantFiles(projectPath, rawWorkspaceFiles, o.cfg.ExcludePaths)
 	if isGit && len(filteredWorkspaceFiles) > 0 {
-		availableFilesMsg = fmt.Sprintf("Workspace file structure:\n%s", strings.Join(filteredWorkspaceFiles, "\n"))
+		availableFilesMsg = formatWorkspaceFileTree(filteredWorkspaceFiles, task.TargetFiles, 60)
 		gatheredContext = append(gatheredContext, availableFilesMsg)
 	}
 
@@ -122,4 +123,54 @@ func (o *Orchestrator) RunReaderPhase(ctx context.Context, role string, task dom
 	}
 
 	return gatheredContext
+}
+
+// formatWorkspaceFileTree renders a token-optimized workspace file structure.
+// When file count exceeds maxFiles, it prioritizes root build files and subtrees
+// of targetFiles, collapsing other directories to summaries.
+func formatWorkspaceFileTree(files []string, targetFiles []string, maxFiles int) string {
+	if len(files) <= maxFiles {
+		return fmt.Sprintf("Workspace file structure:\n%s", strings.Join(files, "\n"))
+	}
+
+	targetDirs := make(map[string]bool)
+	for _, tf := range targetFiles {
+		clean := filepath.ToSlash(filepath.Dir(filepath.Clean(tf)))
+		if clean != "" {
+			targetDirs[clean] = true
+		}
+	}
+
+	var visibleFiles []string
+	dirCounts := make(map[string]int)
+
+	for _, f := range files {
+		cleanF := filepath.ToSlash(filepath.Clean(f))
+		dir := filepath.ToSlash(filepath.Dir(cleanF))
+		if dir == "." || targetDirs[dir] {
+			visibleFiles = append(visibleFiles, f)
+		} else {
+			dirCounts[dir]++
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Workspace file structure (relevant subtrees):\n")
+	for _, vf := range visibleFiles {
+		sb.WriteString(vf)
+		sb.WriteString("\n")
+	}
+
+	var otherDirs []string
+	for d := range dirCounts {
+		otherDirs = append(otherDirs, d)
+	}
+	sort.Strings(otherDirs)
+
+	for _, d := range otherDirs {
+		fmt.Fprintf(&sb, "%s/ (%d files omitted)\n", d, dirCounts[d])
+	}
+	fmt.Fprintf(&sb, "... (%d total files in workspace; call find_files or list_directory to inspect additional paths)", len(files))
+
+	return sb.String()
 }

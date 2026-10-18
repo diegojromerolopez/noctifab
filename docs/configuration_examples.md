@@ -24,6 +24,7 @@ agents:
     number: 1      # Task orchestration & state sync
     iterations: 2
   product_manager:
+    audit_mode: "smart"
     number: 1      # Spec hardening & user story generation
     iterations: 2
   planner:
@@ -58,6 +59,15 @@ llm:
   max_timeout: "60s"
   idle_timeout: "15s"
   streaming: true
+  hedging:
+    enabled: true
+    delay: "25s"
+    heavy_delay: "90s"
+  json_reminder:
+    task:
+      cap: 1500
+    body:
+      cap: 12000
 
 vcs:
   provider: "github"
@@ -138,7 +148,7 @@ storage:
 
 llm:
   provider: "gemini"
-  model: "gemini-3.6-pro"
+  model: "gemini-3.1-pro-preview"
   api_key: "secret:GEMINI_API_KEY"
 
 vcs:
@@ -203,7 +213,7 @@ llm:
         model: "gpt-4o"
         api_keys: "OPENAI_API_KEY"
       - provider: "gemini"
-        model: "gemini-3.6-flash"
+        model: "gemini-3.8-flash"
         api_keys: "GEMINI_API_KEY"
 
 vcs:
@@ -476,7 +486,7 @@ llm:
       api_keys: "QWENCLOUD_API_KEY"
     - name: "gemini-flash"
       provider: "gemini"
-      model: "gemini-3.6-flash"
+      model: "gemini-3.8-flash"
       api_keys: "GEMINI_API_KEY"
 
 sandbox:
@@ -549,9 +559,20 @@ agents:
 context:
   mode: "diff_window"
   diff_window_lines: 15
+  dedup_mutated_files: false # Preserves byte-identical pre-turn context across turns to maximize prompt prefix cache hit rates
   compaction: "caveman" # Strips fluff and decorative formatting for lean prompts
 
 llm:
+  thinking:
+    enabled: false # Global default: models run in normal mode
+    default_budget: 2048 # Bounds reasoning models when thinking is explicitly activated
+  max_retries: 3
+  retry_backoff: 500ms
+  max_timeout: 60s
+  idle_timeout: 60s
+  max_tokens: -1
+  temperature: 0.3
+  streaming: true
   priority:
     - "gemini-flash"
     - "claude"
@@ -564,7 +585,7 @@ llm:
   providers:
     - name: "gemini-flash"
       provider: "gemini"
-      model: "gemini-3.6-flash"
+      model: "gemini-3.8-flash"
       api_keys: "GEMINI_API_KEY"
     - name: "claude"
       provider: "anthropic"
@@ -621,6 +642,7 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
+    slice_spec: true                   # Slices oversized specifications (>12k chars) during emergency takeover
     max_turns: 10      # Overridable via NOCTIFAB_RESCUE_MAX_TURNS
     timeout: "5m"
     missing_toolchain_strategy: auto # "auto" | "docker" | "local" | "off"

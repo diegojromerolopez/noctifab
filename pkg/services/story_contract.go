@@ -78,13 +78,15 @@ func ParseStoryContract(sourcePath, markdown string) (domain.StoryContract, erro
 		}
 
 		isHTTP := strings.EqualFold(publicContract.Interface, "http") || publicContract.HTTPMethod != "" || publicContract.HTTPPath != "" || publicContract.BrunoBru != ""
-		if !isHTTP && len(publicContract.AllowedExecutables) == 0 {
-			return domain.StoryContract{}, storyContractError("public contract %q requires an allowed executable or HTTP/Bruno definition", publicContract.ID)
+		isSocket := strings.EqualFold(publicContract.Interface, "socket") || strings.EqualFold(publicContract.Interface, "tcp") || publicContract.RequestFormat != "" || len(publicContract.RequestFrames) > 0 || len(publicContract.RequestExamples) > 0
+		if !isHTTP && !isSocket && len(publicContract.AllowedExecutables) == 0 {
+			return domain.StoryContract{}, storyContractError("public contract %q requires an allowed executable, socket, or HTTP/Bruno definition", publicContract.ID)
 		}
 
 		hasCLIExpectation := len(publicContract.ExitCodes) > 0 || len(publicContract.StdoutContains) > 0 || len(publicContract.StderrPrefixes) > 0
 		hasHTTPExpectation := publicContract.ExpectedStatus > 0 || publicContract.ExpectedResponseBody != "" || publicContract.BrunoBru != ""
-		if !hasCLIExpectation && !hasHTTPExpectation {
+		hasSocketExpectation := len(publicContract.StdoutContains) > 0 || len(publicContract.RequestFrames) > 0 || len(publicContract.RequestExamples) > 0
+		if !hasCLIExpectation && !hasHTTPExpectation && !hasSocketExpectation {
 			return domain.StoryContract{}, storyContractError("public contract %q has no observable expectation", publicContract.ID)
 		}
 	}

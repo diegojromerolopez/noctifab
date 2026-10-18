@@ -335,9 +335,13 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 		}
 		if cleanedAll {
 			_, _ = q.git.Run(ctx, true, "add", "--all")
-			if _, commitErr := q.git.Run(ctx, true, "commit", "-m", fmt.Sprintf("merge: auto-resolved conflict markers for %s", branch)); commitErr == nil {
-				fmt.Printf("✨ [Conflict Resolved] Deterministic marker cleaner resolved conflicts for %q (Tier 2)\n", branch)
-				return nil
+			if !q.hasStagedConflictMarkers(ctx) {
+				if _, commitErr := q.git.Run(ctx, true, "commit", "-m", fmt.Sprintf("merge: auto-resolved conflict markers for %s", branch)); commitErr == nil {
+					fmt.Printf("✨ [Conflict Resolved] Deterministic marker cleaner resolved conflicts for %q (Tier 2)\n", branch)
+					return nil
+				}
+			} else {
+				fmt.Printf("⚠️  [Tier 2 Conflict] Staged files still contain conflict markers for %q; falling back to Tier 3\n", branch)
 			}
 		}
 	}
@@ -347,9 +351,13 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 		fmt.Printf("🤖 [Conflict Resolver] Invoking Generator Agent for whole-file feature synthesis between %q and %q (Tier 3)...\n", branch, base)
 		if resolveErr := q.resolver(ctx, branch, base); resolveErr == nil {
 			_, _ = q.git.Run(ctx, true, "add", "--all")
-			if _, contErr := q.git.Run(ctx, true, "commit", "-m", fmt.Sprintf("merge: synthesized dual-file features for %s", branch)); contErr == nil {
-				fmt.Printf("✨ [Conflict Resolved] Generator Agent successfully synthesized features between %q and %q (Tier 3)\n", branch, base)
-				return nil
+			if !q.hasStagedConflictMarkers(ctx) {
+				if _, contErr := q.git.Run(ctx, true, "commit", "-m", fmt.Sprintf("merge: synthesized dual-file features for %s", branch)); contErr == nil {
+					fmt.Printf("✨ [Conflict Resolved] Generator Agent successfully synthesized features between %q and %q (Tier 3)\n", branch, base)
+					return nil
+				}
+			} else {
+				fmt.Printf("⚠️  [Tier 3 Conflict] Staged files still contain conflict markers after synthesis for %q; falling back to Tier 4\n", branch)
 			}
 		}
 	}
@@ -363,13 +371,18 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 			baseContent, _ := q.git.Run(ctx, false, "show", fmt.Sprintf("HEAD:%s", file))
 			workerContent, _ := q.git.Run(ctx, false, "show", fmt.Sprintf("%s:%s", branch, file))
 			union := OptimisticUnionMerge(baseContent, workerContent)
+			union = CleanConflictMarkers(union)
 			_ = os.WriteFile(fullPath, []byte(union), 0644)
 		}
 	}
 	_, _ = q.git.Run(ctx, true, "add", "--all")
-	if _, commitErr := q.git.Run(ctx, true, "commit", "-m", fmt.Sprintf("merge: optimistic union for %s", branch)); commitErr == nil {
-		fmt.Printf("✨ [Conflict Resolved] Optimistic union overwrite resolved conflicts for %q (Tier 4)\n", branch)
-		return nil
+	if !q.hasStagedConflictMarkers(ctx) {
+		if _, commitErr := q.git.Run(ctx, true, "commit", "-m", fmt.Sprintf("merge: optimistic union for %s", branch)); commitErr == nil {
+			fmt.Printf("✨ [Conflict Resolved] Optimistic union overwrite resolved conflicts for %q (Tier 4)\n", branch)
+			return nil
+		}
+	} else {
+		fmt.Printf("⚠️  [Tier 4 Conflict] Staged files still contain conflict markers after optimistic union for %q; falling back to Tier 5\n", branch)
 	}
 
 	// Tier 5: Direct Diff Patch Overlay & Forced Commit (Last Resort)
@@ -394,6 +407,31 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 
 	fmt.Fprintf(os.Stderr, "⚠️ [RebaseQueue] All merge tiers failed for branch %q.\n", branch)
 	return fmt.Errorf("all merge fallback tiers (1-5) failed to integrate branch %s into %s", branch, base)
+}
+
+// hasStagedConflictMarkers checks whether any files staged in git index contain unresolved conflict markers.
+func (q *RebaseQueue) hasStagedConflictMarkers(ctx context.Context) bool {
+	if q.git == nil {
+		return false
+	}
+	out, err := q.git.Run(ctx, false, "diff", "--name-only", "--cached")
+	if err != nil {
+		return false
+	}
+	for _, file := range strings.Fields(strings.TrimSpace(out)) {
+		fullPath, err := resolveSandboxPath(q.git.dir, file)
+		if err != nil {
+			continue
+		}
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			continue
+		}
+		if ContainsConflictMarkers(string(data)) {
+			return true
+		}
+	}
+	return false
 }
 
 // MockVCSClient stubs remote VCS operations (e.g. creating PRs)

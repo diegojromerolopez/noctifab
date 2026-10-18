@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -247,6 +248,21 @@ func TestSummarizeFailureLog(t *testing.T) {
 		result := summarizeFailureLog(inputLog)
 		if result != expected {
 			t.Errorf("expected:\n%q\ngot:\n%q", expected, result)
+		}
+	})
+
+	t.Run("Truncate massive log with hundreds of failure lines", func(t *testing.T) {
+		var longLines []string
+		longLines = append(longLines, "ERROR: first failure")
+		for i := 0; i < 200; i++ {
+			longLines = append(longLines, fmt.Sprintf("FAIL: subtest %d failed with long stack trace and output", i))
+		}
+		result := summarizeFailureLog(strings.Join(longLines, "\n"))
+		if len(result) > 4100 {
+			t.Errorf("expected result to be bounded to ~4000 characters, got %d", len(result))
+		}
+		if !strings.Contains(result, "truncated") {
+			t.Errorf("expected truncation indicator in result")
 		}
 	})
 }

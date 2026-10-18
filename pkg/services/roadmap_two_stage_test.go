@@ -102,6 +102,36 @@ func TestParseStoryOutlines_Invalid(t *testing.T) {
 	assert.Contains(t, err.Error(), "no valid story outline items found")
 }
 
+func TestParseStoryOutlines_DeduplicateIDsAndSlugs(t *testing.T) {
+	act := domain.LLMAction{
+		Tool: "plan_roadmap",
+		Args: map[string]any{
+			"stories": []any{
+				map[string]any{
+					"id":    "US-006",
+					"title": "List and Hash Commands",
+				},
+				map[string]any{
+					"id":    "US-006", // Duplicate ID
+					"title": "Set and Sorted Set Commands",
+				},
+				map[string]any{
+					"id":    "US-007",
+					"title": "Set and Sorted Set Commands", // Duplicate title/slug with item 1
+				},
+			},
+		},
+	}
+
+	outlines, err := ParseStoryOutlines(act)
+	require.NoError(t, err)
+	require.Len(t, outlines, 3)
+	assert.Equal(t, "US-006", outlines[0].ID)
+	assert.Equal(t, "US-008", outlines[1].ID, "Duplicate ID should be renumbered to next available number")
+	assert.Equal(t, "US-007", outlines[2].ID)
+	assert.NotEqual(t, outlines[1].Slug, outlines[2].Slug, "Duplicate slug should have suffix added")
+}
+
 func TestFormatRoadmapCatalog(t *testing.T) {
 	outlines := []StoryOutlineItem{
 		{

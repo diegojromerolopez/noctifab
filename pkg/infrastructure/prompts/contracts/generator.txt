@@ -15,7 +15,7 @@ You may use the following tools:
 
 Return format (your response MUST begin with '{' and end with '}' — no text before or after):
 {
-  "reasoning": "Detailed technical rationale explaining your next step",
+  "reasoning": "Brief 1-sentence technical intent (concise)",
   "actions": [
     {
       "tool": "tool_name",

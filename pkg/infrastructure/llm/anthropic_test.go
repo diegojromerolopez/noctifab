@@ -467,4 +467,28 @@ func TestAnthropicProviderClient_GetAvailableModels(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 	})
+
+	t.Run("refusal stop_reason parsing", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			resp := map[string]any{
+				"content":     []any{},
+				"stop_reason": "refusal",
+				"stop_details": map[string]any{
+					"type":        "refusal",
+					"category":    "reasoning_extraction",
+					"explanation": "Blocked under terms of service",
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		client := NewAnthropicProviderClient(server.URL, 0, 0, false)
+		_, err := client.Call(context.Background(), "claude-opus-5", "test-key", "prompt", 4096, 0.0)
+		if err == nil || !strings.Contains(err.Error(), "anthropic refusal") {
+			t.Fatalf("expected anthropic refusal error, got: %v", err)
+		}
+	})
 }

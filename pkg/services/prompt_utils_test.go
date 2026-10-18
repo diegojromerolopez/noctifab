@@ -104,3 +104,80 @@ func TestIterationsOrDefault(t *testing.T) {
 		}
 	})
 }
+
+func TestPruneMutatedFileContexts(t *testing.T) {
+	prompt := `Existing files context:
+File src/main.go:
+` + "```" + `
+package main
+
+func main() {
+    println("hello")
+}
+` + "```" + `
+
+File src/util.go (Diff Window +/- 5 lines):
+` + "```diff" + `
++ func Helper() bool { return true }
+` + "```" + `
+
+File src/unmodified.go:
+` + "```" + `
+package main
+var Version = "1.0"
+` + "```" + `
+
+Some other instructions here.`
+
+	t.Run("when mutatedFiles is empty, prompt is returned unchanged", func(t *testing.T) {
+		got := pruneMutatedFileContexts(prompt, nil)
+		if got != prompt {
+			t.Errorf("expected prompt unchanged with nil map")
+		}
+		got = pruneMutatedFileContexts(prompt, map[string]bool{})
+		if got != prompt {
+			t.Errorf("expected prompt unchanged with empty map")
+		}
+	})
+
+	t.Run("when a file was mutated, its content block is replaced with omission marker", func(t *testing.T) {
+		mutated := map[string]bool{"src/main.go": true}
+		got := pruneMutatedFileContexts(prompt, mutated)
+		if strings.Contains(got, "println(\"hello\")") {
+			t.Errorf("expected src/main.go content to be omitted, but found it in output:\n%s", got)
+		}
+		if !strings.Contains(got, "File src/main.go: [Contents omitted: modified in earlier turn of this task. Use read_file to inspect latest content if needed.]") {
+			t.Errorf("expected omission marker for src/main.go, got:\n%s", got)
+		}
+		if !strings.Contains(got, "Version = \"1.0\"") {
+			t.Errorf("expected unmodified file content to remain intact")
+		}
+	})
+
+	t.Run("when mutated file matches with relative ./ prefix, it is still pruned", func(t *testing.T) {
+		mutated := map[string]bool{"./src/main.go": true}
+		got := pruneMutatedFileContexts(prompt, mutated)
+		if strings.Contains(got, "println(\"hello\")") {
+			t.Errorf("expected ./src/main.go to match src/main.go and omit content")
+		}
+	})
+
+	t.Run("when file has diff window header, it is pruned correctly", func(t *testing.T) {
+		mutated := map[string]bool{"src/util.go": true}
+		got := pruneMutatedFileContexts(prompt, mutated)
+		if strings.Contains(got, "func Helper()") {
+			t.Errorf("expected src/util.go diff window content to be omitted")
+		}
+		if !strings.Contains(got, "File src/util.go: [Contents omitted: modified in earlier turn of this task. Use read_file to inspect latest content if needed.]") {
+			t.Errorf("expected omission marker for src/util.go, got:\n%s", got)
+		}
+	})
+
+	t.Run("when file is not present in prompt, prompt remains unchanged", func(t *testing.T) {
+		mutated := map[string]bool{"src/nonexistent.go": true}
+		got := pruneMutatedFileContexts(prompt, mutated)
+		if got != prompt {
+			t.Errorf("expected prompt unchanged for nonexistent mutated file")
+		}
+	})
+}

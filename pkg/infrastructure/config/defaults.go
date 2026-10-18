@@ -27,8 +27,9 @@ func DefaultConfig() *Config {
 						Max: 35,
 					},
 				},
-				Passes:  2,
-				Timeout: Duration(180 * time.Second),
+				Passes:    2,
+				Timeout:   Duration(180 * time.Second),
+				AuditMode: "smart",
 			},
 			Planner: AgentRoleConfig{
 				Number:     1,
@@ -139,6 +140,18 @@ func DefaultConfig() *Config {
 			// burning wall-clock time on retries and lower-model fallbacks that
 			// cannot succeed without a funded key.
 			SkipOnCreditExhausted: true,
+			Hedging: HedgingConfig{
+				Enabled:    boolPtr(true),
+				Delay:      Duration(25 * time.Second),
+				HeavyDelay: Duration(90 * time.Second),
+			},
+			JSONReminder: JSONReminderConfig{
+				Task: JSONReminderCapConfig{Cap: 1500},
+				Body: JSONReminderCapConfig{Cap: 12000},
+			},
+			Thinking: &ThinkingConfig{
+				DefaultBudget: intPtr(2048),
+			},
 		},
 		VCS: VCSConfig{
 			Provider:     "github",
@@ -232,7 +245,7 @@ func DefaultConfig() *Config {
 			},
 			SovereignRescue: SovereignRescueConfig{
 				Enabled:                  boolPtr(true),
-				MaxTurns:                 10,
+				MaxTurns:                 15,
 				Timeout:                  Duration(5 * time.Minute),
 				MissingToolchainStrategy: "auto",
 			},
@@ -255,16 +268,18 @@ func DefaultConfig() *Config {
 			},
 			SovereignRescue: SovereignRescueConfig{
 				Enabled:                  boolPtr(true),
-				MaxTurns:                 10,
+				MaxTurns:                 15,
 				Timeout:                  Duration(5 * time.Minute),
 				MissingToolchainStrategy: "auto",
+				SliceSpec:                boolPtr(true),
 			},
 		},
 		Context: ContextConfig{
-			Mode:            "full",
-			DiffWindowLines: 15,
-			Compaction:      "none",
-			SkipFolders:     []string{},
+			Mode:              "tree_sitter",
+			DiffWindowLines:   15,
+			Compaction:        "none",
+			SkipFolders:       []string{},
+			DedupMutatedFiles: boolPtr(false),
 		},
 	}
 }
@@ -291,4 +306,8 @@ func WriteDefaultConfig(path string) error {
 
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+func intPtr(i int) *int {
+	return &i
 }

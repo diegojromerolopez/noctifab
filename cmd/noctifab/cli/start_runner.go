@@ -223,6 +223,10 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Warning: prompt template rendering initialization failed: %v\n", rendErr)
 	}
 
+	if _, steErr := services.EnsureSTESpecification(cmdCtx, targetDir, llmClient, promptRenderer); steErr != nil {
+		fmt.Printf("Warning: Product Manager ASD-STE100 specification generation failed: %v\n", steErr)
+	}
+
 	if !hasExistingStories {
 		if _, spikeErr := services.ExecuteSpike(cmdCtx, targetDir, cfg, llmClient, promptRenderer, executionReporter); spikeErr != nil {
 			fmt.Printf("Warning: Spike prototyping phase failed: %v\n", spikeErr)
@@ -231,7 +235,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	storyFiles := discoverStoryFiles(targetDir)
 	if len(storyFiles) == 0 {
-		storyFiles = []string{specFile}
+		storyFiles = []string{services.ResolveSpecPath(targetDir)}
 	}
 	sort.Strings(storyFiles)
 
@@ -317,14 +321,18 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	var failedStories []string
 	for idx, sf := range storyFiles {
+		base := filepath.Base(sf)
+		if strings.EqualFold(base, "SPEC.md") || strings.EqualFold(base, "SPEC.ste.md") {
+			continue
+		}
 		if err := storyOutcomes[sf]; err != nil {
 			storyID := fmt.Sprintf("story-%04d", idx+1)
-			featName := strings.TrimSuffix(filepath.Base(sf), filepath.Ext(sf))
+			featName := strings.TrimSuffix(base, filepath.Ext(base))
 			if repo != nil && isStoryCompletedSuccessfully(cmdCtx, repo, sf, storyID, featName) {
 				storyOutcomes[sf] = nil
 				continue
 			}
-			failedStories = append(failedStories, fmt.Sprintf("%s (%v)", filepath.Base(sf), err))
+			failedStories = append(failedStories, fmt.Sprintf("%s (%v)", base, err))
 		}
 	}
 	if len(failedStories) > 0 {

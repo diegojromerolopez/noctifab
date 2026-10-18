@@ -1,10 +1,12 @@
 package services
 
 import (
+	"fmt"
 	"strings"
 )
 
-// summarizeFailureLog extracts high-signal error and failure lines from a raw diagnostic log trace.
+// summarizeFailureLog extracts high-signal error and failure lines from a raw diagnostic log trace,
+// truncating unbounded failure cascades to prevent prompt context explosion.
 func summarizeFailureLog(log string) string {
 	lines := strings.Split(log, "\n")
 	var importantLines []string
@@ -30,5 +32,19 @@ func summarizeFailureLog(log string) string {
 		return strings.Join(lines[start:], "\n")
 	}
 
-	return strings.Join(importantLines, "\n")
+	const maxImportantLines = 80
+	if len(importantLines) > maxImportantLines {
+		truncated := make([]string, 0, maxImportantLines+1)
+		truncated = append(truncated, importantLines[:30]...)
+		truncated = append(truncated, fmt.Sprintf("...[%d diagnostic error lines truncated]...", len(importantLines)-maxImportantLines))
+		truncated = append(truncated, importantLines[len(importantLines)-50:]...)
+		importantLines = truncated
+	}
+
+	result := strings.Join(importantLines, "\n")
+	const maxChars = 4000
+	if len(result) > maxChars {
+		result = result[:2000] + "\n...[error trace truncated]...\n" + result[len(result)-1900:]
+	}
+	return result
 }

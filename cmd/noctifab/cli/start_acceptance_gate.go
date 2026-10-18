@@ -73,11 +73,12 @@ func RunWholeProjectAcceptanceGate(ctx context.Context, opts AcceptanceGateOptio
 		if rescueCfg.IsEnabled() && opts.ToolRegistry != nil && opts.Validator != nil {
 			fmt.Printf("⚡ [Whole-Project Acceptance Gate] Triggering sovereign remediation for %d specification gap(s)...\n", len(auditResult.Gaps))
 			gapTurns := len(auditResult.Gaps)
-			if gapTurns < 5 {
-				gapTurns = 5
+			maxAllowed := rescueCfg.GetMaxTurns()
+			if maxAllowed > 0 && gapTurns > maxAllowed {
+				gapTurns = maxAllowed
 			}
-			if rescueCfg.GetMaxTurns() > gapTurns {
-				gapTurns = rescueCfg.GetMaxTurns()
+			if gapTurns < 5 && (maxAllowed <= 0 || maxAllowed >= 5) {
+				gapTurns = 5
 			}
 			rescueOpts := SovereignRescueOptions{
 				TargetDir:      opts.TargetDir,

@@ -39,7 +39,7 @@ noctifab init [target_dir] [--profile <preset>] [--spec <prompt>] [-i]
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--profile` | | Pre-configured LLM profile preset (`ollama-qwen`, `ollama-deepseek`, `vllm-local`) |
+| `--profile` | | Pre-configured LLM profile preset (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) |
 | `--spec` | | Initial prompt to bootstrap and immediately enter interactive `SPEC.md` review session |
 | `--interactive` | `-i` | Launch interactive spec generator wizard upon initialization |
 
@@ -291,7 +291,7 @@ noctifab stop
 ```
 
 ### 12. `clean`
-Resets all Noctifab runtime and orchestrator state: wipes the database (SQLite DB + WAL/SHM/journal or Postgres tables), purges all log files in `.noctifab/logs/`, prunes and removes Git worktrees in `.noctifab/worktrees/`, deletes steer story orders in `.noctifab/stories/`, cleans ephemeral data in `.noctifab/data/`, and removes PID files.
+Resets all Noctifab runtime and orchestrator state: wipes the database (SQLite DB + WAL/SHM/journal or Postgres tables), purges all log files in `.noctifab/logs/`, prunes and removes Git worktrees in `.noctifab/worktrees/`, deletes steer story orders in `.noctifab/stories/`, cleans ephemeral data in `.noctifab/data/`, removes `SPEC.ste.md` (the [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/) generated specification artifact), and removes PID files.
 ```bash
 # Preview what would be cleaned
 noctifab clean --dry-run
@@ -658,7 +658,7 @@ Configuration values can be set or overridden via environment variables without 
 
 | Environment Variable | Description | Default |
 |---|---|---|
-| `NOCTIFAB_RESCUE_MAX_TURNS` | Maximum multi-turn cycles for Autonomous Sovereign Rescue Takeover (`fallback.sovereign_rescue.max_turns`) | `10` |
+| `NOCTIFAB_RESCUE_MAX_TURNS` | Maximum multi-turn cycles for Autonomous Sovereign Rescue Takeover (`fallback.sovereign_rescue.max_turns`) | `15` |
 | `NOCTIFAB_RESCUE_SLIDING_WINDOW` | Character budget for sovereign rescue diagnostic sliding window (`fallback.sovereign_rescue.context.sliding_window`) | `16000` (or custom limit) |
 | `NOCTIFAB_FALLBACK_ENABLED` | Enable or disable the background fallback watchdog goroutine (`fallback.enabled`) | `true` |
 | `NOCTIFAB_FALLBACK_POLL_INTERVAL` | Fallback watchdog polling interval (e.g. `30s`, `1m`) | `30s` |

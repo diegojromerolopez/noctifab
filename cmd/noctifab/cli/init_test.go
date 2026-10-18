@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -101,6 +103,8 @@ func TestEnsureWorkspaceInitialized_AlreadyExists(t *testing.T) {
 }
 
 func TestInitCmd_WithProfile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NOCTIFAB_E2E", "true")
 	tmpDir := t.TempDir()
 	targetDir := filepath.Join(tmpDir, "profile_project")
 
@@ -110,10 +114,105 @@ func TestInitCmd_WithProfile(t *testing.T) {
 	err := initCmd.RunE(initCmd, []string{targetDir})
 	require.NoError(t, err)
 
-	cfgContent, err := os.ReadFile(filepath.Join(targetDir, ".noctifab", "config.yaml"))
+	cfgPath := filepath.Join(targetDir, ".noctifab", "config.yaml")
+	cfgContent, err := os.ReadFile(cfgPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(cfgContent), "ollama")
 	assert.Contains(t, string(cfgContent), "qwen2.5-coder:32b")
+
+	// Verify that the configuration file actually loads cleanly with config.Load
+	cmd := &cobra.Command{}
+	cmd.Flags().String("config", cfgPath, "")
+	_ = cmd.Flags().Set("config", cfgPath)
+
+	cfg, err := config.Load(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, "ollama", cfg.LLM.Provider)
+	assert.Equal(t, "qwen2.5-coder:32b", cfg.LLM.Model)
+	assert.Equal(t, "http://localhost:11434/v1", cfg.LLM.URL)
+}
+
+func TestInitCmd_AdaptsToPythonProject(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "python_app")
+	require.NoError(t, os.MkdirAll(filepath.Join(targetDir, ".git"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "pyproject.toml"), []byte("[project]\nname = \"demo\"\n"), 0644))
+
+	WorkspaceDir = "."
+	err := initCmd.RunE(initCmd, []string{targetDir})
+	require.NoError(t, err)
+
+	cfgPath := filepath.Join(targetDir, ".noctifab", "config.yaml")
+	cmd := &cobra.Command{}
+	cmd.Flags().String("config", cfgPath, "")
+	_ = cmd.Flags().Set("config", cfgPath)
+
+	cfg, err := config.Load(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, "python3 -m unittest discover -s tests", cfg.Sandbox.TestCommand)
+	assert.Empty(t, cfg.Sandbox.FormatterCommand)
+
+	specContent, err := os.ReadFile(filepath.Join(targetDir, "SPEC.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(specContent), "Primary Language**: Python")
+}
+
+func TestInitCmd_AdaptsToRustProject(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "rust_app")
+	require.NoError(t, os.MkdirAll(filepath.Join(targetDir, ".git"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "Cargo.toml"), []byte("[package]\nname = \"demo\"\n"), 0644))
+
+	WorkspaceDir = "."
+	err := initCmd.RunE(initCmd, []string{targetDir})
+	require.NoError(t, err)
+
+	cfgPath := filepath.Join(targetDir, ".noctifab", "config.yaml")
+	cmd := &cobra.Command{}
+	cmd.Flags().String("config", cfgPath, "")
+	_ = cmd.Flags().Set("config", cfgPath)
+
+	cfg, err := config.Load(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, "cargo test", cfg.Sandbox.TestCommand)
+	assert.Equal(t, "cargo fmt", cfg.Sandbox.FormatterCommand)
+
+	specContent, err := os.ReadFile(filepath.Join(targetDir, "SPEC.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(specContent), "Primary Language**: Rust")
+}
+
+func TestInitCmd_DetectsGitOrigin(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NOCTIFAB_E2E", "true")
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "git_origin_app")
+	gitDir := filepath.Join(targetDir, ".git")
+	require.NoError(t, os.MkdirAll(gitDir, 0755))
+	configData := `[remote "origin"]
+	url = git@github.com:octocat/hello-world.git
+`
+	require.NoError(t, os.WriteFile(filepath.Join(gitDir, "config"), []byte(configData), 0644))
+
+	WorkspaceDir = "."
+	err := initCmd.RunE(initCmd, []string{targetDir})
+	require.NoError(t, err)
+
+	cfgPath := filepath.Join(targetDir, ".noctifab", "config.yaml")
+	cmd := &cobra.Command{}
+	cmd.Flags().String("config", cfgPath, "")
+	_ = cmd.Flags().Set("config", cfgPath)
+
+	cfg, err := config.Load(cmd)
+	require.NoError(t, err)
+	assert.Equal(t, "octocat/hello-world", cfg.VCS.Repository)
 }
 
 func TestInitCmd_ProtectsGitInfoExclude(t *testing.T) {

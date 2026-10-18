@@ -394,6 +394,27 @@ func findHunkOffset(lines []string, expectedOld []string, targetIdx int) int {
 		}
 	}
 
+	// 4. Fuzzy whitespace-trimmed fallback search
+	if targetIdx >= 0 && matchAtTrimmed(lines, expectedOld, targetIdx) {
+		return targetIdx
+	}
+	if targetIdx > 0 {
+		window := 25
+		for offset := 1; offset <= window; offset++ {
+			if targetIdx-offset >= 0 && matchAtTrimmed(lines, expectedOld, targetIdx-offset) {
+				return targetIdx - offset
+			}
+			if targetIdx+offset <= len(lines)-len(expectedOld) && matchAtTrimmed(lines, expectedOld, targetIdx+offset) {
+				return targetIdx + offset
+			}
+		}
+	}
+	for i := 0; i <= len(lines)-len(expectedOld); i++ {
+		if matchAtTrimmed(lines, expectedOld, i) {
+			return i
+		}
+	}
+
 	return -1
 }
 
@@ -403,6 +424,18 @@ func matchAt(lines []string, expected []string, idx int) bool {
 	}
 	for i := 0; i < len(expected); i++ {
 		if lines[idx+i] != expected[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func matchAtTrimmed(lines []string, expected []string, idx int) bool {
+	if idx < 0 || idx+len(expected) > len(lines) {
+		return false
+	}
+	for i := 0; i < len(expected); i++ {
+		if strings.TrimSpace(lines[idx+i]) != strings.TrimSpace(expected[i]) {
 			return false
 		}
 	}

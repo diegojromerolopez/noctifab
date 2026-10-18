@@ -157,7 +157,8 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 
 		// Shell script checks
 		if ext == ".sh" || strings.HasPrefix(trimmed, "#!/bin/") || strings.HasPrefix(trimmed, "#!/usr/bin/env bash") || strings.HasPrefix(trimmed, "#!/usr/bin/env sh") {
-			if shellMaskTrueRE.MatchString(trimmed) {
+			isTrap := strings.HasPrefix(trimmed, "trap ") || strings.Contains(trimmed, "trap '") || strings.Contains(trimmed, "trap \"")
+			if !isTrap && shellMaskTrueRE.MatchString(trimmed) {
 				violations = append(violations, AntiStubViolation{
 					Path:    path,
 					Line:    lineNum,
@@ -165,7 +166,7 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 					Snippet: trimmed,
 				})
 			}
-			if shellMaskExit0RE.MatchString(trimmed) {
+			if !isTrap && shellMaskExit0RE.MatchString(trimmed) {
 				violations = append(violations, AntiStubViolation{
 					Path:    path,
 					Line:    lineNum,

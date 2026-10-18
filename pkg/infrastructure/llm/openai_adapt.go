@@ -33,6 +33,8 @@ type completionOptions struct {
 	// extraBody holds provider-specific key-value pairs to include verbatim
 	// in the request body (e.g. enable_thinking for QwenCloud thinking mode).
 	extraBody map[string]interface{}
+	// extraHeaders holds provider-specific headers (e.g. session affinity, routing hints).
+	extraHeaders map[string]string
 	// jsonSchema optionally provides a specific strict JSON schema. When nil,
 	// enforceJSON defaults to universal json_object mode, avoiding unconstrained
 	// property stripping on dynamic tool arguments and diverse agent prompts.

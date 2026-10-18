@@ -41,4 +41,28 @@ func TestGetProfile(t *testing.T) {
 			t.Errorf("expected at least 4 profiles, got %d", len(list))
 		}
 	})
+
+	t.Run("all available profiles decode cleanly without unknown fields", func(t *testing.T) {
+		for name := range AvailableProfiles {
+			cfg := DefaultConfig()
+			err := ApplyProfile(cfg, name)
+			if err != nil {
+				t.Errorf("profile %q failed to apply: %v", name, err)
+			}
+			if cfg.ConfigVersion != "2.0" {
+				t.Errorf("expected config_version 2.0 for profile %q, got %q", name, cfg.ConfigVersion)
+			}
+			if cfg.LLM.Provider == "" {
+				t.Errorf("expected non-empty LLM provider for profile %q", name)
+			}
+		}
+	})
+
+	t.Run("apply unknown profile returns error", func(t *testing.T) {
+		cfg := DefaultConfig()
+		err := ApplyProfile(cfg, "nonexistent-profile-xyz")
+		if err == nil {
+			t.Fatal("expected error applying unknown profile")
+		}
+	})
 }

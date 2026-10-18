@@ -263,7 +263,7 @@ func DetectRequiredProjectToolchains(projectDir string) []string {
 							exe == "scalac" || exe == "swiftc" || exe == "dotnet" || exe == "python3" ||
 							exe == "pytest" || exe == "ruby" || exe == "node" || exe == "npm" ||
 							exe == "opt" || exe == "llc" || strings.HasPrefix(exe, "qemu-") ||
-							strings.Contains(exe, "-") || crossToolchainRegex.MatchString(exe)
+							hasToolSuffix(exe) || crossToolchainRegex.MatchString(exe)
 						if isKnownTool {
 							add(exe)
 						}

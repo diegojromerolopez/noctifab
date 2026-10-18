@@ -37,6 +37,15 @@ func TestResolveReportPath(t *testing.T) {
 		})
 	})
 
+	t.Run("when relative path inside .noctifab/report is supplied", func(t *testing.T) {
+		t.Run("it resolves path and formats filename with date and project folder", func(t *testing.T) {
+			path, enabled, err := config.ResolveReportPathWithTime(project, ".noctifab/report/report.md", fixedTime)
+			require.NoError(t, err)
+			assert.True(t, enabled)
+			assert.Equal(t, "/work/project/.noctifab/report/20260811_225122_project.md", path)
+		})
+	})
+
 	t.Run("when relative path is outside .noctifab/reports", func(t *testing.T) {
 		t.Run("it rejects README.md inside workspace root", func(t *testing.T) {
 			_, enabled, err := config.ResolveReportPathWithTime(project, "README.md", fixedTime)

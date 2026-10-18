@@ -108,6 +108,11 @@ func runDryClean(cfg *config.Config) error {
 	printDryRunItem(".noctifab/worktrees")
 	printDryRunItem(".noctifab/stories")
 	printDryRunItem(".noctifab/specs")
+	stePath := "SPEC.ste.md"
+	if WorkspaceDir != "" && WorkspaceDir != "." {
+		stePath = filepath.Join(WorkspaceDir, "SPEC.ste.md")
+	}
+	printDryRunItem(stePath)
 
 	fmt.Println("[dry-run] No files were deleted.")
 	return nil
@@ -139,6 +144,7 @@ func runActualClean(cfg *config.Config) error {
 	cleanWorktrees()
 	removeStories()
 	removeSpecs()
+	removeSTESpec()
 
 	fmt.Println("✅ noctifab state cleared. Run 'noctifab init' and 'noctifab start' to begin fresh.")
 	return nil
@@ -154,6 +160,22 @@ func removeSpecs() {
 		}
 	} else if !os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "⚠ Could not access specs directory at %s: %v\n", specsDir, err)
+	}
+}
+
+func removeSTESpec() {
+	stePath := "SPEC.ste.md"
+	if WorkspaceDir != "" && WorkspaceDir != "." {
+		stePath = filepath.Join(WorkspaceDir, "SPEC.ste.md")
+	}
+	if _, err := os.Stat(stePath); err == nil {
+		if err := os.Remove(stePath); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Could not remove STE spec file at %s: %v\n", stePath, err)
+		} else {
+			fmt.Printf("Removed STE specification: %s\n", stePath)
+		}
+	} else if !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "⚠ Could not access STE spec file at %s: %v\n", stePath, err)
 	}
 }
 

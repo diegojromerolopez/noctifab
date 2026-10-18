@@ -121,7 +121,7 @@ func TestCleanCmd_NoFilesExist(t *testing.T) {
 }
 
 func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
-	_, noctifabDir, teardown := setupCleanTestDir(t)
+	tmpDir, noctifabDir, teardown := setupCleanTestDir(t)
 	defer teardown()
 
 	// Create mock files
@@ -157,6 +157,9 @@ func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
 	_ = os.MkdirAll(specsDir, 0755)
 	_ = os.WriteFile(filepath.Join(specsDir, "manifest.json"), []byte("{}"), 0644)
 
+	steFile := filepath.Join(tmpDir, "SPEC.ste.md")
+	_ = os.WriteFile(steFile, []byte("# STE Spec"), 0644)
+
 	stdout, _, err := captureOutput(func() error {
 		RootCmd.SetArgs([]string{"clean", "--config", filepath.Join(noctifabDir, "config.yaml"), "--yes"})
 		return RootCmd.Execute()
@@ -176,6 +179,9 @@ func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "Removed worktrees:") {
 		t.Errorf("expected worktrees removal log, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Removed STE specification:") {
+		t.Errorf("expected STE specification removal log, got: %s", stdout)
 	}
 	if !strings.Contains(stdout, "Removed steer stories:") {
 		t.Errorf("expected steer stories removal log, got: %s", stdout)
@@ -218,10 +224,13 @@ func TestCleanCmd_WithYes_FilesDeleted(t *testing.T) {
 	if _, statErr := os.Stat(storiesDir); !os.IsNotExist(statErr) {
 		t.Errorf("expected stories dir to be deleted, stat error: %v", statErr)
 	}
+	if _, statErr := os.Stat(steFile); !os.IsNotExist(statErr) {
+		t.Errorf("expected SPEC.ste.md to be deleted, stat error: %v", statErr)
+	}
 }
 
 func TestCleanCmd_DryRun_FilesNotDeleted(t *testing.T) {
-	_, noctifabDir, teardown := setupCleanTestDir(t)
+	tmpDir, noctifabDir, teardown := setupCleanTestDir(t)
 	defer teardown()
 
 	// Create mock files that should survive dry-run
@@ -246,6 +255,9 @@ func TestCleanCmd_DryRun_FilesNotDeleted(t *testing.T) {
 
 	storiesDir := filepath.Join(noctifabDir, "stories")
 	_ = os.MkdirAll(storiesDir, 0755)
+
+	steFile := filepath.Join(tmpDir, "SPEC.ste.md")
+	_ = os.WriteFile(steFile, []byte("# STE Spec"), 0644)
 
 	stdout, _, err := captureOutput(func() error {
 		RootCmd.SetArgs([]string{"clean", "--config", filepath.Join(noctifabDir, "config.yaml"), "--dry-run"})
@@ -287,6 +299,9 @@ func TestCleanCmd_DryRun_FilesNotDeleted(t *testing.T) {
 	}
 	if _, statErr := os.Stat(storiesDir); os.IsNotExist(statErr) {
 		t.Error("expected stories dir to still exist after dry-run")
+	}
+	if _, statErr := os.Stat(steFile); os.IsNotExist(statErr) {
+		t.Error("expected SPEC.ste.md to still exist after dry-run")
 	}
 }
 

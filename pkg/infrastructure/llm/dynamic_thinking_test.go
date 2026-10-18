@@ -110,6 +110,13 @@ func TestAdjustForRoutineTask(t *testing.T) {
 						"temperature",
 					},
 				},
+				{
+					"id": "gemini-3.1-pro-preview",
+					"supported_parameters": []interface{}{
+						"temperature",
+						"reasoning",
+					},
+				},
 			},
 		}
 		_ = json.NewEncoder(w).Encode(resp)
@@ -169,6 +176,12 @@ func TestAdjustForRoutineTask(t *testing.T) {
 	_, modifiedStd := client.adjustForRoutineTask(ctxGen, "generator", "model-xyz-standard", nil)
 	if modifiedStd {
 		t.Fatalf("expected modified = false for model-xyz-standard without thinking capability")
+	}
+
+	// Case 6: Routine task ("generator") on thinking-only model -> NOT modified because thinking cannot be disabled
+	_, modifiedThinkingOnly := client.adjustForRoutineTask(ctxGen, "generator", "gemini-3.1-pro-preview", nil)
+	if modifiedThinkingOnly {
+		t.Fatalf("expected modified = false for thinking-only model where thinking cannot be disabled")
 	}
 }
 

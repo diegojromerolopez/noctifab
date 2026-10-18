@@ -52,9 +52,9 @@ func (c *StartUserStoryCmd) Execute(ctx context.Context, repo domain.StateReposi
 	if err != nil {
 		// If read fails, check if SPEC.md exists in the project root
 		projectPath := filepath.Dir(filepath.Dir(absPath))
-		specPath := filepath.Join(projectPath, "SPEC.md")
+		specPath := ResolveSpecPath(projectPath)
 		if _, specErr := os.Stat(specPath); specErr == nil && c.LLMClient != nil {
-			fmt.Printf("Story file %q not found, but SPEC.md exists. Generating roadmap...\n", absPath)
+			fmt.Printf("Story file %q not found, but specification exists. Generating roadmap...\n", absPath)
 			if genErr := GenerateRoadmap(ctx, projectPath, c.LLMClient, c.Renderer); genErr == nil {
 				// Retry reading the story file!
 				data, err = os.ReadFile(absPath)
@@ -154,9 +154,9 @@ func (c *StartDirectoryCmd) Execute(ctx context.Context, repo domain.StateReposi
 				projectPath = filepath.Dir(projectPath)
 			}
 		}
-		specPath := filepath.Join(projectPath, "SPEC.md")
+		specPath := ResolveSpecPath(projectPath)
 		if _, specErr := os.Stat(specPath); specErr == nil {
-			fmt.Printf("No user stories found in %q, but SPEC.md exists. Generating roadmap...\n", absDir)
+			fmt.Printf("No user stories found in %q, but specification exists. Generating roadmap...\n", absDir)
 			if genErr := GenerateRoadmap(ctx, projectPath, c.LLMClient, c.Renderer); genErr == nil {
 				for _, cand := range scanCandidates {
 					if info, statErr := os.Stat(cand); statErr == nil && info.IsDir() {

@@ -11,6 +11,7 @@ The project deliberately exercises the validation host's Python-ecosystem seam: 
 > - **`pytest` is STRICTLY FORBIDDEN:** The project MUST NOT use `pytest` under ANY circumstances.
 > - **Zero `pytest` Dependencies or Artifacts:** Do NOT import `pytest`, do NOT list `pytest` in `requirements.txt` or `pyproject.toml`, do NOT create `conftest.py` or `pytest.ini`, and do NOT invoke `pytest` anywhere in Makefiles, scripts, or story contracts.
 > - **Standard Library `unittest` Throughout:** All unit and integration tests MUST subclass `unittest.TestCase` (or `unittest.IsolatedAsyncioTestCase` for async tests) using `unittest.mock`. All test suites must be executed via `python3 -m unittest discover -s tests -v`.
+> - **Strict Test Directory Partitioning Mandate:** All test files MUST strictly reside within one of the following subdirectories according to each test type: `tests/unit/`, `tests/integration/`, or `tests/e2e/`. Test files MUST NOT be placed directly in the root of `tests/` (e.g. `tests/test_*.py` is strictly forbidden). Any root-level test files must be removed or moved to the appropriate subfolder.
 
 ## 2. Pinned Directory Layout
 

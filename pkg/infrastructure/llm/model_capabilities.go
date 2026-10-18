@@ -197,6 +197,10 @@ func (c *Client) adjustForRoutineTask(ctx context.Context, role, model string, e
 	}
 
 	if capInfo != nil && capInfo.SupportsThinking {
+		if isThinkingOnlyModel(model) || isThinkingOnlyModel(normModel) {
+			// Model strictly operates in thinking mode; provider API rejects budget 0.
+			return extra, false
+		}
 		if extra == nil {
 			extra = make(map[string]interface{})
 		}
@@ -212,4 +216,16 @@ func (c *Client) adjustForRoutineTask(ctx context.Context, role, model string, e
 	}
 
 	return extra, false
+}
+
+// isThinkingOnlyModel returns true if the model strictly requires thinking mode
+// and does not allow thinking to be disabled (e.g. Gemini 2.5 Pro, 3.1 Pro, 3.6 Pro).
+func isThinkingOnlyModel(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	m = strings.TrimPrefix(m, "models/")
+	return strings.Contains(m, "3.1-pro") ||
+		strings.Contains(m, "3.6-pro") ||
+		strings.Contains(m, "2.5-pro") ||
+		strings.Contains(m, "thinking-only") ||
+		strings.Contains(m, "reasoning-only")
 }

@@ -271,4 +271,43 @@ func TestApplyPatchTool_Execute(t *testing.T) {
 			t.Errorf("patch content not applied correctly, got:\n%s", string(updated))
 		}
 	})
+
+	t.Run("when_context_lines_have_whitespace_differences_it_fuzzy_matches", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		filePath := filepath.Join(tmpDir, "server.go")
+		initialContent := "package main\n\nfunc Run() {\n\t\tprintln(\"run\")\n}\n"
+		if err := os.WriteFile(filePath, []byte(initialContent), 0644); err != nil {
+			t.Fatalf("failed to write initial file: %v", err)
+		}
+
+		state := &domain.State{ProjectPath: tmpDir}
+		tool := &ApplyPatchTool{}
+
+		// Patch has 4 spaces instead of 2 tabs for indentation in context lines
+		patch := `--- a/server.go
++++ b/server.go
+@@ -3,3 +3,3 @@
+ func Run() {
+-    println("run")
++    println("running")
+ }
+`
+		res, err := tool.Execute(context.Background(), state, map[string]any{
+			"patch": patch,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error applying patch with whitespace diff: %v", err)
+		}
+		if !strings.Contains(res, "Patch applied successfully") {
+			t.Errorf("expected success message, got: %s", res)
+		}
+
+		updated, err := os.ReadFile(filePath)
+		if err != nil {
+			t.Fatalf("failed to read updated file: %v", err)
+		}
+		if !strings.Contains(string(updated), "println(\"running\")") {
+			t.Errorf("patch content not applied correctly, got:\n%s", string(updated))
+		}
+	})
 }

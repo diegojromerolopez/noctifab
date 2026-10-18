@@ -146,7 +146,7 @@ func (a *SovereignQAAuditor) Audit(ctx context.Context, state *domain.State, pro
 	predictedFailures = append(predictedFailures, heuristics...)
 
 	codeSnapshot := a.collectCodebaseSnapshot(ctx, state.ProjectPath)
-	specPath := filepath.Join(state.ProjectPath, "SPEC.md")
+	specPath := ResolveSpecPath(state.ProjectPath)
 	specContent, _ := os.ReadFile(specPath)
 
 	if a.llmClient == nil {

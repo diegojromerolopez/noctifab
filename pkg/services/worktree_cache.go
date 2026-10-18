@@ -2,7 +2,9 @@ package services
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -243,10 +245,11 @@ func BuildSharedCacheEnv(rootProjectDir string) []string {
 		fmt.Sprintf("TEST_TIMEOUT=%s", testTimeout),
 	)
 
-	// Python virtual environment projection: prepend bin to PATH if present
+	// Python virtual environment projection: ensure pip is seeded and prepend bin to PATH
 	for _, venvName := range []string{".venv", "venv"} {
 		venvPath := filepath.Join(cleanRoot, venvName)
 		if info, err := os.Stat(venvPath); err == nil && info.IsDir() {
+			EnsureVenvPip(venvPath)
 			venvBin := filepath.Join(venvPath, "bin")
 			env = append(env,
 				fmt.Sprintf("VIRTUAL_ENV=%s", venvPath),
@@ -256,5 +259,55 @@ func BuildSharedCacheEnv(rootProjectDir string) []string {
 		}
 	}
 
+	// Dynamic ephemeral port allocation to prevent port collisions in parallel integration tests
+	port := allocateWorktreePort()
+	env = append(env,
+		fmt.Sprintf("PORT=%d", port),
+		fmt.Sprintf("TEST_PORT=%d", port),
+		fmt.Sprintf("REDIS_PORT=%d", port),
+		fmt.Sprintf("SERVER_PORT=%d", port),
+		fmt.Sprintf("NOCTIFAB_PORT=%d", port),
+	)
+
 	return env
+}
+
+// allocateWorktreePort finds an available ephemeral TCP port for isolated parallel testing.
+func allocateWorktreePort() int {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 16379
+	}
+	defer func() { _ = l.Close() }()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+// EnsureVenvPip checks if a Python virtual environment has pip installed in its bin directory.
+// If pip is missing (e.g. from an unseeded uv venv or minimal Python 3.13 venv), it automatically seeds it.
+func EnsureVenvPip(venvPath string) {
+	venvBin := filepath.Join(venvPath, "bin")
+	pipPath := filepath.Join(venvBin, "pip")
+	if info, err := os.Stat(pipPath); err == nil && !info.IsDir() {
+		return // pip already present
+	}
+
+	pythonPath := filepath.Join(venvBin, "python3")
+	if _, err := os.Stat(pythonPath); err != nil {
+		pythonPath = filepath.Join(venvBin, "python")
+		if _, err := os.Stat(pythonPath); err != nil {
+			return // not a valid python venv
+		}
+	}
+
+	// 1. Try uv pip install pip --python <pythonPath>
+	if _, err := exec.LookPath("uv"); err == nil {
+		cmd := exec.Command("uv", "pip", "install", "pip", "--python", pythonPath)
+		if err := cmd.Run(); err == nil {
+			return
+		}
+	}
+
+	// 2. Fallback to python3 -m ensurepip --upgrade
+	cmd := exec.Command(pythonPath, "-m", "ensurepip", "--upgrade")
+	_ = cmd.Run()
 }

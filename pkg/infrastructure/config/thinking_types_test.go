@@ -97,4 +97,16 @@ product_manager:
 		assert.True(t, *spec.GetEnableThinking())
 		assert.Equal(t, 4096, *spec.GetThinkingBudget())
 	})
+
+	t.Run("default budget resolution", func(t *testing.T) {
+		var cfg ThinkingConfig
+		assert.Equal(t, 2048, cfg.GetDefaultBudget())
+
+		var nilCfg *ThinkingConfig
+		assert.Equal(t, 2048, nilCfg.GetDefaultBudget())
+
+		customBudget := 4096
+		cfg.DefaultBudget = &customBudget
+		assert.Equal(t, 4096, cfg.GetDefaultBudget())
+	})
 }

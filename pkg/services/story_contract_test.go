@@ -108,4 +108,30 @@ post {
 
 		assert.NoError(t, services.ValidateStoryContract("roadmap/US-002.md", httpStory))
 	})
+
+	t.Run("valid protocol story with request format, frames, and examples", func(t *testing.T) {
+		socketStory := "```noctifab-contract\n" + `{
+  "story_id": "US-003",
+  "public_contracts": [
+    {
+      "id": "ping_command",
+      "interface": "socket",
+      "request_format": "RESP2",
+      "request_frames": ["*1\r\n$4\r\nPING\r\n"],
+      "request_examples": ["PING"],
+      "stdout_contains": ["PONG"]
+    }
+  ]
+}
+` + "```\n"
+
+		contract, err := services.ParseStoryContract("roadmap/US-003.md", socketStory)
+		require.NoError(t, err)
+		assert.Equal(t, "US-003", contract.StoryID)
+		require.Len(t, contract.PublicContracts, 1)
+		assert.Equal(t, "RESP2", contract.PublicContracts[0].RequestFormat)
+		assert.Equal(t, []string{"*1\r\n$4\r\nPING\r\n"}, contract.PublicContracts[0].RequestFrames)
+		assert.Equal(t, []string{"PING"}, contract.PublicContracts[0].RequestExamples)
+		assert.NoError(t, services.ValidateStoryContract("roadmap/US-003.md", socketStory))
+	})
 }

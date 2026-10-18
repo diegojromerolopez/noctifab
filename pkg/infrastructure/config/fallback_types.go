@@ -67,6 +67,14 @@ type SovereignRescueConfig struct {
 	Providers                []AgentProviderRef            `yaml:"providers,omitempty"`
 	SlidingWindow            int                           `yaml:"sliding_window,omitempty"`
 	Context                  *SovereignRescueContextConfig `yaml:"context,omitempty"`
+	SliceSpec                *bool                         `yaml:"slice_spec,omitempty"`
+}
+
+func (s SovereignRescueConfig) IsSliceSpecEnabled() bool {
+	if s.SliceSpec != nil {
+		return *s.SliceSpec
+	}
+	return true
 }
 
 func (s SovereignRescueConfig) GetSlidingWindow() int {
@@ -113,7 +121,7 @@ func (s SovereignRescueConfig) GetMaxTurns() int {
 	if s.MaxAttempts > 0 {
 		return s.MaxAttempts
 	}
-	return 10
+	return 15
 }
 
 func (s SovereignRescueConfig) GetTimeout() time.Duration {
@@ -202,7 +210,7 @@ func (a AgentsConfig) GetFallback() FallbackAgentConfig {
 // The NOCTIFAB_RESCUE_MAX_TURNS environment variable takes highest precedence if set.
 func (c *Config) GetSovereignRescue() SovereignRescueConfig {
 	if c == nil {
-		res := SovereignRescueConfig{MaxTurns: 10, Timeout: Duration(5 * time.Minute), MissingToolchainStrategy: "auto"}
+		res := SovereignRescueConfig{MaxTurns: 15, Timeout: Duration(5 * time.Minute), MissingToolchainStrategy: "auto"}
 		if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_MAX_TURNS"); ok {
 			if i, err := strconv.Atoi(val); err == nil && i > 0 {
 				res.MaxTurns = i
@@ -219,37 +227,39 @@ func (c *Config) GetSovereignRescue() SovereignRescueConfig {
 	}
 	fb := c.GetFallback()
 	res := fb.SovereignRescue
-	if res.MaxTurns <= 0 {
-		if res.MaxAttempts > 0 {
-			res.MaxTurns = res.MaxAttempts
-		} else {
-			fbAgent := c.Agents.GetFallback()
-			if fbAgent.SovereignRescue != nil && fbAgent.SovereignRescue.MaxTurns > 0 {
+	fbAgent := c.Agents.GetFallback()
+	if fbAgent.SovereignRescue != nil {
+		if res.MaxTurns <= 0 {
+			if fbAgent.SovereignRescue.MaxTurns > 0 {
 				res.MaxTurns = fbAgent.SovereignRescue.MaxTurns
-				if fbAgent.SovereignRescue.Timeout > 0 {
-					res.Timeout = fbAgent.SovereignRescue.Timeout
-				}
-				if fbAgent.SovereignRescue.Enabled != nil {
-					res.Enabled = fbAgent.SovereignRescue.Enabled
-				}
-				if fbAgent.SovereignRescue.MissingToolchainStrategy != "" {
-					res.MissingToolchainStrategy = fbAgent.SovereignRescue.MissingToolchainStrategy
-				}
-				if len(fbAgent.SovereignRescue.Providers) > 0 {
-					res.Providers = fbAgent.SovereignRescue.Providers
-				}
 			} else if fbAgent.RescueMaxTurns > 0 {
 				res.MaxTurns = fbAgent.RescueMaxTurns
 			}
 		}
-	}
-	if len(res.Providers) == 0 {
-		fbAgent := c.Agents.GetFallback()
-		if fbAgent.SovereignRescue != nil && len(fbAgent.SovereignRescue.Providers) > 0 {
-			res.Providers = fbAgent.SovereignRescue.Providers
-		} else if len(fbAgent.Providers) > 0 {
-			res.Providers = fbAgent.Providers
+		if res.Timeout == 0 && fbAgent.SovereignRescue.Timeout > 0 {
+			res.Timeout = fbAgent.SovereignRescue.Timeout
 		}
+		if res.Enabled == nil && fbAgent.SovereignRescue.Enabled != nil {
+			res.Enabled = fbAgent.SovereignRescue.Enabled
+		}
+		if res.MissingToolchainStrategy == "" && fbAgent.SovereignRescue.MissingToolchainStrategy != "" {
+			res.MissingToolchainStrategy = fbAgent.SovereignRescue.MissingToolchainStrategy
+		}
+		if res.SliceSpec == nil && fbAgent.SovereignRescue.SliceSpec != nil {
+			res.SliceSpec = fbAgent.SovereignRescue.SliceSpec
+		}
+		if len(res.Providers) == 0 && len(fbAgent.SovereignRescue.Providers) > 0 {
+			res.Providers = fbAgent.SovereignRescue.Providers
+		}
+	} else if res.MaxTurns <= 0 {
+		if res.MaxAttempts > 0 {
+			res.MaxTurns = res.MaxAttempts
+		} else if fbAgent.RescueMaxTurns > 0 {
+			res.MaxTurns = fbAgent.RescueMaxTurns
+		}
+	}
+	if len(res.Providers) == 0 && len(fbAgent.Providers) > 0 {
+		res.Providers = fbAgent.Providers
 	}
 	if val, ok := os.LookupEnv("NOCTIFAB_RESCUE_MAX_TURNS"); ok {
 		if i, err := strconv.Atoi(val); err == nil && i > 0 {
@@ -267,7 +277,7 @@ func (c *Config) GetSovereignRescue() SovereignRescueConfig {
 		res.MissingToolchainStrategy = "auto"
 	}
 	if res.MaxTurns <= 0 {
-		res.MaxTurns = 10
+		res.MaxTurns = 15
 	}
 	if res.Timeout <= 0 {
 		res.Timeout = Duration(5 * time.Minute)

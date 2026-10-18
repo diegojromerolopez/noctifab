@@ -106,12 +106,11 @@ func GenerateRoadmapWithStreaming(
 	if renderer == nil {
 		renderer = prompts.NewDefaultRenderer()
 	}
-	specPath := filepath.Join(projectPath, "SPEC.md")
-	specBytes, err := os.ReadFile(specPath)
+	specContent, err := EnsureSTESpecification(ctx, projectPath, llmClient, renderer)
 	if err != nil {
-		return fmt.Errorf("SPEC.md not found in project path %q: %w", projectPath, err)
+		return err
 	}
-	specContent := string(specBytes)
+	specBytes := []byte(specContent)
 
 	compactionMode := CompactionModeFromContext(ctx)
 	// If specification has domain sections/tables, deterministically partition into .noctifab/specs/
@@ -215,10 +214,11 @@ func GenerateRoadmapWithStreaming(
 						content, _ = act.Args["spec"].(string)
 					}
 					if strings.TrimSpace(content) != "" && strings.TrimSpace(content) != strings.TrimSpace(string(specBytes)) {
-						if err := os.WriteFile(specPath, []byte(content), 0644); err == nil {
+						stePath := filepath.Join(projectPath, "SPEC.ste.md")
+						if err := os.WriteFile(stePath, []byte(content), 0644); err == nil {
 							specBytes = []byte(content)
 							specRefined = true
-							fmt.Printf("ℹ [Product Manager] Refined and updated SPEC.md with resolved inconsistencies/missing details\n")
+							fmt.Printf("ℹ [Product Manager] Refined and updated SPEC.ste.md with resolved inconsistencies/missing details\n")
 						}
 					}
 				}

@@ -45,13 +45,48 @@ func ParseStoryOutlines(act domain.LLMAction) ([]StoryOutlineItem, error) {
 	}
 
 	var valid []StoryOutlineItem
+	seenIDs := make(map[string]bool)
+	seenSlugs := make(map[string]bool)
+	maxNum := 0
+
+	// First pass: find max numeric ID from outlines formatted as US-###
 	for _, o := range outlines {
-		if strings.TrimSpace(o.ID) == "" {
+		cleanID := strings.TrimSpace(o.ID)
+		if strings.HasPrefix(strings.ToUpper(cleanID), "US-") {
+			var num int
+			if _, err := fmt.Sscanf(cleanID[3:], "%d", &num); err == nil && num > maxNum {
+				maxNum = num
+			}
+		}
+	}
+
+	for _, o := range outlines {
+		o.ID = strings.TrimSpace(o.ID)
+		if o.ID == "" {
 			continue
 		}
+		// If ID is duplicate, assign the next available unique sequential ID
+		if seenIDs[strings.ToUpper(o.ID)] {
+			maxNum++
+			o.ID = fmt.Sprintf("US-%03d", maxNum)
+		}
+		seenIDs[strings.ToUpper(o.ID)] = true
+
 		if o.Slug == "" {
 			o.Slug = ToSlug(o.Title)
 		}
+		if o.Slug == "" {
+			o.Slug = strings.ToLower(o.ID)
+		}
+		// Ensure unique slug across all outline items
+		origSlug := o.Slug
+		suffix := 2
+		for seenSlugs[o.Slug] {
+			o.Slug = fmt.Sprintf("%s-%d", origSlug, suffix)
+			suffix++
+		}
+		seenSlugs[o.Slug] = true
+
 		valid = append(valid, o)
 	}
 

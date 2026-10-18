@@ -45,7 +45,9 @@ func (t *InstallPackageTool) Execute(ctx context.Context, state *domain.State, a
 		if manager != "" {
 			switch strings.ToLower(manager) {
 			case "pip":
-				venvPip := filepath.Join(state.ProjectPath, ".venv", "bin", "pip")
+				venvDir := filepath.Join(state.ProjectPath, ".venv")
+				EnsureVenvPip(venvDir)
+				venvPip := filepath.Join(venvDir, "bin", "pip")
 				if _, err := os.Stat(venvPip); err == nil {
 					cmdStr = venvPip + " install " + pkg
 				} else {

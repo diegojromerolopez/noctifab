@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 func TestOpenAIProviderClient_Call(t *testing.T) {
@@ -229,5 +231,30 @@ func TestSendCompletion_StreamingDeadlineExceededNoRetry(t *testing.T) {
 	}
 	if count := requestCount.Load(); count > 1 {
 		t.Errorf("expected exactly 1 request (no retry), got %d", count)
+	}
+}
+
+func TestSendCompletionStreaming_TracksLivenessChunks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"chunk 1\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"chunk 2\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	client := newBaseOpenAIClient("openai", server.URL, server.URL, 5*time.Second, 2*time.Second, true)
+	tracker := domain.NewStreamLivenessTracker()
+	ctx := domain.WithStreamLivenessTracker(context.Background(), tracker)
+
+	res, err := client.sendCompletionStreaming(ctx, "gpt-4o", "test-key", "hello", completionOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(res.Body) != "chunk 1chunk 2" {
+		t.Errorf("unexpected body: %q", string(res.Body))
+	}
+	if tracker.ChunkCount() < 2 {
+		t.Errorf("expected at least 2 chunks recorded by tracker, got %d", tracker.ChunkCount())
 	}
 }

@@ -78,6 +78,7 @@ agents:
     iterations: 2
 
   product_manager:
+    audit_mode: smart
     number: 1
     iterations: 2
     passes: 2
@@ -128,7 +129,7 @@ clarification_timeout_action: abort
 - **`task_execution_order`** (String): Task verification sequence mode. Options: `generator_first` (default: Generator implements code first, followed by Tester verification), or `tester_first` (TDD mode: Tester Agent generates unit/integration tests first, followed by Generator implementation). In `tester_first` mode, Noctifab automatically pre-seeds minimal compilation stub files (`ensureTargetStubFilesExist`) for missing target files so Turn 1 test compilation succeeds cleanly.
 - **`max_tools_per_response`** (Integer): Maximum number of parallel tool calls allowed per agent response turn.
 - **`orchestrator`**: Configures Orchestrator agents managing task lifecycle, global task DAG scheduling, cross-story pipelining, and state synchronization (`number: 1` = sequential story dispatch, `number: > 1` = concurrent multi-story execution via `StoryDAGScheduler` with pipelined task scheduling, `iterations: 2`).
-- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `passes: 2`). Supports `user_stories.max_count` (e.g. `5`) to hard-cap story generation, `user_stories.complexity: {min: 15, max: 35}` to enforce target functional Complexity Units per story, and `passes` (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit). (Legacy `max_user_stories` is also backward-compatible).
+- **`product_manager`**: Configures Product Manager agents generating new User Stories or auditing and enriching existing User Stories in `roadmap/user-stories/` (`US-XXX-slug.md`) with explicit Definitions of Done (DoD), language-agnostic interface contracts, error message prefixes, exit status codes, and comprehensive edge-case scenario matrices before task planning (`number: 1`, `iterations: 2`, `passes: 2`). Supports `audit_mode` (`smart` (default) to skip expensive LLM re-audits for stories that already satisfy deterministic contract and DoD validation, or `exhaustive` to force re-audits on all stories), `user_stories.max_count` (e.g. `5`) to hard-cap story generation, `user_stories.complexity: {min: 15, max: 35}` to enforce target functional Complexity Units per story, and `passes` (`1` = Fast single-pass, `2` = Standard 2-pass decomposition & cross-story audit (default), `3` = Deep contract & dependency audit). (Legacy `max_user_stories` is also backward-compatible).
 - **`planner`**: Configures Task Planner agents decomposing User Stories into task DAGs, automatically serializing task models into `roadmap/tasks/` (`number: 1`, `iterations: 5`).
 - **`generators`**: Configures Generator agents writing production code (`number: 3`, `iterations: 20`).
 - **`testers`**: Configures Tester agents writing test suites (`number: 2`, `iterations: 15`).
@@ -173,11 +174,34 @@ Defines named LLM provider registries, global default failover priorities, and p
 
 ```yaml
 llm:
+  # Speculative Fallback Hedging Controls
+  hedging:
+    enabled: true
+    delay: 25s
+    heavy_delay: 90s
+
+  # Context Caps for Format Reminder Pullbacks
+  json_reminder:
+    task:
+      cap: 1500
+    body:
+      cap: 12000
+
   # Global Default Failover Priority Chain
   priority:
     - "openai-primary"
     - "anthropic-backup"
     - "deepseek-coder"
+
+  # Prompt Caching & Provider Session Affinity:
+  # Noctifab automatically injects official API caching parameters and session routing headers:
+  # - OpenAI, Mistral, Cerebras, xAI: prompt_cache_key routing affinity
+  # - Moonshot / Kimi: prompt_cache_options (ttl: 1h)
+  # - OpenRouter: x-session-id, session_id, and X-OpenRouter-Cache: true
+  # - Fireworks: x-session-affinity, user
+  # - Anthropic & Qwen: cache_control: {"type": "ephemeral"} on message content
+  # - Google Gemini: cachedContent resource reference and systemInstruction prefix caching
+
 
   # Named LLM Provider Registry
   providers:
@@ -245,9 +269,51 @@ agents:
   - **`thinking`** (Map): Structured chain-of-thought reasoning configuration:
     - **`enabled`** (Boolean): Enable reasoning mode (`true` or `false`). Defaults to `false` (disabled by default).
     - **`budget`** (Integer): Token budget cap for reasoning output (e.g. `8192`).
+    - **`default_budget`** (Integer): Default reasoning token budget cap applied globally when thinking is enabled without an explicit per-provider budget (default: `2048`). Prevents uncapped reasoning models from exhausting context budgets on internal thoughts.
   - **`enable_thinking`** / **`thinking_budget`**: Backward-compatible flat flags for reasoning mode and budget.
   - **`disable_json_mode`** (Boolean): Skip sending `response_format: json_object` to the provider. Automatically inferred when thinking is enabled, but can be explicitly set for third-party gateways that reject forced JSON schemas.
   - **`extra_params`** (Map of Strings): Custom key-value pairs merged verbatim into the provider request body for provider-specific extensions.
+  - **Per-provider overrides of common `llm.*` settings**: Each provider entry can override `thinking`, `hedging`, `json_reminder`, `token_usage_limit`, as well as transport settings: `max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, and `streaming`. A provider value always wins. A field that the provider does not set is inherited from the global `llm.*` block (field by field, e.g. a provider can set only `hedging.delay` or a custom `temperature: 0.0`).
+    - **`thinking`**: When the provider sets nothing, it inherits `llm.thinking.enabled` only when that value is `true`. A global `false` is the built-in default, so no explicit flag is sent (some APIs reject unknown thinking parameters). Set `thinking.enabled: false` on a provider whose model thinks by default (for example Qwen) to turn it off explicitly.
+    - **`hedging`**: Applies when this provider is the primary candidate. `enabled: false` stops speculative backup requests while this provider answers. `enabled: true` with a `delay` turns hedging on for this provider even if `llm.hedging.enabled` is `false`.
+    - **`json_reminder`**: Caps for the format-repair reminder prompt that this provider receives.
+    - **`token_usage_limit`**: Daily token cap for this provider entry only (UTC day, estimated prompt + completion tokens). When the cap is reached, the router skips this provider and uses the next candidate. If every candidate is capped, the call fails with a budget-exhausted error.
+    - **`max_retries`** / **`retry_backoff`**: Per-provider retry attempts and initial exponential backoff.
+    - **`max_timeout`** / **`idle_timeout`**: Per-provider overall request and streaming socket idle timeouts.
+    - **`max_tokens`**: Maximum tokens for the provider completion (`-1` or `0` resolves to provider default/unlimited).
+    - **`temperature`**: Per-provider sampling temperature (explicit `0.0` overrides any global non-zero temperature).
+    - **`streaming`**: Per-provider toggle for Server-Sent Events (SSE) token streaming.
+
+    ```yaml
+    llm:
+      thinking:
+        enabled: false          # global default: no thinking
+      max_retries: 3            # global transport defaults
+      retry_backoff: 500ms
+      max_timeout: 60s
+      idle_timeout: 60s
+      max_tokens: -1            # unlimited
+      temperature: 0.3
+      streaming: true
+      token_usage_limit: 20000000  # daily cap on the SUM of all providers (0 = unlimited)
+      providers:
+        - name: claude
+          provider: anthropic
+          thinking:
+            enabled: true       # only this provider thinks
+            budget: 8192
+          hedging:
+            enabled: false      # never race a backup against claude
+          token_usage_limit: 2000000  # daily cap for claude only
+        - name: gemini-flash
+          provider: gemini
+          temperature: 0.0      # override global 0.3 with deterministic temperature
+          hedging:
+            delay: 10s          # hedge sooner when gemini-flash is primary
+          json_reminder:
+            task:
+              cap: 800
+    ```
 - **`roles.<agent>.providers`** / **`agents.<role>.providers`** (List of Agent Provider Refs): Role-specific provider or ensemble model references:
   - **`name`** (String): References a provider declared in `llm.providers`.
   - **`count`** (Integer): Number of independent model instances/samples to spawn for this provider spec (default: `1`).
@@ -278,6 +344,13 @@ agents:
 - **`idle_timeout`** (Duration): Maximum stream/socket inactivity timeout allowed for LLM API calls (e.g. `15s`). Defaults to `15s` to cancel and fail over stalled stream connections without truncating active long responses.
 - **`streaming`** (Boolean): Enable or disable HTTP Server-Sent Events (SSE) token streaming (e.g. `true`). Defaults to `true` to stream completion tokens in real time and enforce sliding socket idle timeouts.
 - **`skip_on_credit_exhausted`** (Boolean): When `true` (default), an HTTP 402 (or a credit/quota-limited 429) is treated as a hard "skip this provider chain" signal: `noctifab` stops retrying and skips lower-model fallback immediately, so the router moves straight to the next provider in `llm.priority`. When `false`, the client rotates to the next `api_keys` pool entry and keeps retrying as usual. Set this to `false` only if you use key pools where a spend-limited key is expected to be superseded by a funded sibling key.
+- **`hedging`**: Controls speculative fallback hedging across prioritized model providers:
+  - **`enabled`** (Boolean): Enable or disable speculative secondary hedging (default: `true`). When set to `false`, speculative hedging is completely disabled.
+  - **`delay`** (Duration): Time to wait on primary provider before launching a speculative secondary hedge call (default: `25s`).
+  - **`heavy_delay`** (Duration): Minimum hedge delay applied to heavy batch roles such as Product Manager and Auditor (default: `90s`).
+- **`json_reminder`**: Configures context limits for defensive format reminder pullbacks:
+  - **`task.cap`** (Integer): Maximum characters of the original task prompt retained in one-shot JSON reminder prompts (default: `1500`).
+  - **`body.cap`** (Integer): Maximum characters of the rejected model output tail included in the format reminder (default: `12000`).
 - **`reset_period`** (String): The timeframe to enforce the budget cap (e.g. `daily`, `monthly`).
 - **`failover`**: Failover parameters:
   - **`enabled`** (Boolean): Auto-route failed calls to alternate providers when true.
@@ -300,7 +373,7 @@ One of `noctifab`'s core resilience features is its **Dynamic Model Fallback Eng
 |---|---|---|
 | **Anthropic** | `parseAnthropicModel` | `(Version * 10) + TierScore`<br>`opus` (400) > `sonnet` (300) > `haiku` (200).<br>*Order*: `claude-3-opus` (430) > `claude-3-7-sonnet` (337) > `claude-3-5-sonnet` (335) > `claude-3-5-haiku` (235) > `claude-3-haiku` (230). |
 | **OpenAI** | `parseOpenAIModel` | `TierScore + (Version * 10) + (Date / 1,000,000)`<br>`o3`/`o1` reasoning (60) > `gpt-4o`/`sol` flagship (50) > `gpt-4-turbo`/`gpt-4`/`terra` (40) > `o3-mini`/`o1-mini` (30) > `gpt-4o-mini`/`luna` (20) > `gpt-3.5-turbo` (10). |
-| **Gemini** | `parseGeminiModel` | `int(Version * 100) + TierScore`<br>`pro` (40) > `flash` (30) > `flash-lite` (20) > `nano` (10).<br>*Order*: `gemini-3.6-pro` (400) > `gemini-3.6-flash` (390) > `gemini-2.5-pro` (290) > `gemini-2.5-flash` (280) > `gemini-1.5-pro` (190) > `gemini-1.5-flash` (180). |
+| **Gemini** | `parseGeminiModel` | `int(Version * 10) + TierScore`<br>`pro` (40) > `flash` (30) > `flash-lite` (20) > `nano` (10).<br>*Order*: `gemini-3.1-pro-preview` (71) > `gemini-3.8-flash` (68) > `gemini-2.5-pro` (65) > `gemini-2.5-flash` (55) > `gemini-1.5-pro` (55) > `gemini-1.5-flash` (45). |
 | **Kimi (Moonshot AI)** | `parseKimiModel` | `TierScore + ContextWindowBonus`<br>`k3` (50) > `k2.7`/`k2.7-code` (40) > `k2.6` (30) > `k2.5` (20) > `k2`/`v1` (10).<br>*Context bonus*: `128k` (+3) > `32k` (+2) > `8k` (+1). |
 | **Meta Llama** | `parseLlamaModel` | `SizeScore + int(Version * 10)`<br>`405b` (500) > `90b`/`70b`/`72b` (400) > `34b`/`32b`/`27b`/`14b`/`13b` (300) > `11b`/`8b`/`7b` (200) > `3b`/`1b` (100). |
 | **Qwen (DashScope)** | `parseQwenModel` | `TierScore + int(Version * 10)`<br>`qwen-max` / `qwen3-coder-max` (40) > `qwen-plus` / `qwen3-coder-plus` (30) > `qwen-turbo` (20) > `standard` (10). |
@@ -606,7 +679,7 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
-    max_turns: 10
+    max_turns: 15
     timeout: "5m"
     missing_toolchain_strategy: "auto"
     providers:
@@ -629,13 +702,14 @@ fallback:
   - **`stall_count_threshold`** (Integer): Number of cumulative stall cycles before summoning sovereign repair (default: `4`).
   - **`sovereign_rescue`**: Configures the whole-project emergency sovereign takeover engine (TR-16):
     - **`enabled`** (Boolean): Enable autonomous sovereign rescue takeover upon loop exhaustion (default: `true`).
-    - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `10`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
+    - **`max_turns`** (Integer): Maximum number of multi-turn sovereign Omni-Agent repair cycles (default: `15`). Configurable via environment variable `NOCTIFAB_RESCUE_MAX_TURNS`. Can also be declared via `agents.fallback.rescue_max_turns`.
     - **`timeout`** (Duration): Per-turn execution timeout limit for sovereign LLM completions (default: `5m`).
     - **`missing_toolchain_strategy`** (String): Strategy for handling missing host toolchains or compilers during sovereign recovery (default: `"auto"`). Configurable via environment variable `NOCTIFAB_RESCUE_TOOLCHAIN_STRATEGY`. Options:
       - `"auto"`: Probes for Docker daemon availability. If Docker is running, uses `"docker"`; otherwise falls back to `"local"`.
       - `"docker"`: Instructs the agent to create a `Dockerfile` with the missing compiler/runtime and wire `Makefile` (`build`, `test`, `e2e`) to execute containerized via `docker run --rm -v $(PWD):/app -w /app ...`.
       - `"local"`: Instructs the agent to install missing tools onto the host machine via `install_package` (pip, brew, apt, npm, cargo, etc.).
       - `"off"`: Disables fallback recovery for missing toolchains.
+    - **`slice_spec`** (Boolean): Enable automatic section slicing of oversized `SPEC.md` (>12,000 characters) for sovereign rescue prompts (default: `true`). Slices exhaustive test matrices and raw harness catalogs while preserving core invariants and architecture, saving tens of thousands of tokens per emergency takeover turn.
     - **`sliding_window`** (Integer): Character budget cap for failure logs (default: `16000`). Overridable via `NOCTIFAB_RESCUE_SLIDING_WINDOW`.
     - **`context`**: Configures prompt context windowing and compaction for whole-project sovereign recovery turns (shares identical properties with `context` and `sandbox.context`):
       - **`mode`** (String): Context slicing mode (`"diff_window"`, `"tree_sitter"`, or `"full"`).
@@ -676,17 +750,19 @@ Controls how target workspace source files are formatted, sliced, and compacted 
 
 ```yaml
 context:
-  mode: full
-  diff_window_lines: 15
+  mode: "tree_sitter" # "tree_sitter" (default), "diff_window", "full"
+  diff_window_lines: 15 # default: 15
+  dedup_mutated_files: false # default: false (preserves prompt prefix cache hit rates across turns)
   compaction: "none" # "none" (default), "caveman", "simple_english"
   caveman_compaction: false # legacy boolean alias for compaction: "caveman"
 ```
 
 - **`mode`** (String): Context formatting strategy for task target files. Options:
-  - `full`: Sends complete source file contents (default).
+  - `tree_sitter`: Universal AST parsing extracting class/struct definitions and function signatures while omitting non-target function bodies (default).
   - `diff_window`: Extracts modified git diff lines and error stack traces (+/- context lines).
-  - `tree_sitter`: Universal AST parsing extracting class/struct definitions and function signatures.
+  - `full`: Sends complete source file contents.
 - **`diff_window_lines`** (Integer): Number of context lines surrounding diff modifications in `diff_window` mode (default: `15`).
+- **`dedup_mutated_files`** (Boolean): When `false` (default), preserves stable pre-turn file context across turns so that the static prompt prefix remains 100% byte-identical, achieving 80%–90% prompt cache hit rates on LLM providers. When set to `true`, prunes full pre-turn snapshots of files modified in earlier turns of the task.
 - **`compaction`** (String): Prompt compaction strategy applied to prompt bodies, specification payloads (`SPEC.md`), and historical turn contexts. Options:
   - `none`: Sends full uncompacted prompt text (default).
   - `caveman`: Telegraphic compaction that strips polite filler, redundant conversational preambles, decorative dividers, HTML comments (`<!-- ... -->`), and markdown images while strictly preserving code blocks (` ``` `), JSON contracts, file paths, and CLI flags.
@@ -695,14 +771,13 @@ context:
 
 ---
 
-## Workspace Inspection Caching Settings (`agents.workspace_cache`)
+## Workspace Inspection Caching Settings (`workspace_cache`)
 
 Controls in-memory deduplication of read-only filesystem reads (`list_directory`, `read_file`, `find_files`, `grep_search`) and diagnostic test/linter runs during an agent task execution loop. The cache is automatically invalidated when any file mutation (`write_file`, `write_files`, `edit_file`, `delete_file`, `apply_patch`) occurs.
 
 ```yaml
-agents:
-  workspace_cache:
-    enabled: true
+workspace_cache:
+  enabled: true # top-level key (agents.workspace_cache supported as alias)
 ```
 
 - **`enabled`** (Boolean): Enable in-memory workspace inspection and diagnostic tool caching (default: `true`).
@@ -802,7 +877,7 @@ fallback:
     stall_count_threshold: 4
   sovereign_rescue:
     enabled: true
-    max_turns: 10
+    max_turns: 15
     timeout: "5m"
 
 storage:
@@ -814,7 +889,7 @@ storage:
     backoff_factor: 2.0
 
 llm:
-  token_usage_limit: 0
+  token_usage_limit: 0   # daily (UTC) cap on estimated tokens across ALL providers; 0 = unlimited
   provider: "opencode"
   model: "opencode-v1"
   temperature: 0.0

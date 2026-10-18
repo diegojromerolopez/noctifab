@@ -17,6 +17,11 @@ type PublicContract struct {
 	ExpectedStatus       int    `json:"expected_status,omitempty"`
 	ExpectedResponseBody string `json:"expected_response_body,omitempty"`
 	BrunoBru             string `json:"bruno_bru,omitempty"`
+
+	// Protocol / socket contract specifications
+	RequestFormat   string   `json:"request_format,omitempty"`
+	RequestFrames   []string `json:"request_frames,omitempty"`
+	RequestExamples []string `json:"request_examples,omitempty"`
 }
 
 // StoryContract contains the normalized public contract for a roadmap story.

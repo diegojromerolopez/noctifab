@@ -2,6 +2,8 @@ package services
 
 import (
 	"fmt"
+	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -57,4 +59,36 @@ func iterationsOrDefault(v int) int {
 		return defaultAgentIterations
 	}
 	return v
+}
+
+// pruneMutatedFileContexts scans prompt for "File <path>" blocks matching any path
+// in mutatedFiles and replaces their pre-turn content with an omission marker.
+// This prevents multi-turn agent prompts from re-sending stale snapshots of files
+// that were already edited earlier in the current task.
+func pruneMutatedFileContexts(prompt string, mutatedFiles map[string]bool) string {
+	if len(mutatedFiles) == 0 || prompt == "" {
+		return prompt
+	}
+	result := prompt
+	for path := range mutatedFiles {
+		if path == "" {
+			continue
+		}
+		variants := []string{
+			path,
+			filepath.Clean(path),
+			strings.TrimPrefix(path, "./"),
+		}
+		seen := make(map[string]bool)
+		for _, v := range variants {
+			if v == "" || seen[v] {
+				continue
+			}
+			seen[v] = true
+			re := regexp.MustCompile(`(?m)^File\s+` + regexp.QuoteMeta(v) + `(?::| \([^)]+\):)\n` + "```" + `[^\n]*\n(?s:(.*?))(?:\n)?` + "```")
+			replacement := fmt.Sprintf("File %s: [Contents omitted: modified in earlier turn of this task. Use read_file to inspect latest content if needed.]", v)
+			result = re.ReplaceAllString(result, replacement)
+		}
+	}
+	return result
 }

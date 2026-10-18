@@ -7,7 +7,10 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -112,18 +115,47 @@ func EnsureWorkspaceInitializedWithProfile(targetDir string, profileName string)
 	// 3. Generate default or profile config.yaml if it doesn't exist
 	cfgPath := filepath.Join(noctifabDir, "config.yaml")
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		cfg := config.DefaultConfig()
+
 		if profileName != "" {
-			preset, err := config.GetProfile(profileName)
-			if err != nil {
+			if err := config.ApplyProfile(cfg, profileName); err != nil {
 				return false, err
 			}
-			if err := os.WriteFile(cfgPath, []byte(preset.ConfigYAML), 0644); err != nil {
-				return false, fmt.Errorf("failed to write profile config: %w", err)
+		}
+
+		// Detect project language and adapt test, format, and build commands
+		lang := services.DetectProjectLanguage(targetDir)
+		if lang != "" {
+			testCmd := services.DetectDefaultTestCommand(targetDir)
+			if testCmd != "" {
+				cfg.Sandbox.TestCommand = testCmd
+			}
+			formatCmd := services.DetectDefaultFormatterCommand(targetDir)
+			cfg.Sandbox.FormatterCommand = formatCmd
+			if buildCmd := services.DetectDefaultBuildCommand(targetDir); buildCmd != "" {
+				cfg.Agents.QA.BuildCommand = strings.Fields(buildCmd)
 			}
 		} else {
-			if err := config.WriteDefaultConfig(cfgPath); err != nil {
-				return false, fmt.Errorf("failed to write default config: %w", err)
+			// If Makefile has test/format target, adapt to it
+			if testCmd := services.DetectDefaultTestCommand(targetDir); testCmd != "go test -v ./..." {
+				cfg.Sandbox.TestCommand = testCmd
 			}
+			if formatCmd := services.DetectDefaultFormatterCommand(targetDir); formatCmd != "" {
+				cfg.Sandbox.FormatterCommand = formatCmd
+			}
+		}
+
+		// Detect Git repository remote if targetDir is a git repository
+		if repoSlug := vcs.DetectGitRepository(targetDir); repoSlug != "" {
+			cfg.VCS.Repository = repoSlug
+		}
+
+		data, err := yaml.Marshal(cfg)
+		if err != nil {
+			return false, fmt.Errorf("failed to marshal config: %w", err)
+		}
+		if err := os.WriteFile(cfgPath, data, 0644); err != nil {
+			return false, fmt.Errorf("failed to write config file: %w", err)
 		}
 	}
 
@@ -227,29 +259,56 @@ GITHUB_TOKEN: ""
 	createdSpec := false
 	specPath := filepath.Join(targetDir, "SPEC.md")
 	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		specContent := `# Specification: New Project
+		detectedLang := services.DetectProjectLanguage(targetDir)
+		primaryLang := "Go / C / Python / TypeScript / Rust"
+		targetRuntime := "Native binary / Node.js / Python 3.11"
+		testingFramework := "Native unit tests"
+		switch detectedLang {
+		case "go":
+			primaryLang = "Go"
+			targetRuntime = "Native Go binary"
+			testingFramework = "go test"
+		case "python":
+			primaryLang = "Python"
+			targetRuntime = "Python 3.11+"
+			testingFramework = "pytest / unittest"
+		case "rust":
+			primaryLang = "Rust"
+			targetRuntime = "Native cargo binary"
+			testingFramework = "cargo test"
+		case "javascript":
+			primaryLang = "JavaScript / TypeScript"
+			targetRuntime = "Node.js"
+			testingFramework = "npm test"
+		case "java":
+			primaryLang = "Java"
+			targetRuntime = "JVM"
+			testingFramework = "gradle / mvn test"
+		}
+
+		specContent := fmt.Sprintf(`# Specification: New Project
 
 ## 1. Overview
 Describe the high-level goal, architecture, and purpose of the software project.
 
 ## 2. Technology Stack & Language Guidelines
-- **Primary Language**: Go / C / Python / TypeScript / Rust
-- **Target Runtime**: Native binary / Node.js / Python 3.11
-- **Testing Framework**: Native unit tests
+- **Primary Language**: %s
+- **Target Runtime**: %s
+- **Testing Framework**: %s
 
 ## 3. Core Domain Models & Schemas
 Define key entities, data structures, and database schemas.
 
 ## 4. Interfaces & Command Contracts
 - **CLI Commands**:
-  - ` + "`my-app --help`" + `
+  - `+"`my-app --help`"+`
 - **HTTP Endpoints (if applicable)**:
-  - ` + "`GET /healthz`" + `
+  - `+"`GET /healthz`"+`
 
 ## 5. Acceptance Criteria & Quality Gates
 - All unit tests must pass cleanly.
 - Zero linter warnings or static analysis issues.
-`
+`, primaryLang, targetRuntime, testingFramework)
 		if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
 			return false, fmt.Errorf("failed to create SPEC.md template: %w", err)
 		}

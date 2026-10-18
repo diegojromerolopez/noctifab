@@ -13,6 +13,15 @@ type ContextConfig struct {
 	CavemanCompaction bool     `yaml:"caveman_compaction"`
 	Compaction        string   `yaml:"compaction"`   // Options: "none" (default), "simple_english", "caveman"
 	SkipFolders       []string `yaml:"skip_folders"` // Custom directories/folders to skip from context
+	DedupMutatedFiles *bool    `yaml:"dedup_mutated_files,omitempty"`
+}
+
+// IsDedupMutatedFilesEnabled returns whether pre-turn snapshots of modified files are pruned from subsequent turn prompts (default: true).
+func (c *ContextConfig) IsDedupMutatedFilesEnabled() bool {
+	if c == nil || c.DedupMutatedFiles == nil {
+		return true
+	}
+	return *c.DedupMutatedFiles
 }
 
 func (c ContextConfig) GetCompactionMode() string {

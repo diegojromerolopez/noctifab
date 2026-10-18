@@ -45,8 +45,8 @@ func ExecuteSpike(
 		return false, nil
 	}
 
-	// 2. Read SPEC.md
-	specPath := filepath.Join(projectPath, "SPEC.md")
+	// 2. Read specification
+	specPath := ResolveSpecPath(projectPath)
 	specBytes, err := os.ReadFile(specPath)
 	if err != nil || len(strings.TrimSpace(string(specBytes))) == 0 {
 		return false, nil

@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 func init() {
@@ -83,6 +85,14 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 	headers["Content-Type"] = "application/json"
 
 	useResponseSchema := g.responseSchema != nil
+	useSystemInstruction := true
+	prefixLen := domain.CacheablePrefixLen(ctx)
+	if prefixLen <= 0 || prefixLen >= len(prompt) {
+		if idx := strings.Index(prompt, "\n\nTOOL OUTPUTS FROM PREVIOUS TURN"); idx >= 500 {
+			prefixLen = idx
+		}
+	}
+
 	var respBody []byte
 	var respStatusCode int
 	var respHeader http.Header
@@ -100,18 +110,65 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 		}
 		if g.extraBody != nil {
 			if tc, ok := g.extraBody["thinkingConfig"]; ok {
-				generationConfig["thinkingConfig"] = tc
+				var skipThinkingConfig bool
+				if isThinkingOnlyModel(model) {
+					if tcMap, isMap := tc.(map[string]any); isMap {
+						if b, hasBudget := tcMap["thinkingBudget"]; hasBudget {
+							switch v := b.(type) {
+							case int:
+								if v == 0 {
+									skipThinkingConfig = true
+								}
+							case float64:
+								if v == 0 {
+									skipThinkingConfig = true
+								}
+							}
+						}
+					}
+				}
+				if !skipThinkingConfig {
+					generationConfig["thinkingConfig"] = tc
+				}
 			}
 		}
-		payload := map[string]any{
-			"contents": []map[string]any{
+
+		var contents []map[string]any
+		var systemInstruction any
+		if useSystemInstruction && prefixLen > 0 && prefixLen < len(prompt) {
+			systemInstruction = map[string]any{
+				"parts": []map[string]string{
+					{"text": prompt[:prefixLen]},
+				},
+			}
+			contents = []map[string]any{
+				{
+					"parts": []map[string]string{
+						{"text": prompt[prefixLen:]},
+					},
+				},
+			}
+		} else {
+			contents = []map[string]any{
 				{
 					"parts": []map[string]string{
 						{"text": prompt},
 					},
 				},
-			},
+			}
+		}
+
+		payload := map[string]any{
+			"contents":         contents,
 			"generationConfig": generationConfig,
+		}
+		if g.extraBody != nil {
+			if cc, ok := g.extraBody["cachedContent"].(string); ok && cc != "" {
+				payload["cachedContent"] = cc
+			}
+		}
+		if systemInstruction != nil {
+			payload["systemInstruction"] = systemInstruction
 		}
 		reqBody, err := json.Marshal(payload)
 		if err != nil {
@@ -156,6 +213,10 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 			break
 		}
 		bodyStr := strings.ToLower(string(respBody))
+		if respStatusCode == http.StatusBadRequest && useSystemInstruction && strings.Contains(bodyStr, "systeminstruction") {
+			useSystemInstruction = false
+			continue
+		}
 		if respStatusCode == http.StatusBadRequest && useResponseSchema && (strings.Contains(bodyStr, "responseschema") || strings.Contains(bodyStr, "schema")) {
 			useResponseSchema = false
 			continue
@@ -177,6 +238,10 @@ func (g *geminiProviderClient) Call(ctx context.Context, model, apiKey, prompt s
 			candidatesCount = int64(v)
 		}
 		if v, ok := usageMeta["cachedContentTokenCount"].(float64); ok {
+			cachedCount = int64(v)
+		} else if v, ok := usageMeta["totalCachedTokens"].(float64); ok {
+			cachedCount = int64(v)
+		} else if v, ok := usageMeta["total_cached_tokens"].(float64); ok {
 			cachedCount = int64(v)
 		}
 	}

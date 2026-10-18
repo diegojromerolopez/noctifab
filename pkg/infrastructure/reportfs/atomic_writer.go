@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 )
 
@@ -39,6 +40,9 @@ func (w *AtomicWriter) WriteAtomic(ctx context.Context, path string, content []b
 	}
 
 	dir := filepath.Dir(cleanPath)
+	if _, err := w.fsSys.Lstat(dir); err != nil {
+		_ = os.MkdirAll(dir, 0755)
+	}
 	tempFile, err := w.fsSys.CreateTemp(dir, ".report_tmp", 0600)
 	if err != nil {
 		return fmt.Errorf("failed to create temporary report file: %w", err)

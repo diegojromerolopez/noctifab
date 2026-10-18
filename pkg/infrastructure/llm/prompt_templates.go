@@ -212,6 +212,10 @@ func processSimpleEnglishLines(lines []string) []string {
 }
 
 var cavemanFillerPrefixes = []string{
+	"please note that ",
+	"please ensure that you ",
+	"please ensure that ",
+	"please make sure to ",
 	"please ",
 	"simply ",
 	"strictly ",
@@ -222,13 +226,21 @@ var cavemanFillerPrefixes = []string{
 	"be sure to ",
 	"remember to ",
 	"ensure that you ",
+	"ensure that ",
 	"you should ",
 	"you need to ",
+	"you must make sure to ",
+	"you must ensure that ",
 	"you must ",
 	"it is important to ",
 	"it is crucial to ",
+	"it is critical to ",
+	"it is necessary to ",
+	"it is required to ",
 	"as mentioned above, ",
 	"keep in mind that ",
+	"always remember to ",
+	"note that ",
 }
 
 var cavemanReplacer = strings.NewReplacer(
@@ -252,7 +264,100 @@ var cavemanReplacer = strings.NewReplacer(
 	"prior to", "before",
 	"subsequent to", "after",
 	"subsequently", "then",
+	"with the exception of", "except",
+	"at this point in time", "now",
+	"in accordance with", "per",
+	"it is necessary that", "must",
+	"take into consideration", "consider",
+	"with respect to", "regarding",
+	"under no circumstances should you", "never",
+	"under no circumstances may", "never",
+	"is required to be", "must be",
+	"are required to be", "must be",
 )
+
+func splitListPrefix(line string) (prefix string, content string) {
+	trimmed := strings.TrimLeft(line, " \t")
+	indent := line[:len(line)-len(trimmed)]
+
+	// Bullet lists: -, *, +
+	if len(trimmed) >= 2 && (trimmed[0] == '-' || trimmed[0] == '*' || trimmed[0] == '+') && (trimmed[1] == ' ' || trimmed[1] == '\t') {
+		k := 2
+		for k < len(trimmed) && (trimmed[k] == ' ' || trimmed[k] == '\t') {
+			k++
+		}
+		return indent + trimmed[:k], trimmed[k:]
+	}
+
+	// Numbered lists: 1. , 12. , 1) , etc.
+	idx := 0
+	for idx < len(trimmed) && trimmed[idx] >= '0' && trimmed[idx] <= '9' {
+		idx++
+	}
+	if idx > 0 && idx+1 < len(trimmed) && (trimmed[idx] == '.' || trimmed[idx] == ')') && (trimmed[idx+1] == ' ' || trimmed[idx+1] == '\t') {
+		k := idx + 2
+		for k < len(trimmed) && (trimmed[k] == ' ' || trimmed[k] == '\t') {
+			k++
+		}
+		return indent + trimmed[:k], trimmed[k:]
+	}
+
+	return indent, trimmed
+}
+
+func compactMarkdownTableRow(line string) string {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "|") || !strings.HasSuffix(trimmed, "|") || strings.Count(trimmed, "|") < 2 {
+		return line
+	}
+	cells := strings.Split(trimmed, "|")
+	for i := 1; i < len(cells)-1; i++ {
+		cell := strings.TrimSpace(cells[i])
+		if isTableSeparatorCell(cell) {
+			cells[i] = compactSeparatorCell(cell)
+		} else {
+			cells[i] = " " + cell + " "
+		}
+	}
+	return strings.Join(cells, "|")
+}
+
+func isTableSeparatorCell(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c != '-' && c != ':' {
+			return false
+		}
+	}
+	return true
+}
+
+func compactSeparatorCell(s string) string {
+	hasLeft := strings.HasPrefix(s, ":")
+	hasRight := strings.HasSuffix(s, ":")
+	if hasLeft && hasRight {
+		return " :---: "
+	}
+	if hasLeft {
+		return " :--- "
+	}
+	if hasRight {
+		return " ---: "
+	}
+	return " --- "
+}
+
+func collapseConsecutiveSpaces(s string) string {
+	trimmed := strings.TrimLeft(s, " ")
+	indent := s[:len(s)-len(trimmed)]
+	for strings.Contains(trimmed, "  ") {
+		trimmed = strings.ReplaceAll(trimmed, "  ", " ")
+	}
+	return indent + trimmed
+}
 
 func processCavemanLines(lines []string) []string {
 	var cleaned []string
@@ -280,14 +385,26 @@ func processCavemanLines(lines []string) []string {
 
 		line = stripPreamblePrefix(line)
 
-		// Telegraphic compaction: remove filler prefixes
-		lower := strings.ToLower(line)
+		// Compact markdown table formatting
+		if strings.HasPrefix(trimmed, "|") && strings.HasSuffix(trimmed, "|") && strings.Count(trimmed, "|") >= 2 {
+			line = compactMarkdownTableRow(line)
+			cleaned = append(cleaned, line)
+			continue
+		}
+
+		// Telegraphic compaction: separate list prefix and strip filler prefixes
+		pfx, content := splitListPrefix(line)
+		lower := strings.ToLower(content)
 		for _, prefix := range cavemanFillerPrefixes {
 			if strings.HasPrefix(lower, prefix) {
-				line = line[len(prefix):]
+				content = content[len(prefix):]
+				if len(content) > 0 && content[0] >= 'a' && content[0] <= 'z' {
+					content = string(content[0]-32) + content[1:]
+				}
 				break
 			}
 		}
+		line = pfx + content
 
 		// Apply telegraphic word replacements
 		line = cavemanReplacer.Replace(line)
@@ -301,6 +418,8 @@ func processCavemanLines(lines []string) []string {
 					line = parts[0] + " " + headingText[2:len(headingText)-2]
 				}
 			}
+		} else {
+			line = collapseConsecutiveSpaces(line)
 		}
 
 		cleaned = append(cleaned, line)
