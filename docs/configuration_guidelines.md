@@ -261,6 +261,29 @@ The Noctifab sandbox isolates code execution and enforces security by verifying 
 If `test_command` or `linter.command` invokes a build tool (e.g. `make test` or `coverage run`), but the binary name (`make` or `coverage`) is omitted from `allowed_commands`, the sandbox immediately halts execution with:
 `Sandbox violation: command '<binary>' is not in the whitelist`.
 
+### User-Configurable Templates (`~/.noctifab/templates/` and `.noctifab/templates/`)
+
+Noctifab supports customizable language templates across three resolution tiers:
+1. **Workspace Tier (`.noctifab/templates/<name>.yaml`)**: Project-specific sandbox overrides. Takes highest precedence.
+2. **User Global Tier (`~/.noctifab/templates/<name>.yaml`)**: User-level presets shared across all projects on your machine.
+3. **Built-in Tier**: Embedded defaults for `go`, `python`, `rust`, `typescript`, `c`, `ruby`, `csharp`, `java`, `erlang`, and `ocaml`.
+
+You can inspect, export, and manage templates using the CLI:
+```bash
+# List all available templates and their active resolution sources
+noctifab templates list
+
+# Display the YAML definition of a template
+noctifab templates show python
+
+# Export an editable template into workspace (.noctifab/templates/) or user global (~/.noctifab/templates/)
+noctifab templates init python
+noctifab templates init rust --global
+
+# Initialize a project with a specific template preset
+noctifab init my-project --template python
+```
+
 ### Recommended Sandbox Configurations by Language
 
 #### Go

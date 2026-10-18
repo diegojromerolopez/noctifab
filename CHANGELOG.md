@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added unit tests in `pkg/services/vcs_branch_resolver_test.go` verifying fallback resolution.
 - **Toolchain Preflight Regression Test Suite**:
   - Authored `cmd/noctifab/cli/toolchain_preflight_test.go` asserting that hyphenated application executables (`echo-cli`, `todo-cli`, `wc-cli`) declared in user story `AllowedExecutables` are never falsely identified as missing host toolchains, while actual compilers and emulators (`gcc`, `valgrind`, `qemu-arm`, cross-compilers) are correctly detected.
+- **User-Configurable Language Sandbox Templates**:
+  - Implemented `pkg/infrastructure/templates/` (`Manager`, `BuiltinTemplates`, `TemplateAliases`) supporting multi-tiered template resolution across workspace (`.noctifab/templates/`), user global (`~/.noctifab/templates/`), and built-in defaults for `go`, `python`, `rust`, `typescript`, `c`, `ruby`, `csharp`, `java`, `erlang`, and `ocaml`.
+  - Added `noctifab templates` CLI command (`list`, `show`, `init`) for inspecting, displaying, and scaffolding editable YAML templates.
+  - Added `--template` / `-t` flag to `noctifab init` allowing users to bootstrap projects directly with any language template preset.
 
 ## [0.118.0] - 2026-10-18
 

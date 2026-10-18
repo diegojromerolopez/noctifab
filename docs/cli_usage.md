@@ -284,13 +284,29 @@ noctifab prompts init --all
 noctifab prompts validate
 ```
 
-### 11. `stop`
+### 11. `templates`
+Inspects, initializes, and customizes language sandbox configuration templates across workspace (`.noctifab/templates/`), user global (`~/.noctifab/templates/`), and embedded built-in presets.
+```bash
+# List all available language templates and their active sources
+noctifab templates list
+
+# Print the active YAML configuration for a language template
+noctifab templates show python
+
+# Export an editable template into the workspace (.noctifab/templates/<name>.yaml)
+noctifab templates init python
+
+# Export an editable template into the user global directory (~/.noctifab/templates/<name>.yaml)
+noctifab templates init rust --global
+```
+
+### 12. `stop`
 Gracefully stops the background daemon process and saves state.
 ```bash
 noctifab stop
 ```
 
-### 12. `clean`
+### 13. `clean`
 Resets all Noctifab runtime and orchestrator state: wipes the database (SQLite DB + WAL/SHM/journal or Postgres tables), purges all log files in `.noctifab/logs/`, prunes and removes Git worktrees in `.noctifab/worktrees/`, deletes steer story orders in `.noctifab/stories/`, cleans ephemeral data in `.noctifab/data/`, removes `SPEC.ste.md` (the [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/) generated specification artifact), and removes PID files.
 ```bash
 # Preview what would be cleaned
@@ -300,13 +316,13 @@ noctifab clean --dry-run
 noctifab clean --yes
 ```
 
-### 13. `maintenance`
+### 14. `maintenance`
 Performs cleanup actions: prunes fully merged task branches from the local directory, cleans orphaned worktrees, and executes state database schema migrations.
 ```bash
 noctifab maintenance
 ```
 
-### 14. `version`
+### 15. `version`
 Displays Noctifab's semantic release version, Git commit hash, and commit date.
 
 ```bash
