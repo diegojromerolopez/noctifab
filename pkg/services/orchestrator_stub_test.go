@@ -3,6 +3,7 @@ package services
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -55,12 +56,20 @@ func TestGenerateStubContent(t *testing.T) {
 		{"src/catalog.ml", "(* Stub implementation for catalog.ml *)"},
 		{"src/chess.cs", "public class chess"},
 		{"src/main/java/com/example/App.java", "package com.example;"},
+		{"go.mod", "module app"},
+		{"Cargo.toml", "[package]"},
+		{"package.json", "\"name\": \"app\""},
+		{"Gemfile", "https://rubygems.org"},
+		{"rebar.config", "{erl_opts, [debug_info]}."},
+		{"dune-project", "(lang dune 3.0)"},
+		{"pyproject.toml", "[project]"},
+		{"CMakeLists.txt", "cmake_minimum_required"},
 	}
 
 	for _, tt := range tests {
 		got := generateStubContent(tt.file)
-		if !filepath.IsAbs(tt.file) && got == "" {
-			t.Errorf("expected stub content for %s, got empty", tt.file)
+		if !strings.Contains(got, tt.contains) {
+			t.Errorf("expected stub content for %s to contain %q, got:\n%s", tt.file, tt.contains, got)
 		}
 	}
 }

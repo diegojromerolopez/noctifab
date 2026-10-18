@@ -55,6 +55,27 @@ func generateStubContent(filePath string) string {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	baseName := filepath.Base(filePath)
 	nameWithoutExt := strings.TrimSuffix(baseName, ext)
+	lowerBase := strings.ToLower(baseName)
+
+	// Build manifests require syntactically valid minimal structure to prevent early compiler/toolchain failures
+	switch lowerBase {
+	case "go.mod":
+		return "module app\n\ngo 1.22\n"
+	case "cargo.toml":
+		return "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
+	case "package.json":
+		return "{\n  \"name\": \"app\",\n  \"version\": \"1.0.0\"\n}\n"
+	case "gemfile":
+		return "# frozen_string_literal: true\nsource \"https://rubygems.org\"\n"
+	case "rebar.config":
+		return "{erl_opts, [debug_info]}.\n"
+	case "dune-project":
+		return "(lang dune 3.0)\n"
+	case "pyproject.toml":
+		return "[project]\nname = \"app\"\nversion = \"0.1.0\"\n"
+	case "cmakelists.txt":
+		return "cmake_minimum_required(VERSION 3.10)\nproject(app C)\n"
+	}
 
 	switch ext {
 	case ".py", ".sh", ".yaml", ".yml", ".toml", ".ini", ".conf", ".cfg":

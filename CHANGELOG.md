@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.119.0] - 2026-10-18
+
+### Added
+- **Manifest-Aware Pre-Seeded Stubs in `tester_first` Mode**:
+  - Enhanced `generateStubContent` in `pkg/services/orchestrator_stub.go` to recognize project build manifests (`go.mod`, `Cargo.toml`, `package.json`, `Gemfile`, `rebar.config`, `dune-project`, `pyproject.toml`, `CMakeLists.txt`) and generate syntactically valid minimal declarations rather than dummy comment stubs, preventing Turn 1 compiler/toolchain failures during test discovery.
+  - Added unit test cases in `pkg/services/orchestrator_stub_test.go` asserting manifest structure conformance.
+- **Git Symbolic HEAD & Base Branch Self-Healing Auto-Discovery**:
+  - Enhanced `ResolveBaseBranch` in `pkg/services/vcs_branch_resolver.go` to verify whether the configured base branch exists locally or on remote (`origin/<branch>`). If the branch is absent (e.g. brownfield repositories initialized with `master` while config specifies `main`), the resolver automatically queries symbolic HEAD (`refs/remotes/origin/HEAD`), `master`, and `main` before failing.
+  - Added unit tests in `pkg/services/vcs_branch_resolver_test.go` verifying fallback resolution.
+- **Toolchain Preflight Regression Test Suite**:
+  - Authored `cmd/noctifab/cli/toolchain_preflight_test.go` asserting that hyphenated application executables (`echo-cli`, `todo-cli`, `wc-cli`) declared in user story `AllowedExecutables` are never falsely identified as missing host toolchains, while actual compilers and emulators (`gcc`, `valgrind`, `qemu-arm`, cross-compilers) are correctly detected.
+
 ## [0.118.0] - 2026-10-18
 
 ### Added
