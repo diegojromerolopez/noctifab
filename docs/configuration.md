@@ -3,7 +3,7 @@
 `noctifab` is configured via a YAML file located at `.noctifab/config.yaml` in your project workspace. This document provides a complete reference for all available configuration sections and settings.
 
 > [!TIP]
-> For best practices, concurrency tuning (OCC), rate-limit resilience, and language-specific templates, see the [Configuration Guidelines & Best Practices](configuration_guidelines.md).
+> For best practices, concurrency tuning (OCC), rate-limit resilience, and language-specific templates, see the [Configuration Guidelines & Best Practices](configuration_guidelines.md) and [Language Sandbox Templates](templates.md).
 
 ---
 

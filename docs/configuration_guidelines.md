@@ -284,6 +284,8 @@ noctifab templates init rust --global
 noctifab init my-project --template python
 ```
 
+> For full details, custom language guides (like Zig or Elixir), and the complete built-in catalog, see the dedicated [Language Sandbox Templates](templates.md) guide.
+
 ### Recommended Sandbox Configurations by Language
 
 #### Go
