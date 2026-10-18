@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.120.0] - 2026-10-18
+
+### Added
+- **Inter-Task Symbol Desynchronization & Sibling Worktree Cherry-Pick (P0)**:
+  - Implemented preflight dependency linkage (`AutoLinkSymbolDependencies` in `pkg/services/worktree_symbol_sync.go`) to automatically map missing symbol dependencies between parallel tasks.
+  - Implemented `SynchronizeMissingSymbolFromSiblings` to detect compiler diagnostics (`CS0103`, `undefined:`, `cannot find`, `NameError`, undeclared identifiers) and cherry-pick export definitions across sibling worktree branches.
+- **Shared Root File & Manifest Rebase Conflict Auto-Resolution (P1)**:
+  - Implemented `AutoResolveRebaseConflicts` in `pkg/services/rebase_conflict_resolver.go` to syntactically union dependencies and exports for `Cargo.toml`, `go.mod`, `package.json`, `.csproj`, `lib.rs`, `index.ts`, and `__init__.py` during worktree rebases.
+- **Universal Test Output Parsing & Anti-Spoofing Calibration (P1)**:
+  - Enhanced `test_discovery_preflight.go` with multi-language test output patterns covering TAP (`1..N`, `ok`), RSpec, .NET test runner (`Passed: X`), Erlang EUnit, and C test harnesses (`ALL PASS`, `minunit`).
+- **Parallel Story Expansion TPM Rate Limiting (P2)**:
+  - Implemented `TPMRateLimiter` in `pkg/services/product_manager_tpm.go` to inspect estimated token burst sizes against provider TPM limits and throttle subsequent HTTP requests, preventing 429 provider chokes.
+- **Downstream Task Deadlock Unblocking on Upstream Planning Rejection (P0)**:
+  - Implemented `UnblockIndependentTasks` in `pkg/services/deadlock_unblocker.go` to unblock independent cross-story tasks with non-colliding target files when an upstream story or task is rejected.
+  - Added structured rejection error context into planner retry prompts in `pkg/services/orchestrator_server.go`.
+- **Adaptive Loop Ceiling for Active Remediations (P1)**:
+  - Implemented `AdaptiveTurnManager` in `pkg/services/adaptive_turn_manager.go` enforcing a guaranteed minimum of 2 turns and dynamically extending turns (+1) when consecutive test runs demonstrate decreasing failure counts.
+- **Host PATH & Version Manager Preflight (P1)**:
+  - Implemented `PreflightVersionManagers` in `pkg/services/version_manager_preflight.go` to scan and prepend user version manager shims (`.asdf`, `.cargo`, `.nvm`, `.mise`, `.pyenv`, `.rbenv`) to `$PATH`.
+- **Automatic Sandbox Virtualenv Dependency Pre-Installation (P1)**:
+  - Implemented `EnsureVenvTestRunner` in `pkg/services/version_manager_preflight.go` to inspect target project virtual environments and pre-install missing test runners (`pytest`, etc.) prior to task execution.
+- **Monorepo Greenfield Spike Prototyping Bypass (P2)**:
+  - Implemented `IsMonorepoSpec` in `pkg/services/spike_monorepo.go` to detect fullstack and monorepo architectures, bypassing monolithic spike prototypes in favor of streaming user stories.
+- **Missing Makefile Target Preflight & Auto-Bypass (P2)**:
+  - Implemented `ParseMakefileTargets` and `InspectMakefile` in `pkg/services/makefile_preflight.go` to preflight target recipes, auto-bypassing missing optional targets (`make lint`) and mapping missing test recipes to native toolchain runners.
+
 ## [0.119.0] - 2026-10-18
 
 ### Added

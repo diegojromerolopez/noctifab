@@ -52,6 +52,12 @@ func ExecuteSpike(
 		return false, nil
 	}
 
+	// Greenfield monorepo check: fullstack monorepos (client + server) routinely timeout in a single 180s spike turn
+	if IsMonorepoSpec(string(specBytes)) {
+		fmt.Printf("ℹ [Spike] Monorepo/Full-Stack architecture detected in specification; bypassing monolithic spike in favor of modular Product Manager user stories.\n")
+		return false, nil
+	}
+
 	fmt.Printf("🚀 [Spike] Greenfield workspace detected. Executing Spike Phase to build initial walking skeleton...\n")
 	spikeStart := time.Now()
 

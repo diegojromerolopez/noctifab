@@ -126,8 +126,10 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 	if len(requiredBinaries) > 0 {
 		var missing []string
 		var available []string
+		vmResolver := services.NewVersionManagerResolver()
 		for _, bin := range requiredBinaries {
-			if _, err := exec.LookPath(bin); err == nil {
+			_ = services.EnsureVenvTestRunner(pDir, bin)
+			if _, err := vmResolver.ResolveBinary(bin); err == nil {
 				available = append(available, bin)
 			} else {
 				missing = append(missing, bin)
@@ -148,8 +150,10 @@ func runPreFlightChecks(cfg *config.Config, projectDir ...string) error {
 	if len(requiredToolchains) > 0 {
 		var missingToolchains []string
 		var availableToolchains []string
+		vmResolver := services.NewVersionManagerResolver()
 		for _, bin := range requiredToolchains {
-			if _, err := exec.LookPath(bin); err == nil {
+			_ = services.EnsureVenvTestRunner(pDir, bin)
+			if _, err := vmResolver.ResolveBinary(bin); err == nil {
 				availableToolchains = append(availableToolchains, bin)
 			} else {
 				missingToolchains = append(missingToolchains, bin)

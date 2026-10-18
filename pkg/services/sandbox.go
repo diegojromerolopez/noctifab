@@ -269,6 +269,17 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		cmdStr = DetectDefaultTestCommand(projectPath)
 	}
 
+	// Preflight Makefile target existence to prevent missing-rule fatal errors
+	if strings.HasPrefix(strings.TrimSpace(cmdStr), "make ") || strings.TrimSpace(cmdStr) == "make" {
+		inspector := NewMakefileInspector()
+		if safeCmd, err := inspector.ResolveSafeMakeCommand(projectPath, cmdStr); err == nil {
+			if safeCmd == "" {
+				return "", nil
+			}
+			cmdStr = safeCmd
+		}
+	}
+
 	// When the command contains shell operators (&&, ||, ;, |, etc.) we must
 	// dispatch through `sh -c` so the operators are interpreted by a shell
 	// rather than passed as literal arguments to the first binary. For

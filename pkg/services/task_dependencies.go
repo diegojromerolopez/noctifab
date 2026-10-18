@@ -56,6 +56,7 @@ func ValidatePlannedTasks(tasks []domain.Task, projectPath ...string) error {
 		}
 		task.DependsOn = cleanDeps
 	}
+	AutoLinkSymbolDependencies(tasks)
 	resolved, err := ResolveTaskDependencies(tasks, path)
 	if err != nil {
 		return fmt.Errorf("planning failed: %w", err)

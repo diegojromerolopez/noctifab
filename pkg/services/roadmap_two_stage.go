@@ -175,10 +175,13 @@ func ExpandRoadmapStoriesParallelStreaming(
 	results := make([]*RawStoryItem, len(outlines))
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
+	tpmLimiter := NewTPMRateLimiter(DefaultTPMLimit)
+	promptTokenEstimate := tpmLimiter.EstimateTokens(specContent) + 2000
 
 	for _, entry := range toExpand {
 		wg.Add(1)
 		sem <- struct{}{}
+		_ = tpmLimiter.WaitIfBudgetExceeded(ctx, promptTokenEstimate)
 		go func(idx int, target StoryOutlineItem) {
 			defer func() {
 				<-sem

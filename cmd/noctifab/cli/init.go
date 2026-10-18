@@ -54,9 +54,9 @@ var initCmd = &cobra.Command{
 
 func init() {
 	initCmd.Flags().StringVar(&ProfileFlag, "profile", "", "Pre-configured LLM profile (e.g. ollama-qwen, ollama-deepseek, vllm-local)")
-	initCmd.Flags().StringVarP(&TemplateFlag, "template", "t", "", "Language sandbox template (e.g. python, rust, go, typescript, c, ruby, csharp, java, erlang, ocaml)")
+	initCmd.Flags().StringVar(&TemplateFlag, "template", "", "Language sandbox template (e.g. python, rust, go, typescript, c, ruby, csharp, java, erlang, ocaml)")
 	initCmd.Flags().StringVar(&initSpecPrompt, "spec", "", "Initial prompt to bootstrap and interactively refine SPEC.md")
-	initCmd.Flags().BoolVarP(&initInteractive, "interactive", "i", false, "Launch interactive spec generator wizard upon initialization")
+	initCmd.Flags().BoolVar(&initInteractive, "interactive", false, "Launch interactive spec generator wizard upon initialization")
 }
 
 // EnsureWorkspaceInitialized ensures .noctifab/ directory, config.yaml, secrets.yaml, database, and SPEC.md exist.

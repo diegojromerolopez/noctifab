@@ -128,7 +128,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	o.registerAgentStart(ctx, "generator", task.ID)
 
 	currentPrompt := genPrompt
-	maxTurns := iterationsOrDefault(o.cfg.GeneratorsIterations)
+	maxTurns := NewAdaptiveTurnManager().EnforceMinTurns(iterationsOrDefault(o.cfg.GeneratorsIterations))
 	if action == "surgical_repair" {
 		maxTurns = 2
 	} else if (action == "single_pass" || action == "single_pass_fix") && maxTurns > 8 {
@@ -379,14 +379,29 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					runTestsCalled = true
 					hasNoop = true
 				} else {
-					fmt.Printf("ℹ [Speculative Fast Validation] Task %s: tests failing after mutation: %v\n", task.ID, execErr)
-					failMsg := fmt.Sprintf("[Speculative Fast Validation] Tests failed after file mutation:\n%s", capText(summarizeFailureLog(out), 3000))
-					if isLoop, _, diag := errorFingerprinter.RecordAndCheckLoop(out); isLoop {
-						fmt.Printf("⚠️  [Deterministic Anti-Loop Gate] Task %s: %s\n", task.ID, diag)
-						failMsg += fmt.Sprintf("\n\n⚠️ [DETERMINISTIC ANTI-LOOP GATE] %s. Your last modification reproduced the exact same failure. Repeating this edit or tweaking comments/whitespace is strictly forbidden. You MUST alter your implementation approach or write an executable diagnostic probe.", diag)
+					if sym := ExtractUnresolvedSymbol(out); sym != "" {
+						if SynchronizeMissingSymbolFromSiblings(genCtx, state.ProjectPath, ResolveRootProjectDir(state.ProjectPath), sym) {
+							if retryOut, retryErr := runTestsTool.Execute(genCtx, state, map[string]any{}); retryErr == nil {
+								out = retryOut
+								execErr = nil
+								fmt.Printf("🚀 [Speculative Fast Validation] Task %s: tests passed after synchronizing symbol %q! Fast-exiting turn loop.\n", task.ID, sym)
+								turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("[Speculative Fast Validation] Tests PASSED after resolving missing symbol %s from sibling worktree:\n%s", sym, capText(out, 2000)))
+								circuitBreaker.RecordTestResult(true)
+								runTestsCalled = true
+								hasNoop = true
+							}
+						}
 					}
-					turnToolOutputs = append(turnToolOutputs, failMsg)
-					circuitBreaker.RecordTestResult(false)
+					if execErr != nil {
+						fmt.Printf("ℹ [Speculative Fast Validation] Task %s: tests failing after mutation: %v\n", task.ID, execErr)
+						failMsg := fmt.Sprintf("[Speculative Fast Validation] Tests failed after file mutation:\n%s", capText(summarizeFailureLog(out), 3000))
+						if isLoop, _, diag := errorFingerprinter.RecordAndCheckLoop(out); isLoop {
+							fmt.Printf("⚠️  [Deterministic Anti-Loop Gate] Task %s: %s\n", task.ID, diag)
+							failMsg += fmt.Sprintf("\n\n⚠️ [DETERMINISTIC ANTI-LOOP GATE] %s. Your last modification reproduced the exact same failure. Repeating this edit or tweaking comments/whitespace is strictly forbidden. You MUST alter your implementation approach or write an executable diagnostic probe.", diag)
+						}
+						turnToolOutputs = append(turnToolOutputs, failMsg)
+						circuitBreaker.RecordTestResult(false)
+					}
 				}
 			}
 		}

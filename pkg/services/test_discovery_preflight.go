@@ -230,11 +230,18 @@ func IsTestFile(relPath string) bool {
 }
 
 var (
-	pyRanTestsRegex = regexp.MustCompile(`(?i)ran\s+(\d+)\s+test`)
-	cargoTestsRegex = regexp.MustCompile(`(?i)test\s+result:\s+ok\.\s+(\d+)\s+passed`)
-	jestTestsRegex  = regexp.MustCompile(`(?i)tests:\s+(\d+)\s+passed`)
-	tapTestsRegex   = regexp.MustCompile(`(?i)(?:# tests|# pass)\s+(\d+)`)
-	goRanTestsRegex = regexp.MustCompile(`(?m)^---\s+(?:PASS|FAIL):\s+\S+`)
+	pyRanTestsRegex   = regexp.MustCompile(`(?i)ran\s+(\d+)\s+test`)
+	cargoTestsRegex   = regexp.MustCompile(`(?i)test\s+result:\s+ok\.\s+(\d+)\s+passed`)
+	jestTestsRegex    = regexp.MustCompile(`(?i)tests:\s+(\d+)\s+passed`)
+	tapTestsRegex     = regexp.MustCompile(`(?i)(?:# tests|# pass)\s+(\d+)`)
+	tapPlanRegex      = regexp.MustCompile(`(?m)^1\.\.(\d+)`)
+	tapOkRegex        = regexp.MustCompile(`(?m)^ok\s+\d+`)
+	rspecTestsRegex   = regexp.MustCompile(`(?i)(\d+)\s+examples?,\s+0\s+failures?`)
+	dotnetTestsRegex  = regexp.MustCompile(`(?i)passed:\s*(\d+)`)
+	erlangEunitRegex  = regexp.MustCompile(`(?i)(?:all\s+(\d+)\s+tests?\s+passed|(\d+)\s+tests?,\s+0\s+failures?)`)
+	cGenericPassRegex = regexp.MustCompile(`(?i)(?:ALL\s+PASS|ALL\s+TESTS\s+PASSED|(\d+)\s+tests?\s+passed)`)
+	minunitRegex      = regexp.MustCompile(`(?i)(?:tests\s+run:\s*(\d+)|(\d+)\s+assertions)`)
+	goRanTestsRegex   = regexp.MustCompile(`(?m)^---\s+(?:PASS|FAIL):\s+\S+`)
 )
 
 // EvaluateE2ETestExecution inspects runner output to detect zero-test runs or empty outputs
@@ -351,6 +358,45 @@ func extractExecutedTestCount(out string) int {
 		if c, err := strconv.Atoi(m[1]); err == nil {
 			return c
 		}
+	}
+	if m := tapPlanRegex.FindStringSubmatch(out); len(m) > 1 {
+		if c, err := strconv.Atoi(m[1]); err == nil {
+			return c
+		}
+	}
+	if tapMatches := tapOkRegex.FindAllString(out, -1); len(tapMatches) > 0 {
+		return len(tapMatches)
+	}
+	if m := rspecTestsRegex.FindStringSubmatch(out); len(m) > 1 {
+		if c, err := strconv.Atoi(m[1]); err == nil {
+			return c
+		}
+	}
+	if m := dotnetTestsRegex.FindStringSubmatch(out); len(m) > 1 {
+		if c, err := strconv.Atoi(m[1]); err == nil {
+			return c
+		}
+	}
+	if m := erlangEunitRegex.FindStringSubmatch(out); len(m) > 1 {
+		for _, v := range m[1:] {
+			if v != "" {
+				if c, err := strconv.Atoi(v); err == nil {
+					return c
+				}
+			}
+		}
+	}
+	if m := minunitRegex.FindStringSubmatch(out); len(m) > 1 {
+		for _, v := range m[1:] {
+			if v != "" {
+				if c, err := strconv.Atoi(v); err == nil {
+					return c
+				}
+			}
+		}
+	}
+	if cGenericPassRegex.MatchString(out) {
+		return 1
 	}
 	if goMatches := goRanTestsRegex.FindAllString(out, -1); len(goMatches) > 0 {
 		return len(goMatches)

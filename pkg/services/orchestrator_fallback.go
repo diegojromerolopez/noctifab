@@ -46,7 +46,8 @@ func (o *Orchestrator) RunFallbackAgent(
 		))
 	defer span.End()
 
-	maxTurns := fbCfg.MaxTurns
+	turnMgr := NewAdaptiveTurnManager()
+	maxTurns := turnMgr.EnforceMinTurns(fbCfg.MaxTurns)
 	if maxTurns <= 0 {
 		maxTurns = 5
 	}
