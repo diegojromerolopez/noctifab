@@ -51,6 +51,10 @@ func TestGenerateStubContent(t *testing.T) {
 		{"src/header.h", "#ifndef HEADER_STUB_H"},
 		{"src/main.c", "#include \"main.h\""},
 		{"src/app.ts", "export {};"},
+		{"src/store.erl", "-module(store)."},
+		{"src/catalog.ml", "(* Stub implementation for catalog.ml *)"},
+		{"src/chess.cs", "public class chess"},
+		{"src/main/java/com/example/App.java", "package com.example;"},
 	}
 
 	for _, tt := range tests {

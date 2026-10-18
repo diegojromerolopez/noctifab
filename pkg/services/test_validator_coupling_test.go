@@ -46,6 +46,26 @@ print("e2e passed")
 		assert.Empty(t, FormatTestCouplingViolations(violations))
 	})
 
+	t.Run("when unit test mentions string literals like target names, returns no violations", func(t *testing.T) {
+		tempDir := t.TempDir()
+		unitDir := filepath.Join(tempDir, "tests", "unit")
+		require.NoError(t, os.MkdirAll(unitDir, 0755))
+
+		require.NoError(t, os.WriteFile(filepath.Join(unitDir, "test_makefile.py"), []byte(`
+import unittest
+
+class TestMakefile(unittest.TestCase):
+    def test_targets(self):
+        targets = ["test", "e2e", "install", "run", "lint", "clean"]
+        self.assertIn("e2e", targets)
+        mode = "unit"
+        self.assertEqual(mode, "unit")
+`), 0644))
+
+		violations := DetectTestCouplingViolations(tempDir)
+		assert.Empty(t, violations)
+	})
+
 	t.Run("when unit test imports from tests.e2e, flags cross-layer coupling", func(t *testing.T) {
 		tempDir := t.TempDir()
 		unitDir := filepath.Join(tempDir, "tests", "unit")

@@ -56,6 +56,11 @@ def log_step(step: str, msg: str):
     print(f"[{ts}] {Colors.BOLD}{Colors.BLUE}[{step}]{Colors.RESET} {msg}", flush=True)
 
 
+def log_info(msg: str):
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"[{ts}] {Colors.BLUE}ℹ {msg}{Colors.RESET}", flush=True)
+
+
 def log_success(msg: str):
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"[{ts}] {Colors.BOLD}{Colors.GREEN}✔ {msg}{Colors.RESET}", flush=True)
@@ -118,7 +123,7 @@ def harvest_sqlite_telemetry(project_dir: str) -> Dict[str, Any]:
 
         # 1. State Table
         try:
-            cur.execute("SELECT id, project_path, total_tokens_used, build_status, story_status, total_input_tokens, total_output_tokens FROM state ORDER BY rowid DESC LIMIT 1")
+            cur.execute("SELECT id, project_path, total_tokens_used, build_status, story_status, total_input_tokens, total_output_tokens FROM state ORDER BY total_tokens_used DESC, rowid DESC LIMIT 1")
             row = cur.fetchone()
             if row:
                 telemetry["state"] = dict(row)
@@ -561,8 +566,12 @@ def clean_project_workspace(project_dir: str, baseline_commit: Optional[str] = N
         uv_path = shutil.which("uv")
         if uv_path:
             subprocess.run([uv_path, "venv", "--seed", ".venv"], cwd=project_dir, capture_output=True)
+            subprocess.run([uv_path, "pip", "install", "pytest"], cwd=project_dir, capture_output=True)
         else:
             subprocess.run(["python3", "-m", "venv", ".venv"], cwd=project_dir, capture_output=True)
+            pip_bin = os.path.join(project_dir, ".venv", "bin", "pip")
+            if os.path.exists(pip_bin):
+                subprocess.run([pip_bin, "install", "pytest"], cwd=project_dir, capture_output=True)
 
     log_success(f"Workspace '{project_dir}' cleanly reset to baseline.")
 

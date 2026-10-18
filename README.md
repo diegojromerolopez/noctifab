@@ -941,28 +941,30 @@ To optimize validation container runs for near-instantaneous development feedbac
 
 ### Available Validation Projects
 
-| Project | Language / Stack | Spec / User Story | What is Checked |
-| :--- | :--- | :--- | :--- |
-| **`echo`** | Go CLI | `SPEC.md` | `cmd/echo/main.go` created/modified and test suite passes |
-| **`todo-cli`** | Go CLI | `roadmap/user-stories/US-001.md` | `cmd/todo/main.go` (or `main.go`) created/modified and test suite passes |
-| **`wc`** | Rust CLI | `roadmap/user-stories/US-002.md` | `Cargo.toml` + `src/main.rs` created/modified and test suite passes |
-| **`calculator`** | Ruby CLI | `SPEC.md` | `calculator.rb` (or under `lib/`) created/modified and test suite passes |
-| **`fortune`** | C + SQLite | `SPEC.md` | `main.c` (or `Makefile`) created/modified and test suite passes |
-| **`t4`** | C17 HTTP Server | `SPEC.md` | `Makefile` + `docker-compose.yml` + `src/t4.c` created/modified and test suite passes |
-| **`pyedis`** | Python 3.14 (asyncio + RESP2/3) | `SPEC.md` | `src/main.py` (or `app/main.py`) + `pyproject.toml` created/modified and `unittest` passes |
-| **`notebook`** | TypeScript + Fastify + PostgreSQL | `SPEC.md` | `src/index.ts` + `package.json` + `docker-compose.yml` created/modified and test suite passes |
-| **`frontpunch`** | Python + Valkey | `roadmap/user-stories/US-001.md` | `frontpunch/worker.py` created/modified and test suite passes |
-| **`djanban`** | Python 3.12 + Django 5.x | `SPEC.md` | Modernized Django models, views, and migrations created and test suite passes |
-| **`stricc`** | Rust + LLVM 18 | `SPEC.md` | Safe C compiler with LLVM 18 backend created/modified and test suite passes |
-| **`searchthedocs`** | Python 3.12 + FastAPI + Redis | `SPEC.md` | Documentation scraper + RAG vector search API created and test suite passes |
-| **`auth-vault`** | Go 1.22+ | `SPEC.md` | OAuth2/OIDC Zero-Trust Authorization Server + PKI Vault created and test suite passes |
-| **`buffonstream`** | Go 1.22+ (gRPC / Protobuf) | `SPEC.md` | Protobuf-Native Storage Engine & Real-Time Bi-Directional Streaming passes |
-| **`jpacioli`** | Java 21 + Spring Boot 3.3+ + PostgreSQL | `SPEC.md` | Full Event Sourcing (ES) + CQRS Double-Entry Financial Ledger + JWT/RBAC passes |
-| **`ocalogue`** | OCaml 5.x + Dune | `SPEC.md` | Datalog Deductive Logic Engine + Semi-Naive Fixpoint + Official Test Suite passes |
-| **`ninline`** | Python 3.14 (CLI + Game Engine) | `SPEC.md` | Generalized (M,N,K)-Game + Minimax AI with Alpha-Beta pruning passes |
-| **`actodis`** | Erlang/OTP 27 + Rebar3 | `SPEC.md` | Actor-based Redis RESP Key-Value Store + AOF persistence passes |
-| **`thredis`** | .NET 9 (C# 13) | `SPEC.md` | Thread-based Redis RESP Key-Value Store + Pipelines + Channels passes |
-| **`dotchess`** | .NET 9 (C# 13) | `SPEC.md` | Headless UCI Chess Engine + Stockfish Canonical Perft Validation passes |
+All 20 validation projects have been initialized on GitHub, with autonomous implementations produced by Noctifab published to their respective [`feat/noctifab-generated`](#) branches:
+
+| Project | Language / Stack | Generated Branch | Description & Public Verification |
+| :--- | :--- | :---: | :--- |
+| [**`echo`**](https://github.com/diegojromerolopez/echo) | Go 1.24 CLI | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/echo/tree/feat/noctifab-generated) | Single-process CLI; public contracts & anti-spoofing tests |
+| [**`todo-cli`**](https://github.com/diegojromerolopez/todo-cli) | Go 1.24 + JSON DB | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/todo-cli/tree/feat/noctifab-generated) | Subcommand CLI with persistent JSON repository & multi-story DAG scheduling |
+| [**`wc`**](https://github.com/diegojromerolopez/wc) | Rust 1.88 CLI | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/wc/tree/feat/noctifab-generated) | Unix `wc` streaming clone; `#![deny(unsafe_code)]` & strict byte counting |
+| [**`calculator`**](https://github.com/diegojromerolopez/calculator) | Ruby 3.4 CLI + RSpec | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/calculator/tree/feat/noctifab-generated) | Dynamic CLI & REPL calculator with RSpec suite and RuboCop hygiene |
+| [**`fortune`**](https://github.com/diegojromerolopez/fortune) | C17 + SQLite3 | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/fortune/tree/feat/noctifab-generated) | ANSI C17 Unix `fortune` clone with embedded SQLite3 C API repository |
+| [**`t4`**](https://github.com/diegojromerolopez/t4) | C17 HTTP Server | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/t4/tree/feat/noctifab-generated) | Raw POSIX socket HTTP daemon & S3-style object storage service |
+| [**`pyedis`**](https://github.com/diegojromerolopez/pyedis) | Python 3.14 (asyncio) | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/pyedis/tree/feat/noctifab-generated) | Async Redis RESP2/RESP3 in-memory database server |
+| [**`notebook`**](https://github.com/diegojromerolopez/notebook) | TypeScript 5.x + Fastify | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/notebook/tree/feat/noctifab-generated) | Full-stack SPA + Fastify REST API + PostgreSQL relational migrations |
+| [**`frontpunch`**](https://github.com/diegojromerolopez/frontpunch) | Python + Valkey | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/frontpunch/tree/feat/noctifab-generated) | Background worker and queue processor for distributed job queues |
+| [**`djanban`**](https://github.com/diegojromerolopez/djanban) | Python 3.13 / Django | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/djanban/tree/feat/noctifab-generated) | Brownfield Kanban analytics web app with Trello API synchronization |
+| [**`stricc`**](https://github.com/diegojromerolopez/stricc) | Rust 1.88 + LLVM 18 | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/stricc/tree/feat/noctifab-generated) | Brownfield safe C compiler with deterministic AST validation and LLVM lowering |
+| [**`searchthedocs`**](https://github.com/diegojromerolopez/searchthedocs) | Python 3.12 + FastAPI | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/searchthedocs/tree/feat/noctifab-generated) | Async markdown doc scraper and vector similarity RAG search engine |
+| [**`auth-vault`**](https://github.com/diegojromerolopez/auth-vault) | Go 1.24 + PKI / OIDC | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/auth-vault/tree/feat/noctifab-generated) | Zero-trust OAuth2/OIDC authorization server & PKI key rotation vault |
+| [**`buffonstream`**](https://github.com/diegojromerolopez/buffonstream) | Go 1.24 + Protobuf / gRPC | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/buffonstream/tree/feat/noctifab-generated) | Protobuf-native append-only streaming storage engine with gRPC endpoints |
+| [**`jpacioli`**](https://github.com/diegojromerolopez/jpacioli) | Java 21 + Spring Boot | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/jpacioli/tree/feat/noctifab-generated) | Enterprise double-entry financial ledger with Event Sourcing & CQRS |
+| [**`ocalogue`**](https://github.com/diegojromerolopez/ocalogue) | OCaml 5.x + Dune | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/ocalogue/tree/feat/noctifab-generated) | Strongly-typed functional catalog domain with algebraic data types & Dune |
+| [**`ninline`**](https://github.com/diegojromerolopez/ninline) | Python 3.14 + Minimax AI | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/ninline/tree/feat/noctifab-generated) | Generalized (M,N,K)-Game engine with ray-casting win detection and Minimax AI |
+| [**`actodis`**](https://github.com/diegojromerolopez/actodis) | Erlang/OTP 29 + Rebar3 | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/actodis/tree/feat/noctifab-generated) | Actor-based distributed Redis RESP store with GenServer & supervision trees |
+| [**`thredis`**](https://github.com/diegojromerolopez/thredis) | C# / .NET 9 | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/thredis/tree/feat/noctifab-generated) | Thread-safe concurrent Redis clone with async socket pipelines |
+| [**`dotchess`**](https://github.com/diegojromerolopez/dotchess) | C# / .NET 9 | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/dotchess/tree/feat/noctifab-generated) | UCI chess engine with bitboard move generation (20/20 unit tests passed) |
 
 The `wc` project replicates the UNIX `wc` utility in Rust, enforcing SOLID/DDD architecture, `#![deny(unsafe_code)]`, and $O(1)$ streaming memory usage.
 

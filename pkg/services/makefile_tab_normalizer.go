@@ -134,11 +134,7 @@ func StandardizeMakefile(content string) string {
 		appends = append(appends, "build: all")
 		targets["build"] = true
 	} else if !targets["all"] && !targets["build"] {
-		if targets["test"] {
-			appends = append(appends, "all: build\n\nbuild: test")
-		} else {
-			appends = append(appends, "all: build\n\nbuild:\n\t@echo \"Build complete.\"")
-		}
+		appends = append(appends, "all: build\n\nbuild:\n\t@echo \"Build complete.\"")
 		targets["all"] = true
 		targets["build"] = true
 	}
@@ -149,7 +145,7 @@ func StandardizeMakefile(content string) string {
 	}
 
 	if !targets["clean"] {
-		appends = append(appends, "clean:\n\t@rm -rf build dist *.pyc __pycache__ .pytest_cache 2>/dev/null || true")
+		appends = append(appends, "clean:\n\t@rm -rf build dist bin *.o target 2>/dev/null || true")
 		targets["clean"] = true
 	}
 

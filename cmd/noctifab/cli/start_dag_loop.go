@@ -37,6 +37,10 @@ type StoryLoopOptions struct {
 func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[string]error, error) {
 	storyOutcomes := make(map[string]error)
 	for _, sf := range opts.StoryFiles {
+		base := filepath.Base(sf)
+		if strings.EqualFold(base, "SPEC.md") || strings.EqualFold(base, "SPEC.ste.md") {
+			continue
+		}
 		storyOutcomes[sf] = errors.New("pending")
 	}
 
@@ -64,6 +68,10 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 
 		var activeStoryFiles []string
 		for _, sf := range opts.StoryFiles {
+			base := filepath.Base(sf)
+			if strings.EqualFold(base, "SPEC.md") || strings.EqualFold(base, "SPEC.ste.md") {
+				continue
+			}
 			if _, err := os.Stat(sf); err == nil {
 				activeStoryFiles = append(activeStoryFiles, sf)
 			} else {
@@ -139,7 +147,8 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 			opts.StreamingScheduler = nil
 			if discovered := discoverStoryFiles(opts.TargetDir); len(discovered) > 0 {
 				for _, sf := range opts.StoryFiles {
-					if strings.EqualFold(filepath.Base(sf), "SPEC.md") {
+					base := filepath.Base(sf)
+					if strings.EqualFold(base, "SPEC.md") || strings.EqualFold(base, "SPEC.ste.md") {
 						delete(storyOutcomes, sf)
 					}
 				}

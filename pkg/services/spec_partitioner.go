@@ -344,12 +344,18 @@ func BuildBasicAndFeatureSpec(projectPath string, domainSliceOrTitle string, fal
 	}
 
 	if matchedFile == "" {
+		if fallbackSpec != "" {
+			return fallbackSpec
+		}
 		return basicContext
 	}
 
 	slicePath := filepath.Join(specsDir, matchedFile)
 	sliceBytes, err := os.ReadFile(slicePath)
 	if err != nil || len(sliceBytes) == 0 {
+		if fallbackSpec != "" {
+			return fallbackSpec
+		}
 		return basicContext
 	}
 

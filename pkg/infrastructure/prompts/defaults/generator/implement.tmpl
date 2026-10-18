@@ -24,6 +24,7 @@ ANTI-STALLING MANDATE:
 - Boundary between production code and test code:
   * Production code must contain complete business logic. No mock shims in production code.
   * Generators must author unit tests in 'tests/unit/' to verify edge cases and boundary conditions.
+  * HERMETIC TEST ISOLATION: Tests in 'tests/unit/' must be 100% in-memory and hermetic. Unit tests MUST NEVER execute E2E test scripts (such as 'tests/e2e/run_tests.sh', 'docker compose') or dial external network ports/daemons as a subprocess. E2E tests belong strictly under 'tests/e2e/'.
 - Unit testing guidelines:
   * Instantiate real collaborating domain objects with real state.
   * Do not mock internal domain classes. Use test doubles only at external boundaries via dependency injection.

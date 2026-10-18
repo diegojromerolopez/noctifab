@@ -85,6 +85,31 @@ func generateStubContent(filePath string) string {
 		return fmt.Sprintf("// Stub implementation for %s\nexport {};\n", baseName)
 	case ".rs":
 		return fmt.Sprintf("// Stub implementation for %s\n", baseName)
+	case ".erl":
+		return fmt.Sprintf("%% Stub implementation for %s\n-module(%s).\n-compile(export_all).\n", baseName, nameWithoutExt)
+	case ".hrl":
+		return fmt.Sprintf("%% Stub header for %s\n", baseName)
+	case ".ml", ".mli":
+		return fmt.Sprintf("(* Stub implementation for %s *)\n", baseName)
+	case ".rb":
+		return fmt.Sprintf("# Stub implementation for %s\n", baseName)
+	case ".sql":
+		return fmt.Sprintf("-- Stub implementation for %s\n", baseName)
+	case ".cs":
+		return fmt.Sprintf("// Stub implementation for %s\nnamespace App;\npublic class %s {}\n", baseName, nameWithoutExt)
+	case ".java":
+		pkg := "app"
+		if strings.Contains(filePath, "src/main/java/") {
+			rel := filePath[strings.Index(filePath, "src/main/java/")+len("src/main/java/"):]
+			pkg = strings.ReplaceAll(filepath.Dir(rel), "/", ".")
+		} else if strings.Contains(filePath, "src/test/java/") {
+			rel := filePath[strings.Index(filePath, "src/test/java/")+len("src/test/java/"):]
+			pkg = strings.ReplaceAll(filepath.Dir(rel), "/", ".")
+		}
+		if pkg != "" && pkg != "." {
+			return fmt.Sprintf("package %s;\n\n// Stub implementation for %s\npublic class %s {}\n", pkg, baseName, nameWithoutExt)
+		}
+		return fmt.Sprintf("// Stub implementation for %s\npublic class %s {}\n", baseName, nameWithoutExt)
 	default:
 		return fmt.Sprintf("// Stub implementation for %s\n", baseName)
 	}

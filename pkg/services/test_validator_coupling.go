@@ -41,19 +41,22 @@ var (
 		"unit": {
 			regexp.MustCompile(`(?i)(?:from|import)\s+tests?\.unit\b`),
 			regexp.MustCompile(`(?i)(?:from|import)\s+\.+unit\b`),
-			regexp.MustCompile(`(?i)['"\x60](?:\.\./|\./|[a-zA-Z0-9_\-\./]+/)?(?:tests?/)?unit(?:/|['"\x60])`),
+			regexp.MustCompile(`(?i)['"\x60](?:\.\./|\./|[a-zA-Z0-9_\-\./]+/)?tests?/unit(?:/|['"\x60])`),
+			regexp.MustCompile(`(?i)['"\x60](?:\.\./|\./)unit/`),
 			regexp.MustCompile(`(?i)tests?::unit\b`),
 		},
 		"integration": {
 			regexp.MustCompile(`(?i)(?:from|import)\s+tests?\.integration\b`),
 			regexp.MustCompile(`(?i)(?:from|import)\s+\.+integration\b`),
-			regexp.MustCompile(`(?i)['"\x60](?:\.\./|\./|[a-zA-Z0-9_\-\./]+/)?(?:tests?/)?integration(?:/|['"\x60])`),
+			regexp.MustCompile(`(?i)['"\x60](?:\.\./|\./|[a-zA-Z0-9_\-\./]+/)?tests?/integration(?:/|['"\x60])`),
+			regexp.MustCompile(`(?i)['"\x60](?:\.\./|\./)integration/`),
 			regexp.MustCompile(`(?i)tests?::integration\b`),
 		},
 		"e2e": {
 			regexp.MustCompile(`(?i)(?:from|import)\s+tests?\.e2e\b`),
 			regexp.MustCompile(`(?i)(?:from|import)\s+\.+e2e\b`),
-			regexp.MustCompile(`(?i)['"\x60](?:\.\./|\./|[a-zA-Z0-9_\-\./]+/)?(?:tests?/)?e2e(?:/|['"\x60])`),
+			regexp.MustCompile(`(?i)['"\x60](?:\.\./|\./|[a-zA-Z0-9_\-\./]+/)?tests?/e2e(?:/|['"\x60])`),
+			regexp.MustCompile(`(?i)['"\x60](?:\.\./|\./)e2e/`),
 			regexp.MustCompile(`(?i)tests?::e2e\b`),
 		},
 	}

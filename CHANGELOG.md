@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.118.0] - 2026-10-18
+
+### Added
+- **Multi-Language Pre-Seeded Compilation Stubs**:
+  - Enhanced `generateStubContent` in `pkg/services/orchestrator_stub.go` to generate language-appropriate comments and minimal compilation boilerplate across all supported runtimes:
+    - Erlang (`.erl`, `.hrl`): `%` comments and minimal `-module(<name>). -compile(export_all).` declarations, eliminating syntax errors on test extra compilations.
+    - OCaml (`.ml`, `.mli`): `(* ... *)` comment delimiters.
+    - C# (`.cs`): `namespace App; public class <name> {}` declarations.
+    - Java (`.java`): Directory-aware `package <dir>; public class <name> {}` declarations parsed from `src/main/java/` or `src/test/java/`.
+    - Ruby (`.rb`) and SQL (`.sql`): Native `#` and `--` comment delimiters.
+  - Added comprehensive unit tests in `pkg/services/orchestrator_stub_test.go` maintaining 100% coverage.
+- **Cross-Validation Ecosystem Publishing**:
+  - Initialized, verified, and pushed autonomous implementations for all 20 validation projects to dedicated `feat/noctifab-generated` branches on GitHub.
+  - Tagged all 20 validation repositories with the `noctifab` topic and GitHub label.
+  - Linked all 20 projects and their `feat/noctifab-generated` branches in `README.md`.
+
+### Fixed
+- **Host Toolchain Preflight False Positives for Hyphenated Executables**:
+  - Replaced naive hyphen checks in `cmd/noctifab/cli/toolchain_preflight.go` with strict cross-compiler prefix matching, eliminating false errors for compiled CLI binaries like `echo-cli` and `todo-cli`.
+- **Native Project Loop Virtualenv & Test Runner Preflight**:
+  - Fixed `validation/bin/native_project_loop.py` to auto-install `pytest` into freshly spawned virtual environments via `uv pip install pytest`.
+  - Added `log_info` definition and state row token selection with `ORDER BY total_tokens_used DESC, rowid DESC LIMIT 1`.
+
 ## [0.117.6] - 2026-10-16
 
 ### Fixed
