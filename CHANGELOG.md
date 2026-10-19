@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.121.0] - 2026-10-20
+
+### Added
+- **Configurable Pragmatic Test Consensus & Soft-Pass Gating (P0)**:
+  - Added `min_pass_rate` configuration setting to `sandbox` (default: `80.0%`), enabling user-configurable pass rate thresholds for task progression.
+  - Enhanced `TestValidator` in `pkg/services/test_validator.go` to compute parsed pass rates (`passed / total * 100`) and grant soft-pass task acceptance whenever passing tests meet or exceed the configured threshold, eliminating pipeline churn on minor non-critical test flakes while keeping failed test details as non-blocking notices.
+- **Walking Skeleton & Initial Scaffolding File Limit Relaxation (P0)**:
+  - Relaxed the task cohesion mega-task limit in `pkg/services/task_cohesion.go` from 6 to 10 files specifically for walking skeleton tasks (`US-001`, `skeleton`, `scaffold`), unblocking initial project bootstrapping in enterprise runtimes (Java/Spring Boot, C#/.NET, Django).
+  - Extended doc/config exclusions to recognize `pom.xml`, `build.gradle`, `.csproj`, `rebar.config`, `dune-project`, `CMakeLists.txt`, `tsconfig.json`, and language-specific test suffixes (`*Test.java`, `*Tests.cs`, `*_tests.erl`, `*_spec.rb`).
+- **Read-Loop Circuit Breaker Threshold Calibration (P1)**:
+  - Elevated the duplicate read/inspection threshold in `pkg/services/circuit_breaker.go` from 3 to 5 inspections, preventing false-positive premature turn conclusions during complex multi-file AST/parser investigations.
+  - Added progressive contextual warnings at 3 and 4 duplicate reads to prompt the agent to write files before the breaker trips.
+- **Package Installation Auto-Stripping for Format & Lint Rules (P2)**:
+  - Implemented `SanitizeToolCommand` in `pkg/services/tool_command_sanitizer.go` to automatically detect and strip embedded package installation clauses (`opam install`, `npm install`, `pip install`, `cargo install`, `apt install`) from formatter, syntax checker, and tool execution pipelines, preventing background process lock hangs.
+
 ## [0.120.0] - 2026-10-18
 
 ### Added

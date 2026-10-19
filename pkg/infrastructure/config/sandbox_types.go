@@ -44,6 +44,15 @@ type SandboxConfig struct {
 	AutoInstallDeps              bool     `yaml:"auto_install_deps"`
 	PackageManagers              []string `yaml:"package_managers"`
 	ForbiddenPatterns            []string `yaml:"forbidden_patterns"`
+	// MinPassRate defines the minimum percentage (0.0 to 100.0) of tests that must pass in each task (default: 80.0%).
+	MinPassRate *float64 `yaml:"min_pass_rate,omitempty"`
+}
+
+func (s SandboxConfig) GetMinPassRate() float64 {
+	if s.MinPassRate != nil {
+		return *s.MinPassRate
+	}
+	return 80.0
 }
 
 func (s SandboxConfig) GetLinterCommand() string {

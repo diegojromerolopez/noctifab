@@ -61,7 +61,7 @@ func NewCommandFormatter(command string, runner Sandbox) Formatter {
 
 // NewCommandFormatterWithLLM returns a CommandFormatter with an injected LLM client.
 func NewCommandFormatterWithLLM(command string, runner Sandbox, llmClient domain.LLMClient) Formatter {
-	trimmed := strings.TrimSpace(command)
+	trimmed := strings.TrimSpace(SanitizeToolCommand(command))
 	if trimmed == "" {
 		return &NoopFormatter{}
 	}
@@ -84,7 +84,7 @@ func (f *CommandFormatter) GetCommand() string {
 func (f *CommandFormatter) SetCommand(cmd string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.Command = strings.TrimSpace(cmd)
+	f.Command = strings.TrimSpace(SanitizeToolCommand(cmd))
 }
 
 var (
@@ -123,8 +123,8 @@ func getSharedFormatCommand(projectPath, cmd string) (string, bool) {
 // LLMClient is present, it self-heals by diagnosing the command and repairing
 // any broken files.
 func (f *CommandFormatter) Format(ctx context.Context, projectPath string) (string, error) {
-	cmdTemplate := f.GetCommand()
-	if strings.TrimSpace(cmdTemplate) == "" || f.Runner == nil {
+	cmdTemplate := strings.TrimSpace(SanitizeToolCommand(f.GetCommand()))
+	if cmdTemplate == "" || f.Runner == nil {
 		return "", nil
 	}
 

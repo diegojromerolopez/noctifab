@@ -149,7 +149,7 @@ func (c *CommandSyntaxChecker) SetCommandForPath(path string, cmd string) {
 	if c.CommandsByExt == nil {
 		c.CommandsByExt = make(map[string]string)
 	}
-	trimmed := strings.TrimSpace(cmd)
+	trimmed := strings.TrimSpace(SanitizeToolCommand(cmd))
 	if trimmed == "" {
 		if c.InapplicableKeys == nil {
 			c.InapplicableKeys = make(map[string]bool)
@@ -173,8 +173,8 @@ func (c *CommandSyntaxChecker) Check(ctx context.Context, path string) error {
 		return nil
 	}
 
-	cmdTemplate := c.GetCommandForPath(path)
-	if strings.TrimSpace(cmdTemplate) == "" {
+	cmdTemplate := strings.TrimSpace(SanitizeToolCommand(c.GetCommandForPath(path)))
+	if cmdTemplate == "" {
 		return nil
 	}
 

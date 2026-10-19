@@ -269,6 +269,12 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		cmdStr = DetectDefaultTestCommand(projectPath)
 	}
 
+	// Sanitize command by stripping any embedded package installation clauses
+	cmdStr = SanitizeToolCommand(cmdStr)
+	if cmdStr == "" {
+		return "", nil
+	}
+
 	// Preflight Makefile target existence to prevent missing-rule fatal errors
 	if strings.HasPrefix(strings.TrimSpace(cmdStr), "make ") || strings.TrimSpace(cmdStr) == "make" {
 		inspector := NewMakefileInspector()

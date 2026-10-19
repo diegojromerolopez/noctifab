@@ -124,3 +124,50 @@ Co-located tests in tests/unit/commands/test_strings.py asserting EXPECTED outpu
 		t.Fatalf("expected task with markdown headers and options to pass, but got error: %v", err)
 	}
 }
+
+func TestValidateTaskCohesion_WalkingSkeletonElevatedLimit(t *testing.T) {
+	// Walking skeleton task with 8 production files + build configs + tests should pass (limit is 10)
+	skeletonTask := []domain.Task{
+		{
+			ID:          "US-001-TASK-001",
+			StoryID:     "US-001",
+			Title:       "Create build configuration and Spring Boot walking skeleton",
+			Description: "Scaffold application with gradle, entrypoint, and health endpoint",
+			TargetFiles: []string{
+				"build.gradle", "settings.gradle", "Makefile",
+				"src/main/java/com/app/Application.java",
+				"src/main/java/com/app/config/AppConfig.java",
+				"src/main/java/com/app/domain/Health.java",
+				"src/main/java/com/app/domain/Status.java",
+				"src/main/java/com/app/service/HealthService.java",
+				"src/main/java/com/app/controller/HealthController.java",
+				"src/main/java/com/app/repo/HealthRepo.java",
+				"src/main/java/com/app/dto/HealthResponse.java",
+				"src/test/java/com/app/HealthTest.java",
+				"src/test/java/com/app/IntegrationIT.java",
+			},
+		},
+	}
+
+	if err := ValidateTaskCohesion(skeletonTask); err != nil {
+		t.Fatalf("expected walking skeleton with 8 production files to pass (limit 10), got: %v", err)
+	}
+
+	// Normal non-skeleton task with 8 production files should fail (limit 6)
+	normalTask := []domain.Task{
+		{
+			ID:          "US-002-TASK-001",
+			StoryID:     "US-002",
+			Title:       "Implement User Domain Features",
+			Description: "Implement domain features across 8 files",
+			TargetFiles: []string{
+				"src/f1.go", "src/f2.go", "src/f3.go", "src/f4.go",
+				"src/f5.go", "src/f6.go", "src/f7.go", "src/f8.go",
+				"src/f1_test.go",
+			},
+		},
+	}
+	if err := ValidateTaskCohesion(normalTask); err == nil {
+		t.Fatalf("expected normal task with 8 production files to fail (limit 6), got nil")
+	}
+}

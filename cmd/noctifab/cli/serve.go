@@ -157,6 +157,7 @@ var serveCmd = &cobra.Command{
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
+		evaluator.MinPassRate = cfg.Sandbox.GetMinPassRate()
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
 		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
