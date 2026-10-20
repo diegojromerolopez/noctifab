@@ -68,6 +68,7 @@ type AgentsConfig struct {
 	LastResort         LastResortAgentConfig `yaml:"last_resort,omitempty"`
 	WorkspaceCache     WorkspaceCacheConfig  `yaml:"workspace_cache"`
 	Spike              SpikeConfig           `yaml:"spike,omitempty"`
+	Escalation         TaskEscalationConfig  `yaml:"escalation,omitempty"`
 }
 
 // SpikeConfig configures the greenfield prototyping spike phase.

@@ -22,6 +22,7 @@ You may only use the 'add_task' tool to define the tasks.
 - change_type: Type of modification (string: "FEATURE", "FIX", or "BREAKING")
 - depends_on: Array of parent task titles or IDs that must complete first (array of strings). For cross-story dependencies, explicitly reference the specific upstream task ID (e.g. ["US-001-TASK-001"]) to allow downstream tasks to unblock immediately once prerequisite interfaces merge.
 - target_files: Array of relative file paths in the workspace that this task targets or creates (array of strings)
+- complexity: Complexity rating for this task (string: "LOW", "MEDIUM", or "HIGH"). Use LOW for straightforward stubs, configs, and simple wrappers. Use MEDIUM for standard business logic and isolated handlers. Use HIGH for complex state machines, distributed protocols, AST/parsers, and concurrency algorithms.
 
 CRITICAL:
 1. You must always specify 'target_files' for each task to inform downstream generator agents of which files they need to work on.

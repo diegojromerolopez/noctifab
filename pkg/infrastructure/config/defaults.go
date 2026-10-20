@@ -81,6 +81,14 @@ func DefaultConfig() *Config {
 				MaxTurns:       2,
 				TimeoutSeconds: 120,
 			},
+			Escalation: TaskEscalationConfig{
+				Enabled:                    true,
+				ThinkingThresholdTurns:     2,
+				ModelUpgradeThresholdTurns: 2,
+				MaxModelUpgrades:           2,
+				SplitOnMaxUpgrades:         boolPtr(true),
+				CleanWorktreeOnEscalate:    boolPtr(true),
+			},
 		},
 		WorkspaceCache: WorkspaceCacheConfig{
 			Enabled: boolPtr(true),

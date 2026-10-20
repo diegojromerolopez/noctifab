@@ -352,6 +352,9 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 		candidates = r.latencyTracker.ApplyDynamicDemotion(candidates)
 	}
 	candidates = r.filterByProviderTokenLimit(ctx, candidates)
+	if modelOverride := domain.GetModelOverride(ctx); modelOverride != "" {
+		candidates = PrioritizeCandidatesByModel(candidates, modelOverride)
+	}
 	if len(candidates) == 0 {
 		return nil, fmt.Errorf("%w: every provider for role '%s' reached its daily token limit", domain.ErrBudgetExhausted, roleName)
 	}

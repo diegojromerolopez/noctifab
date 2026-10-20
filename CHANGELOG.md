@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.122.0] - 2026-10-20
+
+### Added
+- **Adaptive Thinking & Progressive Model Escalation Ladder (P0)**:
+  - Implemented `TaskEscalationConfig` in `pkg/infrastructure/config/escalation_types.go` allowing configurable escalation thresholds (`thinking_threshold_turns: 2`, `model_upgrade_threshold_turns: 2`, `max_model_upgrades: 2`, `split_on_max_upgrades: true`, `clean_worktree_on_escalate: true`).
+  - Implemented `TaskEscalator` and `ProgressiveTaskEscalator` in `pkg/services/task_escalator.go` managing the 5-step escalation ladder: optimistic fast path with thinking disabled, turn-based thinking activation (accelerated on `HIGH` complexity), progressive model upgrades, and last-resort subtask decomposition.
+  - Added thinking-only model awareness (`IsThinkingOnlyModel` in `pkg/infrastructure/llm/model_capabilities.go`) recognizing Gemini 2.5/3.1/3.6 Pro, o1, and o3-mini to safely bypass non-thinking steps when escalated to reasoning-only models.
+- **Dirty Worktree Hygiene on Model Escalation (P0)**:
+  - Automated `git checkout .` and `git clean -fd` in `pkg/services/orchestrator_execute.go` before invoking escalated models, ensuring upgraded models start from clean repository state and eliminating inherited syntax corruption from previous failed attempts.
+- **Planner Complexity Classification & AddTask Parsing (P1)**:
+  - Enhanced the `add_task` tool and planner prompt template (`pkg/infrastructure/prompts/defaults/planner/decompose.tmpl`) to instruct the planner to evaluate and assign task complexity (`LOW`, `MEDIUM`, `HIGH`).
+  - Added `Complexity`, `ModelUpgrades`, and `ParentTaskID` fields to `domain.Task`.
+- **Dynamic Context Routing & Model Prioritization (P1)**:
+  - Implemented `WithDynamicThinking`, `GetDynamicThinking`, `WithModelOverride`, and `GetModelOverride` in `pkg/domain/llm_client.go`.
+  - Added `PrioritizeCandidatesByModel` in `pkg/infrastructure/llm/router_model_priority.go` to reorder router candidates dynamically based on model escalation directives.
+
 ## [0.121.0] - 2026-10-20
 
 ### Added

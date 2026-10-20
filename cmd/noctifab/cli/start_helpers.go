@@ -132,6 +132,7 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		AllowedCommands:        cfg.Sandbox.AllowedCommands,
 		E2E:                    cfg.Sandbox.E2E,
 		SandboxTelemetry:       cfg.Sandbox.Telemetry,
+		Escalation:             cfg.Agents.Escalation,
 	}
 }
 

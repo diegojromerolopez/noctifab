@@ -22,6 +22,8 @@ const (
 	TaskInterrupted TaskStatus = "INTERRUPTED"
 	// TaskDeferred represents a task deprioritized by scope triage to focus on core deliverables.
 	TaskDeferred TaskStatus = "DEFERRED"
+	// TaskSkipped represents a task superseded or decomposed into subtasks.
+	TaskSkipped TaskStatus = "SKIPPED"
 )
 
 // ChangeType classifies the scope of a task's adjustments for semver release bumping.
@@ -82,6 +84,9 @@ type Task struct {
 	Retries           int                  `json:"retries"`
 	MaxRetries        int                  `json:"max_retries"`
 	StoryID           string               `json:"story_id,omitempty"`
+	Complexity        string               `json:"complexity,omitempty"`
+	ModelUpgrades     int                  `json:"model_upgrades,omitempty"`
+	ParentTaskID      string               `json:"parent_task_id,omitempty"`
 	InputTokens       int64                `json:"input_tokens,omitempty"`
 	OutputTokens      int64                `json:"output_tokens,omitempty"`
 	TokensUsed        int64                `json:"tokens_used,omitempty"`

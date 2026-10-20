@@ -117,6 +117,15 @@ agents:
     allow_scope_reduction: true
     enforce_spec_quality: true
 
+  escalation:
+    enabled: true
+    thinking_threshold_turns: 2
+    model_upgrade_threshold_turns: 2
+    max_model_upgrades: 2
+    split_on_max_upgrades: true
+    clean_worktree_on_escalate: true
+    upgraded_models: []
+
 workspace_cache:
   enabled: true
 
@@ -137,6 +146,7 @@ clarification_timeout_action: abort
 - **`auditor`**: Configures the Acceptance Auditor Agent (`number: 1`, `iterations: 2`) verifying whole-project compliance against `SPEC.md` prior to Pull Request creation.
 - **`fallback`**: Configures the unified Fallback Agent (Omni-Agent / Chief Surgeon) operating in dual modes: Passive Watchdog (monitoring pipelines for stalls, 0-token fast-paths, scope triage) and Active Sovereign Omni-Builder (cross-domain repair under 4-Tier Compromise Hierarchy) (`enabled: true`, `model: ""`, `temperature: 0.1`, `max_turns: 2`, `timeout: 180s`, `allow_spec_mutation: true`, `allow_scope_reduction: true`, `enforce_spec_quality: true`). Legacy configuration blocks (`unblocker:`, `agents.last_resort:`, `roles.last_resort`) remain fully backwards-compatible.
 - **`spike`**: Configures the Greenfield Spike Prototyping phase (`enabled: true`, `max_turns: 1`, `timeout_seconds: 60`, `providers: []`). When enabled on greenfield repositories (zero pre-existing user stories or substantial source code), a single prioritized model consumes `SPEC.md` and generates an initial minimal compiling walking skeleton in one batch turn, commits it to git (`feat: initial spike solution walking skeleton`), and hands off to the Product Manager which activates the Legacy Stabilization Mandate to characterize, test, and refactor. If the walking skeleton already compiles cleanly, satisfies anti-stub invariants, and passes all sandbox tests for the initial scaffold story (`US-001`), the **Fast Exit on Green** optimization immediately marks `US-001` tasks as `SUCCESS` and advances straight to `US-002`, eliminating 2–4 redundant LLM iterations.
+- **`escalation`**: Configures the progressive adaptive thinking and model upgrade ladder for difficult tasks (`enabled: true`, `thinking_threshold_turns: 2`, `model_upgrade_threshold_turns: 2`, `max_model_upgrades: 2`, `split_on_max_upgrades: true`, `clean_worktree_on_escalate: true`, `upgraded_models: []`). High-complexity tasks escalate to thinking mode faster (`HIGH` complexity activates thinking on turn 1). If failing persists under thinking mode, tasks escalate to upgraded models (starting with thinking disabled unless the upgraded model is a thinking-only model like Gemini 2.5 Pro or o1/o3-mini). Dirty worktree hygiene automatically runs `git checkout .` and `git clean -fd` to remove partial syntax corruptions before invoking the upgraded model. If maximum model upgrades are exhausted, stubborn high-complexity tasks are decomposed into 2–3 smaller focused subtasks as a last-resort fallback.
 - **`poll_interval`** (Duration): Cycle loop interval for polling VCS tasks, git repository changes, and queue statuses.
 - **`max_clarification_wait`** (Duration): Maximum time the orchestrator blocks waiting for a human operator to resolve a task clarification.
 - **`clarification_timeout_action`** (String): Action to take if a clarification times out (`abort` or `continue`).
