@@ -46,11 +46,14 @@ func (o *Orchestrator) RunFallbackAgent(
 		))
 	defer span.End()
 
-	turnMgr := NewAdaptiveTurnManager()
+	turnMgr := NewAdaptiveTurnManager(o.cfg.MaxTurnExtensions)
 	maxTurns := turnMgr.EnforceMinTurns(fbCfg.MaxTurns)
 	if maxTurns <= 0 {
 		maxTurns = 5
 	}
+	extensionsUsed := 0
+	lastFailures := -1
+	lastPassed := -1
 
 	turnTimeout := time.Duration(fbCfg.Timeout)
 	if turnTimeout <= 0 {
@@ -218,6 +221,26 @@ func (o *Orchestrator) RunFallbackAgent(
 		} else if oscDecision.Action == OscillationActionReconcile {
 			fmt.Fprintf(os.Stderr, "⚠️  [Fallback Agent Oscillation Detected] %s. Injecting reconciliation directive.\n", oscDecision.Reason)
 			newLogMsg = oscDecision.Directive + "\n" + newLogMsg
+		}
+
+		// Dynamic Turn Loop Ceiling Extension on Active Remediation:
+		report := ParseTestOutput(newLogMsg, 1)
+		currFailures := len(report.Failures)
+		if currFailures == 0 && !report.Success && report.Failed > 0 {
+			currFailures = report.Failed
+		}
+		currPassed := report.Passed
+		if lastFailures >= 0 {
+			if shouldExtend, reason := turnMgr.ShouldGrantProgressExtension(lastFailures, currFailures, lastPassed, currPassed, extensionsUsed); shouldExtend {
+				extensionsUsed++
+				maxTurns++
+				fmt.Printf("%s\n", reason)
+				newLogMsg = fmt.Sprintf("%s\n%s", reason, newLogMsg)
+			}
+		}
+		if currFailures > 0 || currPassed > 0 {
+			lastFailures = currFailures
+			lastPassed = currPassed
 		}
 
 		currentLog = newLogMsg

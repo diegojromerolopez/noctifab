@@ -508,6 +508,18 @@ agents:
       slice_spec: true
   product_manager:
     audit_mode: smart
+  hypotheses:
+    enabled: true
+    agents: 2
+    resolution: correct # "correct" (pass rate) or "mixture" (diff/file synthesis)
+  dynamic_turns:
+    enabled: true
+    max_extension: 3
+spike:
+  hypotheses:
+    enabled: true
+    agents: 2
+    resolution: correct # "correct" or "mixture"
 ```
 
 - **`context.mode: tree_sitter`** (default): Universal AST symbol map and signature extraction omitting implementation bodies of non-target files, reducing prompt tokens by 70%–90%. Use `diff_window` (+/- 15 lines) for localized edits, or `full` for small projects requiring complete file contents.
@@ -517,6 +529,10 @@ agents:
 - **`llm.thinking.enabled: false`**: Disables model chain-of-thought (thinking) tokens to avoid double reasoning costs. Individual providers can override with `thinking.enabled: true`.
 - **`llm.max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, `streaming`**: Common transport settings declared globally at the `llm:` level and inherited by all providers, with per-provider overrides supported.
 - **`agents.fallback.sovereign_rescue.slice_spec: true`**: Slices oversized technical specifications (>8k chars) during emergency sovereign takeover, preventing 100 KB whole-spec spikes.
+- **`agents.hypotheses` & `spike.hypotheses`**: Multi-Hypothesis Parallel Worktree Prototyping. Runs parallel worktrees (`agents: 2`) exploring alternative implementation hypotheses concurrently in `single_pass` and `spike` modes. Strategy `resolution: correct` selects the candidate with the highest empirical OS test pass rate, with Short-Circuit Racing immediately canceling lagging candidates upon any 100% green result; `resolution: mixture` synthesizes non-conflicting files/diffs and validates them against the test runner with fallback to the top candidate.
+- **`agents.dynamic_turns`**: Extends the turn ceiling dynamically (up to `max_extension: 3` turns) when generator turns show active remediation (e.g. failing test count strictly decreasing), preventing premature task failures when the model is actively closing defects.
+- **Monorepo & Subdirectory Manifest Auto-Detection**: Inspects nested directories (`backend/Cargo.toml`, `frontend/package.json`, `app/pyproject.toml`, `cmd/go.mod`) automatically when root manifests are absent, ensuring polyglot workspaces never default incorrectly to Go toolchain commands.
+- **Host Toolchain PATH Forwarding & Shim Protection**: Safely forwards existing host version managers and toolchain directories (`~/.asdf/shims`, `~/.cargo/bin`, `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) to the sandbox environment, preventing missing tool and shim starvation.
 - **`llm.hedging`**: Gated by SSE stream liveness tracking. While the primary provider actively streams tokens, hedging is deferred. For long-running batch roles (`product_manager`, `fallback`, `auditor`), `heavy_delay: 90s` prevents premature concurrent model calls. Speculative hedging can be completely disabled with `enabled: false`.
 - **`llm.json_reminder`**: Caps the original task prompt (`task.cap: 1500`) and rejected response tail (`body.cap: 12000`) on one-shot format reminder pullbacks, preventing redundant 80+ KB spec context re-transmissions.
 - **`agents.product_manager.audit_mode: smart`**: Automatically skips expensive Pass 2 LLM auditing on user stories that already pass deterministic contract validation (`ValidateStoryContract`), contain explicit Definitions of Done, and have non-synthetic contracts. Set to `exhaustive` to force LLM auditing across all stories.

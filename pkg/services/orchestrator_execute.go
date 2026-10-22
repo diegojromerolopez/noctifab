@@ -119,6 +119,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		taskState.ProjectPath = worktreeDir
 	}
 
+	// Background Toolchain & Test Dependency Warm-Up (JIT Compilation Overlap)
+	_ = WarmupWorktreeToolchain(ctx, taskState.ProjectPath)
+
 	// Strict Target File Prompt Slicing:
 	// Slice turn context strictly to direct task.TargetFiles for implementation.
 	var fileContexts []string
@@ -226,7 +229,13 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		case "breadth_first", "breadth_first_generation", "bfg", "big":
 			o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
 		default:
-			qaBlocked = o.executeTaskCodeFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
+			// Complexity-Directed Fast-Path: LOW/MEDIUM tasks route through single-pass unified co-synthesis
+			if task.Complexity == domain.ComplexityLow || task.Complexity == domain.ComplexityMedium {
+				fmt.Printf("⚡ [Fast-Path Single Pass] Task %s complexity is %s; routing through single-pass unified co-synthesis...\n", taskID, task.Complexity)
+				o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
+			} else {
+				qaBlocked = o.executeTaskCodeFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
+			}
 		}
 
 		fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)

@@ -61,6 +61,8 @@ type OrchestratorConfig struct {
 	E2E                    config.E2EConfig
 	SandboxTelemetry       config.SandboxTelemetryConfig
 	Escalation             config.TaskEscalationConfig
+	MaxTurnExtensions      int
+	Hypotheses             config.HypothesesConfig
 }
 
 // QADependencies contains the optional infrastructure used only when QA is enabled.

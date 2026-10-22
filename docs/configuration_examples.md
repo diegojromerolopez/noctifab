@@ -513,14 +513,26 @@ agents:
   architecture: "code_first"
   orchestrator:
     number: 3      # Concurrent multi-story execution across isolated worktrees
+    pipelined: true # Pipelined story scheduling & background task pre-planning
     iterations: 2
   spike:
-    enabled: true  # Greenfield single-shot walking skeleton generation
+    enabled: true  # Greenfield walking skeleton generation
     max_turns: 1
     timeout_seconds: 60
+    hypotheses:
+      enabled: true
+      agents: 2    # Multi-hypothesis parallel worktree prototyping
+      resolution: mixture # "correct" (highest pass rate) or "mixture" (synthesize complementary diffs)
     providers:
       - name: "gemini-flash"
       - name: "claude"
+  hypotheses:
+    enabled: true
+    agents: 2      # Multi-hypothesis racing during single_pass task execution
+    resolution: mixture
+  dynamic_turns:
+    enabled: true
+    max_extension: 3 # Extends turn ceiling when test failures are strictly decreasing
   product_manager:
     number: 1
     passes: 2

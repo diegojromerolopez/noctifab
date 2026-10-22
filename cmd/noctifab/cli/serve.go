@@ -196,6 +196,8 @@ var serveCmd = &cobra.Command{
 			AllowedCommands:      cfg.Sandbox.AllowedCommands,
 			E2E:                  cfg.Sandbox.E2E,
 			Escalation:           cfg.Agents.Escalation,
+			MaxTurnExtensions:    cfg.Agents.GetMaxTurnExtensions(),
+			Hypotheses:           cfg.Agents.Hypotheses,
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.

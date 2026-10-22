@@ -246,3 +246,38 @@ func TestEnsureVenvPip(t *testing.T) {
 		services.EnsureVenvPip(tempDir)
 	})
 }
+
+func TestResolveHostToolchainPATH(t *testing.T) {
+	t.Run("prioritizes extra prefix dir and deduplicates entries", func(t *testing.T) {
+		tempDir := t.TempDir()
+		prefixDir := filepath.Join(tempDir, "custom", "bin")
+		require.NoError(t, os.MkdirAll(prefixDir, 0755))
+
+		basePath := strings.Join([]string{prefixDir, "/bin", "/usr/bin"}, string(filepath.ListSeparator))
+		res := services.ResolveHostToolchainPATH(basePath, prefixDir)
+
+		parts := filepath.SplitList(res)
+		require.NotEmpty(t, parts)
+		assert.Equal(t, prefixDir, parts[0], "custom prefix directory must be the first element")
+
+		// Verify no duplicate entries
+		seen := make(map[string]bool)
+		for _, p := range parts {
+			assert.False(t, seen[p], "duplicate entry found in PATH: %s", p)
+			seen[p] = true
+		}
+	})
+
+	t.Run("omits non-existent candidate directories", func(t *testing.T) {
+		nonExistent := "/non/existent/toolchain/bin"
+		res := services.ResolveHostToolchainPATH("/bin:/usr/bin", nonExistent)
+		assert.NotContains(t, res, nonExistent)
+	})
+
+	t.Run("candidate toolchains list includes standard paths", func(t *testing.T) {
+		cands := services.CandidateHostToolchainDirs()
+		assert.Contains(t, cands, "/usr/local/bin")
+		assert.Contains(t, cands, "/opt/homebrew/bin")
+	})
+}
+

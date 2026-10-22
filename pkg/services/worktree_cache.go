@@ -246,18 +246,19 @@ func BuildSharedCacheEnv(rootProjectDir string) []string {
 	)
 
 	// Python virtual environment projection: ensure pip is seeded and prepend bin to PATH
+	var venvBin string
 	for _, venvName := range []string{".venv", "venv"} {
 		venvPath := filepath.Join(cleanRoot, venvName)
 		if info, err := os.Stat(venvPath); err == nil && info.IsDir() {
 			EnsureVenvPip(venvPath)
-			venvBin := filepath.Join(venvPath, "bin")
-			env = append(env,
-				fmt.Sprintf("VIRTUAL_ENV=%s", venvPath),
-				fmt.Sprintf("PATH=%s:%s", venvBin, os.Getenv("PATH")),
-			)
+			venvBin = filepath.Join(venvPath, "bin")
+			env = append(env, fmt.Sprintf("VIRTUAL_ENV=%s", venvPath))
 			break
 		}
 	}
+
+	augmentedPath := ResolveHostToolchainPATH(os.Getenv("PATH"), venvBin)
+	env = append(env, fmt.Sprintf("PATH=%s", augmentedPath))
 
 	// Dynamic ephemeral port allocation to prevent port collisions in parallel integration tests
 	port := allocateWorktreePort()
@@ -311,3 +312,64 @@ func EnsureVenvPip(venvPath string) {
 	cmd := exec.Command(pythonPath, "-m", "ensurepip", "--upgrade")
 	_ = cmd.Run()
 }
+
+// CandidateHostToolchainDirs returns known toolchain directories on host systems.
+func CandidateHostToolchainDirs() []string {
+	var dirs []string
+	home := os.Getenv("HOME")
+	if home != "" {
+		dirs = append(dirs,
+			filepath.Join(home, ".asdf", "shims"),
+			filepath.Join(home, ".cargo", "bin"),
+			filepath.Join(home, ".local", "bin"),
+		)
+	}
+	dirs = append(dirs,
+		"/opt/homebrew/bin",
+		"/usr/local/bin",
+	)
+	return dirs
+}
+
+// ResolveHostToolchainPATH constructs an augmented PATH string prioritizing
+// any specified extra prefix directories (e.g. active virtualenvs), followed by verified
+// host toolchain and shim directories (~/.asdf/shims, ~/.cargo/bin, ~/.local/bin, /opt/homebrew/bin, /usr/local/bin),
+// followed by any existing paths in basePath, removing all duplicate entries.
+func ResolveHostToolchainPATH(basePath string, extraPrefixDirs ...string) string {
+	seen := make(map[string]bool)
+	var result []string
+
+	addDir := func(d string) {
+		clean := filepath.Clean(strings.TrimSpace(d))
+		if clean == "" || clean == "." || seen[clean] {
+			return
+		}
+		seen[clean] = true
+		result = append(result, clean)
+	}
+
+	// 1. Extra prefix directories (e.g., active venv bin)
+	for _, p := range extraPrefixDirs {
+		if p == "" {
+			continue
+		}
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			addDir(p)
+		}
+	}
+
+	// 2. Candidate host toolchain and shim directories
+	for _, cand := range CandidateHostToolchainDirs() {
+		if info, err := os.Stat(cand); err == nil && info.IsDir() {
+			addDir(cand)
+		}
+	}
+
+	// 3. Existing basePath entries
+	for _, entry := range filepath.SplitList(basePath) {
+		addDir(entry)
+	}
+
+	return strings.Join(result, string(filepath.ListSeparator))
+}
+

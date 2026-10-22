@@ -5,6 +5,10 @@ agents:
   spike:
     enabled: true
     timeout_seconds: 180
+    hypotheses:
+      enabled: true
+      agents: 2
+      resolution: mixture
     providers:
     - name: gemini-flash
     - name: claude
@@ -14,8 +18,16 @@ agents:
     - name: qwen
     - name: opencode
     - name: openrouter
+  hypotheses:
+    enabled: true
+    agents: 2
+    resolution: mixture
+  dynamic_turns:
+    enabled: true
+    max_extension: 3
   orchestrator:
     number: 3
+    pipelined: true
     iterations: 2
   product_manager:
     audit_mode: smart

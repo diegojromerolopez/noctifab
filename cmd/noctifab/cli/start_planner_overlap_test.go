@@ -167,5 +167,11 @@ func TestSpeculativePlanner(t *testing.T) {
 
 		emptyPlanner := NewSpeculativePlanner(nil, nil)
 		emptyPlanner.PrePlanQueuedStories(context.Background(), []string{"a.md"}, "a.md")
+
+		emptyPlanner.SetLookaheadLimit(5)
+		if emptyPlanner.lookaheadLimit != 5 {
+			t.Errorf("expected lookahead limit 5, got %d", emptyPlanner.lookaheadLimit)
+		}
+		nilPlanner.SetLookaheadLimit(3) // should not panic
 	})
 }

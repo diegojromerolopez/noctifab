@@ -4,7 +4,15 @@ agents:
   architecture: single_pass
   orchestrator:
     number: 3
+    pipelined: true
     iterations: 2
+  hypotheses:
+    enabled: true
+    agents: 2
+    resolution: mixture
+  dynamic_turns:
+    enabled: true
+    max_extension: 3
   product_manager:
     audit_mode: smart
     number: 1

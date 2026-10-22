@@ -38,6 +38,12 @@ const (
 	ChangeTypeBreaking ChangeType = "BREAKING"
 )
 
+const (
+	ComplexityLow    = "LOW"
+	ComplexityMedium = "MEDIUM"
+	ComplexityHigh   = "HIGH"
+)
+
 // FailureStage categorizes which validation phase failed.
 type FailureStage string
 

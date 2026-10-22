@@ -133,6 +133,8 @@ func buildOrchestratorConfig(cfg *config.Config) services.OrchestratorConfig {
 		E2E:                    cfg.Sandbox.E2E,
 		SandboxTelemetry:       cfg.Sandbox.Telemetry,
 		Escalation:             cfg.Agents.Escalation,
+		MaxTurnExtensions:      cfg.Agents.GetMaxTurnExtensions(),
+		Hypotheses:             cfg.Agents.Hypotheses,
 	}
 }
 

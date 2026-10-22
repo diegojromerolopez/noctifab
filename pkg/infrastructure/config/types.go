@@ -69,6 +69,9 @@ type AgentsConfig struct {
 	WorkspaceCache     WorkspaceCacheConfig  `yaml:"workspace_cache"`
 	Spike              SpikeConfig           `yaml:"spike,omitempty"`
 	Escalation         TaskEscalationConfig  `yaml:"escalation,omitempty"`
+	MaxTurnExtensions  int                   `yaml:"max_turn_extensions,omitempty"`
+	DynamicTurns       DynamicTurnsConfig    `yaml:"dynamic_turns,omitempty"`
+	Hypotheses         HypothesesConfig      `yaml:"hypotheses,omitempty"`
 }
 
 // SpikeConfig configures the greenfield prototyping spike phase.
@@ -82,6 +85,7 @@ type SpikeConfig struct {
 	MaxTokens      int64              `yaml:"max_tokens,omitempty"`
 	Thinking       *ThinkingConfig    `yaml:"thinking,omitempty"`
 	Providers      []AgentProviderRef `yaml:"providers,omitempty"`
+	Hypotheses     HypothesesConfig   `yaml:"hypotheses,omitempty"`
 }
 
 func (s SpikeConfig) IsEnabled() bool {

@@ -39,65 +39,12 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		readerContexts = o.RunReaderPhase(ctx, "generator", task, state)
 	}
 
+	diffOut := ""
+	if task.Retries > 0 && o.git != nil {
+		diffOut, _ = o.git.Run(ctx, false, "diff")
+	}
 	cleanFileContexts, cleanReaderContexts := DeduplicateFileAndReaderContexts(fileContexts, readerContexts)
-	var promptContext []string
-	if len(cleanFileContexts) > 0 {
-		promptContext = append(promptContext, fmt.Sprintf("Existing files context:\n%s", strings.Join(cleanFileContexts, "\n\n")))
-	}
-	if len(cleanReaderContexts) > 0 {
-		promptContext = append(promptContext, fmt.Sprintf("Inspection context gathered:\n%s", strings.Join(cleanReaderContexts, "\n\n")))
-	}
-	if recentTestsContext != "" {
-		promptContext = append(promptContext, recentTestsContext)
-	}
-	// Add previous stall recovery directive if task was unblocked
-	if task.RecoveryDirective != "" {
-		promptContext = append(promptContext, fmt.Sprintf("### ⚠️ PREVIOUS ATTEMPT STALL RECOVERY DIRECTIVE\n%s", task.RecoveryDirective))
-	}
-	// Add user human-in-the-loop steering directives
-	if len(task.UserDirectives) > 0 {
-		promptContext = append(promptContext, fmt.Sprintf("### 🎯 [USER HUMAN-IN-THE-LOOP STEERING DIRECTIVES]\n%s", strings.Join(task.UserDirectives, "\n")))
-	}
-	// Add previous failure context and git diff if retrying
-	if task.Retries > 0 {
-		if task.FailureEnvelope != nil {
-			var sb strings.Builder
-			fmt.Fprintf(&sb, "### ⚠️ PREVIOUS ATTEMPT FAILURE DIAGNOSTICS (Stage: %s)\n", task.FailureEnvelope.Stage)
-			if task.FailureEnvelope.Command != "" {
-				fmt.Fprintf(&sb, "- **Command:** `%s`\n", task.FailureEnvelope.Command)
-			}
-			if task.FailureEnvelope.ExitCode != 0 {
-				fmt.Fprintf(&sb, "- **Exit Code:** `%d`\n", task.FailureEnvelope.ExitCode)
-			}
-			if len(task.FailureEnvelope.FailingFiles) > 0 {
-				fmt.Fprintf(&sb, "- **Failing Files:** `%s`\n", strings.Join(task.FailureEnvelope.FailingFiles, "`, `"))
-			}
-			if task.FailureEnvelope.Stderr != "" || task.FailureEnvelope.Stdout != "" {
-				sb.WriteString("\n#### Output Logs:\n```\n")
-				if task.FailureEnvelope.Stdout != "" {
-					sb.WriteString(task.FailureEnvelope.Stdout)
-					if !strings.HasSuffix(task.FailureEnvelope.Stdout, "\n") {
-						sb.WriteString("\n")
-					}
-				}
-				if task.FailureEnvelope.Stderr != "" {
-					sb.WriteString(task.FailureEnvelope.Stderr)
-					if !strings.HasSuffix(task.FailureEnvelope.Stderr, "\n") {
-						sb.WriteString("\n")
-					}
-				}
-				sb.WriteString("```\n")
-			}
-			promptContext = append(promptContext, sb.String())
-		} else if task.FailureLog != "" {
-			warning := "WARNING: The previous implementation/refactoring changes from the failed attempt have been preserved in the workspace files. You must inspect the existing code/tests, identify the bugs, and modify the files to fix the failures."
-			diagCtx := buildFailureDiagnosticsContext(task, state.ProjectPath)
-			promptContext = append(promptContext, fmt.Sprintf("%s\n\n%s", warning, diagCtx))
-		}
-		if diffOut, dErr := o.git.Run(ctx, false, "diff"); dErr == nil && strings.TrimSpace(diffOut) != "" {
-			promptContext = append(promptContext, fmt.Sprintf("### 🔍 FAILED ATTEMPT GIT DIFF\nThe following diff shows the exact changes made in the failed attempt:\n```diff\n%s\n```", strings.TrimSpace(diffOut)))
-		}
-	}
+	promptContext := buildGeneratorPromptContext(task, state, cleanFileContexts, cleanReaderContexts, recentTestsContext, diffOut)
 
 	contextBlock := ""
 	if len(promptContext) > 0 {
@@ -128,12 +75,16 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	o.registerAgentStart(ctx, "generator", task.ID)
 
 	currentPrompt := genPrompt
-	maxTurns := NewAdaptiveTurnManager().EnforceMinTurns(iterationsOrDefault(o.cfg.GeneratorsIterations))
+	turnMgr := NewAdaptiveTurnManager(o.cfg.MaxTurnExtensions)
+	maxTurns := turnMgr.EnforceMinTurns(iterationsOrDefault(o.cfg.GeneratorsIterations))
 	if action == "surgical_repair" {
 		maxTurns = 2
 	} else if (action == "single_pass" || action == "single_pass_fix") && maxTurns > 8 {
 		maxTurns = 8
 	}
+	extensionsUsed := 0
+	lastFailures := -1
+	lastPassed := -1
 	var lastErr error
 	var allTurnOutputsHistory []string
 	mutatedFiles := make(map[string]bool)
@@ -167,6 +118,26 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 		executed := 0
 		blocked := 0
 		var turnToolOutputs []string
+		recordTestProgress := func(testOut string, exitCode int) {
+			report := ParseTestOutput(testOut, exitCode)
+			currFailures := len(report.Failures)
+			if currFailures == 0 && !report.Success && report.Failed > 0 {
+				currFailures = report.Failed
+			}
+			currPassed := report.Passed
+			if lastFailures >= 0 {
+				if shouldExtend, reason := turnMgr.ShouldGrantProgressExtension(lastFailures, currFailures, lastPassed, currPassed, extensionsUsed); shouldExtend {
+					extensionsUsed++
+					maxTurns++
+					fmt.Printf("%s\n", reason)
+					turnToolOutputs = append(turnToolOutputs, reason)
+				}
+			}
+			if currFailures > 0 || currPassed > 0 {
+				lastFailures = currFailures
+				lastPassed = currPassed
+			}
+		}
 		hasNoop := false
 		fileMutated := false
 
@@ -292,6 +263,9 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 						}
 					}
 					if action.Tool == "run_tests" || action.Tool == "run_e2e_tests" || action.Tool == "run_linter" {
+						if action.Tool == "run_tests" || action.Tool == "run_e2e_tests" {
+							recordTestProgress(out, 1)
+						}
 						feedback := formatTurnDiagnosticFeedback(action.Tool, execErr, out)
 						if isLoop, _, diag := errorFingerprinter.RecordAndCheckLoop(out); isLoop {
 							fmt.Printf("⚠️  [Deterministic Anti-Loop Gate] Task %s: %s\n", task.ID, diag)
@@ -313,6 +287,9 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 						hasNoop = false
 					}
 				} else {
+					if action.Tool == "run_tests" || action.Tool == "run_e2e_tests" {
+						recordTestProgress(out, 0)
+					}
 					executed++
 					turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Tool %s executed successfully. Output:\n%s", action.Tool, capText(out, 2000)))
 					if action.Tool == "write_file" && editTargetFile != "" {
@@ -393,6 +370,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 						}
 					}
 					if execErr != nil {
+						recordTestProgress(out, 1)
 						fmt.Printf("ℹ [Speculative Fast Validation] Task %s: tests failing after mutation: %v\n", task.ID, execErr)
 						failMsg := fmt.Sprintf("[Speculative Fast Validation] Tests failed after file mutation:\n%s", capText(summarizeFailureLog(out), 3000))
 						if isLoop, _, diag := errorFingerprinter.RecordAndCheckLoop(out); isLoop {
@@ -425,6 +403,7 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 					circuitBreaker.RecordTestResult(execErr == nil)
 					runTestsCalled = true
 					if execErr != nil {
+						recordTestProgress(out, 1)
 						fmt.Printf("Orchestrator: Auto-triggered run_tests failed for task %s: %v. Rejecting noop.\n", task.ID, execErr)
 						turnToolOutputs = append(turnToolOutputs, fmt.Sprintf("Action 'noop' rejected: auto-triggered run_tests failed: %v\nOutput:\n%s", execErr, out))
 						hasNoop = false

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.123.0] - 2026-10-21
+
+### Added
+- **Multi-Hypothesis Parallel Worktree Prototyping & Short-Circuit Racing (P0)**:
+  - Added `HypothesesConfig` in `pkg/infrastructure/config/hypotheses_types.go` supporting `agents: 2` and `resolution: correct | mixture` for both `agents.hypotheses` and `spike.hypotheses`.
+  - Implemented `ExecuteSinglePassHypotheses` and `resolveHypothesesOutcome` in `pkg/services/hypothesis_runner.go`, running concurrent hypothesis candidates in isolated Git worktrees during `single_pass` mode.
+  - Implemented Short-Circuit Hypothesis Racing ("First-to-100%-Green Wins"): when a candidate achieves a 100% test pass rate with zero errors under `resolution: correct`, lagging candidates are immediately canceled to slash wall-clock latency and token expenditure.
+  - Implemented `GenerateSpikeHypotheses` and `ResolveSpikeHypotheses` in `pkg/services/spike_hypotheses.go` for greenfield walking skeleton racing.
+  - Under `resolution: mixture`, non-conflicting files and complementary diffs across candidates are synthesized and validated against the OS test suite, automatically falling back to the highest pass rate candidate if conflicts arise.
+- **Speculative Macro-Planning Pipeline & Bounded Lookahead (P0)**:
+  - Enhanced `SpeculativePlanner` in `cmd/noctifab/cli/start_planner_overlap.go` with configurable lookahead limit (`SetLookaheadLimit`, default: 2) to proactively decompose queued downstream user stories in background goroutines while active tasks execute, cutting story startup latency to 0ms.
+- **Background Toolchain & Test Dependency Warm-Up (P0)**:
+  - Implemented `WarmupWorktreeToolchain` and `WarmupCommandForDir` in `pkg/services/toolchain_warmup.go` auto-detecting project manifests (`Cargo.toml`, `go.mod`, `pyproject.toml`, `*.csproj`, `package.json`) and running non-blocking pre-compilation during worktree provisioning and LLM reasoning.
+- **Host Toolchain PATH Forwarding & Shim Protection (P0)**:
+  - Implemented `CandidateHostToolchainDirs` and `ResolveHostToolchainPATH` in `pkg/services/worktree_cache.go`, detecting and prepending verified host version managers and toolchain directories (`~/.asdf/shims`, `~/.cargo/bin`, `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) ahead of standard system paths while preventing duplicates, eliminating missing tool/shim starvation in stripped subshell environments.
+- **Dynamic Turn Loop Ceiling Extension (P1)**:
+  - Implemented `AdaptiveTurnManager` in `pkg/services/adaptive_turn_manager.go` dynamically granting turn ceiling extensions (up to `max_extension: 3` turns) when generator turns demonstrate active defect remediation (failing test count strictly decreasing).
+- **Monorepo & Subdirectory Manifest Auto-Detection (P1)**:
+  - Implemented `DetectSubdirectoryTestCommand`, `DetectSubdirectoryBuildCommand`, and `DetectSubdirectoryFormatterCommand` in `pkg/services/sandbox_manifest_resolver.go` and integrated them into `DetectDefault*Command` in `pkg/services/sandbox.go`. Nested manifests (`backend/Cargo.toml`, `frontend/package.json`, `app/pyproject.toml`, `cmd/go.mod`) are automatically detected so polyglot projects never incorrectly default to Go toolchain commands.
+
 ## [0.122.0] - 2026-10-20
 
 ### Added
