@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.124.0] - 2026-10-22
+
+### Added
+- **Minimal Default Configuration on Workspace Init with Runtime Defaults Inheritance**:
+  - Implemented `GenerateMinimalConfigYAML` and `BuildMinimalConfig` in `pkg/infrastructure/config/minimal.go`, generating concise (~15–20 lines), human-readable `.noctifab/config.yaml` files during `noctifab init` rather than dumping monolithic 340-line structs.
+  - Retained strict convention-over-configuration guarantees: all omitted configuration sections (`agents`, `runtime`, `storage`, `sandbox.allowed_commands`, `fallback`, `unblocker`, etc.) seamlessly inherit robust runtime defaults from `config.DefaultConfig()` during `config.Load()`.
+  - Added full support for preset profiles (`--profile`) and language templates (`--template`), emitting only overridden parameters (such as `ollama` endpoints, model identifiers, custom linter/forbidden patterns, or non-default build commands) while keeping configuration files clean.
+  - Documented the minimal configuration layout and automatic runtime default inheritance model across `docs/configuration.md`, `docs/configuration_guidelines.md`, `docs/cli_usage.md`, and `SPEC.md`.
+  - Added unit test coverage in `pkg/infrastructure/config/minimal_test.go` and integration test `TestInitCmd_MinimalConfigAndObeysDefaults` in `cmd/noctifab/cli/init_test.go`.
+
 ## [0.123.0] - 2026-10-21
 
 ### Added

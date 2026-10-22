@@ -228,4 +228,3 @@ func DetectSubdirectoryFormatterCommand(projectPath string) string {
 	}
 	return ""
 }
-

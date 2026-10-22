@@ -8,12 +8,13 @@ Following these guidelines ensures that your projects achieve maximum throughput
 
 ## 1. Golden Rules of Noctifab Configuration
 
-1. **Enable Resilient OCC for SQLite**: Always tune Optimistic Concurrency Control (`storage.occ`) when running multiple parallel agents to avoid write collision aborts.
-2. **Never Block on Unanswered Questions in CI/Autonomous Runs**: Set `clarification_timeout_action: continue` so agents synthesize assumptions and maintain momentum.
-3. **Pre-Bake Toolchains in Containers**: Do not download heavy packages or compilers at runtime; pre-install them in your `Dockerfile` to eliminate network latency and timeout risks.
-4. **Cap Reasoning Model Thinking Budgets**: Set `thinking_budget: 2048` on reasoning LLMs (such as Qwen or DeepSeek-R1) to prevent 30–60s per-turn response latency.
-5. **Enforce Hard Watchdog Timers**: Set both `runtime.max_duration` and `runtime.max_silent_stall_duration` to catch deadlocks and trigger automatic recovery.
-6. **Explicitly Whitelist Sandbox Binaries**: Ensure every CLI utility invoked by test runners, formatters, or linters is registered under `sandbox.allowed_commands`.
+1. **Favor Minimal Configurations & Inherit Runtime Defaults**: Let `noctifab init` generate a concise, minimal `config.yaml` (~15–25 lines). Never dump or freeze internal engine defaults in workspace configs. Any omitted field automatically inherits Noctifab's latest, battle-tested defaults at runtime.
+2. **Enable Resilient OCC for SQLite**: Always tune Optimistic Concurrency Control (`storage.occ`) when running multiple parallel agents to avoid write collision aborts.
+3. **Never Block on Unanswered Questions in CI/Autonomous Runs**: Set `clarification_timeout_action: continue` so agents synthesize assumptions and maintain momentum.
+4. **Pre-Bake Toolchains in Containers**: Do not download heavy packages or compilers at runtime; pre-install them in your `Dockerfile` to eliminate network latency and timeout risks.
+5. **Cap Reasoning Model Thinking Budgets**: Set `thinking_budget: 2048` on reasoning LLMs (such as Qwen or DeepSeek-R1) to prevent 30–60s per-turn response latency.
+6. **Enforce Hard Watchdog Timers**: Set both `runtime.max_duration` and `runtime.max_silent_stall_duration` to catch deadlocks and trigger automatic recovery.
+7. **Explicitly Whitelist Sandbox Binaries**: Ensure every CLI utility invoked by test runners, formatters, or linters is registered under `sandbox.allowed_commands`.
 
 ---
 

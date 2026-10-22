@@ -11,7 +11,6 @@ import (
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -176,9 +175,9 @@ func EnsureWorkspaceInitializedWithProfileAndTemplate(targetDir string, profileN
 			cfg.VCS.Repository = repoSlug
 		}
 
-		data, err := yaml.Marshal(cfg)
+		data, err := config.GenerateMinimalConfigYAML(cfg)
 		if err != nil {
-			return false, fmt.Errorf("failed to marshal config: %w", err)
+			return false, fmt.Errorf("failed to generate minimal config: %w", err)
 		}
 		if err := os.WriteFile(cfgPath, data, 0644); err != nil {
 			return false, fmt.Errorf("failed to write config file: %w", err)

@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 // DefaultConfig returns a new Config populated with baseline default settings.
@@ -300,7 +298,7 @@ func WriteDefaultConfig(path string) error {
 	}
 
 	cfg := DefaultConfig()
-	data, err := yaml.Marshal(cfg)
+	data, err := GenerateMinimalConfigYAML(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal default config: %w", err)
 	}

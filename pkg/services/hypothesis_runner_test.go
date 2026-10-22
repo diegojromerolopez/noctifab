@@ -169,4 +169,3 @@ func TestHypothesisRacing_ShortCircuitOn100PercentGreen(t *testing.T) {
 		t.Fatalf("expected resolution correct")
 	}
 }
-

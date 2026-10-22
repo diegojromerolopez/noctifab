@@ -280,4 +280,3 @@ func TestResolveHostToolchainPATH(t *testing.T) {
 		assert.Contains(t, cands, "/opt/homebrew/bin")
 	})
 }
-

@@ -31,15 +31,18 @@ This creates the default configuration structure in the `.noctifab/` directory:
 `noctifab` provides several subcommands for orchestrating development pipelines:
 
 ### 1. `init`
-Initializes a Noctifab project workspace in the target directory (defaults to `.`). Automatically creates `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, SQLite state database, and workspace structure.
+Initializes a Noctifab project workspace in the target directory (defaults to `.`). Automatically creates a clean, minimal `.noctifab/config.yaml` (~15–20 lines), `.noctifab/secrets.yaml`, SQLite state database, and workspace structure.
+
+All non-essential engine knobs (agent concurrency passes, OCC retries, allowed command whitelists, watchdog timeouts, fallback triggers) are omitted from the generated file and automatically inherit their values from Noctifab's built-in runtime defaults (`config.DefaultConfig()`).
 
 ```bash
-noctifab init [target_dir] [--profile <preset>] [--spec <prompt>] [-i]
+noctifab init [target_dir] [--profile <preset>] [--template <lang>] [--spec <prompt>] [-i]
 ```
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--profile` | | Pre-configured LLM profile preset (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) |
+| `--template` | | Pre-configured language template (`go`, `python`, `rust`, `typescript`, `java`, etc.) |
 | `--spec` | | Initial prompt to bootstrap and immediately enter interactive `SPEC.md` review session |
 | `--interactive` | `-i` | Launch interactive spec generator wizard upon initialization |
 

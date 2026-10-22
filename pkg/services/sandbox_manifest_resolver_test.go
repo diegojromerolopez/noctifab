@@ -183,4 +183,3 @@ func TestDetectDefaultCommands_Subdirectories(t *testing.T) {
 		}
 	})
 }
-

@@ -372,4 +372,3 @@ func ResolveHostToolchainPATH(basePath string, extraPrefixDirs ...string) string
 
 	return strings.Join(result, string(filepath.ListSeparator))
 }
-

@@ -1992,6 +1992,10 @@ The daemon initializes and operates inside a dedicated `.noctifab/` directory at
 ```
 
 #### 3.9.2. YAML Configuration Schema (`.noctifab/config.yaml`)
+
+> [!NOTE]
+> `noctifab init` creates a **minimal** `.noctifab/config.yaml` configuration (~15–20 lines) containing only essential repository, sandbox, and LLM provider parameters. All omitted properties automatically inherit system runtime defaults (`config.DefaultConfig()`). Below is the complete reference schema with all available sections.
+
 ```yaml
 config_version: "2.0"
 
@@ -2275,7 +2279,7 @@ To prevent console log clutter and improve developer user experience, the Cobra 
     *   **Clone Protocol CLI Flag:** Adds a `--vcs-clone-protocol` flag (values: `https`, `ssh`, default: `https`). The command constructs the clone URL dynamically using the VCS provider API (e.g. `https://github.com/owner/repo.git`).
     *   **1-Click Profile Flag:** Accepts `--profile <preset>` (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) to pre-tune endpoints, token contexts, and stripping parameters.
     *   **Directory Cleanliness Guard:** Prior to execution, the command walks the current directory. If the directory contains files or folders other than `.noctifab` layout assets, the command aborts immediately with process exit code `4` and logs a security warning to `stderr` to prevent accidental codebase overwrites.
-    *   If run in a clean directory, it clones the repository, creates the `.noctifab/` configuration directory structure, generates a default `.noctifab/config.yaml` file, and initializes the local SQLite database.
+    *   If run in a clean directory, it clones the repository, creates the `.noctifab/` configuration directory structure, generates a minimal `.noctifab/config.yaml` file (where omitted fields inherit system defaults), and initializes the local SQLite database.
     *   If run in a directory where a repository or `.noctifab` directory already exists, it verifies remote origin configurations and database schemas, preserving existing configuration values or task state without overwriting or corrupting them.
 *   `noctifab demo`
     Runs an instant 2-minute zero-config autonomous sandbox using deterministic mock replay (`MockDemoLLMClient`). Unpacks embedded project templates into an ephemeral `/tmp/noctifab-demo-*` directory, coordinates the Planner, Generator, and Tester stages with 100% offline consensus passes, and cleans up the sandbox on termination. Supports `--project`, `--offline`, `--speed`, and `--no-cleanup`.
