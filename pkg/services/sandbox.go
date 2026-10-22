@@ -151,6 +151,9 @@ func DetectDefaultTestCommand(projectPath string) string {
 	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
 		return "go test -v ./..."
 	}
+	if subCmd := DetectSubdirectoryTestCommand(projectPath); subCmd != "" {
+		return subCmd
+	}
 	return "go test -v ./..."
 }
 
@@ -181,7 +184,7 @@ func DetectDefaultBuildCommand(projectPath string) string {
 	if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
 		return "go build ./..."
 	}
-	return ""
+	return DetectSubdirectoryBuildCommand(projectPath)
 }
 
 // DetectDefaultFormatterCommand inspects the workspace directory for manifest or format tool configurations
@@ -211,7 +214,7 @@ func DetectDefaultFormatterCommand(projectPath string) string {
 			return "npm run format"
 		}
 	}
-	return ""
+	return DetectSubdirectoryFormatterCommand(projectPath)
 }
 
 // DetectAutoFixImportsCommand inspects the workspace directory and returns
@@ -269,6 +272,23 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		cmdStr = DetectDefaultTestCommand(projectPath)
 	}
 
+	// Sanitize command by stripping any embedded package installation clauses
+	cmdStr = SanitizeToolCommand(cmdStr)
+	if cmdStr == "" {
+		return "", nil
+	}
+
+	// Preflight Makefile target existence to prevent missing-rule fatal errors
+	if strings.HasPrefix(strings.TrimSpace(cmdStr), "make ") || strings.TrimSpace(cmdStr) == "make" {
+		inspector := NewMakefileInspector()
+		if safeCmd, err := inspector.ResolveSafeMakeCommand(projectPath, cmdStr); err == nil {
+			if safeCmd == "" {
+				return "", nil
+			}
+			cmdStr = safeCmd
+		}
+	}
+
 	// When the command contains shell operators (&&, ||, ;, |, etc.) we must
 	// dispatch through `sh -c` so the operators are interpreted by a shell
 	// rather than passed as literal arguments to the first binary. For
@@ -321,22 +341,8 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		return "", fmt.Errorf("Sandbox violation: package target '%s' is outside the workspace prefix", pkg)
 	}
 
-	// Auto-detect Cargo.toml in subdirectories for cargo test/check commands
-	if binary == "cargo" && pkg == "" {
-		if _, err := os.Stat(filepath.Join(targetDir, "Cargo.toml")); os.IsNotExist(err) {
-			entries, readErr := os.ReadDir(targetDir)
-			if readErr == nil {
-				for _, entry := range entries {
-					if entry.IsDir() {
-						if _, cargoErr := os.Stat(filepath.Join(targetDir, entry.Name(), "Cargo.toml")); cargoErr == nil {
-							targetDir = filepath.Join(targetDir, entry.Name())
-							break
-						}
-					}
-				}
-			}
-		}
-	}
+	// Auto-detect manifest in subdirectories if missing in root targetDir
+	targetDir = ResolveSubdirectoryManifest(targetDir, binary, pkg)
 
 	// Intercept Python unittest discover for Test Suite Isolation
 	if strings.Contains(cmdStr, "unittest discover") {

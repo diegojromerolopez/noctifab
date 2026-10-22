@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
 
 // isRoutineTask evaluates whether the given agent role represents a high-frequency,
@@ -163,10 +165,11 @@ func (o *baseOpenAIClient) GetModelCapabilities(ctx context.Context, apiKey stri
 	return parseDynamicModelCapabilities(parsed.Data), nil
 }
 
-// adjustForRoutineTask inspects whether the active agent role is a routine task and disables extended
-// thinking dynamically if the target model supports it according to the /models endpoint.
+// adjustForRoutineTask inspects whether the active agent role is a routine task or has an explicit
+// dynamic thinking toggle on ctx, configuring extended thinking accordingly if the target model supports it.
 func (c *Client) adjustForRoutineTask(ctx context.Context, role, model string, extra map[string]interface{}) (map[string]interface{}, bool) {
-	if !isRoutineTask(role) {
+	dynamicThinking, isSet := domain.GetDynamicThinking(ctx)
+	if !isSet && !isRoutineTask(role) {
 		return extra, false
 	}
 
@@ -197,6 +200,23 @@ func (c *Client) adjustForRoutineTask(ctx context.Context, role, model string, e
 	}
 
 	if capInfo != nil && capInfo.SupportsThinking {
+		if isSet && dynamicThinking {
+			if extra == nil {
+				extra = make(map[string]interface{})
+			}
+			budget := 4096
+			if c.ThinkingBudget != nil && *c.ThinkingBudget > 0 {
+				budget = *c.ThinkingBudget
+			}
+			extra["enable_thinking"] = true
+			extra["thinking_budget"] = budget
+			extra["reasoning_effort"] = "medium"
+			extra["thinking"] = map[string]interface{}{"type": "enabled", "budget_tokens": budget}
+			extra["thinkingConfig"] = map[string]interface{}{"thinkingBudget": budget}
+			fmt.Fprintf(os.Stderr, "🧠 [llm] Dynamically enabled thinking mode for escalated task role '%s' on model '%s'\n", role, model)
+			return extra, true
+		}
+
 		if isThinkingOnlyModel(model) || isThinkingOnlyModel(normModel) {
 			// Model strictly operates in thinking mode; provider API rejects budget 0.
 			return extra, false
@@ -218,14 +238,20 @@ func (c *Client) adjustForRoutineTask(ctx context.Context, role, model string, e
 	return extra, false
 }
 
-// isThinkingOnlyModel returns true if the model strictly requires thinking mode
-// and does not allow thinking to be disabled (e.g. Gemini 2.5 Pro, 3.1 Pro, 3.6 Pro).
-func isThinkingOnlyModel(model string) bool {
+// IsThinkingOnlyModel returns true if the model strictly requires thinking mode
+// and does not allow thinking to be disabled (e.g. Gemini 2.5 Pro, 3.1 Pro, 3.6 Pro, o1, o3-mini).
+func IsThinkingOnlyModel(model string) bool {
 	m := strings.ToLower(strings.TrimSpace(model))
 	m = strings.TrimPrefix(m, "models/")
 	return strings.Contains(m, "3.1-pro") ||
 		strings.Contains(m, "3.6-pro") ||
 		strings.Contains(m, "2.5-pro") ||
+		strings.Contains(m, "o1") ||
+		strings.Contains(m, "o3-mini") ||
 		strings.Contains(m, "thinking-only") ||
 		strings.Contains(m, "reasoning-only")
+}
+
+func isThinkingOnlyModel(model string) bool {
+	return IsThinkingOnlyModel(model)
 }

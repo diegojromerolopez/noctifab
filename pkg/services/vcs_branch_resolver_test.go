@@ -10,6 +10,8 @@ import (
 type mockGitRunner struct {
 	currentBranch string
 	hasMaster     bool
+	symbolicHead  string
+	branches      map[string]bool
 }
 
 func (m *mockGitRunner) Run(ctx context.Context, isWrite bool, args ...string) (string, error) {
@@ -26,6 +28,22 @@ func (m *mockGitRunner) Run(ctx context.Context, isWrite bool, args ...string) (
 		}
 		return "HEAD", nil
 	}
+	if strings.HasPrefix(cmd, "symbolic-ref --short refs/remotes/origin/HEAD") {
+		if m.symbolicHead != "" {
+			return m.symbolicHead, nil
+		}
+		return "", errors.New("no symbolic ref")
+	}
+	if m.branches != nil {
+		for branch, exists := range m.branches {
+			if strings.Contains(cmd, branch) {
+				if exists {
+					return "refs/heads/" + branch, nil
+				}
+				return "", errors.New(branch + " not found")
+			}
+		}
+	}
 	if strings.Contains(cmd, "master") {
 		if m.hasMaster {
 			return "refs/heads/master", nil
@@ -38,20 +56,38 @@ func (m *mockGitRunner) Run(ctx context.Context, isWrite bool, args ...string) (
 func TestResolveBaseBranch(t *testing.T) {
 	ctx := context.Background()
 
-	// 1. Explicit base branch
-	if got := ResolveBaseBranch(ctx, &mockGitRunner{hasMaster: false}, "main"); got != "main" {
+	// 1. Explicit base branch that exists
+	if got := ResolveBaseBranch(ctx, &mockGitRunner{branches: map[string]bool{"main": true}}, "main"); got != "main" {
 		t.Errorf("expected 'main', got %q", got)
 	}
-	if got := ResolveBaseBranch(ctx, &mockGitRunner{hasMaster: true}, "develop"); got != "develop" {
+	if got := ResolveBaseBranch(ctx, &mockGitRunner{branches: map[string]bool{"develop": true}}, "develop"); got != "develop" {
 		t.Errorf("expected 'develop', got %q", got)
 	}
 
-	// 2. Auto-detection when master exists
-	if got := ResolveBaseBranch(ctx, &mockGitRunner{hasMaster: true}, "auto"); got != "master" {
+	// 2. Explicit base branch that does NOT exist -> self-healing fallback to master
+	gitMissingMain := &mockGitRunner{
+		hasMaster: true,
+		branches:  map[string]bool{"main": false, "master": true},
+	}
+	if got := ResolveBaseBranch(ctx, gitMissingMain, "main"); got != "master" {
+		t.Errorf("expected self-healing fallback 'master' when 'main' is missing, got %q", got)
+	}
+
+	// 3. Auto-detection when symbolic HEAD exists
+	gitSymbolic := &mockGitRunner{
+		symbolicHead: "origin/release-v1",
+		branches:     map[string]bool{"release-v1": true},
+	}
+	if got := ResolveBaseBranch(ctx, gitSymbolic, "auto"); got != "release-v1" {
+		t.Errorf("expected 'release-v1' from symbolic ref, got %q", got)
+	}
+
+	// 4. Auto-detection when master exists
+	if got := ResolveBaseBranch(ctx, &mockGitRunner{hasMaster: true, branches: map[string]bool{"master": true}}, "auto"); got != "master" {
 		t.Errorf("expected 'master', got %q", got)
 	}
 
-	// 3. Auto-detection when master does not exist -> main fallback
+	// 5. Auto-detection when master does not exist -> main fallback
 	if got := ResolveBaseBranch(ctx, &mockGitRunner{hasMaster: false}, "auto"); got != "main" {
 		t.Errorf("expected 'main', got %q", got)
 	}

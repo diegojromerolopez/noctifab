@@ -81,7 +81,7 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	o.registerAgentStart(ctx, "tester", task.ID)
 
 	currentPrompt := testPrompt
-	maxTurns := iterationsOrDefault(o.cfg.TestersIterations)
+	maxTurns := NewAdaptiveTurnManager().EnforceMinTurns(iterationsOrDefault(o.cfg.TestersIterations))
 	var lastErr error
 	var allTurnOutputsHistory []string
 	mutatedFiles := make(map[string]bool)

@@ -78,26 +78,53 @@ func ResolveBranches(ctx context.Context, git GitRunner, configuredBase string, 
 }
 
 // ResolveBaseBranch determines the target base branch for VCS operations.
-// If configuredBase is specified (not empty and not "auto"), it is returned verbatim.
-// If configuredBase is empty or "auto", it checks whether "master" branch exists locally or in remote.
-// Returns "master" if found, otherwise "main".
+// If configuredBase is specified (not empty and not "auto"), it is checked for existence.
+// If configuredBase exists, it is returned. If it does not exist, it falls back to
+// auto-discovery (checking origin/HEAD, master, main).
 func ResolveBaseBranch(ctx context.Context, git GitRunner, configuredBase string) string {
 	clean := strings.TrimSpace(strings.ToLower(configuredBase))
 	if clean != "" && clean != "auto" {
-		return configuredBase
+		if isNilGitRunner(git) {
+			return configuredBase
+		}
+		if branchExistsInGit(ctx, git, configuredBase) {
+			return configuredBase
+		}
 	}
 
 	if !isNilGitRunner(git) {
-		if _, err := git.Run(ctx, false, "rev-parse", "--verify", "master"); err == nil {
+		if out, err := git.Run(ctx, false, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
+			trimmed := strings.TrimPrefix(strings.TrimSpace(out), "origin/")
+			if trimmed != "" && branchExistsInGit(ctx, git, trimmed) {
+				return trimmed
+			}
+		}
+		if branchExistsInGit(ctx, git, "master") {
 			return "master"
 		}
-		if _, err := git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/master"); err == nil {
-			return "master"
-		}
-		if _, err := git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"); err == nil {
-			return "master"
+		if branchExistsInGit(ctx, git, "main") {
+			return "main"
 		}
 	}
 
+	if configuredBase != "" && clean != "auto" {
+		return configuredBase
+	}
 	return "main"
+}
+
+func branchExistsInGit(ctx context.Context, git GitRunner, branch string) bool {
+	if isNilGitRunner(git) {
+		return false
+	}
+	if _, err := git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/heads/"+branch); err == nil {
+		return true
+	}
+	if _, err := git.Run(ctx, false, "show-ref", "--verify", "--quiet", "refs/remotes/origin/"+branch); err == nil {
+		return true
+	}
+	if _, err := git.Run(ctx, false, "rev-parse", "--verify", branch); err == nil {
+		return true
+	}
+	return false
 }

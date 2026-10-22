@@ -119,6 +119,9 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		taskState.ProjectPath = worktreeDir
 	}
 
+	// Background Toolchain & Test Dependency Warm-Up (JIT Compilation Overlap)
+	_ = WarmupWorktreeToolchain(ctx, taskState.ProjectPath)
+
 	// Strict Target File Prompt Slicing:
 	// Slice turn context strictly to direct task.TargetFiles for implementation.
 	var fileContexts []string
@@ -175,6 +178,46 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 	var passed bool
 	var logMsg string
 
+	// Adaptive Thinking & Progressive Escalation Ladder
+	if o.escalator != nil {
+		decision := o.escalator.EvaluateEscalation(ctx, task, 0)
+		if decision.ShouldSplit {
+			fmt.Printf("🔀 [Adaptive Escalation] Task %s split into subtasks: %s\n", taskID, decision.Reason)
+			subtasks, splitErr := o.escalator.SplitTask(ctx, task, state)
+			if splitErr == nil && len(subtasks) > 0 {
+				_ = o.updateStateWithRetry(ctx, func(st *domain.State) error {
+					for i := range st.Tasks {
+						if st.Tasks[i].ID == taskID {
+							st.Tasks[i].Status = domain.TaskSkipped
+							st.Tasks[i].FailureLog = "Decomposed into smaller subtasks due to complexity escalation"
+							st.Tasks[i].UpdatedAt = time.Now()
+							break
+						}
+					}
+					st.Tasks = append(st.Tasks, subtasks...)
+					return nil
+				})
+				for _, sub := range subtasks {
+					_ = WriteTaskMarkdown(state.ProjectPath, state.Metadata.InputPath, sub)
+				}
+				return
+			}
+		}
+
+		if decision.CleanWorktree && taskGit != nil {
+			fmt.Printf("🧹 [Adaptive Escalation] Cleaning dirty worktree for task %s before escalation...\n", taskID)
+			_, _ = taskGit.Run(ctx, false, "checkout", ".")
+			_, _ = taskGit.Run(ctx, false, "clean", "-fd")
+		}
+
+		if decision.UpgradeModel && decision.TargetModel != "" {
+			task.ModelUpgrades++
+			fmt.Printf("🚀 [Adaptive Escalation] Upgraded model for task %s to '%s' (upgrade %d)\n", taskID, decision.TargetModel, task.ModelUpgrades)
+			ctx = domain.WithModelOverride(ctx, decision.TargetModel)
+		}
+		ctx = domain.WithDynamicThinking(ctx, decision.EnableThinking)
+	}
+
 	fbCfg := o.cfg.GetFallback()
 	if fbCfg.Enabled && (task.StallCount >= 2 || task.FallbackUsed || task.LastResortUsed || strings.Contains(task.RecoveryDirective, "SOVEREIGN REPAIR DIRECTIVE")) {
 		fmt.Printf("⚡ [Orchestrator] Task %s flagged for direct Fallback Agent sovereign execution (StallCount: %d, FallbackUsed: %v)...\n", taskID, task.StallCount, task.FallbackUsed)
@@ -186,7 +229,13 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		case "breadth_first", "breadth_first_generation", "bfg", "big":
 			o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
 		default:
-			qaBlocked = o.executeTaskCodeFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
+			// Complexity-Directed Fast-Path: LOW/MEDIUM tasks route through single-pass unified co-synthesis
+			if task.Complexity == domain.ComplexityLow || task.Complexity == domain.ComplexityMedium {
+				fmt.Printf("⚡ [Fast-Path Single Pass] Task %s complexity is %s; routing through single-pass unified co-synthesis...\n", taskID, task.Complexity)
+				o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
+			} else {
+				qaBlocked = o.executeTaskCodeFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
+			}
 		}
 
 		fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)

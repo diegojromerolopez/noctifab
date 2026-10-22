@@ -7,15 +7,16 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/templates"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/vcs"
 	"github.com/diegojromerolopez/noctifab/pkg/services"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 var (
 	WorkspaceDir    = "."
 	ProfileFlag     = ""
+	TemplateFlag    = ""
 	initSpecPrompt  = ""
 	initInteractive = false
 )
@@ -33,7 +34,7 @@ var initCmd = &cobra.Command{
 		if len(args) > 0 {
 			targetDir = args[0]
 		}
-		_, err := EnsureWorkspaceInitializedWithProfile(targetDir, ProfileFlag)
+		_, err := EnsureWorkspaceInitializedWithProfileAndTemplate(targetDir, ProfileFlag, TemplateFlag)
 		if err != nil {
 			return err
 		}
@@ -52,18 +53,24 @@ var initCmd = &cobra.Command{
 
 func init() {
 	initCmd.Flags().StringVar(&ProfileFlag, "profile", "", "Pre-configured LLM profile (e.g. ollama-qwen, ollama-deepseek, vllm-local)")
+	initCmd.Flags().StringVar(&TemplateFlag, "template", "", "Language sandbox template (e.g. python, rust, go, typescript, c, ruby, csharp, java, erlang, ocaml)")
 	initCmd.Flags().StringVar(&initSpecPrompt, "spec", "", "Initial prompt to bootstrap and interactively refine SPEC.md")
-	initCmd.Flags().BoolVarP(&initInteractive, "interactive", "i", false, "Launch interactive spec generator wizard upon initialization")
+	initCmd.Flags().BoolVar(&initInteractive, "interactive", false, "Launch interactive spec generator wizard upon initialization")
 }
 
 // EnsureWorkspaceInitialized ensures .noctifab/ directory, config.yaml, secrets.yaml, database, and SPEC.md exist.
 // Returns createdSpec=true if a new SPEC.md template was written.
 func EnsureWorkspaceInitialized(targetDir string) (bool, error) {
-	return EnsureWorkspaceInitializedWithProfile(targetDir, "")
+	return EnsureWorkspaceInitializedWithProfileAndTemplate(targetDir, "", "")
 }
 
 // EnsureWorkspaceInitializedWithProfile initializes workspace with an optional configuration profile preset.
 func EnsureWorkspaceInitializedWithProfile(targetDir string, profileName string) (bool, error) {
+	return EnsureWorkspaceInitializedWithProfileAndTemplate(targetDir, profileName, "")
+}
+
+// EnsureWorkspaceInitializedWithProfileAndTemplate initializes workspace with profile and language template presets.
+func EnsureWorkspaceInitializedWithProfileAndTemplate(targetDir string, profileName string, templateName string) (bool, error) {
 	if targetDir == "" {
 		targetDir = "."
 	}
@@ -123,25 +130,43 @@ func EnsureWorkspaceInitializedWithProfile(targetDir string, profileName string)
 			}
 		}
 
-		// Detect project language and adapt test, format, and build commands
-		lang := services.DetectProjectLanguage(targetDir)
-		if lang != "" {
-			testCmd := services.DetectDefaultTestCommand(targetDir)
-			if testCmd != "" {
-				cfg.Sandbox.TestCommand = testCmd
-			}
-			formatCmd := services.DetectDefaultFormatterCommand(targetDir)
-			cfg.Sandbox.FormatterCommand = formatCmd
-			if buildCmd := services.DetectDefaultBuildCommand(targetDir); buildCmd != "" {
-				cfg.Agents.QA.BuildCommand = strings.Fields(buildCmd)
+		// Apply template if explicitly requested, or if a user-defined template exists in workspace or global dir
+		templateMgr := templates.NewManager(targetDir)
+		if templateName != "" {
+			if err := templateMgr.Apply(cfg, templateName); err != nil {
+				return false, fmt.Errorf("failed to apply template %q: %w", templateName, err)
 			}
 		} else {
-			// If Makefile has test/format target, adapt to it
-			if testCmd := services.DetectDefaultTestCommand(targetDir); testCmd != "go test -v ./..." {
-				cfg.Sandbox.TestCommand = testCmd
+			lang := services.DetectProjectLanguage(targetDir)
+			appliedUserTemplate := false
+			if lang != "" {
+				if _, src, _, err := templateMgr.Get(lang); err == nil && (src == templates.SourceWorkspace || src == templates.SourceGlobal) {
+					if err := templateMgr.Apply(cfg, lang); err == nil {
+						appliedUserTemplate = true
+					}
+				}
 			}
-			if formatCmd := services.DetectDefaultFormatterCommand(targetDir); formatCmd != "" {
-				cfg.Sandbox.FormatterCommand = formatCmd
+
+			if !appliedUserTemplate {
+				if lang != "" {
+					testCmd := services.DetectDefaultTestCommand(targetDir)
+					if testCmd != "" {
+						cfg.Sandbox.TestCommand = testCmd
+					}
+					formatCmd := services.DetectDefaultFormatterCommand(targetDir)
+					cfg.Sandbox.FormatterCommand = formatCmd
+					if buildCmd := services.DetectDefaultBuildCommand(targetDir); buildCmd != "" {
+						cfg.Agents.QA.BuildCommand = strings.Fields(buildCmd)
+					}
+				} else {
+					// If Makefile has test/format target, adapt to it
+					if testCmd := services.DetectDefaultTestCommand(targetDir); testCmd != "go test -v ./..." {
+						cfg.Sandbox.TestCommand = testCmd
+					}
+					if formatCmd := services.DetectDefaultFormatterCommand(targetDir); formatCmd != "" {
+						cfg.Sandbox.FormatterCommand = formatCmd
+					}
+				}
 			}
 		}
 
@@ -150,9 +175,9 @@ func EnsureWorkspaceInitializedWithProfile(targetDir string, profileName string)
 			cfg.VCS.Repository = repoSlug
 		}
 
-		data, err := yaml.Marshal(cfg)
+		data, err := config.GenerateMinimalConfigYAML(cfg)
 		if err != nil {
-			return false, fmt.Errorf("failed to marshal config: %w", err)
+			return false, fmt.Errorf("failed to generate minimal config: %w", err)
 		}
 		if err := os.WriteFile(cfgPath, data, 0644); err != nil {
 			return false, fmt.Errorf("failed to write config file: %w", err)

@@ -5,6 +5,109 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.124.0] - 2026-10-22
+
+### Added
+- **Minimal Default Configuration on Workspace Init with Runtime Defaults Inheritance**:
+  - Implemented `GenerateMinimalConfigYAML` and `BuildMinimalConfig` in `pkg/infrastructure/config/minimal.go`, generating concise (~15–20 lines), human-readable `.noctifab/config.yaml` files during `noctifab init` rather than dumping monolithic 340-line structs.
+  - Retained strict convention-over-configuration guarantees: all omitted configuration sections (`agents`, `runtime`, `storage`, `sandbox.allowed_commands`, `fallback`, `unblocker`, etc.) seamlessly inherit robust runtime defaults from `config.DefaultConfig()` during `config.Load()`.
+  - Added full support for preset profiles (`--profile`) and language templates (`--template`), emitting only overridden parameters (such as `ollama` endpoints, model identifiers, custom linter/forbidden patterns, or non-default build commands) while keeping configuration files clean.
+  - Documented the minimal configuration layout and automatic runtime default inheritance model across `docs/configuration.md`, `docs/configuration_guidelines.md`, `docs/cli_usage.md`, and `SPEC.md`.
+  - Added unit test coverage in `pkg/infrastructure/config/minimal_test.go` and integration test `TestInitCmd_MinimalConfigAndObeysDefaults` in `cmd/noctifab/cli/init_test.go`.
+
+## [0.123.0] - 2026-10-21
+
+### Added
+- **Multi-Hypothesis Parallel Worktree Prototyping & Short-Circuit Racing (P0)**:
+  - Added `HypothesesConfig` in `pkg/infrastructure/config/hypotheses_types.go` supporting `agents: 2` and `resolution: correct | mixture` for both `agents.hypotheses` and `spike.hypotheses`.
+  - Implemented `ExecuteSinglePassHypotheses` and `resolveHypothesesOutcome` in `pkg/services/hypothesis_runner.go`, running concurrent hypothesis candidates in isolated Git worktrees during `single_pass` mode.
+  - Implemented Short-Circuit Hypothesis Racing ("First-to-100%-Green Wins"): when a candidate achieves a 100% test pass rate with zero errors under `resolution: correct`, lagging candidates are immediately canceled to slash wall-clock latency and token expenditure.
+  - Implemented `GenerateSpikeHypotheses` and `ResolveSpikeHypotheses` in `pkg/services/spike_hypotheses.go` for greenfield walking skeleton racing.
+  - Under `resolution: mixture`, non-conflicting files and complementary diffs across candidates are synthesized and validated against the OS test suite, automatically falling back to the highest pass rate candidate if conflicts arise.
+- **Speculative Macro-Planning Pipeline & Bounded Lookahead (P0)**:
+  - Enhanced `SpeculativePlanner` in `cmd/noctifab/cli/start_planner_overlap.go` with configurable lookahead limit (`SetLookaheadLimit`, default: 2) to proactively decompose queued downstream user stories in background goroutines while active tasks execute, cutting story startup latency to 0ms.
+- **Background Toolchain & Test Dependency Warm-Up (P0)**:
+  - Implemented `WarmupWorktreeToolchain` and `WarmupCommandForDir` in `pkg/services/toolchain_warmup.go` auto-detecting project manifests (`Cargo.toml`, `go.mod`, `pyproject.toml`, `*.csproj`, `package.json`) and running non-blocking pre-compilation during worktree provisioning and LLM reasoning.
+- **Host Toolchain PATH Forwarding & Shim Protection (P0)**:
+  - Implemented `CandidateHostToolchainDirs` and `ResolveHostToolchainPATH` in `pkg/services/worktree_cache.go`, detecting and prepending verified host version managers and toolchain directories (`~/.asdf/shims`, `~/.cargo/bin`, `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) ahead of standard system paths while preventing duplicates, eliminating missing tool/shim starvation in stripped subshell environments.
+- **Dynamic Turn Loop Ceiling Extension (P1)**:
+  - Implemented `AdaptiveTurnManager` in `pkg/services/adaptive_turn_manager.go` dynamically granting turn ceiling extensions (up to `max_extension: 3` turns) when generator turns demonstrate active defect remediation (failing test count strictly decreasing).
+- **Monorepo & Subdirectory Manifest Auto-Detection (P1)**:
+  - Implemented `DetectSubdirectoryTestCommand`, `DetectSubdirectoryBuildCommand`, and `DetectSubdirectoryFormatterCommand` in `pkg/services/sandbox_manifest_resolver.go` and integrated them into `DetectDefault*Command` in `pkg/services/sandbox.go`. Nested manifests (`backend/Cargo.toml`, `frontend/package.json`, `app/pyproject.toml`, `cmd/go.mod`) are automatically detected so polyglot projects never incorrectly default to Go toolchain commands.
+
+## [0.122.0] - 2026-10-20
+
+### Added
+- **Adaptive Thinking & Progressive Model Escalation Ladder (P0)**:
+  - Implemented `TaskEscalationConfig` in `pkg/infrastructure/config/escalation_types.go` allowing configurable escalation thresholds (`thinking_threshold_turns: 2`, `model_upgrade_threshold_turns: 2`, `max_model_upgrades: 2`, `split_on_max_upgrades: true`, `clean_worktree_on_escalate: true`).
+  - Implemented `TaskEscalator` and `ProgressiveTaskEscalator` in `pkg/services/task_escalator.go` managing the 5-step escalation ladder: optimistic fast path with thinking disabled, turn-based thinking activation (accelerated on `HIGH` complexity), progressive model upgrades, and last-resort subtask decomposition.
+  - Added thinking-only model awareness (`IsThinkingOnlyModel` in `pkg/infrastructure/llm/model_capabilities.go`) recognizing Gemini 2.5/3.1/3.6 Pro, o1, and o3-mini to safely bypass non-thinking steps when escalated to reasoning-only models.
+- **Dirty Worktree Hygiene on Model Escalation (P0)**:
+  - Automated `git checkout .` and `git clean -fd` in `pkg/services/orchestrator_execute.go` before invoking escalated models, ensuring upgraded models start from clean repository state and eliminating inherited syntax corruption from previous failed attempts.
+- **Planner Complexity Classification & AddTask Parsing (P1)**:
+  - Enhanced the `add_task` tool and planner prompt template (`pkg/infrastructure/prompts/defaults/planner/decompose.tmpl`) to instruct the planner to evaluate and assign task complexity (`LOW`, `MEDIUM`, `HIGH`).
+  - Added `Complexity`, `ModelUpgrades`, and `ParentTaskID` fields to `domain.Task`.
+- **Dynamic Context Routing & Model Prioritization (P1)**:
+  - Implemented `WithDynamicThinking`, `GetDynamicThinking`, `WithModelOverride`, and `GetModelOverride` in `pkg/domain/llm_client.go`.
+  - Added `PrioritizeCandidatesByModel` in `pkg/infrastructure/llm/router_model_priority.go` to reorder router candidates dynamically based on model escalation directives.
+
+## [0.121.0] - 2026-10-20
+
+### Added
+- **Configurable Pragmatic Test Consensus & Soft-Pass Gating (P0)**:
+  - Added `min_pass_rate` configuration setting to `sandbox` (default: `80.0%`), enabling user-configurable pass rate thresholds for task progression.
+  - Enhanced `TestValidator` in `pkg/services/test_validator.go` to compute parsed pass rates (`passed / total * 100`) and grant soft-pass task acceptance whenever passing tests meet or exceed the configured threshold, eliminating pipeline churn on minor non-critical test flakes while keeping failed test details as non-blocking notices.
+- **Walking Skeleton & Initial Scaffolding File Limit Relaxation (P0)**:
+  - Relaxed the task cohesion mega-task limit in `pkg/services/task_cohesion.go` from 6 to 10 files specifically for walking skeleton tasks (`US-001`, `skeleton`, `scaffold`), unblocking initial project bootstrapping in enterprise runtimes (Java/Spring Boot, C#/.NET, Django).
+  - Extended doc/config exclusions to recognize `pom.xml`, `build.gradle`, `.csproj`, `rebar.config`, `dune-project`, `CMakeLists.txt`, `tsconfig.json`, and language-specific test suffixes (`*Test.java`, `*Tests.cs`, `*_tests.erl`, `*_spec.rb`).
+- **Read-Loop Circuit Breaker Threshold Calibration (P1)**:
+  - Elevated the duplicate read/inspection threshold in `pkg/services/circuit_breaker.go` from 3 to 5 inspections, preventing false-positive premature turn conclusions during complex multi-file AST/parser investigations.
+  - Added progressive contextual warnings at 3 and 4 duplicate reads to prompt the agent to write files before the breaker trips.
+- **Package Installation Auto-Stripping for Format & Lint Rules (P2)**:
+  - Implemented `SanitizeToolCommand` in `pkg/services/tool_command_sanitizer.go` to automatically detect and strip embedded package installation clauses (`opam install`, `npm install`, `pip install`, `cargo install`, `apt install`) from formatter, syntax checker, and tool execution pipelines, preventing background process lock hangs.
+
+## [0.120.0] - 2026-10-18
+
+### Added
+- **Inter-Task Symbol Desynchronization & Sibling Worktree Cherry-Pick (P0)**:
+  - Implemented preflight dependency linkage (`AutoLinkSymbolDependencies` in `pkg/services/worktree_symbol_sync.go`) to automatically map missing symbol dependencies between parallel tasks.
+  - Implemented `SynchronizeMissingSymbolFromSiblings` to detect compiler diagnostics (`CS0103`, `undefined:`, `cannot find`, `NameError`, undeclared identifiers) and cherry-pick export definitions across sibling worktree branches.
+- **Shared Root File & Manifest Rebase Conflict Auto-Resolution (P1)**:
+  - Implemented `AutoResolveRebaseConflicts` in `pkg/services/rebase_conflict_resolver.go` to syntactically union dependencies and exports for `Cargo.toml`, `go.mod`, `package.json`, `.csproj`, `lib.rs`, `index.ts`, and `__init__.py` during worktree rebases.
+- **Universal Test Output Parsing & Anti-Spoofing Calibration (P1)**:
+  - Enhanced `test_discovery_preflight.go` with multi-language test output patterns covering TAP (`1..N`, `ok`), RSpec, .NET test runner (`Passed: X`), Erlang EUnit, and C test harnesses (`ALL PASS`, `minunit`).
+- **Parallel Story Expansion TPM Rate Limiting (P2)**:
+  - Implemented `TPMRateLimiter` in `pkg/services/product_manager_tpm.go` to inspect estimated token burst sizes against provider TPM limits and throttle subsequent HTTP requests, preventing 429 provider chokes.
+- **Downstream Task Deadlock Unblocking on Upstream Planning Rejection (P0)**:
+  - Implemented `UnblockIndependentTasks` in `pkg/services/deadlock_unblocker.go` to unblock independent cross-story tasks with non-colliding target files when an upstream story or task is rejected.
+  - Added structured rejection error context into planner retry prompts in `pkg/services/orchestrator_server.go`.
+- **Adaptive Loop Ceiling for Active Remediations (P1)**:
+  - Implemented `AdaptiveTurnManager` in `pkg/services/adaptive_turn_manager.go` enforcing a guaranteed minimum of 2 turns and dynamically extending turns (+1) when consecutive test runs demonstrate decreasing failure counts.
+- **Host PATH & Version Manager Preflight (P1)**:
+  - Implemented `PreflightVersionManagers` in `pkg/services/version_manager_preflight.go` to scan and prepend user version manager shims (`.asdf`, `.cargo`, `.nvm`, `.mise`, `.pyenv`, `.rbenv`) to `$PATH`.
+- **Automatic Sandbox Virtualenv Dependency Pre-Installation (P1)**:
+  - Implemented `EnsureVenvTestRunner` in `pkg/services/version_manager_preflight.go` to inspect target project virtual environments and pre-install missing test runners (`pytest`, etc.) prior to task execution.
+- **Monorepo Greenfield Spike Prototyping Bypass (P2)**:
+  - Implemented `IsMonorepoSpec` in `pkg/services/spike_monorepo.go` to detect fullstack and monorepo architectures, bypassing monolithic spike prototypes in favor of streaming user stories.
+- **Missing Makefile Target Preflight & Auto-Bypass (P2)**:
+  - Implemented `ParseMakefileTargets` and `InspectMakefile` in `pkg/services/makefile_preflight.go` to preflight target recipes, auto-bypassing missing optional targets (`make lint`) and mapping missing test recipes to native toolchain runners.
+
+## [0.119.0] - 2026-10-18
+
+### Added
+- **Manifest-Aware Pre-Seeded Stubs in `tester_first` Mode**:
+  - Enhanced `generateStubContent` in `pkg/services/orchestrator_stub.go` to recognize project build manifests (`go.mod`, `Cargo.toml`, `package.json`, `Gemfile`, `rebar.config`, `dune-project`, `pyproject.toml`, `CMakeLists.txt`) and generate syntactically valid minimal declarations rather than dummy comment stubs, preventing Turn 1 compiler/toolchain failures during test discovery.
+  - Added unit test cases in `pkg/services/orchestrator_stub_test.go` asserting manifest structure conformance.
+- **Git Symbolic HEAD & Base Branch Self-Healing Auto-Discovery**:
+  - Enhanced `ResolveBaseBranch` in `pkg/services/vcs_branch_resolver.go` to verify whether the configured base branch exists locally or on remote (`origin/<branch>`). If the branch is absent (e.g. brownfield repositories initialized with `master` while config specifies `main`), the resolver automatically queries symbolic HEAD (`refs/remotes/origin/HEAD`), `master`, and `main` before failing.
+  - Added unit tests in `pkg/services/vcs_branch_resolver_test.go` verifying fallback resolution.
+- **Toolchain Preflight Regression Test Suite**:
+  - Authored `cmd/noctifab/cli/toolchain_preflight_test.go` asserting that hyphenated application executables (`echo-cli`, `todo-cli`, `wc-cli`) declared in user story `AllowedExecutables` are never falsely identified as missing host toolchains, while actual compilers and emulators (`gcc`, `valgrind`, `qemu-arm`, cross-compilers) are correctly detected.
+- **User-Configurable Language Sandbox Templates**:
+  - Implemented `pkg/infrastructure/templates/` (`Manager`, `BuiltinTemplates`, `TemplateAliases`) supporting multi-tiered template resolution across workspace (`.noctifab/templates/`), user global (`~/.noctifab/templates/`), and built-in defaults for `go`, `python`, `rust`, `typescript`, `c`, `ruby`, `csharp`, `java`, `erlang`, and `ocaml`.
+  - Added `noctifab templates` CLI command (`list`, `show`, `init`) for inspecting, displaying, and scaffolding editable YAML templates.
+  - Added `--template` / `-t` flag to `noctifab init` allowing users to bootstrap projects directly with any language template preset.
+
 ## [0.118.0] - 2026-10-18
 
 ### Added

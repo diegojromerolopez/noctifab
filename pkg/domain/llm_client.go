@@ -92,6 +92,36 @@ func CacheSessionID(ctx context.Context) string {
 	return ""
 }
 
+type dynamicThinkingKey struct{}
+
+// WithDynamicThinking attaches an explicit runtime dynamic thinking toggle to the context.
+func WithDynamicThinking(ctx context.Context, enable bool) context.Context {
+	return context.WithValue(ctx, dynamicThinkingKey{}, enable)
+}
+
+// GetDynamicThinking retrieves any explicit runtime thinking toggle set on the context.
+func GetDynamicThinking(ctx context.Context) (bool, bool) {
+	if v, ok := ctx.Value(dynamicThinkingKey{}).(bool); ok {
+		return v, true
+	}
+	return false, false
+}
+
+type modelOverrideKey struct{}
+
+// WithModelOverride attaches an explicit model override name to the context.
+func WithModelOverride(ctx context.Context, model string) context.Context {
+	return context.WithValue(ctx, modelOverrideKey{}, model)
+}
+
+// GetModelOverride retrieves any explicit model override name set on the context.
+func GetModelOverride(ctx context.Context) string {
+	if v, ok := ctx.Value(modelOverrideKey{}).(string); ok && v != "" {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
 // RoleContextKey is the typed context key for passing the active agent role.
 type RoleContextKey struct{}
 

@@ -86,7 +86,13 @@ func (o *Orchestrator) handleDeadlockOrRescue(ctx context.Context, state *domain
 		})
 	}
 
-	// 2. Full Deadlock Abort
+	// 2. Deadlock Self-Healing: Check if blocked tasks have non-colliding failed dependencies
+	if unblocked := o.UnblockIndependentTasks(ctx, state); unblocked > 0 {
+		fmt.Printf("⚡ [Deadlock Self-Healing] Successfully unblocked %d independent tasks from failed upstream stories. Resuming DAG execution...\n", unblocked)
+		return true, nil
+	}
+
+	// 3. Full Deadlock Abort
 	var blockedInfo []string
 	for _, t := range state.Tasks {
 		if t.Status != domain.TaskSuccess {

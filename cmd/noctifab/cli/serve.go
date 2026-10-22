@@ -157,6 +157,7 @@ var serveCmd = &cobra.Command{
 		if cfg.Sandbox.TimeoutSeconds > 0 {
 			evaluator.RunTimeout = time.Duration(cfg.Sandbox.TimeoutSeconds) * time.Second
 		}
+		evaluator.MinPassRate = cfg.Sandbox.GetMinPassRate()
 		vcsClient := vcs.NewClient(cfg.VCS.Provider, cfg.VCS.Repository, cfg.VCS.TokenValue)
 
 		repairHandler := services.NewWatchdogRepair(llmClient, sandboxRunner, reg.Tools(), evaluator)
@@ -194,6 +195,9 @@ var serveCmd = &cobra.Command{
 			DefaultTestCommand:   cfg.Sandbox.TestCommand,
 			AllowedCommands:      cfg.Sandbox.AllowedCommands,
 			E2E:                  cfg.Sandbox.E2E,
+			Escalation:           cfg.Agents.Escalation,
+			MaxTurnExtensions:    cfg.Agents.GetMaxTurnExtensions(),
+			Hypotheses:           cfg.Agents.Hypotheses,
 		}
 
 		// Story queue: the mailbox sends stories here; the server loop processes them.

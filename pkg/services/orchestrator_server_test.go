@@ -422,4 +422,3 @@ func TestPlanStory_SQLite_ConcurrentPlanningAndMutationsNoOCCError(t *testing.T)
 		assert.Greater(t, finalState.Metadata.TotalTokensUsed, int64(0), "token usage metrics must be safely persisted")
 	})
 }
-

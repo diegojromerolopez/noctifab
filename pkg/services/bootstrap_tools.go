@@ -94,6 +94,12 @@ func (t *AddTaskTool) Execute(ctx context.Context, state *domain.State, args map
 		}
 	}
 
+	complexity, _ := args["complexity"].(string)
+	complexity = strings.ToUpper(strings.TrimSpace(complexity))
+	if complexity != "LOW" && complexity != "MEDIUM" && complexity != "HIGH" {
+		complexity = "MEDIUM"
+	}
+
 	storyID := ExtractStoryID(state.Metadata.InputPath)
 	task := domain.Task{
 		ID:          id,
@@ -104,6 +110,7 @@ func (t *AddTaskTool) Execute(ctx context.Context, state *domain.State, args map
 		DependsOn:   dependsOn,
 		TargetFiles: targetFiles,
 		StoryID:     storyID,
+		Complexity:  complexity,
 		Retries:     0,
 		MaxRetries:  maxRetriesVal,
 		CreatedAt:   time.Now(),

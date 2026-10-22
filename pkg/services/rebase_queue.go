@@ -323,6 +323,11 @@ func (q *RebaseQueue) executeRebase(ctx context.Context, branch, base string) er
 		for _, file := range conflictedFiles {
 			fullPath, err := resolveSandboxPath(q.git.dir, file)
 			if err == nil {
+				if IsAutoResolvableConflictFile(file) {
+					if autoRes, autoErr := AutoResolveConflictFile(fullPath); autoErr == nil && autoRes {
+						continue
+					}
+				}
 				if content, err := os.ReadFile(fullPath); err == nil {
 					cleaned := CleanConflictMarkers(string(content))
 					_ = os.WriteFile(fullPath, []byte(cleaned), 0644)

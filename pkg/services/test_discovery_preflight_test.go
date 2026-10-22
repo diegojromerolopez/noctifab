@@ -255,3 +255,41 @@ ENTRYPOINT ["/app/tests/e2e/run_tests.sh"]
 		}
 	})
 }
+
+func TestExtractExecutedTestCount_NicheRunners(t *testing.T) {
+	// TAP protocol plan
+	tapPlan := "1..4\nok 1 - test add\nok 2 - test list\nok 3 - test remove\nok 4 - test complete\n"
+	if count := extractExecutedTestCount(tapPlan); count != 4 {
+		t.Errorf("expected TAP plan to extract 4 tests, got %d", count)
+	}
+
+	// TAP ok lines
+	tapOk := "ok 1 - first\nok 2 - second\n"
+	if count := extractExecutedTestCount(tapOk); count != 2 {
+		t.Errorf("expected TAP ok lines to extract 2 tests, got %d", count)
+	}
+
+	// RSpec output
+	rspec := "Finished in 0.00311 seconds\n6 examples, 0 failures\n"
+	if count := extractExecutedTestCount(rspec); count != 6 {
+		t.Errorf("expected RSpec to extract 6 tests, got %d", count)
+	}
+
+	// .NET test runner output
+	dotnet := "Passed!  - Failed:     0, Passed:    20, Skipped:     0, Total:    20, Duration: 22 ms"
+	if count := extractExecutedTestCount(dotnet); count != 20 {
+		t.Errorf("expected .NET output to extract 20 tests, got %d", count)
+	}
+
+	// Erlang EUnit output
+	erlang := "  All 5 tests passed.\n"
+	if count := extractExecutedTestCount(erlang); count != 5 {
+		t.Errorf("expected Erlang EUnit to extract 5 tests, got %d", count)
+	}
+
+	// C custom test runner
+	cPass := "Running suite...\nALL TESTS PASSED\n"
+	if count := extractExecutedTestCount(cPass); count < 1 {
+		t.Errorf("expected C runner output to extract at least 1 test, got %d", count)
+	}
+}

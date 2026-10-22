@@ -127,7 +127,15 @@ To eliminate LLM hallucinations across every phase of the development lifecycle,
 
 
 #### Speculative Macro-Planning Overlap (`cmd/noctifab/cli/start_planner_overlap.go`)
-`SpeculativePlanner` asynchronously decomposes queued user stories into task DAGs in the background while the active user story executes its assigned tasks. By the time the active story concludes, downstream tasks are already synthesized and persisted on disk and memory, eliminating inter-story planning pauses.
+`SpeculativePlanner` asynchronously decomposes queued user stories into task DAGs in the background while the active user story executes its assigned tasks. By the time the active story concludes, downstream tasks are already synthesized and persisted on disk and memory, eliminating inter-story planning pauses. A configurable lookahead limit (`lookaheadLimit: 2`) bounds concurrent planning to prevent redundant work while keeping the execution pipeline primed.
+
+#### Multi-Hypothesis Parallel Worktree Prototyping (`pkg/services/hypothesis_runner.go`, `pkg/services/spike_hypotheses.go`)
+When executing tasks in `single_pass` mode or generating architecture walking skeletons in `spike` mode, Noctifab can explore multiple implementation paths simultaneously (`agents: 2`). Each candidate is executed in an isolated Git worktree:
+- **`resolution: correct`**: Evaluates all candidates through the deterministic OS test runner (`TestValidator`) and selects the candidate with the highest pass rate (or 100% green tests), discarding the losing worktree.
+- **`resolution: mixture`**: Rather than discarding an alternative candidate that may contain valid complementary solutions (such as an idiomatic domain model in candidate 1 and comprehensive test suites in candidate 2), `mixture` merges non-conflicting files and complementary diffs into a synthesized candidate and executes test validation. If the synthesized mixture compiles and passes tests, it is adopted; if conflicts or regressions arise, it safely falls back to the top-scoring individual candidate.
+
+#### Background Toolchain & Test Dependency Warm-Up (`pkg/services/toolchain_warmup.go`)
+To eliminate the 5–30 second cold compiler compilation and dependency download penalty on the first test turn of a new worktree, `WarmupWorktreeToolchain` automatically detects project manifests (`Cargo.toml`, `go.mod`, `pyproject.toml`, `*.csproj`, `package.json`) at the workspace root or in immediate subdirectories and executes a non-blocking background pre-compilation routine (`cargo check --tests`, `go test -run=^$ ./...`, `pytest --collect-only -q`, `dotnet build`, `npm test -- --listTests`) during worktree provisioning while the LLM is generating code.
 
 #### Worktree Cache & Dependency Symlinking (`pkg/services/worktree_cache.go`)
 Isolated Git worktrees created under `.noctifab/worktrees/` redirect heavy compiler caches (Cargo, Go, pip, ccache) to `.noctifab/cache/`. When `package.json` is present, root `node_modules` are automatically symlinked into the worktree directory, enabling Node/TypeScript test runners (`jest`, `vitest`, `ts-node`) to execute seamlessly without redundant per-worktree installations.

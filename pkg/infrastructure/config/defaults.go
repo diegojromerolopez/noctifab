@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 // DefaultConfig returns a new Config populated with baseline default settings.
@@ -80,6 +78,14 @@ func DefaultConfig() *Config {
 				Enabled:        true,
 				MaxTurns:       2,
 				TimeoutSeconds: 120,
+			},
+			Escalation: TaskEscalationConfig{
+				Enabled:                    true,
+				ThinkingThresholdTurns:     2,
+				ModelUpgradeThresholdTurns: 2,
+				MaxModelUpgrades:           2,
+				SplitOnMaxUpgrades:         boolPtr(true),
+				CleanWorktreeOnEscalate:    boolPtr(true),
 			},
 		},
 		WorkspaceCache: WorkspaceCacheConfig{
@@ -292,7 +298,7 @@ func WriteDefaultConfig(path string) error {
 	}
 
 	cfg := DefaultConfig()
-	data, err := yaml.Marshal(cfg)
+	data, err := GenerateMinimalConfigYAML(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal default config: %w", err)
 	}

@@ -79,9 +79,9 @@ func isMicroTaskViolation(task domain.Task) bool {
 	return false
 }
 
-// isMegaTaskViolation checks if a task is overly monolithic (> 6 production files or enumerating > 8 command/operation keywords).
+// isMegaTaskViolation checks if a task is overly monolithic (> 6 production files, or > 10 for skeletons, or enumerating > 8 command/operation keywords).
 func isMegaTaskViolation(task domain.Task) (bool, string) {
-	// 1. Check non-test target files count (> 6 production files is too broad for a single task)
+	// 1. Check non-test target files count
 	nonTestCount := 0
 	for _, f := range task.TargetFiles {
 		clean := strings.ToLower(filepath.ToSlash(f))
@@ -91,8 +91,14 @@ func isMegaTaskViolation(task domain.Task) (bool, string) {
 		}
 		nonTestCount++
 	}
-	if nonTestCount > 6 {
-		return true, fmt.Sprintf("task targets %d production files (maximum 6 allowed per task)", nonTestCount)
+
+	limit := 6
+	if isSkeletonOrScaffoldTask(task) {
+		limit = 10
+	}
+
+	if nonTestCount > limit {
+		return true, fmt.Sprintf("task targets %d production files (maximum %d allowed per task)", nonTestCount, limit)
 	}
 
 	// 2. Check excessive command/operation enumeration in description or title (> 8 command keywords)
@@ -104,28 +110,79 @@ func isMegaTaskViolation(task domain.Task) (bool, string) {
 	return false, ""
 }
 
+func isSkeletonOrScaffoldTask(task domain.Task) bool {
+	idLower := strings.ToLower(task.ID)
+	storyIDLower := strings.ToLower(task.StoryID)
+	titleLower := strings.ToLower(task.Title)
+	return strings.HasPrefix(idLower, "us-001") ||
+		strings.HasPrefix(storyIDLower, "us-001") ||
+		strings.Contains(titleLower, "skeleton") ||
+		strings.Contains(titleLower, "scaffold") ||
+		strings.Contains(titleLower, "walking skeleton")
+}
+
 func isCohesionTestFile(base string) bool {
-	return strings.HasPrefix(base, "test_") ||
-		strings.HasSuffix(base, "_test.go") ||
-		strings.HasSuffix(base, "_test.py") ||
-		strings.HasSuffix(base, "_test.rs") ||
-		strings.HasSuffix(base, "_test.ts") ||
-		strings.HasSuffix(base, "_test.js") ||
-		strings.HasSuffix(base, ".spec.ts") ||
-		strings.HasSuffix(base, ".spec.js")
+	lower := strings.ToLower(base)
+	return strings.HasPrefix(lower, "test_") ||
+		strings.HasPrefix(lower, "test") ||
+		strings.HasSuffix(lower, "_test.go") ||
+		strings.HasSuffix(lower, "_test.py") ||
+		strings.HasSuffix(lower, "_test.rs") ||
+		strings.HasSuffix(lower, "_test.ts") ||
+		strings.HasSuffix(lower, "_test.js") ||
+		strings.HasSuffix(lower, "_test.c") ||
+		strings.HasSuffix(lower, "_test.h") ||
+		strings.HasSuffix(lower, "_tests.erl") ||
+		strings.HasSuffix(lower, "_test.erl") ||
+		strings.HasSuffix(lower, "_spec.rb") ||
+		strings.HasSuffix(lower, ".spec.ts") ||
+		strings.HasSuffix(lower, ".spec.js") ||
+		strings.HasSuffix(lower, "test.java") ||
+		strings.HasSuffix(lower, "tests.java") ||
+		strings.HasSuffix(lower, "it.java") ||
+		strings.HasSuffix(lower, "test.cs") ||
+		strings.HasSuffix(lower, "tests.cs") ||
+		strings.HasSuffix(lower, "_test.ml")
 }
 
 func isCohesionDocOrConfig(base string) bool {
-	return base == "makefile" ||
-		base == "gnumakefile" ||
-		base == "pyproject.toml" ||
-		base == "package.json" ||
-		base == "cargo.toml" ||
-		base == "go.mod" ||
-		base == "go.sum" ||
-		base == ".gitignore" ||
-		base == "readme.md" ||
-		strings.HasSuffix(base, ".md")
+	lower := strings.ToLower(base)
+	return lower == "makefile" ||
+		lower == "gnumakefile" ||
+		lower == "pyproject.toml" ||
+		lower == "package.json" ||
+		lower == "cargo.toml" ||
+		lower == "cargo.lock" ||
+		lower == "go.mod" ||
+		lower == "go.sum" ||
+		lower == ".gitignore" ||
+		lower == "readme.md" ||
+		lower == "pom.xml" ||
+		lower == "build.gradle" ||
+		lower == "build.gradle.kts" ||
+		lower == "settings.gradle" ||
+		lower == "settings.gradle.kts" ||
+		lower == "gradlew" ||
+		lower == "gradlew.bat" ||
+		lower == "rebar.config" ||
+		lower == "rebar.lock" ||
+		lower == "dune" ||
+		lower == "dune-project" ||
+		lower == "dune-workspace" ||
+		lower == "gemfile" ||
+		lower == "gemfile.lock" ||
+		lower == "cmakelists.txt" ||
+		lower == "meson.build" ||
+		lower == "tsconfig.json" ||
+		lower == "vite.config.ts" ||
+		lower == "vite.config.js" ||
+		lower == "global.json" ||
+		lower == "nuget.config" ||
+		strings.HasSuffix(lower, ".csproj") ||
+		strings.HasSuffix(lower, ".fsproj") ||
+		strings.HasSuffix(lower, ".sln") ||
+		strings.HasSuffix(lower, ".gemspec") ||
+		strings.HasSuffix(lower, ".md")
 }
 
 var nonCommandWords = map[string]bool{

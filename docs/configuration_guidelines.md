@@ -8,12 +8,13 @@ Following these guidelines ensures that your projects achieve maximum throughput
 
 ## 1. Golden Rules of Noctifab Configuration
 
-1. **Enable Resilient OCC for SQLite**: Always tune Optimistic Concurrency Control (`storage.occ`) when running multiple parallel agents to avoid write collision aborts.
-2. **Never Block on Unanswered Questions in CI/Autonomous Runs**: Set `clarification_timeout_action: continue` so agents synthesize assumptions and maintain momentum.
-3. **Pre-Bake Toolchains in Containers**: Do not download heavy packages or compilers at runtime; pre-install them in your `Dockerfile` to eliminate network latency and timeout risks.
-4. **Cap Reasoning Model Thinking Budgets**: Set `thinking_budget: 2048` on reasoning LLMs (such as Qwen or DeepSeek-R1) to prevent 30–60s per-turn response latency.
-5. **Enforce Hard Watchdog Timers**: Set both `runtime.max_duration` and `runtime.max_silent_stall_duration` to catch deadlocks and trigger automatic recovery.
-6. **Explicitly Whitelist Sandbox Binaries**: Ensure every CLI utility invoked by test runners, formatters, or linters is registered under `sandbox.allowed_commands`.
+1. **Favor Minimal Configurations & Inherit Runtime Defaults**: Let `noctifab init` generate a concise, minimal `config.yaml` (~15–25 lines). Never dump or freeze internal engine defaults in workspace configs. Any omitted field automatically inherits Noctifab's latest, battle-tested defaults at runtime.
+2. **Enable Resilient OCC for SQLite**: Always tune Optimistic Concurrency Control (`storage.occ`) when running multiple parallel agents to avoid write collision aborts.
+3. **Never Block on Unanswered Questions in CI/Autonomous Runs**: Set `clarification_timeout_action: continue` so agents synthesize assumptions and maintain momentum.
+4. **Pre-Bake Toolchains in Containers**: Do not download heavy packages or compilers at runtime; pre-install them in your `Dockerfile` to eliminate network latency and timeout risks.
+5. **Cap Reasoning Model Thinking Budgets**: Set `thinking_budget: 2048` on reasoning LLMs (such as Qwen or DeepSeek-R1) to prevent 30–60s per-turn response latency.
+6. **Enforce Hard Watchdog Timers**: Set both `runtime.max_duration` and `runtime.max_silent_stall_duration` to catch deadlocks and trigger automatic recovery.
+7. **Explicitly Whitelist Sandbox Binaries**: Ensure every CLI utility invoked by test runners, formatters, or linters is registered under `sandbox.allowed_commands`.
 
 ---
 
@@ -261,6 +262,31 @@ The Noctifab sandbox isolates code execution and enforces security by verifying 
 If `test_command` or `linter.command` invokes a build tool (e.g. `make test` or `coverage run`), but the binary name (`make` or `coverage`) is omitted from `allowed_commands`, the sandbox immediately halts execution with:
 `Sandbox violation: command '<binary>' is not in the whitelist`.
 
+### User-Configurable Templates (`~/.noctifab/templates/` and `.noctifab/templates/`)
+
+Noctifab supports customizable language templates across three resolution tiers:
+1. **Workspace Tier (`.noctifab/templates/<name>.yaml`)**: Project-specific sandbox overrides. Takes highest precedence.
+2. **User Global Tier (`~/.noctifab/templates/<name>.yaml`)**: User-level presets shared across all projects on your machine.
+3. **Built-in Tier**: Embedded defaults for `go`, `python`, `rust`, `typescript`, `c`, `ruby`, `csharp`, `java`, `erlang`, and `ocaml`.
+
+You can inspect, export, and manage templates using the CLI:
+```bash
+# List all available templates and their active resolution sources
+noctifab templates list
+
+# Display the YAML definition of a template
+noctifab templates show python
+
+# Export an editable template into workspace (.noctifab/templates/) or user global (~/.noctifab/templates/)
+noctifab templates init python
+noctifab templates init rust --global
+
+# Initialize a project with a specific template preset
+noctifab init my-project --template python
+```
+
+> For full details, custom language guides (like Zig or Elixir), and the complete built-in catalog, see the dedicated [Language Sandbox Templates](templates.md) guide.
+
 ### Recommended Sandbox Configurations by Language
 
 #### Go
@@ -483,6 +509,18 @@ agents:
       slice_spec: true
   product_manager:
     audit_mode: smart
+  hypotheses:
+    enabled: true
+    agents: 2
+    resolution: correct # "correct" (pass rate) or "mixture" (diff/file synthesis)
+  dynamic_turns:
+    enabled: true
+    max_extension: 3
+spike:
+  hypotheses:
+    enabled: true
+    agents: 2
+    resolution: correct # "correct" or "mixture"
 ```
 
 - **`context.mode: tree_sitter`** (default): Universal AST symbol map and signature extraction omitting implementation bodies of non-target files, reducing prompt tokens by 70%–90%. Use `diff_window` (+/- 15 lines) for localized edits, or `full` for small projects requiring complete file contents.
@@ -492,6 +530,10 @@ agents:
 - **`llm.thinking.enabled: false`**: Disables model chain-of-thought (thinking) tokens to avoid double reasoning costs. Individual providers can override with `thinking.enabled: true`.
 - **`llm.max_retries`, `retry_backoff`, `max_timeout`, `idle_timeout`, `max_tokens`, `temperature`, `streaming`**: Common transport settings declared globally at the `llm:` level and inherited by all providers, with per-provider overrides supported.
 - **`agents.fallback.sovereign_rescue.slice_spec: true`**: Slices oversized technical specifications (>8k chars) during emergency sovereign takeover, preventing 100 KB whole-spec spikes.
+- **`agents.hypotheses` & `spike.hypotheses`**: Multi-Hypothesis Parallel Worktree Prototyping. Runs parallel worktrees (`agents: 2`) exploring alternative implementation hypotheses concurrently in `single_pass` and `spike` modes. Strategy `resolution: correct` selects the candidate with the highest empirical OS test pass rate, with Short-Circuit Racing immediately canceling lagging candidates upon any 100% green result; `resolution: mixture` synthesizes non-conflicting files/diffs and validates them against the test runner with fallback to the top candidate.
+- **`agents.dynamic_turns`**: Extends the turn ceiling dynamically (up to `max_extension: 3` turns) when generator turns show active remediation (e.g. failing test count strictly decreasing), preventing premature task failures when the model is actively closing defects.
+- **Monorepo & Subdirectory Manifest Auto-Detection**: Inspects nested directories (`backend/Cargo.toml`, `frontend/package.json`, `app/pyproject.toml`, `cmd/go.mod`) automatically when root manifests are absent, ensuring polyglot workspaces never default incorrectly to Go toolchain commands.
+- **Host Toolchain PATH Forwarding & Shim Protection**: Safely forwards existing host version managers and toolchain directories (`~/.asdf/shims`, `~/.cargo/bin`, `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) to the sandbox environment, preventing missing tool and shim starvation.
 - **`llm.hedging`**: Gated by SSE stream liveness tracking. While the primary provider actively streams tokens, hedging is deferred. For long-running batch roles (`product_manager`, `fallback`, `auditor`), `heavy_delay: 90s` prevents premature concurrent model calls. Speculative hedging can be completely disabled with `enabled: false`.
 - **`llm.json_reminder`**: Caps the original task prompt (`task.cap: 1500`) and rejected response tail (`body.cap: 12000`) on one-shot format reminder pullbacks, preventing redundant 80+ KB spec context re-transmissions.
 - **`agents.product_manager.audit_mode: smart`**: Automatically skips expensive Pass 2 LLM auditing on user stories that already pass deterministic contract validation (`ValidateStoryContract`), contain explicit Definitions of Done, and have non-synthetic contracts. Set to `exhaustive` to force LLM auditing across all stories.

@@ -124,6 +124,7 @@ func (o *Orchestrator) PlanStory(ctx context.Context, state *domain.State, spec 
 			lastErr = err
 			if attempt < maxAttempts {
 				fmt.Printf("⚠️ Planning attempt %d/%d produced no valid tasks (%v). Retrying...\n", attempt, maxAttempts, err)
+				prompt = fmt.Sprintf("%s\n\n⚠️ PREVIOUS PLANNING ATTEMPT %d REJECTED (%s):\nYour previous plan violated constraints. You MUST correct this in your next response:\n- If rejected as a mega-task (> 6 production files or > 8 commands), decompose the monolithic task into 2-3 smaller, modular sibling tasks with distinct target_files.\n- Provide detailed title and description (>= 15 chars).\n- Ensure all depends_on references point to valid task IDs in this plan.\n", prompt, attempt, err.Error())
 			}
 			continue
 		}

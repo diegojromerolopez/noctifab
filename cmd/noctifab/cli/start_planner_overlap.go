@@ -15,18 +15,32 @@ import (
 // in the background while the active story executes its tasks. By overlapping the
 // 10-25s LLM planning latency, downstream stories begin executing with 0ms startup delay.
 type SpeculativePlanner struct {
-	planFunc func(ctx context.Context, storyFile string) error
-	repo     domain.StateRepository
-	planned  map[string]bool
-	mu       sync.Mutex
+	planFunc       func(ctx context.Context, storyFile string) error
+	repo           domain.StateRepository
+	planned        map[string]bool
+	lookaheadLimit int
+	mu             sync.Mutex
 }
 
 // NewSpeculativePlanner constructs a new SpeculativePlanner.
 func NewSpeculativePlanner(repo domain.StateRepository, planFunc func(ctx context.Context, storyFile string) error) *SpeculativePlanner {
 	return &SpeculativePlanner{
-		planFunc: planFunc,
-		repo:     repo,
-		planned:  make(map[string]bool),
+		planFunc:       planFunc,
+		repo:           repo,
+		planned:        make(map[string]bool),
+		lookaheadLimit: 2,
+	}
+}
+
+// SetLookaheadLimit sets the maximum number of downstream stories to pre-plan speculatively.
+func (p *SpeculativePlanner) SetLookaheadLimit(limit int) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if limit > 0 {
+		p.lookaheadLimit = limit
 	}
 }
 
@@ -39,10 +53,31 @@ func (p *SpeculativePlanner) PrePlanQueuedStories(ctx context.Context, storyFile
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	for _, sf := range storyFiles {
+	currentIdx := -1
+	for i, sf := range storyFiles {
+		if sf == currentStory {
+			currentIdx = i
+			break
+		}
+	}
+
+	lookaheadLimit := p.lookaheadLimit
+	if lookaheadLimit <= 0 {
+		lookaheadLimit = 2
+	}
+	countPlanned := 0
+
+	for i, sf := range storyFiles {
+		if currentIdx >= 0 && i <= currentIdx {
+			continue
+		}
 		if sf == currentStory || p.planned[sf] {
 			continue
 		}
+		if countPlanned >= lookaheadLimit {
+			break
+		}
+
 		storyID := services.ExtractStoryID(sf)
 		featName := filepath.Base(sf)
 
@@ -63,6 +98,7 @@ func (p *SpeculativePlanner) PrePlanQueuedStories(ctx context.Context, storyFile
 			}
 		}
 
+		countPlanned++
 		p.planned[sf] = true
 		go func(file string, sID string) {
 			planCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)

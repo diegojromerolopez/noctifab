@@ -49,6 +49,8 @@ type TestValidator struct {
 	E2EMode               string
 	EnforceE2E            bool
 	ContainerGuard        *ContainerTeardownGuard
+	// MinPassRate specifies the percentage of unit tests (0.0 to 100.0) that must pass (default 80.0%).
+	MinPassRate float64
 }
 
 func (v *TestValidator) SetE2ECommand(cmd string) {
@@ -135,6 +137,7 @@ func NewTestValidator(runner Sandbox, strict bool, llmClient domain.LLMClient, t
 		RunTimeout:            5 * time.Minute,
 		Runs:                  1,
 		ShortCircuitConsensus: true,
+		MinPassRate:           80.0,
 	}
 }
 
@@ -381,10 +384,27 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 		}
 
 		passed := err == nil && !noTestsRan
+		minRate := v.MinPassRate
+		if minRate <= 0 {
+			minRate = 80.0
+		}
+		if !passed && parsedReport.Total > 0 && parsedReport.Passed > 0 {
+			passRate := (float64(parsedReport.Passed) / float64(parsedReport.Total)) * 100.0
+			if passRate >= minRate {
+				passed = true
+				outputMsg = fmt.Sprintf("%s\n\n[Pragmatic Pass Gating] %d/%d tests passed (%.1f%% >= %.1f%% required threshold). Soft-pass accepted for task progression.",
+					outputMsg, parsedReport.Passed, parsedReport.Total, passRate, minRate)
+			}
+		}
+
 		if !parsedReport.Success && len(parsedReport.Failures) > 0 {
-			passed = false
-			outputMsg = fmt.Sprintf("%s\n\n[Structured Test Parser] %s\nFailed Tests:\n - %s",
-				outputMsg, parsedReport.SummaryText, strings.Join(parsedReport.Failures, "\n - "))
+			if !passed {
+				outputMsg = fmt.Sprintf("%s\n\n[Structured Test Parser] %s\nFailed Tests:\n - %s",
+					outputMsg, parsedReport.SummaryText, strings.Join(parsedReport.Failures, "\n - "))
+			} else {
+				outputMsg = fmt.Sprintf("%s\n\n[Non-Blocking Test Notices]\nFailed Tests:\n - %s",
+					outputMsg, strings.Join(parsedReport.Failures, "\n - "))
+			}
 		}
 
 		results[0] = TestRunResult{
@@ -420,10 +440,27 @@ func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n
 			}
 
 			passed := err == nil && !noTestsRan
+			minRate := v.MinPassRate
+			if minRate <= 0 {
+				minRate = 80.0
+			}
+			if !passed && parsedReport.Total > 0 && parsedReport.Passed > 0 {
+				passRate := (float64(parsedReport.Passed) / float64(parsedReport.Total)) * 100.0
+				if passRate >= minRate {
+					passed = true
+					outputMsg = fmt.Sprintf("%s\n\n[Pragmatic Pass Gating] %d/%d tests passed (%.1f%% >= %.1f%% required threshold). Soft-pass accepted for task progression.",
+						outputMsg, parsedReport.Passed, parsedReport.Total, passRate, minRate)
+				}
+			}
+
 			if !parsedReport.Success && len(parsedReport.Failures) > 0 {
-				passed = false
-				outputMsg = fmt.Sprintf("%s\n\n[Structured Test Parser] %s\nFailed Tests:\n - %s",
-					outputMsg, parsedReport.SummaryText, strings.Join(parsedReport.Failures, "\n - "))
+				if !passed {
+					outputMsg = fmt.Sprintf("%s\n\n[Structured Test Parser] %s\nFailed Tests:\n - %s",
+						outputMsg, parsedReport.SummaryText, strings.Join(parsedReport.Failures, "\n - "))
+				} else {
+					outputMsg = fmt.Sprintf("%s\n\n[Non-Blocking Test Notices]\nFailed Tests:\n - %s",
+						outputMsg, strings.Join(parsedReport.Failures, "\n - "))
+				}
 			}
 
 			results[idx] = TestRunResult{

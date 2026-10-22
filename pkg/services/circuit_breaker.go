@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -135,11 +136,12 @@ func (cb *TaskCircuitBreaker) ShouldBreakReadLoop() (bool, bool, string) {
 	if cb == nil {
 		return false, false, ""
 	}
-	if cb.ConsecutiveDuplicateInspections >= 3 {
-		return true, true, "CIRCUIT_BREAKER_READ_LOOP: Consecutive duplicate read/search inspections exceeded threshold without mutations. Concluding turn and running verification."
+	if cb.ConsecutiveDuplicateInspections >= 5 {
+		return true, true, "CIRCUIT_BREAKER_READ_LOOP: Consecutive duplicate read/search inspections exceeded threshold (5) without mutations. Concluding turn and running verification."
 	}
-	if cb.ConsecutiveDuplicateInspections == 2 {
-		return true, false, "[CIRCUIT BREAKER: READ LOOP WARNING] You have called inspection tools repeatedly without making file modifications. Repeated read_file or find_files is blocked. You MUST now call 'run_tests' to verify tests, call 'write_file'/'edit_file' to implement changes, or call 'noop' if verification is complete."
+	if cb.ConsecutiveDuplicateInspections >= 3 {
+		remaining := 5 - cb.ConsecutiveDuplicateInspections
+		return true, false, fmt.Sprintf("[CIRCUIT BREAKER: READ LOOP WARNING] You have called inspection tools %d times without making file modifications (%d inspection(s) remaining before turn concludes). Repeated read_file or find_files is restricted. You MUST now call 'write_file'/'edit_file' to implement changes or 'run_tests' to verify tests.", cb.ConsecutiveDuplicateInspections, remaining)
 	}
 	return false, false, ""
 }
