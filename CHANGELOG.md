@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.125.2] - 2026-10-25
+
+### Documentation
+- **Synchronized Documentation & Onboarding Guides with Persistent `t4` Demo Sandbox**:
+  - Updated `docs/cli_usage.md`, `docs/index.md`, and `SPEC.md` to reflect the persistent `./demo` directory default, custom `[target_dir]`, and `--cleanup` behavior.
+  - Added "Instant 60-Second Test Drive (`noctifab demo`)" to `docs/getting_started.md` detailing C17 HTTP parser verification.
+  - Added "Real-World Token & Cost Estimation" table to `docs/getting_started.md` based on empirical multi-language benchmark data.
+
 ## [0.125.1] - 2026-10-25
 
 ### Changed

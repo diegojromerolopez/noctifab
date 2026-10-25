@@ -26,7 +26,28 @@ noctifab version
 
 ---
 
-## 2. Initializing a Workspace: The `init` Command
+## 2. Instant 60-Second Test Drive (`noctifab demo`)
+
+Before setting up API keys or configuring a project, you can test drive Noctifab with its built-in offline simulation:
+
+```bash
+# Run the zero-config demo sandbox:
+noctifab demo
+```
+
+This autonomously unpacks the `t4` project (an ISO C17 S3-style HTTP server) into `./demo`, simulates the multi-agent task DAG planning, code generation, and 3x consensus testing without calling external APIs.
+
+Once completed, inspect the generated project:
+```bash
+cd demo
+make test   # Compiles and runs C17 HTTP wire protocol unit tests
+make build  # Compiles bin/t4
+./bin/t4    # Launches S3-compatible server on port 8080
+```
+
+---
+
+## 3. Initializing a Workspace: The `init` Command
 
 The `noctifab init` command prepares a directory to be driven by Noctifab's dark factory engine.
 
@@ -54,7 +75,7 @@ cd my-new-project
 
 ---
 
-## 3. Configuring LLM Credentials
+## 4. Configuring LLM Credentials
 
 Noctifab supports multiple LLM providers as well as local open-source models via Ollama and vLLM.
 
@@ -95,9 +116,19 @@ llm:
   api_key: "secret:GEMINI_API_KEY"
 ```
 
+### Real-World Token & Cost Estimation
+Based on empirical runs across the 20 benchmark repositories:
+
+| Stage | Token Usage | Wall-Clock Time | Estimated Cost (Gemini Flash / DeepSeek) |
+| :--- | :---: | :---: | :---: |
+| **Walking Skeleton (`spike`)** | 10k–15k tokens | 38s–65s | < $0.02 |
+| **Average User Story** | 25k–45k tokens | 2m–4m | ~$0.04 |
+| **Full Greenfield Project (5 Stories)** | ~143,000 tokens | ~11.4 min | ~$0.15–$0.40 |
+| **Local LLM (Ollama / vLLM)** | Unlimited | System speed | **$0.00 (100% Free)** |
+
 ---
 
-## 4. Crafting the Specification (`SPEC.md`)
+## 5. Crafting the Specification (`SPEC.md`)
 
 Noctifab is **specification-driven**. Rather than micro-managing code function by function, you author a `SPEC.md` that defines what the system should do, its architecture, and acceptance criteria.
 
@@ -113,7 +144,7 @@ A minimal `SPEC.md` includes:
 
 ---
 
-## 5. Launching the Dark Factory Loop
+## 6. Launching the Dark Factory Loop
 
 Once `SPEC.md` is in place, start the autonomous engine:
 
@@ -137,7 +168,7 @@ noctifab start -i
 
 ---
 
-## 6. Real-World Projects Built with Noctifab
+## 7. Real-World Projects Built with Noctifab
 
 Noctifab has been validated across 20 distinct technological stacks, producing complete, passing implementations published to dedicated `feat/noctifab-generated` branches on GitHub:
 

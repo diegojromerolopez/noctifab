@@ -102,18 +102,31 @@ Before dispatching agents, `noctifab start` runs comprehensive preflight verific
 - **Quality Gate Validation**: Verifies release gate constraints and language consistency before state initialization.
 
 ### 4. `demo`
-Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Ideal for testing Noctifab's dark factory loop with zero LLM API keys.
+Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Generates an ISO C17 S3-compatible HTTP object store project (`t4`) by default into `./demo` (or a custom target directory) without requiring LLM API keys.
+
+By default, generated project files are preserved on exit so you can inspect the code and run the test suite (`cd demo && make test`).
 
 ```bash
-noctifab demo [--project <archetype>] [--offline] [--speed <multiplier>] [--no-cleanup]
+noctifab demo [target_dir] [--dir <dir>] [--project <archetype>] [--offline] [--speed <multiplier>] [--cleanup]
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--project` | `cli` | Demo archetype template (`cli`, `rest`) |
+| Flag / Argument | Default | Description |
+|-----------------|---------|-------------|
+| `[target_dir]` | `demo` | Target directory where the demo project will be unpacked and generated |
+| `--dir` | `demo` | Flag alias for target directory |
+| `--project` | `t4` | Demo project archetype template (`t4`, `cli`, `rest`) |
 | `--offline` | `true` | Deterministic offline replay mode without external network calls |
 | `--speed` | `1.0` | Execution speed multiplier (e.g. `2.0` for 2x speed) |
-| `--no-cleanup` | `false` | Preserve ephemeral `/tmp/noctifab-demo-*` workspace directory on exit |
+| `--cleanup` | `false` | Clean up and remove generated demo directory on exit (default preserves files) |
+
+#### Quick Inspection:
+```bash
+noctifab demo
+cd demo
+make test   # Runs ISO C17 HTTP parser & status tests
+make build  # Compiles bin/t4
+./bin/t4    # Launches S3-compatible server on port 8080
+```
 
 ### 5. `dashboard`
 Launches the real-time progress dashboard to monitor active story and task orchestrations. By default, it opens the interactive Terminal User Interface (TUI). Pass `-w` / `--web` to launch the visual web dashboard in the browser instead.
