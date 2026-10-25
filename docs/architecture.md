@@ -15,6 +15,19 @@ This pattern prevents context drift, keeps context usage highly token-efficient,
 
 ---
 
+## Noctifab vs. Other Autonomous Approaches
+
+| Dimension | Interactive Copilots (Aider, Claude Code, Cursor) | Cloud Black-Box (Devin, OpenHands) | **Noctifab (Dark Factory)** |
+| :--- | :--- | :--- | :--- |
+| **Operational Model** | Synchronous, human-in-the-loop chat | Cloud-hosted browser environment | **Local, headless background daemon or TUI/Web** |
+| **Cognitive Decomposition** | Single prompt $\rightarrow$ single edit | Conversational task planner | **ASD-STE100 Spec $\rightarrow$ Cross-Story DAG $\rightarrow$ Isolated Task Worktrees** |
+| **Flaky Test Defense** | None (Single pass = success) | Basic test retry | **Parallel 3x Majority-Vote Consensus Gate (≥ 2/3 pass)** |
+| **Verification Strategy** | Ad-hoc code edits | Trial-and-error | **Strict Two-Stage: Minimal Verification $\rightarrow$ Black-Box Validation** |
+| **Merge Governance** | Manual git commit/push | Remote PR | **Serialized Rebase Queue with 5-Tier Merge Engine** |
+| **Self-Healing** | Human manually corrects errors | LLM conversational re-prompting | **Intra-turn Watchdog, 0-token regex fast-paths, & Sovereign Fallback** |
+
+---
+
 ## Core Component Pipeline
 
 The orchestrator operates in a continuous loop comprising five distinct phases:

@@ -194,3 +194,41 @@ Noctifab has been validated across 20 distinct technological stacks, producing c
 | [**`actodis`**](https://github.com/diegojromerolopez/actodis) | Erlang/OTP 29 + Rebar3 | Distributed Redis store with GenServer supervision trees | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/actodis/tree/feat/noctifab-generated) |
 | [**`thredis`**](https://github.com/diegojromerolopez/thredis) | C# / .NET 9 | Concurrent thread-safe Redis server | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/thredis/tree/feat/noctifab-generated) |
 | [**`dotchess`**](https://github.com/diegojromerolopez/dotchess) | C# / .NET 9 | UCI chess engine with bitboard move generation | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/dotchess/tree/feat/noctifab-generated) |
+
+---
+
+## 8. Frequently Asked Questions & Troubleshooting
+
+### What happens if tests fail during a run?
+You do not need to intervene. Noctifab incorporates an intra-turn feedback loop:
+1. **Intra-turn retry**: When `run_tests` fails, compiler errors, assertion diffs, and stack traces are fed directly into the Generator Agent's prompt context to fix the bug in its next turn (up to 8 turns per task).
+2. **Watchdog self-repair**: If a task exhausts turns, the Watchdog handler categorizes the error (Timeout, Compile, Test Assertion) and executes surgical targeted repairs.
+3. **Sovereign unblocker**: If a persistent deadlock occurs across tasks, the Fallback Agent takes cross-domain authority to repair code, tests, and specifications simultaneously to restore green build invariants.
+
+### How does the 3x Consensus Gate eliminate flaky tests?
+In traditional CI, running tests once can result in a "lucky" green pass for a race condition or flaky test. Noctifab dispatches the test runner **3 times in parallel**. Only if at least **2 out of 3 runs pass** is the task approved for rebase and merge. If any run exhibits fatal crash signals (`SIGSEGV`, `SIGBUS`, Go/Rust panics, `OOMKilled`), it is rejected immediately.
+
+### Can I steer or order features while Noctifab is running?
+Yes! Noctifab features a daemon Command Mailbox. Without interrupting the active loop, you can inject directives:
+```bash
+# Provide steering guidance to active workers:
+noctifab steer "Prefer std::string_view instead of raw char pointers"
+
+# Enqueue an ad-hoc feature request into the roadmap:
+noctifab order "Add Prometheus /metrics endpoint tracking request latencies"
+```
+You can also steer directly from the Visual Web Dashboard input bar (`http://127.0.0.1:8080`).
+
+### Can I run Noctifab on existing (brownfield) codebases?
+Yes. When launched in a repository containing pre-existing code, `scanLegacyFiles` detects existing source files and automatically injects a `LEGACY CODEBASE STABILIZATION` mandate into the Product Manager. The system creates characterization tests for existing code first before generating new features, ensuring zero regressions to legacy behavior.
+
+### How do I keep token usage and costs low?
+- **100% Free**: Use local Ollama models (`qwen2.5-coder:32b`, `deepseek-r1`).
+- **Context Compaction**: Enable `caveman` telegraphic prompt compression in `.noctifab/config.yaml` (`context.compaction: "caveman"`), cutting prompt tokens by 25–40%.
+- **Budget Ceilings**: Set strict token caps in `.noctifab/config.yaml`:
+  ```yaml
+  runtime:
+    max_tokens: 500000        # Caps total token burn across entire run
+    max_actions: 100          # Caps total loop turns
+  ```
+

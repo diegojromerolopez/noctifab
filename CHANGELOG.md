@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.125.3] - 2026-10-25
+
+### Documentation
+- **Architecture Comparison Matrix & Developer FAQ**:
+  - Added a high-level comparison matrix to `docs/architecture.md` evaluating Noctifab against interactive copilots (Aider, Claude Code, Cursor) and cloud black-box agents (Devin, OpenHands).
+  - Added Section 8: Frequently Asked Questions & Troubleshooting to `docs/getting_started.md` covering intra-turn self-healing, 3x consensus flaky test prevention, live steering via Command Mailbox, brownfield legacy stabilization, and budget control.
+
 ## [0.125.2] - 2026-10-25
 
 ### Documentation
