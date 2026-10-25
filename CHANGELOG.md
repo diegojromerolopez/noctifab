@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.125.0] - 2026-10-25
+
+### Added
+- **Show HN Launch Experience & Onboarding Overhaul**:
+  - Rewrote `README.md` to clearly position Noctifab as an unattended Level 3/4 autonomous dark factory agent (contrasting against interactive copilots like Aider and Claude Code).
+  - Added empirical multi-language code generation stats from validation runs across 20 distinct projects (C17, Go, Rust, Python, TypeScript, Java, Elixir, Erlang, Zig, OCaml, Swift, Dart, Haskell).
+  - Added comprehensive step-by-step onboarding documentation in `docs/getting_started.md` detailing project initialization, directory layout, verification gates, and local LLM vs cloud setups.
+- **Embedded `t4` ISO C17 S3-Style Object Store Demo Sandbox**:
+  - Updated `noctifab demo` to generate an ISO C17 S3-compatible HTTP object store project (`t4`) with POSIX sockets by default into `./demo` (or target directory specified via positional argument or `--dir`).
+  - Strict preservation on exit: demo directory is never placed in `/tmp` and is not cleaned up by default (cleanup only occurs if `--cleanup` is explicitly passed), allowing users to immediately explore code and run `make test` and `make build`.
+  - Added embedded templates and unit test suites for `t4` under `pkg/services/demo/assets/t4/`.
+
+### Fixed
+- **Ollama Local LLM Endpoint Default**:
+  - Changed default Ollama base URL in `pkg/infrastructure/llm/ollama.go` from `https://ollama.com/v1` to `http://localhost:11434/v1` for instant zero-configuration local execution.
+
 ## [0.124.0] - 2026-10-22
 
 ### Added

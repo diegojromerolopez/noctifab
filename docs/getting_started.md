@@ -1,227 +1,165 @@
-# Getting Started with Noctifab: Step-by-Step Developer Tutorial
+# Getting Started with Noctifab
 
-Welcome to `noctifab`! This tutorial guides software engineers step-by-step through setting up, configuring, and running Noctifab to autonomously build, test, and ship code from software specifications.
+Welcome! This guide walks you through setting up and running **noctifab** from scratch on your local machine.
 
 ---
 
-## ⚡ 1. Installation
+## 1. Quick Installation
 
-Install `noctifab` on macOS or Linux using the 1-line installer:
-
+### Option A: 1-Line Installer (macOS & Linux)
 ```bash
 curl -sSL https://raw.githubusercontent.com/diegojromerolopez/noctifab/main/scripts/install.sh | sh
 ```
 
-Or build from source:
-
+### Option B: Build from Source (Go 1.22+)
 ```bash
 git clone https://github.com/diegojromerolopez/noctifab.git
 cd noctifab
 make build
-# Binary is located at dist/noctifab
+# The binary is placed at ./dist/noctifab
 ```
 
 Verify your installation:
-
 ```bash
-noctifab --help
-```
-
-## 🎯 The 3-Step Development Lifecycle
-
-Noctifab follows a clean, intuitive 3-step workflow from idea to fully tested, autonomous code delivery:
-
-```
- ┌─────────────────────────┐      ┌─────────────────────────┐      ┌─────────────────────────┐
- │   1. noctifab init      │ ───► │   2. noctifab spec      │ ───► │   3. noctifab start     │
- │ (Infrastructure Setup)  │      │  (Interactive Design)   │      │ (Autonomous Execution)  │
- └─────────────────────────┘      └─────────────────────────┘      └─────────────────────────┘
+noctifab version
 ```
 
 ---
 
-## 📁 Step 1: Initializing Workspace Infrastructure (`init`)
+## 2. Initializing a Workspace: The `init` Command
 
-To set up a new or existing codebase for Noctifab, run `noctifab init`:
+The `noctifab init` command prepares a directory to be driven by Noctifab's dark factory engine.
 
-### A. Initialize Current Directory
 ```bash
-cd /path/to/my-project
+# Initialize current directory:
 noctifab init
-```
 
-### B. Initialize a New Project Folder
-```bash
-noctifab init my-awesome-app
-cd my-awesome-app
+# Or initialize a specific project folder:
+noctifab init my-new-project
+cd my-new-project
 ```
 
 ### What `noctifab init` Creates:
-- **`.noctifab/config.yaml`**: The primary YAML configuration file with intelligent role and LLM defaults.
-- **`.noctifab/secrets.yaml`**: API keys and secrets template (gitignored).
-- **`.noctifab/data/noctifab.db`**: Local SQLite state repository for tracking task DAGs and execution logs.
-- **`.noctifab/.gitignore`**: Excludes local state databases, logs, and secrets from VCS commits.
+
+```text
+.noctifab/
+├── config.yaml          # Core platform settings (LLM, sandbox, VCS, and autonomy gates)
+├── data/
+│   └── noctifab.db     # SQLite database storing task DAGs, mutations, and telemetry
+├── logs/               # Full real-time execution transcripts and compiler diagnostics
+└── .gitignore          # Automatically ignores noctifab.db, logs/, and secrets.yaml
+```
+
+> **Cleanliness Protection**: If you run `noctifab init` inside a folder that already contains files but is **not** a git repository and has no `.noctifab` directory, Noctifab will safely abort with an advisory warning to prevent overwriting unversioned files. Run `git init` first in existing projects.
 
 ---
 
-## 📝 Step 2: Interactive Specification Design (`spec`)
+## 3. Configuring LLM Credentials
 
-Instead of writing complex markdown specifications by hand, use `noctifab spec` to generate, refine, and audit your `SPEC.md` through an interactive Human-in-the-Loop review session:
+Noctifab supports multiple LLM providers as well as local open-source models via Ollama and vLLM.
 
+### Option A: 1-Click Local LLMs (Ollama / vLLM - 100% Free & Private)
+Run without sending code or tokens to external cloud providers:
+
+1. Start your local Ollama daemon:
+   ```bash
+   ollama run qwen2.5-coder:32b
+   ```
+2. Edit `.noctifab/config.yaml`:
+   ```yaml
+   llm:
+     provider: ollama
+     model: qwen2.5-coder:32b
+     # Default base URL connects to http://localhost:11434/v1 automatically
+   ```
+
+### Option B: Cloud Providers (Gemini, Claude, OpenAI, DeepSeek)
+Set your API key in your environment:
 ```bash
-noctifab spec "Build an in-memory Redis-compatible key-value server in Go with LRU eviction"
+export GEMINI_API_KEY="AIzaSy..."
+# Or: export OPENAI_API_KEY="sk-..."
+# Or: export ANTHROPIC_API_KEY="sk-ant-..."
+# Or: export DEEPSEEK_API_KEY="sk-..."
 ```
 
-1. **4-Stage Multi-Model Generation**: Noctifab coordinates Product Manager, Systems Architect, Test Architect, and QA Specialist roles across different LLMs to minimize bias.
-2. **Consensus Audit**: Automatically audits the spec for internal contradictions and ensures test/DoD alignment.
-3. **Interactive Review Loop**: Inspect the draft and colored line-by-line diffs in the terminal:
-   * Provide feedback: `> "Add support for TLS certificates and a Prometheus /metrics endpoint"`
-   * Approve: `> "looks good to me, stop"`
-4. **Roadmap Generation**: Upon approval, Noctifab automatically generates atomic user stories under `roadmap/user-stories/`.
-
-> 💡 **Fast-Track Bootstrap**: Combine Step 1 & Step 2 into a single command:
-> ```bash
-> noctifab init my-project --spec "Build a distributed KV store in Go"
-> ```
-
----
-
-## 🚀 Step 3: Launching Autonomous Dark Factory Execution (`start`)
-
-Once `SPEC.md` is approved, launch Noctifab's autonomous Dark Factory loop:
-
-```bash
-noctifab start
-```
-
-Noctifab decomposes the specification into a topological task DAG, implements minimal compiling code (Verification), executes isolated black-box test suites (Validation), runs QA acceptance gates, and autonomously merges validated feature branches.
-
----
-
-## 🔑 4. Configuring Secrets & LLM Providers
-
-Noctifab requires an API key for your chosen LLM provider (OpenAI, Anthropic, Gemini, OpenCode, or local Ollama).
-
-### A. Setting API Keys in Environment or `.noctifab/secrets.yaml`
-
-Create `.noctifab/secrets.yaml` in your project folder:
-
+Or configure via gitignored `.noctifab/secrets.yaml`:
 ```yaml
-OPENAI_API_KEY: "sk-proj-..."
-OPENCODE_API_KEY: "zen-..."
-GITHUB_TOKEN: "ghp_..."
+# .noctifab/secrets.yaml (Never committed)
+GEMINI_API_KEY: "AIzaSy..."
 ```
-
-*(Note: `.noctifab/secrets.yaml` is automatically ignored by `.noctifab/.gitignore` to prevent secret leakage).*
-
-### B. Configuring `.noctifab/config.yaml`
-
-Open `.noctifab/config.yaml` to customize your provider, model, and fallback chain:
-
 ```yaml
+# .noctifab/config.yaml
 llm:
-  provider: "openai"
-  model: "gpt-4o"
-  max_retries: 3
-  retry_backoff_ms: 1000
+  provider: gemini
+  model: gemini-2.5-flash
+  api_key: "secret:GEMINI_API_KEY"
 ```
-
-> **Detailed Configuration Guides**:
-> - [Complete Configuration Reference](file:///Users/diegoj/repos/noctifab/docs/configuration.md)
-> - [LLM Providers & Fallback Setup](file:///Users/diegoj/repos/noctifab/docs/llm_providers.md)
-> - [Secrets & Credentials Management](file:///Users/diegoj/repos/noctifab/docs/secrets.md)
 
 ---
 
-## 🚀 5. Running the Dark Factory Agent & Instant Demo
+## 4. Crafting the Specification (`SPEC.md`)
 
-### Option A: Instant 2-Minute Zero-Config Sandbox (`noctifab demo`)
-Test Noctifab immediately without setting up any API keys or creating configuration files:
+Noctifab is **specification-driven**. Rather than micro-managing code function by function, you author a `SPEC.md` that defines what the system should do, its architecture, and acceptance criteria.
 
+You can create `SPEC.md` manually or generate an initial blueprint interactively:
 ```bash
-noctifab demo
-```
-This runs a 100% offline, deterministic mock simulation of the entire Dark Factory loop with embedded templates and automated cleanup.
-
-### Option B: Real-Time Visual Web Dashboard (`noctifab start -w --web-open` / `noctifab dashboard -w --web-open`)
-Launch the visual web dashboard to explore the topological task DAG, watch streaming code diffs, and inspect real-time agent event logs (pass `--web-open` to auto-open in your default browser):
-
-```bash
-# Launch during execution and auto-open browser:
-noctifab start [my-project-dir] -w --web-open
-
-# Or inspect an existing project workspace anytime:
-noctifab dashboard -w --web-open
-# Automatically opens http://127.0.0.1:8080 in your browser
+noctifab spec "Build a command-line URL shortener in Go with SQLite persistence and redirect tracking"
 ```
 
-### Option C: Live Interactive TUI Dashboard Mode (`-i`)
-Launch the terminal dashboard to watch real-time task execution, inspect active worker goroutines, view task DAG progress, and inject mid-flight steering directives:
-
-```bash
-noctifab start [my-project-dir] -i
-```
-
-**Interactive Keystrokes**:
-- **`[s]`**: Inject a mid-flight steering directive to guide the active worker (e.g. "Use PostgreSQL instead of SQLite").
-- **`[o]` / `[n]`**: Submit a new feature prompt order directly into the execution queue.
-- **`[c]`**: Open interactive modal to resolve agent clarification questions.
-- **`[p]`**: Toggle Pause / Resume.
-- **`[d]`**: Open the Log & Failure Inspector.
-- **`[q]`**: Exit dashboard view (daemon continues running safely in background).
-
-### Option D: Headless Automated Mode (CI / Background Run)
-For headless server or CI pipeline execution:
-
-```bash
-noctifab start [my-project-dir]
-```
-
-### Option E: Running via Background Daemon & Remote Orchestration
-You can run Noctifab as a continuous background daemon (`--standby` or `-d`) and feed it project initialization, specifications, and new feature orders dynamically:
-
-#### 1. Start the Noctifab Standby Daemon:
-```bash
-# Starts the background orchestrator and HTTP REST server on 127.0.0.1:8080
-noctifab start --standby -d
-```
-
-#### 2. Submit Projects & Orders to the Daemon:
-```bash
-# A. Submit a new specification/feature order to the active daemon:
-noctifab order "Build a high-performance REST API in Go with SQLite persistence and JWT auth"
-
-# B. Inject a live steering directive while the daemon is implementing code:
-noctifab steer "Ensure port is 9000 and add Prometheus metrics at /metrics"
-
-# C. Or submit directly via HTTP REST API:
-curl -X POST http://127.0.0.1:8080/api/v1/orders \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Add Redis caching layer to user queries"}'
-```
-
-The daemon automatically manages the complete Dark Factory lifecycle (planning, generation, testing, QA, and git branch merging) continuously in the background.
+A minimal `SPEC.md` includes:
+- **System Goal & Language/Stack** (e.g. Go 1.24 CLI with SQLite)
+- **Public Contracts & Exit Codes** (CLI inputs, stdout/stderr formatting, return codes)
+- **Test Expectations** (100% test coverage, anti-spoofing assertions)
 
 ---
 
-## ⚙️ 6. Configuration Settings Reference Table
+## 5. Launching the Dark Factory Loop
 
-| Category | Parameter | Description | Default |
-|---|---|---|---|
-| **Storage** | `storage.provider` | Database backend (`sqlite`, `postgres`) | `sqlite` |
-| **Storage** | `storage.conn_string` | SQLite path or Postgres DSN | `.noctifab/data/noctifab.db` |
-| **LLM** | `llm.provider` | API provider (`openai`, `anthropic`, `gemini`, `opencode`, `ollama`) | `openai` |
-| **LLM** | `llm.model` | Primary model name (`gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro`) | `gpt-4o` |
-| **Sandbox** | `sandbox.mode` | Isolation mode (`host`, `docker`) | `host` |
-| **Sandbox** | `sandbox.auto_install_deps` | Auto-detect and install missing system tools (`true`, `false`) | `true` |
-| **Autonomy** | `vcs.pull_request.auto_create` | Automatically create pull request on story completion | `true` |
-| **Autonomy** | `vcs.pull_request.auto_merge` | Automatically merge pull request when CI tests pass | `false` |
+Once `SPEC.md` is in place, start the autonomous engine:
+
+```bash
+# Start with Visual Web Dashboard & Spec Studio (Recommended):
+noctifab start -w
+
+# Or launch in interactive Terminal Dashboard mode (TUI):
+noctifab start -i
+```
+
+### What Happens Automatically:
+1. **Product Manager Agent**: Translates `SPEC.md` into unambiguous ASD-STE100 Simplified Technical English (`SPEC.ste.md`) and generates user stories under `roadmap/`.
+2. **Planner Agent**: Decomposes stories into a topological Directed Acyclic Graph (DAG) of isolated tasks.
+3. **Execution Pipeline**:
+   - **Verification**: Generator writes the minimal code to compile.
+   - **Black-Box Testing**: Tester writes behavioral tests against public APIs/CLIs.
+   - **Validation**: Generator refactors and hardens code under the test safety net.
+4. **3x Consensus Quality Gate**: The test suite is executed 3 times in a clean sandbox; changes require ≥ 2/3 pass consensus to prevent flaky test regressions.
+5. **Git Auto-Merge**: Passes merge automatically into `main` via git rebase queues.
 
 ---
 
-## 📚 Further Reading & References
+## 6. Real-World Projects Built with Noctifab
 
-- [CLI Command Usage Guide](file:///Users/diegoj/repos/noctifab/docs/cli_usage.md)
-- [Architecture & Dark Factory Loop](file:///Users/diegoj/repos/noctifab/docs/architecture.md)
-- [REST API Reference](file:///Users/diegoj/repos/noctifab/docs/api.md)
-- [Developer & Contributor Guide](file:///Users/diegoj/repos/noctifab/docs/developer_guide.md)
+Noctifab has been validated across 20 distinct technological stacks, producing complete, passing implementations published to dedicated `feat/noctifab-generated` branches on GitHub:
+
+| Project | Stack | Description | Generated Code & Branch |
+| :--- | :--- | :--- | :---: |
+| [**`echo`**](https://github.com/diegojromerolopez/echo) | Go 1.24 CLI | Single-process CLI with public contracts | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/echo/tree/feat/noctifab-generated) |
+| [**`todo-cli`**](https://github.com/diegojromerolopez/todo-cli) | Go 1.24 + JSON DB | CLI checklist manager with file persistence | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/todo-cli/tree/feat/noctifab-generated) |
+| [**`wc`**](https://github.com/diegojromerolopez/wc) | Rust 1.88 CLI | UNIX `wc` streaming clone with `#![deny(unsafe_code)]` | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/wc/tree/feat/noctifab-generated) |
+| [**`calculator`**](https://github.com/diegojromerolopez/calculator) | Ruby 3.4 + RSpec | Dynamic CLI & REPL calculator with RSpec suite | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/calculator/tree/feat/noctifab-generated) |
+| [**`fortune`**](https://github.com/diegojromerolopez/fortune) | C17 + SQLite3 | Native ANSI C17 quote server with embedded SQLite C API | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/fortune/tree/feat/noctifab-generated) |
+| [**`t4`**](https://github.com/diegojromerolopez/t4) | C17 HTTP Server | POSIX socket HTTP daemon & S3-style object storage | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/t4/tree/feat/noctifab-generated) |
+| [**`pyedis`**](https://github.com/diegojromerolopez/pyedis) | Python 3.14 (asyncio) | In-memory Redis RESP2/RESP3 database server | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/pyedis/tree/feat/noctifab-generated) |
+| [**`notebook`**](https://github.com/diegojromerolopez/notebook) | TypeScript + Fastify | Full-stack SPA with Fastify REST API and PostgreSQL | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/notebook/tree/feat/noctifab-generated) |
+| [**`frontpunch`**](https://github.com/diegojromerolopez/frontpunch) | Python + Valkey | Distributed task worker and background queue processor | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/frontpunch/tree/feat/noctifab-generated) |
+| [**`djanban`**](https://github.com/diegojromerolopez/djanban) | Python 3.13 / Django | Brownfield Kanban analytics app with Trello sync | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/djanban/tree/feat/noctifab-generated) |
+| [**`stricc`**](https://github.com/diegojromerolopez/stricc) | Rust 1.88 + LLVM 18 | Safe C compiler with deterministic AST validation | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/stricc/tree/feat/noctifab-generated) |
+| [**`searchthedocs`**](https://github.com/diegojromerolopez/searchthedocs) | Python 3.12 + FastAPI | Async doc scraper and vector similarity RAG search | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/searchthedocs/tree/feat/noctifab-generated) |
+| [**`auth-vault`**](https://github.com/diegojromerolopez/auth-vault) | Go 1.24 + PKI / OIDC | Zero-trust OAuth2/OIDC server & PKI key rotation vault | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/auth-vault/tree/feat/noctifab-generated) |
+| [**`buffonstream`**](https://github.com/diegojromerolopez/buffonstream) | Go 1.24 + Protobuf | Append-only streaming engine with gRPC endpoints | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/buffonstream/tree/feat/noctifab-generated) |
+| [**`jpacioli`**](https://github.com/diegojromerolopez/jpacioli) | Java 21 + Spring Boot | Enterprise double-entry ledger with Event Sourcing & CQRS | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/jpacioli/tree/feat/noctifab-generated) |
+| [**`ocalogue`**](https://github.com/diegojromerolopez/ocalogue) | OCaml 5.x + Dune | Strongly-typed functional catalog with algebraic data types | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/ocalogue/tree/feat/noctifab-generated) |
+| [**`ninline`**](https://github.com/diegojromerolopez/ninline) | Python 3.14 + Minimax AI | Generalized (M,N,K) game engine with ray-casting AI | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/ninline/tree/feat/noctifab-generated) |
+| [**`actodis`**](https://github.com/diegojromerolopez/actodis) | Erlang/OTP 29 + Rebar3 | Distributed Redis store with GenServer supervision trees | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/actodis/tree/feat/noctifab-generated) |
+| [**`thredis`**](https://github.com/diegojromerolopez/thredis) | C# / .NET 9 | Concurrent thread-safe Redis server | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/thredis/tree/feat/noctifab-generated) |
+| [**`dotchess`**](https://github.com/diegojromerolopez/dotchess) | C# / .NET 9 | UCI chess engine with bitboard move generation | [`feat/noctifab-generated`](https://github.com/diegojromerolopez/dotchess/tree/feat/noctifab-generated) |
