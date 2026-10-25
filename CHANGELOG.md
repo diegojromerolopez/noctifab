@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.125.1] - 2026-10-25
+
+### Changed
+- **README.md UX & Show HN Polish**:
+  - Restructured above-the-fold layout with an interactive comparison matrix contrasting Noctifab against interactive copilots (Aider, Claude Code) and cloud SaaS (Devin).
+  - Prominently positioned empirical multi-language benchmarks and validation metrics at the top of the README.
+  - Updated 60-second quickstart instructions to highlight the new persistent `t4` ISO C17 demo generation and test commands (`make test`, `make build`, `./bin/t4`).
+
 ## [0.125.0] - 2026-10-25
 
 ### Added

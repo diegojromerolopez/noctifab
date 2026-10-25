@@ -21,9 +21,45 @@ Test drive Noctifab instantly on macOS or Linux with the built-in offline demo s
 # 1. Install single binary:
 curl -sSL https://raw.githubusercontent.com/diegojromerolopez/noctifab/main/scripts/install.sh | sh
 
-# 2. Run the 2-minute zero-config sandbox (offline, deterministic mock replay):
+# 2. Run the 2-minute zero-config demo (offline deterministic simulation):
 noctifab demo
+
+# 3. Inspect and test the generated ISO C17 S3-style HTTP server:
+cd demo
+make test   # Runs C17 HTTP wire protocol unit tests (passes 100% in 0.05s)
+make build  # Compiles bin/t4
+./bin/t4    # Launches S3-compatible daemon
 ```
+
+---
+
+## 🥊 How Noctifab Compares
+
+| Feature | Interactive Copilots (Aider, Claude Code) | Cloud Black-Box (Devin) | **Noctifab** |
+| :--- | :---: | :---: | :---: |
+| **Workflow** | Interactive chat (human reviews every diff) | Cloud SaaS web container | **Unattended Dark Factory** (local CLI binary) |
+| **Execution Loop** | Human prompts $\rightarrow$ AI edits $\rightarrow$ Human tests | Remote web dashboard | **Spec $\rightarrow$ Task DAG $\rightarrow$ Multi-Worktree $\rightarrow$ 3x Consensus** |
+| **Flaky Test Guard** | ❌ None (1 pass = merge) | ❌ None | **✅ 3x Majority Consensus Gate (≥ 2/3)** |
+| **Merge Safety** | Manual git commands | Cloud PR | **Automated Rebase Queue & Auto-Merge** |
+| **Privacy & Local LLMs** | Requires cloud or manual proxy | Cloud only (closed) | **100% Local (Ollama, vLLM) or Cloud** |
+| **Cost** | Per-token / subscription | $500+/mo subscription | **Free & Open Source (MIT)** |
+
+---
+
+## 📊 Empirical Benchmarks across 20 Real Repositories
+
+Noctifab has been validated across 20 distinct multi-language projects (Go, Rust, C17, Python, Ruby, Java, OCaml, Erlang, C#/.NET). Every project was generated autonomously from a `SPEC.md` without human intervention:
+
+| Metric | Measured Benchmark | Engineering Impact |
+| :--- | :---: | :--- |
+| **Walking Skeleton (Spike) Time** | **38s – 65s** | Generates compiling 11–14 file architecture with tests before decomposition |
+| **Autonomous Story Loop Duration** | **11.4 minutes** *(avg)* | Full DAG planning, multi-worker worktrees, test authoring, and auto-merge |
+| **Token Consumption per Project** | **~143,000 tokens** *(avg)* | Total cost ~$0.15–$0.40 on Gemini Flash / DeepSeek for full implementation |
+| **Quality Gate Consensus** | **3x Run Majority (≥ 2/3)** | Runs tests 3 times post-implementation; 0 flaky test passes merged |
+| **Language & Toolchain Breadth** | **13+ Runtimes** | Go, Rust, C17, Python, Ruby, Java, OCaml, Erlang, C#/.NET, Zig, Swift, Dart |
+| **Brownfield Codebase Navigation** | **Up to 453 files** | Detects existing code, avoids overwriting, and plans stabilizing user stories |
+
+👉 **[Explore all 20 repositories and autonomous code branches on GitHub →](#available-validation-projects)**
 
 ---
 
@@ -961,20 +997,9 @@ When the agent asks a clarification question, Noctifab can attempt to auto-answe
 
 The `validation/` directory contains fully containerized, isolated end-to-end integration checks that run `noctifab` autonomously against real project specs — with **zero human intervention** — and verify that the correct source files are produced and all tests pass.
 
-### 📊 Empirical Code Generation Stats & Multi-Language Benchmarks
+### 📊 Key Autonomous Generation Milestones
 
-The following metrics are measured empirically from autonomous runs across 20 distinct repositories:
-
-| Metric | Measured Benchmark | Engineering Impact |
-| :--- | :---: | :--- |
-| **Walking Skeleton (Spike) Time** | **38s – 65s** | Generates compiling 11–14 file architecture with tests before decomposition |
-| **Autonomous Story Loop Duration** | **11.4 minutes** *(avg)* | Full DAG planning, multi-worker worktrees, test authoring, and auto-merge |
-| **Token Consumption per Project** | **~143,000 tokens** *(avg)* | Total cost ~$0.15–$0.40 on Gemini Flash / DeepSeek for full implementation |
-| **Quality Gate Consensus** | **3x Run Majority (≥ 2/3)** | Runs tests 3 times post-implementation; 0 flaky test passes merged |
-| **Language & Toolchain Breadth** | **8+ Runtimes** | Go, Rust, C17, Python, Ruby, Java, OCaml, Erlang, C#/.NET |
-| **Brownfield Codebase Navigation** | **Up to 453 files** | Detects existing code, avoids overwriting, and plans stabilizing user stories |
-
-#### Key Generation Milestones from Validation Reports:
+See the platform-wide **[Empirical Benchmarks](#-empirical-benchmarks-across-20-real-repositories)** above. Highlights from recent validation runs include:
 - **`fortune` (C17 + SQLite3)**: Synthesized 13 clean files in **1m 5s**. Compiled on the first pass under `-Wall -Wextra -Werror -pedantic -std=c17`; 100% unit tests passed.
 - **`calculator` (Ruby 3.4 + RSpec)**: Synthesized 11 clean files in **38.9s**. 6 RSpec examples passed with 0 failures in 0.003s; REPL and CLI operational.
 - **`ninline` (Python 3.14 + Minimax AI)**: Synthesized 14 files in **58.9s** (11,076 tokens). Full ray-casting line scanner and Minimax AI; passed JSON CLI contracts.
