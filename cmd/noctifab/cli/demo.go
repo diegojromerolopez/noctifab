@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/diegojromerolopez/noctifab/pkg/services/demo"
@@ -32,7 +33,10 @@ var demoCmd = &cobra.Command{
 				if err == nil {
 					defer func() { _ = os.Chdir(origWd) }()
 				}
-				return runStartCommand(startCmd, []string{dir})
+				if err := os.Chdir(dir); err != nil {
+					return fmt.Errorf("failed to enter demo directory: %w", err)
+				}
+				return runStartCommand(startCmd, []string{"."})
 			}
 		}
 

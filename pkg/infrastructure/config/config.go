@@ -261,16 +261,18 @@ func (cfg *Config) Validate() error {
 	}
 
 	vp := strings.ToLower(cfg.VCS.Provider)
-	if vp != "github" && vp != "gitlab" {
+	if vp != "github" && vp != "gitlab" && vp != "local" && vp != "none" && vp != "" {
 		return fmt.Errorf("invalid VCS provider: %s", cfg.VCS.Provider)
 	}
 
-	if cfg.VCS.Repository == "" && os.Getenv("NOCTIFAB_E2E") != "true" {
-		return fmt.Errorf("VCS repository is required")
-	}
+	if vp == "github" || vp == "gitlab" {
+		if cfg.VCS.Repository == "" && os.Getenv("NOCTIFAB_E2E") != "true" {
+			return fmt.Errorf("VCS repository is required")
+		}
 
-	if cfg.VCS.TokenValue == "" && os.Getenv("NOCTIFAB_E2E") != "true" {
-		return fmt.Errorf("VCS token is required")
+		if cfg.VCS.TokenValue == "" && os.Getenv("NOCTIFAB_E2E") != "true" {
+			return fmt.Errorf("VCS token is required")
+		}
 	}
 
 	if len(cfg.LLM.Providers) > 0 {

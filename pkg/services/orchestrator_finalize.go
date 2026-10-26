@@ -104,9 +104,11 @@ func (o *Orchestrator) FinalizeUserStory(ctx context.Context, state *domain.Stat
 	}
 
 	// Push integration branch
-	_, pushErr := o.git.Run(ctx, true, "push", "origin", integrationBranch)
-	if pushErr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to push integration branch %s to remote (%v). Preserving generated code locally.\n", integrationBranch, pushErr)
+	if o.cfg.VCSProvider != "local" && o.cfg.VCSProvider != "none" {
+		_, pushErr := o.git.Run(ctx, true, "push", "origin", integrationBranch)
+		if pushErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to push integration branch %s to remote (%v). Preserving generated code locally.\n", integrationBranch, pushErr)
+		}
 	}
 
 	// Create pull request

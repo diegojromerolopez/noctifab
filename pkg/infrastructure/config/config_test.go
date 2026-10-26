@@ -291,6 +291,28 @@ func TestValidate(t *testing.T) {
 		}
 	})
 
+	t.Run("Valid local VCS provider does not require repository or token", func(t *testing.T) {
+		t.Setenv("NOCTIFAB_E2E", "")
+		cfg := baseCfg()
+		cfg.VCS.Provider = "local"
+		cfg.VCS.Repository = ""
+		cfg.VCS.TokenValue = ""
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("expected local VCS provider to be valid without repo or token, got %v", err)
+		}
+	})
+
+	t.Run("Valid none VCS provider does not require repository or token", func(t *testing.T) {
+		t.Setenv("NOCTIFAB_E2E", "")
+		cfg := baseCfg()
+		cfg.VCS.Provider = "none"
+		cfg.VCS.Repository = ""
+		cfg.VCS.TokenValue = ""
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("expected none VCS provider to be valid without repo or token, got %v", err)
+		}
+	})
+
 	t.Run("Missing VCS repository", func(t *testing.T) {
 		t.Setenv("NOCTIFAB_E2E", "")
 		t.Setenv("NOCTIFAB_VCS_REPO", "")

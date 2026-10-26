@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added support for un-prefixed credential references ending in `API_KEY` or `API_KEYS` (e.g. `api_key: OPENAI_API_KEY`) so they are recognized as secret key names and resolved from `secrets.yaml` or host environment variables rather than interpreted as literal tokens.
   - Retained strict literal value handling for non-secret values and URLs (e.g. `http://localhost:11434`, `sk-ant-api03-...`).
   - Added comprehensive unit tests in `pkg/infrastructure/config/secrets_test.go` and `pkg/infrastructure/config/config_test.go`.
+- **Local & Offline VCS Support (`provider: local` / `none`)**:
+  - Permitted `local`, `none`, and empty `vcs.provider` values in `config.Validate()`, making remote VCS repository and token requirements optional for local workflows.
+  - Implemented no-op PR handling in `vcs.Client` and skipped remote `git push origin` in `orchestrator_finalize` when running with local VCS.
+  - Configured default Ollama LLM provider in `t4` and `cli` demo assets and fixed directory context propagation in `noctifab demo`.
 
 ## [0.126.0] - 2026-10-26
 

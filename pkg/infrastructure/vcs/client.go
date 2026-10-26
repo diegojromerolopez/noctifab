@@ -62,6 +62,10 @@ func (c *Client) CreatePullRequest(ctx context.Context, title, body, headBranch,
 		return fmt.Sprintf("https://github.com/%s/pull/123", c.Repository), nil
 	}
 
+	if c.Provider == "local" || c.Provider == "none" || c.Provider == "" {
+		return "", nil
+	}
+
 	if c.Provider == "github" {
 		token := c.resolveToken(ctx)
 		var apiErr error
@@ -158,6 +162,10 @@ func (c *Client) MergePullRequest(ctx context.Context, prID string) error {
 	defer span.End()
 
 	if c.Provider == "mock" || c.Token == "test-token" {
+		return nil
+	}
+
+	if c.Provider == "local" || c.Provider == "none" || c.Provider == "" {
 		return nil
 	}
 

@@ -473,7 +473,7 @@ vcs:
       - "autonomous"
 ```
 
-- **`provider`** (String): Version Control System target host. Values: `github` or `gitlab`.
+- **`provider`** (String): Version Control System target host. Values: `github`, `gitlab`, `local` (offline local Git only, zero external PRs), or `none`. When set to `local` or `none`, `repository` and `token` are not required.
 - **`repository`** (String): Remote repository path identifier (e.g. `owner/repo-name`).
 - **`base_branch`** (String): Default integration target branch (e.g. `auto`, `main`, or `master`). When set to `"auto"` (default), Noctifab automatically detects whether `master` exists in local or remote references and selects `master`, falling back to `main` if `master` is absent.
 - **`create_branch`** (Boolean): Toggles whether `noctifab start` creates and checks out a new Git integration branch (default: `true`). When `false`, Noctifab operates directly on the active base branch without creating feature branches.

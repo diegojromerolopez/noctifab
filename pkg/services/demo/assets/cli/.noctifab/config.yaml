@@ -15,6 +15,9 @@ vcs:
   use_worktrees: true
   base_branch: main
   branch_prefix: noctifab/
+llm:
+  provider: ollama
+  model: qwen2.5-coder:32b
 runtime:
   spec_source: SPEC.md
   max_actions: 100
