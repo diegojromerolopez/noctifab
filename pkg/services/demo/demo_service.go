@@ -9,9 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
-	"time"
 )
 
 //go:embed all:assets/*
@@ -28,11 +26,9 @@ const (
 
 // DemoConfig encapsulates settings for the demo execution harness.
 type DemoConfig struct {
-	Archetype    DemoArchetype
-	TargetDir    string
-	ForceOffline bool
-	SpeedFactor  float64
-	Cleanup      bool
+	Archetype DemoArchetype
+	TargetDir string
+	Cleanup   bool
 }
 
 // StartRunner invokes the underlying code generation engine on the target directory.
@@ -60,25 +56,16 @@ func (s *DemoService) Run(ctx context.Context, cfg DemoConfig) error {
 	if cfg.TargetDir == "" {
 		cfg.TargetDir = "demo"
 	}
-	if cfg.SpeedFactor <= 0 {
-		cfg.SpeedFactor = 1.0
-	}
 
 	absDir, err := filepath.Abs(cfg.TargetDir)
 	if err != nil {
 		absDir = cfg.TargetDir
 	}
 
-	modeLabel := "Autonomous Code Generation (Live)"
-	if cfg.ForceOffline || s.startRunner == nil {
-		modeLabel = "Deterministic Mock (Offline)"
-	}
-
 	fmt.Printf("\033[1;36m🤖🌌 LAUNCHING NOCTIFAB ZERO-CONFIG DEMO SANDBOX\033[0m\n")
-	fmt.Printf("Project: %s | Directory: %s | Mode: %s\n\n",
+	fmt.Printf("Project: %s | Directory: %s\n\n",
 		cfg.Archetype,
 		cfg.TargetDir,
-		modeLabel,
 	)
 
 	// 1. Create target demo directory
@@ -105,15 +92,13 @@ func (s *DemoService) Run(ctx context.Context, cfg DemoConfig) error {
 		}()
 	}
 
-	// 2. Unpack project archetype
-	isOffline := cfg.ForceOffline || s.startRunner == nil
+	// 2. Unpack project archetype specification & configuration
 	fmt.Print("📦 [1/3] Extracting project templates & SPEC.md...")
-	if err := s.unpackArchetype(cfg.Archetype, absDir, isOffline); err != nil {
+	if err := s.unpackArchetype(cfg.Archetype, absDir); err != nil {
 		fmt.Println(" ❌")
 		return fmt.Errorf("failed to unpack archetype: %w", err)
 	}
 	fmt.Printf(" ✅ (%s)\n", cfg.TargetDir)
-	s.sleep(100, cfg.SpeedFactor)
 
 	// 3. Ensure Git repository and .noctifab workspace are initialized
 	fmt.Print("🔧 [2/3] Initializing local git repository & .noctifab workspace...")
@@ -122,22 +107,20 @@ func (s *DemoService) Run(ctx context.Context, cfg DemoConfig) error {
 		return fmt.Errorf("failed to initialize workspace: %w", err)
 	}
 	fmt.Println(" ✅")
-	s.sleep(100, cfg.SpeedFactor)
 
-	// 4. Run Code Generation Engine or Offline Mock Replay
-	if !cfg.ForceOffline && s.startRunner != nil {
-		fmt.Println("🚀 [3/3] Launching autonomous dark factory loop (noctifab start)...")
-		fmt.Println("\033[1;32m====================================================================================\033[0m")
-		if err := s.startRunner(ctx, absDir); err != nil {
-			return fmt.Errorf("code generation failed: %w", err)
-		}
-		fmt.Println("\033[1;32m====================================================================================\033[0m")
-		fmt.Println("\033[1;32m  ✨ NOCTIFAB DARK FACTORY CODE GENERATION COMPLETED!\033[0m")
-		fmt.Println("\033[1;32m====================================================================================\033[0m")
-	} else {
-		fmt.Println("⚡ [3/3] Running deterministic offline simulation...")
-		s.runOfflineSimulation(ctx, cfg)
+	// 4. Run Autonomous Code Generation Engine
+	if s.startRunner == nil {
+		return fmt.Errorf("no code generation runner configured for demo execution")
 	}
+
+	fmt.Println("🚀 [3/3] Launching autonomous dark factory loop (noctifab start)...")
+	fmt.Println("\033[1;32m====================================================================================\033[0m")
+	if err := s.startRunner(ctx, absDir); err != nil {
+		return fmt.Errorf("code generation failed: %w", err)
+	}
+	fmt.Println("\033[1;32m====================================================================================\033[0m")
+	fmt.Println("\033[1;32m  ✨ NOCTIFAB DARK FACTORY CODE GENERATION COMPLETED!\033[0m")
+	fmt.Println("\033[1;32m====================================================================================\033[0m")
 
 	fmt.Printf("\n📂 Generated project ready in: \033[1;36m%s\033[0m\n", cfg.TargetDir)
 	if cfg.Archetype == ArchetypeT4 {
@@ -194,33 +177,7 @@ func (s *DemoService) ensureWorkspaceAndGit(absDir string, arch DemoArchetype) e
 	return nil
 }
 
-func (s *DemoService) runOfflineSimulation(ctx context.Context, cfg DemoConfig) {
-	fmt.Print("🧠 Planner Agent analyzing requirements & generating task DAG...")
-	mockLLM := NewMockDemoLLMClient(cfg.SpeedFactor)
-	_, _ = mockLLM.Complete(ctx, fmt.Sprintf("Role: PLANNER decompose %s", cfg.Archetype))
-	fmt.Println(" ✅ (2 tasks scheduled)")
-	s.sleep(200, cfg.SpeedFactor)
-
-	fmt.Print("⚡ Generator Agent writing minimal functional code (Verification)...")
-	_, _ = mockLLM.Complete(ctx, fmt.Sprintf("Role: GENERATOR write_file %s", cfg.Archetype))
-	fmt.Println(" ✅ (Core implementation written)")
-	s.sleep(200, cfg.SpeedFactor)
-
-	fmt.Print("🧪 Tester Agent executing black-box tests & consensus voting...")
-	_, _ = mockLLM.Complete(ctx, "Role: TESTER run_tests")
-	fmt.Println(" ✅ (3/3 Consensus PASSED)")
-	s.sleep(200, cfg.SpeedFactor)
-
-	fmt.Print("🎉 Rebase queue merging validated branch into main...")
-	s.sleep(200, cfg.SpeedFactor)
-	fmt.Println(" ✅ (Branch merged)")
-
-	fmt.Println("\n\033[1;32m====================================================================================\033[0m")
-	fmt.Println("\033[1;32m  ✨ NOCTIFAB DARK FACTORY DEMO COMPLETED WITH 100% GREEN TEST CONSENSUS!\033[0m")
-	fmt.Println("\033[1;32m====================================================================================\033[0m")
-}
-
-func (s *DemoService) unpackArchetype(arch DemoArchetype, targetDir string, isOffline bool) error {
+func (s *DemoService) unpackArchetype(arch DemoArchetype, targetDir string) error {
 	subDir := fmt.Sprintf("assets/%s", arch)
 	return fs.WalkDir(DemoFS, subDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -230,16 +187,6 @@ func (s *DemoService) unpackArchetype(arch DemoArchetype, targetDir string, isOf
 		if relPath == "." {
 			return nil
 		}
-
-		// In live generation mode, only unpack the specification and configuration.
-		// Pre-written code, stubs, and tests must be created autonomously by Noctifab.
-		if !isOffline {
-			if strings.HasPrefix(relPath, "src") || strings.HasPrefix(relPath, "tests") || strings.HasSuffix(relPath, ".tmpl") {
-				return nil
-			}
-		}
-
-		relPath = strings.TrimSuffix(relPath, ".tmpl")
 		destPath := filepath.Join(targetDir, relPath)
 		if d.IsDir() {
 			return os.MkdirAll(destPath, 0755)
@@ -250,12 +197,4 @@ func (s *DemoService) unpackArchetype(arch DemoArchetype, targetDir string, isOf
 		}
 		return os.WriteFile(destPath, content, 0644)
 	})
-}
-
-func (s *DemoService) sleep(ms int, speed float64) {
-	if speed <= 0 {
-		speed = 1.0
-	}
-	d := time.Duration(float64(ms)/speed) * time.Millisecond
-	time.Sleep(d)
 }

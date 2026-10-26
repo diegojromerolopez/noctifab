@@ -12,7 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Refactored `noctifab demo` to prepare `.noctifab` directory, `.noctifab/config.yaml`, and Git repository before launching code generation.
   - Connected `demoCmd` directly to the `start` orchestrator runner so that `noctifab demo [target_dir]` runs the dark factory engine end-to-end.
   - Added embedded default `.noctifab/config.yaml` for `t4` and `cli` demo archetypes.
-  - Updated `--offline` flag to default to `false` (with offline simulation retained when explicitly requested).
+
+### Removed
+- **Fake Offline Simulation & Mock Provider**:
+  - Completely removed `--offline` and `--speed` flags from `noctifab demo`.
+  - Removed `MockDemoLLMClient` and simulated replay sleep routines, ensuring `noctifab demo` executes genuine autonomous multi-agent code generation.
 
 ## [0.125.3] - 2026-10-25
 
