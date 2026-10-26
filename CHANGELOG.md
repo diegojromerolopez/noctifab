@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.127.1] - 2026-10-26
+
+### Fixed
+- **Ollama API Key Handling**:
+  - Permitted empty API key values when using the `ollama` provider in `llm.Client.Complete`, automatically substituting dummy authorization credentials so local Ollama instances operate without requiring an explicit API key configuration.
+  - Added unit test coverage for Ollama empty API key completion in `pkg/infrastructure/llm/client_test.go`.
+
 ## [0.127.0] - 2026-10-26
 
 ### Added

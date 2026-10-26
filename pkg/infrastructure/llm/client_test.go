@@ -419,3 +419,21 @@ func TestDynamicGeminiModelSelection(t *testing.T) {
 		}
 	})
 }
+
+func TestClient_Complete_OllamaDefaultKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintln(w, `{"choices":[{"message":{"content":"{\"reasoning\":\"ollama reasoning\",\"actions\":[]}"}}]}`)
+	}))
+	defer server.Close()
+
+	client := NewClient("ollama", "qwen2.5-coder:32b", "", 1, 10*time.Millisecond, server.URL)
+	resp, err := client.Complete(context.Background(), "hello")
+	if err != nil {
+		t.Fatalf("expected nil error for ollama without API key, got: %v", err)
+	}
+	if resp == nil || resp.Reasoning != "ollama reasoning" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
