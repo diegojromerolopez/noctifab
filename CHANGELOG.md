@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fake Offline Simulation & Mock Provider**:
   - Completely removed `--offline` and `--speed` flags from `noctifab demo`.
   - Removed `MockDemoLLMClient` and simulated replay sleep routines, ensuring `noctifab demo` executes genuine autonomous multi-agent code generation.
+- **Redundant CLI Flags (`--dir`, `--cleanup`)**:
+  - Removed redundant `--dir` and `--cleanup` flags from `noctifab demo`.
+  - Standardized on standard Unix CLI positional argument `noctifab demo [target_dir]` (defaulting to current directory `.`).
 
 ## [0.125.3] - 2026-10-25
 

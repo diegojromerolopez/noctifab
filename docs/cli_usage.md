@@ -102,20 +102,18 @@ Before dispatching agents, `noctifab start` runs comprehensive preflight verific
 - **Quality Gate Validation**: Verifies release gate constraints and language consistency before state initialization.
 
 ### 4. `demo`
-Launches a zero-config autonomous sandbox that unpacks a sample specification (`t4` ISO C17 S3-compatible HTTP object store by default) into `./demo` (or a custom target directory), initializes git and `.noctifab` workspace, and executes the autonomous dark factory code generation engine end-to-end.
+Launches a zero-config autonomous sandbox that unpacks a sample specification (`t4` ISO C17 S3-compatible HTTP object store by default) into `[target_dir]` (defaults to current directory `.`), initializes git and `.noctifab` workspace, and executes the autonomous dark factory code generation engine end-to-end.
 
-By default, generated project files are preserved on exit so you can inspect the code and run the test suite (`cd demo && make test`).
+Generated project files are preserved so you can inspect the code and run the test suite (`make test`).
 
 ```bash
-noctifab demo [target_dir] [--dir <dir>] [--project <archetype>] [--cleanup]
+noctifab demo [target_dir] [--project <archetype>]
 ```
 
 | Flag / Argument | Default | Description |
 |-----------------|---------|-------------|
-| `[target_dir]` | `demo` | Target directory where the demo project will be unpacked and generated |
-| `--dir` | `demo` | Flag alias for target directory |
+| `[target_dir]` | `.` | Target directory where the demo project will be unpacked and generated |
 | `--project` | `t4` | Demo project archetype template (`t4`, `cli`, `rest`) |
-| `--cleanup` | `false` | Clean up and remove generated demo directory on exit (default preserves files) |
 
 #### Quick Inspection:
 ```bash

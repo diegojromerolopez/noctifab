@@ -9,9 +9,7 @@ import (
 )
 
 var (
-	demoProject   string
-	demoTargetDir string
-	demoCleanup   bool
+	demoProject string
 
 	// demoStartRunnerOverride allows injecting mock runners for testing.
 	demoStartRunnerOverride demo.StartRunner
@@ -22,12 +20,9 @@ var demoCmd = &cobra.Command{
 	Short: "Run an autonomous dark factory demo sandbox",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		targetDir := demoTargetDir
+		targetDir := "."
 		if len(args) > 0 && args[0] != "" {
 			targetDir = args[0]
-		}
-		if targetDir == "" {
-			targetDir = "demo"
 		}
 
 		runner := demoStartRunnerOverride
@@ -45,7 +40,6 @@ var demoCmd = &cobra.Command{
 		cfg := demo.DemoConfig{
 			Archetype: demo.DemoArchetype(demoProject),
 			TargetDir: targetDir,
-			Cleanup:   demoCleanup,
 		}
 		return svc.Run(cmd.Context(), cfg)
 	},
@@ -54,6 +48,4 @@ var demoCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(demoCmd)
 	demoCmd.Flags().StringVar(&demoProject, "project", "t4", "Demo project archetype (t4, cli, rest)")
-	demoCmd.Flags().StringVar(&demoTargetDir, "dir", "demo", "Target directory for demo project generation")
-	demoCmd.Flags().BoolVar(&demoCleanup, "cleanup", false, "Clean up and remove generated demo directory on exit")
 }

@@ -7,9 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 )
 
 //go:embed all:assets/*
@@ -28,7 +26,6 @@ const (
 type DemoConfig struct {
 	Archetype DemoArchetype
 	TargetDir string
-	Cleanup   bool
 }
 
 // StartRunner invokes the underlying code generation engine on the target directory.
@@ -54,7 +51,7 @@ func (s *DemoService) Run(ctx context.Context, cfg DemoConfig) error {
 		cfg.Archetype = ArchetypeT4
 	}
 	if cfg.TargetDir == "" {
-		cfg.TargetDir = "demo"
+		cfg.TargetDir = "."
 	}
 
 	absDir, err := filepath.Abs(cfg.TargetDir)
@@ -71,25 +68,6 @@ func (s *DemoService) Run(ctx context.Context, cfg DemoConfig) error {
 	// 1. Create target demo directory
 	if err := os.MkdirAll(absDir, 0755); err != nil {
 		return fmt.Errorf("failed to create demo directory: %w", err)
-	}
-
-	if cfg.Cleanup {
-		cleanupChan := make(chan os.Signal, 1)
-		signal.Notify(cleanupChan, os.Interrupt, syscall.SIGTERM)
-		defer func() {
-			signal.Stop(cleanupChan)
-			_ = os.RemoveAll(absDir)
-		}()
-
-		go func() {
-			select {
-			case <-cleanupChan:
-				fmt.Println("\n\033[1;33m⚠️  Interrupt received. Cleaning up demo sandbox...\033[0m")
-				_ = os.RemoveAll(absDir)
-				os.Exit(0)
-			case <-ctx.Done():
-			}
-		}()
 	}
 
 	// 2. Unpack project archetype specification & configuration
@@ -125,7 +103,9 @@ func (s *DemoService) Run(ctx context.Context, cfg DemoConfig) error {
 	fmt.Printf("\n📂 Generated project ready in: \033[1;36m%s\033[0m\n", cfg.TargetDir)
 	if cfg.Archetype == ArchetypeT4 {
 		fmt.Println("To inspect and run the generated demo project:")
-		fmt.Printf("  cd %s\n", cfg.TargetDir)
+		if cfg.TargetDir != "." && cfg.TargetDir != "" {
+			fmt.Printf("  cd %s\n", cfg.TargetDir)
+		}
 		fmt.Println("  make test       # Run ISO C17 HTTP test suite")
 		fmt.Println("  make build      # Compile bin/t4")
 		fmt.Println("  ./bin/t4        # Launch S3-style server")

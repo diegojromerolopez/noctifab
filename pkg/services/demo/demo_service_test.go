@@ -23,7 +23,6 @@ func TestDemoService_RunWithRunner(t *testing.T) {
 	cfg := DemoConfig{
 		Archetype: ArchetypeT4,
 		TargetDir: tempDir,
-		Cleanup:   false,
 	}
 
 	err := svc.Run(context.Background(), cfg)
@@ -37,13 +36,46 @@ func TestDemoService_RunWithRunner(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(tempDir, "tests", "unit", "test_http.c"))
 }
 
+func TestDemoService_RunWithDefaultCurrentDir(t *testing.T) {
+	called := false
+	var calledDir string
+	runner := func(_ context.Context, dir string) error {
+		called = true
+		calledDir = dir
+		return nil
+	}
+	svc := NewDemoService(runner)
+
+	tempDir := t.TempDir()
+	origWd, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { _ = os.Chdir(origWd) }()
+	require.NoError(t, os.Chdir(tempDir))
+
+	cfg := DemoConfig{
+		Archetype: ArchetypeT4,
+		TargetDir: "",
+	}
+
+	realTempDir, err := filepath.EvalSymlinks(tempDir)
+	require.NoError(t, err)
+
+	err = svc.Run(context.Background(), cfg)
+	require.NoError(t, err)
+	assert.True(t, called)
+	realCalledDir, err := filepath.EvalSymlinks(calledDir)
+	require.NoError(t, err)
+	assert.Equal(t, realTempDir, realCalledDir)
+	assert.FileExists(t, filepath.Join(tempDir, "SPEC.md"))
+	assert.FileExists(t, filepath.Join(tempDir, ".noctifab", "config.yaml"))
+}
+
 func TestDemoService_RunRequiresRunner(t *testing.T) {
 	svc := NewDemoService()
 	tempDir := filepath.Join(t.TempDir(), "no_runner_demo")
 	cfg := DemoConfig{
 		Archetype: ArchetypeT4,
 		TargetDir: tempDir,
-		Cleanup:   false,
 	}
 
 	err := svc.Run(context.Background(), cfg)
