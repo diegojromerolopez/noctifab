@@ -106,8 +106,9 @@ func (s *DemoService) Run(ctx context.Context, cfg DemoConfig) error {
 	}
 
 	// 2. Unpack project archetype
+	isOffline := cfg.ForceOffline || s.startRunner == nil
 	fmt.Print("📦 [1/3] Extracting project templates & SPEC.md...")
-	if err := s.unpackArchetype(cfg.Archetype, absDir); err != nil {
+	if err := s.unpackArchetype(cfg.Archetype, absDir, isOffline); err != nil {
 		fmt.Println(" ❌")
 		return fmt.Errorf("failed to unpack archetype: %w", err)
 	}
@@ -219,7 +220,7 @@ func (s *DemoService) runOfflineSimulation(ctx context.Context, cfg DemoConfig) 
 	fmt.Println("\033[1;32m====================================================================================\033[0m")
 }
 
-func (s *DemoService) unpackArchetype(arch DemoArchetype, targetDir string) error {
+func (s *DemoService) unpackArchetype(arch DemoArchetype, targetDir string, isOffline bool) error {
 	subDir := fmt.Sprintf("assets/%s", arch)
 	return fs.WalkDir(DemoFS, subDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -229,6 +230,15 @@ func (s *DemoService) unpackArchetype(arch DemoArchetype, targetDir string) erro
 		if relPath == "." {
 			return nil
 		}
+
+		// In live generation mode, only unpack the specification and configuration.
+		// Pre-written code, stubs, and tests must be created autonomously by Noctifab.
+		if !isOffline {
+			if strings.HasPrefix(relPath, "src") || strings.HasPrefix(relPath, "tests") || strings.HasSuffix(relPath, ".tmpl") {
+				return nil
+			}
+		}
+
 		relPath = strings.TrimSuffix(relPath, ".tmpl")
 		destPath := filepath.Join(targetDir, relPath)
 		if d.IsDir() {

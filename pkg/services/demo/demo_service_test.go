@@ -54,25 +54,42 @@ func TestDemoService_RunWithRunner(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, called)
 	assert.Equal(t, tempDir, calledDir)
+	assert.FileExists(t, filepath.Join(tempDir, "SPEC.md"))
 	assert.FileExists(t, filepath.Join(tempDir, ".noctifab", "config.yaml"))
 	assert.DirExists(t, filepath.Join(tempDir, ".git"))
+	assert.NoFileExists(t, filepath.Join(tempDir, "src", "http.c"))
+	assert.NoFileExists(t, filepath.Join(tempDir, "tests", "unit", "test_http.c"))
 }
 
 func TestDemoService_UnpackArchetype(t *testing.T) {
 	svc := NewDemoService()
-	tempDir := t.TempDir()
 
-	err := svc.unpackArchetype(ArchetypeT4, tempDir)
-	require.NoError(t, err)
+	t.Run("Live generation mode extracts only specification and config", func(t *testing.T) {
+		tempDir := t.TempDir()
+		err := svc.unpackArchetype(ArchetypeT4, tempDir, false)
+		require.NoError(t, err)
 
-	assert.FileExists(t, filepath.Join(tempDir, "SPEC.md"))
-	assert.FileExists(t, filepath.Join(tempDir, "Makefile"))
-	assert.FileExists(t, filepath.Join(tempDir, "src", "http.c"))
-	assert.FileExists(t, filepath.Join(tempDir, ".noctifab", "config.yaml"))
+		assert.FileExists(t, filepath.Join(tempDir, "SPEC.md"))
+		assert.FileExists(t, filepath.Join(tempDir, ".noctifab", "config.yaml"))
+		assert.NoFileExists(t, filepath.Join(tempDir, "src", "http.c"))
+		assert.NoFileExists(t, filepath.Join(tempDir, "tests", "unit", "test_http.c"))
+	})
 
-	content, err := os.ReadFile(filepath.Join(tempDir, "SPEC.md"))
-	require.NoError(t, err)
-	assert.Contains(t, string(content), "t4 Specification")
+	t.Run("Offline mode extracts full deterministic simulation bundle", func(t *testing.T) {
+		tempDir := t.TempDir()
+		err := svc.unpackArchetype(ArchetypeT4, tempDir, true)
+		require.NoError(t, err)
+
+		assert.FileExists(t, filepath.Join(tempDir, "SPEC.md"))
+		assert.FileExists(t, filepath.Join(tempDir, "Makefile"))
+		assert.FileExists(t, filepath.Join(tempDir, "src", "http.c"))
+		assert.FileExists(t, filepath.Join(tempDir, "tests", "unit", "test_http.c"))
+		assert.FileExists(t, filepath.Join(tempDir, ".noctifab", "config.yaml"))
+
+		content, err := os.ReadFile(filepath.Join(tempDir, "SPEC.md"))
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "t4 Specification")
+	})
 }
 
 func TestMockDemoLLMClient(t *testing.T) {
