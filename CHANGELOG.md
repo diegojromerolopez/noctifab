@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.127.2] - 2026-10-26
+
+### Changed
+- **Default Demo LLM Configuration**:
+  - Replaced local Ollama defaults in embedded demo assets (`assets/t4/.noctifab/config.yaml` and `assets/cli/.noctifab/config.yaml`) with prioritized Claude (`anthropic/claude-sonnet-5`) and OpenAI (`openai/gpt-5.6-luna`) configurations.
+  - Configured automatic credential resolution via `api_keys` supporting both `ANTHROPIC_API_KEY`/`CLAUDE_API_KEY` and `OPENAI_API_KEY` with speculative hedging across providers.
+
 ## [0.127.1] - 2026-10-26
 
 ### Fixed
