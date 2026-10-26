@@ -1,0 +1,50 @@
+config_version: "2.0"
+execution_report: report/execution_report.md
+agents:
+  architecture: code_first
+  orchestrator:
+    number: 3
+    iterations: 2
+  product_manager:
+    audit_mode: smart
+    number: 1
+    iterations: 2
+    user_stories:
+      max_count: 5
+      complexity:
+        min: 15
+        max: 35
+  planner:
+    number: 1
+    iterations: 5
+  generators:
+    number: 3
+    iterations: 10
+sandbox:
+  mode: host
+  timeout_seconds: 300
+  test_command: make test
+  formatter_command: make format
+  syntax_check_command: gcc -fsyntax-only {file}
+  linter:
+    command: make lint
+  allowed_commands:
+    - make
+    - gcc
+    - clang
+    - clang-format
+    - clang-tidy
+    - git
+    - sh
+    - bash
+    - curl
+vcs:
+  provider: local
+  use_worktrees: true
+  base_branch: main
+  branch_prefix: noctifab/
+runtime:
+  spec_source: SPEC.md
+  max_actions: 100
+  loop:
+    count: 1

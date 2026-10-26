@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -8,16 +9,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDemoCmd_Execution(t *testing.T) {
+func TestDemoCmd_ExecutionOffline(t *testing.T) {
 	demoSpeedFactor = 100.0 // instant for unit test
 	demoOffline = true
 	tempDir := t.TempDir()
 	defer func() {
 		demoSpeedFactor = 1.0
+		demoOffline = false
 	}()
 
 	err := demoCmd.RunE(demoCmd, []string{tempDir})
 	require.NoError(t, err)
+}
+
+func TestDemoCmd_ExecutionWithRunner(t *testing.T) {
+	demoSpeedFactor = 100.0
+	demoOffline = false
+	called := false
+	var calledDir string
+	demoStartRunnerOverride = func(_ context.Context, dir string) error {
+		called = true
+		calledDir = dir
+		return nil
+	}
+	defer func() {
+		demoSpeedFactor = 1.0
+		demoStartRunnerOverride = nil
+	}()
+
+	tempDir := t.TempDir()
+	err := demoCmd.RunE(demoCmd, []string{tempDir})
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Equal(t, tempDir, calledDir)
 }
 
 func TestDemoCmd_Flags(t *testing.T) {

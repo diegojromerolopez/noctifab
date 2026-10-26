@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDemoService_Run(t *testing.T) {
+func TestDemoService_RunOffline(t *testing.T) {
 	svc := NewDemoService()
 	tempDir := filepath.Join(t.TempDir(), "demo")
 	cfg := DemoConfig{
@@ -28,6 +28,34 @@ func TestDemoService_Run(t *testing.T) {
 	assert.FileExists(t, filepath.Join(tempDir, "Makefile"))
 	assert.FileExists(t, filepath.Join(tempDir, "src", "http.c"))
 	assert.FileExists(t, filepath.Join(tempDir, "tests", "unit", "test_http.c"))
+	assert.FileExists(t, filepath.Join(tempDir, ".noctifab", "config.yaml"))
+	assert.DirExists(t, filepath.Join(tempDir, ".git"))
+}
+
+func TestDemoService_RunWithRunner(t *testing.T) {
+	called := false
+	var calledDir string
+	runner := func(_ context.Context, dir string) error {
+		called = true
+		calledDir = dir
+		return nil
+	}
+	svc := NewDemoService(runner)
+	tempDir := filepath.Join(t.TempDir(), "live_demo")
+	cfg := DemoConfig{
+		Archetype:    ArchetypeT4,
+		TargetDir:    tempDir,
+		ForceOffline: false,
+		SpeedFactor:  20.0,
+		Cleanup:      false,
+	}
+
+	err := svc.Run(context.Background(), cfg)
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Equal(t, tempDir, calledDir)
+	assert.FileExists(t, filepath.Join(tempDir, ".noctifab", "config.yaml"))
+	assert.DirExists(t, filepath.Join(tempDir, ".git"))
 }
 
 func TestDemoService_UnpackArchetype(t *testing.T) {
@@ -40,6 +68,7 @@ func TestDemoService_UnpackArchetype(t *testing.T) {
 	assert.FileExists(t, filepath.Join(tempDir, "SPEC.md"))
 	assert.FileExists(t, filepath.Join(tempDir, "Makefile"))
 	assert.FileExists(t, filepath.Join(tempDir, "src", "http.c"))
+	assert.FileExists(t, filepath.Join(tempDir, ".noctifab", "config.yaml"))
 
 	content, err := os.ReadFile(filepath.Join(tempDir, "SPEC.md"))
 	require.NoError(t, err)

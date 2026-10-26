@@ -1,0 +1,22 @@
+config_version: "2.0"
+execution_report: report/execution_report.md
+agents:
+  architecture: code_first
+sandbox:
+  mode: host
+  timeout_seconds: 300
+  test_command: go test -v ./...
+  formatter_command: go fmt ./...
+  allowed_commands:
+    - go
+    - git
+vcs:
+  provider: local
+  use_worktrees: true
+  base_branch: main
+  branch_prefix: noctifab/
+runtime:
+  spec_source: SPEC.md
+  max_actions: 100
+  loop:
+    count: 1

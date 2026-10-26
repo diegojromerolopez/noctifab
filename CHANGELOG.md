@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.126.0] - 2026-10-26
+
+### Added
+- **Autonomous Dark Factory Code Generation in `noctifab demo`**:
+  - Refactored `noctifab demo` to prepare `.noctifab` directory, `.noctifab/config.yaml`, and Git repository before launching code generation.
+  - Connected `demoCmd` directly to the `start` orchestrator runner so that `noctifab demo [target_dir]` runs the dark factory engine end-to-end.
+  - Added embedded default `.noctifab/config.yaml` for `t4` and `cli` demo archetypes.
+  - Updated `--offline` flag to default to `false` (with offline simulation retained when explicitly requested).
+
 ## [0.125.3] - 2026-10-25
 
 ### Documentation

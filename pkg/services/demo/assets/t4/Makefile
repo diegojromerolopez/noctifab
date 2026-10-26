@@ -1,7 +1,7 @@
 CC ?= gcc
 CFLAGS = -Wall -Wextra -Werror -pedantic -std=c17 -O2 -Isrc
 
-.PHONY: build test clean
+.PHONY: build test format lint clean
 
 build:
 	mkdir -p bin
@@ -12,5 +12,12 @@ test:
 	$(CC) $(CFLAGS) -Itests/unit -o bin/test_http src/http.c tests/unit/test_http.c
 	./bin/test_http
 
+format:
+	@clang-format -i src/*.c src/*.h tests/unit/*.c 2>/dev/null || true
+
+lint:
+	@clang-tidy src/*.c -- $(CFLAGS) 2>/dev/null || true
+
 clean:
 	rm -rf bin
+
