@@ -18,7 +18,6 @@ t4/
 ├── Makefile                 # build/test/lint/format/e2e targets (all REQUIRED)
 ├── README.md                # usage, API contract, e2e instructions
 ├── .gitignore               # ignore bin/, data/, *.o
-├── docker-compose.yml       # e2e black-box harness (see §8)
 ├── src/
 │   ├── t4.c                 # composition root: CLI parsing, socket accept loop
 │   ├── http.h               # public HTTP parse/write API
@@ -39,8 +38,7 @@ t4/
 │   ├── integration/
 │   │   └── blackbox.sh      # starts server, asserts full HTTP contract via curl
 │   └── e2e/
-│       ├── Dockerfile       # alpine + curl + bash, copies run_tests.sh
-│       └── run_tests.sh     # black-box HTTP assertions against ${T4_URL}
+│       └── run_tests.sh     # black-box HTTP assertions against local server
 └── data/                    # runtime object store (git-ignored, created on start)
 ```
 
@@ -52,7 +50,7 @@ t4/
 - `make test` → builds unit + integration tests and runs them; MUST exit zero with no failures.
 - `make lint` → runs `clang-tidy` and a strict `gcc` compile, both with ZERO findings (see the linter gate below).
 - `make format` → formats sources with `clang-format -i src/*.c src/*.h` (idempotent).
-- `make e2e` → `docker compose up --build --exit-code-from e2e` (run from the host).
+- `make e2e` → runs `tests/e2e/run_tests.sh` or `tests/integration/blackbox.sh` natively from the host.
 - `make clean` → removes `bin/`, `*.o`, `data/`.
 
 **Linter gate (REQUIRED):** the project MUST pass `make lint` with ZERO findings before
@@ -177,38 +175,15 @@ Error and listing bodies are JSON, newline-terminated.
    FULL contract with `curl` — every endpoint, every status code, exact headers
    (`ETag`, `Content-Range`), exact bodies (including a binary payload with `\0`
    and non-ASCII bytes), and range slicing. Zero failures; nonzero exit otherwise.
-3. **E2E (docker-compose, host-run)** — see §8. `make e2e` exits zero only if every
-   assertion in `tests/e2e/run_tests.sh` passes.
+3. **E2E (native host-run)** — see §8. `make e2e` exits zero only if every
+   assertion in `tests/e2e/run_tests.sh` or `tests/integration/blackbox.sh` passes.
 
-## 8. E2E Black-Box Harness (docker-compose)
+## 8. E2E Black-Box Harness (Native Execution)
 
-`docker-compose.yml` MUST define two services and be runnable from the host with
-`make e2e` (or `docker compose up --build --exit-code-from e2e`):
-
-```yaml
-services:
-  t4:
-    build: .
-    command: ["./bin/t4", "--data-dir", "/data", "--host", "0.0.0.0", "--port", "8080"]
-    volumes:
-      - t4-data:/data
-    ports:
-      - "8080:8080"
-  e2e:
-    build: ./tests/e2e
-    depends_on:
-      - t4
-    environment:
-      T4_URL: "http://t4:8080"
-volumes:
-  t4-data:
-```
-
-- `tests/e2e/Dockerfile`: `FROM alpine`, installs `curl bash`, copies
-  `run_tests.sh`, `CMD ["/tests/run_tests.sh"]`.
-- `tests/e2e/run_tests.sh`: treats `${T4_URL}` purely as a black box over HTTP —
-  PUT/GET/HEAD/DELETE/list/range assertions, exact status codes, `ETag` presence,
-  and byte-exact round-trips. Exits nonzero on the first failure.
+`tests/e2e/run_tests.sh` (or `tests/integration/blackbox.sh`) treats `t4` purely as a black box over HTTP (against `${T4_URL:-http://127.0.0.1:8080}`) without requiring Docker:
+- Starts the `t4` server natively on a local test port, waits for socket readiness, executes the test suite, and ensures clean process termination.
+- Validates PUT/GET/HEAD/DELETE/list/range assertions, exact status codes, `ETag` presence, and byte-exact round-trips.
+- Exits nonzero on the first failure.
 
 ## 9. README
 

@@ -10,12 +10,16 @@ sandbox:
   allowed_commands:
     - go
     - git
+  e2e:
+    mode: native
 vcs:
   provider: local
   use_worktrees: true
   base_branch: main
   branch_prefix: noctifab/
 llm:
+  thinking:
+    enabled: false
   priority:
     - claude
     - openai
@@ -23,12 +27,16 @@ llm:
     - name: claude
       provider: anthropic
       model: claude-sonnet-5
+      enable_thinking: false
+      thinking_budget: 0
       api_keys:
         - ANTHROPIC_API_KEY
         - CLAUDE_API_KEY
     - name: openai
       provider: openai
       model: gpt-5.6-luna
+      enable_thinking: false
+      thinking_budget: 0
       api_keys:
         - OPENAI_API_KEY
 runtime:

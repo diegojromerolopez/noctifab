@@ -102,7 +102,7 @@ Before dispatching agents, `noctifab start` runs comprehensive preflight verific
 - **Quality Gate Validation**: Verifies release gate constraints and language consistency before state initialization.
 
 ### 4. `demo`
-Launches a zero-config autonomous sandbox that unpacks a sample specification (`t4` ISO C17 S3-compatible HTTP object store by default) into `[target_dir]` (defaults to current directory `.`), initializes git and `.noctifab` workspace, and executes the autonomous dark factory code generation engine end-to-end.
+Launches a zero-config autonomous sandbox that unpacks a sample specification (`t4` ISO C17 S3-compatible HTTP object store by default) into `[target_dir]` (defaults to `demo`), initializes git and `.noctifab` workspace, and executes the autonomous dark factory code generation engine end-to-end.
 
 Generated project files are preserved so you can inspect the code and run the test suite (`make test`).
 
@@ -112,7 +112,7 @@ noctifab demo [target_dir] [--project <archetype>]
 
 | Flag / Argument | Default | Description |
 |-----------------|---------|-------------|
-| `[target_dir]` | `.` | Target directory where the demo project will be unpacked and generated |
+| `[target_dir]` | `demo` | Target directory where the demo project will be unpacked and generated |
 | `--project` | `t4` | Demo project archetype template (`t4`, `cli`, `rest`) |
 
 #### Quick Inspection:

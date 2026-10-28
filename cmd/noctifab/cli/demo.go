@@ -21,7 +21,7 @@ var demoCmd = &cobra.Command{
 	Short: "Run an autonomous dark factory demo sandbox",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		targetDir := "."
+		targetDir := "demo"
 		if len(args) > 0 && args[0] != "" {
 			targetDir = args[0]
 		}

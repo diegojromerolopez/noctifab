@@ -56,7 +56,7 @@ func TestDemoCmd_ExecutionDefaultCurrentDir(t *testing.T) {
 	assert.True(t, called)
 	realCalledDir, err := filepath.EvalSymlinks(calledDir)
 	require.NoError(t, err)
-	assert.Equal(t, realTempDir, realCalledDir)
+	assert.Equal(t, filepath.Join(realTempDir, "demo"), realCalledDir)
 }
 
 func TestDemoCmd_Flags(t *testing.T) {

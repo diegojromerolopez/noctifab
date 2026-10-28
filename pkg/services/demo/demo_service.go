@@ -51,7 +51,7 @@ func (s *DemoService) Run(ctx context.Context, cfg DemoConfig) error {
 		cfg.Archetype = ArchetypeT4
 	}
 	if cfg.TargetDir == "" {
-		cfg.TargetDir = "."
+		cfg.TargetDir = "demo"
 	}
 
 	absDir, err := filepath.Abs(cfg.TargetDir)

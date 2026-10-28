@@ -183,6 +183,20 @@ func TestAdjustForRoutineTask(t *testing.T) {
 	if modifiedThinkingOnly {
 		t.Fatalf("expected modified = false for thinking-only model where thinking cannot be disabled")
 	}
+
+	// Case 7: Explicit EnableThinking = false on client bypasses capabilities lookup and disables thinking
+	disabled := false
+	clientDisabled := &Client{
+		Provider:       "openai",
+		EnableThinking: &disabled,
+	}
+	extraDisabled, modifiedDisabled := clientDisabled.adjustForRoutineTask(ctxGen, "generator", "any-model", nil)
+	if !modifiedDisabled {
+		t.Fatalf("expected modified = true when EnableThinking is explicitly false")
+	}
+	if extraDisabled["enable_thinking"] != false || extraDisabled["thinking_budget"] != 0 {
+		t.Errorf("expected thinking disabled fields in extra, got %v", extraDisabled)
+	}
 }
 
 func TestExtraBodySetterClients(t *testing.T) {

@@ -65,9 +65,10 @@ func TestDemoService_RunWithDefaultCurrentDir(t *testing.T) {
 	assert.True(t, called)
 	realCalledDir, err := filepath.EvalSymlinks(calledDir)
 	require.NoError(t, err)
-	assert.Equal(t, realTempDir, realCalledDir)
-	assert.FileExists(t, filepath.Join(tempDir, "SPEC.md"))
-	assert.FileExists(t, filepath.Join(tempDir, ".noctifab", "config.yaml"))
+	expectedDir := filepath.Join(realTempDir, "demo")
+	assert.Equal(t, expectedDir, realCalledDir)
+	assert.FileExists(t, filepath.Join(expectedDir, "SPEC.md"))
+	assert.FileExists(t, filepath.Join(expectedDir, ".noctifab", "config.yaml"))
 }
 
 func TestDemoService_RunRequiresRunner(t *testing.T) {

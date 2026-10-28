@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.127.3] - 2026-10-28
+
+### Changed
+- **Demo Sandbox Defaults & Execution Settings**:
+  - Updated `noctifab demo` default `[target_dir]` to `demo` when omitted on the CLI or in `DemoConfig`.
+  - Configured native E2E mode (`sandbox.e2e.mode: native`), disabled extended thinking (`thinking.enabled: false`, `enable_thinking: false`, `thinking_budget: 0`), and simplified `t4` demo specification and `Makefile` for fast local execution without Docker.
+  - Updated `llm.Client.adjustForRoutineTask` to immediately enforce disabled thinking parameters when `EnableThinking` is explicitly `false`.
+
 ## [0.127.2] - 2026-10-26
 
 ### Changed

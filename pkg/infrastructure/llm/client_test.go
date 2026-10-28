@@ -436,4 +436,3 @@ func TestClient_Complete_OllamaDefaultKey(t *testing.T) {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 }
-

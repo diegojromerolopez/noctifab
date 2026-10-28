@@ -1,7 +1,7 @@
 CC ?= gcc
 CFLAGS = -Wall -Wextra -Werror -pedantic -std=c17 -O2 -Isrc
 
-.PHONY: build test format lint clean
+.PHONY: build test format lint e2e clean
 
 build:
 	mkdir -p bin
@@ -17,6 +17,9 @@ format:
 
 lint:
 	@clang-tidy src/*.c -- $(CFLAGS) 2>/dev/null || true
+
+e2e: build
+	@if [ -f tests/integration/blackbox.sh ]; then sh tests/integration/blackbox.sh; elif [ -f tests/smoke.sh ]; then sh tests/smoke.sh; fi
 
 clean:
 	rm -rf bin
