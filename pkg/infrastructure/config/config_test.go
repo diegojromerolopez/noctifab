@@ -191,6 +191,52 @@ func TestResolveSecrets(t *testing.T) {
 		}
 	})
 
+	t.Run("APIKey without secret prefix ending in API_KEY resolves from env", func(t *testing.T) {
+		_ = os.Setenv("GEMINI_API_KEY", "gemini-env-val")
+		defer func() { _ = os.Unsetenv("GEMINI_API_KEY") }()
+
+		cfg := &Config{}
+		cfg.LLM.Provider = "gemini"
+		cfg.LLM.APIKey = "GEMINI_API_KEY"
+		resolveSecrets(cfg)
+
+		if cfg.LLM.APIKeyValue != "gemini-env-val" {
+			t.Errorf("expected gemini-env-val, got %s", cfg.LLM.APIKeyValue)
+		}
+	})
+
+	t.Run("ProviderSpec APIKey without secret prefix ending in API_KEY resolves from env", func(t *testing.T) {
+		_ = os.Setenv("MISTRAL_API_KEY", "mistral-env-val")
+		defer func() { _ = os.Unsetenv("MISTRAL_API_KEY") }()
+
+		p := &ProviderSpec{
+			Name:     "mistral",
+			Provider: "mistral",
+			APIKey:   "MISTRAL_API_KEY",
+		}
+		resolveProviderSpecSecret(p)
+
+		if p.APIKeyValue != "mistral-env-val" {
+			t.Errorf("expected mistral-env-val, got %s", p.APIKeyValue)
+		}
+	})
+
+	t.Run("ProviderSpec APIKey with secret prefix ending in API_KEY resolves from env", func(t *testing.T) {
+		_ = os.Setenv("MISTRAL_API_KEY", "mistral-secret-prefix-val")
+		defer func() { _ = os.Unsetenv("MISTRAL_API_KEY") }()
+
+		p := &ProviderSpec{
+			Name:     "mistral",
+			Provider: "mistral",
+			APIKey:   "secret:MISTRAL_API_KEY",
+		}
+		resolveProviderSpecSecret(p)
+
+		if p.APIKeyValue != "mistral-secret-prefix-val" {
+			t.Errorf("expected mistral-secret-prefix-val, got %s", p.APIKeyValue)
+		}
+	})
+
 	t.Run("Direct Token takes precedence over env", func(t *testing.T) {
 		_ = os.Setenv("GITHUB_TOKEN", "github-env-val")
 		defer func() { _ = os.Unsetenv("GITHUB_TOKEN") }()

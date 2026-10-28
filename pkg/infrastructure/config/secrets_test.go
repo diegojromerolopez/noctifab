@@ -76,6 +76,85 @@ func TestResolveSecretRef_NoPrefix(t *testing.T) {
 	}
 }
 
+func TestIsAPIKeyName(t *testing.T) {
+	positives := []string{
+		"API_KEY",
+		"API_KEYS",
+		"api_key",
+		"api_keys",
+		"OPENAI_API_KEY",
+		"openai_api_key",
+		"ANTHROPIC_API_KEYS",
+		"MY_PROVIDER_API_KEY",
+		"_API_KEY",
+	}
+	for _, p := range positives {
+		if !isAPIKeyName(p) {
+			t.Errorf("expected isAPIKeyName(%q) to be true", p)
+		}
+	}
+
+	negatives := []string{
+		"PLAIN-API-KEY",
+		"plain-api-key",
+		"KEY",
+		"MY_KEY",
+		"GITHUB_TOKEN",
+		"http://localhost:11434",
+		"sk-proj-12345",
+		"",
+	}
+	for _, n := range negatives {
+		if isAPIKeyName(n) {
+			t.Errorf("expected isAPIKeyName(%q) to be false", n)
+		}
+	}
+}
+
+func TestResolveSecretRef_EnvFallbackWhenEndsWithAPIKey(t *testing.T) {
+	t.Setenv("TEST_OPENAI_API_KEY", "env-secret-value")
+
+	emptySecrets := map[string]string{}
+
+	// With secret: prefix
+	gotWithPrefix := resolveSecretRef("secret:TEST_OPENAI_API_KEY", emptySecrets)
+	if gotWithPrefix != "env-secret-value" {
+		t.Errorf("expected env-secret-value with prefix, got %q", gotWithPrefix)
+	}
+
+	// Without secret: prefix
+	gotWithoutPrefix := resolveSecretRef("TEST_OPENAI_API_KEY", emptySecrets)
+	if gotWithoutPrefix != "env-secret-value" {
+		t.Errorf("expected env-secret-value without prefix, got %q", gotWithoutPrefix)
+	}
+
+	// Precedence: secrets map overrides env var
+	populatedSecrets := map[string]string{"TEST_OPENAI_API_KEY": "map-override-value"}
+	gotMapOverride := resolveSecretRef("secret:TEST_OPENAI_API_KEY", populatedSecrets)
+	if gotMapOverride != "map-override-value" {
+		t.Errorf("expected map-override-value to take precedence, got %q", gotMapOverride)
+	}
+}
+
+func TestResolveSecretRef_NoEnvFallbackWhenNotEndingInAPIKey(t *testing.T) {
+	t.Setenv("CUSTOM_SECRET_NAME", "should-not-be-read-from-env")
+
+	emptySecrets := map[string]string{}
+	// Key does not end in API_KEY, so env fallback must NOT happen
+	got := resolveSecretRef("secret:CUSTOM_SECRET_NAME", emptySecrets)
+	if got != "" {
+		t.Errorf("expected empty string when key does not end in API_KEY, got %q", got)
+	}
+}
+
+func TestResolveSecretRef_NoPrefixAPIKeyInSecrets(t *testing.T) {
+	secrets := map[string]string{"MY_SPECIAL_API_KEY": "val-from-secrets-map"}
+	got := resolveSecretRef("MY_SPECIAL_API_KEY", secrets)
+	if got != "val-from-secrets-map" {
+		t.Errorf("expected val-from-secrets-map, got %q", got)
+	}
+}
+
 func TestApplySecretsToConfig(t *testing.T) {
 	cfg := &Config{}
 	cfg.LLM.APIKey = "secret:MY_API_KEY"

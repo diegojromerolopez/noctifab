@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.127.0] - 2026-10-26
+
+### Added
+- **Environment Variable Fallback for Secrets Ending in `API_KEY`**:
+  - Implemented environment variable fallback (`os.Getenv(key)`) in `resolveSecretRef` when a credential key ends in `API_KEY` or `API_KEYS` (case-insensitive) and is missing or empty in `secrets.yaml`.
+  - Added support for un-prefixed credential references ending in `API_KEY` or `API_KEYS` (e.g. `api_key: OPENAI_API_KEY`) so they are recognized as secret key names and resolved from `secrets.yaml` or host environment variables rather than interpreted as literal tokens.
+  - Retained strict literal value handling for non-secret values and URLs (e.g. `http://localhost:11434`, `sk-ant-api03-...`).
+  - Added comprehensive unit tests in `pkg/infrastructure/config/secrets_test.go` and `pkg/infrastructure/config/config_test.go`.
+
 ## [0.126.0] - 2026-10-26
 
 ### Added

@@ -137,11 +137,14 @@ func resolveSecrets(cfg *Config) {
 
 func resolveProviderSpecSecret(p *ProviderSpec) {
 	if len(p.APIKeyPool) == 0 {
-		if p.APIKey != "" && !strings.HasPrefix(p.APIKey, "secret:") {
+		if p.APIKey != "" && !strings.HasPrefix(p.APIKey, "secret:") && !isAPIKeyName(p.APIKey) {
 			p.APIKeyValue = p.APIKey
 			p.APIKeyPool = []string{p.APIKey}
 		} else {
 			var keySources []string
+			if p.APIKey != "" {
+				keySources = append(keySources, strings.TrimPrefix(p.APIKey, "secret:"))
+			}
 			if len(p.APIKeys) > 0 {
 				keySources = append(keySources, p.APIKeys...)
 			}
@@ -156,11 +159,14 @@ func resolveProviderSpecSecret(p *ProviderSpec) {
 
 func resolveSingleLLMSecret(llm *LLMConfig) {
 	if len(llm.APIKeyPool) == 0 {
-		if llm.APIKey != "" && !strings.HasPrefix(llm.APIKey, "secret:") {
+		if llm.APIKey != "" && !strings.HasPrefix(llm.APIKey, "secret:") && !isAPIKeyName(llm.APIKey) {
 			llm.APIKeyValue = llm.APIKey
 			llm.APIKeyPool = []string{llm.APIKey}
 		} else {
 			var keySources []string
+			if llm.APIKey != "" {
+				keySources = append(keySources, strings.TrimPrefix(llm.APIKey, "secret:"))
+			}
 			if len(llm.APIKeys) > 0 {
 				keySources = append(keySources, llm.APIKeys...)
 			}

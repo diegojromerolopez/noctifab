@@ -19,12 +19,20 @@ The `secret:` reference system solves this cleanly:
 
 Any string field in `config.yaml` whose value starts with `secret:` is treated as a reference. During configuration loading, `noctifab` resolves the reference by looking up the remainder of the string as a key in `secrets.yaml`.
 
+Additionally, if a string field without the `secret:` prefix ends with `API_KEY` or `API_KEYS` (e.g. `api_key: OPENAI_API_KEY`), Noctifab treats it as a secret reference key rather than a literal token.
+
+### Environment Variable Fallback
+
+When resolving a secret reference (`secret:<KEY>` or an un-prefixed name ending with `API_KEY` / `API_KEYS`), Noctifab first checks the merged `secrets.yaml` map (project `.noctifab/secrets.yaml` and global `$HOME/.noctifab/secrets.yaml`). If the key is not found or empty in `secrets.yaml`, Noctifab automatically falls back to inspecting the environment variable (`os.Getenv(KEY)`) when the key ends with `API_KEY` or `API_KEYS`.
+
+This ensures seamless portability between local developer environments (backed by gitignored `secrets.yaml`) and CI/CD pipelines or Docker containers (backed by environment variables).
+
 **Resolution Precedence (Highest to Lowest):**
 
 1. **CLI Flags** (applied last, highest precedence)
-2. **Environment Variables** (e.g. `OPENAI_API_KEY`, `GITHUB_TOKEN`)
-3. **Project Secrets** (`.noctifab/secrets.yaml` inside project folder)
-4. **Global Home Secrets** (`$HOME/.noctifab/secrets.yaml`)
+2. **Project Secrets** (`.noctifab/secrets.yaml` inside project folder)
+3. **Global Home Secrets** (`$HOME/.noctifab/secrets.yaml`)
+4. **Environment Variables** (fallback for keys ending in `API_KEY` or provider defaults)
 5. **Literal Values** in `config.yaml`
 
 ---
