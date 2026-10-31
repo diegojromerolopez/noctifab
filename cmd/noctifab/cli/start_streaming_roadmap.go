@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -59,7 +60,7 @@ func GenerateRoadmapStreaming(
 			targetDir,
 			llmClient,
 			renderer,
-			pmCfg.Passes,
+			pmCfg.GetPasses(),
 			pmCfg.GetMaxUserStories(),
 			pmCfg.GetMinComplexity(),
 			pmCfg.GetMaxComplexity(),
@@ -68,6 +69,12 @@ func GenerateRoadmapStreaming(
 
 		if dagScheduler != nil {
 			dagScheduler.CloseStoryStream()
+		}
+
+		git := services.NewGitClient(targetDir)
+		_, _ = git.Run(ctx, true, "add", "roadmap")
+		if statusOut, sErr := git.Run(ctx, false, "status", "--porcelain", "roadmap"); sErr == nil && strings.TrimSpace(statusOut) != "" {
+			_, _ = git.Run(ctx, true, "commit", "-m", "docs(roadmap): persist generated user stories")
 		}
 
 		if genErr != nil {

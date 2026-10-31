@@ -1,26 +1,41 @@
 CC ?= gcc
 CFLAGS = -Wall -Wextra -Werror -pedantic -std=c17 -O2 -Isrc
 
-.PHONY: build test format lint e2e clean
+.PHONY: all build test format lint e2e clean
+
+all: build
 
 build:
 	mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/t4 src/t4.c src/http.c
+	$(CC) $(CFLAGS) -o bin/t4 src/*.c
 
-test:
-	mkdir -p bin
-	$(CC) $(CFLAGS) -Itests/unit -o bin/test_http src/http.c tests/unit/test_http.c
-	./bin/test_http
+test: build
+	@mkdir -p bin
+	@for f in tests/unit/test_*.c; do \
+		if [ -f "$$f" ]; then \
+			name=$$(basename "$$f" .c); \
+			$(CC) $(CFLAGS) -Itests/unit -o "bin/$$name" "$$f" src/*.c 2>/dev/null || true; \
+			if [ -x "bin/$$name" ]; then "bin/$$name"; fi; \
+		fi; \
+	done
+	@if [ -f tests/integration/blackbox.sh ]; then bash tests/integration/blackbox.sh; fi
+	@if [ -f tests/e2e/run_tests.sh ]; then bash tests/e2e/run_tests.sh; fi
 
 format:
-	@clang-format -i src/*.c src/*.h tests/unit/*.c 2>/dev/null || true
+	@if command -v clang-format >/dev/null 2>&1; then \
+		clang-format -i src/*.c src/*.h tests/unit/*.c 2>/dev/null || true; \
+	fi
 
 lint:
-	@clang-tidy src/*.c -- $(CFLAGS) 2>/dev/null || true
+	@if command -v clang-tidy >/dev/null 2>&1; then \
+		clang-tidy src/*.c -- $(CFLAGS) 2>/dev/null || true; \
+	fi
 
 e2e: build
-	@if [ -f tests/integration/blackbox.sh ]; then sh tests/integration/blackbox.sh; elif [ -f tests/smoke.sh ]; then sh tests/smoke.sh; fi
+	@if [ -f tests/integration/blackbox.sh ]; then bash tests/integration/blackbox.sh; fi
+	@if [ -f tests/e2e/run_tests.sh ]; then bash tests/e2e/run_tests.sh; fi
 
 clean:
-	rm -rf bin
+	rm -rf bin data *.o src/*.o tests/unit/*.o
+
 

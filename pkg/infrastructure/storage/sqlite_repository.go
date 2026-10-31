@@ -194,7 +194,7 @@ func (r *SQLiteRepository) Load(ctx context.Context) (*domain.State, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT id, project_path, version, build_status, story_status, story_error, input_source, input_path, integration_branch, feature_name, base_branch, project_version, total_input_tokens, total_output_tokens, total_tokens_used
 		FROM state
-		ORDER BY CASE WHEN story_status = 'RUNNING' THEN 0 ELSE 1 END, id DESC
+		ORDER BY CASE WHEN story_status = 'RUNNING' THEN 0 ELSE 1 END, version DESC, id DESC
 		LIMIT 1`)
 
 	state, err := r.scanStateRow(ctx, row)

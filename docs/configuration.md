@@ -424,7 +424,7 @@ One of `noctifab`'s core resilience features is its **Dynamic Model Fallback Eng
 
 | Provider (`llm.provider`) | Custom Parser | Ranking Formula & Hierarchy |
 |---|---|---|
-| **Anthropic** | `parseAnthropicModel` | `(Version * 10) + TierScore`<br>`opus` (400) > `sonnet` (300) > `haiku` (200).<br>*Order*: `claude-3-opus` (430) > `claude-3-7-sonnet` (337) > `claude-3-5-sonnet` (335) > `claude-3-5-haiku` (235) > `claude-3-haiku` (230). |
+| **Anthropic** | `parseAnthropicModel` | `(Version * 10) + TierScore`<br>`opus` (400) > `sonnet` (300) > `haiku` (200).<br>*Order*: `claude-opus-5-5` (455) > `claude-sonnet-5-5` (355) > `claude-sonnet-5` (350) > `claude-haiku-5-5` (255) > `claude-haiku-4-5-20251001` (245). |
 | **OpenAI** | `parseOpenAIModel` | `TierScore + (Version * 10) + (Date / 1,000,000)`<br>`o3`/`o1` reasoning (60) > `gpt-4o`/`sol` flagship (50) > `gpt-4-turbo`/`gpt-4`/`terra` (40) > `o3-mini`/`o1-mini` (30) > `gpt-4o-mini`/`luna` (20) > `gpt-3.5-turbo` (10). |
 | **Gemini** | `parseGeminiModel` | `int(Version * 10) + TierScore`<br>`pro` (40) > `flash` (30) > `flash-lite` (20) > `nano` (10).<br>*Order*: `gemini-3.1-pro-preview` (71) > `gemini-3.8-flash` (68) > `gemini-2.5-pro` (65) > `gemini-2.5-flash` (55) > `gemini-1.5-pro` (55) > `gemini-1.5-flash` (45). |
 | **Kimi (Moonshot AI)** | `parseKimiModel` | `TierScore + ContextWindowBonus`<br>`k3` (50) > `k2.7`/`k2.7-code` (40) > `k2.6` (30) > `k2.5` (20) > `k2`/`v1` (10).<br>*Context bonus*: `128k` (+3) > `32k` (+2) > `8k` (+1). |

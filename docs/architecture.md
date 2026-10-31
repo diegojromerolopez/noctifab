@@ -312,7 +312,7 @@ claude-3-opus-20240229   [Rank: 430]  ← primary
     ↓ fails
 claude-3-5-sonnet-latest [Rank: 335]  ← fallback 1
     ↓ fails
-claude-3-5-haiku-latest  [Rank: 235]  ← fallback 2
+claude-haiku-5-5         [Rank: 255]  ← fallback 2
     ↓ fails
 (no fallback — surface error)
 ```

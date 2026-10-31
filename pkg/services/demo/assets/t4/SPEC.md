@@ -14,7 +14,7 @@ store with atomic writes, and deterministic `ETag` metadata.
 ## 2. Pinned Directory Layout
 
 ```
-t4/
+. (project root)
 ├── Makefile                 # build/test/lint/format/e2e targets (all REQUIRED)
 ├── README.md                # usage, API contract, e2e instructions
 ├── .gitignore               # ignore bin/, data/, *.o

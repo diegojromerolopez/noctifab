@@ -16,8 +16,10 @@ import (
 )
 
 var (
-	dependsOnRE       = regexp.MustCompile(`(?i)(?:^|\n|\*\*)\s*depends_on\s*:\s*(\[.*?\]|"(?:.*?)"|'(?:.*?)'|[\w/.-]+)`)
-	storyIDFromPathRE = regexp.MustCompile(`(?i)US-(\d+)`)
+	dependsOnLineRE       = regexp.MustCompile(`(?i)(?:^|\n)[ \t]*(?:[-*][ \t]*)?(?:\*\*)?(?:depends[ _-]on|dependencies):?(?:\*\*)?[ \t]*:?[ \t]*(.+)`)
+	dependenciesSectionRE = regexp.MustCompile(`(?i)(?:^|\n)#{1,4}[ \t]*dependencies\b([\s\S]*?)(?:\n#{1,4}\s|\z)`)
+	dependsOnRE           = regexp.MustCompile(`(?i)(?:^|\n|\*\*)\s*depends_on\s*:\s*(\[.*?\]|"(?:.*?)"|'(?:.*?)'|[\w/.-]+)`)
+	storyIDFromPathRE     = regexp.MustCompile(`(?i)(?:US|story)-(\d+)`)
 )
 
 // StoryDAGNodeStatus tracks the scheduling status of a user story node.
@@ -390,50 +392,69 @@ func ExtractStorySequence(pathOrID string) int {
 
 // ParseStoryDependencies extracts declared parent story IDs (e.g. ["US-001"]) from markdown content.
 func ParseStoryDependencies(markdown string) []string {
-	matches := dependsOnRE.FindStringSubmatch(markdown)
-	if len(matches) < 2 {
-		return nil
-	}
-
-	rawVal := strings.TrimSpace(matches[1])
-	var rawList []string
-
-	if strings.HasPrefix(rawVal, "[") && strings.HasSuffix(rawVal, "]") {
-		var yamlList []string
-		if err := yaml.Unmarshal([]byte(rawVal), &yamlList); err == nil {
-			rawList = yamlList
-		} else {
-			// Fallback string split
-			inner := strings.Trim(rawVal, "[]")
-			parts := strings.Split(inner, ",")
-			for _, p := range parts {
-				pClean := strings.Trim(strings.TrimSpace(p), "\"'`")
-				if pClean != "" {
-					rawList = append(rawList, pClean)
-				}
-			}
-		}
-	} else {
-		pClean := strings.Trim(rawVal, "\"'`")
-		if pClean != "" {
-			rawList = append(rawList, pClean)
-		}
-	}
-
 	var normalized []string
 	seen := make(map[string]bool)
-	for _, dep := range rawList {
-		id := ExtractStoryID(dep)
-		if id != "" {
-			if !seen[id] {
-				seen[id] = true
-				normalized = append(normalized, id)
+
+	addID := func(raw string) {
+		id := ExtractStoryID(raw)
+		if id == "" {
+			clean := strings.Trim(strings.TrimSpace(raw), "*_` \t\r\n")
+			if clean != "" && !strings.EqualFold(clean, "none") && clean != "[]" && clean != "nil" {
+				id = clean
+			}
+		}
+		if id != "" && !seen[id] {
+			seen[id] = true
+			normalized = append(normalized, id)
+		}
+	}
+
+	// 1. Explicit metadata lines (e.g. "**Depends on:** US-001", "depends_on: [US-001, US-002]")
+	for _, lm := range dependsOnLineRE.FindAllStringSubmatch(markdown, -1) {
+		if len(lm) < 2 {
+			continue
+		}
+		val := strings.Trim(strings.TrimSpace(lm[1]), "*_`: \t")
+		if strings.EqualFold(val, "none") || val == "[]" || val == "nil" || val == "" {
+			continue
+		}
+		if idMatches := storyIDFromPathRE.FindAllStringSubmatch(val, -1); len(idMatches) > 0 {
+			for _, m := range idMatches {
+				addID(m[0])
+			}
+			continue
+		}
+		if strings.HasPrefix(val, "[") && strings.HasSuffix(val, "]") {
+			var yamlList []string
+			if err := yaml.Unmarshal([]byte(val), &yamlList); err == nil {
+				for _, item := range yamlList {
+					addID(item)
+				}
+				continue
+			}
+			for _, p := range strings.Split(strings.Trim(val, "[]"), ",") {
+				addID(p)
 			}
 		} else {
-			clean := strings.TrimSpace(dep)
-			if clean != "" && !seen[clean] {
-				seen[clean] = true
-				normalized = append(normalized, clean)
+			for _, p := range strings.Split(val, ",") {
+				addID(p)
+			}
+		}
+	}
+
+	// 2. Dedicated markdown section (e.g. "## Dependencies\n- US-001\n- US-002")
+	if secMatches := dependenciesSectionRE.FindStringSubmatch(markdown); len(secMatches) > 1 {
+		for _, m := range storyIDFromPathRE.FindAllStringSubmatch(secMatches[1], -1) {
+			addID(m[0])
+		}
+	}
+
+	// 3. Fallback: check legacy dependsOnRE
+	if len(normalized) == 0 {
+		if matches := dependsOnRE.FindStringSubmatch(markdown); len(matches) >= 2 {
+			rawVal := strings.TrimSpace(matches[1])
+			if !strings.EqualFold(rawVal, "none") && rawVal != "[]" {
+				addID(rawVal)
 			}
 		}
 	}

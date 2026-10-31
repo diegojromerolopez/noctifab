@@ -228,7 +228,11 @@ func (o *baseOpenAIClient) buildClientWithOptions(apiKey string, httpClient *htt
 // ladder can classify them.
 func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) (*ProviderCallResult, error) {
 	filteredExtra := make(map[string]interface{})
+	isOpenAIEndpoint := strings.EqualFold(o.provider, "openai") || strings.Contains(o.baseURL, "api.openai.com")
 	for k, v := range o.extraBody {
+		if isOpenAIEndpoint && (k == "thinking_budget" || k == "enable_thinking" || k == "thinkingConfig" || k == "thinking") {
+			continue
+		}
 		if !globalCapabilityCache.isExtraParamUnsupported(model, k) {
 			filteredExtra[k] = v
 		}

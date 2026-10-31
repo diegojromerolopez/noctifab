@@ -61,10 +61,6 @@ var (
 	shellMaskExit0RE = regexp.MustCompile(`\|\|\s*exit\s+0\b`)
 	shellSetPlusERE  = regexp.MustCompile(`^\s*set\s+\+e\b`)
 
-	// Vacuous / Tautological test patterns
-	tautologyPyRE = regexp.MustCompile(`(?i)^\s*(?:assert\s+(?:True|1\s*==\s*1|0\s*==\s*0)\b|self\.assertTrue\s*\(\s*True\s*\)|self\.assertEqual\s*\(\s*(?:1\s*,\s*1|0\s*,\s*0|True\s*,\s*True)\s*\))`)
-	tautologyGoRE = regexp.MustCompile(`assert\.(?:True|Equal)\s*\(\s*t\s*,\s*(?:true|1\s*,\s*1)\s*\)`)
-
 	// Makefile stub patterns
 	makeStubEchoRE = regexp.MustCompile(`(?i)^\s*@?echo\s+["'].*["']\s*$|^\s*@?echo\s+[^"'].*$|^\s*@?true\s*$|^\s*:\s*$`)
 )
@@ -109,7 +105,7 @@ func (v *AntiStubValidator) ValidateWorkspace(rootPath string, targetFiles []str
 func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiStubViolation {
 	var violations []AntiStubViolation
 	ext := strings.ToLower(filepath.Ext(path))
-	isTestFile := strings.Contains(path, "test") || strings.HasPrefix(filepath.Base(path), "test_") || strings.HasSuffix(filepath.Base(path), "_test.go")
+	isTestFile := isTestFilePath(path)
 
 	if (ext == ".sh" || strings.HasPrefix(content, "#!/bin/sh") || strings.HasPrefix(content, "#!/bin/bash")) && len(strings.TrimSpace(content)) > 0 {
 		if !regexp.MustCompile(`(?m)^\s*set\s+-[a-z]*e`).MatchString(content) {
@@ -377,25 +373,22 @@ func (v *AntiStubValidator) ValidateContent(path string, content string) []AntiS
 			}
 		}
 
-		// Test file tautology checks
+		// Test file tautology & evasive skip checks
 		if isTestFile {
-			if tautologyPyRE.MatchString(trimmed) {
-				violations = append(violations, AntiStubViolation{
-					Path:    path,
-					Line:    lineNum,
-					Rule:    "tautological_test_assertion",
-					Snippet: trimmed,
-				})
-			}
-			if tautologyGoRE.MatchString(trimmed) {
-				violations = append(violations, AntiStubViolation{
-					Path:    path,
-					Line:    lineNum,
-					Rule:    "tautological_test_assertion",
-					Snippet: trimmed,
-				})
+			if v := checkLineTautology(path, trimmed, lineNum); v != nil {
+				violations = append(violations, *v)
 			}
 		}
+	}
+
+	violations = append(violations, checkConflictMarkerViolations(path, lines)...)
+	violations = append(violations, checkDaemonSocketViolations(path, lines)...)
+
+	if isTestFile {
+		violations = append(violations, checkMultiLineTestViolations(path, lines)...)
+		violations = append(violations, checkMockCallViolations(path, lines)...)
+		violations = append(violations, checkTestSensitivityViolations(path, lines)...)
+		violations = append(violations, checkDynamicRoundTripViolations(path, lines)...)
 	}
 
 	return violations

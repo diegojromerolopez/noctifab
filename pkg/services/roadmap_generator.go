@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -239,6 +240,9 @@ func GenerateRoadmapWithStreaming(
 				}
 			}
 
+			var streamedMu sync.Mutex
+			streamedPaths := make(map[string]bool)
+
 			// If Stage 1 produced an outline, execute Stage 2 expansion for any unexpanded stories
 			if len(outlines) > 0 {
 				existingIDs := make(map[string]bool)
@@ -258,6 +262,9 @@ func GenerateRoadmapWithStreaming(
 						targetPath := NormalizeStoryPath(projectPath, story.Filename, story.Content)
 						_ = os.MkdirAll(filepath.Dir(targetPath), 0755)
 						_ = os.WriteFile(targetPath, []byte(story.Content), 0644)
+						streamedMu.Lock()
+						streamedPaths[filepath.Clean(targetPath)] = true
+						streamedMu.Unlock()
 						onStoryReady(targetPath, story.Content)
 					}
 				}
@@ -284,12 +291,17 @@ func GenerateRoadmapWithStreaming(
 				if cErr := ValidateStoryContract(relStory, st.Content); cErr != nil {
 					fmt.Printf("⚠️  [Product Manager] Story %s failed contract validation: %v\n", st.Filename, cErr)
 				}
-				writtenPaths[filepath.Clean(targetPath)] = true
+				cleanTarget := filepath.Clean(targetPath)
+				writtenPaths[cleanTarget] = true
 				if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 					return fmt.Errorf("failed to create directory for story file %q: %w", targetPath, err)
 				}
 				if err := os.WriteFile(targetPath, []byte(st.Content), 0644); err != nil {
 					return fmt.Errorf("failed to write story file %q: %w", targetPath, err)
+				}
+				if onStoryReady != nil && !streamedPaths[cleanTarget] {
+					streamedPaths[cleanTarget] = true
+					onStoryReady(targetPath, st.Content)
 				}
 				storiesCount++
 			}

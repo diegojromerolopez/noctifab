@@ -47,10 +47,30 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	if len(task.UserDirectives) > 0 {
 		promptContext = append(promptContext, fmt.Sprintf("### 🎯 [USER HUMAN-IN-THE-LOOP STEERING DIRECTIVES]\n%s", strings.Join(task.UserDirectives, "\n")))
 	}
-	if task.Retries > 0 && task.FailureLog != "" {
-		warning := "WARNING: The previous implementation/refactoring changes from the failed attempt have been preserved in the workspace files. You must inspect the existing code/tests, identify the bugs, and modify the files to fix the failures."
+	isRemediation := strings.HasPrefix(task.ID, "qa-remediation-") || strings.HasPrefix(task.ID, "spec-remediation-")
+	if (task.Retries > 0 || isRemediation) && task.FailureLog != "" {
+		warning := "WARNING: The previous implementation/refactoring changes from this story have caused test failures. You must inspect the code and test changes that brought these issues, identify the bugs, and modify the files to fix the failures."
 		summary := summarizeFailureLog(task.FailureLog)
-		promptContext = append(promptContext, fmt.Sprintf("%s\n\nPrevious implementation attempt FAILED. Key failure details from the test run:\n%s\n\nFix the tests to address these specific errors.", warning, summary))
+		promptContext = append(promptContext, fmt.Sprintf("%s\n\nStory validation / E2E verification FAILED. Key failure details from the test run:\n%s\n\nFix the tests and align them with the requirements to address these specific errors.", warning, summary))
+	}
+	if (task.Retries > 0 || isRemediation) && o.git != nil {
+		diffOut := ""
+		if isRemediation {
+			baseBranch := ResolveBaseBranch(ctx, o.git, state.Metadata.BaseBranch)
+			diffOut, _ = o.git.Run(ctx, false, "diff", baseBranch)
+			if strings.TrimSpace(diffOut) == "" {
+				diffOut, _ = o.git.Run(ctx, false, "diff", "HEAD~1")
+			}
+		} else {
+			diffOut, _ = o.git.Run(ctx, false, "diff")
+		}
+		if strings.TrimSpace(diffOut) != "" {
+			diffTitle := "FAILED ATTEMPT GIT DIFF"
+			if isRemediation {
+				diffTitle = "USER STORY CHANGES THAT BROUGHT ISSUES (GIT DIFF)"
+			}
+			promptContext = append(promptContext, fmt.Sprintf("### 🔍 %s\nThe following diff shows the exact changes brought by this user story:\n```diff\n%s\n```", diffTitle, strings.TrimSpace(diffOut)))
+		}
 	}
 	contextBlock := ""
 	if len(promptContext) > 0 {

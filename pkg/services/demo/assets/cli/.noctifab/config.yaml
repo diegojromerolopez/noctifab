@@ -1,7 +1,39 @@
 config_version: "2.0"
-execution_report: report/execution_report.md
+execution_report: .noctifab/reports/execution_report.md
 agents:
   architecture: code_first
+  spike:
+    enabled: false
+  product_manager:
+    audit_mode: smart
+    number: 1
+    iterations: 1
+    passes: 1
+    providers:
+      - name: claude
+        model: claude-haiku-5-5
+      - name: openai
+        model: gpt-5.6-luna
+  planner:
+    number: 1
+    iterations: 5
+    providers:
+      - name: claude
+        model: claude-haiku-5-5
+      - name: openai
+        model: gpt-5.6-luna
+  qa:
+    providers:
+      - name: claude
+        model: claude-haiku-5-5
+      - name: openai
+        model: gpt-5.6-luna
+  auditor:
+    providers:
+      - name: claude
+        model: claude-haiku-5-5
+      - name: openai
+        model: gpt-5.6-luna
 sandbox:
   mode: host
   timeout_seconds: 300
@@ -43,4 +75,4 @@ runtime:
   spec_source: SPEC.md
   max_actions: 100
   loop:
-    count: 1
+    count: 3

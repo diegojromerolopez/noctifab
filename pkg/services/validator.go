@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -39,25 +38,6 @@ type ProfileConfig struct {
 	AllowedCommands []string `yaml:"allowed_commands"`
 }
 
-var defaultRoleProfiles = map[string]ProfileConfig{
-	"orchestrator": {
-		AllowedTools:    []string{"*"},
-		AllowedCommands: []string{"*"},
-	},
-	"planner": {
-		AllowedTools:    []string{"add_task", "log_message", "noop"},
-		AllowedCommands: []string{},
-	},
-	"tester": {
-		AllowedTools:    []string{"read_file", "write_file", "write_files", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_e2e_tests", "run_linter", "noop"},
-		AllowedCommands: []string{},
-	},
-	"generator": {
-		AllowedTools:    []string{"read_file", "write_file", "write_files", "edit_file", "apply_patch", "delete_file", "list_directory", "find_files", "grep_search", "run_tests", "run_e2e_tests", "run_linter", "request_test_fix", "noop"},
-		AllowedCommands: []string{},
-	},
-}
-
 // PolicyValidator implements Validator interface.
 type PolicyValidator struct {
 	AllowedCommands   []string
@@ -90,22 +70,6 @@ func NewPolicyValidator(allowedCommands []string, protectedBranch string, profil
 // avoid crashing the daemon on a bad config; the linter will flag them.
 func (v *PolicyValidator) SetForbiddenPatterns(patterns []string) {
 	v.forbiddenPatterns = compileForbiddenPatterns(patterns)
-}
-
-func compileForbiddenPatterns(patterns []string) []*regexp.Regexp {
-	var compiled []*regexp.Regexp
-	for _, p := range patterns {
-		if p == "" {
-			continue
-		}
-		re, err := regexp.Compile(p)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: invalid forbidden_pattern regex %q: %v (skipping)\n", p, err)
-			continue
-		}
-		compiled = append(compiled, re)
-	}
-	return compiled
 }
 
 func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, state *domain.State) (*ValidationResult, error) {
@@ -218,6 +182,12 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 				return &ValidationResult{
 					Allowed: false,
 					Reason:  "Sandbox violation: tests/holdout directory must not be created, modified, or used under any circumstance",
+				}, nil
+			}
+			if (strings.Contains(absPath, "tests/acceptance") || strings.Contains(absPath, "acceptance/")) && (role == "generator" || role == "tester") {
+				return &ValidationResult{
+					Allowed: false,
+					Reason:  "Policy violation: independent QA acceptance tests in 'tests/acceptance/' are immutable and cannot be modified or deleted by worker agents (generator/tester). Workers must author unit tests in 'tests/unit/'.",
 				}, nil
 			}
 			rel, err := filepath.Rel(cleanProj, absPath)
@@ -379,6 +349,13 @@ func (v *PolicyValidator) Validate(ctx context.Context, action domain.Action, st
 				Reason:  "Sandbox violation: tests/holdout directory must not be created, modified, or used under any circumstance",
 			}, nil
 		}
+		if (action.Tool == "write_file" || action.Tool == "edit_file" || action.Tool == "delete_file" || action.Tool == "apply_patch") &&
+			(strings.Contains(absPath, "tests/acceptance") || strings.Contains(absPath, "acceptance/")) && (role == "generator" || role == "tester") {
+			return &ValidationResult{
+				Allowed: false,
+				Reason:  "Policy violation: independent QA acceptance tests in 'tests/acceptance/' are immutable and cannot be modified or deleted by worker agents (generator/tester). Workers must author unit tests in 'tests/unit/'.",
+			}, nil
+		}
 
 		rel, err := filepath.Rel(cleanProj, absPath)
 		if err == nil {
@@ -470,17 +447,4 @@ func (v *PolicyValidator) EvaluateGoals(ctx context.Context, state *domain.State
 		}
 	}
 	return true, nil
-}
-
-// findForbiddenPattern returns the first matching forbidden pattern's source
-// string, or "" if none match. Patterns are compiled at construction time and
-// applied to file content written by agents to enforce project-specific
-// compile/SPEC constraints (e.g. Rust #![deny(unsafe_code)]).
-func (v *PolicyValidator) findForbiddenPattern(content string) string {
-	for _, re := range v.forbiddenPatterns {
-		if re.MatchString(content) {
-			return re.String()
-		}
-	}
-	return ""
 }

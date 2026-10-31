@@ -28,13 +28,16 @@ var demoCmd = &cobra.Command{
 
 		runner := demoStartRunnerOverride
 		if runner == nil {
-			runner = func(_ context.Context, dir string) error {
+			runner = func(ctx context.Context, dir string) error {
 				origWd, err := os.Getwd()
 				if err == nil {
 					defer func() { _ = os.Chdir(origWd) }()
 				}
 				if err := os.Chdir(dir); err != nil {
 					return fmt.Errorf("failed to enter demo directory: %w", err)
+				}
+				if ctx != nil {
+					startCmd.SetContext(ctx)
 				}
 				return runStartCommand(startCmd, []string{"."})
 			}

@@ -38,6 +38,10 @@ func TestQueueStoryRemediationTask_E2EContext(t *testing.T) {
 	err := os.WriteFile(filepath.Join(tempDir, "docker-compose.e2e.yml"), []byte(composeContent), 0644)
 	require.NoError(t, err)
 
+	e2eDir := filepath.Join(tempDir, "tests", "e2e")
+	require.NoError(t, os.MkdirAll(e2eDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(e2eDir, "test_ping.py"), []byte("def test_ping(): pass"), 0644))
+
 	mockRepo := &mockStateRepo{
 		state: &domain.State{
 			ProjectPath: tempDir,
@@ -46,7 +50,12 @@ func TestQueueStoryRemediationTask_E2EContext(t *testing.T) {
 				FeatureName: "US-001",
 			},
 			Tasks: []domain.Task{
-				{ID: "US-001-TASK-001", StoryID: "US-001", Status: domain.TaskSuccess},
+				{
+					ID:          "US-001-TASK-001",
+					StoryID:     "US-001",
+					Status:      domain.TaskSuccess,
+					TargetFiles: []string{"pkg/service.go"},
+				},
 			},
 		},
 	}
@@ -66,7 +75,13 @@ func TestQueueStoryRemediationTask_E2EContext(t *testing.T) {
 
 	queuedTask := mockRepo.state.Tasks[1]
 	assert.Equal(t, "qa-remediation-us-001-1", queuedTask.ID)
+	assert.Equal(t, qaResult.Summary, queuedTask.FailureLog)
+	assert.Contains(t, queuedTask.TargetFiles, "pkg/service.go")
+	assert.Contains(t, queuedTask.TargetFiles, filepath.Join("tests", "e2e", "test_ping.py"))
 	assert.Contains(t, queuedTask.TargetFiles, "docker-compose.e2e.yml")
+	assert.Contains(t, queuedTask.Description, "MANDATORY COLLABORATIVE GENERATOR-TESTER REMEDIATION DIRECTIVE")
+	assert.Contains(t, queuedTask.Description, "Tester Agent Role (Fix Tests & Assertions)")
+	assert.Contains(t, queuedTask.Description, "Generator Agent Role (Fix Code & Implementation Issues)")
 	assert.Contains(t, queuedTask.Description, "run_e2e_tests")
 	assert.Contains(t, queuedTask.Description, "CONTAINER & E2E HARNESS CONFIGURATION FILES")
 	assert.Contains(t, queuedTask.Description, "test-runner-e2e")

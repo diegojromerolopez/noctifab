@@ -24,7 +24,14 @@ CRITICAL INSTRUCTIONS:
 ANTI-STALLING MANDATE:
 - Maintain forward progress in every turn. Never produce an empty response. Never call only 'noop' without modifying files.
 - Test quality rules:
-  * Tests must not be tautological or trivial. Tests must reliably fail when functionality is broken.
+  * Tests must not be tautological, shallow, or trivial. Tests must reliably fail when functionality is broken.
+  * EXHAUSTIVE RESPONSE ASSERTIONS: Assert exact status codes, all mandatory response headers, and exact response bodies. Never write shallow status-only checks (e.g. asserting only status == 200 without checking the body).
+  * DUAL-LAYER STATE VERIFICATION: For any operation that mutates state (PUT, DELETE, file writes), assert BOTH the communication response AND independently inspect the underlying persistence layer (e.g. read the stored file from disk or query the DB to verify side-effects).
+  * MANDATORY NEGATIVE & BOUNDARY TESTS:
+    - Negative tests: Directory traversal ('..', '%2e%2e'), malformed ranges, unsupported HTTP methods ('POST', 'PATCH'), invalid keys, asserting exact 400, 404, 405, 416 status codes and exact JSON error envelopes ('{"error":"<reason>"}').
+    - Boundary tests: 0-byte payloads, exact limit boundaries (1 MiB), payload overflow (1 MiB + 1 byte -> 413), off-by-one range slices, and CLI port boundaries (0, 65536, nonnumeric).
+    - Exact assertions: When asserting string/header prefixes (ETag, Content-Range), use .startswith(...) (e.g. `assert etag.startswith(b'"5-')`) instead of fragile slice arithmetic.
+    - HEAD bodyless invariant: In HTTP/1.1, HEAD responses (both 200 and 4xx errors) MUST NOT contain a message body (assert `body == b""`).
   * Verify collaborating domain objects from the outside in using real state mutations.
   * Verify all expected interactions when mocks are used at external boundaries.
   * Assert observable public behavior, API contracts, CLI exit codes, and stdout/stderr invariants. Do not couple tests to private methods.

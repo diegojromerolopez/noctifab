@@ -40,8 +40,17 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	}
 
 	diffOut := ""
-	if task.Retries > 0 && o.git != nil {
-		diffOut, _ = o.git.Run(ctx, false, "diff")
+	isRemediation := strings.HasPrefix(task.ID, "qa-remediation-") || strings.HasPrefix(task.ID, "spec-remediation-")
+	if (task.Retries > 0 || isRemediation) && o.git != nil {
+		if isRemediation {
+			baseBranch := ResolveBaseBranch(ctx, o.git, state.Metadata.BaseBranch)
+			diffOut, _ = o.git.Run(ctx, false, "diff", baseBranch)
+			if strings.TrimSpace(diffOut) == "" {
+				diffOut, _ = o.git.Run(ctx, false, "diff", "HEAD~1")
+			}
+		} else {
+			diffOut, _ = o.git.Run(ctx, false, "diff")
+		}
 	}
 	cleanFileContexts, cleanReaderContexts := DeduplicateFileAndReaderContexts(fileContexts, readerContexts)
 	promptContext := buildGeneratorPromptContext(task, state, cleanFileContexts, cleanReaderContexts, recentTestsContext, diffOut)

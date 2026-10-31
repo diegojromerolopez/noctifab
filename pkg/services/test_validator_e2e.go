@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -14,9 +15,17 @@ func (v *TestValidator) validateE2E(ctx context.Context, state *domain.State, ta
 	if !v.shouldValidateE2E(state, task) {
 		return true, "", nil
 	}
+	if v.Runner == nil {
+		return true, "", nil
+	}
 
+	partialRunner := NewPartialStateE2ERunner(v.Runner)
+	commands := partialRunner.ExtractImplementedCommands(state, task)
 	e2eCmd := v.detectE2ECommand(state.ProjectPath)
-	if e2eCmd == "" || v.Runner == nil {
+	if e2eCmd == "" {
+		if len(commands) > 0 {
+			return false, fmt.Sprintf("Mandatory Partial Deliverability E2E failure: No E2E test suite detected (no 'make e2e', docker-compose, or 'tests/e2e/' harness) to verify [%s]. Task must ensure black-box E2E tests exist.", strings.Join(commands, ", ")), nil
+		}
 		return true, "", nil
 	}
 
@@ -39,24 +48,35 @@ func (v *TestValidator) validateE2E(ctx context.Context, state *domain.State, ta
 	e2eCtx, e2eCancel := context.WithTimeout(ctx, e2eTimeout)
 	defer e2eCancel()
 
-	e2eOut, e2eErr := v.Runner.RunCommand(e2eCtx, state.ProjectPath, e2eCmd, "")
+	execCmd := e2eCmd
+	if len(commands) > 0 {
+		execCmd = partialRunner.BuildTargetedE2ECommand(e2eCmd, commands)
+		fmt.Printf("🔍 Orchestrator: Task %s running targeted partial deliverable E2E verification for [%s]: %s\n",
+			task.ID, strings.Join(commands, ", "), execCmd)
+	}
+
+	e2eOut, e2eErr := v.Runner.RunCommand(e2eCtx, state.ProjectPath, execCmd, "")
 	if e2eErr != nil {
-		if isCommandToolMissing(v.Runner, e2eCmd, e2eOut+" "+e2eErr.Error()) {
-			fmt.Printf("⚠️  [Validation Degraded] Task %s: required E2E tool is absent on host (%s). Proceeding in degraded mode.\n", task.ID, e2eCmd)
+		if isCommandToolMissing(v.Runner, execCmd, e2eOut+" "+e2eErr.Error()) {
+			fmt.Printf("⚠️  [Validation Degraded] Task %s: required E2E tool is absent on host (%s). Proceeding in degraded mode.\n", task.ID, execCmd)
 			return true, "", nil
 		}
 		if !isE2EFailureInScope(state, task, e2eOut+"\n"+e2eErr.Error()) {
 			fmt.Printf("⚠️  Orchestrator: Task %s E2E failure(s) outside scope; ignoring in loop.\n", task.ID)
 			return true, "", nil
 		}
-		fmt.Printf("❌ Orchestrator: Task %s E2E test gate (%s) failed: %v\n", task.ID, e2eCmd, e2eErr)
-		return false, fmt.Sprintf("E2E test validation failed (%s):\n%s\n%v", e2eCmd, e2eOut, e2eErr), nil
+		fmt.Printf("❌ Orchestrator: Task %s E2E test gate (%s) failed: %v\n", task.ID, execCmd, e2eErr)
+		return false, fmt.Sprintf("E2E test validation failed (%s):\n%s\n%v", execCmd, e2eOut, e2eErr), nil
 	}
 
 	noTestsRan, notice := EvaluateE2ETestExecution(e2eOut)
 	if noTestsRan {
+		if len(commands) > 0 {
+			fmt.Printf("❌ Orchestrator: Task %s partial deliverable E2E produced no tests for [%s]: %s\n", task.ID, strings.Join(commands, ", "), notice)
+			return false, fmt.Sprintf("Partial deliverable E2E verification failed (%s): %s", execCmd, notice), nil
+		}
 		fmt.Printf("❌ Orchestrator: Task %s E2E test suite produced no tests: %s\n", task.ID, notice)
-		return false, fmt.Sprintf("E2E test validation failed (%s): %s", e2eCmd, notice), nil
+		return false, fmt.Sprintf("E2E test validation failed (%s): %s", execCmd, notice), nil
 	}
 
 	return true, "", nil

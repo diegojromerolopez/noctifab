@@ -304,7 +304,7 @@ func TestTestValidatorValidateTask(t *testing.T) {
 		resolvedState := &domain.State{ProjectPath: resolvedDir}
 		_ = os.WriteFile(filepath.Join(resolvedDir, "Makefile"), []byte("build:\n\tgcc src/*.c\ntest:\n\t./bin/test_suite\n"), 0644)
 		_ = os.Mkdir(filepath.Join(resolvedDir, "tests"), 0755)
-		_ = os.WriteFile(filepath.Join(resolvedDir, "tests", "test_main.c"), []byte("#include <assert.h>\nint main() {\n    assert(1 == 1);\n    return 0;\n}\n"), 0644)
+		_ = os.WriteFile(filepath.Join(resolvedDir, "tests", "test_main.c"), []byte("#include <assert.h>\nint main() {\n    int val = 42;\n    assert(val > 0);\n    return 0;\n}\n"), 0644)
 
 		sb := &scriptedSandbox{
 			results: []error{nil, nil},
@@ -332,7 +332,7 @@ func TestTestValidatorValidateTask(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(resolvedTestDir, "Makefile"), []byte("test:\n\t./bin/test_suite\n"), 0644)
 		testsPath := filepath.Join(resolvedTestDir, "tests")
 		_ = os.Mkdir(testsPath, 0755)
-		_ = os.WriteFile(filepath.Join(testsPath, "test_fortune.c"), []byte("void test_fortune() {}\n"), 0644)
+		_ = os.WriteFile(filepath.Join(testsPath, "test_fortune.c"), []byte("#include <assert.h>\nvoid test_fortune() { int ok = 1; assert(ok > 0); }\n"), 0644)
 
 		sb := &scriptedSandbox{
 			results: []error{nil},

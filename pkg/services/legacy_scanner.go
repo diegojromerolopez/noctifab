@@ -72,6 +72,10 @@ var ignoredLegacyFiles = map[string]bool{
 // manifests, or configuration files that should not trigger legacy codebase stabilization.
 func IsIgnoredLegacyFile(relPath string) bool {
 	cleanRel := filepath.ToSlash(filepath.Clean(relPath))
+	lowerRel := strings.ToLower(cleanRel)
+	if lowerRel == "tests/acceptance" || strings.HasPrefix(lowerRel, "tests/acceptance/") {
+		return true
+	}
 	parts := strings.Split(cleanRel, "/")
 	for _, part := range parts {
 		// Ignore hidden directories or dotfiles (.github, .vscode, .idea, etc.)
@@ -155,7 +159,7 @@ func CountSignificantLines(filePath string) (int, error) {
 // If the total non-manifest significant lines of code across all candidate files is less than
 // MinLegacyTotalLineCount (50 lines), the repository is classified as Greenfield and returns an empty slice.
 func ScanLegacyFiles(projectPath string) ([]string, error) {
-	exclude := []string{"roadmap", "user-stories", "tasks", "output", "dist", ".git", ".noctifab", "target", "node_modules", "vendor", "build", ".venv", "venv", "__pycache__", "log", "logs", "report", "reports"}
+	exclude := []string{"roadmap", "user-stories", "tasks", "tests/acceptance", "output", "dist", ".git", ".noctifab", "target", "node_modules", "vendor", "build", ".venv", "venv", "__pycache__", "log", "logs", "report", "reports"}
 	files, err := ListWorkspaceSourceFiles(context.Background(), projectPath, exclude)
 	if err != nil {
 		return nil, err

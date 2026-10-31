@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestDemoService_RunWithRunner(t *testing.T) {
@@ -100,4 +102,26 @@ func TestDemoService_UnpackArchetype(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join(tempDir, "SPEC.md"))
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "t4 Specification")
+
+	for _, arch := range []DemoArchetype{ArchetypeT4, ArchetypeCLI} {
+		archDir := t.TempDir()
+		require.NoError(t, svc.unpackArchetype(arch, archDir))
+		cfgBytes, err := os.ReadFile(filepath.Join(archDir, ".noctifab", "config.yaml"))
+		require.NoError(t, err)
+
+		parsedCfg := config.DefaultConfig()
+		require.NoError(t, yaml.Unmarshal(cfgBytes, parsedCfg))
+
+		assert.False(t, parsedCfg.Agents.Spike.IsEnabled(), "spike should be disabled in %s demo config", arch)
+		assert.Equal(t, 1, parsedCfg.Agents.ProductManager.Iterations, "product_manager.iterations should be 1 in %s demo config", arch)
+		assert.Equal(t, 1, parsedCfg.Agents.ProductManager.GetPasses(), "product_manager passes should be 1 in %s demo config", arch)
+		require.NotEmpty(t, parsedCfg.Agents.ProductManager.Providers)
+		assert.Equal(t, "claude-haiku-5-5", parsedCfg.Agents.ProductManager.Providers[0].Model)
+		require.NotEmpty(t, parsedCfg.Agents.Planner.Providers)
+		assert.Equal(t, "claude-haiku-5-5", parsedCfg.Agents.Planner.Providers[0].Model)
+		require.NotEmpty(t, parsedCfg.Agents.QA.Providers)
+		assert.Equal(t, "claude-haiku-5-5", parsedCfg.Agents.QA.Providers[0].Model)
+		require.NotEmpty(t, parsedCfg.Agents.Auditor.Providers)
+		assert.Equal(t, "claude-haiku-5-5", parsedCfg.Agents.Auditor.Providers[0].Model)
+	}
 }

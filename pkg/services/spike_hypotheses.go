@@ -123,6 +123,11 @@ func ResolveSpikeHypotheses(candidates []SpikeCandidate, resolution config.Hypot
 	return best.Files
 }
 
+// ExtractFilesFromSpikeResponse extracts file paths and contents from LLM actions or reasoning.
+func ExtractFilesFromSpikeResponse(resp *domain.LLMResponse) map[string]string {
+	return extractFilesFromSpikeResponse(resp)
+}
+
 func extractFilesFromSpikeResponse(resp *domain.LLMResponse) map[string]string {
 	files := make(map[string]string)
 	if resp == nil {

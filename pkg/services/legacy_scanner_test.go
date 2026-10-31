@@ -68,12 +68,13 @@ func TestIsIgnoredLegacyFile(t *testing.T) {
 		{"pytest.ini", true},
 		{"tsconfig.json", true},
 
-		// Build directories
+		// Build directories & QA acceptance directory
 		{"target/debug/app", true},
 		{"node_modules/express/index.js", true},
 		{"vendor/bundle/ruby.rb", true},
 		{"build/output.js", true},
 		{"__pycache__/mod.pyc", true},
+		{"tests/acceptance/test_blackbox.py", true},
 
 		// Real candidate source files (should NOT be ignored)
 		{"src/main.rs", false},

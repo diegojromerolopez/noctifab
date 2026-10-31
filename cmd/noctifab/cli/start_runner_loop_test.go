@@ -3,11 +3,14 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMultiLoopStoryOutcomes(t *testing.T) {
@@ -259,4 +262,40 @@ func TestStartCmd_LoopsFlag(t *testing.T) {
 	rFlag := resumeCmd.Flags().Lookup("loops")
 	assert.NotNil(t, rFlag, "resumeCmd should have a --loops flag")
 	assert.Equal(t, "0", flag.DefValue)
+}
+
+func TestStoryLoopOptions_AcceptanceAuditorIntegration(t *testing.T) {
+	t.Run("acceptance auditor failures prevent premature completion and drive loop 2", func(t *testing.T) {
+		auditCalls := 0
+		auditor := func(ctx context.Context) error {
+			auditCalls++
+			if auditCalls == 1 {
+				return errors.New("specification gap: GET / missing")
+			}
+			return nil // Passes on loop 2
+		}
+
+		storyExecs := 0
+		executor := func(ctx context.Context, sf string) error {
+			storyExecs++
+			return nil
+		}
+
+		tmpDir := t.TempDir()
+		storyPath := filepath.Join(tmpDir, "US-001.md")
+		require.NoError(t, os.WriteFile(storyPath, []byte("# US-001: Implement Core\n"), 0644))
+
+		opts := StoryLoopOptions{
+			TargetDir:         tmpDir,
+			StoryFiles:        []string{storyPath},
+			ExecuteStory:      executor,
+			TotalLoops:        2,
+			AcceptanceAuditor: auditor,
+		}
+
+		outcomes, err := runStoryIterationLoops(context.Background(), opts)
+		require.NoError(t, err)
+		assert.Equal(t, 2, auditCalls, "acceptance auditor should have run across both loops")
+		assert.Nil(t, outcomes[storyPath])
+	})
 }

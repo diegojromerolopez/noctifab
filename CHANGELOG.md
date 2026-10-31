@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.128.0] - 2026-10-31
+
+### Added
+- **Demo Generation Speed & Streaming Roadmap Optimizations**:
+  - Fixed streaming roadmap handoff in `GenerateRoadmapWithStreaming` (`pkg/services/roadmap_generator.go`) and `AuditRoadmapStoriesParallel` (`pkg/services/roadmap_auditor.go`) so `onStoryReady` is always invoked even when Pass 1 emits `create_story` actions directly without Stage 1 outlines.
+  - Added `AgentRoleConfig.GetPasses()` and `product_manager.iterations`/`passes` synchronization in `config.Load` so setting `iterations: 1` executes a single-pass Product Manager roadmap generation.
+  - Moved initial `SynthesizeAcceptanceTests` off the synchronous startup critical path in `cmd/noctifab/cli/start_runner.go` to a background goroutine with mutex serialization in `QAAcceptanceRunner` and excluded `tests/acceptance` from `ScanLegacyFiles` (`pkg/services/legacy_scanner.go`).
+  - Updated `t4` and `cli` demo configurations (`pkg/services/demo/assets/*/.noctifab/config.yaml`) to set `product_manager.iterations: 1` (`passes: 1`), disable `spike` (`agents.spike.enabled: false`), and route `product_manager`, `planner`, `qa`, and `auditor` roles to fast-tier models (`claude-haiku-5-5` and `gpt-5.6-luna`).
+
 ## [0.127.3] - 2026-10-28
 
 ### Changed

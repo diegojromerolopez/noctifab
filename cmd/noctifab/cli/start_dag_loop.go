@@ -31,6 +31,7 @@ type StoryLoopOptions struct {
 	WebPort            int
 	SpeculativePlanner *SpeculativePlanner
 	StreamingScheduler *services.StoryDAGScheduler
+	AcceptanceAuditor  func(ctx context.Context) error
 }
 
 // runStoryIterationLoops executes the user stories across iteration loops either concurrently (via StoryDAGScheduler) or sequentially.
@@ -46,11 +47,16 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 
 	var prevGitHead string
 	var prevFailureSig string
+	var acceptanceRemediationRequired bool
 	dynamicExtensionsGranted := 0
 
-	storyConcurrency := opts.Cfg.Agents.Orchestrator.Number
+	cfg := opts.Cfg
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	storyConcurrency := cfg.Agents.Orchestrator.Number
 	if storyConcurrency <= 0 {
-		if opts.Cfg.VCS.UseWorktrees {
+		if cfg.VCS.UseWorktrees {
 			storyConcurrency = 2
 		} else {
 			storyConcurrency = 1
@@ -64,6 +70,19 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 
 		if opts.TotalLoops > 1 {
 			fmt.Printf("\n🔁 [Loop %d/%d] Executing Noctifab iteration loop (concurrency: %d)...\n", loopIdx, opts.TotalLoops, storyConcurrency)
+		}
+
+		if loopIdx > 1 {
+			discovered := discoverStoryFiles(opts.TargetDir)
+			if len(discovered) > 0 {
+				opts.StoryFiles = discovered
+				opts.StreamingScheduler = nil
+				for _, df := range discovered {
+					if _, exists := storyOutcomes[df]; !exists {
+						storyOutcomes[df] = errors.New("pending")
+					}
+				}
+			}
 		}
 
 		var activeStoryFiles []string
@@ -86,14 +105,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 
 		if opts.StreamingScheduler != nil {
 			dagScheduler := opts.StreamingScheduler
-			isPipelined := false
-			if opts.Cfg != nil {
-				isPipelined = opts.Cfg.Agents.Orchestrator.IsPipelined()
-				if opts.Cfg.Agents.Orchestrator.Number <= 1 {
-					isPipelined = false
-				}
-			}
-			dagScheduler.SetPipelined(isPipelined)
+			dagScheduler.SetPipelined(false)
 
 			var outcomesMu sync.Mutex
 			_ = dagScheduler.Execute(ctx, func(storyCtx context.Context, item services.StoryWorkItem) error {
@@ -162,11 +174,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 		} else if storyConcurrency > 1 && len(activeStoryFiles) > 1 {
 			// Story-Level Parallel Execution via StoryDAGScheduler with strict dependency gating
 			dagScheduler := services.NewStoryDAGScheduler(storyConcurrency)
-			isPipelined := true
-			if opts.Cfg != nil {
-				isPipelined = opts.Cfg.Agents.Orchestrator.IsPipelined()
-			}
-			dagScheduler.SetPipelined(isPipelined)
+			dagScheduler.SetPipelined(false)
 			for _, sf := range activeStoryFiles {
 				specBytes, err := os.ReadFile(sf)
 				if err != nil {
@@ -184,7 +192,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 				featName := strings.TrimSuffix(filepath.Base(currentStoryFile), filepath.Ext(currentStoryFile))
 				storyTitle := extractStoryTitle(currentStoryFile)
 
-				if (loopIdx > 1 || opts.ResumeRequested) && isStoryCompletedSuccessfully(ctx, opts.Repo, currentStoryFile, storyID, featName) {
+				if !acceptanceRemediationRequired && (loopIdx > 1 || opts.ResumeRequested) && isStoryCompletedSuccessfully(ctx, opts.Repo, currentStoryFile, storyID, featName) {
 					fmt.Printf("ℹ [Loop %d] Verified story %s (%s) is completed successfully (all tasks passed) — skipping\n", loopIdx, storyID, storyTitle)
 					storyOutcomes[currentStoryFile] = nil
 					dagScheduler.MarkStoryCompleted(currentStoryFile)
@@ -299,7 +307,7 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 					StartedAt:   time.Now().UTC(),
 				}
 
-				if (loopIdx > 1 || opts.ResumeRequested) && isStoryCompletedSuccessfully(ctx, opts.Repo, currentStoryFile, storyID, featName) {
+				if !acceptanceRemediationRequired && (loopIdx > 1 || opts.ResumeRequested) && isStoryCompletedSuccessfully(ctx, opts.Repo, currentStoryFile, storyID, featName) {
 					fmt.Printf("ℹ [Loop %d] Verified story %s (%s) is completed successfully (all tasks passed) — skipping\n", loopIdx, storyID, storyTitle)
 					storyOutcomes[currentStoryFile] = nil
 					continue
@@ -371,9 +379,19 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 			}
 		}
 
-		allSucceeded := true
+		if currentStories := discoverStoryFiles(opts.TargetDir); len(currentStories) > len(activeStoryFiles) {
+			activeStoryFiles = currentStories
+		}
+
+		allSucceeded := len(activeStoryFiles) > 0 && loopAttempted > 0 && loopSucceeded == loopAttempted
 		for _, sf := range activeStoryFiles {
-			if storyOutcomes[sf] != nil {
+			if outcome, exists := storyOutcomes[sf]; !exists || outcome != nil {
+				allSucceeded = false
+				break
+			}
+		}
+		for _, err := range storyOutcomes {
+			if err != nil {
 				allSucceeded = false
 				break
 			}
@@ -391,8 +409,24 @@ func runStoryIterationLoops(ctx context.Context, opts StoryLoopOptions) (map[str
 		}
 
 		if allSucceeded {
+			if opts.AcceptanceAuditor != nil {
+				fmt.Printf("\n🔍 [Loop %d/%d] All stories succeeded; verifying Whole-Project Acceptance Gate...\n", loopIdx, opts.TotalLoops)
+				if auditErr := opts.AcceptanceAuditor(ctx); auditErr != nil {
+					fmt.Printf("⚠️ [Loop %d/%d] Whole-Project Acceptance Gate detected gaps: %v\n", loopIdx, opts.TotalLoops, auditErr)
+					if loopIdx < opts.TotalLoops {
+						allSucceeded = false
+						acceptanceRemediationRequired = true
+						fmt.Printf("🔁 [Loop %d/%d] Continuing to Loop %d for acceptance remediation...\n", loopIdx, opts.TotalLoops, loopIdx+1)
+					}
+				} else {
+					acceptanceRemediationRequired = false
+				}
+			}
+		}
+
+		if allSucceeded {
 			if opts.TotalLoops > 1 && loopIdx < opts.TotalLoops {
-				fmt.Printf("\n✨ All %d user stories completed successfully in Loop %d. Completing run.\n", len(activeStoryFiles), loopIdx)
+				fmt.Printf("\n✨ All %d user stories completed successfully and verified by Acceptance Gate in Loop %d. Completing run.\n", len(activeStoryFiles), loopIdx)
 			}
 			break
 		}

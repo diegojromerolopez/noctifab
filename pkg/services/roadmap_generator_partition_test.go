@@ -135,3 +135,46 @@ Please note that this is the core system invariants.
 	assert.NotContains(t, string(coreContent), "<!-- HTML comment in spec -->")
 	assert.NotContains(t, string(coreContent), "\n---\n")
 }
+
+func TestGenerateRoadmapWithStreaming_DirectCreateStoryInvokesCallback(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte("# Direct Create Story Spec\nBuild HTTP server."), 0644))
+
+	mockClient := &partitionTestMockLLMClient{
+		Response: &domain.LLMResponse{
+			Actions: []domain.LLMAction{
+				{
+					Tool: "create_story",
+					Args: map[string]interface{}{
+						"filename": "roadmap/user-stories/US-001-server.md",
+						"content":  "# US-001: Server\n",
+					},
+				},
+				{
+					Tool: "create_story",
+					Args: map[string]interface{}{
+						"filename": "roadmap/user-stories/US-002-storage.md",
+						"content":  "# US-002: Storage\nDepends on: US-001\n",
+					},
+				},
+			},
+		},
+	}
+
+	var streamedPaths []string
+	err := services.GenerateRoadmapWithStreaming(
+		context.Background(),
+		tempDir,
+		mockClient,
+		nil,
+		1,
+		5,
+		15,
+		35,
+		func(filePath, content string) {
+			streamedPaths = append(streamedPaths, filepath.Base(filePath))
+		},
+	)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"US-001-server.md", "US-002-storage.md"}, streamedPaths)
+}

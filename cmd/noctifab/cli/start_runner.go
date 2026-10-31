@@ -25,6 +25,11 @@ import (
 )
 
 func runStartCommand(cmd *cobra.Command, args []string) error {
+	cmdCtx := context.Background()
+	if cmd != nil && cmd.Context() != nil {
+		cmdCtx = cmd.Context()
+	}
+
 	cfg, err := config.Load(cmd)
 	if err != nil {
 		return err
@@ -82,7 +87,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		policy := reportfs.ReportDestinationPolicy{
 			ProjectPath: targetDir,
 		}
-		if prepErr := reportfs.PrepareReportDestination(cmd.Context(), reportPath, policy, reportfs.OSFileSystem{}); prepErr == nil {
+		if prepErr := reportfs.PrepareReportDestination(cmdCtx, reportPath, policy, reportfs.OSFileSystem{}); prepErr == nil {
 			writer := reportfs.NewAtomicWriter(reportfs.OSFileSystem{})
 			runID := "run-" + uuid.New().String()[:8]
 			runMeta := domain.RunMetadata{
@@ -96,7 +101,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 			repAgent, rErr := reporting.NewReporterAgent(reportPath, domain.RealClock{}, writer, nil, os.Stderr)
 			if rErr == nil {
 				executionReporter = repAgent
-				repAgent.Start(cmd.Context(), runMeta)
+				repAgent.Start(cmdCtx, runMeta)
 			} else {
 				fmt.Fprintf(os.Stderr, "noctifab report disabled: %v\n", rErr)
 			}
@@ -157,10 +162,6 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		defer func() { _ = closer.Close() }()
 	}
 
-	cmdCtx := cmd.Context()
-	if cmdCtx == nil {
-		cmdCtx = context.Background()
-	}
 	cmdCtx = domain.WithObserver(cmdCtx, executionReporter)
 
 	sigChan := make(chan os.Signal, 1)
@@ -227,6 +228,15 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Warning: Product Manager ASD-STE100 specification generation failed: %v\n", steErr)
 	}
 
+	accRunner := services.NewQAAcceptanceRunner(llmClient, sandboxRunner)
+	if !accRunner.HasAcceptanceTests(targetDir) {
+		fmt.Printf("ℹ [QA Acceptance] Synthesizing initial independent acceptance test suite from SPEC.ste.md in background...\n")
+		go func(dir string) {
+			state := &domain.State{ProjectPath: dir}
+			_, _ = accRunner.SynthesizeAcceptanceTests(cmdCtx, state)
+		}(targetDir)
+	}
+
 	if !hasExistingStories {
 		if _, spikeErr := services.ExecuteSpike(cmdCtx, targetDir, cfg, llmClient, promptRenderer, executionReporter); spikeErr != nil {
 			fmt.Printf("Warning: Spike prototyping phase failed: %v\n", spikeErr)
@@ -285,6 +295,19 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	gateOpts := AcceptanceGateOptions{
+		TargetDir:      targetDir,
+		Cfg:            cfg,
+		Repo:           repo,
+		LLMClient:      llmClient,
+		PromptRenderer: promptRenderer,
+		SandboxRunner:  sandboxRunner,
+		GitClient:      gitClient,
+		StoryFiles:     storyFiles,
+		ToolRegistry:   reg,
+		Validator:      evaluator,
+	}
+
 	storyOutcomes, _ := runStoryIterationLoops(cmdCtx, StoryLoopOptions{
 		Cfg:                cfg,
 		TargetDir:          targetDir,
@@ -300,6 +323,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		WebPort:            webPort,
 		SpeculativePlanner: speculativePlanner,
 		StreamingScheduler: streamingScheduler,
+		AcceptanceAuditor:  func(c context.Context) error { return RunWholeProjectAcceptanceGate(c, gateOpts) },
 	})
 
 	if roadmapDoneCh != nil {
@@ -357,18 +381,6 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 
 	// Whole-Project Acceptance Audit Gate:
 	// Verify that the completed codebase fulfills all functional contracts and has genuine black-box E2E tests.
-	gateOpts := AcceptanceGateOptions{
-		TargetDir:      targetDir,
-		Cfg:            cfg,
-		Repo:           repo,
-		LLMClient:      llmClient,
-		PromptRenderer: promptRenderer,
-		SandboxRunner:  sandboxRunner,
-		GitClient:      gitClient,
-		StoryFiles:     storyFiles,
-		ToolRegistry:   reg,
-		Validator:      evaluator,
-	}
 	if gateErr := RunWholeProjectAcceptanceGate(cmdCtx, gateOpts); gateErr != nil {
 		return gateErr
 	}

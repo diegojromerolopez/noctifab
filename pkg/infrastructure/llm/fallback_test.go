@@ -19,8 +19,8 @@ func TestProviderModelParsers(t *testing.T) {
 			t.Errorf("unexpected opus parse: %+v", infoOpus)
 		}
 
-		infoHaiku, okHaiku := parseAnthropicModel("claude-3-5-haiku-latest")
-		if !okHaiku || infoHaiku.Tier != "haiku" || infoHaiku.Rank != 235 {
+		infoHaiku, okHaiku := parseAnthropicModel("claude-haiku-5-5")
+		if !okHaiku || infoHaiku.Tier != "haiku" || infoHaiku.Rank != 255 {
 			t.Errorf("unexpected haiku parse: %+v", infoHaiku)
 		}
 	})
@@ -228,12 +228,12 @@ func TestProviderModelParsers(t *testing.T) {
 		parsed := []*ProviderModelInfo{
 			{Name: "claude-3-opus-latest", Version: 3.0, Tier: "opus", Rank: 4},
 			{Name: "claude-3-5-sonnet-latest", Version: 3.5, Tier: "sonnet", Rank: 3},
-			{Name: "claude-3-5-haiku-latest", Version: 3.5, Tier: "haiku", Rank: 2},
+			{Name: "claude-haiku-5-5", Version: 5.5, Tier: "haiku", Rank: 2},
 		}
 
 		next := selectLowerModelFromParsed("claude-3-5-sonnet-latest", parsed)
-		if next != "claude-3-5-haiku-latest" {
-			t.Errorf("expected claude-3-5-haiku-latest, got %s", next)
+		if next != "claude-haiku-5-5" {
+			t.Errorf("expected claude-haiku-5-5, got %s", next)
 		}
 	})
 }
@@ -248,7 +248,7 @@ func TestModelFallbackChains(t *testing.T) {
 		models := []string{
 			"claude-3-opus-20240229",
 			"claude-3-5-sonnet-latest",
-			"claude-3-5-haiku-latest",
+			"claude-haiku-5-5",
 		}
 		parsed := parsedModelsFor(models, parseAnthropicModel)
 		next := selectLowerModelFromParsed("claude-3-opus-20240229", parsed)
@@ -257,16 +257,16 @@ func TestModelFallbackChains(t *testing.T) {
 		}
 	})
 
-	t.Run("when Anthropic claude-3-5-sonnet fails it falls back to claude-3-5-haiku", func(t *testing.T) {
+	t.Run("when Anthropic claude-3-5-sonnet fails it falls back to claude-haiku", func(t *testing.T) {
 		models := []string{
 			"claude-3-opus-20240229",
 			"claude-3-5-sonnet-latest",
-			"claude-3-5-haiku-latest",
+			"claude-haiku-5-5",
 		}
 		parsed := parsedModelsFor(models, parseAnthropicModel)
 		next := selectLowerModelFromParsed("claude-3-5-sonnet-latest", parsed)
-		if next != "claude-3-5-haiku-latest" {
-			t.Errorf("expected claude-3-5-haiku-latest, got %q", next)
+		if next != "claude-haiku-5-5" {
+			t.Errorf("expected claude-haiku-5-5, got %q", next)
 		}
 	})
 
@@ -274,10 +274,10 @@ func TestModelFallbackChains(t *testing.T) {
 		models := []string{
 			"claude-3-opus-20240229",
 			"claude-3-5-sonnet-latest",
-			"claude-3-5-haiku-latest",
+			"claude-haiku-5-5",
 		}
 		parsed := parsedModelsFor(models, parseAnthropicModel)
-		next := selectLowerModelFromParsed("claude-3-5-haiku-latest", parsed)
+		next := selectLowerModelFromParsed("claude-haiku-5-5", parsed)
 		if next != "" {
 			t.Errorf("expected empty fallback for lowest model, got %q", next)
 		}
@@ -439,7 +439,7 @@ func TestFallbackFaultTolerance(t *testing.T) {
 		// Simulate a future Anthropic model "claude-4-nova" that the parser's tier
 		// keywords do not yet recognise. The known models (sonnet, haiku) should
 		// still be reachable as fallbacks.
-		known := []string{"claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"}
+		known := []string{"claude-3-5-sonnet-latest", "claude-haiku-5-5"}
 		parsed := parsedModelsFor(known, parseAnthropicModel)
 
 		// "claude-4-nova" is not in parsed — safety valve returns lowest known model.

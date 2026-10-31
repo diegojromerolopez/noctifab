@@ -220,8 +220,42 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 	isE2E := strings.Contains(qaResult.Summary, "E2E") || strings.Contains(strings.Join(qaResult.MissingFeatures, " "), "E2E")
 	var targetFiles []string
 	var containerContext string
-	if isE2E && state.ProjectPath != "" {
-		targetFiles, containerContext = collectE2EContainerFiles(state.ProjectPath)
+
+	targetSet := make(map[string]bool)
+	for _, t := range state.Tasks {
+		if t.StoryID == currentStoryID || strings.HasPrefix(t.ID, currentStoryID+"-") {
+			for _, tf := range t.TargetFiles {
+				if tf != "" && !targetSet[tf] {
+					targetSet[tf] = true
+					targetFiles = append(targetFiles, tf)
+				}
+			}
+		}
+	}
+
+	if state.ProjectPath != "" {
+		for _, ef := range collectE2ETestFiles(state.ProjectPath) {
+			rel := ef
+			if filepath.IsAbs(rel) {
+				if r, err := filepath.Rel(state.ProjectPath, ef); err == nil && !strings.HasPrefix(r, "..") {
+					rel = r
+				}
+			}
+			if rel != "" && !targetSet[rel] {
+				targetSet[rel] = true
+				targetFiles = append(targetFiles, rel)
+			}
+		}
+		if isE2E {
+			cFiles, cCtx := collectE2EContainerFiles(state.ProjectPath)
+			containerContext = cCtx
+			for _, cf := range cFiles {
+				if cf != "" && !targetSet[cf] {
+					targetSet[cf] = true
+					targetFiles = append(targetFiles, cf)
+				}
+			}
+		}
 	}
 
 	var sb strings.Builder
@@ -231,8 +265,26 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 	}
 	fmt.Fprintf(&sb, "\nSummary: %s\n\nImplement the missing functionality and verify with tests.", qaResult.Summary)
 
+	sb.WriteString("\n\n### 🤝 MANDATORY COLLABORATIVE GENERATOR-TESTER REMEDIATION DIRECTIVE:\n")
+	sb.WriteString(fmt.Sprintf("The user story %s brought code or test changes that caused the partial deliverability E2E verification or QA acceptance review to FAIL.\n", currentStoryID))
+	sb.WriteString("The Generator and Tester agents must actively collaborate in this remediation cycle to isolate and fix the issues brought by this user story:\n")
+	sb.WriteString("1. **Analyze User Story Changes & Regressions**:\n")
+	sb.WriteString("   - Review the git diff of changes brought by this story and the test/E2E error logs.\n")
+	sb.WriteString("   - Identify whether failures are regressions in previously working features, bugs in newly added commands, or missing/broken test assertions.\n")
+	sb.WriteString("2. **Tester Agent Role (Fix Tests & Assertions)**:\n")
+	sb.WriteString("   - Inspect the failing E2E test output and all test suites under `tests/e2e/`, `tests/integration/`, or test runner recipes.\n")
+	sb.WriteString(fmt.Sprintf("   - Author, update, or fix black-box E2E test cases asserting all commands/features introduced in %s.\n", currentStoryID))
+	sb.WriteString("   - Ensure tests are realistic and non-hardcoded: send random/distinct values and assert they are correctly processed.\n")
+	sb.WriteString("   - Ensure the cumulative E2E suite passes with zero failures.\n")
+	sb.WriteString("3. **Generator Agent Role (Fix Code & Implementation Issues)**:\n")
+	sb.WriteString("   - Inspect application entrypoint, CLI commands, handlers, and domain logic modified in this story.\n")
+	sb.WriteString("   - Fix runtime bugs, missing commands, protocol mismatches, or crashes causing tests to fail.\n")
+	sb.WriteString("   - Ensure previously working features are not regressed and the application compiles and executes cleanly.\n")
+	sb.WriteString("4. **Cumulative DoD & Zero-Failure Requirement**:\n")
+	sb.WriteString("   - All unit and black-box E2E tests for features implemented up to this story MUST pass (0 failures).\n")
+
 	if isE2E {
-		sb.WriteString("\n\n### 🐳 MANDATORY E2E VERIFICATION INSTRUCTION:\n")
+		sb.WriteString("\n### 🐳 MANDATORY E2E VERIFICATION INSTRUCTION:\n")
 		sb.WriteString("The containerized E2E test suite failed with the error reported above.\n")
 		sb.WriteString("You have access to the 'run_e2e_tests' tool. You MUST inspect and correct the Dockerfile, docker-compose configuration, and/or test runner scripts, and run 'run_e2e_tests' to verify that the E2E suite passes before declaring your task complete.\n")
 		if containerContext != "" {
@@ -253,6 +305,7 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 			Status:      domain.TaskPending,
 			DependsOn:   prevTaskIDs,
 			CreatedAt:   time.Now().UTC(),
+			FailureLog:  qaResult.Summary,
 		}
 		if o.git != nil {
 			success, _ := o.RunFallbackAgent(ctx, &sovereignTask, state, o.git, qaResult.Summary, "story_qa_persistent_e2e_failure")
@@ -277,6 +330,7 @@ func (o *Orchestrator) queueStoryRemediationTask(ctx context.Context, state *dom
 		TargetFiles: targetFiles,
 		CreatedAt:   time.Now().UTC(),
 		Retries:     0,
+		FailureLog:  qaResult.Summary,
 	}
 
 	refineStoryFileWithGaps(state.ProjectPath, state.Metadata.InputPath, currentStoryID, qaResult)

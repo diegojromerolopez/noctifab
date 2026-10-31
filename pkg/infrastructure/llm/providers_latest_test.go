@@ -34,7 +34,7 @@ func TestProvidersLatestAliasResolution(t *testing.T) {
 			mockBody: `{
 				"data": [
 					{"id": "claude-3-opus-20240229"},
-					{"id": "claude-3-5-haiku-20241022"},
+					{"id": "claude-haiku-5-5"},
 					{"id": "claude-3-5-sonnet-20241022"}
 				]
 			}`,

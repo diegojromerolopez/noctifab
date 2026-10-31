@@ -38,7 +38,7 @@ func TestBuildFailoverClient_Enabled(t *testing.T) {
 				MaxCallLimit: 100,
 				Backends: []config.FailoverBackend{
 					{Provider: "gemini", Model: "gemini-2.5-flash", APIKeys: config.APIKeys{"GEMINI_API_KEY"}},
-					{Provider: "anthropic", Model: "claude-3-haiku", APIKeys: config.APIKeys{"ANTHROPIC_API_KEY"}},
+					{Provider: "anthropic", Model: "claude-haiku-5-5", APIKeys: config.APIKeys{"ANTHROPIC_API_KEY"}},
 				},
 			},
 		},

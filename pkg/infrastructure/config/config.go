@@ -12,6 +12,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// GetPasses returns the configured Product Manager pass count, honoring Iterations when Passes is left at the default.
+func (a AgentRoleConfig) GetPasses() int {
+	if a.Passes > 0 && a.Passes != 2 {
+		return a.Passes
+	}
+	if a.Iterations > 0 {
+		return a.Iterations
+	}
+	if a.Passes > 0 {
+		return a.Passes
+	}
+	return 1
+}
+
 // PromptOverrides converts the config prompts section into the prompts
 // package's override map, ready for prompts.NewRenderer.
 func (cfg *Config) PromptOverrides() map[string]map[string]prompts.Override {
@@ -56,10 +70,20 @@ func Load(cmd *cobra.Command) (*Config, error) {
 			}
 			cfg.Runtime.Loops = 0
 			cfg.Runtime.Loop.Count = 0
+			cfg.Agents.ProductManager.Iterations = 0
+			cfg.Agents.ProductManager.Passes = 0
 			decoder := yaml.NewDecoder(bytes.NewReader(data))
 			decoder.KnownFields(true)
 			if err := decoder.Decode(cfg); err != nil {
 				return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+			}
+			if cfg.Agents.ProductManager.Passes == 0 && cfg.Agents.ProductManager.Iterations == 0 {
+				cfg.Agents.ProductManager.Passes = 2
+				cfg.Agents.ProductManager.Iterations = 2
+			} else if cfg.Agents.ProductManager.Passes == 0 && cfg.Agents.ProductManager.Iterations > 0 {
+				cfg.Agents.ProductManager.Passes = cfg.Agents.ProductManager.Iterations
+			} else if cfg.Agents.ProductManager.Iterations == 0 && cfg.Agents.ProductManager.Passes > 0 {
+				cfg.Agents.ProductManager.Iterations = cfg.Agents.ProductManager.Passes
 			}
 		}
 		if len(cfg.LLMs) > 0 {

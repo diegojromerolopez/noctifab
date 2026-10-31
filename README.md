@@ -860,7 +860,7 @@ OPENAI_API_KEY: "sk-..."
 ```yaml
 llm:
   provider: anthropic
-  model: claude-sonnet-5          # fallback chain: claude-sonnet-5 → claude-3-5-sonnet-latest → claude-3-5-haiku-latest
+  model: claude-sonnet-5          # fallback chain: claude-sonnet-5 → claude-3-7-sonnet-latest → claude-haiku-5-5
   api_key: "secret:ANTHROPIC_API_KEY"
 ```
 
@@ -923,7 +923,7 @@ llm:
 |---|---|
 | **Gemini** | `gemini-3.1-pro-preview` → `gemini-3.8-flash` |
 | **OpenAI** | `gpt-4o` → `gpt-4o-mini` |
-| **Anthropic** | `claude-sonnet-5` → `claude-3-5-sonnet-latest` → `claude-3-5-haiku-latest` |
+| **Anthropic** | `claude-sonnet-5` → `claude-3-7-sonnet-latest` → `claude-haiku-5-5` |
 | **Mistral** | `mistral-large-latest` → `mistral-medium-latest` → `mistral-small-latest` → `open-mistral-7b` |
 | **DeepSeek** | `deepseek-coder` → `deepseek-chat` |
 | **Hermes** | `hermes-3-llama-3.1-405b` → `hermes-3-llama-3.1-70b` → `hermes-3-llama-3.1-8b` |
