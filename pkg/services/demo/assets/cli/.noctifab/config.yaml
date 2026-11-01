@@ -22,6 +22,30 @@ agents:
         model: claude-haiku-5-5
       - name: openai
         model: gpt-5.6-luna
+  generators:
+    number: 3
+    iterations: 10
+    providers:
+      - name: openai
+        model: gpt-5.6-luna
+      - name: claude
+        model: claude-sonnet-5
+  testers:
+    number: 2
+    iterations: 8
+    providers:
+      - name: openai
+        model: gpt-5.6-luna
+      - name: claude
+        model: claude-sonnet-5
+  escalation:
+    enabled: true
+    clean_worktree_on_escalate: false
+    thinking_threshold_turns: 1
+    model_upgrade_threshold_turns: 1
+    max_model_upgrades: 2
+    upgraded_models:
+      - claude-sonnet-5
   qa:
     providers:
       - name: claude
@@ -53,9 +77,16 @@ llm:
   thinking:
     enabled: false
   priority:
-    - claude
     - openai
+    - claude
   providers:
+    - name: openai
+      provider: openai
+      model: gpt-5.6-luna
+      enable_thinking: false
+      thinking_budget: 0
+      api_keys:
+        - OPENAI_API_KEY
     - name: claude
       provider: anthropic
       model: claude-sonnet-5
@@ -64,13 +95,6 @@ llm:
       api_keys:
         - ANTHROPIC_API_KEY
         - CLAUDE_API_KEY
-    - name: openai
-      provider: openai
-      model: gpt-5.6-luna
-      enable_thinking: false
-      thinking_budget: 0
-      api_keys:
-        - OPENAI_API_KEY
 runtime:
   spec_source: SPEC.md
   max_actions: 100

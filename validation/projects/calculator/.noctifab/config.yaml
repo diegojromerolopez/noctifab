@@ -11,13 +11,13 @@ agents:
       resolution: mixture
     providers:
     - name: gemini-flash
-    - name: claude
-    - name: gemini
-    - name: openai
-    - name: deepseek-pro
-    - name: qwen
-    - name: opencode
     - name: openrouter
+    - name: openai
+    - name: opencode
+    - name: qwen
+    - name: deepseek-pro
+    - name: gemini
+    - name: claude
   hypotheses:
     enabled: true
     agents: 2
@@ -41,73 +41,73 @@ agents:
         max: 35
     providers:
     - name: gemini-flash
-    - name: claude
-    - name: gemini
-    - name: openai
-    - name: deepseek-pro
-    - name: qwen
-    - name: opencode
     - name: openrouter
+    - name: openai
+    - name: opencode
+    - name: qwen
+    - name: deepseek-pro
+    - name: gemini
+    - name: claude
   planner:
     number: 1
     iterations: 5
     providers:
     - name: gemini-flash
-    - name: claude
-    - name: gemini
-    - name: openai
-    - name: deepseek-pro
-    - name: qwen
-    - name: opencode
     - name: openrouter
+    - name: openai
+    - name: opencode
+    - name: qwen
+    - name: deepseek-pro
+    - name: gemini
+    - name: claude
   generators:
     number: 6
     iterations: 20
     providers:
     - name: gemini-flash
-    - name: claude
-    - name: gemini
-    - name: openai
-    - name: deepseek-pro
-    - name: qwen
-    - name: opencode
     - name: openrouter
+    - name: openai
+    - name: opencode
+    - name: qwen
+    - name: deepseek-pro
+    - name: gemini
+    - name: claude
   testers:
     number: 2
     iterations: 15
     providers:
     - name: gemini-flash
-    - name: claude
-    - name: gemini
-    - name: openai
-    - name: deepseek-pro
-    - name: qwen
-    - name: opencode
     - name: openrouter
+    - name: openai
+    - name: opencode
+    - name: qwen
+    - name: deepseek-pro
+    - name: gemini
+    - name: claude
   qa:
     enabled: false
     iterations: 2
     providers:
     - name: gemini-flash
-    - name: claude
-    - name: gemini
-    - name: openai
-    - name: deepseek-pro
-    - name: qwen
-    - name: opencode
     - name: openrouter
+    - name: openai
+    - name: opencode
+    - name: qwen
+    - name: deepseek-pro
+    - name: gemini
+    - name: claude
   auditor:
     number: 1
     iterations: 2
     providers:
-    - name: gemini-flash
     - name: claude
     - name: gemini
-    - name: openai
     - name: deepseek-pro
     - name: qwen
     - name: opencode
+    - name: openai
     - name: openrouter
+    - name: gemini-flash
   unblocker:
     number: 1
     iterations: 2
@@ -121,6 +121,20 @@ agents:
     enforce_spec_quality: true
     sovereign_rescue:
       slice_spec: true
+  escalation:
+    enabled: true
+    clean_worktree_on_escalate: false
+    thinking_threshold_turns: 1
+    model_upgrade_threshold_turns: 1
+    max_model_upgrades: 3
+    upgraded_models:
+    - deepseek/deepseek-v4-flash-0731
+    - gpt-5.6-luna
+    - glm-5.2
+    - qwen3.8-max
+    - deepseek-v4-pro
+    - gemini-3.1-pro-preview
+    - claude-sonnet-5
 fallback:
   enabled: true
   poll_interval: 30s
@@ -142,7 +156,7 @@ fallback:
     timeout: 5m
     missing_toolchain_strategy: auto
     providers:
-      - name: gemini
+    - name: gemini
 workspace_cache:
   enabled: true
 poll_interval: 1s
@@ -158,7 +172,7 @@ storage:
     backoff_factor: 2
 llm:
   thinking:
-    enabled: false   # global default; any provider can set thinking.enabled: true
+    enabled: false
   hedging:
     enabled: true
     delay: 25s
@@ -178,48 +192,48 @@ llm:
   streaming: true
   priority:
   - gemini-flash
-  - claude
-  - gemini
+  - openrouter
   - openai
+  - opencode
   - qwen
   - deepseek-pro
-  - opencode
-  - openrouter
+  - gemini
+  - claude
   providers:
-  - name: claude
-    provider: anthropic
-    model: claude-sonnet-5
-    api_keys: CLAUDE_API_KEY
   - name: gemini-flash
     provider: gemini
     model: gemini-3.8-flash
     api_keys: GEMINI_API_KEY
-  - name: gemini
-    provider: gemini
-    model: gemini-3.1-pro-preview
-    api_keys: GEMINI_API_KEY
+  - name: openrouter
+    provider: openrouter
+    model: deepseek/deepseek-v4-flash-0731
+    api_keys: OPENROUTER_API_KEY
   - name: openai
     provider: openai
     model: gpt-5.6-luna
     api_keys: OPENAI_API_KEY
-  - name: deepseek-pro
-    provider: qwencloud
-    model: deepseek-v4-pro
-    api_keys: QWENCLOUD_API_KEY
+  - name: opencode
+    provider: opencode
+    model: glm-5.2
+    api_keys: OPENCODE_ZEN_API_KEY
   - name: qwen
     provider: qwencloud
     model: qwen3.8-max
     api_keys: QWENCLOUD_API_KEY
     enable_thinking: false
     thinking_budget: 0
-  - name: opencode
-    provider: opencode
-    model: glm-5.2
-    api_keys: OPENCODE_ZEN_API_KEY
-  - name: openrouter
-    provider: openrouter
-    model: deepseek/deepseek-v4-flash-0731
-    api_keys: OPENROUTER_API_KEY
+  - name: deepseek-pro
+    provider: qwencloud
+    model: deepseek-v4-pro
+    api_keys: QWENCLOUD_API_KEY
+  - name: gemini
+    provider: gemini
+    model: gemini-3.1-pro-preview
+    api_keys: GEMINI_API_KEY
+  - name: claude
+    provider: anthropic
+    model: claude-sonnet-5
+    api_keys: CLAUDE_API_KEY
 vcs:
   provider: github
   repository: diegojromerolopez/calculator
