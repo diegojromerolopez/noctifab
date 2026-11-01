@@ -15,6 +15,7 @@ func TestTaskEscalationConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 2, cfg.GetMaxModelUpgrades())
 	assert.True(t, cfg.IsSplitOnMaxUpgradesEnabled())
 	assert.False(t, cfg.IsCleanWorktreeOnEscalateEnabled())
+	assert.Empty(t, cfg.GetUpgradingOrder())
 	assert.Empty(t, cfg.GetUpgradedModels())
 }
 
@@ -28,7 +29,7 @@ func TestTaskEscalationConfig_CustomOverrides(t *testing.T) {
 		MaxModelUpgrades:           1,
 		SplitOnMaxUpgrades:         &split,
 		CleanWorktreeOnEscalate:    &clean,
-		UpgradedModels:             []string{"gemini-2.5-pro", "claude-3-7-sonnet"},
+		UpgradingOrder:             []string{"gemini-2.5-pro", "claude-3-7-sonnet"},
 	}
 
 	assert.True(t, cfg.IsEnabled())
@@ -37,5 +38,6 @@ func TestTaskEscalationConfig_CustomOverrides(t *testing.T) {
 	assert.Equal(t, 1, cfg.GetMaxModelUpgrades())
 	assert.False(t, cfg.IsSplitOnMaxUpgradesEnabled())
 	assert.True(t, cfg.IsCleanWorktreeOnEscalateEnabled())
+	assert.Equal(t, []string{"gemini-2.5-pro", "claude-3-7-sonnet"}, cfg.GetUpgradingOrder())
 	assert.Equal(t, []string{"gemini-2.5-pro", "claude-3-7-sonnet"}, cfg.GetUpgradedModels())
 }

@@ -44,7 +44,7 @@ agents:
     thinking_threshold_turns: 1
     model_upgrade_threshold_turns: 1
     max_model_upgrades: 2
-    upgraded_models:
+    upgrading_order:
       - claude-sonnet-5
   qa:
     providers:

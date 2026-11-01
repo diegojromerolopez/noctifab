@@ -146,7 +146,7 @@ agents:
     thinking_threshold_turns: 1
     model_upgrade_threshold_turns: 1
     max_model_upgrades: 3
-    upgraded_models:
+    upgrading_order:
     - deepseek/deepseek-v4-flash-0731
     - gpt-5.6-luna
     - glm-5.2
