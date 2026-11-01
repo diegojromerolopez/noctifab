@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -84,5 +86,73 @@ func TestStoryDoDValidator(t *testing.T) {
 		assert.False(t, report.Passed)
 		assert.Len(t, report.Failures, 1)
 		assert.Contains(t, report.Failures[0], "stdout missing required pattern \"PONG\"")
+	})
+
+	t.Run("checkTaskStoryContracts skips when executable binary does not exist on disk yet", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		runner := &mockDoDRunner{
+			runFunc: func(ctx context.Context, projectPath, command, pkg string) (string, error) {
+				return "", errors.New("should not be called")
+			},
+		}
+		evaluator := &TestValidator{Runner: runner}
+		state := &domain.State{
+			ProjectPath: tmpDir,
+			StoryContracts: []domain.StoryContract{
+				{
+					StoryID: "US-001",
+					PublicContracts: []domain.PublicContract{
+						{
+							ID:                 "cli-help",
+							Interface:          "cli",
+							AllowedExecutables: []string{"./bin/t4 --help"},
+							ExitCodes:          []int{0},
+							StdoutContains:     []string{"Usage:"},
+						},
+					},
+				},
+			},
+		}
+		task := &domain.Task{ID: "TASK-001", StoryID: "US-001", TargetFiles: []string{"internal/domain/task.go"}}
+		passed, logMsg := checkTaskStoryContracts(context.Background(), evaluator, state, task, true, "OK")
+		assert.True(t, passed)
+		assert.Equal(t, "OK", logMsg)
+	})
+
+	t.Run("checkTaskStoryContracts fails before merge when executable binary exists on disk and violates contract", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		binDir := filepath.Join(tmpDir, "bin")
+		require.NoError(t, os.MkdirAll(binDir, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(binDir, "t4"), []byte("#!/bin/sh\n"), 0755))
+
+		runner := &mockDoDRunner{
+			runFunc: func(ctx context.Context, projectPath, command, pkg string) (string, error) {
+				return "wrong output\n", nil
+			},
+		}
+		evaluator := &TestValidator{Runner: runner}
+		state := &domain.State{
+			ProjectPath: tmpDir,
+			StoryContracts: []domain.StoryContract{
+				{
+					StoryID: "US-001",
+					PublicContracts: []domain.PublicContract{
+						{
+							ID:                     "cli-help",
+							Interface:              "cli",
+							ApplicablePathPrefixes: []string{"cmd/"},
+							AllowedExecutables:     []string{"./bin/t4 --help"},
+							ExitCodes:              []int{0},
+							StdoutContains:         []string{"Usage:"},
+						},
+					},
+				},
+			},
+		}
+		task := &domain.Task{ID: "TASK-002", StoryID: "US-001", TargetFiles: []string{"cmd/t4/main.go"}}
+		passed, logMsg := checkTaskStoryContracts(context.Background(), evaluator, state, task, true, "OK")
+		assert.False(t, passed)
+		assert.Contains(t, logMsg, "Task pre-merge black-box contract smoke check failed")
+		assert.Contains(t, logMsg, "stdout missing required pattern \"Usage:\"")
 	})
 }

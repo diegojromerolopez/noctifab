@@ -43,13 +43,20 @@ func TestProgressiveTaskEscalator_StandardLadder(t *testing.T) {
 	assert.False(t, dec2.UpgradeModel)
 
 	// Step 3: Retries exceed 4 (2 thinking + 2 upgrade) -> Upgrade to claude-3-7-sonnet (standard model)
-	// First upgrade attempt starts with thinking disabled
+	// First upgrade attempt starts with thinking disabled; CleanWorktree defaults to false to preserve drafts
 	task.Retries = 4
 	dec3 := escalator.EvaluateEscalation(context.Background(), task, 0)
 	assert.True(t, dec3.UpgradeModel)
 	assert.Equal(t, "claude-3-7-sonnet", dec3.TargetModel)
 	assert.False(t, dec3.EnableThinking, "standard upgraded model starts with thinking disabled")
-	assert.True(t, dec3.CleanWorktree)
+	assert.False(t, dec3.CleanWorktree, "CleanWorktree should default to false so in-progress drafts are refined")
+
+	// Intra-task escalation: 0 retries, turn 4 -> also upgrades model without wiping worktree
+	taskIntra := &domain.Task{ID: "task-intra", Complexity: "MEDIUM", Retries: 0}
+	decIntra := escalator.EvaluateEscalation(context.Background(), taskIntra, 4)
+	assert.True(t, decIntra.UpgradeModel)
+	assert.Equal(t, "claude-3-7-sonnet", decIntra.TargetModel)
+	assert.False(t, decIntra.CleanWorktree)
 
 	// Failing again on upgraded model (retry 5) -> Thinking enabled on upgraded model
 	task.Retries = 5

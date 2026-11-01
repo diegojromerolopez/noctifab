@@ -80,8 +80,8 @@ func (e *ProgressiveTaskEscalator) EvaluateEscalation(ctx context.Context, task 
 		}
 	}
 
-	// Model upgrade threshold is met when retries exceed thinking threshold + upgrade threshold
-	totalFails := task.Retries
+	// Model upgrade threshold is met when retries + intra-task turns exceed thinking threshold + upgrade threshold
+	totalFails := task.Retries + turn
 	if totalFails >= (thinkingThreshold + modelUpgradeThreshold) {
 		targetModel := e.selectUpgradedModel(task.ModelUpgrades)
 		isThinkingOnly := llm.IsThinkingOnlyModel(targetModel)

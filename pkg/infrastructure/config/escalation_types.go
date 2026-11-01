@@ -50,11 +50,12 @@ func (c TaskEscalationConfig) IsSplitOnMaxUpgradesEnabled() bool {
 }
 
 // IsCleanWorktreeOnEscalateEnabled returns true if dirty worktrees are cleaned before model upgrades.
+// Defaults to false so that in-progress drafts can be preserved and refined by upgraded models.
 func (c TaskEscalationConfig) IsCleanWorktreeOnEscalateEnabled() bool {
 	if c.CleanWorktreeOnEscalate != nil {
 		return *c.CleanWorktreeOnEscalate
 	}
-	return true
+	return false
 }
 
 // GetUpgradedModels returns the configured list of escalated models, or empty slice if default pool applies.

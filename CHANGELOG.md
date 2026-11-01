@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.129.0] - 2026-11-01
+
+### Changed
+- **Draft-Preserving Escalation & Anti-Early-Mistake Consolidation Guards**:
+  - Changed the default of `clean_worktree_on_escalate` (`TaskEscalationConfig.IsCleanWorktreeOnEscalateEnabled()` and `DefaultConfig()`) from `true` to `false` so in-progress fast-model drafts are preserved and refined by upgraded models rather than wiped via `git checkout . && git clean -fd`.
+  - Enabled intra-task turn escalation in `ProgressiveTaskEscalator.EvaluateEscalation` (`pkg/services/task_escalator.go`) and `Orchestrator.RunGeneratorAgent` (`pkg/services/orchestrator_generator.go`) so multi-turn generator sessions (`turn > 0` and `surgical_repair`) dynamically activate thinking and model upgrades (`domain.WithModelOverride`) on failing Turn 0 drafts in place.
+  - Removed the automatic `LOW`/`MEDIUM` complexity fast-path hijack from `code_first` into `executeTaskSinglePass` in `pkg/services/orchestrator_execute.go`, ensuring `code_first` always preserves independent Generator $\neq$ Tester verification.
+  - Updated `executeTaskBreadthFirst` (`pkg/services/orchestrator_execute_breadth_first.go`) to execute the edge-case refinement pass (`implement_breadth_first_fix`) on initial task execution (`Retries == 0`) after happy-path draft and test generation so incomplete 80% drafts are refined before merging into the integration branch.
+  - Added pre-merge task-level black-box contract smoke verification (`checkTaskStoryContracts` in `pkg/services/story_dod_validator.go`) before merging a task branch in `pkg/services/orchestrator_execute.go`, executing any `noctifab-contract` scenario whose target binary already exists on disk and routing failures into `executeSurgicalRepairTurn` before downstream tasks build on broken CLI/wire contracts.
+
 ## [0.128.0] - 2026-10-31
 
 ### Added

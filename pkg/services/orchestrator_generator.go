@@ -116,7 +116,19 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 
 	for turn := 0; turn < maxTurns; turn++ {
 		circuitBreaker.ResetTurn()
-		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
+		turnCtx := genCtx
+		if o.escalator != nil && (turn > 0 || action == "surgical_repair") {
+			effectiveTurn := turn
+			if action == "surgical_repair" && effectiveTurn == 0 {
+				effectiveTurn = 2
+			}
+			dec := o.escalator.EvaluateEscalation(genCtx, &task, effectiveTurn)
+			turnCtx = domain.WithDynamicThinking(turnCtx, dec.EnableThinking)
+			if dec.UpgradeModel && dec.TargetModel != "" {
+				turnCtx = domain.WithModelOverride(turnCtx, dec.TargetModel)
+			}
+		}
+		resp, err := o.llmClient.Complete(turnCtx, currentPrompt)
 		o.recordTokenUsage(ctx, currentPrompt, resp)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] turn %d LLM call failed: %v\n", task.ID, turn, err)

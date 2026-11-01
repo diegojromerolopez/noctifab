@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -106,4 +108,90 @@ func (v *StoryDoDValidator) ValidateStoryContracts(ctx context.Context, projectP
 	}
 
 	return report, nil
+}
+
+// checkTaskStoryContracts runs a pre-merge black-box contract smoke check for any
+// public contract whose target executable binary already exists on disk in the task worktree.
+func checkTaskStoryContracts(ctx context.Context, evaluator *TestValidator, taskState *domain.State, task *domain.Task, passed bool, logMsg string) (bool, string) {
+	if !passed || evaluator == nil || evaluator.Runner == nil || taskState == nil || task == nil {
+		return passed, logMsg
+	}
+
+	var contract domain.StoryContract
+	for _, sc := range taskState.StoryContracts {
+		if task.StoryID != "" && sc.StoryID == task.StoryID {
+			contract = sc
+			break
+		}
+		contract = sc
+	}
+	if len(contract.PublicContracts) == 0 {
+		return passed, logMsg
+	}
+
+	ready := filterReadyTaskContracts(taskState.ProjectPath, contract.PublicContracts, task.TargetFiles)
+	if len(ready) == 0 {
+		return passed, logMsg
+	}
+
+	validator := NewStoryDoDValidator(evaluator.Runner, 15*time.Second)
+	report, err := validator.ValidateStoryContracts(ctx, taskState.ProjectPath, domain.StoryContract{
+		StoryID:         contract.StoryID,
+		PublicContracts: ready,
+	})
+	if err != nil || report == nil || report.Passed {
+		return passed, logMsg
+	}
+
+	failureMsg := fmt.Sprintf("Task pre-merge black-box contract smoke check failed:\n%s", strings.Join(report.Failures, "\n"))
+	if strings.TrimSpace(logMsg) != "" {
+		failureMsg = logMsg + "\n\n" + failureMsg
+	}
+	return false, failureMsg
+}
+
+func filterReadyTaskContracts(projectPath string, contracts []domain.PublicContract, targetFiles []string) []domain.PublicContract {
+	if projectPath == "" {
+		return nil
+	}
+	var ready []domain.PublicContract
+	for _, pc := range contracts {
+		if len(pc.AllowedExecutables) == 0 {
+			continue
+		}
+		fields := strings.Fields(pc.AllowedExecutables[0])
+		if len(fields) == 0 {
+			continue
+		}
+		execToken := fields[0]
+		if !strings.HasPrefix(execToken, "./") && !strings.HasPrefix(execToken, "bin/") && !strings.Contains(execToken, "/") {
+			continue
+		}
+		binPath := filepath.Join(projectPath, filepath.Clean(execToken))
+		info, err := os.Stat(binPath)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if len(pc.ApplicablePathPrefixes) > 0 && len(targetFiles) > 0 {
+			matchedPrefix := false
+			for _, tf := range targetFiles {
+				cleanTF := strings.TrimPrefix(filepath.ToSlash(tf), "./")
+				for _, prefix := range pc.ApplicablePathPrefixes {
+					cleanPrefix := strings.TrimPrefix(filepath.ToSlash(prefix), "./")
+					if strings.HasPrefix(cleanTF, cleanPrefix) {
+						matchedPrefix = true
+						break
+					}
+				}
+				if matchedPrefix {
+					break
+				}
+			}
+			if !matchedPrefix {
+				continue
+			}
+		}
+		ready = append(ready, pc)
+	}
+	return ready
 }

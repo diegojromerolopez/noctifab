@@ -14,13 +14,13 @@ func TestTaskEscalationConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 2, cfg.GetModelUpgradeThresholdTurns())
 	assert.Equal(t, 2, cfg.GetMaxModelUpgrades())
 	assert.True(t, cfg.IsSplitOnMaxUpgradesEnabled())
-	assert.True(t, cfg.IsCleanWorktreeOnEscalateEnabled())
+	assert.False(t, cfg.IsCleanWorktreeOnEscalateEnabled())
 	assert.Empty(t, cfg.GetUpgradedModels())
 }
 
 func TestTaskEscalationConfig_CustomOverrides(t *testing.T) {
 	split := false
-	clean := false
+	clean := true
 	cfg := TaskEscalationConfig{
 		Enabled:                    true,
 		ThinkingThresholdTurns:     3,
@@ -36,6 +36,6 @@ func TestTaskEscalationConfig_CustomOverrides(t *testing.T) {
 	assert.Equal(t, 4, cfg.GetModelUpgradeThresholdTurns())
 	assert.Equal(t, 1, cfg.GetMaxModelUpgrades())
 	assert.False(t, cfg.IsSplitOnMaxUpgradesEnabled())
-	assert.False(t, cfg.IsCleanWorktreeOnEscalateEnabled())
+	assert.True(t, cfg.IsCleanWorktreeOnEscalateEnabled())
 	assert.Equal(t, []string{"gemini-2.5-pro", "claude-3-7-sonnet"}, cfg.GetUpgradedModels())
 }
