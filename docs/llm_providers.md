@@ -135,6 +135,7 @@ llms:
 **Models**: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5-20251001`
 **Fallback chain**: `opus` → `sonnet` → `haiku`
 **Ranking**: tier keyword (`opus` > `sonnet` > `haiku`) + version multiplier × 10.
+**Retired Model Auto-Upgrade (`pkg/infrastructure/llm/anthropic_models.go`)**: Legacy or retired Claude 3.x / 4.x model identifiers (e.g., `claude-3-5-sonnet-*`, `claude-3-7-sonnet-*`, `claude-sonnet-4-*`, `claude-3-opus-*`, `claude-3-5-haiku-*`) are deterministically normalized and upgraded to active Claude 5.x equivalents (`claude-sonnet-5`, `claude-opus-5`, `claude-haiku-5-5`) prior to API dispatch.
 
 ```yaml
 # .noctifab/secrets.yaml

@@ -11,8 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Demo Generation Speed & Streaming Roadmap Optimizations**:
   - Fixed streaming roadmap handoff in `GenerateRoadmapWithStreaming` (`pkg/services/roadmap_generator.go`) and `AuditRoadmapStoriesParallel` (`pkg/services/roadmap_auditor.go`) so `onStoryReady` is always invoked even when Pass 1 emits `create_story` actions directly without Stage 1 outlines.
   - Added `AgentRoleConfig.GetPasses()` and `product_manager.iterations`/`passes` synchronization in `config.Load` so setting `iterations: 1` executes a single-pass Product Manager roadmap generation.
-  - Moved initial `SynthesizeAcceptanceTests` off the synchronous startup critical path in `cmd/noctifab/cli/start_runner.go` to a background goroutine with mutex serialization in `QAAcceptanceRunner` and excluded `tests/acceptance` from `ScanLegacyFiles` (`pkg/services/legacy_scanner.go`).
+  - Moved initial `SynthesizeAcceptanceTests` off the synchronous startup critical path in `cmd/noctifab/cli/start_runner.go` to a background goroutine with mutex serialization (`acceptanceSynthMu`) in `QAAcceptanceRunner` and excluded `tests/acceptance` from `ScanLegacyFiles` (`pkg/services/legacy_scanner.go`).
   - Updated `t4` and `cli` demo configurations (`pkg/services/demo/assets/*/.noctifab/config.yaml`) to set `product_manager.iterations: 1` (`passes: 1`), disable `spike` (`agents.spike.enabled: false`), and route `product_manager`, `planner`, `qa`, and `auditor` roles to fast-tier models (`claude-haiku-5-5` and `gpt-5.6-luna`).
+- **Independent QA Acceptance Runner & Cumulative Partial Deliverability E2E Gate**:
+  - Added `QAAcceptanceRunner` (`pkg/services/qa_acceptance_runner.go`) to synthesize and execute black-box acceptance tests under `tests/acceptance/` from `SPEC.ste.md`, with immutable path protection in `PolicyValidator` (`pkg/services/validator.go`) preventing worker agents (`generator`/`tester`) from modifying or deleting `tests/acceptance/`.
+  - Added `PartialDeliverabilityRunner` (`pkg/services/partial_e2e_runner.go`) and story-level E2E auditing (`pkg/services/story_qa_e2e.go`) to verify cumulative partial deliverability (`tests/e2e/partial_e2e.sh`) after each completed user story.
+- **Multi-Dimensional Anti-Stub, Anti-Gaming, & Test Depth Quality Gates**:
+  - Added deterministic detectors for tautological assertions (`pkg/services/anti_stub_tautology.go`), over-mocking (`pkg/services/anti_stub_mock.go`), fake daemon/socket servers (`pkg/services/anti_stub_daemon.go`), storage round-trips (`pkg/services/anti_stub_roundtrip.go`), input sensitivity (`pkg/services/anti_stub_sensitivity.go`), structural test depth (`pkg/services/test_depth_evaluator.go`), Git merge conflict markers (`pkg/services/conflict_marker_guard.go`), and unreferenced orphan source files (`pkg/services/orphan_source_guard.go`).
+- **Anthropic Retired Model Normalization (`pkg/infrastructure/llm/anthropic_models.go`)**:
+  - Added automatic normalization and upgrade of retired Claude 3.x/4.x model identifiers to active Claude 5.x models (`claude-sonnet-5`, `claude-opus-5`, `claude-haiku-5-5`).
 
 ## [0.127.3] - 2026-10-28
 

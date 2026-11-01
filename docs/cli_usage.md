@@ -104,6 +104,12 @@ Before dispatching agents, `noctifab start` runs comprehensive preflight verific
 ### 4. `demo`
 Launches a zero-config autonomous sandbox that unpacks a sample specification (`t4` ISO C17 S3-compatible HTTP object store by default) into `[target_dir]` (defaults to `demo`), initializes git and `.noctifab` workspace, and executes the autonomous dark factory code generation engine end-to-end.
 
+To maximize demo generation speed out of the box, the embedded `t4` and `cli` demo configurations (`.noctifab/config.yaml`) come pre-tuned with:
+- **Single-Pass Streaming Roadmap (`agents.product_manager.iterations: 1`, `passes: 1`)**: Streams user stories directly into `StoryDAGScheduler` as soon as Pass 1 completes.
+- **Spike Prototyping Disabled (`agents.spike.enabled: false`)**: Skips the redundant initial spike pass so `GenerateRoadmapStreaming` starts immediately and avoids triggering brownfield Legacy Stabilization prompts.
+- **Fast-Tier Model Routing for Non-Coding Phases**: Routes `product_manager`, `planner`, `qa`, and `auditor` roles to high-throughput fast-tier models (`claude-haiku-5-5` for Claude and `gpt-5.6-luna` for OpenAI) while preserving flagship coding models (`claude-sonnet-5`) for `generators`.
+- **Non-Blocking Background QA Acceptance Synthesis**: Synthesizes initial `tests/acceptance/` suites asynchronously in the background without blocking startup roadmap generation.
+
 Generated project files are preserved so you can inspect the code and run the test suite (`make test`).
 
 ```bash

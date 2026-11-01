@@ -13,15 +13,15 @@ Unlike interactive AI copilots (where you sit and review prompts function by fun
 
 ---
 
-## ⚡ Try It in 60 Seconds (Zero Config, Zero API Keys)
+## ⚡ Try It in Minutes (Zero Config Demo Sandbox)
 
-Test drive Noctifab instantly on macOS or Linux with the built-in offline demo sandbox:
+Test drive Noctifab on macOS or Linux with the built-in autonomous demo sandbox (`t4` ISO C17 S3-style HTTP server, pre-configured with single-pass streaming roadmap generation and fast-tier routing for `product_manager`, `planner`, `qa`, and `auditor`):
 
 ```bash
 # 1. Install single binary:
 curl -sSL https://raw.githubusercontent.com/diegojromerolopez/noctifab/main/scripts/install.sh | sh
 
-# 2. Run the 2-minute zero-config demo (offline deterministic simulation):
+# 2. Run the zero-config autonomous demo sandbox:
 noctifab demo
 
 # 3. Inspect and test the generated ISO C17 S3-style HTTP server:

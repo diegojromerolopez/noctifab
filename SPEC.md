@@ -2708,6 +2708,9 @@ To guarantee stable and autonomous execution without human intervention, `noctif
 *   **Resolution:**
     1.  **Tester Agent Role Partition:** The task execution partitioning decouples test writing from implementation. The Tester agent writes unit, integration, and e2e tests based strictly on the task specifications.
     2.  **Test Validator Gate:** The Test Validator executes the project's test suite 3 times sequentially. A majority vote (2/3 passing runs) determines if the task succeeds, with warnings generated if any individual run fails (indicating flakiness quarantine).
+    3.  **Independent QA Acceptance Gate (`tests/acceptance/`) & Immutable Protection:** `QAAcceptanceRunner` synthesizes and executes external black-box acceptance tests from `SPEC.ste.md` asynchronously in the background without blocking startup roadmap generation. `PolicyValidator` blocks `generator` and `tester` roles from modifying or deleting `tests/acceptance/`, and `ScanLegacyFiles` excludes `tests/acceptance/` from brownfield detection.
+    4.  **Cumulative Partial Deliverability E2E Gate (`tests/e2e/partial_e2e.sh`):** `PartialDeliverabilityRunner` synthesizes and runs cumulative black-box E2E tests after each story (`US-001` through `US-N`) to guarantee zero regressions across previously delivered stories.
+    5.  **Multi-Dimensional Anti-Stub, Anti-Gaming, & Test Depth Evaluators:** Deterministic AST/source guards reject tautological assertions (`anti_stub_tautology.go`), self-mocking (`anti_stub_mock.go`), fake daemon sockets (`anti_stub_daemon.go`), missing storage round-trips (`anti_stub_roundtrip.go`), constant-output functions (`anti_stub_sensitivity.go`), shallow test suites (`test_depth_evaluator.go`), unresolved Git conflict markers (`conflict_marker_guard.go`), and unreferenced orphan source files (`orphan_source_guard.go`).
 
 
 ### 8.8. Glossary & Distributed Concepts Reference

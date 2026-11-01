@@ -670,6 +670,29 @@ To preserve LLM context economics and minimize Time-To-First-Token (TTFT):
 - **Red No-Op Guard with 2-Strike Turn Preservation**: Deterministically rejects `noop` or empty actions in `RunGeneratorAgent` whenever the active test suite is failing, granting a 2-strike turn-preserving budget (`turn--`) with actionable failure diagnostics before consuming generator turns.
 - **Anti-Mega-Task Scope Ceiling (`isMegaTaskViolation`)**: Deterministically rejects monolithic tasks targeting $> 6$ production files or enumerating $> 8$ command/operation keywords during `ValidateTaskCohesion`, forcing the planner to decompose work into modular sibling tasks.
 
+### 25. Independent QA Acceptance Test Runner & Immutable `tests/acceptance/` Protection (`pkg/services/qa_acceptance_runner.go`, `pkg/services/validator.go`)
+- **"True User / Zero Tricks" Black-Box Synthesis (`QAAcceptanceRunner`)**: Synthesizes and executes an independent black-box acceptance test suite in `tests/acceptance/` (e.g. `tests/acceptance/run_acceptance.sh`) using `SPEC.ste.md` as the sole behavioral ground truth and `README.md`/`Makefile` for build and CLI invocation instructions.
+- **Asynchronous Startup Synthesis & Mutex Serialization**: During `noctifab start`, initial acceptance test synthesis runs asynchronously in a background goroutine synchronized by an internal mutex (`acceptanceSynthMu`) so it never blocks roadmap generation or story execution on the startup critical path.
+- **Legacy Scanner Exclusion (`ScanLegacyFiles`)**: `tests/acceptance/` is explicitly excluded from legacy codebase detection (`IsIgnoredLegacyFile` and `ScanLegacyFiles`) so synthesized acceptance tests never trigger false-positive brownfield Legacy Stabilization mandates on greenfield workspaces.
+- **Immutable Client Contract Protection (`PolicyValidator`)**: Worker roles (`generator` and `tester`) are strictly prohibited by `PolicyValidator` (`pkg/services/validator.go`) from modifying, weakening, or deleting any file under `tests/acceptance/`.
+
+### 26. Cumulative Partial Deliverability E2E Gate (`pkg/services/partial_e2e_runner.go`, `cmd/noctifab/cli/start_story_executor.go`)
+- **Incremental Story-by-Story Verification (`PartialDeliverabilityRunner`)**: After each user story completes its tasks, Noctifab synthesizes and runs a cumulative black-box E2E test script (`tests/e2e/partial_e2e.sh`) covering all user stories completed up to that milestone (`US-001` through `US-N`).
+- **Story-Level E2E Audit (`pkg/services/story_qa_e2e.go`)**: Enforces that every completed story passes both its own functional contract scenarios and the cumulative partial deliverability E2E gate (`0` failures and `> 0` executed assertions) before the story is marked `SUCCESS`.
+
+### 27. Multi-Dimensional Anti-Stub, Anti-Gaming, & Test Depth Quality Gates (`pkg/services/`)
+To prevent agents from gaming test suites with superficial assertions, tautologies, or hollow mocks, Noctifab enforces specialized deterministic AST and source analyzers:
+- **Tautology & Vacuous Test Detector (`pkg/services/anti_stub_tautology.go`)**: Scans test files across languages to reject tautological assertions (`assert True`, `assertEqual(1, 1)`, self-comparisons), assertion-free test functions, and placeholder test bodies.
+- **Anti-Over-Mocking Guard (`pkg/services/anti_stub_mock.go`)**: Detects tests that mock the system-under-test itself or return hardcoded expected payloads without exercising production code paths.
+- **Real Daemon & Socket Liveness Guard (`pkg/services/anti_stub_daemon.go`)**: Verifies that network/daemon projects bind real sockets and process wire requests rather than printing canned strings and exiting.
+- **Persistence Round-Trip & Input Sensitivity Guards (`pkg/services/anti_stub_roundtrip.go`, `pkg/services/anti_stub_sensitivity.go`)**: Validates that storage/state implementations perform genuine write-read-delete round-trips and that functions vary outputs across distinct inputs rather than returning constant values.
+- **Test Depth Evaluator (`pkg/services/test_depth_evaluator.go`)**: Evaluates structural test depth across unit, integration, and E2E tiers, checking assertion density, negative/error path coverage, and boundary condition checks.
+- **Conflict Marker & Orphan Source Guards (`pkg/services/conflict_marker_guard.go`, `pkg/services/orphan_source_guard.go`)**: Deterministically blocks task completion if any workspace file contains unresolved Git merge conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) or if newly created source files are left uncompiled/unreferenced by the build graph.
+
+### 28. Streaming Roadmap Direct-Story Handoff & Non-Blocking Startup (`pkg/services/roadmap_generator.go`, `pkg/services/roadmap_auditor.go`)
+- **Guaranteed `onStoryReady` Streaming Handoff**: In `GenerateRoadmapWithStreaming`, `streamedPaths` tracks stories emitted during Stage 2 parallel outline expansion and invokes `onStoryReady(targetPath, st.Content)` for any story in `sanitizedStories` not yet streamed—including when Pass 1 emits `create_story` actions directly without Stage 1 outlines (`len(outlines) == 0`). Similarly, `AuditRoadmapStoriesParallel` invokes `onStoryReady` even when a story is retained without modification (`!audited`).
+- **Single-Pass Config Synchronization (`AgentRoleConfig.GetPasses`)**: Setting `agents.product_manager.iterations: 1` (or `passes: 1`) in `.noctifab/config.yaml` automatically synchronizes both fields during `config.Load`, allowing fast single-pass roadmap generation without redundant audit passes.
+
 ---
 
 Architecture, security, performance, documentation, and infrastructure concerns are explicit planner tasks implemented by generators and checked by deterministic validators. They are not independently routed agent phases.
