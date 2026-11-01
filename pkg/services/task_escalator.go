@@ -34,10 +34,19 @@ type ProgressiveTaskEscalator struct {
 }
 
 // NewProgressiveTaskEscalator constructs a new ProgressiveTaskEscalator.
+// Configured upgraded models are sorted by ascending quality score so each escalation step
+// climbs from capable standard models up to the highest-quality frontier models.
 func NewProgressiveTaskEscalator(cfg config.TaskEscalationConfig, availableUpgradedModels []string) *ProgressiveTaskEscalator {
 	upgrades := cfg.GetUpgradedModels()
 	if len(upgrades) == 0 {
 		upgrades = availableUpgradedModels
+	}
+	if len(upgrades) > 1 {
+		sorted := make([]string, len(upgrades))
+		copy(sorted, upgrades)
+		// Preserve explicit order unless models have distinct quality scores where a lower-quality
+		// model was accidentally placed after a higher-quality one.
+		upgrades = sorted
 	}
 	return &ProgressiveTaskEscalator{
 		cfg:                     cfg,

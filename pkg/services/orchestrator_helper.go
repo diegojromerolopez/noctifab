@@ -116,9 +116,15 @@ func (o *Orchestrator) RunTesterAgent(ctx context.Context, task domain.Task, sta
 	seenFileDependentCalls := make(map[string]bool)
 	circuitBreaker := NewTaskCircuitBreaker()
 
+	testerBaseStage := 0
+	if action == "fix" {
+		testerBaseStage = 1
+	}
+
 	for turn := 0; turn < maxTurns; turn++ {
 		circuitBreaker.ResetTurn()
-		testResp, err := o.llmClient.Complete(testerCtx, currentPrompt)
+		turnTesterCtx := domain.WithQualityStage(testerCtx, testerBaseStage+turn+task.Retries)
+		testResp, err := o.llmClient.Complete(turnTesterCtx, currentPrompt)
 		o.recordTokenUsage(ctx, currentPrompt, testResp)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Tester] turn %d LLM call failed: %v\n", task.ID, turn, err)

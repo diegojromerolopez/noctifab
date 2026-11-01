@@ -114,14 +114,18 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	noopStrikes := 0
 	maxNoopStrikes := 2
 
+	baseStage := 0
+	if action == "surgical_repair" {
+		baseStage = 2
+	} else if action == "refactor" || action == "implement_breadth_first_fix" || action == "fix" || action == "single_pass_fix" {
+		baseStage = 1
+	}
+
 	for turn := 0; turn < maxTurns; turn++ {
 		circuitBreaker.ResetTurn()
-		turnCtx := genCtx
-		if o.escalator != nil && (turn > 0 || action == "surgical_repair") {
-			effectiveTurn := turn
-			if action == "surgical_repair" && effectiveTurn == 0 {
-				effectiveTurn = 2
-			}
+		turnCtx := domain.WithQualityStage(genCtx, baseStage+turn+task.Retries)
+		if o.escalator != nil && (turn > 0 || baseStage > 0) {
+			effectiveTurn := turn + baseStage
 			dec := o.escalator.EvaluateEscalation(genCtx, &task, effectiveTurn)
 			turnCtx = domain.WithDynamicThinking(turnCtx, dec.EnableThinking)
 			if dec.UpgradeModel && dec.TargetModel != "" {
