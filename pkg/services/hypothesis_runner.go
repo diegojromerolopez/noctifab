@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -68,9 +69,10 @@ func (o *Orchestrator) ExecuteSinglePassHypotheses(
 			res := o.runSingleHypothesis(hypCtx, task, taskState, fileContexts, taskID, action, idx+1)
 			results[idx] = res
 
-			// Short-circuit hypothesis racing: under "correct" resolution, if any candidate
-			// achieves 100% test pass rate with zero errors, cancel lagging candidates immediately.
-			if hypCfg.GetResolution() == config.ResolutionCorrect && res.Passed && res.PassRate >= 100.0 && res.Err == nil {
+			// Short-circuit hypothesis racing: if any candidate achieves 100% test pass rate
+			// with zero errors, cancel lagging candidates immediately (mixture resolution
+			// also skips synthesis when best.Passed is true).
+			if res.Passed && res.PassRate >= 100.0 && res.Err == nil {
 				winnerOnce.Do(func() {
 					fmt.Printf("⚡ [Multi-Hypothesis Racing] Hypothesis %d finished with 100%% green! Short-circuiting lagging candidates...\n", res.Index)
 					cancel()
@@ -143,7 +145,7 @@ func (o *Orchestrator) runSingleHypothesis(
 	// Run Generator Agent in this isolated worktree
 	fmt.Printf("⚡ [Multi-Hypothesis] Running Hypothesis %d in isolated worktree %s...\n", hypIndex, worktreeDir)
 	o.RunGeneratorAgent(ctx, *task, &hypState, fileContexts, "", action)
-	_ = o.stageAndCommit(ctx, hypGit, taskID, "feat(core): hypothesis %d implementation for task %s", hypIndex, task.Title)
+	_ = o.stageAndCommit(ctx, hypGit, taskID, "feat(core): task %s hypothesis %d implementation - %s", hypIndex, task.Title)
 
 	if ctx.Err() != nil {
 		return HypothesisResult{Index: hypIndex, WorktreeDir: worktreeDir, TaskGit: hypGit, Cleanup: cleanup, Err: ctx.Err()}
@@ -208,6 +210,13 @@ func (o *Orchestrator) resolveHypothesesOutcome(
 
 	best := results[bestIdx]
 
+	var preMixtureHead string
+	if taskGit != nil {
+		if head, err := taskGit.Run(ctx, false, "rev-parse", "HEAD"); err == nil {
+			preMixtureHead = strings.TrimSpace(head)
+		}
+	}
+
 	if hypCfg.GetResolution() == config.ResolutionMixture && len(results) >= 2 && !best.Passed {
 		// Mixture Resolution: synthesize complementary implementations
 		fmt.Printf("🧬 [Multi-Hypothesis Mixture] Attempting synthesis of complementary hypotheses %d and %d...\n",
@@ -226,20 +235,42 @@ func (o *Orchestrator) resolveHypothesesOutcome(
 			}
 		}
 		fmt.Printf("ℹ [Multi-Hypothesis Mixture] Mixture did not reach 100%% green; falling back to best hypothesis %d.\n", best.Index)
+		if taskGit != nil && preMixtureHead != "" {
+			_, _ = taskGit.Run(ctx, false, "reset", "--hard", preMixtureHead)
+			_, _ = taskGit.Run(ctx, false, "clean", "-fd")
+		}
 	}
 
 	// Apply winning hypothesis into task branch
 	fmt.Printf("🏆 [Multi-Hypothesis Selection] Selected Hypothesis %d (Passed: %v, PassRate: %.1f%%)\n",
 		best.Index, best.Passed, best.PassRate)
+	if taskGit != nil && preMixtureHead != "" {
+		_, _ = taskGit.Run(ctx, false, "reset", "--hard", preMixtureHead)
+		_, _ = taskGit.Run(ctx, false, "clean", "-fd")
+	}
 	if best.TaskGit != nil {
 		diff, dErr := best.TaskGit.Run(ctx, false, "diff", "HEAD~1")
 		if dErr == nil && len(diff) > 0 {
 			patchFile := filepath.Join(taskState.ProjectPath, fmt.Sprintf(".hyp_%d.patch", best.Index))
 			if pErr := os.WriteFile(patchFile, []byte(diff), 0644); pErr == nil {
-				_, _ = taskGit.Run(ctx, false, "apply", "--3way", patchFile)
+				_, aErr := taskGit.Run(ctx, false, "apply", "--whitespace=nowarn", patchFile)
+				if aErr != nil {
+					_, _ = taskGit.Run(ctx, false, "apply", "--3way", patchFile)
+				}
 				_ = os.Remove(patchFile)
+
+				// Conflict marker safety guard: if 3way merge left conflict markers, revert and copy files directly
+				if violations, vErr := DetectConflictMarkersInWorkspace(taskState.ProjectPath); vErr == nil && len(violations) > 0 {
+					fmt.Printf("⚠️ [Multi-Hypothesis] Patch application left %d conflict marker(s). Reverting and restoring from hypothesis worktree...\n", len(violations))
+					if preMixtureHead != "" {
+						_, _ = taskGit.Run(ctx, false, "reset", "--hard", preMixtureHead)
+						_, _ = taskGit.Run(ctx, false, "clean", "-fd")
+					}
+					// Copy modified files directly from the best worktree to prevent conflict markers
+					SeedTaskWorktreeWorkspace(best.WorktreeDir, taskState.ProjectPath)
+				}
 			}
 		}
 	}
-	_ = o.stageAndCommit(ctx, taskGit, taskID, "feat(core): apply winning hypothesis %d for task %s - %s", best.Index, task.Title)
+	_ = o.stageAndCommit(ctx, taskGit, taskID, "feat(core): task %s apply winning hypothesis %d - %s", best.Index, task.Title)
 }

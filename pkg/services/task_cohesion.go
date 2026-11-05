@@ -86,7 +86,7 @@ func isMegaTaskViolation(task domain.Task) (bool, string) {
 	for _, f := range task.TargetFiles {
 		clean := strings.ToLower(filepath.ToSlash(f))
 		base := filepath.Base(clean)
-		if isCohesionTestFile(base) || isCohesionDocOrConfig(base) {
+		if isCohesionTestFile(base) || isCohesionDocOrConfig(base) || isCohesionTestPath(clean) {
 			continue
 		}
 		nonTestCount++
@@ -143,6 +143,19 @@ func isCohesionTestFile(base string) bool {
 		strings.HasSuffix(lower, "test.cs") ||
 		strings.HasSuffix(lower, "tests.cs") ||
 		strings.HasSuffix(lower, "_test.ml")
+}
+
+func isCohesionTestPath(clean string) bool {
+	return strings.Contains(clean, "/tests/") ||
+		strings.Contains(clean, "/test/") ||
+		strings.Contains(clean, "/test_suite/") ||
+		strings.Contains(clean, "/fixtures/") ||
+		strings.Contains(clean, "/spec/") ||
+		strings.Contains(clean, "/specs/") ||
+		strings.HasPrefix(clean, "tests/") ||
+		strings.HasPrefix(clean, "test/") ||
+		strings.HasPrefix(clean, "fixtures/") ||
+		strings.HasPrefix(clean, "spec/")
 }
 
 func isCohesionDocOrConfig(base string) bool {

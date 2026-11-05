@@ -233,6 +233,10 @@ func (o *baseOpenAIClient) Call(ctx context.Context, model, apiKey, prompt strin
 		if isOpenAIEndpoint && (k == "thinking_budget" || k == "enable_thinking" || k == "thinkingConfig" || k == "thinking") {
 			continue
 		}
+		// When thinking is explicitly disabled, omit reasoning_effort to avoid HTTP 400 on DashScope/Qwen/OpenRouter
+		if (k == "reasoning_effort" || k == "reasoning") && hasThinkingDisabled(o.extraBody) {
+			continue
+		}
 		if !globalCapabilityCache.isExtraParamUnsupported(model, k) {
 			filteredExtra[k] = v
 		}

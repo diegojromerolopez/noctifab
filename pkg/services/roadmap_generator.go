@@ -338,6 +338,12 @@ func GenerateRoadmapWithStreaming(
 			}
 			return fmt.Errorf("roadmap generation failed on pass %d/%d: %w", p, passes, lastErr)
 		}
+
+		// When streaming stories directly into the active StoryDAGScheduler, skip redundant second-pass
+		// full-roadmap re-audits since stories from Pass 1 are already dispatched for task execution.
+		if onStoryReady != nil && p == 1 {
+			return nil
+		}
 	}
 
 	return nil

@@ -237,7 +237,7 @@ func runStartCommand(cmd *cobra.Command, args []string) error {
 		}(targetDir)
 	}
 
-	if !hasExistingStories {
+	if !hasExistingStories && !cfg.VCS.UseWorktrees {
 		if _, spikeErr := services.ExecuteSpike(cmdCtx, targetDir, cfg, llmClient, promptRenderer, executionReporter); spikeErr != nil {
 			fmt.Printf("Warning: Spike prototyping phase failed: %v\n", spikeErr)
 		}

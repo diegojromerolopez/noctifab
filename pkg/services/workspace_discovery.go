@@ -15,6 +15,7 @@ var defaultExcludedDirs = map[string]bool{
 	".noctifab":     true,
 	"target":        true,
 	"node_modules":  true,
+	"vendor":        true,
 	"__pycache__":   true,
 	".venv":         true,
 	"venv":          true,
@@ -38,6 +39,10 @@ var defaultExcludedDirs = map[string]bool{
 	".turbo":        true,
 	".idea":         true,
 	".vscode":       true,
+	"static":        true,
+	"staticfiles":   true,
+	"migrations":    true,
+	"fixtures":      true,
 }
 
 var defaultExcludedFiles = map[string]bool{
@@ -64,6 +69,10 @@ var defaultExcludedExts = map[string]bool{
 	".pid":         true,
 	".prof":        true,
 	".tsbuildinfo": true,
+	".sqlite":      true,
+	".sqlite3":     true,
+	".db":          true,
+	".map":         true,
 }
 
 // IsPathExcluded evaluates whether a relative path is excluded by system rules or configured patterns.
@@ -75,13 +84,17 @@ func IsPathExcluded(relPath string, excludePaths []string) bool {
 	slashRel := filepath.ToSlash(cleanRel)
 	parts := strings.Split(slashRel, "/")
 	for _, p := range parts {
-		if defaultExcludedDirs[p] {
+		lower := strings.ToLower(p)
+		if defaultExcludedDirs[lower] {
 			return true
 		}
 	}
 
 	base := strings.ToLower(filepath.Base(slashRel))
 	if defaultExcludedFiles[base] {
+		return true
+	}
+	if strings.HasSuffix(base, ".min.js") || strings.HasSuffix(base, ".min.css") || strings.HasSuffix(base, ".map") {
 		return true
 	}
 

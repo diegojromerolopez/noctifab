@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -72,6 +73,9 @@ var ignoredLegacyFiles = map[string]bool{
 // manifests, or configuration files that should not trigger legacy codebase stabilization.
 func IsIgnoredLegacyFile(relPath string) bool {
 	cleanRel := filepath.ToSlash(filepath.Clean(relPath))
+	if IsPathExcluded(cleanRel, nil) {
+		return true
+	}
 	lowerRel := strings.ToLower(cleanRel)
 	if lowerRel == "tests/acceptance" || strings.HasPrefix(lowerRel, "tests/acceptance/") {
 		return true
@@ -87,7 +91,8 @@ func IsIgnoredLegacyFile(relPath string) bool {
 		if lowerPart == "target" || lowerPart == "node_modules" || lowerPart == "vendor" ||
 			lowerPart == "build" || lowerPart == "dist" || lowerPart == "output" ||
 			lowerPart == "__pycache__" || lowerPart == "venv" || lowerPart == ".venv" ||
-			lowerPart == "log" || lowerPart == "logs" || lowerPart == "report" || lowerPart == "reports" {
+			lowerPart == "log" || lowerPart == "logs" || lowerPart == "report" || lowerPart == "reports" ||
+			lowerPart == "static" || lowerPart == "staticfiles" || lowerPart == "migrations" || lowerPart == "fixtures" {
 			return true
 		}
 	}
@@ -159,7 +164,10 @@ func CountSignificantLines(filePath string) (int, error) {
 // If the total non-manifest significant lines of code across all candidate files is less than
 // MinLegacyTotalLineCount (50 lines), the repository is classified as Greenfield and returns an empty slice.
 func ScanLegacyFiles(projectPath string) ([]string, error) {
-	exclude := []string{"roadmap", "user-stories", "tasks", "tests/acceptance", "output", "dist", ".git", ".noctifab", "target", "node_modules", "vendor", "build", ".venv", "venv", "__pycache__", "log", "logs", "report", "reports"}
+	if isSpikeOnlyGitHistory(projectPath) {
+		return nil, nil
+	}
+	exclude := []string{"roadmap", "user-stories", "tasks", "tests/acceptance", "output", "dist", ".git", ".noctifab", "target", "node_modules", "vendor", "build", ".venv", "venv", "__pycache__", "log", "logs", "report", "reports", "static", "staticfiles", "migrations", "fixtures"}
 	files, err := ListWorkspaceSourceFiles(context.Background(), projectPath, exclude)
 	if err != nil {
 		return nil, err
@@ -215,4 +223,24 @@ func IsGreenfieldWorkspace(projectPath string) (bool, []string, error) {
 		return false, nil, err
 	}
 	return len(legacyFiles) == 0, legacyFiles, nil
+}
+
+// isSpikeOnlyGitHistory checks whether the latest commit on HEAD was produced by ExecuteSpike
+// on a greenfield repository (<= 2 total commits), preventing Spike scaffolding from falsely
+// triggering Legacy Codebase Stabilization Mode.
+func isSpikeOnlyGitHistory(projectPath string) bool {
+	if _, err := os.Stat(filepath.Join(projectPath, ".git")); err != nil {
+		return false
+	}
+	cmd := exec.Command("git", "log", "--oneline", "-n", "4")
+	cmd.Dir = projectPath
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 0 || len(lines) > 2 {
+		return false
+	}
+	return strings.Contains(lines[0], "initial spike solution walking skeleton")
 }

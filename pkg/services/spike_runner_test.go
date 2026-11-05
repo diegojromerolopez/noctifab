@@ -124,3 +124,98 @@ func TestExecuteSpike_GreenfieldSuccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(out), "initial spike solution walking skeleton")
 }
+
+func TestExecuteSpike_RejectsBrokenSyntaxAndRollsBack(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte("# Test Project Spec"), 0644))
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Spike: config.SpikeConfig{
+				Enabled:        true,
+				TimeoutSeconds: 30,
+			},
+		},
+	}
+
+	mockLLM := &mockSpikeLLMClient{
+		completeFn: func(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+			return &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "write_files",
+						Args: map[string]any{
+							"files": map[string]any{
+								"broken.go": "package main\nfunc main( { unclosed syntax\n",
+							},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	executed, err := ExecuteSpike(context.Background(), tempDir, cfg, mockLLM, nil, nil)
+	require.Error(t, err)
+	assert.False(t, executed)
+	assert.NoFileExists(t, filepath.Join(tempDir, "broken.go"))
+}
+
+func TestExecuteSpike_DoesNotTriggerLegacyClassification(t *testing.T) {
+	tempDir := t.TempDir()
+	initCmd := exec.Command("git", "init")
+	initCmd.Dir = tempDir
+	require.NoError(t, initCmd.Run())
+
+	gitConfigName := exec.Command("git", "config", "user.name", "Tester")
+	gitConfigName.Dir = tempDir
+	_ = gitConfigName.Run()
+	gitConfigEmail := exec.Command("git", "config", "user.email", "test@noctifab.local")
+	gitConfigEmail.Dir = tempDir
+	_ = gitConfigEmail.Run()
+
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "SPEC.md"), []byte("# Test Project Spec"), 0644))
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Spike: config.SpikeConfig{
+				Enabled:        true,
+				TimeoutSeconds: 30,
+			},
+		},
+	}
+
+	var bigCode strings.Builder
+	bigCode.WriteString("package main\nimport \"fmt\"\nfunc main() {\n")
+	for i := 0; i < 60; i++ {
+		bigCode.WriteString(fmt.Sprintf("\tfmt.Println(%d)\n", i))
+	}
+	bigCode.WriteString("}\n")
+
+	mockLLM := &mockSpikeLLMClient{
+		completeFn: func(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+			return &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "write_files",
+						Args: map[string]any{
+							"files": map[string]any{
+								"main.go": bigCode.String(),
+							},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	executed, err := ExecuteSpike(context.Background(), tempDir, cfg, mockLLM, nil, nil)
+	require.NoError(t, err)
+	assert.True(t, executed)
+
+	// Even though main.go has > 50 lines, ScanLegacyFiles must NOT classify it as legacy code
+	// because it was produced by ExecuteSpike on a greenfield repository.
+	legacyFiles, scanErr := ScanLegacyFiles(tempDir)
+	require.NoError(t, scanErr)
+	assert.Empty(t, legacyFiles)
+}

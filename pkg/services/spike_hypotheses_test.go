@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -9,11 +10,14 @@ import (
 )
 
 type mockSpikeHypothesesLLMClient struct {
+	mu        sync.Mutex
 	responses []*domain.LLMResponse
 	callIndex int
 }
 
 func (m *mockSpikeHypothesesLLMClient) Complete(ctx context.Context, prompt string) (*domain.LLMResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.callIndex < len(m.responses) {
 		res := m.responses[m.callIndex]
 		m.callIndex++

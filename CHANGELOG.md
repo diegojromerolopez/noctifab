@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.130.0] - 2026-11-05
+
+### Added
+- **Multi-Hypothesis Conflict Marker Guard & Clean Workspace Reset (`pkg/services/hypothesis_runner.go`)**:
+  - Reverts working tree (`git reset --hard` and `git clean -fd`) before applying winning hypothesis patch when mixture resolution fails.
+  - Automatically runs `DetectConflictMarkersInWorkspace` and falls back cleanly to copying winning worktree files via `SeedTaskWorktreeWorkspace` if `git apply --3way` leaves raw Git conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
+- **Dependency Resolution Failure Detection & Test Path Granularity Isolation (`cmd/noctifab/cli/`, `pkg/services/task_cohesion.go`)**:
+  - Added `DetectDependencyResolutionFailure` to scan build diagnostics for crate/package index failures (`failed to select a version`, `crates.io index`, `npm ERR! 404`).
+  - Added Directive 11 to Sovereign Rescue prompt mandating that agents never retry invalid external package names/versions and must edit the manifest or implement in-tree logic.
+  - Added `isCohesionTestPath` in `pkg/services/task_cohesion.go` to exclude paths under `tests/`, `test/`, `fixtures/`, and `spec/` from production file limits, preventing false mega-task granularity rejections.
+- **Provider Protocol Adaptive Reasoning Effort Stripping (`pkg/infrastructure/llm/openai.go`, `openai_adapt.go`)**:
+  - Strips `reasoning_effort` and `reasoning` payloads when `enable_thinking` is false (`hasThinkingDisabled`).
+  - Added adaptive fallback in `looksLikeExtraBodyRejection` to detect `reasoning_effort` and `enable_thinking` 400 errors and strip incompatible parameters dynamically.
+- **Greenfield `./gradlew` Executable Auto-Scaffolding (`pkg/services/worktree_cache.go`, `pkg/services/sandbox.go`)**:
+  - Added `EnsureGradlewScript` to scaffold a portable, executable `gradlew` wrapper delegating to host `gradle` or `mvn` when missing on disk.
+  - Added sandbox pre-execution check to ensure `gradlew` exists before executing commands containing `./gradlew`.
+- **Zero External Daemon Dependency Mandate (`pkg/infrastructure/prompts/defaults/tester/`)**:
+  - Mandated in tester prompts (`write.tmpl`, `write_breadth_first.tmpl`, `fix.tmpl`, `refactor.tmpl`) that host tests must never assume external system daemons (Redis 6379, Postgres 5432) are running, requiring in-memory mocks, stubs, or ephemeral background processes.
+- **Legacy Monorepo Context Blowup Prevention & Accurate Churn Diffing (`pkg/services/workspace_discovery.go`, `legacy_scanner.go`, `reporting/churn.go`)**:
+  - Expanded `IsPathExcluded` and `defaultExcludedDirs` to exclude `vendor`, `static`, `staticfiles`, `migrations`, `fixtures`, minified assets (`.min.js`, `.min.css`), `.map`, and SQLite databases (`.db`, `.sqlite`, `.sqlite3`).
+  - Updated `isVendorOrArtifactPath` in `pkg/services/reporting/churn.go` to use `IsPathExcluded` and compare against base branches (`main`/`master`) for existing repositories rather than commit 0, eliminating inflated churn reporting.
+
 ## [0.129.0] - 2026-11-01
 
 ### Changed

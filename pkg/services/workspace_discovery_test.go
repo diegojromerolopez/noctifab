@@ -37,6 +37,18 @@ func TestIsPathExcluded(t *testing.T) {
 			"object.o",
 			"libfoo.so",
 			"test.log",
+			"static/css/bootstrap.css",
+			"staticfiles/bundle.js",
+			"migrations/0001_initial.py",
+			"djanban/apps/boards/migrations/0002_auto.py",
+			"fixtures/sample.json",
+			"vendor/autoload.php",
+			"templates/vendor/jquery.js",
+			"app.min.js",
+			"bundle.min.css",
+			"bundle.js.map",
+			"data.sqlite3",
+			"data.db",
 		}
 		for _, s := range samples {
 			if !IsPathExcluded(s, nil) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -172,5 +173,32 @@ func TestEnsureSTESpecification(t *testing.T) {
 		steData, err := os.ReadFile(stePath)
 		require.NoError(t, err)
 		assert.Equal(t, humanSpec, string(steData))
+	})
+
+	t.Run("when SPEC.md exceeds 25KB, it translates sections in parallel and joins them into SPEC.ste.md", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		specPath := filepath.Join(tmpDir, "SPEC.md")
+		sec1 := "# Big Spec\n\n## Section 1\n" + strings.Repeat("Rule A: Execute command alpha. ", 600)
+		sec2 := "\n## Section 2\n" + strings.Repeat("Rule B: Execute command beta. ", 600)
+		largeSpec := sec1 + sec2
+		require.NoError(t, os.WriteFile(specPath, []byte(largeSpec), 0644))
+
+		mockLLM := &mockRoadmapLLMClient{
+			Response: &domain.LLMResponse{
+				Actions: []domain.LLMAction{
+					{
+						Tool: "translate_ste",
+						Args: map[string]any{
+							"content": "## Compacted Section\n- Do task.",
+						},
+					},
+				},
+			},
+		}
+
+		content, err := services.EnsureSTESpecification(context.Background(), tmpDir, mockLLM, nil)
+		require.NoError(t, err)
+		assert.Contains(t, content, "## Compacted Section")
+		assert.Less(t, len(content), len(largeSpec)/2)
 	})
 }
