@@ -134,13 +134,10 @@ func (tsi *TestStreamIsolator) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, 
 	go readPipe(stdoutPipe)
 	go readPipe(stderrPipe)
 
+	done := make(chan error, 1)
 	go func() {
 		wg.Wait()
 		close(lineChan)
-	}()
-
-	done := make(chan error, 1)
-	go func() {
 		done <- cmd.Wait()
 	}()
 
@@ -164,18 +161,12 @@ func (tsi *TestStreamIsolator) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, 
 		idleTimer.Reset(tsi.cfg.IdleTimeout)
 	}
 
-	var cmdDone bool
-	var cmdErr error
-
 	for {
 		select {
 		case line, ok := <-lineChan:
 			if !ok {
-				lineChan = nil
-				if cmdDone {
-					return outputBuf.Bytes(), cmdErr
-				}
-				continue
+				cmdErr := <-done
+				return outputBuf.Bytes(), cmdErr
 			}
 			mu.Lock()
 			_, _ = outputBuf.Write([]byte(line + "\n"))
@@ -202,7 +193,7 @@ func (tsi *TestStreamIsolator) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, 
 			mu.Unlock()
 
 			if currentTest != "" {
-				return tsi.isolateAndKill(cmd, outputBuf, currentTest, elapsed)
+				return tsi.isolateAndKill(cmd, done, outputBuf, currentTest, elapsed)
 			}
 			resetPerTestTimer()
 
@@ -215,9 +206,13 @@ func (tsi *TestStreamIsolator) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, 
 
 			if silence >= tsi.cfg.IdleTimeout {
 				if currentTest != "" {
-					return tsi.isolateAndKill(cmd, outputBuf, currentTest, elapsed)
+					return tsi.isolateAndKill(cmd, done, outputBuf, currentTest, elapsed)
 				}
 				_ = tsi.killGroup(cmd, syscall.SIGKILL)
+				select {
+				case <-done:
+				case <-time.After(1 * time.Second):
+				}
 				return outputBuf.Bytes(), ErrWatchdogIdleTimeout
 			}
 			resetIdleTimer()
@@ -229,27 +224,27 @@ func (tsi *TestStreamIsolator) Run(ctx context.Context, cmd *exec.Cmd) ([]byte, 
 			mu.Unlock()
 
 			if currentTest != "" {
-				return tsi.isolateAndKill(cmd, outputBuf, currentTest, elapsed)
+				return tsi.isolateAndKill(cmd, done, outputBuf, currentTest, elapsed)
 			}
 			_ = tsi.killGroup(cmd, syscall.SIGKILL)
+			select {
+			case <-done:
+			case <-time.After(1 * time.Second):
+			}
 			return outputBuf.Bytes(), ErrWatchdogMaxDuration
 
 		case <-ctx.Done():
 			_ = tsi.killGroup(cmd, syscall.SIGKILL)
-			return outputBuf.Bytes(), ctx.Err()
-
-		case waitErr := <-done:
-			_ = tsi.killGroup(cmd, syscall.SIGKILL)
-			cmdDone = true
-			cmdErr = waitErr
-			if lineChan == nil {
-				return outputBuf.Bytes(), waitErr
+			select {
+			case <-done:
+			case <-time.After(1 * time.Second):
 			}
+			return outputBuf.Bytes(), ctx.Err()
 		}
 	}
 }
 
-func (tsi *TestStreamIsolator) isolateAndKill(cmd *exec.Cmd, buf *BoundedBuffer, hungTest string, elapsed time.Duration) ([]byte, error) {
+func (tsi *TestStreamIsolator) isolateAndKill(cmd *exec.Cmd, done <-chan error, buf *BoundedBuffer, hungTest string, elapsed time.Duration) ([]byte, error) {
 	// Step 1: Send SIGQUIT to process group to trigger runtime stack traces
 	_ = tsi.killGroup(cmd, syscall.SIGQUIT)
 
@@ -258,6 +253,11 @@ func (tsi *TestStreamIsolator) isolateAndKill(cmd *exec.Cmd, buf *BoundedBuffer,
 
 	// Step 3: Send SIGKILL to terminate process group cleanly
 	_ = tsi.killGroup(cmd, syscall.SIGKILL)
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+	}
 
 	captured := string(buf.Bytes())
 	blockedLoc := extractBlockedLocation(captured)
