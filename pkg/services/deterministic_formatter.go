@@ -62,6 +62,16 @@ func detectDeterministicFormatters(projectPath string) []string {
 		cmds = append(cmds, "clang-format -i $(find . -maxdepth 4 -name '*.c' -o -name '*.h' -o -name '*.cpp' 2>/dev/null) 2>/dev/null || true")
 	}
 
+	// 7. C#: dotnet format
+	if hasExtInDir(projectPath, ".cs") {
+		cmds = append(cmds, "dotnet format 2>/dev/null || true")
+	}
+
+	// 8. OCaml: dune fmt
+	if hasExtInDir(projectPath, ".ml") {
+		cmds = append(cmds, "dune fmt 2>/dev/null || true")
+	}
+
 	return cmds
 }
 

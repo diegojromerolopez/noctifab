@@ -239,15 +239,16 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		passed, logMsg = checkTaskMutations(ctx, task, taskGit, integrationBranch, passed, logMsg)
 		passed, logMsg = checkTaskStoryContracts(ctx, o.evaluator, &taskState, task, passed, logMsg)
 
-		// First-Class Generator Surgical Repair
-		initCategory := CategorizeFailureLog(logMsg)
-		canSurgicallyRepair := qaBlocked == "" || qaBlocked == "generator_no_op_validation_failed"
-		if !passed && canSurgicallyRepair && (initCategory == FailureCompile || initCategory == FailureTestLogic || strings.Contains(strings.ToLower(logMsg), "e2e") || strings.Contains(strings.ToLower(logMsg), "contract smoke check failed") || strings.Contains(logMsg, "zero file mutations") || qaBlocked == "generator_no_op_validation_failed") {
-			fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s (qaBlocked=%s)...\n", taskID, initCategory, qaBlocked)
-			o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
-			passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
-			passed, logMsg = checkTaskMutations(ctx, task, taskGit, integrationBranch, passed, logMsg)
-			passed, logMsg = checkTaskStoryContracts(ctx, o.evaluator, &taskState, task, passed, logMsg)
+		// Autonomous Multi-Turn Convergence Repair Loop:
+		// In every step, deterministic auto-fixes are attempted first.
+		// If deterministic fix does not work, the agent is provided with the exact error diagnostics
+		// and offending code snippets from disk, iterating until validation passes or fallback triggers.
+		category := CategorizeFailureLog(logMsg)
+		isSandboxFailure := !passed && category == FailureSandbox
+		canRepair := !isSandboxFailure && (qaBlocked == "" || qaBlocked == "generator_no_op_validation_failed")
+		if !passed && canRepair {
+			fmt.Printf("Orchestrator: Task %s entering autonomous convergence repair loop...\n", taskID)
+			passed, logMsg = o.executeConvergenceRepairLoop(ctx, task, &taskState, taskGit, logMsg, integrationBranch)
 			if passed {
 				qaBlocked = ""
 			}
@@ -269,7 +270,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 
 		// Fallback Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, QA deadlock, stall count >= 2, or FallbackUsed)
-		category := CategorizeFailureLog(logMsg)
+		category = CategorizeFailureLog(logMsg)
 		isSandbox := !passed && category == FailureSandbox
 		canRetry := !passed && !isSandbox && task.Retries < effectiveMaxRetries
 

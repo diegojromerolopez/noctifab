@@ -175,10 +175,12 @@ The autonomous dark factory architecture prioritizes a **Vertical Walking Skelet
 - The Product Manager Agent formats the initial user story (`roadmap/user-stories/US-001.md`) to produce an end-to-end compiling binary with baseline test verification.
 - Delivering a working entrypoint in the first 2 minutes establishes the compilation pipeline and baseline black-box test passes before downstream stories expand deeper domain schemas or auxiliary interfaces.
 
-### 9. Two-Turn Surgical Repair Pipeline (`pkg/services/orchestrator_execute_turns.go`)
-When a test failure occurs during code generation:
-- **Diagnostic Pre-Reading**: The orchestrator parses the compiler or test failure log, extracts the offending file paths, and pre-reads their current disk content into the surgical generator's context buffer.
-- **Two-Turn Budget**: Surgical repair runs with a dedicated 2-turn budget. In Turn 1, the agent applies targeted fixes directly via `write_file`/`edit_file`. In Turn 2, verification checks and final adjustments are completed, avoiding unbounded single-action inspection loops.
+### 9. Autonomous Closed Convergence Repair Loop (`pkg/services/orchestrator_convergence_loop.go`)
+When a test failure or compilation error occurs during task execution:
+- **Deterministic Auto-Fix Pre-Step**: Prior to calling the LLM, the loop executes language-specific deterministic formatters (`gofmt`, `cargo fmt`, `ruff format`, `dotnet format`, `dune fmt`, `clang-format`). If formatting alone satisfies validation, the task fast-passes immediately with 0 token overhead.
+- **Diagnostic & Offending Code Extraction (`pkg/services/offending_code_extractor.go`)**: Multi-language regexes (C# Roslyn, Rust Cargo, OCaml Dune, Java/Kotlin, TypeScript, Make, Cargo) parse error locations. The extractor reads the file on disk and renders a 5-line contextual window with line numbers and a visual pointer (`>>`) marking the offending line.
+- **Multi-Turn Convergence Budget**: Executes an iterative closed loop (up to 4 turns). Each turn stages and commits progress on the worker branch, re-evaluating build and tests.
+- **Resilience & Fallback Simplification (Directive 7)**: If standard convergence turns are exhausted, a simplification turn forces a minimal, clean, compiling solution before escalating to the Fallback Agent.
 
 ### 10. Persistent LLM Capability Cache & Upfront Model Resolution (`pkg/infrastructure/llm/`)
 - **Preflight Model Discovery**: `PingAndResolveModel` queries `/models` at startup to validate configured model identifiers. Deprecated or 404 models are automatically upgraded to the highest-ranked available flagship model before orchestrator dispatch.
@@ -458,8 +460,8 @@ When a provider adopts a completely new naming convention (e.g., changing from `
 - **`runtime.max_duration`**: Specifies a story-level wall-clock timeout.
 - **`sandbox.timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
 
-#### First-Class Generator Surgical Repair (`surgical_repair`)
-When a task fails test validation due to a compilation error or test assertion failure, the orchestrator triggers a single-turn **Surgical Repair Pass** (`surgical_repair` prompt template). It bypasses the reader context collection phase to minimize token latency, passing the exact compiler/test failure stack trace directly to the Generator Agent to perform minimal, targeted edits in `edit_file` without rewriting working code.
+#### Autonomous Closed Convergence Repair Loop (`surgical_repair`)
+When a task fails test validation due to a compilation error or test assertion failure, the orchestrator triggers the multi-turn **Closed Convergence Repair Loop** (`surgical_repair` prompt template). Prior to invoking the agent, deterministic formatters are evaluated first. If errors persist, the orchestrator extracts structured diagnostic lines and disk-level offending source snippets with `>>` pointers, passing them directly to the Generator Agent to perform localized edits via `edit_file` across up to 4 iterative turns. If standard convergence turns are exhausted, a fallback simplification turn (Directive 7) is executed before escalating.
 
 #### Zero-Token Pre-Commit Auto-Formatting
 Before Git commits are staged and committed (`stageAndCommit`), the orchestrator automatically executes the project's configured formatter (`sandbox.formatter_command`, e.g. `go fmt ./...`) directly within the active task worktree, ensuring syntax and style compliance with zero LLM turns.

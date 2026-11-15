@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.131.0] - 2026-11-15
+
+### Added
+- **Autonomous Multi-Turn Closed Convergence Repair Loop (`pkg/services/orchestrator_convergence_loop.go`)**:
+  - Replaced single-pass repair with a 4-turn autonomous closed convergence loop that re-validates build and test suites iteratively after each repair step.
+  - Integrates the **Deterministic Auto-Fix Pre-Step**: runs local language formatters (`gofmt`, `cargo fmt`, `ruff format`, `dotnet format`, `dune fmt`, `clang-format`, `rubocop`, `prettier`) before calling LLM models, achieving immediate 0-token passes when formatting alone resolves test rejections.
+  - Implements **Directive 7 Fallback Simplification** on Turn 5 when standard convergence turns are exhausted, instructing the Generator to produce a minimal, clean, compiling solution before escalating to the Fallback Agent.
+- **Offending Code Snippet Extraction Engine (`pkg/services/offending_code_extractor.go`)**:
+  - Automatically resolves error paths on disk (falling back to recursive directory search by basename if paths differ).
+  - Extracts 5 lines of surrounding context with exact line numbers and places a high-contrast visual pointer (`>>`) on the offending line (e.g. `>> 11 | UpdateState(ref this.CurrentTurn, out this.Winner); <-- OFFENDING CODE`).
+  - Supports language-aware code fences (`csharp`, `rust`, `ocaml`, `python`, `go`, `java`, `typescript`, `makefile`, `toml`).
+- **Multi-Language Error Diagnostic Parsing (`pkg/services/error_formatter.go`)**:
+  - Expanded `extractDiagnostics` to parse structured error locations and error codes across C# Roslyn (`Board.cs(20,50): error CS0206`), Rust Cargo / rustc (`--> src/main.rs:12:5`), OCaml Dune (`File "lib/engine.ml", line 44`), Java/Kotlin (`App.java:23: error`), TypeScript/JavaScript (`src/index.ts:14:5 - error TS2322`), Make missing targets (`make: *** No rule to make target 'build'`), and Cargo dependency requirements (`failed to select a version for the requirement`).
+- **Unrecoverable Sandbox Error Refinement (`pkg/services/watchdog_repair.go`, `pkg/services/orchestrator_execute.go`)**:
+  - Excluded package, crate, module, and requirement resolution errors from being classified as unrecoverable host environment failures (`FailureSandbox`), routing manifest issues directly into the convergence repair loop.
+- **Documentation Synchronization (`SPEC.md`, `docs/loop_orchestration.md`, `docs/architecture.md`)**:
+  - Synchronized architectural documentation and system specifications with the autonomous multi-turn closed convergence loop and offending code extraction engine.
+
 ## [0.130.0] - 2026-11-05
 
 ### Added
