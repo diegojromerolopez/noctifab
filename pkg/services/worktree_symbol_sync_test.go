@@ -43,6 +43,43 @@ func TestAutoLinkSymbolDependencies(t *testing.T) {
 
 	services.AutoLinkSymbolDependencies(tasks)
 	assert.Contains(t, tasks[1].DependsOn, "TASK-001")
+
+	// Test circular dependency prevention
+	cyclicTasks := []domain.Task{
+		{
+			ID:          "TASK-001",
+			Title:       "Create Tokenizer",
+			Description: "Parse tokens",
+			TargetFiles: []string{"src/Tokenizer.cs"},
+			DependsOn:   []string{"TASK-002"},
+		},
+		{
+			ID:          "TASK-002",
+			Title:       "Create Parser",
+			Description: "Use Tokenizer to parse AST",
+			TargetFiles: []string{"src/Parser.cs"},
+		},
+	}
+	services.AutoLinkSymbolDependencies(cyclicTasks)
+	// TASK-002 should NOT depend on TASK-001 because TASK-001 already depends on TASK-002
+	assert.NotContains(t, cyclicTasks[1].DependsOn, "TASK-001")
+
+	// Test generic stopword rejection (e.g. server, test)
+	genericTasks := []domain.Task{
+		{
+			ID:          "TASK-001",
+			Title:       "Server shell",
+			TargetFiles: []string{"src/server.c"},
+		},
+		{
+			ID:          "TASK-002",
+			Title:       "Run test",
+			Description: "Run test against server",
+			TargetFiles: []string{"tests/test.c"},
+		},
+	}
+	services.AutoLinkSymbolDependencies(genericTasks)
+	assert.Empty(t, genericTasks[1].DependsOn)
 }
 
 func TestSynchronizeMissingSymbolFromSiblings(t *testing.T) {

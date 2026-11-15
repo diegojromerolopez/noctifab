@@ -45,7 +45,6 @@ func (c *Client) providerClient() ProviderClient {
 	// if the client supports the extraBodySetter interface.
 	extra := make(map[string]interface{})
 	if c.EnableThinking != nil {
-		extra["enable_thinking"] = *c.EnableThinking
 		if strings.EqualFold(c.Provider, "claude") || strings.EqualFold(c.Provider, "anthropic") {
 			if *c.EnableThinking {
 				budget := 2048
@@ -61,9 +60,13 @@ func (c *Client) providerClient() ProviderClient {
 					"type": "disabled",
 				}
 			}
+		} else if strings.EqualFold(c.Provider, "openai") {
+			// OpenAI does not accept enable_thinking or thinking_budget JSON body params.
+		} else {
+			extra["enable_thinking"] = *c.EnableThinking
 		}
 	}
-	if c.ThinkingBudget != nil {
+	if c.ThinkingBudget != nil && !strings.EqualFold(c.Provider, "openai") && !strings.EqualFold(c.Provider, "anthropic") && !strings.EqualFold(c.Provider, "claude") {
 		extra["thinking_budget"] = *c.ThinkingBudget
 	}
 	for k, v := range c.ExtraParams {

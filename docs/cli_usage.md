@@ -102,18 +102,33 @@ Before dispatching agents, `noctifab start` runs comprehensive preflight verific
 - **Quality Gate Validation**: Verifies release gate constraints and language consistency before state initialization.
 
 ### 4. `demo`
-Launches an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay. Ideal for testing Noctifab's dark factory loop with zero LLM API keys.
+Launches a zero-config autonomous sandbox that unpacks a sample specification (`t4` ISO C17 S3-compatible HTTP object store by default) into `[target_dir]` (defaults to `demo`), initializes git and `.noctifab` workspace, and executes the autonomous dark factory code generation engine end-to-end.
+
+To maximize demo generation speed out of the box, the embedded `t4` and `cli` demo configurations (`.noctifab/config.yaml`) come pre-tuned with:
+- **Single-Pass Streaming Roadmap (`agents.product_manager.iterations: 1`, `passes: 1`)**: Streams user stories directly into `StoryDAGScheduler` as soon as Pass 1 completes.
+- **Spike Prototyping Disabled (`agents.spike.enabled: false`)**: Skips the redundant initial spike pass so `GenerateRoadmapStreaming` starts immediately and avoids triggering brownfield Legacy Stabilization prompts.
+- **Fast-Tier Model Routing for Non-Coding Phases**: Routes `product_manager`, `planner`, `qa`, and `auditor` roles to high-throughput fast-tier models (`claude-haiku-5-5` for Claude and `gpt-5.6-luna` for OpenAI) while preserving flagship coding models (`claude-sonnet-5`) for `generators`.
+- **Non-Blocking Background QA Acceptance Synthesis**: Synthesizes initial `tests/acceptance/` suites asynchronously in the background without blocking startup roadmap generation.
+
+Generated project files are preserved so you can inspect the code and run the test suite (`make test`).
 
 ```bash
-noctifab demo [--project <archetype>] [--offline] [--speed <multiplier>] [--no-cleanup]
+noctifab demo [target_dir] [--project <archetype>]
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--project` | `cli` | Demo archetype template (`cli`, `rest`) |
-| `--offline` | `true` | Deterministic offline replay mode without external network calls |
-| `--speed` | `1.0` | Execution speed multiplier (e.g. `2.0` for 2x speed) |
-| `--no-cleanup` | `false` | Preserve ephemeral `/tmp/noctifab-demo-*` workspace directory on exit |
+| Flag / Argument | Default | Description |
+|-----------------|---------|-------------|
+| `[target_dir]` | `demo` | Target directory where the demo project will be unpacked and generated |
+| `--project` | `t4` | Demo project archetype template (`t4`, `cli`, `rest`) |
+
+#### Quick Inspection:
+```bash
+noctifab demo
+cd demo
+make test   # Runs ISO C17 HTTP parser & status tests
+make build  # Compiles bin/t4
+./bin/t4    # Launches S3-compatible server on port 8080
+```
 
 ### 5. `dashboard`
 Launches the real-time progress dashboard to monitor active story and task orchestrations. By default, it opens the interactive Terminal User Interface (TUI). Pass `-w` / `--web` to launch the visual web dashboard in the browser instead.

@@ -124,6 +124,43 @@ func hasThinkingEnabled(extra map[string]interface{}) bool {
 	return false
 }
 
+// hasThinkingDisabled checks if thinking/reasoning is explicitly disabled in extra_body.
+func hasThinkingDisabled(extra map[string]interface{}) bool {
+	if extra == nil {
+		return false
+	}
+	if v, ok := extra["enable_thinking"]; ok {
+		switch val := v.(type) {
+		case bool:
+			if !val {
+				return true
+			}
+		case string:
+			if strings.ToLower(val) == "false" {
+				return true
+			}
+		}
+	}
+	if b, ok := extra["thinking_budget"]; ok {
+		switch val := b.(type) {
+		case int:
+			if val == 0 {
+				return true
+			}
+		case float64:
+			if val == 0 {
+				return true
+			}
+		}
+	}
+	if th, ok := extra["thinking"].(map[string]interface{}); ok {
+		if t, ok := th["type"].(string); ok && (t == "disabled" || t == "none") {
+			return true
+		}
+	}
+	return false
+}
+
 // buildChatParams assembles SDK request params from completionOptions.
 func buildChatParams(model, prompt string, opts completionOptions) openai.ChatCompletionNewParams {
 	params := openai.ChatCompletionNewParams{
@@ -209,6 +246,12 @@ func looksLikeMaxTokensRejection(body string) bool {
 
 func looksLikeExtraBodyRejection(body string, extra map[string]interface{}) string {
 	low := strings.ToLower(body)
+	if strings.Contains(low, "reasoning_effort") {
+		return "reasoning_effort"
+	}
+	if strings.Contains(low, "enable_thinking") {
+		return "enable_thinking"
+	}
 	for k := range extra {
 		if strings.Contains(low, strings.ToLower(k)) {
 			return k

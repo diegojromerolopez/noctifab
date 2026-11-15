@@ -15,6 +15,19 @@ This pattern prevents context drift, keeps context usage highly token-efficient,
 
 ---
 
+## Noctifab vs. Other Autonomous Approaches
+
+| Dimension | Interactive Copilots (Aider, Claude Code, Cursor) | Cloud Black-Box (Devin, OpenHands) | **Noctifab (Dark Factory)** |
+| :--- | :--- | :--- | :--- |
+| **Operational Model** | Synchronous, human-in-the-loop chat | Cloud-hosted browser environment | **Local, headless background daemon or TUI/Web** |
+| **Cognitive Decomposition** | Single prompt $\rightarrow$ single edit | Conversational task planner | **ASD-STE100 Spec $\rightarrow$ Cross-Story DAG $\rightarrow$ Isolated Task Worktrees** |
+| **Flaky Test Defense** | None (Single pass = success) | Basic test retry | **Parallel 3x Majority-Vote Consensus Gate (≥ 2/3 pass)** |
+| **Verification Strategy** | Ad-hoc code edits | Trial-and-error | **Strict Two-Stage: Minimal Verification $\rightarrow$ Black-Box Validation** |
+| **Merge Governance** | Manual git commit/push | Remote PR | **Serialized Rebase Queue with 5-Tier Merge Engine** |
+| **Self-Healing** | Human manually corrects errors | LLM conversational re-prompting | **Intra-turn Watchdog, 0-token regex fast-paths, & Sovereign Fallback** |
+
+---
+
 ## Core Component Pipeline
 
 The orchestrator operates in a continuous loop comprising five distinct phases:
@@ -162,10 +175,12 @@ The autonomous dark factory architecture prioritizes a **Vertical Walking Skelet
 - The Product Manager Agent formats the initial user story (`roadmap/user-stories/US-001.md`) to produce an end-to-end compiling binary with baseline test verification.
 - Delivering a working entrypoint in the first 2 minutes establishes the compilation pipeline and baseline black-box test passes before downstream stories expand deeper domain schemas or auxiliary interfaces.
 
-### 9. Two-Turn Surgical Repair Pipeline (`pkg/services/orchestrator_execute_turns.go`)
-When a test failure occurs during code generation:
-- **Diagnostic Pre-Reading**: The orchestrator parses the compiler or test failure log, extracts the offending file paths, and pre-reads their current disk content into the surgical generator's context buffer.
-- **Two-Turn Budget**: Surgical repair runs with a dedicated 2-turn budget. In Turn 1, the agent applies targeted fixes directly via `write_file`/`edit_file`. In Turn 2, verification checks and final adjustments are completed, avoiding unbounded single-action inspection loops.
+### 9. Autonomous Closed Convergence Repair Loop (`pkg/services/orchestrator_convergence_loop.go`)
+When a test failure or compilation error occurs during task execution:
+- **Deterministic Auto-Fix Pre-Step**: Prior to calling the LLM, the loop executes language-specific deterministic formatters (`gofmt`, `cargo fmt`, `ruff format`, `dotnet format`, `dune fmt`, `clang-format`). If formatting alone satisfies validation, the task fast-passes immediately with 0 token overhead.
+- **Diagnostic & Offending Code Extraction (`pkg/services/offending_code_extractor.go`)**: Multi-language regexes (C# Roslyn, Rust Cargo, OCaml Dune, Java/Kotlin, TypeScript, Make, Cargo) parse error locations. The extractor reads the file on disk and renders a 5-line contextual window with line numbers and a visual pointer (`>>`) marking the offending line.
+- **Multi-Turn Convergence Budget**: Executes an iterative closed loop (up to 4 turns). Each turn stages and commits progress on the worker branch, re-evaluating build and tests.
+- **Resilience & Fallback Simplification (Directive 7)**: If standard convergence turns are exhausted, a simplification turn forces a minimal, clean, compiling solution before escalating to the Fallback Agent.
 
 ### 10. Persistent LLM Capability Cache & Upfront Model Resolution (`pkg/infrastructure/llm/`)
 - **Preflight Model Discovery**: `PingAndResolveModel` queries `/models` at startup to validate configured model identifiers. Deprecated or 404 models are automatically upgraded to the highest-ranked available flagship model before orchestrator dispatch.
@@ -299,7 +314,7 @@ claude-3-opus-20240229   [Rank: 430]  ← primary
     ↓ fails
 claude-3-5-sonnet-latest [Rank: 335]  ← fallback 1
     ↓ fails
-claude-3-5-haiku-latest  [Rank: 235]  ← fallback 2
+claude-haiku-5-5         [Rank: 255]  ← fallback 2
     ↓ fails
 (no fallback — surface error)
 ```
@@ -445,8 +460,8 @@ When a provider adopts a completely new naming convention (e.g., changing from `
 - **`runtime.max_duration`**: Specifies a story-level wall-clock timeout.
 - **`sandbox.timeout_seconds`**: Specifies a configurable command execution timeout for individual test and linter runs, preventing premature truncation on large test suites.
 
-#### First-Class Generator Surgical Repair (`surgical_repair`)
-When a task fails test validation due to a compilation error or test assertion failure, the orchestrator triggers a single-turn **Surgical Repair Pass** (`surgical_repair` prompt template). It bypasses the reader context collection phase to minimize token latency, passing the exact compiler/test failure stack trace directly to the Generator Agent to perform minimal, targeted edits in `edit_file` without rewriting working code.
+#### Autonomous Closed Convergence Repair Loop (`surgical_repair`)
+When a task fails test validation due to a compilation error or test assertion failure, the orchestrator triggers the multi-turn **Closed Convergence Repair Loop** (`surgical_repair` prompt template). Prior to invoking the agent, deterministic formatters are evaluated first. If errors persist, the orchestrator extracts structured diagnostic lines and disk-level offending source snippets with `>>` pointers, passing them directly to the Generator Agent to perform localized edits via `edit_file` across up to 4 iterative turns. If standard convergence turns are exhausted, a fallback simplification turn (Directive 7) is executed before escalating.
 
 #### Zero-Token Pre-Commit Auto-Formatting
 Before Git commits are staged and committed (`stageAndCommit`), the orchestrator automatically executes the project's configured formatter (`sandbox.formatter_command`, e.g. `go fmt ./...`) directly within the active task worktree, ensuring syntax and style compliance with zero LLM turns.
@@ -656,6 +671,29 @@ To preserve LLM context economics and minimize Time-To-First-Token (TTFT):
 ### 24. Red No-Op Strike Guard & Anti-Mega-Task Scope Ceiling (`pkg/services/orchestrator_generator.go`, `pkg/services/task_cohesion.go`)
 - **Red No-Op Guard with 2-Strike Turn Preservation**: Deterministically rejects `noop` or empty actions in `RunGeneratorAgent` whenever the active test suite is failing, granting a 2-strike turn-preserving budget (`turn--`) with actionable failure diagnostics before consuming generator turns.
 - **Anti-Mega-Task Scope Ceiling (`isMegaTaskViolation`)**: Deterministically rejects monolithic tasks targeting $> 6$ production files or enumerating $> 8$ command/operation keywords during `ValidateTaskCohesion`, forcing the planner to decompose work into modular sibling tasks.
+
+### 25. Independent QA Acceptance Test Runner & Immutable `tests/acceptance/` Protection (`pkg/services/qa_acceptance_runner.go`, `pkg/services/validator.go`)
+- **"True User / Zero Tricks" Black-Box Synthesis (`QAAcceptanceRunner`)**: Synthesizes and executes an independent black-box acceptance test suite in `tests/acceptance/` (e.g. `tests/acceptance/run_acceptance.sh`) using `SPEC.ste.md` as the sole behavioral ground truth and `README.md`/`Makefile` for build and CLI invocation instructions.
+- **Asynchronous Startup Synthesis & Mutex Serialization**: During `noctifab start`, initial acceptance test synthesis runs asynchronously in a background goroutine synchronized by an internal mutex (`acceptanceSynthMu`) so it never blocks roadmap generation or story execution on the startup critical path.
+- **Legacy Scanner Exclusion (`ScanLegacyFiles`)**: `tests/acceptance/` is explicitly excluded from legacy codebase detection (`IsIgnoredLegacyFile` and `ScanLegacyFiles`) so synthesized acceptance tests never trigger false-positive brownfield Legacy Stabilization mandates on greenfield workspaces.
+- **Immutable Client Contract Protection (`PolicyValidator`)**: Worker roles (`generator` and `tester`) are strictly prohibited by `PolicyValidator` (`pkg/services/validator.go`) from modifying, weakening, or deleting any file under `tests/acceptance/`.
+
+### 26. Cumulative Partial Deliverability E2E Gate (`pkg/services/partial_e2e_runner.go`, `cmd/noctifab/cli/start_story_executor.go`)
+- **Incremental Story-by-Story Verification (`PartialDeliverabilityRunner`)**: After each user story completes its tasks, Noctifab synthesizes and runs a cumulative black-box E2E test script (`tests/e2e/partial_e2e.sh`) covering all user stories completed up to that milestone (`US-001` through `US-N`).
+- **Story-Level E2E Audit (`pkg/services/story_qa_e2e.go`)**: Enforces that every completed story passes both its own functional contract scenarios and the cumulative partial deliverability E2E gate (`0` failures and `> 0` executed assertions) before the story is marked `SUCCESS`.
+
+### 27. Multi-Dimensional Anti-Stub, Anti-Gaming, & Test Depth Quality Gates (`pkg/services/`)
+To prevent agents from gaming test suites with superficial assertions, tautologies, or hollow mocks, Noctifab enforces specialized deterministic AST and source analyzers:
+- **Tautology & Vacuous Test Detector (`pkg/services/anti_stub_tautology.go`)**: Scans test files across languages to reject tautological assertions (`assert True`, `assertEqual(1, 1)`, self-comparisons), assertion-free test functions, and placeholder test bodies.
+- **Anti-Over-Mocking Guard (`pkg/services/anti_stub_mock.go`)**: Detects tests that mock the system-under-test itself or return hardcoded expected payloads without exercising production code paths.
+- **Real Daemon & Socket Liveness Guard (`pkg/services/anti_stub_daemon.go`)**: Verifies that network/daemon projects bind real sockets and process wire requests rather than printing canned strings and exiting.
+- **Persistence Round-Trip & Input Sensitivity Guards (`pkg/services/anti_stub_roundtrip.go`, `pkg/services/anti_stub_sensitivity.go`)**: Validates that storage/state implementations perform genuine write-read-delete round-trips and that functions vary outputs across distinct inputs rather than returning constant values.
+- **Test Depth Evaluator (`pkg/services/test_depth_evaluator.go`)**: Evaluates structural test depth across unit, integration, and E2E tiers, checking assertion density, negative/error path coverage, and boundary condition checks.
+- **Conflict Marker & Orphan Source Guards (`pkg/services/conflict_marker_guard.go`, `pkg/services/orphan_source_guard.go`)**: Deterministically blocks task completion if any workspace file contains unresolved Git merge conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) or if newly created source files are left uncompiled/unreferenced by the build graph.
+
+### 28. Streaming Roadmap Direct-Story Handoff & Non-Blocking Startup (`pkg/services/roadmap_generator.go`, `pkg/services/roadmap_auditor.go`)
+- **Guaranteed `onStoryReady` Streaming Handoff**: In `GenerateRoadmapWithStreaming`, `streamedPaths` tracks stories emitted during Stage 2 parallel outline expansion and invokes `onStoryReady(targetPath, st.Content)` for any story in `sanitizedStories` not yet streamed—including when Pass 1 emits `create_story` actions directly without Stage 1 outlines (`len(outlines) == 0`). Similarly, `AuditRoadmapStoriesParallel` invokes `onStoryReady` even when a story is retained without modification (`!audited`).
+- **Single-Pass Config Synchronization (`AgentRoleConfig.GetPasses`)**: Setting `agents.product_manager.iterations: 1` (or `passes: 1`) in `.noctifab/config.yaml` automatically synchronizes both fields during `config.Load`, allowing fast single-pass roadmap generation without redundant audit passes.
 
 ---
 

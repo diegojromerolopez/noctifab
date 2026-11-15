@@ -122,6 +122,22 @@ func GetModelOverride(ctx context.Context) string {
 	return ""
 }
 
+type qualityStageKey struct{}
+
+// WithQualityStage attaches a progressive quality stage index to the context
+// (0 = initial fast draft, 1 = refinement/improvement pass, 2+ = frontier repair/escalation).
+func WithQualityStage(ctx context.Context, stage int) context.Context {
+	return context.WithValue(ctx, qualityStageKey{}, stage)
+}
+
+// GetQualityStage retrieves any progressive quality stage index set on the context.
+func GetQualityStage(ctx context.Context) (int, bool) {
+	if v, ok := ctx.Value(qualityStageKey{}).(int); ok {
+		return v, true
+	}
+	return 0, false
+}
+
 // RoleContextKey is the typed context key for passing the active agent role.
 type RoleContextKey struct{}
 

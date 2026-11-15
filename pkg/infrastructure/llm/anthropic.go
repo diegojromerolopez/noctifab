@@ -26,12 +26,19 @@ func init() {
 			return NewAnthropicProviderClient(url, timeout, idleTimeout, streaming)
 		},
 	})
+	// Blacklist retired models so Noctifab never attempts to send requests or fall back to them
+	blacklistQuietly("claude-3-5-haiku-20241022")
+	blacklistQuietly("claude-3-5-haiku")
+	blacklistQuietly("claude-3-5-haiku-latest")
+	blacklistQuietly("claude-3-haiku-20240307")
+	blacklistQuietly("claude-3-haiku")
 }
 
 var parseAnthropicModel = NewModelParser(ParserConfig{
-	RequiredPrefix: "claude",
-	DefaultVersion: 3.0,
-	VersionRegexp:  `claude-([0-9]+(?:[\.-][0-9]+)?)`,
+	RequiredPrefix:   "claude",
+	DefaultVersion:   3.0,
+	VersionRegexp:    `claude-(?:[a-z]+-)?([0-9]+(?:[\.-][0-9]+)?)`,
+	ExcludedKeywords: []string{"claude-3-5-haiku", "claude-3-haiku"},
 	Tiers: []KeywordTier{
 		{Keywords: []string{"opus"}, Score: 400, TierName: "opus"},
 		{Keywords: []string{"sonnet"}, Score: 300, TierName: "sonnet"},
@@ -58,6 +65,8 @@ func NewAnthropicProviderClient(url string, timeout, idleTimeout time.Duration, 
 }
 
 func (a *anthropicProviderClient) Call(ctx context.Context, model, apiKey, prompt string, maxTokens int, temperature float64) (*ProviderCallResult, error) {
+	model = rerouteRetiredAnthropicModel(model)
+
 	var url string
 	if a.url != "" {
 		url = a.url
@@ -282,108 +291,6 @@ func (a *anthropicProviderClient) parseResponse(respBody []byte) (*ProviderCallR
 		Body:  bodyBytes,
 		Usage: usage,
 	}, nil
-}
-
-func (a *anthropicProviderClient) GetAvailableModels(ctx context.Context, apiKey string) ([]string, error) {
-	var url string
-	if a.url != "" {
-		if strings.HasSuffix(a.url, "/messages") {
-			url = strings.TrimSuffix(a.url, "/messages") + "/models"
-		} else {
-			url = a.url + "/models"
-		}
-	} else {
-		url = "https://api.anthropic.com/v1/models"
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("X-API-Key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch Anthropic models (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	var models []string
-	for _, m := range result.Data {
-		models = append(models, m.ID)
-	}
-	return models, nil
-}
-
-func (a *anthropicProviderClient) GetModelCapabilities(ctx context.Context, apiKey string) (map[string]ModelCapability, error) {
-	var url string
-	if a.url != "" {
-		if strings.HasSuffix(a.url, "/messages") {
-			url = strings.TrimSuffix(a.url, "/messages") + "/models"
-		} else {
-			url = a.url + "/models"
-		}
-	} else {
-		url = "https://api.anthropic.com/v1/models"
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("X-API-Key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch Anthropic models (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Data []map[string]interface{} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	return parseDynamicModelCapabilities(result.Data), nil
 }
 
 // buildAnthropicUserMessageContent constructs structured content blocks for Anthropic

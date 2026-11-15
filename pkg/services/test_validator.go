@@ -3,8 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -183,6 +181,11 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		return false, FormatTestCouplingViolations(couplings), nil
 	}
 
+	// Orphan Source File Gate:
+	if orphans, _ := DetectOrphanSourceFiles(state.ProjectPath); len(orphans) > 0 {
+		return false, FormatOrphanSourceViolations(orphans), nil
+	}
+
 	// Fast-Path Syntax Pre-Gating:
 	if v.SyntaxChecker != nil {
 		if syntaxErr := v.SyntaxChecker.Check(ctx, state.ProjectPath); syntaxErr != nil {
@@ -271,6 +274,21 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 			return false, msg, err
 		}
 
+		// Anti-Shallowness & Test Depth Assessment Gate:
+		var targetTests []string
+		for _, tf := range task.TargetFiles {
+			if strings.Contains(tf, "test") || strings.HasSuffix(tf, "_test.go") {
+				targetTests = append(targetTests, tf)
+			}
+		}
+		if len(targetTests) > 0 {
+			depthEvaluator := NewTestDepthEvaluator()
+			depthRes, depthErr := depthEvaluator.EvaluateDepth(ctx, state.ProjectPath, targetTests)
+			if depthErr == nil && depthRes != nil && !depthRes.Passed && depthRes.IsShallow {
+				return false, depthRes.RemediationMessage, nil
+			}
+		}
+
 		if passCount == runs {
 			return true, "All validation runs passed successfully", nil
 		}
@@ -284,71 +302,6 @@ func (v *TestValidator) ValidateTask(ctx context.Context, state *domain.State, t
 		return true, fmt.Sprintf("Validation passed in degraded mode (tool absent on host).\nLast output:\n%s", lastErr), nil
 	}
 	return false, fmt.Sprintf("Test validation failed (%d/%d runs passed). Last error log:\n%s", passCount, runs, lastErr), nil
-}
-
-func isCommandToolMissing(runner Sandbox, cmd, output string) bool {
-	if _, isHost := runner.(*HostSandbox); isHost {
-		bin := extractCommandBinary(cmd)
-		if bin != "" {
-			if _, err := exec.LookPath(bin); err == nil {
-				return false // Tool binary is verified installed on host PATH.
-			}
-			return true // Tool binary is not found on host PATH.
-		}
-	}
-	return isMissingToolOutput(output)
-}
-
-func extractCommandBinary(cmd string) string {
-	fields := strings.Fields(cmd)
-	for _, f := range fields {
-		if strings.Contains(f, "=") {
-			continue
-		}
-		base := filepath.Base(f)
-		if base != "sudo" && base != "env" && base != "sh" && base != "bash" {
-			return base
-		}
-	}
-	if len(fields) > 0 {
-		return filepath.Base(fields[0])
-	}
-	return ""
-}
-
-func isMissingToolOutput(output string) bool {
-	lower := strings.ToLower(output)
-
-	// If the failure occurred during test assertions or code panic, it is not a missing host tool.
-	if strings.Contains(lower, "assertionerror") ||
-		strings.Contains(lower, "failed tests") ||
-		strings.Contains(lower, "--- fail") ||
-		strings.Contains(lower, "panic:") {
-		return false
-	}
-
-	// If the failure occurred during a container build or containerized runtime execution
-	// (e.g., Dockerfile build step, BuildKit solve error, compose service exit, or missing file
-	// inside the container build context), Docker itself was present and executed.
-	// Container-internal build/script errors must NOT be classified as a missing host tool.
-	if strings.Contains(lower, "failed to solve") ||
-		strings.Contains(lower, "load build definition") ||
-		strings.Contains(lower, "transferring dockerfile") ||
-		strings.Contains(lower, "transferring context") ||
-		strings.Contains(lower, "executor failed running") ||
-		strings.Contains(lower, "dockerfile:") ||
-		strings.Contains(lower, "dockerfile.e2e:") {
-		return false
-	}
-
-	return strings.Contains(lower, "command not found") ||
-		strings.Contains(lower, "executable file not found") ||
-		strings.Contains(lower, "not found in $path") ||
-		strings.Contains(lower, "not found in %path%") ||
-		strings.Contains(lower, "is not recognized as an internal or external command") ||
-		strings.Contains(lower, "is evicted") ||
-		strings.Contains(lower, "exit status 127") ||
-		(strings.Contains(lower, "fork/exec") && strings.Contains(lower, "no such file or directory"))
 }
 
 func (v *TestValidator) runWithCount(ctx context.Context, state *domain.State, n int) []TestRunResult {

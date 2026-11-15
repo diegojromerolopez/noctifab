@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/llm"
 	"github.com/diegojromerolopez/noctifab/pkg/infrastructure/prompts"
 )
 
@@ -71,23 +73,20 @@ func EnsureSTESpecification(
 
 	translatedSpec := specContent
 	if llmClient != nil {
-		rendered, rErr := renderer.Render(prompts.AgentProductManager, "translate_ste", prompts.ProductManagerPromptData{
-			Spec: specContent,
-		})
-		if rErr == nil {
-			callCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
-			defer cancel()
-
-			pmCtx := context.WithValue(callCtx, "agent_role", "product_manager") //nolint:staticcheck
-			pmCtx = domain.WithUncompactableTail(pmCtx, len(rendered.Contract))
-
-			resp, cErr := llmClient.Complete(pmCtx, rendered.Full())
-			if cErr == nil && resp != nil {
-				extracted := extractSTEContentFromResponse(resp)
-				if strings.TrimSpace(extracted) != "" {
-					translatedSpec = extracted
-				}
+		inputSpec := specContent
+		if len(inputSpec) > 2000 {
+			if compacted := llm.CompactMarkdownSpecWithMode(inputSpec, "aggressive"); strings.TrimSpace(compacted) != "" {
+				inputSpec = compacted
+				translatedSpec = compacted
 			}
+		}
+
+		if len(inputSpec) > 25000 {
+			if chunked := translateLargeSpecSTEInParallel(ctx, inputSpec, llmClient, renderer); strings.TrimSpace(chunked) != "" {
+				translatedSpec = chunked
+			}
+		} else if single := translateSingleChunkSTE(ctx, inputSpec, llmClient, renderer, 90*time.Second); strings.TrimSpace(single) != "" {
+			translatedSpec = single
 		}
 	}
 
@@ -108,6 +107,98 @@ func EnsureSTESpecification(
 	}
 
 	return translatedSpec, nil
+}
+
+func translateSingleChunkSTE(
+	ctx context.Context,
+	specChunk string,
+	llmClient domain.LLMClient,
+	renderer PromptRenderer,
+	timeout time.Duration,
+) string {
+	rendered, rErr := renderer.Render(prompts.AgentProductManager, "translate_ste", prompts.ProductManagerPromptData{
+		Spec: specChunk,
+	})
+	if rErr != nil {
+		return ""
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Route with QualityStage=0 (fast direct model first, bypassing 4-model ensemble) and DynamicThinking=false.
+	pmCtx := context.WithValue(callCtx, "agent_role", "product_manager") //nolint:staticcheck
+	pmCtx = domain.WithQualityStage(pmCtx, 0)
+	pmCtx = domain.WithDynamicThinking(pmCtx, false)
+	pmCtx = domain.WithUncompactableTail(pmCtx, len(rendered.Contract))
+
+	resp, cErr := llmClient.Complete(pmCtx, rendered.Full())
+	if cErr != nil || resp == nil {
+		return ""
+	}
+	return strings.TrimSpace(extractSTEContentFromResponse(resp))
+}
+
+func translateLargeSpecSTEInParallel(
+	ctx context.Context,
+	specContent string,
+	llmClient domain.LLMClient,
+	renderer PromptRenderer,
+) string {
+	chunks := splitSpecIntoChunks(specContent, 18000)
+	if len(chunks) <= 1 {
+		return translateSingleChunkSTE(ctx, specContent, llmClient, renderer, 90*time.Second)
+	}
+
+	results := make([]string, len(chunks))
+	sem := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+
+	for i, ch := range chunks {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(idx int, chunkText string) {
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
+			if translated := translateSingleChunkSTE(ctx, chunkText, llmClient, renderer, 60*time.Second); translated != "" {
+				results[idx] = translated
+			} else {
+				results[idx] = strings.TrimSpace(chunkText)
+			}
+		}(i, ch)
+	}
+	wg.Wait()
+
+	return strings.Join(results, "\n\n")
+}
+
+func splitSpecIntoChunks(specContent string, maxChunkBytes int) []string {
+	sections := strings.Split(specContent, "\n## ")
+	if len(sections) <= 1 {
+		return []string{specContent}
+	}
+
+	var chunks []string
+	var current strings.Builder
+	for i, sec := range sections {
+		piece := sec
+		if i > 0 {
+			piece = "## " + sec
+		}
+		if current.Len() > 0 && current.Len()+len(piece)+2 > maxChunkBytes {
+			chunks = append(chunks, strings.TrimSpace(current.String()))
+			current.Reset()
+		}
+		if current.Len() > 0 {
+			current.WriteString("\n\n")
+		}
+		current.WriteString(piece)
+	}
+	if current.Len() > 0 {
+		chunks = append(chunks, strings.TrimSpace(current.String()))
+	}
+	return chunks
 }
 
 // extractSTEContentFromResponse resiliently retrieves the translated markdown specification

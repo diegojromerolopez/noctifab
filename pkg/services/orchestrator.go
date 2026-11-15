@@ -46,6 +46,7 @@ type OrchestratorConfig struct {
 	MaxTokensPerTask       int64
 	MaxTokens              int64
 	AutoCreatePR           bool
+	VCSProvider            string
 	CreateBranch           bool
 	MaxActions             int
 	ExcludePaths           []string

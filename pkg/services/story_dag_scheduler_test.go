@@ -35,11 +35,30 @@ func TestParseStoryDependencies(t *testing.T) {
 		deps := services.ParseStoryDependencies(md)
 		assert.Empty(t, deps)
 	})
+
+	t.Run("extracts metadata markdown bullet depends on format", func(t *testing.T) {
+		md := "## Story Metadata\n- **ID:** US-002\n- **Depends on:** US-001\n"
+		deps := services.ParseStoryDependencies(md)
+		assert.Equal(t, []string{"US-001"}, deps)
+	})
+
+	t.Run("extracts dependencies section with bullet items", func(t *testing.T) {
+		md := "## Story\nDescription\n\n## Dependencies\n\n- `US-001`\n- `US-002`\n\n## Scope\n"
+		deps := services.ParseStoryDependencies(md)
+		assert.Equal(t, []string{"US-001", "US-002"}, deps)
+	})
+
+	t.Run("returns empty when Depends on is None", func(t *testing.T) {
+		md := "- **Depends on:** None\n"
+		deps := services.ParseStoryDependencies(md)
+		assert.Empty(t, deps)
+	})
 }
 
 func TestExtractStoryID(t *testing.T) {
 	assert.Equal(t, "US-001", services.ExtractStoryID("roadmap/user-stories/US-001-scaffolding.md"))
 	assert.Equal(t, "US-002", services.ExtractStoryID("US-2.md"))
+	assert.Equal(t, "US-003", services.ExtractStoryID("story-3.md"))
 	assert.Equal(t, "", services.ExtractStoryID("feature.md"))
 }
 

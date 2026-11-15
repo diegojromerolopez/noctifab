@@ -107,7 +107,7 @@ func generateStubContent(filePath string) string {
 	case ".rs":
 		return fmt.Sprintf("// Stub implementation for %s\n", baseName)
 	case ".erl":
-		return fmt.Sprintf("%% Stub implementation for %s\n-module(%s).\n-compile(export_all).\n", baseName, nameWithoutExt)
+		return fmt.Sprintf("%% Stub implementation for %s\n-module(%s).\n-export([]).\n", baseName, nameWithoutExt)
 	case ".hrl":
 		return fmt.Sprintf("%% Stub header for %s\n", baseName)
 	case ".ml", ".mli":

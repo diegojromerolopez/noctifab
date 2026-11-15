@@ -26,6 +26,20 @@ func TestVCSClient(t *testing.T) {
 		}
 	})
 
+	t.Run("local provider returns empty pr and nil error", func(t *testing.T) {
+		client := NewClient("local", "", "")
+		pr, err := client.CreatePullRequest(context.Background(), "title", "body", "head", "base")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if pr != "" {
+			t.Errorf("expected empty PR URL for local provider, got %q", pr)
+		}
+		if err := client.MergePullRequest(context.Background(), pr); err != nil {
+			t.Fatalf("unexpected error merging local PR: %v", err)
+		}
+	})
+
 	t.Run("github provider REST API success", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			auth := r.Header.Get("Authorization")

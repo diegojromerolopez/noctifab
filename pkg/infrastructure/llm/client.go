@@ -221,7 +221,11 @@ func (c *Client) Complete(ctx context.Context, prompt string) (*domain.LLMRespon
 	}
 
 	if apiKey == "" {
-		return nil, errors.New("missing API key for LLM provider")
+		if strings.ToLower(c.Provider) == "ollama" {
+			apiKey = "ollama"
+		} else {
+			return nil, errors.New("missing API key for LLM provider")
+		}
 	}
 
 	// activeModel carries the concrete model for this call. The shared Client

@@ -166,6 +166,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		if storyContent, err := os.ReadFile(storyPath); err == nil {
 			if contract, err := ParseStoryContract(relativeStoryPath(state.ProjectPath, storyPath), string(storyContent)); err == nil && contract.StoryID != "" {
 				upsertStoryContract(state, contract)
+				upsertStoryContract(&taskState, contract)
 			}
 			if contractCtx := FormatContractPromptContext(state.Metadata.InputPath, string(storyContent)); contractCtx != "" {
 				fileContexts = append(fileContexts, contractCtx)
@@ -229,28 +230,25 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		case "breadth_first", "breadth_first_generation", "bfg", "big":
 			o.executeTaskBreadthFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
 		default:
-			// Complexity-Directed Fast-Path: LOW/MEDIUM tasks route through single-pass unified co-synthesis
-			if task.Complexity == domain.ComplexityLow || task.Complexity == domain.ComplexityMedium {
-				fmt.Printf("⚡ [Fast-Path Single Pass] Task %s complexity is %s; routing through single-pass unified co-synthesis...\n", taskID, task.Complexity)
-				o.executeTaskSinglePass(ctx, task, &taskState, taskGit, fileContexts, taskID)
-			} else {
-				qaBlocked = o.executeTaskCodeFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
-			}
+			qaBlocked = o.executeTaskCodeFirst(ctx, task, &taskState, taskGit, fileContexts, taskID)
 		}
 
 		fmt.Printf("Orchestrator: Task %s running test validation...\n", taskID)
 		// Run test suite validation
 		passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
 		passed, logMsg = checkTaskMutations(ctx, task, taskGit, integrationBranch, passed, logMsg)
+		passed, logMsg = checkTaskStoryContracts(ctx, o.evaluator, &taskState, task, passed, logMsg)
 
-		// First-Class Generator Surgical Repair
-		initCategory := CategorizeFailureLog(logMsg)
-		canSurgicallyRepair := qaBlocked == "" || qaBlocked == "generator_no_op_validation_failed"
-		if !passed && canSurgicallyRepair && (initCategory == FailureCompile || initCategory == FailureTestLogic || strings.Contains(strings.ToLower(logMsg), "e2e") || strings.Contains(logMsg, "zero file mutations") || qaBlocked == "generator_no_op_validation_failed") {
-			fmt.Printf("Orchestrator: Task %s attempting single-turn surgical repair for %s (qaBlocked=%s)...\n", taskID, initCategory, qaBlocked)
-			o.executeSurgicalRepairTurn(ctx, task, &taskState, taskGit, logMsg)
-			passed, logMsg, _ = o.evaluator.ValidateTask(ctx, &taskState, *task)
-			passed, logMsg = checkTaskMutations(ctx, task, taskGit, integrationBranch, passed, logMsg)
+		// Autonomous Multi-Turn Convergence Repair Loop:
+		// In every step, deterministic auto-fixes are attempted first.
+		// If deterministic fix does not work, the agent is provided with the exact error diagnostics
+		// and offending code snippets from disk, iterating until validation passes or fallback triggers.
+		category := CategorizeFailureLog(logMsg)
+		isSandboxFailure := !passed && category == FailureSandbox
+		canRepair := !isSandboxFailure && (qaBlocked == "" || qaBlocked == "generator_no_op_validation_failed")
+		if !passed && canRepair {
+			fmt.Printf("Orchestrator: Task %s entering autonomous convergence repair loop...\n", taskID)
+			passed, logMsg = o.executeConvergenceRepairLoop(ctx, task, &taskState, taskGit, logMsg, integrationBranch)
 			if passed {
 				qaBlocked = ""
 			}
@@ -272,7 +270,7 @@ func (o *Orchestrator) executeTask(ctx context.Context, stateID, taskID string) 
 		}
 
 		// Fallback Agent Escalation: Trigger if task failed and (retries exhausted, sandbox failure, QA deadlock, stall count >= 2, or FallbackUsed)
-		category := CategorizeFailureLog(logMsg)
+		category = CategorizeFailureLog(logMsg)
 		isSandbox := !passed && category == FailureSandbox
 		canRetry := !passed && !isSandbox && task.Retries < effectiveMaxRetries
 

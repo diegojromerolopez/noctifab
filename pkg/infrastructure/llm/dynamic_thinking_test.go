@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
 )
@@ -183,6 +184,20 @@ func TestAdjustForRoutineTask(t *testing.T) {
 	if modifiedThinkingOnly {
 		t.Fatalf("expected modified = false for thinking-only model where thinking cannot be disabled")
 	}
+
+	// Case 7: Explicit EnableThinking = false on client bypasses capabilities lookup and disables thinking
+	disabled := false
+	clientDisabled := &Client{
+		Provider:       "openai",
+		EnableThinking: &disabled,
+	}
+	extraDisabled, modifiedDisabled := clientDisabled.adjustForRoutineTask(ctxGen, "generator", "any-model", nil)
+	if !modifiedDisabled {
+		t.Fatalf("expected modified = true when EnableThinking is explicitly false")
+	}
+	if extraDisabled["enable_thinking"] != false || extraDisabled["thinking_budget"] != 0 {
+		t.Errorf("expected thinking disabled fields in extra, got %v", extraDisabled)
+	}
 }
 
 func TestExtraBodySetterClients(t *testing.T) {
@@ -208,5 +223,53 @@ func TestExtraBodySetterClients(t *testing.T) {
 		t.Errorf("GeminiClient does not implement extraBodySetter")
 	} else {
 		setter.SetExtraBody(map[string]interface{}{"thinking_budget": 0})
+	}
+}
+
+func TestOpenAIFiltersThinkingExtraBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reqBody map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Errorf("failed to decode request: %v", err)
+		}
+		if _, exists := reqBody["thinking_budget"]; exists {
+			t.Errorf("expected thinking_budget to be filtered for OpenAI, but found it in request body")
+		}
+		if _, exists := reqBody["enable_thinking"]; exists {
+			t.Errorf("expected enable_thinking to be filtered for OpenAI, but found it in request body")
+		}
+		if _, exists := reqBody["thinkingConfig"]; exists {
+			t.Errorf("expected thinkingConfig to be filtered for OpenAI, but found it in request body")
+		}
+		if _, exists := reqBody["thinking"]; exists {
+			t.Errorf("expected thinking to be filtered for OpenAI, but found it in request body")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "test-123",
+			"choices": []map[string]interface{}{
+				{
+					"message": map[string]string{
+						"role":    "assistant",
+						"content": `{"actions":[]}`,
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient(server.URL, 5*time.Second, 5*time.Second, false)
+	if setter, ok := client.(extraBodySetter); ok {
+		setter.SetExtraBody(map[string]interface{}{
+			"thinking_budget": 0,
+			"enable_thinking": false,
+			"thinkingConfig":  map[string]interface{}{"thinkingBudget": 0},
+			"thinking":        map[string]interface{}{"type": "disabled"},
+		})
+	}
+	_, err := client.Call(context.Background(), "gpt-5.6-luna", "test-key", "json test", 100, 0.7)
+	if err != nil {
+		t.Fatalf("unexpected error calling client: %v", err)
 	}
 }

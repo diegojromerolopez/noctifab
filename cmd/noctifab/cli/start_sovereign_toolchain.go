@@ -88,6 +88,27 @@ func DetectMissingToolchainIndicator(failureLog string) bool {
 	return false
 }
 
+// DetectDependencyResolutionFailure checks whether diagnostics indicate a missing or non-existent package/crate version.
+func DetectDependencyResolutionFailure(failureLog string) bool {
+	lower := strings.ToLower(failureLog)
+	indicators := []string{
+		"failed to select a version",
+		"could not find a version that satisfies the requirement",
+		"no matching distribution found",
+		"no matching package found",
+		"crates.io index",
+		"npm err! 404",
+		"package was not found",
+		"cannot find module",
+	}
+	for _, ind := range indicators {
+		if strings.Contains(lower, ind) {
+			return true
+		}
+	}
+	return false
+}
+
 // BuildToolchainFallbackDirective constructs actionable instructions for Sovereign Rescue
 // based on the resolved toolchain strategy.
 func BuildToolchainFallbackDirective(resolvedStrategy string, detectedMissing bool) string {
@@ -108,6 +129,10 @@ func BuildToolchainFallbackDirectiveWithDiagnostics(resolvedStrategy string, det
 		if strings.Contains(lowerLog, "docker") || strings.Contains(lowerLog, "idle timeout") {
 			sb.WriteString("\n⚠️  CRITICAL RECOVERY NOTICE: Diagnostics indicate a prior attempt to run Docker or an idle timeout occurred.\n")
 			sb.WriteString("Container operations in this environment are not permitted and will hang. Remove all docker commands from Makefile and use native host toolchains directly.\n")
+		}
+		if DetectDependencyResolutionFailure(failureLog) {
+			sb.WriteString("\n⚠️  CRITICAL DEPENDENCY RESOLUTION BLOCKER: The build failed because an external package/crate version declared in your manifest (e.g. Cargo.toml, pyproject.toml, package.json) does NOT exist or could not be resolved from the package registry.\n")
+			sb.WriteString("DO NOT keep retrying the invalid dependency. You MUST edit the manifest to remove the missing package, replace it with standard library constructs, use a known valid published version, or implement the required logic in-tree.\n")
 		}
 		sb.WriteString("\n")
 		return sb.String()

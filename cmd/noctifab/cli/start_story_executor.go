@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,7 +62,7 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 		configuredBranch := deps.cfg.VCS.GetIntegrationBranch()
 		if strings.ToLower(deps.cfg.VCS.BranchStrategy) == "per_story_isolated" {
 			configuredBranch = ""
-		} else if configuredBranch == "" && len(deps.storyFiles) > 1 {
+		} else if configuredBranch == "" {
 			prefix := deps.cfg.VCS.BranchPrefix
 			if prefix == "" {
 				prefix = "noctifab/"
@@ -72,75 +73,95 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 		baseBranch := branchRes.BaseBranch
 		integrationBranch := branchRes.IntegrationBranch
 
-		state, err := deps.repo.Load(ctx)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				state = &domain.State{
-					ID:          uuid.New().String(),
-					ProjectPath: deps.targetDir,
-					Version:     0,
-					BuildStatus: domain.BuildUnknown,
-					Metadata: domain.StateMetadata{
-						InputSource:       "markdown",
-						InputPath:         currentStoryFile,
-						FeatureName:       featName,
-						BaseBranch:        baseBranch,
-						IntegrationBranch: integrationBranch,
-					},
+		var state *domain.State
+		const maxOCCRetries = 10
+		backoff := 50 * time.Millisecond
+		for attempt := 0; attempt < maxOCCRetries; attempt++ {
+			s, err := deps.repo.Load(ctx)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					s = &domain.State{
+						ID:          uuid.New().String(),
+						ProjectPath: deps.targetDir,
+						Version:     0,
+						BuildStatus: domain.BuildUnknown,
+						Metadata: domain.StateMetadata{
+							InputSource:       "markdown",
+							InputPath:         currentStoryFile,
+							FeatureName:       featName,
+							BaseBranch:        baseBranch,
+							IntegrationBranch: integrationBranch,
+						},
+					}
+				} else {
+					return err
 				}
-			} else {
-				return err
 			}
-		}
-		state.Metadata.InputPath = currentStoryFile
-		state.Metadata.FeatureName = featName
-		state.Metadata.BaseBranch = baseBranch
-		state.Metadata.IntegrationBranch = integrationBranch
-		state.StoryStatus = domain.StoryRunning
+			s.Metadata.InputPath = currentStoryFile
+			s.Metadata.FeatureName = featName
+			s.Metadata.BaseBranch = baseBranch
+			s.Metadata.IntegrationBranch = integrationBranch
+			s.StoryStatus = domain.StoryRunning
 
-		now := time.Now().UTC()
-		foundStory := false
-		for i, st := range state.Stories {
-			if st.ID == featName || st.FilePath == currentStoryFile {
-				state.Stories[i].Status = domain.StoryRunning
-				if state.Stories[i].StartedAt == nil {
-					state.Stories[i].StartedAt = &now
+			now := time.Now().UTC()
+			foundStory := false
+			for i, st := range s.Stories {
+				if st.ID == featName || st.FilePath == currentStoryFile {
+					s.Stories[i].Status = domain.StoryRunning
+					if s.Stories[i].StartedAt == nil {
+						s.Stories[i].StartedAt = &now
+					}
+					s.Stories[i].UpdatedAt = now
+					foundStory = true
+					break
 				}
-				state.Stories[i].UpdatedAt = now
-				foundStory = true
-				break
 			}
-		}
-		if !foundStory {
-			state.Stories = append(state.Stories, domain.Story{
-				ID:        featName,
-				StateID:   state.ID,
-				Title:     featName,
-				FilePath:  currentStoryFile,
-				Status:    domain.StoryRunning,
-				StartedAt: &now,
-				CreatedAt: now,
-				UpdatedAt: now,
-			})
-		}
+			if !foundStory {
+				s.Stories = append(s.Stories, domain.Story{
+					ID:        featName,
+					StateID:   s.ID,
+					Title:     featName,
+					FilePath:  currentStoryFile,
+					Status:    domain.StoryRunning,
+					StartedAt: &now,
+					CreatedAt: now,
+					UpdatedAt: now,
+				})
+			}
 
-		storyPath := currentStoryFile
-		if !filepath.IsAbs(storyPath) {
-			storyPath = filepath.Join(deps.targetDir, storyPath)
-		}
-		if markdown, err := os.ReadFile(storyPath); err == nil {
-			relPath := currentStoryFile
-			if filepath.IsAbs(relPath) {
-				if rel, err := filepath.Rel(deps.targetDir, relPath); err == nil {
-					relPath = rel
+			storyPath := currentStoryFile
+			if !filepath.IsAbs(storyPath) {
+				storyPath = filepath.Join(deps.targetDir, storyPath)
+			}
+			if markdown, err := os.ReadFile(storyPath); err == nil {
+				relPath := currentStoryFile
+				if filepath.IsAbs(relPath) {
+					if rel, err := filepath.Rel(deps.targetDir, relPath); err == nil {
+						relPath = rel
+					}
+				}
+				if contract, err := services.ParseStoryContract(relPath, string(markdown)); err == nil && contract.StoryID != "" {
+					services.UpsertStoryContract(s, contract)
 				}
 			}
-			if contract, err := services.ParseStoryContract(relPath, string(markdown)); err == nil && contract.StoryID != "" {
-				services.UpsertStoryContract(state, contract)
+			if err := deps.repo.Save(ctx, s); err != nil {
+				if errors.Is(err, domain.ErrVersionConflict) && attempt < maxOCCRetries-1 {
+					jitter := time.Duration(float64(backoff) * (0.8 + 0.4*rand.Float64()))
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(jitter):
+					}
+					backoff *= 2
+					if backoff > 2*time.Second {
+						backoff = 2 * time.Second
+					}
+					continue
+				}
+				return fmt.Errorf("failed to save initial state: %w", err)
 			}
-		}
-		if err := deps.repo.Save(ctx, state); err != nil {
-			return fmt.Errorf("failed to save initial state: %w", err)
+			state = s
+			break
 		}
 
 		var qaCoord *services.QARuntimeCoordinator
@@ -278,16 +299,30 @@ func buildStoryExecutor(deps storyExecutorDeps) func(ctx context.Context, curren
 			case <-ticker.C:
 			}
 			_, _ = orchestrator.RunOnce(ctx)
-			st, err := deps.repo.Load(ctx)
-			if err != nil {
-				return err
+			var st *domain.State
+			var loadErr error
+			if state != nil && state.ID != "" {
+				st, loadErr = deps.repo.LoadByID(ctx, state.ID)
+			}
+			if loadErr != nil || st == nil {
+				st, loadErr = deps.repo.Load(ctx)
+			}
+			if loadErr != nil {
+				return loadErr
 			}
 			storyTasks := getStoryTasks(st, featName, storyID)
 			if len(storyTasks) > 0 && allStoryTasksFinished(storyTasks) {
 				// If story status is still running or idle, invoke RunOnce to execute Story QA and finalization gates
 				if st.StoryStatus == domain.StoryRunning || st.StoryStatus == domain.StoryIdle {
 					_, _ = orchestrator.RunOnce(ctx)
-					if stReloaded, err := deps.repo.Load(ctx); err == nil && stReloaded != nil {
+					var stReloaded *domain.State
+					if state != nil && state.ID != "" {
+						stReloaded, _ = deps.repo.LoadByID(ctx, state.ID)
+					}
+					if stReloaded == nil {
+						stReloaded, _ = deps.repo.Load(ctx)
+					}
+					if stReloaded != nil {
 						st = stReloaded
 						storyTasks = getStoryTasks(st, featName, storyID)
 						// If Story QA queued a new remediation task, continue the execution loop
@@ -322,13 +357,24 @@ func getStoryTasks(state *domain.State, featName, storyID string) []domain.Task 
 	var tasks []domain.Task
 	storyLower := strings.ToLower(storyID)
 	featLower := strings.ToLower(featName)
+	normStoryID := services.ExtractStoryID(storyID)
+	normFeatID := services.ExtractStoryID(featName)
 	for _, t := range state.Tasks {
 		idLower := strings.ToLower(t.ID)
 		isRemediation := (storyLower != "" && strings.HasPrefix(idLower, "qa-remediation-"+storyLower)) ||
 			(featLower != "" && strings.HasPrefix(idLower, "qa-remediation-"+featLower))
-		if (storyID != "" && t.StoryID == storyID) || (featName != "" && t.StoryID == featName) ||
-			(storyID != "" && strings.HasPrefix(t.ID, storyID+"-")) || (featName != "" && strings.HasPrefix(t.ID, featName+"-")) ||
-			isRemediation {
+
+		normTaskStoryID := services.ExtractStoryID(t.StoryID)
+		normTaskID := services.ExtractStoryID(t.ID)
+
+		matchesStory := (storyID != "" && t.StoryID == storyID) ||
+			(featName != "" && t.StoryID == featName) ||
+			(storyID != "" && strings.HasPrefix(t.ID, storyID+"-")) ||
+			(featName != "" && strings.HasPrefix(t.ID, featName+"-")) ||
+			(normStoryID != "" && (normTaskStoryID == normStoryID || normTaskID == normStoryID)) ||
+			(normFeatID != "" && (normTaskStoryID == normFeatID || normTaskID == normFeatID))
+
+		if matchesStory || isRemediation {
 			tasks = append(tasks, t)
 		}
 	}

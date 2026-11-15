@@ -132,9 +132,10 @@ llms:
 
 ### Anthropic (Claude)
 
-**Models**: `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-5`, `claude-3-7-sonnet-*`, `claude-3-5-sonnet-*`, `claude-3-5-haiku-*`, `claude-3-opus-*`
+**Models**: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5-20251001`
 **Fallback chain**: `opus` → `sonnet` → `haiku`
 **Ranking**: tier keyword (`opus` > `sonnet` > `haiku`) + version multiplier × 10.
+**Retired Model Auto-Upgrade (`pkg/infrastructure/llm/anthropic_models.go`)**: Legacy or retired Claude 3.x / 4.x model identifiers (e.g., `claude-3-5-sonnet-*`, `claude-3-7-sonnet-*`, `claude-sonnet-4-*`, `claude-3-opus-*`, `claude-3-5-haiku-*`) are deterministically normalized and upgraded to active Claude 5.x equivalents (`claude-sonnet-5`, `claude-opus-5`, `claude-haiku-5-5`) prior to API dispatch.
 
 ```yaml
 # .noctifab/secrets.yaml
@@ -705,7 +706,7 @@ When `model: "latest"` is configured:
 | Provider | Configured Model | Discovered `/models` Example | Resolved Flagship Model |
 |---|---|---|---|
 | **OpenAI** | `latest` | `[text-embedding-3, gpt-3.5-turbo, gpt-4o-mini, gpt-4o]` | `gpt-4o` |
-| **Anthropic** | `latest` | `[claude-3-5-haiku, claude-3-5-sonnet, claude-3-opus]` | `claude-3-opus-20240229` / `claude-3-5-sonnet-20241022` |
+| **Anthropic** | `latest` | `[claude-haiku-5-5, claude-sonnet-5-5, claude-opus-5-5]` | `claude-opus-5-5` / `claude-sonnet-5-5` |
 | **Google Gemini** | `latest` | `[gemini-embed, gemini-robotics, gemini-1.5-flash, gemini-2.5-flash, gemini-3.8-flash]` | `gemini-3.8-flash` |
 | **Mistral** | `latest` | `[mistral-embed, mistral-small, mistral-large-latest]` | `mistral-large-latest` |
 | **DeepSeek** | `latest` | `[deepseek-chat, deepseek-coder]` | `deepseek-coder` |

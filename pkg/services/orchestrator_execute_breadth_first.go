@@ -47,6 +47,23 @@ func (o *Orchestrator) executeTaskBreadthFirst(ctx context.Context, task *domain
 				}
 			}
 		}
+
+		// 3. Generator Refinement turn: Complete remaining edge cases and error handling before merge
+		o.updateTaskProgress(ctx, taskID, 75)
+		o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, "", "implement_breadth_first_fix")
+
+		statusOut, _ = taskGit.Run(ctx, false, "status", "--porcelain")
+		if strings.TrimSpace(statusOut) != "" {
+			_, _ = taskGit.Run(ctx, true, "add", "--all", "--", ":!.noctifab")
+			stagedOut, _ := taskGit.Run(ctx, false, "diff", "--cached", "--name-only")
+			if strings.TrimSpace(stagedOut) != "" {
+				commitMsg := fmt.Sprintf("fix(bfg): complete edge-case refinement for task %s - %s", taskID, task.Title)
+				_, commitErr := taskGit.Run(ctx, true, "commit", "-m", commitMsg)
+				if commitErr != nil {
+					fmt.Fprintf(os.Stderr, "Orchestrator: Git commit failed for task %s breadth-first completion: %v\n", taskID, commitErr)
+				}
+			}
+		}
 	} else {
 		// Retries > 0: Benevolent refinement pass addressing defects while preserving zero regressions
 		o.updateTaskProgress(ctx, taskID, 50)

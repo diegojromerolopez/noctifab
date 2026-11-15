@@ -488,11 +488,7 @@ func TestGenerateRoadmap_GracefulDegradationOnLaterPassFailure(t *testing.T) {
 			},
 			nil, // Step 2 (Pass 2) fails with context deadline exceeded
 		},
-		errors: []error{
-			nil,
-			nil,
-			fmt.Errorf("context deadline exceeded"),
-		},
+		errors: []error{nil, nil, fmt.Errorf("context deadline exceeded")},
 	}
 
 	err = services.GenerateRoadmapWithPasses(context.Background(), tempDir, mockLLM, nil, 2)

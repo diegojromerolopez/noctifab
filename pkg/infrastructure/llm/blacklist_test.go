@@ -24,11 +24,19 @@ func TestModelBlacklist(t *testing.T) {
 		assert.False(t, IsModelBlacklisted("claude-2.0"))
 	})
 
+	t.Run("retired claude-3-5-haiku-20241022 is permanently blacklisted", func(t *testing.T) {
+		assert.True(t, IsModelBlacklisted("claude-3-5-haiku-20241022"))
+		assert.True(t, IsModelBlacklisted("claude-3-5-haiku"))
+		assert.True(t, IsModelBlacklisted("claude-3-5-haiku-latest"))
+		assert.True(t, IsModelBlacklisted("claude-3-haiku-20240307"))
+		assert.True(t, IsModelBlacklisted("claude-3-haiku"))
+	})
+
 	t.Run("when fallback selects lower model, blacklisted models are skipped", func(t *testing.T) {
 		ResetModelBlacklist()
 		defer ResetModelBlacklist()
 
-		models := []string{"claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"}
+		models := []string{"claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-haiku-5-5"}
 		parsed := parsedModelsFor(models, parseAnthropicModel)
 
 		// Under normal conditions, fallback from opus is sonnet
@@ -40,7 +48,7 @@ func TestModelBlacklist(t *testing.T) {
 
 		// Next fallback should skip sonnet and return haiku
 		nextAfterBlacklist := selectLowerModelFromParsed("claude-3-opus-20240229", parsed)
-		assert.Equal(t, "claude-3-5-haiku-latest", nextAfterBlacklist)
+		assert.Equal(t, "claude-haiku-5-5", nextAfterBlacklist)
 
 		// After reset, sonnet becomes selectable again
 		ResetModelBlacklist()

@@ -40,8 +40,17 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	}
 
 	diffOut := ""
-	if task.Retries > 0 && o.git != nil {
-		diffOut, _ = o.git.Run(ctx, false, "diff")
+	isRemediation := strings.HasPrefix(task.ID, "qa-remediation-") || strings.HasPrefix(task.ID, "spec-remediation-")
+	if (task.Retries > 0 || isRemediation) && o.git != nil {
+		if isRemediation {
+			baseBranch := ResolveBaseBranch(ctx, o.git, state.Metadata.BaseBranch)
+			diffOut, _ = o.git.Run(ctx, false, "diff", baseBranch)
+			if strings.TrimSpace(diffOut) == "" {
+				diffOut, _ = o.git.Run(ctx, false, "diff", "HEAD~1")
+			}
+		} else {
+			diffOut, _ = o.git.Run(ctx, false, "diff")
+		}
 	}
 	cleanFileContexts, cleanReaderContexts := DeduplicateFileAndReaderContexts(fileContexts, readerContexts)
 	promptContext := buildGeneratorPromptContext(task, state, cleanFileContexts, cleanReaderContexts, recentTestsContext, diffOut)
@@ -105,9 +114,26 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	noopStrikes := 0
 	maxNoopStrikes := 2
 
+	baseStage := 0
+	switch action {
+	case "surgical_repair":
+		baseStage = 2
+	case "refactor", "implement_breadth_first_fix", "fix", "single_pass_fix":
+		baseStage = 1
+	}
+
 	for turn := 0; turn < maxTurns; turn++ {
 		circuitBreaker.ResetTurn()
-		resp, err := o.llmClient.Complete(genCtx, currentPrompt)
+		turnCtx := domain.WithQualityStage(genCtx, baseStage+turn+task.Retries)
+		if o.escalator != nil && (turn > 0 || baseStage > 0) {
+			effectiveTurn := turn + baseStage
+			dec := o.escalator.EvaluateEscalation(genCtx, &task, effectiveTurn)
+			turnCtx = domain.WithDynamicThinking(turnCtx, dec.EnableThinking)
+			if dec.UpgradeModel && dec.TargetModel != "" {
+				turnCtx = domain.WithModelOverride(turnCtx, dec.TargetModel)
+			}
+		}
+		resp, err := o.llmClient.Complete(turnCtx, currentPrompt)
 		o.recordTokenUsage(ctx, currentPrompt, resp)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Orchestrator: Task %s [Generator] turn %d LLM call failed: %v\n", task.ID, turn, err)

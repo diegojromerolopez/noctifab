@@ -7,37 +7,99 @@
 [![License](https://img.shields.io/github/license/diegojromerolopez/noctifab)](/LICENSE)
 [![Linter Status](https://img.shields.io/badge/Linter-Linting%20Clean-success)](https://github.com/diegojromerolopez/noctifab)
 
-`noctifab` is an autonomous, long-running agentic harness that operates without human intervention to resolve issues, verify builds, run tests, and manage software project lifecycles. 
+`noctifab` is an autonomous, unattended software development harness compiled as a single Go binary. 
 
-Designed as a **Dark Factory Platform** for GitHub and GitLab, it is compiled as a single Go binary and runs as a single-node autonomous loop engine to replace manual developer execution bottlenecks.
+Unlike interactive AI copilots (where you sit and review prompts function by function), Noctifab operates as a **Software Dark Factory**: you provide a `SPEC.md`, and it autonomously decomposes tasks into a topological DAG, spins up isolated Git worktrees, writes minimal functional code, authors black-box behavioral tests, validates changes through a **3x majority consensus test gate** (to eliminate flaky test passes), and auto-merges verified PRs into `main`.
 
 ---
 
-## ⚡ 1-Line Quickstart Installer
+## ⚡ Try It in Minutes (Zero Config Demo Sandbox)
 
-Install `noctifab` instantly on macOS or Linux:
+Test drive Noctifab on macOS or Linux with the built-in autonomous demo sandbox (`t4` ISO C17 S3-style HTTP server, pre-configured with single-pass streaming roadmap generation and fast-tier routing for `product_manager`, `planner`, `qa`, and `auditor`):
 
 ```bash
+# 1. Install single binary:
 curl -sSL https://raw.githubusercontent.com/diegojromerolopez/noctifab/main/scripts/install.sh | sh
+
+# 2. Run the zero-config autonomous demo sandbox:
+noctifab demo
+
+# 3. Inspect and test the generated ISO C17 S3-style HTTP server:
+cd demo
+make test   # Runs C17 HTTP wire protocol unit tests (passes 100% in 0.05s)
+make build  # Compiles bin/t4
+./bin/t4    # Launches S3-compatible daemon
 ```
 
-Initialize a project workspace (creates `.noctifab/config.yaml`, `.noctifab/secrets.yaml`, and `SPEC.md` template):
+---
+
+## 🥊 How Noctifab Compares
+
+| Feature | Interactive Copilots (Aider, Claude Code) | Cloud Black-Box (Devin) | **Noctifab** |
+| :--- | :---: | :---: | :---: |
+| **Workflow** | Interactive chat (human reviews every diff) | Cloud SaaS web container | **Unattended Dark Factory** (local CLI binary) |
+| **Execution Loop** | Human prompts $\rightarrow$ AI edits $\rightarrow$ Human tests | Remote web dashboard | **Spec $\rightarrow$ Task DAG $\rightarrow$ Multi-Worktree $\rightarrow$ 3x Consensus** |
+| **Flaky Test Guard** | ❌ None (1 pass = merge) | ❌ None | **✅ 3x Majority Consensus Gate (≥ 2/3)** |
+| **Merge Safety** | Manual git commands | Cloud PR | **Automated Rebase Queue & Auto-Merge** |
+| **Privacy & Local LLMs** | Requires cloud or manual proxy | Cloud only (closed) | **100% Local (Ollama, vLLM) or Cloud** |
+| **Cost** | Per-token / subscription | $500+/mo subscription | **Free & Open Source (MIT)** |
+
+---
+
+## 📊 Empirical Benchmarks across 20 Real Repositories
+
+Noctifab has been validated across 20 distinct multi-language projects (Go, Rust, C17, Python, Ruby, Java, OCaml, Erlang, C#/.NET). Every project was generated autonomously from a `SPEC.md` without human intervention:
+
+| Metric | Measured Benchmark | Engineering Impact |
+| :--- | :---: | :--- |
+| **Walking Skeleton (Spike) Time** | **38s – 65s** | Generates compiling 11–14 file architecture with tests before decomposition |
+| **Autonomous Story Loop Duration** | **11.4 minutes** *(avg)* | Full DAG planning, multi-worker worktrees, test authoring, and auto-merge |
+| **Token Consumption per Project** | **~143,000 tokens** *(avg)* | Total cost ~$0.15–$0.40 on Gemini Flash / DeepSeek for full implementation |
+| **Quality Gate Consensus** | **3x Run Majority (≥ 2/3)** | Runs tests 3 times post-implementation; 0 flaky test passes merged |
+| **Language & Toolchain Breadth** | **13+ Runtimes** | Go, Rust, C17, Python, Ruby, Java, OCaml, Erlang, C#/.NET, Zig, Swift, Dart |
+| **Brownfield Codebase Navigation** | **Up to 453 files** | Detects existing code, avoids overwriting, and plans stabilizing user stories |
+
+👉 **[Explore all 20 repositories and autonomous code branches on GitHub →](#available-validation-projects)**
+
+---
+
+## 🚀 Quick Start on Your Own Project
+
+Initialize a project workspace (creates `.noctifab/config.yaml`, local SQLite DB, and `.gitignore`):
 
 ```bash
 noctifab init [my-project-dir]
+cd [my-project-dir]
 ```
+
+### 1-Click Local LLMs (Ollama / vLLM - 100% Free & Private)
+Run completely offline with zero API bills using Ollama (`http://localhost:11434/v1` connects automatically):
+
+```yaml
+# .noctifab/config.yaml
+llm:
+  provider: ollama
+  model: qwen2.5-coder:32b   # or deepseek-r1, llama3.1
+```
+
+*(Cloud providers like Gemini, Claude, OpenAI, and DeepSeek are also supported via environment variables or `.noctifab/secrets.yaml`)*
+
+### Draft a Specification & Launch the Loop
 
 Interactively draft, refine, and audit your software specification with multi-agent AI consensus:
 
 ```bash
-noctifab spec "Build a REST API with JWT authentication and PostgreSQL"
+noctifab spec "Build a CLI URL shortener in Go with SQLite persistence and redirect analytics"
 ```
 
-Launch the dark factory loop in any project with a `SPEC.md` (add `-w` for live Visual Web Dashboard & Spec Studio):
+Launch the dark factory loop (add `-w` for live Visual Web Dashboard & Spec Studio at `http://127.0.0.1:8080`):
 
 ```bash
-noctifab start [my-project-dir] -w
+noctifab start -w
 ```
+
+📖 **New to Noctifab?** Follow the step-by-step **[Beginner Onboarding Guide](docs/getting_started.md)**.
+
 
 ---
 
@@ -518,7 +580,7 @@ Key features of Interactive Mode:
 
 - **`init`**: Initializes workspace folder structure (`.noctifab/`), SQLite DB, default config, and security permission profiles. Use `--profile <preset>` (`ollama-qwen`, `ollama-deepseek`, `vllm-local`, `openai-compat`) for 1-click local LLM configuration, `--spec <prompt>` to bootstrap interactive spec generation, or `-i` / `--interactive` for interactive wizard.
 - **`spec`**: Interactively creates, refines, and audits software specifications (`SPEC.md`). Features multi-agent team consensus review (Architect, QA, Tester, PM), version snapshotting (`SPEC.v1.md`, `SPEC.v2.md`), and instant zero-token time-travel rollback (`undo`, `redo`, `history`, `checkout <v>`). Supports subcommands `noctifab spec [prompt]`, `noctifab spec new`, `noctifab spec refine`, and `noctifab spec audit`.
-- **`demo`**: Runs an instant, 2-minute, zero-config autonomous sandbox using deterministic offline mock replay (supports `--project`, `--offline`, `--speed`, `--no-cleanup`).
+- **`demo`**: Runs a zero-config autonomous sandbox that unpacks a sample specification (default: `t4` ISO C17 S3-compatible HTTP server) into `[target_dir]` (defaults to current directory `.`), initializes the workspace, and executes the dark factory engine end-to-end (supports `[target_dir]` and `--project`).
 - **`dashboard`**: Launches the real-time progress dashboard (terminal TUI by default, or visual web browser via `-w` / `--web`). Supports `--web-open` (auto-opens in default browser), `--port`, `--host`, and `--readonly`. Web Mission Control features:
   - **Task & Story DoD Inspector Modal**: Click any task or story card to view its full description, Definition of Done (DoD) verification checklist, target files, and failure stack traces with 1-click steering shortcuts.
   - **Failure Diagnostics & Quick-Steer Hints**: Automatically highlights root-cause compiler/test errors when health is failing and generates corrective steering directives with 1 click.
@@ -798,7 +860,7 @@ OPENAI_API_KEY: "sk-..."
 ```yaml
 llm:
   provider: anthropic
-  model: claude-sonnet-5          # fallback chain: claude-sonnet-5 → claude-3-5-sonnet-latest → claude-3-5-haiku-latest
+  model: claude-sonnet-5          # fallback chain: claude-sonnet-5 → claude-3-7-sonnet-latest → claude-haiku-5-5
   api_key: "secret:ANTHROPIC_API_KEY"
 ```
 
@@ -861,7 +923,7 @@ llm:
 |---|---|
 | **Gemini** | `gemini-3.1-pro-preview` → `gemini-3.8-flash` |
 | **OpenAI** | `gpt-4o` → `gpt-4o-mini` |
-| **Anthropic** | `claude-sonnet-5` → `claude-3-5-sonnet-latest` → `claude-3-5-haiku-latest` |
+| **Anthropic** | `claude-sonnet-5` → `claude-3-7-sonnet-latest` → `claude-haiku-5-5` |
 | **Mistral** | `mistral-large-latest` → `mistral-medium-latest` → `mistral-small-latest` → `open-mistral-7b` |
 | **DeepSeek** | `deepseek-coder` → `deepseek-chat` |
 | **Hermes** | `hermes-3-llama-3.1-405b` → `hermes-3-llama-3.1-70b` → `hermes-3-llama-3.1-8b` |
@@ -935,14 +997,17 @@ When the agent asks a clarification question, Noctifab can attempt to auto-answe
 
 The `validation/` directory contains fully containerized, isolated end-to-end integration checks that run `noctifab` autonomously against real project specs — with **zero human intervention** — and verify that the correct source files are produced and all tests pass.
 
-See [`validation/README.md`](validation/README.md) for the full project list, the tier-based effectiveness classification, setup, and credential details.
+### 📊 Key Autonomous Generation Milestones
 
-### Near-Instantaneous Iterations (Speedup Measures)
-To optimize validation container runs for near-instantaneous development feedback loops, the platform includes:
-- **Warm Compiler Caching:** Persistent mounts for Go modules/build caches and Cargo registries directly from the host.
-- **Heuristic Context Preloading:** Bypasses context-gathering LLM calls for existing repository files, speeding up task initialization.
-- **Zero-Delay Task Handoff:** Skips the polling delay sleep interval once a task completes, immediately scheduling the next task.
+See the platform-wide **[Empirical Benchmarks](#-empirical-benchmarks-across-20-real-repositories)** above. Highlights from recent validation runs include:
+- **`fortune` (C17 + SQLite3)**: Synthesized 13 clean files in **1m 5s**. Compiled on the first pass under `-Wall -Wextra -Werror -pedantic -std=c17`; 100% unit tests passed.
+- **`calculator` (Ruby 3.4 + RSpec)**: Synthesized 11 clean files in **38.9s**. 6 RSpec examples passed with 0 failures in 0.003s; REPL and CLI operational.
+- **`ninline` (Python 3.14 + Minimax AI)**: Synthesized 14 files in **58.9s** (11,076 tokens). Full ray-casting line scanner and Minimax AI; passed JSON CLI contracts.
+- **`dotchess` (C# / .NET 9)**: Completed **8 out of 9 planned tasks** autonomously; 20 unit tests passed (0 failures); live UCI protocol handshake verified.
+- **`todo-cli` (Go 1.24 + JSON DB)**: Generated 18 clean files; multi-story DAG scheduling executed US-001 and US-002 in parallel; 100% unit tests passed in memory.
+- **`wc` (Rust 1.88)**: Enforced `#![deny(unsafe_code)]` and $O(1)$ memory streaming; anti-monolith gate caught 7-file candidate and decomposed it into modular tasks.
 
+---
 
 ### Available Validation Projects
 

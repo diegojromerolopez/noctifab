@@ -131,6 +131,13 @@ func (o *Orchestrator) raceAndApplyCandidateHypotheses(
 	turn, maxTurns int,
 	turnTimeout time.Duration,
 ) (passed bool, currentLog string, hasMutatingAction bool) {
+	var baselineCommit string
+	if taskGit != nil {
+		if head, err := taskGit.Run(ctx, false, "rev-parse", "HEAD"); err == nil {
+			baselineCommit = strings.TrimSpace(head)
+		}
+	}
+
 	for _, cand := range candidates {
 		if cand.Error != nil || cand.Response == nil || len(cand.Response.Actions) == 0 {
 			continue
@@ -189,8 +196,8 @@ func (o *Orchestrator) raceAndApplyCandidateHypotheses(
 			fmt.Printf("⚠️  [Parallel Fallback] Candidate hypothesis %q failed tests. Rolling back workspace...\n", cand.Kind)
 
 			// Rollback workspace to try next candidate
-			if taskGit != nil {
-				_, _ = taskGit.Run(ctx, false, "reset", "--hard", "HEAD~1")
+			if taskGit != nil && baselineCommit != "" {
+				_, _ = taskGit.Run(ctx, false, "reset", "--hard", baselineCommit)
 				_, _ = taskGit.Run(ctx, false, "clean", "-fd")
 			}
 		}

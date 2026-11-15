@@ -85,7 +85,7 @@ func DefaultConfig() *Config {
 				ModelUpgradeThresholdTurns: 2,
 				MaxModelUpgrades:           2,
 				SplitOnMaxUpgrades:         boolPtr(true),
-				CleanWorktreeOnEscalate:    boolPtr(true),
+				CleanWorktreeOnEscalate:    boolPtr(false),
 			},
 		},
 		WorkspaceCache: WorkspaceCacheConfig{

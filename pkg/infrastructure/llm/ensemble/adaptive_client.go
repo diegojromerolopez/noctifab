@@ -37,7 +37,7 @@ func (a *AdaptiveClient) Complete(ctx context.Context, prompt string) (*domain.L
 	ctx, cancel := context.WithTimeout(ctx, a.Timeout)
 	defer cancel()
 
-	tierName, targetClient := a.classifyAndSelect(prompt)
+	tierName, targetClient := a.classifyAndSelect(ctx, prompt)
 	GlobalTelemetry().RecordAdaptivePath(tierName)
 
 	if targetClient == nil {
@@ -59,7 +59,30 @@ func (a *AdaptiveClient) Complete(ctx context.Context, prompt string) (*domain.L
 	return resp, nil
 }
 
-func (a *AdaptiveClient) classifyAndSelect(prompt string) (string, domain.LLMClient) {
+func (a *AdaptiveClient) classifyAndSelect(ctx context.Context, prompt string) (string, domain.LLMClient) {
+	if stage, ok := domain.GetQualityStage(ctx); ok {
+		if stage >= 2 {
+			if a.HeavyClient != nil {
+				return "heavy", a.HeavyClient
+			}
+			if a.StandardClient != nil {
+				return "standard", a.StandardClient
+			}
+		} else if stage == 1 {
+			if a.StandardClient != nil {
+				return "standard", a.StandardClient
+			}
+			if a.HeavyClient != nil {
+				return "heavy", a.HeavyClient
+			}
+		}
+	}
+	if thinking, ok := domain.GetDynamicThinking(ctx); ok && thinking {
+		if a.HeavyClient != nil {
+			return "heavy", a.HeavyClient
+		}
+	}
+
 	lower := strings.ToLower(prompt)
 
 	// 1. Heavy Tier: Concurrency, architecture, low-level binary, algorithms, or error remediation

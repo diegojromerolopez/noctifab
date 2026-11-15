@@ -349,6 +349,11 @@ func (s *HostSandbox) RunCommand(ctx context.Context, projectPath string, comman
 		return s.runPythonTestsIsolated(ctx, targetDir, cmdStr)
 	}
 
+	// Ensure gradlew executable exists before running gradlew commands
+	if strings.Contains(cmdStr, "gradlew") || binary == "./gradlew" || binary == "gradlew" {
+		EnsureGradlewScript(targetDir)
+	}
+
 	var cmd *exec.Cmd
 	if useShell {
 		shellCmd := cmdStr

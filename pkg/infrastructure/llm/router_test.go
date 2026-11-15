@@ -117,7 +117,7 @@ func TestResilientLLMRouter_Scenarios(t *testing.T) {
 				Priority: []string{"valid-global-provider"},
 				Providers: []config.ProviderSpec{
 					{Name: "valid-provider", Provider: "openai", Model: "gpt-4o"},
-					{Name: "valid-global-provider", Provider: "anthropic", Model: "claude-3-5-haiku-latest"},
+					{Name: "valid-global-provider", Provider: "anthropic", Model: "claude-haiku-5-5"},
 				},
 			},
 			Roles: config.RolesConfig{

@@ -47,8 +47,20 @@ func ExtractUnresolvedSymbol(compilerOutput string) string {
 	return ""
 }
 
+var genericSymbolStopwords = map[string]bool{
+	"test": true, "tests": true, "testing": true,
+	"main": true, "server": true, "client": true,
+	"readme": true, "makefile": true, "data": true,
+	"base": true, "core": true, "util": true, "utils": true,
+	"helper": true, "helpers": true, "common": true, "types": true,
+	"index": true, "init": true, "config": true, "spec": true,
+	"root": true, "build": true, "src": true, "bin": true,
+	"package": true, "error": true, "errors": true,
+}
+
 // AutoLinkSymbolDependencies pre-flights planned tasks. If Task B explicitly references
-// a symbol/type produced by Task A, it automatically adds Task A to Task B's DependsOn.
+// a symbol/type produced by Task A, it automatically adds Task A to Task B's DependsOn,
+// provided it does not create a circular dependency.
 func AutoLinkSymbolDependencies(tasks []domain.Task) {
 	entityProducer := make(map[string]string) // entityName -> taskID
 	for _, t := range tasks {
@@ -56,10 +68,16 @@ func AutoLinkSymbolDependencies(tasks []domain.Task) {
 			base := filepath.Base(f)
 			ext := filepath.Ext(base)
 			entityName := strings.TrimSuffix(base, ext)
-			if len(entityName) >= 3 {
-				entityProducer[strings.ToLower(entityName)] = t.ID
+			entityLower := strings.ToLower(entityName)
+			if len(entityName) >= 3 && !genericSymbolStopwords[entityLower] {
+				entityProducer[entityLower] = t.ID
 			}
 		}
+	}
+
+	taskMap := make(map[string]*domain.Task, len(tasks))
+	for i := range tasks {
+		taskMap[tasks[i].ID] = &tasks[i]
 	}
 
 	for i := range tasks {
@@ -69,7 +87,8 @@ func AutoLinkSymbolDependencies(tasks []domain.Task) {
 			if producerID == task.ID {
 				continue
 			}
-			if strings.Contains(descLower, entity) {
+			re := regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(entity) + `\b`)
+			if re.MatchString(descLower) {
 				alreadyDep := false
 				for _, d := range task.DependsOn {
 					if d == producerID {
@@ -78,12 +97,36 @@ func AutoLinkSymbolDependencies(tasks []domain.Task) {
 					}
 				}
 				if !alreadyDep {
+					// Prevent creating circular references
+					if isTaskReachable(producerID, task.ID, taskMap, make(map[string]bool)) {
+						continue
+					}
 					task.DependsOn = append(task.DependsOn, producerID)
 					fmt.Printf("ℹ [Preflight Dependency] Linked task %s -> %s based on symbol reference %q\n", task.ID, producerID, entity)
 				}
 			}
 		}
 	}
+}
+
+func isTaskReachable(currentID, targetID string, taskMap map[string]*domain.Task, visited map[string]bool) bool {
+	if currentID == targetID {
+		return true
+	}
+	if visited[currentID] {
+		return false
+	}
+	visited[currentID] = true
+	t, ok := taskMap[currentID]
+	if !ok {
+		return false
+	}
+	for _, dep := range t.DependsOn {
+		if isTaskReachable(dep, targetID, taskMap, visited) {
+			return true
+		}
+	}
+	return false
 }
 
 // SynchronizeMissingSymbolFromSiblings searches other worktrees for the file declaring symbol,

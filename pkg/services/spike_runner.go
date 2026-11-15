@@ -96,9 +96,10 @@ func ExecuteSpike(
 		timeoutSec = 180
 	}
 	var filesToApply map[string]string
+	var candidates []SpikeCandidate
 
 	if cfg.Agents.Spike.Hypotheses.IsEnabled() {
-		candidates := GenerateSpikeHypotheses(spikeCtx, rendered.Full(), llmClient, cfg.Agents.Spike.Hypotheses, timeoutSec)
+		candidates = GenerateSpikeHypotheses(spikeCtx, rendered.Full(), llmClient, cfg.Agents.Spike.Hypotheses, timeoutSec)
 		filesToApply = ResolveSpikeHypotheses(candidates, cfg.Agents.Spike.Hypotheses.GetResolution())
 	} else {
 		callCtx, cancel := context.WithTimeout(spikeCtx, time.Duration(timeoutSec)*time.Second)
@@ -122,34 +123,26 @@ func ExecuteSpike(
 		filesToApply = extractFilesFromSpikeResponse(resp)
 	}
 
-	filesWritten := 0
-	for path, content := range filesToApply {
-		cleanPath := filepath.Clean(strings.TrimSpace(path))
-		if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
-			continue
-		}
-		if isMakefile(cleanPath) {
-			content = StandardizeMakefile(content)
-		}
-		fullPath := filepath.Join(projectPath, cleanPath)
-		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err == nil {
-			if err := os.WriteFile(fullPath, []byte(content), 0644); err == nil {
-				filesWritten++
+	writtenPaths, compErr := applyAndVerifySpikeCandidate(ctx, projectPath, filesToApply)
+	if compErr != nil && len(candidates) > 0 {
+		fmt.Printf("⚠️  [Spike] Combined/primary hypothesis failed compile check (%v). Testing individual hypotheses...\n", compErr)
+		for _, cand := range candidates {
+			if !cand.Valid || len(cand.Files) == 0 {
+				continue
+			}
+			writtenPaths, compErr = applyAndVerifySpikeCandidate(ctx, projectPath, cand.Files)
+			if compErr == nil && len(writtenPaths) > 0 {
+				fmt.Printf("✅ [Spike] Individual Hypothesis %d passed compile check (%d files).\n", cand.Index, len(writtenPaths))
+				break
 			}
 		}
 	}
 
-	// Ensure any written or existing Makefile in project root has standard targets
-	rootMakefilePath := filepath.Join(projectPath, "Makefile")
-	if mfBytes, err := os.ReadFile(rootMakefilePath); err == nil {
-		stdMF := StandardizeMakefile(string(mfBytes))
-		_ = os.WriteFile(rootMakefilePath, []byte(stdMF), 0644)
-	}
-
+	filesWritten := len(writtenPaths)
 	durMS := time.Since(spikeStart).Milliseconds()
 	if reporter != nil {
 		outcome := domain.OutcomeSuccess
-		if filesWritten == 0 {
+		if filesWritten == 0 || compErr != nil {
 			outcome = domain.OutcomeFailed
 		}
 		reporter.Observe(ctx, domain.ExecutionEvent{
@@ -162,19 +155,158 @@ func ExecuteSpike(
 		})
 	}
 
+	if compErr != nil {
+		fmt.Printf("⚠️  [Spike] Discarded uncompilable spike prototype (%v) to keep main branch clean.\n", compErr)
+		return false, fmt.Errorf("spike prototype failed compilation gate: %w", compErr)
+	}
+
 	if filesWritten == 0 {
 		return false, fmt.Errorf("spike model did not produce any valid file writing actions")
 	}
 
-	// Commit initial spike solution to git
-	commitSpikeToGit(projectPath)
+	// Commit verified spike solution to git
+	commitSpikeToGit(projectPath, writtenPaths)
 
-	fmt.Printf("✅ [Spike] Minimal walking skeleton implemented (%d files written in %v). Handing off to Product Manager.\n", filesWritten, time.Since(spikeStart).Round(time.Millisecond))
+	fmt.Printf("✅ [Spike] Minimal walking skeleton verified & committed (%d files written in %v). Handing off to Product Manager.\n", filesWritten, time.Since(spikeStart).Round(time.Millisecond))
 	return true, nil
 }
 
-func commitSpikeToGit(projectPath string) {
-	cmdAdd := exec.Command("git", "add", ".")
+func applyAndVerifySpikeCandidate(ctx context.Context, projectPath string, filesToApply map[string]string) ([]string, error) {
+	if len(filesToApply) == 0 {
+		return nil, nil
+	}
+
+	var createdFiles []string
+	overwrittenFiles := make(map[string][]byte)
+	var writtenRelPaths []string
+
+	for path, content := range filesToApply {
+		cleanPath := filepath.Clean(strings.TrimSpace(path))
+		if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+			continue
+		}
+		if isMakefile(cleanPath) {
+			content = StandardizeMakefile(content)
+		}
+		fullPath := filepath.Join(projectPath, cleanPath)
+		if prevBytes, err := os.ReadFile(fullPath); err == nil {
+			overwrittenFiles[fullPath] = prevBytes
+		} else {
+			createdFiles = append(createdFiles, fullPath)
+		}
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err == nil {
+			if err := os.WriteFile(fullPath, []byte(content), 0644); err == nil {
+				writtenRelPaths = append(writtenRelPaths, cleanPath)
+			}
+		}
+	}
+
+	if len(writtenRelPaths) == 0 {
+		return nil, nil
+	}
+
+	rootMakefilePath := filepath.Join(projectPath, "Makefile")
+	if mfBytes, err := os.ReadFile(rootMakefilePath); err == nil {
+		if _, tracked := overwrittenFiles[rootMakefilePath]; !tracked {
+			createdHasMakefile := false
+			for _, cf := range createdFiles {
+				if cf == rootMakefilePath {
+					createdHasMakefile = true
+					break
+				}
+			}
+			if !createdHasMakefile {
+				overwrittenFiles[rootMakefilePath] = mfBytes
+			}
+		}
+		stdMF := StandardizeMakefile(string(mfBytes))
+		_ = os.WriteFile(rootMakefilePath, []byte(stdMF), 0644)
+	}
+
+	if err := VerifySpikeWorkspaceCompiles(ctx, projectPath, writtenRelPaths); err != nil {
+		for _, cf := range createdFiles {
+			_ = os.Remove(cf)
+		}
+		for fullPath, origBytes := range overwrittenFiles {
+			_ = os.WriteFile(fullPath, origBytes, 0644)
+		}
+		return nil, err
+	}
+
+	return writtenRelPaths, nil
+}
+
+// VerifySpikeWorkspaceCompiles runs fast deterministic syntax and build checks on written Spike files.
+func VerifySpikeWorkspaceCompiles(ctx context.Context, projectPath string, writtenRelPaths []string) error {
+	sv := NewSyntaxValidator()
+	if violations, err := sv.ValidateFiles(ctx, projectPath, writtenRelPaths); err != nil {
+		return err
+	} else if len(violations) > 0 {
+		return fmt.Errorf("syntax error in %s: %s", violations[0].FilePath, violations[0].Message)
+	}
+
+	hasExt := func(ext string) bool {
+		for _, p := range writtenRelPaths {
+			if strings.EqualFold(filepath.Ext(p), ext) {
+				return true
+			}
+		}
+		return false
+	}
+	fileExists := func(rel string) bool {
+		_, err := os.Stat(filepath.Join(projectPath, rel))
+		return err == nil
+	}
+
+	var buildCmd []string
+	switch {
+	case fileExists("go.mod") && hasExt(".go"):
+		buildCmd = []string{"go", "build", "./..."}
+	case fileExists("Cargo.toml") && hasExt(".rs"):
+		buildCmd = []string{"cargo", "check", "--quiet"}
+	case hasExt(".csproj") || hasExt(".sln") || hasExt(".cs"):
+		if hasExt(".csproj") || hasExt(".sln") {
+			buildCmd = []string{"dotnet", "build", "--nologo", "-v", "q"}
+		}
+	case fileExists("dune-project") && (hasExt(".ml") || hasExt(".mli")):
+		buildCmd = []string{"dune", "build"}
+	case fileExists("rebar.config") && hasExt(".erl"):
+		buildCmd = []string{"rebar3", "compile"}
+	}
+
+	if len(buildCmd) > 0 {
+		if _, lookErr := exec.LookPath(buildCmd[0]); lookErr == nil {
+			bCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(bCtx, buildCmd[0], buildCmd[1:]...)
+			cmd.Dir = projectPath
+			out, runErr := cmd.CombinedOutput()
+			cleanupSpikeBuildArtifacts(projectPath)
+			if runErr != nil {
+				msg := strings.TrimSpace(string(out))
+				if len(msg) > 400 {
+					msg = msg[:400]
+				}
+				return fmt.Errorf("%s failed: %w (%s)", strings.Join(buildCmd, " "), runErr, msg)
+			}
+		}
+	}
+
+	return nil
+}
+
+func cleanupSpikeBuildArtifacts(projectPath string) {
+	for _, dir := range []string{"bin", "obj", "_build", "target", "__pycache__"} {
+		_ = os.RemoveAll(filepath.Join(projectPath, dir))
+	}
+}
+
+func commitSpikeToGit(projectPath string, writtenRelPaths []string) {
+	args := append([]string{"add", "--"}, writtenRelPaths...)
+	if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
+		args = append(args, "Makefile")
+	}
+	cmdAdd := exec.Command("git", args...)
 	cmdAdd.Dir = projectPath
 	_ = cmdAdd.Run()
 

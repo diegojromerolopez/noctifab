@@ -9,6 +9,7 @@ type TaskEscalationConfig struct {
 	MaxModelUpgrades           int      `yaml:"max_model_upgrades,omitempty"`
 	SplitOnMaxUpgrades         *bool    `yaml:"split_on_max_upgrades,omitempty"`
 	CleanWorktreeOnEscalate    *bool    `yaml:"clean_worktree_on_escalate,omitempty"`
+	UpgradingOrder             []string `yaml:"upgrading_order,omitempty"`
 	UpgradedModels             []string `yaml:"upgraded_models,omitempty"`
 }
 
@@ -50,14 +51,24 @@ func (c TaskEscalationConfig) IsSplitOnMaxUpgradesEnabled() bool {
 }
 
 // IsCleanWorktreeOnEscalateEnabled returns true if dirty worktrees are cleaned before model upgrades.
+// Defaults to false so that in-progress drafts can be preserved and refined by upgraded models.
 func (c TaskEscalationConfig) IsCleanWorktreeOnEscalateEnabled() bool {
 	if c.CleanWorktreeOnEscalate != nil {
 		return *c.CleanWorktreeOnEscalate
 	}
-	return true
+	return false
 }
 
-// GetUpgradedModels returns the configured list of escalated models, or empty slice if default pool applies.
-func (c TaskEscalationConfig) GetUpgradedModels() []string {
+// GetUpgradingOrder returns the configured ordered sequence of escalated models,
+// falling back to legacy UpgradedModels if set, or empty slice if default pool applies.
+func (c TaskEscalationConfig) GetUpgradingOrder() []string {
+	if len(c.UpgradingOrder) > 0 {
+		return c.UpgradingOrder
+	}
 	return c.UpgradedModels
+}
+
+// GetUpgradedModels returns the configured list of escalated models (alias for GetUpgradingOrder).
+func (c TaskEscalationConfig) GetUpgradedModels() []string {
+	return c.GetUpgradingOrder()
 }

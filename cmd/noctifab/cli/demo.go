@@ -2,37 +2,57 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/diegojromerolopez/noctifab/pkg/services/demo"
 	"github.com/spf13/cobra"
 )
 
 var (
-	demoProject     string
-	demoOffline     bool
-	demoSpeedFactor float64
-	demoNoCleanup   bool
+	demoProject string
+
+	// demoStartRunnerOverride allows injecting mock runners for testing.
+	demoStartRunnerOverride demo.StartRunner
 )
 
 var demoCmd = &cobra.Command{
-	Use:   "demo",
-	Short: "Run a 2-minute zero-config autonomous dark factory demo sandbox",
+	Use:   "demo [target_dir]",
+	Short: "Run an autonomous dark factory demo sandbox",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		svc := demo.NewDemoService()
-		cfg := demo.DemoConfig{
-			Archetype:    demo.DemoArchetype(demoProject),
-			ForceOffline: demoOffline,
-			SpeedFactor:  demoSpeedFactor,
-			NoCleanup:    demoNoCleanup,
+		targetDir := "demo"
+		if len(args) > 0 && args[0] != "" {
+			targetDir = args[0]
 		}
-		return svc.Run(context.Background(), cfg)
+
+		runner := demoStartRunnerOverride
+		if runner == nil {
+			runner = func(ctx context.Context, dir string) error {
+				origWd, err := os.Getwd()
+				if err == nil {
+					defer func() { _ = os.Chdir(origWd) }()
+				}
+				if err := os.Chdir(dir); err != nil {
+					return fmt.Errorf("failed to enter demo directory: %w", err)
+				}
+				if ctx != nil {
+					startCmd.SetContext(ctx)
+				}
+				return runStartCommand(startCmd, []string{"."})
+			}
+		}
+
+		svc := demo.NewDemoService(runner)
+		cfg := demo.DemoConfig{
+			Archetype: demo.DemoArchetype(demoProject),
+			TargetDir: targetDir,
+		}
+		return svc.Run(cmd.Context(), cfg)
 	},
 }
 
 func init() {
 	RootCmd.AddCommand(demoCmd)
-	demoCmd.Flags().StringVar(&demoProject, "project", "cli", "Demo project archetype (cli, rest)")
-	demoCmd.Flags().BoolVar(&demoOffline, "offline", true, "Force offline execution using deterministic mock replay")
-	demoCmd.Flags().Float64Var(&demoSpeedFactor, "speed", 1.0, "Execution speed multiplier")
-	demoCmd.Flags().BoolVar(&demoNoCleanup, "no-cleanup", false, "Preserve the temporary demo sandbox directory on exit")
+	demoCmd.Flags().StringVar(&demoProject, "project", "t4", "Demo project archetype (t4, cli, rest)")
 }

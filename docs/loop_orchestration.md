@@ -54,8 +54,93 @@ In the following gates, the **entire E2E test suite** (`make e2e`, `docker compo
 During intra-task execution in the generator-tester loop (`TestValidator.ValidateTask`):
 - When unit tests pass, `TestValidator` evaluates detected E2E tests for tasks targeting integration files, final tasks in a story, or tasks with E2E directives.
 - **Scope Filtering (`isE2EFailureInScope`)**: Noctifab parses failure traces from test runners (Pytest, Go test, Cargo, generic runners) and checks failing test names/files against the **active feature scope** (story ID, target files, and feature keywords).
-- **In-Scope Failures**: If a failure corresponds to the active feature under development, `ValidateTask` returns `Passed: false` with the failure log, immediately triggering the generator's single-turn **surgical repair turn**.
+- **In-Scope Failures**: If a failure corresponds to the active feature under development, `ValidateTask` returns `Passed: false` with the failure log, entering the orchestrator's autonomous **Closed Convergence Repair Loop**.
 - **Out-of-Scope Failures**: If the E2E suite reports failures in downstream features that have not yet been developed (e.g. `Hashes` or `PubSub` failing while developing `US-001 Connection & Ping`), the failure is logged and safely ignored in the task loop (`⚠️ Orchestrator: Task ... E2E failure(s) are outside the scope of active feature; ignoring out-of-scope failure`). This guarantees forward momentum without masking errors in the current feature.
+
+---
+
+## Autonomous Multi-Turn Closed Convergence Repair Loop
+
+In unattended factory operation, ad-hoc single-pass repairs fail when compiler runs contain cascaded errors, subtle syntax mismatches, or missing build targets. Noctifab implements an autonomous, multi-turn closed convergence loop (`pkg/services/orchestrator_convergence_loop.go`) that iteratively drives failing tasks to compilation and test success.
+
+```mermaid
+flowchart TD
+    A[Task Validation Fails] --> B[Turn 1..4: Deterministic Auto-Fix First]
+    B --> C[Run Formatters: gofmt, cargo fmt, ruff, dotnet format, dune fmt]
+    C --> D{Deterministic Validation Pass?}
+    D -- Yes --> E[Immediate Fast-Pass Exit: 0 LLM Tokens]
+    D -- No --> F[Extract Structured Diagnostics & Offending Code Snippets]
+    F --> G[Locate File on Disk & Extract Lines with >> Pointer]
+    G --> H[Prompt Generator in Surgical Repair Mode]
+    H --> I[Execute Turn & Stage Commit]
+    I --> J{Validation Pass?}
+    J -- Yes --> K[Task Converged: Commit to Worker Branch]
+    J -- No --> L{Turns Exhausted?}
+    L -- No --> B
+    L -- Yes --> M[Turn 5: Fallback Simplification Directive 7]
+    M --> N{Compiles & Passes?}
+    N -- Yes --> K
+    N -- No --> O[Escalate to Sovereign Fallback Agent]
+```
+
+### 1. Deterministic Auto-Fix Pre-Step
+Before expending LLM context or turns, the convergence loop invokes `runDeterministicAutoFixes` on the active worktree. It executes language-specific deterministic formatters:
+- **Go**: `gofmt -w .`
+- **Rust**: `cargo fmt --all`
+- **Python**: `ruff format .` / `black .`
+- **C#**: `dotnet format`
+- **OCaml**: `dune fmt`
+- **C / C++**: `clang-format -i`
+- **Ruby**: `rubocop -A`
+- **JavaScript / TypeScript**: `prettier --write .`
+
+If the deterministic formatter resolves the issue (e.g. formatting violations, simple syntax layout), validation passes immediately with **zero LLM turns** consumed.
+
+### 2. Multi-Language Diagnostic Parsing (`pkg/services/error_formatter.go`)
+If deterministic fixes do not satisfy validation, the diagnostic engine extracts precise error locations and codes across language toolchains:
+- **C# Roslyn**: `Board.cs(20,50): error CS0206` $\rightarrow$ File: `Board.cs`, Line: `20`, Col: `50`, Message: `CS0206...`
+- **Rust Cargo / rustc**: `--> src/main.rs:12:5` $\rightarrow$ File: `src/main.rs`, Line: `12`, Col: `5`, Category: `Rust Compiler Error`
+- **OCaml Dune / ocamlc**: `File "lib/engine.ml", line 44, characters 12-25:` $\rightarrow$ File: `lib/engine.ml`, Line: `44`
+- **Java / Kotlin**: `App.java:23: error:` or `App.java:[23,15]` $\rightarrow$ File: `App.java`, Line: `23`
+- **TypeScript / JavaScript**: `src/index.ts:14:5 - error TS2322` $\rightarrow$ File: `src/index.ts`, Line: `14`
+- **Make**: `make: *** No rule to make target 'build'. Stop.` $\rightarrow$ File: `Makefile`, Target: `build`
+- **Cargo**: `failed to select a version for requirement 'inkwell = "^0.5.1"'` $\rightarrow$ File: `Cargo.toml`, Dependency Error
+- **Go / C / Generic**: `file.go:42:15: undefined: Bar` $\rightarrow$ File: `file.go`, Line: `42`
+- **Python**: `File "src/server.py", line 45` and `FAILED tests/test_core.py::test_eval`
+
+### 3. Offending Code Snippet Extraction Engine (`pkg/services/offending_code_extractor.go`)
+Rather than expecting the LLM to search for or imagine the failing lines, `ExtractOffendingCodeSnippets` locates the file on disk (falling back to recursive directory search by basename if relative paths differ) and constructs an instructive contextual block:
+- Shows 5 context lines before and after the failure.
+- Inserts line numbers for accurate `edit_file` targeting.
+- Places a high-contrast visual pointer (`>>`) on the exact offending line:
+
+```csharp
+File: src/Board.cs (around line 11)
+Diagnostic: [C# Compiler Error] CS0206: A property or indexer may not be passed as an out or ref parameter
+```csharp
+      9 |         public void MakeMove() {
+     10 |             int result = 42;
+>>   11 |             UpdateState(ref this.CurrentTurn, out this.Winner);   <-- OFFENDING CODE
+     12 |         }
+```
+```
+
+### 4. Closed-Loop Multi-Turn Iteration
+The loop executes up to 4 turns:
+1. Turn 1 repairs the primary diagnostic error.
+2. If a secondary error or lingering assertion emerges, Turn 2 re-extracts the updated diagnostics and new offending code context from disk.
+3. Every turn stages and commits its progress to the worker branch, tracking incremental progress.
+
+### 5. Fallback Simplification (Directive 7: Resilience & Forced Compilation Mandate)
+If standard convergence turns (1..4) fail to eliminate errors, Turn 5 executes a **Fallback Simplification**:
+- The prompt instructs the Generator to simplify complex type constructs, eliminate circular references, and provide a minimal, cleanly compiling implementation.
+- In accordance with Directive 7, code must never be left broken; forced compilation guarantees the build compiles cleanly before escalating.
+- If simplification also fails, the orchestrator safely escalates to the `FallbackAgent`.
+
+### 6. Unrecoverable Environment Error Discrimination
+The watchdog distinguishes genuine host environment failures (`FailureSandbox`, e.g. Docker daemon down, missing host GCC) from project manifest issues:
+- Missing crate dependencies in `Cargo.toml` or missing targets in `Makefile` are classified as project manifest defects and passed into the convergence loop for repair.
+- Only true container/toolchain daemon crashes fast-abort, preventing premature abandonment of repairable tasks.
 
 ---
 

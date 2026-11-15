@@ -231,6 +231,10 @@ func AuditRoadmapStoriesParallel(
 				}
 			}
 
+			if !audited && onStoryReady != nil {
+				onStoryReady(stItem.Path, stItem.Content)
+			}
+
 			mu.Lock()
 			if audited {
 				refinedCount++

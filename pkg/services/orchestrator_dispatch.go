@@ -407,7 +407,7 @@ func (o *Orchestrator) readyTasksForFreeSlots(state *domain.State, inflight map[
 // preWarmUpcomingTasks asynchronously pre-seeds minimal stub files and directories
 // for pending downstream tasks, ensuring zero filesystem preparation latency upon dispatch.
 func (o *Orchestrator) preWarmUpcomingTasks(stateID string) {
-	if o == nil || o.repo == nil {
+	if o == nil || o.repo == nil || o.cfg.UseWorktrees {
 		return
 	}
 	go func() {

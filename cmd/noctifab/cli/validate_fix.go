@@ -154,7 +154,7 @@ CANONICAL NOCTIFAB CONFIGURATION REFERENCE & SCHEMA:
    - providers: list of ProviderSpec
      * name: string (e.g. 'claude', 'openai', 'gemini', 'deepseek')
      * provider: 'anthropic' | 'openai' | 'gemini' | 'qwencloud' | 'opencode' | 'openrouter' | 'ollama' | 'vllm'
-     * model: string (e.g. 'claude-3-5-sonnet-20241022', 'gpt-4o', 'gemini-2.5-pro')
+     * model: string (e.g. 'claude-sonnet-5', 'gpt-4o', 'gemini-2.5-pro')
      * api_keys: string or list of strings naming the env/secret keys
      * max_tokens: integer
      * temperature: float (0.0 to 1.0)
@@ -342,8 +342,8 @@ func resolveRepairClient(configPath string) (domain.LLMClient, string, error) {
 		provider string
 		model    string
 	}{
-		{"CLAUDE_API_KEY", "anthropic", "claude-3-5-sonnet-20241022"},
-		{"ANTHROPIC_API_KEY", "anthropic", "claude-3-5-sonnet-20241022"},
+		{"CLAUDE_API_KEY", "anthropic", "claude-sonnet-5"},
+		{"ANTHROPIC_API_KEY", "anthropic", "claude-sonnet-5"},
 		{"OPENAI_API_KEY", "openai", "gpt-4o"},
 		{"GEMINI_API_KEY", "gemini", "gemini-2.5-pro"},
 		{"DEEPSEEK_API_KEY", "deepseek", "deepseek-chat"},

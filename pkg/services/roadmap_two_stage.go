@@ -173,12 +173,43 @@ func ExpandRoadmapStoriesParallelStreaming(
 	}
 
 	results := make([]*RawStoryItem, len(outlines))
-	sem := make(chan struct{}, concurrency)
-	var wg sync.WaitGroup
 	tpmLimiter := NewTPMRateLimiter(DefaultTPMLimit)
 	promptTokenEstimate := tpmLimiter.EstimateTokens(specContent) + 2000
 
-	for _, entry := range toExpand {
+	expandOne := func(idx int, target StoryOutlineItem) {
+		fmt.Printf("ℹ [Product Manager] Expanding %s (%s) [parallel]...\n", target.ID, target.Title)
+		expanded, expErr := ExpandRoadmapStory(ctx, projectPath, target, outlines, specContent, legacyBlock, nil, llmClient, renderer)
+		if expErr != nil {
+			fmt.Printf("⚠️  [Product Manager] Story expansion error for %s: %v (applying synthetic fallback)\n", target.ID, expErr)
+			expanded = &RawStoryItem{
+				Filename: fmt.Sprintf("roadmap/user-stories/%s-%s.md", strings.ToUpper(target.ID), target.Slug),
+				Content:  buildSyntheticStoryFromOutline(target),
+			}
+		}
+		if expanded != nil {
+			results[idx] = expanded
+			if onStoryReady != nil {
+				onStoryReady(*expanded)
+			}
+		}
+	}
+
+	remaining := toExpand
+	if onStoryReady != nil && len(remaining) > 0 {
+		// Prioritize US-001 (first story) without parallel LLM contention so downstream task planning starts immediately.
+		first := remaining[0]
+		remaining = remaining[1:]
+		_ = tpmLimiter.WaitIfBudgetExceeded(ctx, promptTokenEstimate)
+		expandOne(first.index, first.item)
+		if concurrency > 2 {
+			concurrency = 2
+		}
+	}
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for _, entry := range remaining {
 		wg.Add(1)
 		sem <- struct{}{}
 		_ = tpmLimiter.WaitIfBudgetExceeded(ctx, promptTokenEstimate)
@@ -187,22 +218,7 @@ func ExpandRoadmapStoriesParallelStreaming(
 				<-sem
 				wg.Done()
 			}()
-
-			fmt.Printf("ℹ [Product Manager] Expanding %s (%s) [parallel]...\n", target.ID, target.Title)
-			expanded, expErr := ExpandRoadmapStory(ctx, projectPath, target, outlines, specContent, legacyBlock, nil, llmClient, renderer)
-			if expErr != nil {
-				fmt.Printf("⚠️  [Product Manager] Story expansion error for %s: %v (applying synthetic fallback)\n", target.ID, expErr)
-				expanded = &RawStoryItem{
-					Filename: fmt.Sprintf("roadmap/user-stories/%s-%s.md", strings.ToUpper(target.ID), target.Slug),
-					Content:  buildSyntheticStoryFromOutline(target),
-				}
-			}
-			if expanded != nil {
-				results[idx] = expanded
-				if onStoryReady != nil {
-					onStoryReady(*expanded)
-				}
-			}
+			expandOne(idx, target)
 		}(entry.index, entry.item)
 	}
 

@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,16 +34,17 @@ type AcceptanceAuditResult struct {
 
 // AcceptanceAuditor compares the implemented codebase against the root SPEC.md.
 type AcceptanceAuditor struct {
-	llmClient       domain.LLMClient
-	renderer        PromptRenderer
-	runner          Sandbox
-	sovereignQA     *SovereignQAAuditor
-	e2eCmd          string
-	e2eMode         string
-	defaultTestCmd  string
-	allowedCommands []string
-	verifiedStories map[string]bool
-	ledgerMu        sync.Mutex
+	llmClient        domain.LLMClient
+	renderer         PromptRenderer
+	runner           Sandbox
+	sovereignQA      *SovereignQAAuditor
+	acceptanceRunner *QAAcceptanceRunner
+	e2eCmd           string
+	e2eMode          string
+	defaultTestCmd   string
+	allowedCommands  []string
+	verifiedStories  map[string]bool
+	ledgerMu         sync.Mutex
 }
 
 // NewAcceptanceAuditor instantiates an AcceptanceAuditor service.
@@ -57,11 +57,12 @@ func NewAcceptanceAuditor(client domain.LLMClient, renderer PromptRenderer, runn
 		r = runner[0]
 	}
 	return &AcceptanceAuditor{
-		llmClient:       client,
-		renderer:        renderer,
-		runner:          r,
-		sovereignQA:     NewSovereignQAAuditor(client, r),
-		verifiedStories: make(map[string]bool),
+		llmClient:        client,
+		renderer:         renderer,
+		runner:           r,
+		sovereignQA:      NewSovereignQAAuditor(client, r),
+		acceptanceRunner: NewQAAcceptanceRunner(client, r),
+		verifiedStories:  make(map[string]bool),
 	}
 }
 
@@ -77,6 +78,9 @@ func (a *AcceptanceAuditor) ConfigureFromConfig(cfg *config.Config) {
 		if a.sovereignQA != nil {
 			a.sovereignQA.ConfigureFromConfig(cfg)
 		}
+		if a.acceptanceRunner != nil {
+			a.acceptanceRunner.ConfigureFromConfig(cfg)
+		}
 	}
 }
 
@@ -86,6 +90,14 @@ func (a *AcceptanceAuditor) SetRunner(runner Sandbox) {
 	if a.sovereignQA != nil {
 		a.sovereignQA.SetRunner(runner)
 	}
+	if a.acceptanceRunner != nil {
+		a.acceptanceRunner.runner = runner
+	}
+}
+
+// SetAcceptanceRunner overrides the independent QA acceptance runner.
+func (a *AcceptanceAuditor) SetAcceptanceRunner(runner *QAAcceptanceRunner) {
+	a.acceptanceRunner = runner
 }
 
 // SetSovereignQA overrides the Sovereign QA auditor service.
@@ -207,6 +219,33 @@ func (a *AcceptanceAuditor) AuditProjectAcceptance(ctx context.Context, state *d
 		}
 	} else if e2eCmd == "" {
 		e2eLog = "⚠️  No E2E test target detected (no 'e2e:' in Makefile or docker-compose.yml)."
+	}
+
+	// 2. Independent QA Acceptance Test Gate (True User / Zero Tricks)
+	if a.acceptanceRunner != nil {
+		if !a.acceptanceRunner.HasAcceptanceTests(state.ProjectPath) {
+			_, _ = a.acceptanceRunner.SynthesizeAcceptanceTests(ctx, state)
+		}
+		if a.acceptanceRunner.HasAcceptanceTests(state.ProjectPath) {
+			accReport, accErr := a.acceptanceRunner.RunAcceptanceTests(ctx, state.ProjectPath)
+			if accErr != nil || (accReport != nil && !accReport.Passed) {
+				e2eFailed = true
+				var failureMsg string
+				if accReport != nil && len(accReport.Failures) > 0 {
+					failureMsg = fmt.Sprintf("Independent QA Acceptance Test Suite FAILED (%s):\n - %s",
+						accReport.AcceptanceCommand, strings.Join(accReport.Failures, "\n - "))
+				} else if accErr != nil {
+					failureMsg = fmt.Sprintf("Independent QA Acceptance Test Suite execution error: %v", accErr)
+				} else {
+					failureMsg = "Independent QA Acceptance Test Suite FAILED"
+				}
+				fmt.Printf("❌ [Acceptance Gate] %s\n", failureMsg)
+				e2eLog += "\n" + failureMsg
+			} else if accReport != nil && accReport.Passed {
+				e2eLog += fmt.Sprintf("\n✅ [Independent Acceptance Tests PASSED] (%s, %d test(s) verified)\n",
+					accReport.AcceptanceCommand, accReport.ExecutedTests)
+			}
+		}
 	}
 
 	// Incremental Ledger Fast Pass: If all project stories have been incrementally verified
@@ -344,140 +383,4 @@ func (a *AcceptanceAuditor) collectWorkspaceSnapshot(ctx context.Context, projec
 		}
 	}
 	return sb.String()
-}
-
-func (a *AcceptanceAuditor) formatStoryContracts(state *domain.State) string {
-	if state == nil || len(state.StoryContracts) == 0 {
-		return "None"
-	}
-	var sb strings.Builder
-	for _, c := range state.StoryContracts {
-		fmt.Fprintf(&sb, "Story ID: %s (File: %s)\n", c.StoryID, c.SourcePath)
-		for _, pc := range c.PublicContracts {
-			fmt.Fprintf(&sb, " - Contract [%s]: interface=%s allowed_executables=%v\n", pc.ID, pc.Interface, pc.AllowedExecutables)
-		}
-	}
-	return sb.String()
-}
-
-func (a *AcceptanceAuditor) formatPublicContracts(state *domain.State) string {
-	if state == nil || len(state.StoryContracts) == 0 {
-		return "None"
-	}
-	var contracts []string
-	for _, c := range state.StoryContracts {
-		for _, pc := range c.PublicContracts {
-			contracts = append(contracts, fmt.Sprintf("%s (%s)", pc.ID, pc.Interface))
-		}
-	}
-	return strings.Join(contracts, ", ")
-}
-
-func (a *AcceptanceAuditor) formatTaskSummaries(state *domain.State) string {
-	if state == nil || len(state.Tasks) == 0 {
-		return "None"
-	}
-	var sb strings.Builder
-	for _, t := range state.Tasks {
-		fmt.Fprintf(&sb, "- [%s] %s: %s (files: %v)\n", t.ID, t.Status, t.Title, t.TargetFiles)
-	}
-	return sb.String()
-}
-
-func (a *AcceptanceAuditor) parseAuditResponse(resp *domain.LLMResponse) *AcceptanceAuditResult {
-	if resp == nil {
-		return &AcceptanceAuditResult{Passed: false, Summary: "Empty LLM response received"}
-	}
-
-	for _, act := range resp.Actions {
-		if act.Tool == "submit_acceptance_audit" {
-			passed, _ := act.Args["passed"].(bool)
-			summary, _ := act.Args["summary"].(string)
-			var gaps []string
-			if rawGaps, ok := act.Args["gaps"].([]any); ok {
-				for _, g := range rawGaps {
-					if gs, ok := g.(string); ok && strings.TrimSpace(gs) != "" {
-						gaps = append(gaps, strings.TrimSpace(gs))
-					}
-				}
-			}
-			var fixes []ProposedFix
-			if rawFixes, ok := act.Args["fixes"].([]any); ok {
-				for _, f := range rawFixes {
-					if fm, ok := f.(map[string]any); ok {
-						file, _ := fm["file"].(string)
-						desc, _ := fm["description"].(string)
-						action, _ := fm["action"].(string)
-						if file != "" || desc != "" {
-							fixes = append(fixes, ProposedFix{
-								File:        file,
-								Description: desc,
-								Action:      action,
-							})
-						}
-					}
-				}
-			}
-			return &AcceptanceAuditResult{
-				Passed:  passed && len(gaps) == 0,
-				Summary: summary,
-				Gaps:    gaps,
-				Fixes:   fixes,
-			}
-		}
-	}
-
-	// Fallback JSON parsing from reasoning or content
-	if strings.Contains(resp.Reasoning, "submit_acceptance_audit") || strings.Contains(resp.Reasoning, "\"passed\"") {
-		var parsed struct {
-			Passed  bool          `json:"passed"`
-			Summary string        `json:"summary"`
-			Gaps    []string      `json:"gaps"`
-			Fixes   []ProposedFix `json:"fixes"`
-		}
-		start := strings.Index(resp.Reasoning, "{")
-		end := strings.LastIndex(resp.Reasoning, "}")
-		if start >= 0 && end > start {
-			if err := json.Unmarshal([]byte(resp.Reasoning[start:end+1]), &parsed); err == nil {
-				return &AcceptanceAuditResult{
-					Passed:  parsed.Passed && len(parsed.Gaps) == 0,
-					Summary: parsed.Summary,
-					Gaps:    parsed.Gaps,
-					Fixes:   parsed.Fixes,
-				}
-			}
-		}
-	}
-
-	summary := strings.TrimSpace(resp.Reasoning)
-	if summary == "" {
-		summary = "Acceptance audit evaluated"
-	}
-	return &AcceptanceAuditResult{
-		Passed:  false,
-		Summary: "Acceptance audit response could not be parsed: " + summary,
-	}
-}
-
-// RecordStoryVerified registers a completed user story in the incremental acceptance ledger.
-func (a *AcceptanceAuditor) RecordStoryVerified(storyID string, verifiedFeatures []string) {
-	if a == nil || storyID == "" {
-		return
-	}
-	a.ledgerMu.Lock()
-	defer a.ledgerMu.Unlock()
-	if a.verifiedStories == nil {
-		a.verifiedStories = make(map[string]bool)
-	}
-	a.verifiedStories[storyID] = true
-}
-
-// IsStoryVerified checks if a story has been incrementally verified.
-func (a *AcceptanceAuditor) IsStoryVerified(storyID string) bool {
-	if a == nil || storyID == "" {
-		return false
-	}
-	a.ledgerMu.Lock()
-	defer a.ledgerMu.Unlock()
-	return a.verifiedStories[storyID]
 }

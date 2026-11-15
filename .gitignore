@@ -37,10 +37,13 @@ go.work.sum
 
 # Noctifab runtime state, secrets and test artifacts
 secrets.yaml
+/demo/
 .noctifab/
 **/.noctifab/
 !validation/projects/*/.noctifab/
 !validation/projects/*/.noctifab/config.yaml
+!pkg/services/demo/assets/**/.noctifab/
+!pkg/services/demo/assets/**/.noctifab/config.yaml
 /validation/projects/*/.noctifab/secrets.yaml
 /validation/projects/*/.noctifab/data/
 /validation/projects/*/.noctifab/logs/

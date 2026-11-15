@@ -25,12 +25,13 @@ type StoryQAResult struct {
 
 // StoryQAAuditor reviews the generated codebase against the active User Story requirements.
 type StoryQAAuditor struct {
-	llmClient       domain.LLMClient
-	runner          Sandbox
-	e2eCmd          string
-	e2eMode         string
-	defaultTestCmd  string
-	allowedCommands []string
+	llmClient        domain.LLMClient
+	runner           Sandbox
+	acceptanceRunner *QAAcceptanceRunner
+	e2eCmd           string
+	e2eMode          string
+	defaultTestCmd   string
+	allowedCommands  []string
 }
 
 // NewStoryQAAuditor creates a StoryQAAuditor instance.
@@ -40,8 +41,9 @@ func NewStoryQAAuditor(client domain.LLMClient, runner ...Sandbox) *StoryQAAudit
 		r = runner[0]
 	}
 	return &StoryQAAuditor{
-		llmClient: client,
-		runner:    r,
+		llmClient:        client,
+		runner:           r,
+		acceptanceRunner: NewQAAcceptanceRunner(client, r),
 	}
 }
 
@@ -53,6 +55,9 @@ func (a *StoryQAAuditor) ConfigureFromConfig(cfg *config.Config) {
 		a.e2eMode = cfg.Sandbox.GetE2EMode()
 		if cmd := cfg.Sandbox.GetE2ECommand(); cmd != "" {
 			a.e2eCmd = cmd
+		}
+		if a.acceptanceRunner != nil {
+			a.acceptanceRunner.ConfigureFromConfig(cfg)
 		}
 	}
 }
@@ -70,6 +75,14 @@ func (a *StoryQAAuditor) SetAllowedCommands(cmds []string) {
 // SetRunner attaches a sandbox runner for E2E validation.
 func (a *StoryQAAuditor) SetRunner(runner Sandbox) {
 	a.runner = runner
+	if a.acceptanceRunner != nil {
+		a.acceptanceRunner.runner = runner
+	}
+}
+
+// SetAcceptanceRunner overrides the independent QA acceptance runner.
+func (a *StoryQAAuditor) SetAcceptanceRunner(runner *QAAcceptanceRunner) {
+	a.acceptanceRunner = runner
 }
 
 // SetE2ECommand sets the custom E2E command.
@@ -101,36 +114,16 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 
 	_ = PrepareTestEnvironment(state.ProjectPath)
 
-	// 1. QA Pre-Flight & E2E Test Execution Gate:
-	// If an E2E test command is configured or detected, run it first to verify real integration.
-	e2eCmd := a.detectE2ECommand(state.ProjectPath)
-	if e2eCmd != "" && a.runner != nil {
-		if !a.isCommandAllowed(e2eCmd) {
-			fmt.Printf("⚠️  [Story QA Pre-Flight] Skipping E2E command %q: binary not in sandbox allowed_commands\n", e2eCmd)
-		} else {
-			guard := NewContainerTeardownGuard(nil, nil)
-			_ = guard.PreFlightClean(ctx, state.ProjectPath)
-			defer func() {
-				_ = guard.PostRunClean(ctx, state.ProjectPath)
-			}()
-			fmt.Printf("🔍 [Story QA] Running E2E test verification command: %q...\n", e2eCmd)
-			e2eOut, e2eErr := a.runner.RunCommand(ctx, state.ProjectPath, e2eCmd, "")
-			if e2eErr != nil {
-				if isSandboxViolation(e2eErr, e2eOut) {
-					fmt.Printf("⚠️  [Story QA Pre-Flight] Sandbox policy restriction on E2E command %q (%v); skipping E2E gate.\n", e2eCmd, e2eErr)
-				} else {
-					fmt.Printf("❌ [Story QA] E2E verification failed: %v\n", e2eErr)
-					hasFailure = true
-					executionLogs = append(executionLogs, fmt.Sprintf("E2E test suite failed (%s): %v\n%s", e2eCmd, e2eErr, capText(e2eOut, 1500)))
-				}
-			} else {
-				fmt.Printf("✅ [Story QA] E2E verification passed successfully.\n")
-			}
-		}
+	// 1. QA Pre-Flight & Partial Deliverable E2E Verification Gate:
+	// Every completed story must execute its partial deliverable E2E verification.
+	if ok, e2eLog := a.runPartialDeliverableE2E(ctx, state); !ok {
+		hasFailure = true
+		executionLogs = append(executionLogs, e2eLog)
 	}
 
 	// 2. QA Pre-Flight & Whole-Workspace Regression Guarding Gate:
 	// Execute full project test suite to guarantee that modifications didn't introduce regressions to other modules.
+	e2eCmd := a.detectE2ECommand(state.ProjectPath)
 	testCmd := a.detectWorkspaceTestCommand(state.ProjectPath)
 	if testCmd != "" && testCmd != e2eCmd && a.runner != nil {
 		if !a.isCommandAllowed(testCmd) {
@@ -148,6 +141,31 @@ func (a *StoryQAAuditor) AuditStoryCompleteness(ctx context.Context, state *doma
 				}
 			} else {
 				fmt.Printf("✅ [Story QA] Whole-workspace regression check passed.\n")
+			}
+		}
+	}
+
+	// 3. Independent QA Acceptance Test Gate (True User / Zero Tricks):
+	// Black-box tests in tests/acceptance/ verifying external behavior against SPEC.ste.md.
+	if a.acceptanceRunner != nil {
+		if !a.acceptanceRunner.HasAcceptanceTests(state.ProjectPath) {
+			_, _ = a.acceptanceRunner.SynthesizeAcceptanceTests(ctx, state)
+		}
+		if a.acceptanceRunner.HasAcceptanceTests(state.ProjectPath) {
+			accReport, accErr := a.acceptanceRunner.RunAcceptanceTests(ctx, state.ProjectPath)
+			if accErr != nil || (accReport != nil && !accReport.Passed) {
+				hasFailure = true
+				var failureSummary string
+				if accReport != nil && len(accReport.Failures) > 0 {
+					failureSummary = fmt.Sprintf("Independent QA Acceptance Test Suite FAILED (%s):\n - %s",
+						accReport.AcceptanceCommand, strings.Join(accReport.Failures, "\n - "))
+				} else if accErr != nil {
+					failureSummary = fmt.Sprintf("Independent QA Acceptance Test Suite execution error: %v", accErr)
+				} else {
+					failureSummary = "Independent QA Acceptance Test Suite FAILED"
+				}
+				fmt.Printf("❌ [Story QA] %s\n", failureSummary)
+				executionLogs = append(executionLogs, failureSummary)
 			}
 		}
 	}
@@ -386,90 +404,4 @@ func (a *StoryQAAuditor) parseAuditResponse(resp *domain.LLMResponse) *StoryQARe
 func storyFileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
-}
-
-func (a *StoryQAAuditor) detectE2ECommand(projectPath string) string {
-	return DetectE2ECommand(projectPath, a.e2eMode, a.e2eCmd)
-}
-
-func (a *StoryQAAuditor) isCommandAllowed(cmdStr string) bool {
-	allowed := a.allowedCommands
-	if len(allowed) == 0 {
-		if hs, ok := a.runner.(*HostSandbox); ok && len(hs.AllowedCommands) > 0 {
-			allowed = hs.AllowedCommands
-		}
-	}
-	if len(allowed) == 0 {
-		return true
-	}
-	trimmed := strings.TrimSpace(cmdStr)
-	if trimmed == "" {
-		return true
-	}
-	parts := strings.Fields(trimmed)
-	if len(parts) == 0 {
-		return true
-	}
-	binary := parts[0]
-	for _, auth := range allowed {
-		if auth == "*" || auth == binary || auth == "sh" || auth == "bash" {
-			return true
-		}
-	}
-	return false
-}
-
-func isSandboxViolation(err error, out string) bool {
-	if err == nil {
-		return false
-	}
-	combined := err.Error() + " " + out
-	return strings.Contains(combined, "Sandbox violation") ||
-		strings.Contains(combined, "whitelist of allowed commands") ||
-		strings.Contains(combined, "Role authorization violation")
-}
-
-func (a *StoryQAAuditor) detectWorkspaceTestCommand(projectPath string) string {
-	// Pre-Flight Priority 1: Configured default test command from .noctifab/config.yaml
-	if a.defaultTestCmd != "" && a.isCommandAllowed(a.defaultTestCmd) {
-		return a.defaultTestCmd
-	}
-
-	// Pre-Flight Priority 2: Workspace build/test tooling authorized by sandbox policy
-	if a.isCommandAllowed("make") {
-		if _, err := os.Stat(filepath.Join(projectPath, "Makefile")); err == nil {
-			if content, rErr := os.ReadFile(filepath.Join(projectPath, "Makefile")); rErr == nil {
-				c := string(content)
-				if strings.Contains(c, "test:") || strings.Contains(c, "test-all:") || strings.Contains(c, "check:") {
-					return "make test"
-				}
-			}
-		}
-	}
-	if a.isCommandAllowed("go") {
-		if _, err := os.Stat(filepath.Join(projectPath, "go.mod")); err == nil {
-			return "go test ./..."
-		}
-	}
-	if a.isCommandAllowed("pytest") || a.isCommandAllowed("python") || a.isCommandAllowed("python3") {
-		if _, err := os.Stat(filepath.Join(projectPath, "pyproject.toml")); err == nil {
-			return "pytest -v"
-		}
-	}
-	if a.isCommandAllowed("cargo") {
-		if _, err := os.Stat(filepath.Join(projectPath, "Cargo.toml")); err == nil {
-			return "cargo test"
-		}
-	}
-	if a.isCommandAllowed("npm") {
-		if _, err := os.Stat(filepath.Join(projectPath, "package.json")); err == nil {
-			return "npm test"
-		}
-	}
-	if a.isCommandAllowed("dune") {
-		if _, err := os.Stat(filepath.Join(projectPath, "dune-project")); err == nil {
-			return "dune runtest"
-		}
-	}
-	return ""
 }

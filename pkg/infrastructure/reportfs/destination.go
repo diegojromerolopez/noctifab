@@ -83,7 +83,7 @@ func PrepareReportDestination(
 	policy ReportDestinationPolicy,
 	fsSys FileSystem,
 ) error {
-	if ctx.Err() != nil {
+	if ctx != nil && ctx.Err() != nil {
 		return ctx.Err()
 	}
 	if path == "" {

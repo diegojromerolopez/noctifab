@@ -50,7 +50,9 @@ func CategorizeFailureLog(log string) FailureCategory {
 		strings.Contains(lower, "is not recognized as an internal or external command") ||
 		strings.Contains(lower, "cannot connect to the docker daemon") ||
 		strings.Contains(lower, "is the docker daemon running") ||
-		(strings.Contains(lower, "failed with:") && strings.Contains(lower, "not found")):
+		(strings.Contains(lower, "failed with:") && strings.Contains(lower, "not found") &&
+			!strings.Contains(lower, "crate") && !strings.Contains(lower, "package") &&
+			!strings.Contains(lower, "module") && !strings.Contains(lower, "requirement")):
 		return FailureSandbox
 	case strings.Contains(lower, "compile error"),
 		strings.Contains(lower, "syntax error"),

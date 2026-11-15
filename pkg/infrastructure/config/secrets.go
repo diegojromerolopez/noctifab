@@ -50,17 +50,48 @@ func LoadSecrets(secretsPath string) (map[string]string, error) {
 	return secrets, nil
 }
 
-// resolveSecretRef resolves a single string value against the secrets map.
-// If the value starts with "secret:", the remainder is used as a key in the
-// secrets map and the mapped value is returned (empty string if key not found).
-// Otherwise the original value is returned unchanged.
+// isAPIKeyName returns true if s matches or ends with "API_KEY" or "API_KEYS" (case-insensitive).
+func isAPIKeyName(s string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(s))
+	return upper == "API_KEY" || upper == "API_KEYS" ||
+		strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_API_KEYS")
+}
+
+// resolveSecretRef resolves a single string value against the secrets map and OS environment.
+// If the value starts with "secret:", the remainder is used as a secret key name.
+// If the value does not start with "secret:", but ends with "API_KEY" or "API_KEYS" (case-insensitive),
+// it is also treated as a secret key reference.
+// The key is looked up in the secrets map first. If not found or empty, it falls back to
+// os.Getenv(key) only when the key ends with "API_KEY" or "API_KEYS".
+// Otherwise, plain literal values are returned unchanged.
 func resolveSecretRef(value string, secrets map[string]string) string {
 	const prefix = "secret:"
-	if !strings.HasPrefix(value, prefix) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
 		return value
 	}
-	key := strings.TrimPrefix(value, prefix)
-	return secrets[key]
+
+	isExplicitSecret := strings.HasPrefix(trimmed, prefix)
+	var key string
+	if isExplicitSecret {
+		key = strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+	} else if isAPIKeyName(trimmed) {
+		key = trimmed
+	} else {
+		return value
+	}
+
+	if val, ok := secrets[key]; ok && strings.TrimSpace(val) != "" {
+		return val
+	}
+
+	if isAPIKeyName(key) {
+		if envVal := os.Getenv(key); envVal != "" {
+			return envVal
+		}
+	}
+
+	return ""
 }
 
 // resolveSecretKeys resolves secret key names against secrets map and OS environment.

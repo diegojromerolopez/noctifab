@@ -5,6 +5,178 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.131.2] - 2026-11-15
+
+### Fixed
+- **Pipe Drain Race in Test Stream Isolator (`pkg/services/test_stream_isolator.go`)**:
+  - Eliminated race condition where `cmd.Wait()` was invoked concurrently with stdout/stderr pipe readers, which prematurely closed pipe file descriptors on subshell exit before `bufio.Scanner` completed reading stdout.
+  - Sequenced `cmd.Wait()` strictly after `wg.Wait()` completes reading all pipe streams, guaranteeing complete output buffer capture across fast-exiting test commands on Linux and macOS.
+
+## [0.131.1] - 2026-11-15
+
+### Fixed
+- **Static Analysis & Linter Compliance (`golangci-lint`)**:
+  - Replaced unchecked `fmt.Sscanf` with `strconv.Atoi` in `countExecutedAcceptanceTests` (`pkg/services/qa_acceptance_runner.go`).
+  - Switched untagged `ext` and `action` switch statements to tagged switches in `pkg/services/anti_stub_mock.go` and `pkg/services/orchestrator_generator.go`.
+  - Replaced inefficient `WriteString(fmt.Sprintf(...))` string allocations with `fmt.Fprintf` in `pkg/services/orchestrator_finalize.go` and `pkg/services/spike_runner_test.go`.
+
+## [0.131.0] - 2026-11-15
+
+### Added
+- **Autonomous Multi-Turn Closed Convergence Repair Loop (`pkg/services/orchestrator_convergence_loop.go`)**:
+  - Replaced single-pass repair with a 4-turn autonomous closed convergence loop that re-validates build and test suites iteratively after each repair step.
+  - Integrates the **Deterministic Auto-Fix Pre-Step**: runs local language formatters (`gofmt`, `cargo fmt`, `ruff format`, `dotnet format`, `dune fmt`, `clang-format`, `rubocop`, `prettier`) before calling LLM models, achieving immediate 0-token passes when formatting alone resolves test rejections.
+  - Implements **Directive 7 Fallback Simplification** on Turn 5 when standard convergence turns are exhausted, instructing the Generator to produce a minimal, clean, compiling solution before escalating to the Fallback Agent.
+- **Offending Code Snippet Extraction Engine (`pkg/services/offending_code_extractor.go`)**:
+  - Automatically resolves error paths on disk (falling back to recursive directory search by basename if paths differ).
+  - Extracts 5 lines of surrounding context with exact line numbers and places a high-contrast visual pointer (`>>`) on the offending line (e.g. `>> 11 | UpdateState(ref this.CurrentTurn, out this.Winner); <-- OFFENDING CODE`).
+  - Supports language-aware code fences (`csharp`, `rust`, `ocaml`, `python`, `go`, `java`, `typescript`, `makefile`, `toml`).
+- **Multi-Language Error Diagnostic Parsing (`pkg/services/error_formatter.go`)**:
+  - Expanded `extractDiagnostics` to parse structured error locations and error codes across C# Roslyn (`Board.cs(20,50): error CS0206`), Rust Cargo / rustc (`--> src/main.rs:12:5`), OCaml Dune (`File "lib/engine.ml", line 44`), Java/Kotlin (`App.java:23: error`), TypeScript/JavaScript (`src/index.ts:14:5 - error TS2322`), Make missing targets (`make: *** No rule to make target 'build'`), and Cargo dependency requirements (`failed to select a version for the requirement`).
+- **Unrecoverable Sandbox Error Refinement (`pkg/services/watchdog_repair.go`, `pkg/services/orchestrator_execute.go`)**:
+  - Excluded package, crate, module, and requirement resolution errors from being classified as unrecoverable host environment failures (`FailureSandbox`), routing manifest issues directly into the convergence repair loop.
+- **Documentation Synchronization (`SPEC.md`, `docs/loop_orchestration.md`, `docs/architecture.md`)**:
+  - Synchronized architectural documentation and system specifications with the autonomous multi-turn closed convergence loop and offending code extraction engine.
+
+## [0.130.0] - 2026-11-05
+
+### Added
+- **Multi-Hypothesis Conflict Marker Guard & Clean Workspace Reset (`pkg/services/hypothesis_runner.go`)**:
+  - Reverts working tree (`git reset --hard` and `git clean -fd`) before applying winning hypothesis patch when mixture resolution fails.
+  - Automatically runs `DetectConflictMarkersInWorkspace` and falls back cleanly to copying winning worktree files via `SeedTaskWorktreeWorkspace` if `git apply --3way` leaves raw Git conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
+- **Dependency Resolution Failure Detection & Test Path Granularity Isolation (`cmd/noctifab/cli/`, `pkg/services/task_cohesion.go`)**:
+  - Added `DetectDependencyResolutionFailure` to scan build diagnostics for crate/package index failures (`failed to select a version`, `crates.io index`, `npm ERR! 404`).
+  - Added Directive 11 to Sovereign Rescue prompt mandating that agents never retry invalid external package names/versions and must edit the manifest or implement in-tree logic.
+  - Added `isCohesionTestPath` in `pkg/services/task_cohesion.go` to exclude paths under `tests/`, `test/`, `fixtures/`, and `spec/` from production file limits, preventing false mega-task granularity rejections.
+- **Provider Protocol Adaptive Reasoning Effort Stripping (`pkg/infrastructure/llm/openai.go`, `openai_adapt.go`)**:
+  - Strips `reasoning_effort` and `reasoning` payloads when `enable_thinking` is false (`hasThinkingDisabled`).
+  - Added adaptive fallback in `looksLikeExtraBodyRejection` to detect `reasoning_effort` and `enable_thinking` 400 errors and strip incompatible parameters dynamically.
+- **Greenfield `./gradlew` Executable Auto-Scaffolding (`pkg/services/worktree_cache.go`, `pkg/services/sandbox.go`)**:
+  - Added `EnsureGradlewScript` to scaffold a portable, executable `gradlew` wrapper delegating to host `gradle` or `mvn` when missing on disk.
+  - Added sandbox pre-execution check to ensure `gradlew` exists before executing commands containing `./gradlew`.
+- **Zero External Daemon Dependency Mandate (`pkg/infrastructure/prompts/defaults/tester/`)**:
+  - Mandated in tester prompts (`write.tmpl`, `write_breadth_first.tmpl`, `fix.tmpl`, `refactor.tmpl`) that host tests must never assume external system daemons (Redis 6379, Postgres 5432) are running, requiring in-memory mocks, stubs, or ephemeral background processes.
+- **Legacy Monorepo Context Blowup Prevention & Accurate Churn Diffing (`pkg/services/workspace_discovery.go`, `legacy_scanner.go`, `reporting/churn.go`)**:
+  - Expanded `IsPathExcluded` and `defaultExcludedDirs` to exclude `vendor`, `static`, `staticfiles`, `migrations`, `fixtures`, minified assets (`.min.js`, `.min.css`), `.map`, and SQLite databases (`.db`, `.sqlite`, `.sqlite3`).
+  - Updated `isVendorOrArtifactPath` in `pkg/services/reporting/churn.go` to use `IsPathExcluded` and compare against base branches (`main`/`master`) for existing repositories rather than commit 0, eliminating inflated churn reporting.
+
+## [0.129.0] - 2026-11-01
+
+### Changed
+- **Draft-Preserving Escalation, Quality-Ordered Model Progression, & Anti-Early-Mistake Consolidation Guards**:
+  - Added deterministic model quality scoring (`ModelQualityScore`) and progressive quality stage routing (`PrioritizeCandidatesForQualityStage` in `pkg/infrastructure/llm/router_model_priority.go`, `ResilientLLMRouter.Complete`, and `AdaptiveClient.classifyAndSelect`) paired with `domain.WithQualityStage` in `RunGeneratorAgent` and `RunTesterAgent`. Initial draft turns (`stage 0`: `implement`, `implement_breadth_first` on Turn 0) order candidates from fast draft models up to frontier models, while draft improvement and repair passes (`stage 1+`: `refactor`, `implement_breadth_first_fix`, `fix`, `surgical_repair`, `turn >= 1`, `Retries > 0`) automatically promote high-quality and frontier models (`claude-sonnet-5`, `gemini-3.1-pro-preview`, `deepseek-v4-pro`, `qwen3.8-max`) to refine and complete the draft.
+  - Changed the default of `clean_worktree_on_escalate` (`TaskEscalationConfig.IsCleanWorktreeOnEscalateEnabled()` and `DefaultConfig()`) from `true` to `false` so in-progress fast-model drafts are preserved and refined by upgraded models rather than wiped via `git checkout . && git clean -fd`.
+  - Enabled intra-task turn escalation in `ProgressiveTaskEscalator.EvaluateEscalation` (`pkg/services/task_escalator.go`) and `Orchestrator.RunGeneratorAgent` (`pkg/services/orchestrator_generator.go`) so multi-turn generator sessions (`turn > 0` and `surgical_repair`) dynamically activate thinking and model upgrades (`domain.WithModelOverride`) on failing Turn 0 drafts in place.
+  - Removed the automatic `LOW`/`MEDIUM` complexity fast-path hijack from `code_first` into `executeTaskSinglePass` in `pkg/services/orchestrator_execute.go`, ensuring `code_first` always preserves independent Generator $\neq$ Tester verification.
+  - Updated `executeTaskBreadthFirst` (`pkg/services/orchestrator_execute_breadth_first.go`) to execute the edge-case refinement pass (`implement_breadth_first_fix`) on initial task execution (`Retries == 0`) after happy-path draft and test generation so incomplete 80% drafts are refined before merging into the integration branch.
+  - Added pre-merge task-level black-box contract smoke verification (`checkTaskStoryContracts` in `pkg/services/story_dod_validator.go`) before merging a task branch in `pkg/services/orchestrator_execute.go`, executing any `noctifab-contract` scenario whose target binary already exists on disk and routing failures into `executeSurgicalRepairTurn` before downstream tasks build on broken CLI/wire contracts.
+
+## [0.128.0] - 2026-10-31
+
+### Added
+- **Demo Generation Speed & Streaming Roadmap Optimizations**:
+  - Fixed streaming roadmap handoff in `GenerateRoadmapWithStreaming` (`pkg/services/roadmap_generator.go`) and `AuditRoadmapStoriesParallel` (`pkg/services/roadmap_auditor.go`) so `onStoryReady` is always invoked even when Pass 1 emits `create_story` actions directly without Stage 1 outlines.
+  - Added `AgentRoleConfig.GetPasses()` and `product_manager.iterations`/`passes` synchronization in `config.Load` so setting `iterations: 1` executes a single-pass Product Manager roadmap generation.
+  - Moved initial `SynthesizeAcceptanceTests` off the synchronous startup critical path in `cmd/noctifab/cli/start_runner.go` to a background goroutine with mutex serialization (`acceptanceSynthMu`) in `QAAcceptanceRunner` and excluded `tests/acceptance` from `ScanLegacyFiles` (`pkg/services/legacy_scanner.go`).
+  - Updated `t4` and `cli` demo configurations (`pkg/services/demo/assets/*/.noctifab/config.yaml`) to set `product_manager.iterations: 1` (`passes: 1`), disable `spike` (`agents.spike.enabled: false`), and route `product_manager`, `planner`, `qa`, and `auditor` roles to fast-tier models (`claude-haiku-5-5` and `gpt-5.6-luna`).
+- **Independent QA Acceptance Runner & Cumulative Partial Deliverability E2E Gate**:
+  - Added `QAAcceptanceRunner` (`pkg/services/qa_acceptance_runner.go`) to synthesize and execute black-box acceptance tests under `tests/acceptance/` from `SPEC.ste.md`, with immutable path protection in `PolicyValidator` (`pkg/services/validator.go`) preventing worker agents (`generator`/`tester`) from modifying or deleting `tests/acceptance/`.
+  - Added `PartialDeliverabilityRunner` (`pkg/services/partial_e2e_runner.go`) and story-level E2E auditing (`pkg/services/story_qa_e2e.go`) to verify cumulative partial deliverability (`tests/e2e/partial_e2e.sh`) after each completed user story.
+- **Multi-Dimensional Anti-Stub, Anti-Gaming, & Test Depth Quality Gates**:
+  - Added deterministic detectors for tautological assertions (`pkg/services/anti_stub_tautology.go`), over-mocking (`pkg/services/anti_stub_mock.go`), fake daemon/socket servers (`pkg/services/anti_stub_daemon.go`), storage round-trips (`pkg/services/anti_stub_roundtrip.go`), input sensitivity (`pkg/services/anti_stub_sensitivity.go`), structural test depth (`pkg/services/test_depth_evaluator.go`), Git merge conflict markers (`pkg/services/conflict_marker_guard.go`), and unreferenced orphan source files (`pkg/services/orphan_source_guard.go`).
+- **Anthropic Retired Model Normalization (`pkg/infrastructure/llm/anthropic_models.go`)**:
+  - Added automatic normalization and upgrade of retired Claude 3.x/4.x model identifiers to active Claude 5.x models (`claude-sonnet-5`, `claude-opus-5`, `claude-haiku-5-5`).
+
+## [0.127.3] - 2026-10-28
+
+### Changed
+- **Demo Sandbox Defaults & Execution Settings**:
+  - Updated `noctifab demo` default `[target_dir]` to `demo` when omitted on the CLI or in `DemoConfig`.
+  - Configured native E2E mode (`sandbox.e2e.mode: native`), disabled extended thinking (`thinking.enabled: false`, `enable_thinking: false`, `thinking_budget: 0`), and simplified `t4` demo specification and `Makefile` for fast local execution without Docker.
+  - Updated `llm.Client.adjustForRoutineTask` to immediately enforce disabled thinking parameters when `EnableThinking` is explicitly `false`.
+
+## [0.127.2] - 2026-10-26
+
+### Changed
+- **Default Demo LLM Configuration**:
+  - Replaced local Ollama defaults in embedded demo assets (`assets/t4/.noctifab/config.yaml` and `assets/cli/.noctifab/config.yaml`) with prioritized Claude (`anthropic/claude-sonnet-5`) and OpenAI (`openai/gpt-5.6-luna`) configurations.
+  - Configured automatic credential resolution via `api_keys` supporting both `ANTHROPIC_API_KEY`/`CLAUDE_API_KEY` and `OPENAI_API_KEY` with speculative hedging across providers.
+
+## [0.127.1] - 2026-10-26
+
+### Fixed
+- **Ollama API Key Handling**:
+  - Permitted empty API key values when using the `ollama` provider in `llm.Client.Complete`, automatically substituting dummy authorization credentials so local Ollama instances operate without requiring an explicit API key configuration.
+  - Added unit test coverage for Ollama empty API key completion in `pkg/infrastructure/llm/client_test.go`.
+
+## [0.127.0] - 2026-10-26
+
+### Added
+- **Environment Variable Fallback for Secrets Ending in `API_KEY`**:
+  - Implemented environment variable fallback (`os.Getenv(key)`) in `resolveSecretRef` when a credential key ends in `API_KEY` or `API_KEYS` (case-insensitive) and is missing or empty in `secrets.yaml`.
+  - Added support for un-prefixed credential references ending in `API_KEY` or `API_KEYS` (e.g. `api_key: OPENAI_API_KEY`) so they are recognized as secret key names and resolved from `secrets.yaml` or host environment variables rather than interpreted as literal tokens.
+  - Retained strict literal value handling for non-secret values and URLs (e.g. `http://localhost:11434`, `sk-ant-api03-...`).
+  - Added comprehensive unit tests in `pkg/infrastructure/config/secrets_test.go` and `pkg/infrastructure/config/config_test.go`.
+- **Local & Offline VCS Support (`provider: local` / `none`)**:
+  - Permitted `local`, `none`, and empty `vcs.provider` values in `config.Validate()`, making remote VCS repository and token requirements optional for local workflows.
+  - Implemented no-op PR handling in `vcs.Client` and skipped remote `git push origin` in `orchestrator_finalize` when running with local VCS.
+  - Configured default Ollama LLM provider in `t4` and `cli` demo assets and fixed directory context propagation in `noctifab demo`.
+
+## [0.126.0] - 2026-10-26
+
+### Added
+- **Autonomous Dark Factory Code Generation in `noctifab demo`**:
+  - Refactored `noctifab demo` to prepare `.noctifab` directory, `.noctifab/config.yaml`, and Git repository before launching code generation.
+  - Connected `demoCmd` directly to the `start` orchestrator runner so that `noctifab demo [target_dir]` runs the dark factory engine end-to-end.
+  - Added embedded default `.noctifab/config.yaml` for `t4` and `cli` demo archetypes.
+
+### Removed
+- **Fake Offline Simulation & Mock Provider**:
+  - Completely removed `--offline` and `--speed` flags from `noctifab demo`.
+  - Removed `MockDemoLLMClient` and simulated replay sleep routines, ensuring `noctifab demo` executes genuine autonomous multi-agent code generation.
+- **Redundant CLI Flags (`--dir`, `--cleanup`)**:
+  - Removed redundant `--dir` and `--cleanup` flags from `noctifab demo`.
+  - Standardized on standard Unix CLI positional argument `noctifab demo [target_dir]` (defaulting to current directory `.`).
+
+## [0.125.3] - 2026-10-25
+
+### Documentation
+- **Architecture Comparison Matrix & Developer FAQ**:
+  - Added a high-level comparison matrix to `docs/architecture.md` evaluating Noctifab against interactive copilots (Aider, Claude Code, Cursor) and cloud black-box agents (Devin, OpenHands).
+  - Added Section 8: Frequently Asked Questions & Troubleshooting to `docs/getting_started.md` covering intra-turn self-healing, 3x consensus flaky test prevention, live steering via Command Mailbox, brownfield legacy stabilization, and budget control.
+
+## [0.125.2] - 2026-10-25
+
+### Documentation
+- **Synchronized Documentation & Onboarding Guides with Persistent `t4` Demo Sandbox**:
+  - Updated `docs/cli_usage.md`, `docs/index.md`, and `SPEC.md` to reflect the persistent `./demo` directory default, custom `[target_dir]`, and `--cleanup` behavior.
+  - Added "Instant 60-Second Test Drive (`noctifab demo`)" to `docs/getting_started.md` detailing C17 HTTP parser verification.
+  - Added "Real-World Token & Cost Estimation" table to `docs/getting_started.md` based on empirical multi-language benchmark data.
+
+## [0.125.1] - 2026-10-25
+
+### Changed
+- **README.md UX & Show HN Polish**:
+  - Restructured above-the-fold layout with an interactive comparison matrix contrasting Noctifab against interactive copilots (Aider, Claude Code) and cloud SaaS (Devin).
+  - Prominently positioned empirical multi-language benchmarks and validation metrics at the top of the README.
+  - Updated 60-second quickstart instructions to highlight the new persistent `t4` ISO C17 demo generation and test commands (`make test`, `make build`, `./bin/t4`).
+
+## [0.125.0] - 2026-10-25
+
+### Added
+- **Show HN Launch Experience & Onboarding Overhaul**:
+  - Rewrote `README.md` to clearly position Noctifab as an unattended Level 3/4 autonomous dark factory agent (contrasting against interactive copilots like Aider and Claude Code).
+  - Added empirical multi-language code generation stats from validation runs across 20 distinct projects (C17, Go, Rust, Python, TypeScript, Java, Elixir, Erlang, Zig, OCaml, Swift, Dart, Haskell).
+  - Added comprehensive step-by-step onboarding documentation in `docs/getting_started.md` detailing project initialization, directory layout, verification gates, and local LLM vs cloud setups.
+- **Embedded `t4` ISO C17 S3-Style Object Store Demo Sandbox**:
+  - Updated `noctifab demo` to generate an ISO C17 S3-compatible HTTP object store project (`t4`) with POSIX sockets by default into `./demo` (or target directory specified via positional argument or `--dir`).
+  - Strict preservation on exit: demo directory is never placed in `/tmp` and is not cleaned up by default (cleanup only occurs if `--cleanup` is explicitly passed), allowing users to immediately explore code and run `make test` and `make build`.
+  - Added embedded templates and unit test suites for `t4` under `pkg/services/demo/assets/t4/`.
+
+### Fixed
+- **Ollama Local LLM Endpoint Default**:
+  - Changed default Ollama base URL in `pkg/infrastructure/llm/ollama.go` from `https://ollama.com/v1` to `http://localhost:11434/v1` for instant zero-configuration local execution.
+
 ## [0.124.0] - 2026-10-22
 
 ### Added

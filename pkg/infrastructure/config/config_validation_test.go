@@ -301,6 +301,11 @@ func TestConfigValidation_Comprehensive(t *testing.T) {
 			errContains: "invalid VCS provider",
 		},
 		{
+			name:        "Valid local VCS provider without repository or token",
+			yamlContent: "config_version: \"2.0\"\nllm:\n  provider: \"ollama\"\nvcs:\n  provider: \"local\"\n",
+			wantErr:     false,
+		},
+		{
 			name:        "Valid structured loop configuration",
 			yamlContent: "config_version: \"2.0\"\nllm:\n  provider: \"ollama\"\nruntime:\n  loop:\n    count: 3\n",
 			wantErr:     false,

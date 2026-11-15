@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
@@ -228,73 +227,6 @@ func (o *Orchestrator) evaluateGeneratorTurnResult(
 		return "generator_commit_failed"
 	}
 	return ""
-}
-
-func (o *Orchestrator) executeSurgicalRepairTurn(
-	ctx context.Context,
-	task *domain.Task,
-	taskState *domain.State,
-	taskGit *GitClient,
-	failureLog string,
-) {
-	o.updateTaskProgress(ctx, task.ID, 85)
-	summary := summarizeFailureLog(failureLog)
-	errorContext := fmt.Sprintf("### 🎯 TARGET FAILURE LOG TRACE FOR SURGICAL REPAIR:\n```\n%s\n```\nFix this specific error using minimal edits in 'edit_file'. Do not rewrite working code.", summary)
-
-	var fileContexts []string
-	seenFiles := make(map[string]bool)
-
-	// Pre-read failing files from diagnostic log
-	diagnostics := extractDiagnostics(failureLog)
-	for _, d := range diagnostics {
-		if d.FilePath != "" && !seenFiles[d.FilePath] {
-			seenFiles[d.FilePath] = true
-			if taskGit != nil && taskGit.Dir() != "" {
-				fullPath := filepath.Join(taskGit.Dir(), d.FilePath)
-				if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
-					fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", d.FilePath, string(content)))
-				}
-			}
-		}
-	}
-
-	// Pre-read target files if not already read
-	for _, target := range task.TargetFiles {
-		if target != "" && !seenFiles[target] {
-			seenFiles[target] = true
-			if taskGit != nil && taskGit.Dir() != "" {
-				fullPath := filepath.Join(taskGit.Dir(), target)
-				if content, err := os.ReadFile(fullPath); err == nil && len(content) > 0 {
-					fileContexts = append(fileContexts, fmt.Sprintf("File %s:\n```\n%s\n```", target, string(content)))
-				}
-			}
-		}
-	}
-
-	o.RunGeneratorAgent(ctx, *task, taskState, fileContexts, errorContext, "surgical_repair")
-
-	// Traceback-to-Diff Alignment Guard: Prevent sycophantic repairs that touch unrelated files
-	if taskGit != nil {
-		modifiedFilesOut, _ := taskGit.Run(ctx, false, "diff", "--name-only")
-		var modifiedFiles []string
-		for _, f := range strings.Split(modifiedFilesOut, "\n") {
-			if trimmed := strings.TrimSpace(f); trimmed != "" {
-				modifiedFiles = append(modifiedFiles, trimmed)
-			}
-		}
-		if len(modifiedFiles) > 0 {
-			guard := NewRepairAlignmentGuard()
-			tracebackFiles := guard.ExtractTracebackFiles(taskState.ProjectPath, failureLog)
-			alignment := guard.ValidateRepairAlignment(modifiedFiles, tracebackFiles, task.TargetFiles, "", nil)
-			if !alignment.Allowed {
-				fmt.Fprintf(os.Stderr, "⚠️ [Repair Alignment Guard Rejected] %s\n", alignment.Reason)
-				_, _ = taskGit.Run(ctx, true, "checkout", "--", ".")
-				return
-			}
-		}
-	}
-
-	_ = o.stageAndCommit(ctx, taskGit, task.ID, "fix(core): surgical repair for task %s - %s", task.Title)
 }
 
 func (o *Orchestrator) stageAndCommit(ctx context.Context, taskGit *GitClient, taskID string, format string, args ...interface{}) error {

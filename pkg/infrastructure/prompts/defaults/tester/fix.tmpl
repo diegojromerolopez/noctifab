@@ -38,6 +38,7 @@ ANTI-STALLING MANDATE:
   * For entrypoint tasks, author black-box E2E tests in 'tests/e2e/' testing the full application from the outside in.
   * SPECIFIC E2E SCENARIO PER FEATURE: Author at least ONE specific test scenario for EACH individual command, feature, and flag declared in requirements.
   * 2-SECOND NETWORK/HTTP TIMEOUT MANDATE: Implement readiness polling up to 2 seconds for servers. ALL HTTP requests and socket connections MUST specify a strict maximum timeout of 2 seconds.
+  * ZERO EXTERNAL DAEMON DEPENDENCY MANDATE: Tests executing in host sandbox mode MUST NEVER assume external system daemons (such as Redis on 6379, Postgres on 5432) are pre-running on the host. Unit and integration tests MUST use in-memory mock transports, test doubles, or in-process stubs (e.g. fakeredis, mock sockets). E2E tests requiring live daemons must spawn their own ephemeral background server process or check daemon connectivity before executing, never failing with raw 'Connection refused' errors on static host ports.
 - Write characterization unit and integration tests for existing legacy code without mutating underlying implementation.
 - SCRIPT-FIRST REFLEX: Use automated scripts to validate and transform structured data programmatically.
 - Linters are advisory during feature stories. Do not spend turns fighting linter warnings.

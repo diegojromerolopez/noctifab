@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/diegojromerolopez/noctifab/pkg/domain"
+	"github.com/diegojromerolopez/noctifab/pkg/services"
 )
 
 var storyContractBlockRE = regexp.MustCompile("(?s)```noctifab-contract[ \\t]*\\r?\\n(.*?)\\r?\\n```")
@@ -53,9 +54,19 @@ func collectStoryContracts(projectPath string) []domain.PublicContract {
 
 func isVendorOrArtifactPath(projectPath, filePath string) bool {
 	filePath = filepath.ToSlash(strings.TrimSpace(filePath))
+	if filePath == "" || filePath == "." {
+		return true
+	}
+
+	if services.IsPathExcluded(filePath, nil) {
+		return true
+	}
+
 	parts := strings.Split(filePath, "/")
 	for _, part := range parts {
-		if part == ".git" || part == ".noctifab" {
+		lower := strings.ToLower(part)
+		switch lower {
+		case ".git", ".noctifab", "node_modules", "vendor", ".venv", "venv", "target", "dist", "build", ".cache", "__pycache__", ".gradle", ".idea", ".vscode":
 			return true
 		}
 	}
@@ -103,43 +114,107 @@ func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 		}
 	}
 
-	// Find root commit of repository
-	rootCmd := exec.Command("git", "rev-list", "--max-parents=0", "HEAD")
-	rootCmd.Dir = projectPath
-	if rootOut, rErr := rootCmd.Output(); rErr == nil && len(bytes.TrimSpace(rootOut)) > 0 {
-		rootHash := strings.TrimSpace(string(rootOut))
-		diffCmd := exec.Command("git", "diff", "--numstat", rootHash)
-		diffCmd.Dir = projectPath
-		if out, err := diffCmd.Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
-			parseNumstat(string(out))
-		}
+	// Determine if project is inside a git work tree
+	isGitRepo := false
+	checkGitCmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	checkGitCmd.Dir = projectPath
+	if checkGitCmd.Run() == nil {
+		isGitRepo = true
 	}
 
-	// Fallback to git diff --numstat HEAD if root commit diff yielded nothing
-	if len(changedMap) == 0 {
-		cmd := exec.Command("git", "diff", "--numstat", "HEAD")
-		cmd.Dir = projectPath
-		if out, err := cmd.Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
-			parseNumstat(string(out))
+	if isGitRepo {
+		// Determine appropriate base to diff against
+		var baseRef string
+		countCmd := exec.Command("git", "rev-list", "--count", "HEAD")
+		countCmd.Dir = projectPath
+		countOut, countErr := countCmd.Output()
+		var totalCommits int
+		if countErr == nil {
+			_, _ = fmt.Sscanf(strings.TrimSpace(string(countOut)), "%d", &totalCommits)
 		}
-	}
 
-	cmdStatus := exec.Command("git", "status", "--porcelain")
-	cmdStatus.Dir = projectPath
-	if outStatus, errStatus := cmdStatus.Output(); errStatus == nil {
-		lines := strings.Split(strings.TrimSpace(string(outStatus)), "\n")
-		for _, line := range lines {
-			if len(line) < 3 {
-				continue
+		if totalCommits <= 2 {
+			// Greenfield repo initialized during this run: diff against root commit
+			rootCmd := exec.Command("git", "rev-list", "--max-parents=0", "HEAD")
+			rootCmd.Dir = projectPath
+			if rootOut, rErr := rootCmd.Output(); rErr == nil && len(bytes.TrimSpace(rootOut)) > 0 {
+				baseRef = strings.TrimSpace(string(rootOut))
 			}
-			filePath := strings.TrimSpace(line[2:])
-			if filePath == "" || isVendorOrArtifactPath(projectPath, filePath) {
-				continue
+		} else {
+			// Existing repo: diff against main/master if on a feature branch, or fallback to HEAD
+			for _, ref := range []string{"main", "master", "origin/main", "origin/master"} {
+				checkCmd := exec.Command("git", "rev-parse", "--verify", ref)
+				checkCmd.Dir = projectPath
+				if checkCmd.Run() == nil {
+					diffCheck := exec.Command("git", "diff", "--quiet", ref, "HEAD")
+					diffCheck.Dir = projectPath
+					if diffCheck.Run() != nil {
+						baseRef = ref
+						break
+					}
+				}
 			}
-			changedMap[filePath] = true
-			if strings.HasPrefix(line, "??") || strings.HasPrefix(line, "A ") {
-				fullPath := filepath.Join(projectPath, filePath)
-				if content, rErr := os.ReadFile(fullPath); rErr == nil {
+			if baseRef == "" {
+				baseRef = "HEAD"
+			}
+		}
+
+		if baseRef != "" {
+			diffCmd := exec.Command("git", "diff", "--numstat", baseRef)
+			diffCmd.Dir = projectPath
+			if out, err := diffCmd.Output(); err == nil && len(bytes.TrimSpace(out)) > 0 {
+				parseNumstat(string(out))
+			}
+		}
+
+		// Also capture uncommitted / untracked additions
+		cmdStatus := exec.Command("git", "status", "--porcelain")
+		cmdStatus.Dir = projectPath
+		if outStatus, errStatus := cmdStatus.Output(); errStatus == nil {
+			lines := strings.Split(strings.TrimSpace(string(outStatus)), "\n")
+			for _, line := range lines {
+				if len(line) < 3 {
+					continue
+				}
+				filePath := strings.TrimSpace(line[2:])
+				if filePath == "" || isVendorOrArtifactPath(projectPath, filePath) {
+					continue
+				}
+				if strings.HasPrefix(line, "??") && !changedMap[filePath] {
+					changedMap[filePath] = true
+					fullPath := filepath.Join(projectPath, filePath)
+					if content, rErr := os.ReadFile(fullPath); rErr == nil {
+						lineCount := int64(bytes.Count(content, []byte("\n")))
+						if len(content) > 0 && !bytes.HasSuffix(content, []byte("\n")) {
+							lineCount++
+						}
+						churn.LinesAdded += lineCount
+					}
+				} else {
+					changedMap[filePath] = true
+				}
+			}
+		}
+	} else {
+		// Non-git workspace: walk workspace directory to include all created artifacts
+		_ = filepath.WalkDir(projectPath, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			rel, rErr := filepath.Rel(projectPath, path)
+			if rErr != nil || rel == "." {
+				return nil
+			}
+			relSlash := filepath.ToSlash(rel)
+			if isVendorOrArtifactPath(projectPath, relSlash) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !d.IsDir() {
+				changedMap[relSlash] = true
+				if content, rErr := os.ReadFile(path); rErr == nil {
 					lineCount := int64(bytes.Count(content, []byte("\n")))
 					if len(content) > 0 && !bytes.HasSuffix(content, []byte("\n")) {
 						lineCount++
@@ -147,30 +222,9 @@ func computeWorkspaceChurn(projectPath string) CodeChurnSummary {
 					churn.LinesAdded += lineCount
 				}
 			}
-		}
+			return nil
+		})
 	}
-
-	// Walk workspace directory to ensure all created artifacts (files) are included
-	_ = filepath.WalkDir(projectPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		rel, rErr := filepath.Rel(projectPath, path)
-		if rErr != nil || rel == "." {
-			return nil
-		}
-		relSlash := filepath.ToSlash(rel)
-		if isVendorOrArtifactPath(projectPath, relSlash) {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !d.IsDir() {
-			changedMap[relSlash] = true
-		}
-		return nil
-	})
 
 	var fileList []string
 	for f := range changedMap {

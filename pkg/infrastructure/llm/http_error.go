@@ -16,6 +16,24 @@ import (
 
 var blacklistedModels sync.Map
 
+func init() {
+	reseedDefaultBlacklist()
+}
+
+func reseedDefaultBlacklist() {
+	blacklistQuietly("claude-3-5-haiku-20241022")
+	blacklistQuietly("claude-3-5-haiku")
+	blacklistQuietly("claude-3-5-haiku-latest")
+	blacklistQuietly("claude-3-haiku-20240307")
+	blacklistQuietly("claude-3-haiku")
+}
+
+func blacklistQuietly(model string) {
+	if model != "" {
+		blacklistedModels.Store(strings.ToLower(strings.TrimSpace(model)), true)
+	}
+}
+
 // BlacklistModel permanently blacklists a model so Noctifab never attempts to call it again.
 func BlacklistModel(model string) {
 	if model != "" {
@@ -34,13 +52,14 @@ func IsModelBlacklisted(model string) bool {
 	return ok
 }
 
-// ResetModelBlacklist clears all blacklisted models from memory.
+// ResetModelBlacklist clears all blacklisted models from memory and reseeds permanently retired models.
 // Primarily used for unit test cleanup and state resets.
 func ResetModelBlacklist() {
 	blacklistedModels.Range(func(key, _ any) bool {
 		blacklistedModels.Delete(key)
 		return true
 	})
+	reseedDefaultBlacklist()
 }
 
 // isModelNotFoundOrDeprecated reports whether an error indicates a model is 404, deprecated, invalid, or no longer available.

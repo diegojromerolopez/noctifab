@@ -23,7 +23,7 @@ func TestSelectFallbackModel_PrefixMatching(t *testing.T) {
 			"claude-3-opus-20240229",
 			"claude-3-7-sonnet-20250219",
 			"claude-3-5-sonnet-20241022",
-			"claude-3-5-haiku-20241022",
+			"claude-haiku-5-5",
 		}
 		parsed := parsedModelsFor(available, parseAnthropicModel)
 
@@ -79,7 +79,7 @@ func TestSelectFallbackModel_BestAvailableWhenNoPrefixMatch(t *testing.T) {
 		available := []string{
 			"claude-3-opus-20240229",
 			"claude-3-5-sonnet-20241022",
-			"claude-3-5-haiku-20241022",
+			"claude-haiku-5-5",
 		}
 		parsed := parsedModelsFor(available, parseAnthropicModel)
 
@@ -93,7 +93,7 @@ func TestSelectFallbackModel_BestAvailableWhenNoPrefixMatch(t *testing.T) {
 		available := []string{
 			"claude-3-opus-20240229",
 			"claude-3-5-sonnet-20241022",
-			"claude-3-5-haiku-20241022",
+			"claude-haiku-5-5",
 		}
 		parsed := parsedModelsFor(available, parseAnthropicModel)
 
@@ -352,7 +352,7 @@ func TestSelectFallbackModel_CaseInsensitivePrefix(t *testing.T) {
 	ResetModelBlacklist()
 	available := []string{
 		"claude-3-7-sonnet-20250219",
-		"claude-3-5-haiku-20241022",
+		"claude-haiku-5-5",
 	}
 	parsed := parsedModelsFor(available, parseAnthropicModel)
 
@@ -384,7 +384,7 @@ func TestComplete_AnthropicInvalidModelRecoveryE2E(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/models") {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprintf(w, `{"data":[{"id":"claude-3-7-sonnet-20250219"},{"id":"claude-3-5-haiku-20241022"}]}`)
+			_, _ = fmt.Fprintf(w, `{"data":[{"id":"claude-3-7-sonnet-20250219"},{"id":"claude-haiku-5-5"}]}`)
 			return
 		}
 

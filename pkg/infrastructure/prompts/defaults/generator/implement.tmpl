@@ -23,7 +23,8 @@ ANTI-STALLING MANDATE:
 - Inspect and self-audit every function. Implement genuine logic with state mutations, algorithms, and error handling. Do not write stubs or dummy returns.
 - Boundary between production code and test code:
   * Production code must contain complete business logic. No mock shims in production code.
-  * Generators must author unit tests in 'tests/unit/' to verify edge cases and boundary conditions.
+  * Generators must author unit tests in 'tests/unit/' to verify edge cases, negative scenarios (invalid inputs, path traversal, unsupported methods, oversized payloads), and boundary conditions. Mutating operations must persist state verifiably, and error responses must match exact contract envelopes. HEAD responses (both 200 and errors) MUST return headers without message body bytes.
+  * PROHIBITED ACCESS: Generators must NEVER modify, weaken, or delete independent acceptance tests in 'tests/acceptance/'. Acceptance tests represent immutable client contracts.
   * HERMETIC TEST ISOLATION: Tests in 'tests/unit/' must be 100% in-memory and hermetic. Unit tests MUST NEVER execute E2E test scripts (such as 'tests/e2e/run_tests.sh', 'docker compose') or dial external network ports/daemons as a subprocess. E2E tests belong strictly under 'tests/e2e/'.
 - Unit testing guidelines:
   * Instantiate real collaborating domain objects with real state.

@@ -173,6 +173,18 @@ func (c *Client) adjustForRoutineTask(ctx context.Context, role, model string, e
 		return extra, false
 	}
 
+	if c.EnableThinking != nil && !*c.EnableThinking {
+		if extra == nil {
+			extra = make(map[string]interface{})
+		}
+		extra["enable_thinking"] = false
+		extra["thinking_budget"] = 0
+		extra["reasoning_effort"] = "low"
+		extra["thinking"] = map[string]interface{}{"type": "disabled"}
+		extra["thinkingConfig"] = map[string]interface{}{"thinkingBudget": 0}
+		return extra, true
+	}
+
 	pClient := c.providerClient()
 	apiKey := c.getNextAPIKey()
 

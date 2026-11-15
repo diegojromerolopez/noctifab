@@ -275,6 +275,15 @@ func runSovereignProjectRescue(ctx context.Context, opts SovereignRescueOptions)
 		var toolErrors []string
 		var toolOutputs []string
 		actionsExecuted := 0
+		if resp != nil && len(resp.Actions) == 0 {
+			fallbackFiles := services.ExtractFilesFromSpikeResponse(resp)
+			for path, content := range fallbackFiles {
+				resp.Actions = append(resp.Actions, domain.LLMAction{
+					Tool: "write_file",
+					Args: map[string]any{"path": path, "content": content},
+				})
+			}
+		}
 		if resp != nil && len(resp.Actions) > 0 {
 			for _, action := range resp.Actions {
 				if action.Tool == "noop" {

@@ -352,6 +352,9 @@ func (r *ResilientLLMRouter) Complete(ctx context.Context, prompt string) (*doma
 		candidates = r.latencyTracker.ApplyDynamicDemotion(candidates)
 	}
 	candidates = r.filterByProviderTokenLimit(ctx, candidates)
+	if stage, hasStage := domain.GetQualityStage(ctx); hasStage {
+		candidates = PrioritizeCandidatesForQualityStage(candidates, stage)
+	}
 	if modelOverride := domain.GetModelOverride(ctx); modelOverride != "" {
 		candidates = PrioritizeCandidatesByModel(candidates, modelOverride)
 	}

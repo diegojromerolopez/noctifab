@@ -60,8 +60,8 @@ func TestDetectShadowTestFiles(t *testing.T) {
 	t.Run("ValidateTask fails with clear diagnostics when shadow test files exist", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "tests", "unit"), 0755))
-		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "tests", "test_store.py"), []byte("def test_legacy(): assert True\n"), 0644))
-		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "tests", "unit", "test_store.py"), []byte("def test_modular(): assert True\n"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "tests", "test_store.py"), []byte("def test_legacy():\n    x = 1\n    assert x > 0\n"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "tests", "unit", "test_store.py"), []byte("def test_modular():\n    x = 1\n    assert x > 0\n"), 0644))
 
 		v := NewTestValidator(nil, false, nil, nil)
 		state := &domain.State{ProjectPath: tmpDir}
