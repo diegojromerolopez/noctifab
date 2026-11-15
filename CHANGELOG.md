@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.131.1] - 2026-11-15
+
+### Fixed
+- **Static Analysis & Linter Compliance (`golangci-lint`)**:
+  - Replaced unchecked `fmt.Sscanf` with `strconv.Atoi` in `countExecutedAcceptanceTests` (`pkg/services/qa_acceptance_runner.go`).
+  - Switched untagged `ext` and `action` switch statements to tagged switches in `pkg/services/anti_stub_mock.go` and `pkg/services/orchestrator_generator.go`.
+  - Replaced inefficient `WriteString(fmt.Sprintf(...))` string allocations with `fmt.Fprintf` in `pkg/services/orchestrator_finalize.go` and `pkg/services/spike_runner_test.go`.
+
 ## [0.131.0] - 2026-11-15
 
 ### Added

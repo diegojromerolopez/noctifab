@@ -30,12 +30,12 @@ func checkMockCallViolations(path string, lines []string) []AntiStubViolation {
 	var violations []AntiStubViolation
 	ext := strings.ToLower(filepath.Ext(path))
 
-	switch {
-	case ext == ".py":
+	switch ext {
+	case ".py":
 		violations = append(violations, checkPythonMockViolations(path, lines)...)
-	case ext == ".go":
+	case ".go":
 		violations = append(violations, checkGoMockViolations(path, lines)...)
-	case ext == ".js" || ext == ".ts" || ext == ".jsx" || ext == ".tsx":
+	case ".js", ".ts", ".jsx", ".tsx":
 		violations = append(violations, checkJSMockViolations(path, lines)...)
 	}
 

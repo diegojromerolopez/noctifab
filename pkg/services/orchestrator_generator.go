@@ -115,9 +115,10 @@ func (o *Orchestrator) RunGeneratorAgent(ctx context.Context, task domain.Task, 
 	maxNoopStrikes := 2
 
 	baseStage := 0
-	if action == "surgical_repair" {
+	switch action {
+	case "surgical_repair":
 		baseStage = 2
-	} else if action == "refactor" || action == "implement_breadth_first_fix" || action == "fix" || action == "single_pass_fix" {
+	case "refactor", "implement_breadth_first_fix", "fix", "single_pass_fix":
 		baseStage = 1
 	}
 

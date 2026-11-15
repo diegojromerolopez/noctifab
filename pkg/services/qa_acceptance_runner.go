@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -375,9 +376,7 @@ func extractAcceptanceFailures(output string, err error) []string {
 func countExecutedAcceptanceTests(output string) int {
 	re := regexp.MustCompile(`(?i)(\d+)\s+(?:passed|acceptance scenarios verified|tests passed)`)
 	if matches := re.FindStringSubmatch(output); len(matches) > 1 {
-		var n int
-		fmt.Sscanf(matches[1], "%d", &n)
-		if n > 0 {
+		if n, err := strconv.Atoi(matches[1]); err == nil && n > 0 {
 			return n
 		}
 	}

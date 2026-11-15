@@ -188,7 +188,7 @@ func TestExecuteSpike_DoesNotTriggerLegacyClassification(t *testing.T) {
 	var bigCode strings.Builder
 	bigCode.WriteString("package main\nimport \"fmt\"\nfunc main() {\n")
 	for i := 0; i < 60; i++ {
-		bigCode.WriteString(fmt.Sprintf("\tfmt.Println(%d)\n", i))
+		fmt.Fprintf(&bigCode, "\tfmt.Println(%d)\n", i)
 	}
 	bigCode.WriteString("}\n")
 
